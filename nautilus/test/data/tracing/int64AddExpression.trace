@@ -1,0 +1,4 @@
+B0()
+	CONST	$2	7	:i64	
+	ADD	$3	$1	$2	:i64	
+	RETURN	$3	:i64	

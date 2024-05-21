@@ -1,0 +1,19 @@
+NESIR {
+execute() {
+Block_0($1:i32):
+    $2 = 1 :bool
+    $4 = 42 :i64
+    $5 = $1 cast_to i64 :i64
+    $6 = $5 == $4 :bool
+    $7 = $2 and $6 :bool
+    $9 = 42 :i64
+    $10 = $1 cast_to i64 :i64
+    $11 = $10 == $9 :bool
+    $12 = $7 and $11 :bool
+    $14 = 42 :i64
+    $15 = $1 cast_to i64 :i64
+    $16 = $15 == $14 :bool
+    $17 = $12 and $16 :bool
+    return ($17) :bool
+}
+} //NESIR

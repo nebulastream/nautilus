@@ -1,0 +1,4 @@
+B0($1:i8)
+	CONST	$2		:i8	
+	ADD	$3	$2	$1	:i8	
+	RETURN	$3	:i8	

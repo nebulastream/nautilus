@@ -1,0 +1,33 @@
+B0()
+	CONST	$2	1	:i32	
+	CONST	$3	10	:i32	
+	ADD	$4	$2	$3	:i32	
+	ASSIGN	$2	$4	:i32	
+	CONST	$5	10	:i32	
+	ADD	$6	$2	$5	:i32	
+	ASSIGN	$2	$6	:i32	
+	CONST	$7	10	:i32	
+	ADD	$8	$2	$7	:i32	
+	ASSIGN	$2	$8	:i32	
+	CONST	$9	10	:i32	
+	ADD	$10	$2	$9	:i32	
+	ASSIGN	$2	$10	:i32	
+	CONST	$11	10	:i32	
+	ADD	$12	$2	$11	:i32	
+	ASSIGN	$2	$12	:i32	
+	CONST	$13	10	:i32	
+	ADD	$14	$2	$13	:i32	
+	ASSIGN	$2	$14	:i32	
+	CONST	$15	10	:i32	
+	ADD	$16	$2	$15	:i32	
+	ASSIGN	$2	$16	:i32	
+	CONST	$17	10	:i32	
+	ADD	$18	$2	$17	:i32	
+	ASSIGN	$2	$18	:i32	
+	CONST	$19	10	:i32	
+	ADD	$20	$2	$19	:i32	
+	ASSIGN	$2	$20	:i32	
+	CONST	$21	10	:i32	
+	ADD	$22	$2	$21	:i32	
+	ASSIGN	$2	$22	:i32	
+	RETURN	$2	:i32	

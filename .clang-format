@@ -1,0 +1,28 @@
+---
+BasedOnStyle: LLVM
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+ColumnLimit: 120
+CompactNamespaces: true
+IncludeBlocks: Merge
+IncludeCategories:
+  - Regex: ^"(llvm|llvm-c|clang|clang-c)/
+    Priority: 2
+  - Regex: ^(<|"(gtest|isl|json)/)
+    Priority: 3
+  - Regex: .*
+    Priority: 1
+IncludeIsMainRegex: $
+IndentWidth: 4
+PointerAlignment: Left
+QualifierAlignment: Left
+SpaceAfterCStyleCast: true
+SpaceBeforeCpp11BracedList: true
+SpacesInAngles: false
+TabWidth: 4
+UseTab: ForIndentation
+AllowAllConstructorInitializersOnNextLine: true
+SpacesInCStyleCastParentheses: false
+SpacesInConditionalStatement: false

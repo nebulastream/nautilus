@@ -1,0 +1,38 @@
+B0()
+	CONST	$1	5	:i32	
+	CONST	$2	8	:i32	
+	LT	$3	$1	$2	:i32	
+	CMP	$4	$3	B1($1)	B2($1)	:void	
+B1($1:i32)
+	CONST	$5	10	:i32	
+	ADD	$6	$1	$5	:i32	
+	CONST	$7	2	:i32	
+	JMP	$0	B5($6,$7)	:void	
+B2($1:i32)
+	CONST	$10	5	:i32	
+	EQ	$11	$1	$10	:i32	
+	CMP	$12	$11	B3($1)	B4($1)	:void	
+B3($1:i32)
+	CONST	$13	5	:i32	
+	ADD	$14	$1	$13	:i32	
+	CONST	$15	2	:i32	
+	JMP	$0	B5($14,$15)	:void	
+B4($1:i32)
+	CONST	$16	4	:i32	
+	EQ	$17	$1	$16	:i32	
+	CMP	$18	$17	B6($1)	B7($1)	:void	
+B5($1:i32,$7:i32) ControlFlowMerge
+	JMP	$0	B8($1,$7)	:void	
+B6($1:i32)
+	CONST	$19	4	:i32	
+	ADD	$20	$1	$19	:i32	
+	CONST	$21	2	:i32	
+	JMP	$0	B8($20,$21)	:void	
+B7($1:i32)
+	CONST	$22	2	:i32	
+	JMP	$0	B9($1,$22)	:void	
+B8($1:i32,$7:i32) ControlFlowMerge
+	JMP	$0	B9($1,$7)	:void	
+B9($1:i32,$7:i32) ControlFlowMerge
+	ADD	$8	$1	$7	:i32	
+	RETURN	$8	:i32	

@@ -1,0 +1,42 @@
+NESIR {
+execute() {
+Block_0($1:i32):
+    $2 = 0 :i32
+    $3 = 5 :i32
+    $4 = $1 < $3 :bool
+    if $4 ? Block_1() : Block_2($1) :void
+
+Block_1():
+    $6 = 1 :i32
+    br Block_7($6) :void
+
+Block_7($2:i32):
+    return ($2) :i32
+
+Block_2($1:i32):
+    $8 = 5 :i32
+    $9 = $1 >= $8 :bool
+    $10 = 10 :i32
+    $11 = $1 <= $10 :bool
+    $12 = $9 and $11 :bool
+    if $12 ? Block_3($1) : Block_4() :void
+
+Block_3($1:i32):
+    $14 = 2 :i32
+    $15 = 7 :i32
+    $16 = $1 == $15 :bool
+    if $16 ? Block_5($14) : Block_6($14) :void
+
+Block_5($2:i32):
+    $18 = 1 :i32
+    $19 = $2 + $18 :i32
+    br Block_7($19) :void
+
+Block_6($2:i32):
+    br Block_7($2) :void
+
+Block_4():
+    $21 = 3 :i32
+    br Block_7($21) :void
+}
+} //NESIR

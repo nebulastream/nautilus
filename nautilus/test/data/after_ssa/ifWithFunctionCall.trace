@@ -1,0 +1,14 @@
+B0($1:i32)
+	CONST	$2	0	:i32	
+	CONST	$4	2	:i32	
+	MUL	$5	$1	$4	:i32	
+	CONST	$6	10	:i32	
+	GT	$7	$5	$6	:i32	
+	CMP	$8	$7	B1()	B2($2)	:void	
+B1()
+	CONST	$9	1	:i32	
+	JMP	$0	B3($9)	:void	
+B2($2:i32)
+	JMP	$0	B3($2)	:void	
+B3($2:i32)
+	RETURN	$2	:i32	

@@ -1,0 +1,70 @@
+name: Build Nautilus
+run-name: ${{ github.actor }} builds Nautilus
+on: [ push ]
+jobs:
+  build-test:
+    runs-on: ${{matrix.os}}
+    name: Build on ${{ matrix.os }} with ${{ matrix.cc }} ${{ matrix.flags }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: 'ubuntu-20.04'
+            cc: 'gcc-10'
+            cxx: 'g++-10'
+            flags: ''
+          - os: 'ubuntu-22.04'
+            cc: 'gcc-10'
+            cxx: 'g++-10'
+            flags: ''
+          - os: 'ubuntu-22.04'
+            cc: 'gcc-10'
+            cxx: 'g++-10'
+            flags: '-DENABLE_TRACING=OFF'
+          - os: 'ubuntu-22.04'
+            cc: 'clang-15'
+            cxx: 'clang++-15'
+            flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'clang-18'
+            cxx: 'clang++-18'
+            flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'gcc-12'
+            cxx: 'g++-12'
+            flags: ''
+          - os: 'macos-13'
+            cc: 'clang'
+            cxx: 'clang++'
+            flags: ''
+          - os: 'macos-14'
+            cc: 'clang'
+            cxx: 'clang++'
+            flags: ''
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.13
+        with:
+          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.flags }}  -G Ninja -S . -B .
+      - name: build
+        shell: bash
+        run: |
+          cmake --build . --target all
+      - name: test
+        shell: bash
+        run: |
+          ctest --output-on-failure
+
+

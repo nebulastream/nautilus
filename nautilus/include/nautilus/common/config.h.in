@@ -1,0 +1,12 @@
+
+#cmakedefine ENABLE_TRACING
+#cmakedefine ENABLE_BC_BACKEND
+#cmakedefine ENABLE_C_BACKEND
+#cmakedefine ENABLE_MLIR_BACKEND
+#cmakedefine ENABLE_ASMJIT_BACKEND
+#cmakedefine ENABLE_COMPILER
+#cmakedefine ENABLE_STACKTRACE
+#cmakedefine TEST_DATA_FOLDER "@TEST_DATA_FOLDER@"
+
+// Backends
+#cmakedefine NAUTILUS_ACTIVATE_MLIR_BACKEND

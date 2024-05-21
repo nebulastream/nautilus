@@ -1,0 +1,14 @@
+B0()
+	CONST	$2	0	:i32	
+	CONST	$3	10	:i32	
+	LT	$4	$1	$3	:i32	
+	CONST	$5	5	:i32	
+	GT	$6	$1	$5	:i32	
+	NEQ	$7	$4	$6	:bool	
+	CMP	$8	$7	B1()	B2()	:void	
+B1()
+	CONST	$9	1	:i32	
+	ASSIGN	$2	$9	:i32	
+	RETURN	$2	:i32	
+B2()
+	RETURN	$2	:i32	
