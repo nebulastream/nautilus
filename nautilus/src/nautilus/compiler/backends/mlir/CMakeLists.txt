@@ -1,7 +1,7 @@
 
 if (ENABLE_MLIR_BACKEND)
 
-    include(${CMAKE_SOURCE_DIR}/cmake/AddMLIR.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/AddMLIR.cmake)
 
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
