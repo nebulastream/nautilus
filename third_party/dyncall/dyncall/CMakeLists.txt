@@ -41,6 +41,10 @@ add_library(dyncall_s STATIC ${ASM_SRC}
   dyncall_callf.c
 )
 
+target_include_directories(dyncall_s PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>
+        $<INSTALL_INTERFACE:/>)
+
 install(TARGETS dyncall_s ARCHIVE DESTINATION lib )
 
 install(FILES 
