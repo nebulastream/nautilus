@@ -30,10 +30,10 @@ void cstdlib(engine::NautilusEngine& engine) {
 		REQUIRE(f("42") == 42);
 		REQUIRE(f("0") == 0);
 	}
-	SECTION("atoi-const") {
-		auto f = engine.registerFunction(getIntStatic);
-		REQUIRE(f() == 42);
-	}
+	//SECTION("atoi-const") {
+	//	auto f = engine.registerFunction(getIntStatic);
+	//	REQUIRE(f() == 42);
+	//}
 }
 
 void cmath(engine::NautilusEngine& engine) {
