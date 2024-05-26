@@ -1,0 +1,7 @@
+NESIR {
+execute() {
+Block_0($1:i32, $2:i32):
+    $7 = _ZN8nautilus6engine3addEii($1, $2) :i32
+    return ($7) :i32
+}
+} //NESIR

@@ -1,0 +1,21 @@
+NESIR {
+execute() {
+Block_0($1:i32):
+    $2 = 0 :i32
+    $4 = 2 :i32
+    $5 = $1 * $4 :i32
+    $6 = 10 :i32
+    $7 = $5 > $6 :bool
+    if $7 ? Block_1() : Block_2($2) :void
+
+Block_1():
+    $9 = 1 :i32
+    br Block_3($9) :void
+
+Block_3($2:i32):
+    return ($2) :i32
+
+Block_2($2:i32):
+    br Block_3($2) :void
+}
+} //NESIR
