@@ -96,6 +96,18 @@ void dyncallCallPtr(const OpCode& op, RegisterFile& regs) {
 	writeReg<void*>(regs, op.output, returnValue);
 }
 
+void dyncallCallf(const OpCode& op, RegisterFile& regs) {
+	auto address = readReg<void*>(regs, op.reg1);
+	auto returnValue = Dyncall::getVM().callF(address);
+	writeReg<float>(regs, op.output, returnValue);
+}
+
+void dyncallCalld(const OpCode& op, RegisterFile& regs) {
+	auto address = readReg<void*>(regs, op.reg1);
+	auto returnValue = Dyncall::getVM().callD(address);
+	writeReg<double>(regs, op.output, returnValue);
+}
+
 static Operation* OpTable[] = {
     (Operation*) regMov,
     // add
@@ -180,7 +192,8 @@ static Operation* OpTable[] = {
     (Operation*) dyncallReset, (Operation*) dyncallArgB, (Operation*) dyncallArgI8, (Operation*) dyncallArgI16,
     (Operation*) dyncallArgI32, (Operation*) dyncallArgI64, (Operation*) dyncallArgF, (Operation*) dyncallArgD,
     (Operation*) dyncallArgPtr, (Operation*) dyncallCallV, (Operation*) dyncallCallB, (Operation*) dyncallCallI8,
-    (Operation*) dyncallCallI16, (Operation*) dyncallCallI32, (Operation*) dyncallCallI64, (Operation*) dyncallCallPtr};
+    (Operation*) dyncallCallI16, (Operation*) dyncallCallI32, (Operation*) dyncallCallI64, (Operation*) dyncallCallPtr,
+    (Operation*) dyncallCallf, (Operation*) dyncallCalld};
 
 FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> arguments, void* functionPtr)
     : arguments(std::move(arguments)), functionPtr(functionPtr) {

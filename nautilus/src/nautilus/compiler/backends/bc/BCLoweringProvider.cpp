@@ -951,10 +951,10 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 			bc = ByteCode::DYNCALL_arg_i64;
 			break;
 		case Type::f32:
-			bc = ByteCode::DYNCALL_arg_d;
+			bc = ByteCode::DYNCALL_arg_f;
 			break;
 		case Type::f64:
-			bc = ByteCode::DYNCALL_arg_f;
+			bc = ByteCode::DYNCALL_arg_d;
 			break;
 		case Type::b:
 			bc = ByteCode::DYNCALL_arg_b;
@@ -1006,8 +1006,13 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	case Type::b:
 		bc = ByteCode::DYNCALL_call_b;
 		break;
+	case Type::f32:
+		bc = ByteCode::DYNCALL_call_f;
+		break;
+	case Type::f64:
+		bc = ByteCode::DYNCALL_call_d;
+		break;
 	default: {
-
 		throw NotImplementedException("This type is not supported.");
 	}
 	}

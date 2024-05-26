@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nautilus/Engine.hpp>
+#include <nautilus/std/cstring.h>
 
 namespace nautilus::engine {
 
@@ -25,5 +26,9 @@ void addArray(val<T*> array, val<T*> array2, val<T> length) {
 		val<T> right = array2[i];
 		array[i] = left + right;
 	}
+}
+
+void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {
+	memcpy(dest, src, 0);
 }
 } // namespace nautilus::engine

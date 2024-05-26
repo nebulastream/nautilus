@@ -26,3 +26,5 @@ if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMP
     include(Catch)
     catch_discover_tests(nautilus-tracing-tests EXTRA_ARGS --allow-running-no-tests)
 endif ()
+
+add_subdirectory(std)
