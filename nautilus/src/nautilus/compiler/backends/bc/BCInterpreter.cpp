@@ -255,9 +255,6 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 		} else if (auto* value = std::any_cast<void*>(&args[i])) {
 			auto val = (int64_t) *value;
 			registerFile[code.arguments[i]] = val;
-		} else if (auto* value = std::any_cast<int32_t*>(&args[i])) {
-			auto val = (int64_t) *value;
-			registerFile[code.arguments[i]] = val;
 		} else {
 
 			throw NotImplementedException("This type is not supported.");

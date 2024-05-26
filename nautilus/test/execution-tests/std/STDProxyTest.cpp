@@ -1,6 +1,7 @@
 
 #include "nautilus/Engine.hpp"
 #include "nautilus/std/cmath.h"
+#include "nautilus/std/cstdlib.h"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
@@ -13,6 +14,17 @@ val<T> absTest(val<T> x) {
 template <typename T>
 val<T> sinTest(val<T> x) {
 	return sin(x);
+}
+
+auto getInt(val<char*> str) {
+	return atoi(str);
+}
+
+void cstdlib(engine::NautilusEngine& engine) {
+	SECTION("atoi") {
+		auto f = engine.registerFunction(getInt);
+		REQUIRE(f("42") == 42);
+	}
 }
 
 void cmath(engine::NautilusEngine& engine) {
@@ -53,6 +65,9 @@ void cmath(engine::NautilusEngine& engine) {
 }
 
 void runAllTests(engine::NautilusEngine& engine) {
+	SECTION("cstdlib") {
+		cstdlib(engine);
+	}
 	SECTION("cmatch") {
 		cmath(engine);
 	}

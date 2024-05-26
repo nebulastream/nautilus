@@ -422,7 +422,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFr
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
-	    "XXX", functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
+	    functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}

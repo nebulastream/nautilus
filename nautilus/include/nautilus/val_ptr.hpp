@@ -135,7 +135,11 @@ public:
 	    requires std::is_pointer_v<OtherType>
 	operator val<OtherType>() const {
 		// ptr cast
+#ifdef ENABLE_TRACING
+		return val<OtherType>((OtherType) value, state, alignment);
+#else
 		return val<OtherType>((OtherType) value, alignment);
+#endif
 	}
 
 	const val<ValuePtrType>& operator++() {
