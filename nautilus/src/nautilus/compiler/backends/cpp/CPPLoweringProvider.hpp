@@ -90,7 +90,9 @@ private:
 			auto var = getVariable(constValue->getIdentifier());
 			blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
 			frame.setValue(constValue->getIdentifier(), var);
-			blocks[blockIndex] << var << " = " << constValue->getValue() << ";\n";
+
+			blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue()
+			                   << ";\n";
 		}
 
 		template <class Type>

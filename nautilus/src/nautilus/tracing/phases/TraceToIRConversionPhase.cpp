@@ -7,6 +7,7 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
@@ -495,6 +496,8 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceT
 
 	} else if (constant->type() == typeid(bool)) {
 		constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, any_cast<bool>(*constant));
+	} else if (constant->type() == typeid(void*)) {
+		constOperation = currentBlock->addOperation<ConstPtrOperation>(resultIdentifier, any_cast<void*>(*constant));
 	} else {
 		throw NotImplementedException("Not constant implemented.");
 	}

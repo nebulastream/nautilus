@@ -87,7 +87,7 @@ public:
 #ifdef ENABLE_TRACING
 
 	val(ValuePtrType ptr, int8_t alignment = 1)
-	    : base_value(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
+	    : base_value(tracing::traceConstant((void*)ptr)), value(ptr), alignment(alignment) {};
 
 	inline val(ValuePtrType, tracing::value_ref tc, int8_t alignment) : base_value(tc), alignment(alignment) {};
 

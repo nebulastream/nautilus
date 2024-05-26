@@ -20,10 +20,19 @@ auto getInt(val<char*> str) {
 	return atoi(str);
 }
 
+auto getIntStatic() {
+	return atoi("42");
+}
+
 void cstdlib(engine::NautilusEngine& engine) {
 	SECTION("atoi") {
 		auto f = engine.registerFunction(getInt);
 		REQUIRE(f("42") == 42);
+		REQUIRE(f("0") == 0);
+	}
+	SECTION("atoi-const") {
+		auto f = engine.registerFunction(getIntStatic);
+		REQUIRE(f() == 42);
 	}
 }
 
