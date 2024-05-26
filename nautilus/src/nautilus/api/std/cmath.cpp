@@ -20,7 +20,7 @@ val<double> fabs(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::fabs(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fabsf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::fabsf(x); }, x);
@@ -36,7 +36,7 @@ val<double> sin(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::sin(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> sinf(val<float> x) {
 	return sin(x);
 }
@@ -49,7 +49,7 @@ val<double> tan(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::tan(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> tanf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::tanf(x); }, x);
@@ -63,7 +63,7 @@ val<double> asin(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::asin(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> asinf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::asinf(x); }, x);
@@ -78,7 +78,7 @@ val<double> cos(val<double> x) {
 	    +[](double x) { return std::cos(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> cosf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::cosf(x); }, x);
@@ -93,7 +93,7 @@ val<double> acos(val<double> x) {
 	    +[](double x) { return std::asin(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> acosf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::asin(x); }, x);
@@ -107,7 +107,7 @@ val<double> atan(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::atan(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> atanf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::atanf(x); }, x);
@@ -122,7 +122,7 @@ val<double> atan2(val<double> y, val<double> x) {
 	    +[](double y, double x) { return std::atan2(y, x); }, y, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> atan2f(val<float> y, val<float> x) {
 	return invoke<>(
 	    +[](float y, float x) { return std::atan2(y, x); }, y, x);
@@ -137,7 +137,7 @@ val<double> sinh(val<double> x) {
 	    +[](double x) { return std::sinh(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> sinhf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::sinh(x); }, x);
@@ -152,7 +152,7 @@ val<double> cosh(val<double> x) {
 	    +[](double x) { return std::cosh(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> coshf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::coshf(x); }, x);
@@ -168,7 +168,7 @@ val<double> tanh(val<double> x) {
 	    +[](double x) { return std::tanh(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> tanhf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::tanhf(x); }, x);
@@ -182,7 +182,7 @@ val<double> asinh(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::asinh(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> asinhf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::asinhf(x); }, x);
@@ -197,7 +197,7 @@ val<double> acosh(val<double> x) {
 	    +[](double x) { return std::acosh(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> acoshf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::acoshf(x); }, x);
@@ -213,7 +213,7 @@ val<double> atanh(val<double> x) {
 	    +[](double x) { return std::atanh(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> atanhf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::atanhf(x); }, x);
@@ -229,7 +229,7 @@ val<double> erf(val<double> x) {
 	    +[](double x) { return std::erf(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> erff(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::erff(x); }, x);
@@ -244,7 +244,7 @@ val<double> erfc(val<double> x) {
 	    +[](double x) { return std::erfc(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> erfcf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::erfcf(x); }, x);
@@ -259,7 +259,7 @@ val<double> tgamma(val<double> x) {
 	    +[](double x) { return std::tgamma(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> tgammaf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::tgammaf(x); }, x);
@@ -274,7 +274,7 @@ val<double> lgamma(val<double> x) {
 	    +[](double x) { return std::lgamma(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> lgammaf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::lgammaf(x); }, x);
@@ -289,7 +289,7 @@ val<double> ceil(val<double> x) {
 	    +[](double x) { return std::ceil(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> ceilf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::ceilf(x); }, x);
@@ -304,7 +304,7 @@ val<double> floor(val<double> x) {
 	    +[](double x) { return std::floor(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> floorf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::floorf(x); }, x);
@@ -319,7 +319,7 @@ val<double> trunc(val<double> x) {
 	    +[](double x) { return std::trunc(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> truncf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::truncf(x); }, x);
@@ -334,7 +334,7 @@ val<double> round(val<double> x) {
 	    +[](double x) { return std::round(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> roundf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::roundf(x); }, x);
@@ -349,7 +349,7 @@ val<long> lround(val<double> x) {
 	    +[](double x) { return std::lround(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<long> lroundf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::lroundf(x); }, x);
@@ -364,7 +364,7 @@ val<long long> llround(val<double> x) {
 	    +[](double x) { return std::llround(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<long long> llroundf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::llroundf(x); }, x);
@@ -379,7 +379,7 @@ val<double> nearbyint(val<double> x) {
 	    +[](double x) { return std::nearbyint(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> nearbyintf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::nearbyintf(x); }, x);
@@ -407,7 +407,7 @@ val<long> lrint(val<double> x) {
 	    +[](double x) { return std::lrint(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<long> lrintf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::lrintf(x); }, x);
@@ -422,7 +422,7 @@ val<long long> llrint(val<double> x) {
 	    +[](double x) { return std::llrint(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<long long> llrintf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::llrint(x); }, x);
@@ -433,7 +433,7 @@ val<float> frexp(val<float> x, val<int*> exp) {
 	    +[](float x, int* exp) { return std::frexp(x, exp); }, x, exp);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> frexpf(val<float> x, val<int*> exp) {
 	return invoke<>(
 	    +[](float x, int* exp) { return std::frexp(x, exp); }, x, exp);
@@ -449,7 +449,7 @@ val<float> ldexp(val<float> x, val<int> exp) {
 	    +[](float x, int exp) { return std::ldexp(x, exp); }, x, exp);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> ldexpf(val<float> x, val<int> exp) {
 	return invoke<>(
 	    +[](float x, int exp) { return std::ldexpf(x, exp); }, x, exp);
@@ -465,7 +465,7 @@ val<float> modf(val<float> x, val<float*> intpart) {
 	    +[](float x, float* intpart) { return std::modf(x, intpart); }, x, intpart);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> modff(val<float> x, val<float*> intpart) {
 	return invoke<>(
 	    +[](float x, float* intpart) { return std::modff(x, intpart); }, x, intpart);
@@ -480,7 +480,7 @@ val<float> scalbn(val<float> x, val<int> exp) {
 	return invoke<>(
 	    +[](float x, int exp) { return std::scalbn(x, exp); }, x, exp);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> scalbnf(val<float> x, val<int> exp) {
 	return invoke<>(
 	    +[](float x, int exp) { return std::scalbnf(x, exp); }, x, exp);
@@ -496,7 +496,7 @@ val<double> scalbln(val<double> x, val<long> exp) {
 	    +[](double x, long exp) { return std::scalbln(x, exp); }, x, exp);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> scalblnf(val<float> x, val<long> exp) {
 	return invoke<>(
 	    +[](float x, long exp) { return std::scalbln(x, exp); }, x, exp);
@@ -511,7 +511,7 @@ val<int> ilogb(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::ilogb(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<int> ilogbf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::ilogbf(x); }, x);
@@ -526,7 +526,7 @@ val<double> logb(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::logb(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> logbf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::logbf(x); }, x);
@@ -546,7 +546,7 @@ val<double> nextafter(val<double> from, val<double> to) {
 	    +[](double from, double to) { return std::nextafter(from, to); }, from, to);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> nextafterf(val<float> from, val<float> to) {
 	return invoke<>(
 	    +[](float from, float to) { return std::nextafter(from, to); }, from, to);
@@ -561,7 +561,7 @@ val<double> nexttoward(val<double> from, val<double> to) {
 	    +[](double from, double to) { return std::nextafter(from, to); }, from, to);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> nexttowardf(val<float> from, val<float> to) {
 	return invoke<>(
 	    +[](float from, float to) { return std::nextafter(from, to); }, from, to);
@@ -577,7 +577,7 @@ val<double> copysign(val<double> x, val<double> y) {
 	    +[](double x, double y) { return std::copysign(x, y); }, x, y);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> copysignf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::copysign(x, y); }, x, y);
@@ -599,7 +599,7 @@ val<double> log(val<double> x) {
 	    +[](double x) { return std::log(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> logf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::logf(x); }, x);
@@ -615,7 +615,7 @@ val<double> log10(val<double> x) {
 	    +[](double x) { return std::log10(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> log10f(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::log10f(x); }, x);
@@ -631,7 +631,7 @@ val<double> expm1(val<double> x) {
 	    +[](double x) { return std::expm1(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> expm1f(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::expm1f(x); }, x);
@@ -661,7 +661,7 @@ val<double> pow(val<double> x, val<double> y) {
 	    +[](double x, double y) { return std::pow(x, y); }, x, y);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> powf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::powf(x, y); }, x, y);
@@ -677,7 +677,7 @@ val<double> sqrt(val<double> x) {
 	    +[](double x) { return std::sqrt(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> sqrtf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::sqrt(x); }, x);
@@ -693,7 +693,7 @@ val<double> cbrt(val<double> x) {
 	    +[](double x) { return std::cbrt(x); }, x);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> cbrtf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::cbrtf(x); }, x);
@@ -708,7 +708,7 @@ val<double> hypot(val<double> x, val<double> y) {
 	return invoke<>(
 	    +[](double x, double y) { return std::hypot(x, y); }, x, y);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> hypotf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::hypotf(x, y); }, x, y);
@@ -720,7 +720,7 @@ val<float> fmod(val<float> x, val<float> y) {
 	    +[](float x, float y) { return std::fmod(x, y); }, x, y);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fmodf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fmodf(x, y); }, x, y);
@@ -736,7 +736,7 @@ val<float> remainder(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::remainder(x, y); }, x, y);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> remainderf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::remainderf(x, y); }, x, y);
@@ -753,7 +753,7 @@ val<float> remquo(val<float> x, val<float> y, val<int*> quo) {
 	    +[](float x, float y, int* quo) { return std::remquo(x, y, quo); }, x, y, quo);
 }
 
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> remquof(val<float> x, val<float> y, val<int*> quo) {
 	return invoke<>(
 	    +[](float x, float y, int* quo) { return std::remquof(x, y, quo); }, x, y, quo);
@@ -769,7 +769,7 @@ val<float> fma(val<float> x, val<float> y, val<float> z) {
 	return invoke<>(
 	    +[](float x, float y, float z) { return std::fma(x, y, z); }, x, y, z);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fmaf(val<float> x, val<float> y, val<float> z) {
 	return invoke<>(
 	    +[](float x, float y, float z) { return std::fmaf(x, y, z); }, x, y, z);
@@ -794,7 +794,7 @@ val<float> fmax(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fmax(x, y); }, x, y);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fmaxf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fmaxf(x, y); }, x, y);
@@ -810,7 +810,7 @@ val<float> fmin(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fmin(x, y); }, x, y);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fminf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fminf(x, y); }, x, y);
@@ -826,7 +826,7 @@ val<float> fdim(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fdim(x, y); }, x, y);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> fdimf(val<float> x, val<float> y) {
 	return invoke<>(
 	    +[](float x, float y) { return std::fdimf(x, y); }, x, y);
@@ -837,7 +837,7 @@ val<float> exp(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::exp(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> expf(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::expf(x); }, x);
@@ -851,7 +851,7 @@ val<float> exp2(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::exp2(x); }, x);
 }
-#if defined(__clang__)
+#if defined(_LIBCPP_VERSION)
 val<float> exp2f(val<float> x) {
 	return invoke<>(
 	    +[](float x) { return std::exp2f(x); }, x);
