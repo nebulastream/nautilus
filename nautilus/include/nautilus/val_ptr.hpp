@@ -172,13 +172,18 @@ public:
 
 	inline val( val<T>& otherValue) : base_value(otherValue.state), value(otherValue.value) {
 	}
-#endif
 
+	val(tracing::value_ref var) : base_value(var), value(nullptr) {
+	}
+#else
 	val(T ptr, int8_t alignment = 1)
 	    : base_value(), value(ptr), alignment(alignment) {};
 
 	val(tracing::value_ref ) : base_value(), value(nullptr) {
 	}
+#endif
+
+
 	T value;
 	int8_t alignment;
 };
