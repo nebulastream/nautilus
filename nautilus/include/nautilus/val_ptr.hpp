@@ -88,7 +88,7 @@ public:
 	val() : value(), alignment() {};
 	val(ValuePtrType ptr, int8_t alignment = 1) : value(ptr), alignment(alignment) {};
 
-	inline val(ValuePtrType, tracing::value_ref tc, int8_t alignment) : state(tc), alignment(alignment) {};
+	inline val(ValuePtrType ptr, tracing::value_ref tc, int8_t alignment) : state(tc),  value(ptr), alignment(alignment) {};
 
 	inline val(const val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
