@@ -1,5 +1,4 @@
 #pragma once
-
 #include "nautilus/config.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <iostream>
@@ -24,17 +23,17 @@ public:
 	val() : value() {};
 
 #ifdef ENABLE_TRACING
-	val(val<underlying_type_t> t) : state(t.state), value((T) t.value) {};
+	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {};
 	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {};
 	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {};
-	const tracing::value_ref state;
+
 #else
 	val(val<underlying_type_t> t) : value((T) t.value) {};
 	val(val<T>& t) : value(t.value) {};
 	val(T val) : value(val) {};
 #endif
 
-	operator val<underlying_type_t>() {
+	operator val<underlying_type_t>() const {
 		return value;
 	}
 
@@ -48,7 +47,10 @@ public:
 		return *this;
 	};
 
-	T value;
+	tracing::value_ref state;
+	const T value;
+
+private:
 };
 
 } // namespace nautilus

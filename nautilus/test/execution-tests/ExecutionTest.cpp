@@ -499,6 +499,28 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			REQUIRE(values[i] == ref[i]);
 		}
 	}
+
+	SECTION("castVoidPtr") {
+		auto f = engine.registerFunction(castVoidPtr);
+		int x = 42;
+		REQUIRE(f((void*) &x) == 42);
+	}
+	SECTION("passCustomStruct") {
+		auto f = engine.registerFunction(passCustomStruct);
+		CustomStruct x = {.x = 42};
+		REQUIRE(f(&x) == 42);
+	}
+	SECTION("specializeType") {
+		auto f = engine.registerFunction(specializeType);
+		CustomStruct2 x = {.x = 42};
+		REQUIRE(f(&x) == 42);
+	}
+	SECTION("useWrapper") {
+		auto f = engine.registerFunction(useWrapper);
+		CustomStruct2 x = {.x = 42};
+		CustomStruct2 x2 = {.x = 42};
+		REQUIRE(f(&x, &x2) == 84);
+	}
 }
 
 void runAllTests(engine::NautilusEngine& engine) {

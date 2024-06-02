@@ -182,6 +182,7 @@ TEST_CASE("Control-flow Trace Test") {
 
 TEST_CASE("Loop Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},
 	    {"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
 	    {"sumLoop", details::createFunctionWrapper(sumLoop)},
 	    {"nestedSumLoop", details::createFunctionWrapper(nestedSumLoop)},
@@ -206,6 +207,9 @@ TEST_CASE("Loop Trace Test") {
 	    {"addArrayInt32", details::createFunctionWrapper(addArray<int32_t>)},
 	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
 	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+	    {"passCustomStruct", details::createFunctionWrapper(passCustomStruct)},
+	    {"specializeType", details::createFunctionWrapper(specializeType)},
+	    {"useWrapper", details::createFunctionWrapper(useWrapper)},
 	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};
 	runTraceTests(tests);
 }

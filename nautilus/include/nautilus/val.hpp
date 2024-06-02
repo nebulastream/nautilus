@@ -23,7 +23,7 @@ LHS getRawValue(val<LHS>& val);
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
 
-#define INFERED_RETURN_TYPE(OP) val<decltype(left.value OP right.value)>
+#define INFERED_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
 
 template <typename LHS, typename RHS>
 COMMON_RETURN_TYPE add(LHS& left, val<RHS>& right);
@@ -79,6 +79,11 @@ auto shr(val<LHS>& left, val<RHS>& right);
 template <is_fundamental LHS>
 auto neg(val<LHS>& val);
 
+template <typename T>
+tracing::value_ref getState(T&& value) {
+	return value.state;
+}
+
 } // namespace details
 
 // val substitution for all arithmetic value type, integer, float, bool
@@ -96,7 +101,7 @@ public:
 	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
 	inline val(const val<ValueType>&& other) noexcept : state(other.state), value(other.value) {};
-	inline val(tracing::value_ref& tc) : state(tc) {};
+	inline val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	val() {};
 	val(ValueType value) : value(value) {};
@@ -173,8 +178,6 @@ public:
 		return temp;
 	}
 
-	ValueType value;
-
 	static ValueType toNativeValue(val<ValueType>& value) {
 		return value.value;
 	}
@@ -184,20 +187,21 @@ public:
 
 private:
 	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
+	ValueType value;
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::add(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::sub(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::div(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::mod(val<LHS>& left, val<RHS>& right);
 
 	template <is_fundamental LHS, is_fundamental RHS>
@@ -250,25 +254,18 @@ public:
 
 	tracing::value_ref state;
 	val() : state(tracing::traceConstant(0)), value(false) {};
-
 	val(bool value) : state(tracing::traceConstant(value)), value(value) {};
-
 	// copy constructor
 	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
-
 	// move constructor
 	val(const val<bool>&& other) noexcept : state(other.state), value(other.value) {};
 	val(tracing::value_ref& tc) : state(tc) {};
 
 #else
-
 	val() {};
-
 	val(bool value) : value(value) {};
-
 	// copy constructor
 	val(const val<bool>& other) : value(other.value) {};
-
 	// move constructor
 	val(const val<bool>&& other) : value(other.value) {};
 #endif
@@ -324,6 +321,8 @@ auto inline&& make_value(Type&& value) {
 template <convertible_to_fundamental Type>
 auto inline make_value(const Type& value) {
 	if constexpr (std::is_fundamental_v<Type>) {
+		return val<Type>(value);
+	} else if constexpr (is_ptr<Type>) {
 		return val<Type>(value);
 	} else if constexpr (is_fundamental_ptr<Type>) {
 		return val<Type>(value);
@@ -390,10 +389,10 @@ namespace details {
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(lValue.state, rValue.state);               \
+			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(details::getState(lValue), details::getState(rValue));       \
 			return RES_TYPE(tc);                                                                                       \
 		}                                                                                                              \
-		return RES_TYPE(lValue.value OP rValue.value);                                                                 \
+		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                   \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
@@ -558,13 +557,6 @@ template <typename LHS, typename RHS>
 auto& operator>>=(val<LHS>& left, RHS right) {
 	left = left >> right;
 	return left;
-}
-
-template <typename LHS>
-    requires is_fundamental<LHS>
-std::ostream& operator<<(std::ostream& out, const val<LHS>& v) {
-	out << v.value;
-	return out;
 }
 
 namespace details {

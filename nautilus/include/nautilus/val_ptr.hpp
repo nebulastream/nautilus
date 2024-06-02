@@ -6,7 +6,7 @@
 
 namespace nautilus {
 
-template <is_fundamental_ref ValueType>
+template <is_arithmetic_ref ValueType>
 class val<ValueType> {
 public:
 	using baseType = std::remove_cvref_t<ValueType>;
@@ -15,16 +15,12 @@ public:
 
 #ifdef ENABLE_TRACING
 	tracing::value_ref state;
-	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref), alignment(0) {};
-
-	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref), alignment(0) {};
-
-	val(val<ptrType> ptr, tracing::value_ref ref, int8_t alignment) : state(ref), ptr(ptr), alignment(alignment) {};
+	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {};
+	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
 #else
-
-	val(ValueType ref) : ptr(&ref), alignment(0) {};
-
-	val(val<ptrType> ptr, int8_t alignment) : ptr(ptr), alignment(alignment) {};
+	val(ValueType ref) : ptr(&ref) {};
+	val(val<ptrType> ptr) : ptr(ptr) {};
 #endif
 
 	template <class T>
@@ -71,62 +67,65 @@ public:
 
 private:
 	val<ptrType> ptr;
-	const int8_t alignment;
 	friend val<ptrType>;
 };
 
-template <is_fundamental_ptr ValuePtrType>
-class val<ValuePtrType> {
+template <is_ptr ValuePtrType>
+class base_ptr_val {
 public:
 	using ValType = std::remove_pointer_t<ValuePtrType>;
 	using raw_type = ValuePtrType;
 	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
-#ifdef ENABLE_TRACING
-	tracing::value_ref state;
-	val() : value(), alignment() {};
-	val(ValuePtrType ptr, int8_t alignment = 1) : value(ptr), alignment(alignment) {};
-
-	inline val(ValuePtrType ptr, tracing::value_ref tc, int8_t alignment) : state(tc),  value(ptr), alignment(alignment) {};
-
-	inline val(const val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
+	base_ptr_val() : value() {};
+	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
+	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
+	base_ptr_val(val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
-
-	val(tracing::value_ref ref) : state(ref), value(nullptr) {
+	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
-
-#else
-
-	val(ValuePtrType ptr, int8_t alignment = 1) :  value(ptr), alignment(alignment) {};
-	val(const val<ValuePtrType>& otherValue) :  value(otherValue.value) {
-	}
-#endif
 
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(state, other.state, tracing::to_type<ValuePtrType>());
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
 		}
 #endif
 		this->value = other.value;
 		return *this;
 	};
 
+	tracing::value_ref state;
+	ValuePtrType value;
+};
+
+template <is_ptr ValuePtrType>
+class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
+public:
+	using base_ptr_val<ValuePtrType>::base_ptr_val;
+};
+
+template <is_arithmetic_ptr ValuePtrType>
+class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
+public:
+	using base_ptr_val<ValuePtrType>::base_ptr_val;
+	using ValType = base_ptr_val<ValuePtrType>::ValType;
+
 	val<ValType&> operator*() {
 #ifdef ENABLE_TRACING
-		return val<ValType&>(*this, state, alignment);
+		return val<ValType&>(*this, this->state);
 #else
-		return val<ValType&>(*this, alignment);
+		return val<ValType&>(*this);
 #endif
 	};
 
 	val<ValType&> operator[](val<int32_t> indexOffset) {
 		auto valuePtr = (*this) + indexOffset;
 #ifdef ENABLE_TRACING
-		return val<ValType&>(valuePtr, state, alignment);
+		return val<ValType&>(valuePtr, this->state);
 #else
-		return val<ValType&>(valuePtr, alignment);
+		return val<ValType&>(valuePtr);
 #endif
 	}
 
@@ -135,69 +134,37 @@ public:
 	operator val<OtherType>() const {
 		// ptr cast
 #ifdef ENABLE_TRACING
-		return val<OtherType>((OtherType) value, state, alignment);
+		return val<OtherType>((OtherType) this->value, this->state);
 #else
-		return val<OtherType>((OtherType) value, alignment);
+		return val<OtherType>((OtherType) this->value);
 #endif
 	}
 
 	const val<ValuePtrType>& operator++() {
 		// increment
-		++value;
+		++this->value;
 		// assign
 		return *this;
 	}
-
-	ValuePtrType value;
-	int8_t alignment;
 };
 
-template <class T>
-concept is_void_ptr = ((std::is_void_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>) );
-
-template <is_void_ptr T>
-class val<T>  {
+template <is_void_ptr ValuePtrType>
+class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
-	using ValType = std::remove_pointer_t<T>;
-	using raw_type = T;
-	using basic_type = std::remove_pointer_t<T>;
-	using pointer_type = T;
-
+	using base_ptr_val<ValuePtrType>::base_ptr_val;
+	template <typename OtherType>
+	    requires std::is_pointer_v<OtherType>
+	operator val<OtherType>() const {
+		// ptr cast
 #ifdef ENABLE_TRACING
-	tracing::value_ref state;
-	val(T ptr, int8_t alignment = 1) : state(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
-
-	inline val(T, tracing::value_ref tc, int8_t alignment) : state(tc), alignment(alignment) {};
-
-	inline val(val<T>& otherValue) : state(otherValue.state), value(otherValue.value) {
-	}
-
-	val(tracing::value_ref var) : state(var), value(nullptr) {
-	}
+		return val<OtherType>((OtherType) this->value, this->state);
 #else
-	val(T ptr, int8_t alignment = 1) : value(ptr), alignment(alignment) {};
-
-	val(tracing::value_ref) :  value(nullptr) {
-	}
+		return val<OtherType>((OtherType) this->value);
 #endif
-
-	T value;
-	int8_t alignment;
+	}
 };
 
-template <typename T, typename M>
-M get_member_type(M T::*);
-
-template <typename T, typename M>
-T get_class_type(M T::*);
-
-template <typename T, typename R, R T::*M>
-std::size_t offset_of() {
-	return reinterpret_cast<std::size_t>(&(((T*) 0)->*M));
-}
-
-template <typename ValueType, typename IndexType>
-    requires std::is_pointer_v<ValueType>
+template <is_arithmetic_ptr ValueType, typename IndexType>
 val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
 	auto size = ((typename IndexType::raw_type)(sizeof(typename IndexType::raw_type)));
@@ -205,17 +172,17 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp<tracing::ADD, ValueType>(left.state, offsetBytes.state);
-		return val<ValueType>(nullptr, tc, 0);
+		return val<ValueType>(tc);
 	}
 #endif
 	auto newPtr = (ValueType) (((uint8_t*) left.value) + details::getRawValue(offsetBytes));
-	return val<ValueType>(newPtr, left.alignment);
+	return val<ValueType>(newPtr);
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 auto inline operator-(val<ValueType> left, std::remove_pointer_t<ValueType> right) {
-	return val<ValueType>(left.ptr, left.index - right, left.alignment);
+	return val<ValueType>(left.ptr, left.index - right);
 }
 
 template <typename ValueType>
@@ -252,12 +219,6 @@ template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 	return val<bool>(left.value != right.value);
-}
-
-template <int8_t alignment, typename ValuePtrType>
-    requires std::is_pointer_v<ValuePtrType>
-val<ValuePtrType> assume_aligned(val<ValuePtrType> ptr) {
-	return val<ValuePtrType>(ptr.value, alignment);
 }
 
 } // namespace nautilus

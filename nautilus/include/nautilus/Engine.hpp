@@ -19,7 +19,7 @@ val<T> createTraceVal(tracing::value_ref ref) {
 template <typename T>
     requires std::is_pointer_v<T>
 val<T> createTraceVal(tracing::value_ref ref) {
-	return val<T>(nullptr, ref, 0);
+	return val<T>(nullptr, ref);
 }
 
 template <typename Arg, size_t I>
