@@ -1,6 +1,6 @@
 #include "ControlFlowFunctions.hpp"
-#include "ExpressionFunctions.hpp"
 #include "EnumFunction.h"
+#include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
@@ -503,9 +503,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 
 void runAllTests(engine::NautilusEngine& engine) {
 
-
-
-
 	SECTION("expressionTest") {
 		addTest(engine);
 	}
@@ -521,25 +518,23 @@ void runAllTests(engine::NautilusEngine& engine) {
 	SECTION("pointerExecutionTest") {
 		pointerExecutionTest(engine);
 	}
-
-
 }
 
 TEST_CASE("Engine Interpreter Test") {
-	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> || convertible_to_fundamental<val<int>>)) << std::endl;
-	std::cout << (is_arithmetic_value<val<int>>) << std::endl;
+	/*
+	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> ||
+	convertible_to_fundamental<val<int>>)) << std::endl; std::cout << (is_arithmetic_value<val<int>>) << std::endl;
 	std::cout << (is_arithmetic_value<val<Color>>) << std::endl;
 	std::cout << std::is_arithmetic_v<typename std::remove_reference_t<val<Color>>::basic_type> << std::endl;
 	std::cout << "Is int is_value? " << is_val<val<int>> << std::endl;
 	std::cout << "Is int is_value? " << is_val<int> << std::endl;
 	std::cout << "Is int is_value? " << is_val<int*> << std::endl;
 	std::cout << "Is int is_value? " << is_traceable_value<val<int>> << std::endl;
-
-
-	/*engine::Options options;
+	*/
+	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
-	runAllTests(engine);*/
+	runAllTests(engine);
 }
 
 #ifdef ENABLE_TRACING

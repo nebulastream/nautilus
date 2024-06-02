@@ -53,6 +53,12 @@ public:
 		std::any getGenericArg(T&& val) {
 			return std::any((void*)val);
 		}
+
+		template <typename T>
+		    requires std::is_enum_v<std::remove_cvref_t<T>>
+		std::any getGenericArg(T&& val) {
+			return std::any((std::underlying_type_t<std::remove_cvref_t<T>>) val);
+		}
 		/**
 		 * @brief Invoke the function with a set of arguments
 		 * @param arguments

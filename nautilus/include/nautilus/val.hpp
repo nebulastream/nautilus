@@ -142,8 +142,10 @@ public:
 	explicit operator val<OtherType>() const {
 		// cast
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			auto resultRef = tracing::traceCast(state, tracing::to_type<OtherType>());
 			return val<OtherType>(resultRef);
+#endif
 		}
 		return val<OtherType>(value);
 	}
@@ -267,15 +269,15 @@ public:
 
 #else
 
-	val() : base_value() {};
+	val() {};
 
-	val(bool value) : base_value(), value(value) {};
+	val(bool value) : value(value) {};
 
 	// copy constructor
-	val(const val<bool>& other) : base_value(), value(other.value) {};
+	val(const val<bool>& other) : value(other.value) {};
 
 	// move constructor
-	val(const val<bool>&& other) : base_value(), value(other.value) {};
+	val(const val<bool>&& other) : value(other.value) {};
 #endif
 
 	~val() {
@@ -290,17 +292,23 @@ public:
 	}
 
 	val<bool>& operator=(const val<bool>& other) {
+
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			tracing::traceAssignment(state, other.state, tracing::to_type<bool>());
+#endif
 		}
+
 		this->value = other.value;
 		return *this;
 	};
 
 	operator bool() const {
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			auto ref = state;
 			return tracing::traceBool(ref);
+#endif
 		}
 		return value;
 	}
@@ -314,7 +322,6 @@ concept is_fundamental_value =
 
 template <class T>
 concept is_arithmetic_value = std::is_arithmetic_v<typename std::remove_reference_t<T>::basic_type>;
-
 
 template <is_fundamental_value Type>
 auto inline&& make_value(Type&& value) {
@@ -349,7 +356,6 @@ template <typename LeftType, is_bool RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
 };
-
 
 template <typename LeftType, is_enum RightType>
 auto&& cast_value(LeftType&& value) {
@@ -454,10 +460,10 @@ LHS inline getRawValue(val<LHS>& val) {
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
 		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                        \
 	}
-#define DEFINE_ARITHMETICAL_BINARY_OPERATOR(OP, FUNC)                                                                               \
+#define DEFINE_ARITHMETICAL_BINARY_OPERATOR(OP, FUNC)                                                                  \
 	template <typename LHS, typename RHS>                                                                              \
-	    requires(is_arithmetic_value<LHS> && (is_arithmetic_value<RHS> || convertible_to_fundamental<RHS>) ) ||      \
-	            ((is_arithmetic_value<LHS> || convertible_to_fundamental<LHS>) && is_arithmetic_value<RHS>)     \
+	    requires(is_arithmetic_value<LHS> && (is_arithmetic_value<RHS> || convertible_to_fundamental<RHS>) ) ||        \
+	            ((is_arithmetic_value<LHS> || convertible_to_fundamental<LHS>) && is_arithmetic_value<RHS>)            \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
@@ -640,12 +646,16 @@ public:
 	using basic_type = T;
 
 	val() : value() {};
-	val(val<underlying_type_t> t) : state(t.state), value((T)t.value) {};
-	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {};
-	val(T val) : state(tracing::traceConstant((underlying_type_t)val)), value(val) {};
 
 #ifdef ENABLE_TRACING
+	val(val<underlying_type_t> t) : state(t.state), value((T) t.value) {};
+	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {};
+	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {};
 	const tracing::value_ref state;
+#else
+	val(val<underlying_type_t> t) : value((T) t.value) {};
+	val(val<T>& t) : value(t.value) {};
+	val(T val) : value(val) {};
 #endif
 
 	operator val<underlying_type_t>() {

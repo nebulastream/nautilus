@@ -93,7 +93,7 @@ public:
 	inline val(const val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
 
-	val(tracing::value_ref ref) : base_value(ref), value(nullptr) {
+	val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
 
 #else
@@ -156,7 +156,7 @@ template <class T>
 concept is_void_ptr = ((std::is_void_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>) );
 
 template <is_void_ptr T>
-class val<T> : public base_value {
+class val<T>  {
 public:
 	using ValType = std::remove_pointer_t<T>;
 	using raw_type = T;
@@ -164,20 +164,20 @@ public:
 	using pointer_type = T;
 
 #ifdef ENABLE_TRACING
+	tracing::value_ref state;
+	val(T ptr, int8_t alignment = 1) : state(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
 
-	val(T ptr, int8_t alignment = 1) : base_value(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
+	inline val(T, tracing::value_ref tc, int8_t alignment) : state(tc), alignment(alignment) {};
 
-	inline val(T, tracing::value_ref tc, int8_t alignment) : base_value(tc), alignment(alignment) {};
-
-	inline val(val<T>& otherValue) : base_value(otherValue.state), value(otherValue.value) {
+	inline val(val<T>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
 
-	val(tracing::value_ref var) : base_value(var), value(nullptr) {
+	val(tracing::value_ref var) : state(var), value(nullptr) {
 	}
 #else
-	val(T ptr, int8_t alignment = 1) : base_value(), value(ptr), alignment(alignment) {};
+	val(T ptr, int8_t alignment = 1) : value(ptr), alignment(alignment) {};
 
-	val(tracing::value_ref) : base_value(), value(nullptr) {
+	val(tracing::value_ref) :  value(nullptr) {
 	}
 #endif
 
