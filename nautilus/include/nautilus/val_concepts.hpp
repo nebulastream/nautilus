@@ -1,7 +1,13 @@
 #pragma once
 #include <type_traits>
+#include "nautilus/config.hpp"
 namespace nautilus {
 
+#ifdef ENABLE_TRACING
+#define SHOULD_TRACE() (tracing::inTracer())
+#else
+#define SHOULD_TRACE() constexpr(false)
+#endif
 
 template <typename T>
 concept convertible_to_fundamental =

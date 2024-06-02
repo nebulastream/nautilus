@@ -4,9 +4,8 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/config.hpp"
-#include "nautilus/function.hpp"
+#include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
-#include "nautilus/static.hpp"
 
 namespace nautilus::engine {
 
@@ -94,8 +93,7 @@ public:
 		}
 		auto callable =
 		    this->executable->template getInvocableMember<typename R::raw_type, FunctionArgumentsRaw...>("execute");
-		auto res = callable(args...);
-		return res;
+		return callable(args...);;
 	}
 
 private:
@@ -105,9 +103,7 @@ private:
 
 class NautilusEngine {
 public:
-	NautilusEngine(
-
-	);
+	NautilusEngine();
 
 	NautilusEngine(const Options& options);
 
@@ -135,11 +131,5 @@ public:
 private:
 	const compiler::JITCompiler jit;
 	const Options options;
-
-	template <typename Arg>
-	auto transform() {
-		auto* tc = new tracing::value_ref();
-		return Arg(tc);
-	}
 };
 } // namespace nautilus::engine
