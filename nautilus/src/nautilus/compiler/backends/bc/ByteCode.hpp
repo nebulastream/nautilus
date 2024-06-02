@@ -228,7 +228,9 @@ enum class ByteCode : short {
 	DYNCALL_call_i16,
 	DYNCALL_call_i32,
 	DYNCALL_call_i64,
-	DYNCALL_call_ptr
+	DYNCALL_call_ptr,
+	DYNCALL_call_f,
+	DYNCALL_call_d
 };
 
 /**

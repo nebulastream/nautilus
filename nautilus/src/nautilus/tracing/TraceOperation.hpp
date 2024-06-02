@@ -17,6 +17,7 @@ namespace nautilus::tracing {
 class None {};
 
 struct FunctionCall {
+	std::string functionName;
 	void* ptr;
 	std::vector<value_ref> arguments;
 

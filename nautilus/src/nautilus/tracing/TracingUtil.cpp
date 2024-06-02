@@ -56,8 +56,9 @@ value_ref traceConstant(Type type, std::any&& value) {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
-	return TraceContext::get()->traceCall(fptn, resultType, arguments);
+value_ref traceCall(const std::string& functionName, void* fptn, Type resultType,
+                    std::vector<tracing::value_ref> arguments) {
+	return TraceContext::get()->traceCall(functionName, fptn, resultType, arguments);
 }
 
 [[maybe_unused]] value_ref traceBinaryOp(Op operation, Type resultType, value_ref leftState, value_ref rightState) {

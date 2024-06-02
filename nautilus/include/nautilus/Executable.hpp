@@ -42,6 +42,17 @@ public:
 
 		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : function(std::move(generic)) {};
 
+		template <typename T>
+		    requires (std::is_fundamental_v<T>|| std::is_fundamental_v<std::remove_cvref_t<T>>)
+		std::any getGenericArg(T&& val) {
+			return val;
+		}
+
+		template <typename T>
+		    requires std::is_pointer_v<std::remove_cvref_t<T>>
+		std::any getGenericArg(T&& val) {
+			return std::any((void*)val);
+		}
 		/**
 		 * @brief Invoke the function with a set of arguments
 		 * @param arguments
@@ -58,11 +69,11 @@ public:
 			} else {
 				auto& genericFunction = std::get<std::unique_ptr<GenericInvocable>>(function);
 				if constexpr (!std::is_void_v<R>) {
-					std::vector<std::any> inputs_ = {arguments...};
+					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
 					auto res = genericFunction->invokeGeneric(inputs_);
 					return std::any_cast<R>(res);
 				} else {
-					std::vector<std::any> inputs_ = {arguments...};
+					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
 					genericFunction->invokeGeneric(inputs_);
 				}
 			}

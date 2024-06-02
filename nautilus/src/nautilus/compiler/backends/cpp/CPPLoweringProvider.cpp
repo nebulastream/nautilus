@@ -1,4 +1,5 @@
 
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include <cassert>
 #include <nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp>
@@ -238,6 +239,10 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 	}
 	case ir::Operation::OperationType::ConstFloatOp: {
 		processConst<ir::ConstFloatOperation>(opt, blockIndex, frame);
+		return;
+	}
+	case ir::Operation::OperationType::ConstPtrOp: {
+		processConst<ir::ConstPtrOperation>(opt, blockIndex, frame);
 		return;
 	}
 	case ir::Operation::OperationType::AddOp: {

@@ -102,7 +102,7 @@ public:
 	 */
 	void traceAssignment(value_ref targetRef, value_ref sourceRef, Type resultType);
 
-	value_ref traceCall(void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
+	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
 
 	bool traceCmp(value_ref targetRef);
 

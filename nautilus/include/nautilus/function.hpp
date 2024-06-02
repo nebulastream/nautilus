@@ -19,9 +19,9 @@ std::string getFunctionName(R (*fnptr)(FunctionArguments...)) {
 	if (info.dli_sname != nullptr) {
 		std::cout << info.dli_sname << std::endl;
 		std::cout << abi::__cxa_demangle(info.dli_sname, NULL, NULL, NULL) << std::endl;
-		return abi::__cxa_demangle(info.dli_sname, NULL, NULL, NULL);
+		return info.dli_sname;
 	}
-	return "";
+	return "xxx";
 }
 
 template <is_base_type R, is_base_type... FunctionArguments>
@@ -81,7 +81,8 @@ auto getArgumentReferences(std::string_view, void*, const ValueArguments&... arg
 template <typename R, typename... FunctionArguments>
 class CallableRuntimeFunction {
 public:
-	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...)) : fnptr(fnptr) {};
+	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...), std::string& functionName)
+	    : fnptr(fnptr), functionName(functionName) {};
 
 	template <typename Arg>
 	auto transform(Arg argument) {
@@ -95,8 +96,8 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto ptr = (void*) fnptr;
-			auto functionArgumentReferences = getArgumentReferences("functionName", (void*) fnptr, args...);
-			auto resultRef = tracing::traceCall(ptr, tracing::to_type<R>(), functionArgumentReferences);
+			auto functionArgumentReferences = getArgumentReferences(functionName, (void*) fnptr, args...);
+			auto resultRef = tracing::traceCall(functionName, ptr, tracing::to_type<R>(), functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
@@ -112,7 +113,7 @@ public:
 		if (tracing::inTracer()) {
 			auto ptr = (void*) fnptr;
 			auto functionArgumentReferences = getArgumentReferences("functionName", (void*) fnptr, args...);
-			tracing::traceCall(ptr, Type::v, functionArgumentReferences);
+			tracing::traceCall(functionName, ptr, Type::v, functionArgumentReferences);
 		}
 #endif
 		fnptr(transform((args))...);
@@ -125,6 +126,7 @@ public:
 
 private:
 	R (*fnptr)(FunctionArguments...);
+	std::string functionName;
 };
 
 template <typename TP, typename _Class>
@@ -170,7 +172,7 @@ public:
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments... args) {
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(args...);
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr,name)(args...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
@@ -178,13 +180,13 @@ auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments... args)
 	typedef R (*DecisionFn)(FunctionArguments...);
 	DecisionFn fnptr = func.template target<R(FunctionArguments...)>();
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(args...);
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr,name)(args...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(void (*fnptr)(FunctionArguments...), ValueArguments... args) {
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
-	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr);
+	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr,name);
 	func(args...);
 }
 

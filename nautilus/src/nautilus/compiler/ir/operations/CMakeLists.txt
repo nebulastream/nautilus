@@ -16,4 +16,5 @@ add_source_files(nautilus
         CastOperation.cpp
         BranchOperation.cpp
         ConstBooleanOperation.cpp
+        ConstPtrOperation.cpp
 )

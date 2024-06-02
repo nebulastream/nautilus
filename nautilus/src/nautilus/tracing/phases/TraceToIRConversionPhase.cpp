@@ -7,6 +7,7 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
@@ -422,7 +423,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFr
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
-	    "XXX", functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
+	    functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -495,6 +496,8 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceT
 
 	} else if (constant->type() == typeid(bool)) {
 		constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, any_cast<bool>(*constant));
+	} else if (constant->type() == typeid(void*)) {
+		constOperation = currentBlock->addOperation<ConstPtrOperation>(resultIdentifier, any_cast<void*>(*constant));
 	} else {
 		throw NotImplementedException("Not constant implemented.");
 	}

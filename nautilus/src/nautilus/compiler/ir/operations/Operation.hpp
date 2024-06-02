@@ -45,6 +45,7 @@ public:
 		BranchOp,
 		ConstIntOp,
 		ConstBooleanOp,
+		ConstPtrOp,
 		ConstFloatOp,
 		CastOp,
 		CompareOp,

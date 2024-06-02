@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/function.hpp"
 #include "nautilus/val.hpp"
 
 namespace nautilus {
@@ -86,11 +87,15 @@ public:
 #ifdef ENABLE_TRACING
 
 	val(ValuePtrType ptr, int8_t alignment = 1)
-	    : base_value(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
+	    : base_value(tracing::traceConstant((void*) ptr)), value(ptr), alignment(alignment) {};
 
-	inline val(ValuePtrType, tracing::value_ref tc, int8_t alignment) : base_value(tc), alignment(alignment) {};
+	inline val(ValuePtrType ptr, tracing::value_ref tc, int8_t alignment)
+	    : base_value(tc), value(ptr), alignment(alignment) {};
 
 	inline val(const val<ValuePtrType>& otherValue) : base_value(otherValue.state), value(otherValue.value) {
+	}
+
+	val(tracing::value_ref ref) : base_value(ref), value(nullptr) {
 	}
 
 #else
@@ -131,7 +136,11 @@ public:
 	    requires std::is_pointer_v<OtherType>
 	operator val<OtherType>() const {
 		// ptr cast
+#ifdef ENABLE_TRACING
+		return val<OtherType>((OtherType) value, state, alignment);
+#else
 		return val<OtherType>((OtherType) value, alignment);
+#endif
 	}
 
 	const val<ValuePtrType>& operator++() {
@@ -142,6 +151,39 @@ public:
 	}
 
 	ValuePtrType value;
+	int8_t alignment;
+};
+
+template <class T>
+concept is_void_ptr = ((std::is_void_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>) );
+
+template <is_void_ptr T>
+class val<T> : public base_value {
+public:
+	using ValType = std::remove_pointer_t<T>;
+	using raw_type = T;
+	using basic_type = std::remove_pointer_t<T>;
+	using pointer_type = T;
+
+#ifdef ENABLE_TRACING
+
+	val(T ptr, int8_t alignment = 1) : base_value(tracing::traceConstant(ptr)), value(ptr), alignment(alignment) {};
+
+	inline val(T, tracing::value_ref tc, int8_t alignment) : base_value(tc), alignment(alignment) {};
+
+	inline val(val<T>& otherValue) : base_value(otherValue.state), value(otherValue.value) {
+	}
+
+	val(tracing::value_ref var) : base_value(var), value(nullptr) {
+	}
+#else
+	val(T ptr, int8_t alignment = 1) : base_value(), value(ptr), alignment(alignment) {};
+
+	val(tracing::value_ref) : base_value(), value(nullptr) {
+	}
+#endif
+
+	T value;
 	int8_t alignment;
 };
 
@@ -167,6 +209,9 @@ public:
 	}
 
 	val(pointer_type ptr, tracing::value_ref ref) : base_value(ref), value(ptr) {
+	}
+
+	val(tracing::value_ref ref) : base_value(ref), value(nullptr) {
 	}
 
 #else

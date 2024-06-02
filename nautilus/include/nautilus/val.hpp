@@ -60,7 +60,8 @@ concept is_fundamental =
     std::is_fundamental_v<T> && !std::is_reference_v<T> && !std::is_pointer_v<T> && !std::is_same_v<T, bool>;
 
 template <class T>
-concept is_fundamental_ptr = std::is_fundamental_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>;
+concept is_fundamental_ptr = ((std::is_fundamental_v<std::remove_pointer_t<T>> &&
+                               !std::is_void_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>) );
 
 template <class T>
 concept is_member_ptr = !std::is_fundamental_v<std::remove_pointer_t<T>> &&
