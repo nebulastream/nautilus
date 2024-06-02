@@ -3,7 +3,7 @@
 #include <nautilus/Engine.hpp>
 #include <nautilus/std/cstring.h>
 
-namespace nautilus::engine {
+namespace nautilus {
 
 val<int32_t> load(val<int32_t*> array, val<int32_t> index) {
 	val<int32_t> value = array[index];

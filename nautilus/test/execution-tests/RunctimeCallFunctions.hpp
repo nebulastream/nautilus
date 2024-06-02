@@ -59,14 +59,5 @@ val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
 	return x;
 }
 
-static auto clazz = Clazz();
-
-val<int32_t> memberFuncCall(val<int32_t> x) {
-	return invoke<>(&ClazzBase::add, (ClazzBase*) &clazz, x);
-}
-
-val<int32_t> constMemberFuncCall(val<int32_t> x) {
-	return invoke<>(&Clazz::addConst, &clazz, x);
-}
 
 } // namespace nautilus::engine

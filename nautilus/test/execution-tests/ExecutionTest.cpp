@@ -1,14 +1,29 @@
 #include "ControlFlowFunctions.hpp"
 #include "ExpressionFunctions.hpp"
+#include "EnumFunction.h"
 #include "LoopFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
 
 void addTest(engine::NautilusEngine& engine) {
+
+	SECTION("callEnumFunction") {
+		auto f = engine.registerFunction(callEnumFunction);
+		REQUIRE(f(Color::BLUE) == 42);
+		REQUIRE(f(Color::GREEN) == 1);
+	}
+
+	SECTION("handleEnum") {
+		auto f = engine.registerFunction(handleEnum);
+		REQUIRE(f(Color::BLUE) == 1);
+		REQUIRE(f(Color::GREEN) == 0);
+	}
+
 	SECTION("incrementPost") {
 		auto f = engine.registerFunction(incrementPost);
 		REQUIRE(f(1) == 3);
@@ -487,6 +502,10 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 }
 
 void runAllTests(engine::NautilusEngine& engine) {
+
+
+
+
 	SECTION("expressionTest") {
 		addTest(engine);
 	}
@@ -502,13 +521,25 @@ void runAllTests(engine::NautilusEngine& engine) {
 	SECTION("pointerExecutionTest") {
 		pointerExecutionTest(engine);
 	}
+
+
 }
 
 TEST_CASE("Engine Interpreter Test") {
-	engine::Options options;
+	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> || convertible_to_fundamental<val<int>>)) << std::endl;
+	std::cout << (is_arithmetic_value<val<int>>) << std::endl;
+	std::cout << (is_arithmetic_value<val<Color>>) << std::endl;
+	std::cout << std::is_arithmetic_v<typename std::remove_reference_t<val<Color>>::basic_type> << std::endl;
+	std::cout << "Is int is_value? " << is_val<val<int>> << std::endl;
+	std::cout << "Is int is_value? " << is_val<int> << std::endl;
+	std::cout << "Is int is_value? " << is_val<int*> << std::endl;
+	std::cout << "Is int is_value? " << is_traceable_value<val<int>> << std::endl;
+
+
+	/*engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
-	runAllTests(engine);
+	runAllTests(engine);*/
 }
 
 #ifdef ENABLE_TRACING

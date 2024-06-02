@@ -52,14 +52,14 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (
 	return traceFunc;
 }
 
-template <typename R, is_base_type... FunctionArguments>
+template <typename R, typename... FunctionArguments>
 std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
 }
 #endif
 } // namespace details
 
-template <typename R, is_base_type... FunctionArguments>
+template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
 	explicit CallableFunction(void* func) : func(func), executable(nullptr) {
@@ -111,20 +111,20 @@ public:
 
 	NautilusEngine(const Options& options);
 
-	template <is_base_type R, is_base_type... FunctionArguments>
-	auto registerFunction(R (*fnptr)(FunctionArguments...)) const {
+	template <is_val R, is_val... FunctionArguments>
+	auto registerFunction(val<R> (*fnptr)(val<FunctionArguments>...)) const {
 
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
 			auto executable = jit.compile(wrapper);
-			return CallableFunction<R, FunctionArguments...>(executable);
+			return CallableFunction<val<R>, val<FunctionArguments>...>(executable);
 		}
 #endif
-		return CallableFunction<R, FunctionArguments...>((void*) fnptr);
+		return CallableFunction<val<R>, val<FunctionArguments>...>((void*) fnptr);
 	}
 
-	template <is_base_type... FunctionArguments>
+	template <typename... FunctionArguments>
 	auto registerFunction(void (*fnptr)(FunctionArguments...)) const {
 		// auto wrapper = createFunctionWrapper(fnptr);
 		// auto executable = jit->compile(wrapper);
