@@ -110,7 +110,7 @@ template <is_arithmetic_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
-	using ValType = base_ptr_val<ValuePtrType>::ValType;
+	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
 
 	val<ValType&> operator*() {
 #ifdef ENABLE_TRACING
