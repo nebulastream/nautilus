@@ -172,6 +172,11 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(42) == 44);
 		REQUIRE(f(1) == 43);
 	}
+	SECTION("conditionalReturn") {
+		auto f = engine.registerFunction(conditionalReturn);
+		REQUIRE(f(42) == 1);
+		REQUIRE(f(43) == 120);
+	}
 	SECTION("ifThenElseCondition") {
 		auto f = engine.registerFunction(ifThenElseCondition);
 		REQUIRE(f(1) == 85);
