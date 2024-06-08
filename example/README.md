@@ -1,10 +1,10 @@
 # Nautilus: Demo JIT example
 
-This example project illustrates how Nautilus can be integrated into an C++ project using CMAKE.
+This example project illustrates how Nautilus can be integrated into a C++ project using CMAKE.
 
 ## Integrate as sub project
 
-Nautilus is self contained and requires no external pre-installed dependencies.
+Nautilus is self-contained and requires no external pre-installed dependencies.
 In this example, integrate nautilus as a subproject:
 
 ```cmake
@@ -20,7 +20,7 @@ target_link_libraries(myTarget PRIVATE nautilus)
 The following [example](./example/) illustrates Nautilus on a simplified aggregation operator.
 `conditionalSum` iterates over an array and only aggregates the values for, which mask is true.
 Nautilus traces the function and generates efficient code using one of its compilation backend.
-These produce either, bytecode, [mlir](), or[c++]() code.
+These produce either byte code, [mlir](), or[c++]() code.
 
 ```c++
 val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> array) {
