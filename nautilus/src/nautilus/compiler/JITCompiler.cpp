@@ -35,6 +35,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA));
+	std::cout << ir->toString() << std::endl;
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);

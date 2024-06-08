@@ -147,11 +147,10 @@ TEST_CASE("Expression Trace Test") {
 	    {"castInt8ToInt64AddExpression2", details::createFunctionWrapper(castInt8ToInt64AddExpression2)}};
 	runTraceTests(tests);
 }
-
 TEST_CASE("Control-flow Trace Test") {
-
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
+	    {"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},
 	    {"ifThenElseCondition", details::createFunctionWrapper(ifThenElseCondition)},
 	    {"nestedIfThenElseCondition", details::createFunctionWrapper(nestedIfThenElseCondition)},
 	    {"nestedIfNoElseCondition", details::createFunctionWrapper(nestedIfNoElseCondition)},
@@ -182,6 +181,7 @@ TEST_CASE("Control-flow Trace Test") {
 
 TEST_CASE("Loop Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},
 	    {"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
 	    {"sumLoop", details::createFunctionWrapper(sumLoop)},
 	    {"nestedSumLoop", details::createFunctionWrapper(nestedSumLoop)},
@@ -206,6 +206,9 @@ TEST_CASE("Loop Trace Test") {
 	    {"addArrayInt32", details::createFunctionWrapper(addArray<int32_t>)},
 	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
 	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+	    {"passCustomStruct", details::createFunctionWrapper(passCustomStruct)},
+	    {"specializeType", details::createFunctionWrapper(specializeType)},
+	    {"useWrapper", details::createFunctionWrapper(useWrapper)},
 	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};
 	runTraceTests(tests);
 }

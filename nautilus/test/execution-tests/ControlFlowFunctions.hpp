@@ -12,6 +12,13 @@ val<int32_t> ifThenCondition(val<int32_t> value) {
 	return iw + 42;
 }
 
+val<int32_t> conditionalReturn(val<int32_t> value) {
+	if (value == 42) {
+		return 1;
+	}
+	return 120;
+}
+
 val<int32_t> ifThenElseCondition(val<int32_t> value) {
 	val<int32_t> iw = val<int32_t>(1);
 	if (value == 42) {

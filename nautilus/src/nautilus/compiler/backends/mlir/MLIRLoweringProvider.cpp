@@ -195,6 +195,10 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());
 };
 
+MLIRLoweringProvider::~MLIRLoweringProvider() {
+	delete globalInsertPoint;
+}
+
 mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir) {
 	ValueFrame firstFrame;
 	this->generateMLIR(ir->getRootOperation(), firstFrame);
@@ -222,6 +226,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 		break;
 	case ir::Operation::OperationType::ConstFloatOp:
 		generateMLIR(as<ir::ConstFloatOperation>(operation), frame);
+		break;
+	case ir::Operation::OperationType::ConstPtrOp:
+		generateMLIR(as<ir::ConstPtrOperation>(operation), frame);
 		break;
 	case ir::Operation::OperationType::AddOp:
 		generateMLIR(as<ir::AddOperation>(operation), frame);
@@ -396,6 +403,14 @@ void MLIRLoweringProvider::generateMLIR(ir::ConstIntOperation* constIntOp, Value
 		frame.setValue(constIntOp->getIdentifier(),
 		               getConstInt("ConstantOp", constIntOp->getStamp(), constIntOp->getValue()));
 	}
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* , ValueFrame& ) {
+	//builder->create<mlir::LLVM::C>(getNameLoc("location"), mlir::LLVM::LLVMPointerType, constPtrOperation->getValue());
+
+	//frame.setValue(constPtrOperation->getIdentifier(),
+	//               getConstInt("ConstantOp", constIntOp->getStamp(), constIntOp->getValue()));
+
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {

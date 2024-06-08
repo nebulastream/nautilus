@@ -1,14 +1,29 @@
 #include "ControlFlowFunctions.hpp"
+#include "EnumFunction.h"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
 
 void addTest(engine::NautilusEngine& engine) {
+
+	SECTION("callEnumFunction") {
+		auto f = engine.registerFunction(callEnumFunction);
+		REQUIRE(f(Color::BLUE) == 42);
+		REQUIRE(f(Color::GREEN) == 1);
+	}
+
+	SECTION("handleEnum") {
+		auto f = engine.registerFunction(handleEnum);
+		REQUIRE(f(Color::BLUE) == 1);
+		REQUIRE(f(Color::GREEN) == 0);
+	}
+
 	SECTION("incrementPost") {
 		auto f = engine.registerFunction(incrementPost);
 		REQUIRE(f(1) == 3);
@@ -156,6 +171,11 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(ifThenCondition);
 		REQUIRE(f(42) == 44);
 		REQUIRE(f(1) == 43);
+	}
+	SECTION("conditionalReturn") {
+		auto f = engine.registerFunction(conditionalReturn);
+		REQUIRE(f(42) == 1);
+		REQUIRE(f(43) == 120);
 	}
 	SECTION("ifThenElseCondition") {
 		auto f = engine.registerFunction(ifThenElseCondition);
@@ -471,6 +491,17 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 1) == 2);
 		REQUIRE(f(values, (int32_t) 8) == 9);
 	}
+	/*
+	SECTION("loadConst") {
+		globalPtr = values[0];
+		auto f = engine.registerFunction(loadConst);
+		REQUIRE(f() == 1);
+		globalPtr = values[1];
+		REQUIRE(f() == 2);
+		globalPtr = values[2];
+		REQUIRE(f() == 3);
+	}
+    */
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
 		val<int> r = f(values, (int32_t) 10);
@@ -483,10 +514,34 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		for (auto i = 0; i < 10; i++) {
 			REQUIRE(values[i] == ref[i]);
 		}
+		delete[] ref;
+	}
+	delete[] values;
+	SECTION("castVoidPtr") {
+		auto f = engine.registerFunction(castVoidPtr);
+		int x = 42;
+		REQUIRE(f((void*) &x) == 42);
+	}
+	SECTION("passCustomStruct") {
+		auto f = engine.registerFunction(passCustomStruct);
+		CustomStruct x = {.x = 42};
+		REQUIRE(f(&x) == 42);
+	}
+	SECTION("specializeType") {
+		auto f = engine.registerFunction(specializeType);
+		CustomStruct2 x = {.x = 42};
+		REQUIRE(f(&x) == 42);
+	}
+	SECTION("useWrapper") {
+		auto f = engine.registerFunction(useWrapper);
+		CustomStruct2 x = {.x = 42};
+		CustomStruct2 x2 = {.x = 42};
+		REQUIRE(f(&x, &x2) == 84);
 	}
 }
 
 void runAllTests(engine::NautilusEngine& engine) {
+
 	SECTION("expressionTest") {
 		addTest(engine);
 	}
@@ -505,6 +560,16 @@ void runAllTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Engine Interpreter Test") {
+	/*
+	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> ||
+	convertible_to_fundamental<val<int>>)) << std::endl; std::cout << (is_arithmetic_value<val<int>>) << std::endl;
+	std::cout << (is_arithmetic_value<val<Color>>) << std::endl;
+	std::cout << std::is_arithmetic_v<typename std::remove_reference_t<val<Color>>::basic_type> << std::endl;
+	std::cout << "Is int is_value? " << is_val<val<int>> << std::endl;
+	std::cout << "Is int is_value? " << is_val<int> << std::endl;
+	std::cout << "Is int is_value? " << is_val<int*> << std::endl;
+	std::cout << "Is int is_value? " << is_traceable_value<val<int>> << std::endl;
+	*/
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);

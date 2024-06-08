@@ -41,6 +41,7 @@ jobs:
             cc: 'clang'
             cxx: 'clang++'
             flags: ''
+
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}

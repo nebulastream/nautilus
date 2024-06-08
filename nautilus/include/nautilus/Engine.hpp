@@ -4,9 +4,8 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/config.hpp"
-#include "nautilus/function.hpp"
+#include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
-#include "nautilus/static.hpp"
 
 namespace nautilus::engine {
 
@@ -20,7 +19,7 @@ val<T> createTraceVal(tracing::value_ref ref) {
 template <typename T>
     requires std::is_pointer_v<T>
 val<T> createTraceVal(tracing::value_ref ref) {
-	return val<T>(nullptr, ref, 0);
+	return val<T>(nullptr, ref);
 }
 
 template <typename Arg, size_t I>
@@ -52,14 +51,14 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (
 	return traceFunc;
 }
 
-template <typename R, is_base_type... FunctionArguments>
+template <typename R, typename... FunctionArguments>
 std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
 }
 #endif
 } // namespace details
 
-template <typename R, is_base_type... FunctionArguments>
+template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
 	explicit CallableFunction(void* func) : func(func), executable(nullptr) {
@@ -94,8 +93,7 @@ public:
 		}
 		auto callable =
 		    this->executable->template getInvocableMember<typename R::raw_type, FunctionArgumentsRaw...>("execute");
-		auto res = callable(args...);
-		return res;
+		return callable(args...);;
 	}
 
 private:
@@ -105,26 +103,24 @@ private:
 
 class NautilusEngine {
 public:
-	NautilusEngine(
-
-	);
+	NautilusEngine();
 
 	NautilusEngine(const Options& options);
 
-	template <is_base_type R, is_base_type... FunctionArguments>
-	auto registerFunction(R (*fnptr)(FunctionArguments...)) const {
+	template <is_val R, is_val... FunctionArguments>
+	auto registerFunction(val<R> (*fnptr)(val<FunctionArguments>...)) const {
 
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
 			auto executable = jit.compile(wrapper);
-			return CallableFunction<R, FunctionArguments...>(executable);
+			return CallableFunction<val<R>, val<FunctionArguments>...>(executable);
 		}
 #endif
-		return CallableFunction<R, FunctionArguments...>((void*) fnptr);
+		return CallableFunction<val<R>, val<FunctionArguments>...>((void*) fnptr);
 	}
 
-	template <is_base_type... FunctionArguments>
+	template <typename... FunctionArguments>
 	auto registerFunction(void (*fnptr)(FunctionArguments...)) const {
 		// auto wrapper = createFunctionWrapper(fnptr);
 		// auto executable = jit->compile(wrapper);
@@ -135,11 +131,5 @@ public:
 private:
 	const compiler::JITCompiler jit;
 	const Options options;
-
-	template <typename Arg>
-	auto transform() {
-		auto* tc = new tracing::value_ref();
-		return Arg(tc);
-	}
 };
 } // namespace nautilus::engine

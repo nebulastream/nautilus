@@ -19,7 +19,7 @@ bool ConstPtrOperation::classof(const Operation*) {
 }
 
 std::string ConstPtrOperation::toString() {
-	return identifier.toString() + " = ptr" ;
+	return identifier.toString() + " = ptr";
 }
 
 } // namespace nautilus::compiler::ir

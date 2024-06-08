@@ -1,9 +1,7 @@
-
-
 #pragma once
 
-#include "nautilus/config.hpp"
 #include "nautilus/static.hpp"
+#include "nautilus/val_concepts.hpp"
 #include <iostream>
 #include <memory>
 
@@ -13,80 +11,10 @@
 
 #endif
 
-#ifdef ENABLE_TRACING
-#define SHOULD_TRACE() (tracing::inTracer())
-#else
-#define SHOULD_TRACE() constexpr(false)
-#endif
-
 namespace nautilus {
-
-#ifdef ENABLE_TRACING
-
-template <typename ValuePtrType>
-    requires std::is_pointer_v<ValuePtrType>
-class val_ptr;
-
-class base_value {
-public:
-	explicit base_value(tracing::value_ref state) : state(state) {};
-	const tracing::value_ref state;
-};
-
-#else
-
-class base_value {
-protected:
-	base_value() = default;
-
-	const tracing::value_ref state;
-};
-
-#endif
-
-template <typename T>
-concept convertible_to_fundamental =
-    (std::is_convertible_v<T, int> || std::is_convertible_v<T, double> || std::is_convertible_v<T, char> ||
-     std::is_convertible_v<T, bool> || std::is_convertible_v<T, float> || std::is_convertible_v<T, long> ||
-     std::is_convertible_v<T, short> || std::is_convertible_v<T, unsigned long> ||
-     std::is_convertible_v<T, unsigned int> || std::is_convertible_v<T, unsigned short> ||
-     std::is_convertible_v<T, long long> || std::is_convertible_v<T, unsigned long long>);
-
-template <class T>
-concept is_base_type = std::is_base_of<base_value, T>::value;
-
-template <class T>
-concept is_fundamental =
-    std::is_fundamental_v<T> && !std::is_reference_v<T> && !std::is_pointer_v<T> && !std::is_same_v<T, bool>;
-
-template <class T>
-concept is_fundamental_ptr = ((std::is_fundamental_v<std::remove_pointer_t<T>> &&
-                               !std::is_void_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>) );
-
-template <class T>
-concept is_member_ptr = !std::is_fundamental_v<std::remove_pointer_t<T>> &&
-                        std::is_standard_layout_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>;
-
-template <class T>
-concept is_member_ptr2 = !std::is_fundamental_v<std::remove_pointer_t<T>> && std::is_pointer_v<T>;
-
-template <class T>
-concept is_fundamental_ref = std::is_reference_v<T>;
-
-template <class T>
-concept is_integral = std::is_integral_v<T>;
-
-template <class T>
-concept is_ptr = std::is_pointer_v<T>;
-
-template <class T>
-concept is_bool = std::is_same_v<T, bool>;
 
 template <class T>
 constexpr auto getType();
-
-template <class T>
-class val : public base_value {};
 
 namespace details {
 
@@ -95,7 +23,7 @@ LHS getRawValue(val<LHS>& val);
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
 
-#define INFERED_RETURN_TYPE(OP) val<decltype(left.value OP right.value)>
+#define INFERED_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
 
 template <typename LHS, typename RHS>
 COMMON_RETURN_TYPE add(LHS& left, val<RHS>& right);
@@ -151,41 +79,36 @@ auto shr(val<LHS>& left, val<RHS>& right);
 template <is_fundamental LHS>
 auto neg(val<LHS>& val);
 
+template <typename T>
+tracing::value_ref getState(T&& value) {
+	return value.state;
+}
+
 } // namespace details
 
-template <is_fundamental ValueType>
-class val<ValueType> : public base_value {
+// val substitution for all arithmetic value type, integer, float, bool
+template <is_arithmetic ValueType>
+class val<ValueType> {
 public:
 	using raw_type = ValueType;
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-
-	inline val() : base_value(tracing::traceConstant(0)) {};
-
-	inline val(ValueType value)
-	    : base_value(tracing::traceConstant(value)), value(value) {
-
-	                                                 };
-
+	const tracing::value_ref state;
+	inline val() : state(tracing::traceConstant(0)) {};
+	inline val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
-	inline val(const val<ValueType>& other) : base_value(tracing::traceCopy(other.state)), value(other.value) {};
-
+	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	inline val(const val<ValueType>&& other) noexcept : base_value(other.state), value(other.value) {};
-
-	inline val(tracing::value_ref& tc) : base_value(tc) {};
+	inline val(const val<ValueType>&& other) noexcept : state(other.state), value(other.value) {};
+	inline val(tracing::value_ref& tc) : state(tc), value() {};
 #else
-
-	val() : base_value() {};
-
-	val(ValueType value) : base_value(), value(value) {};
-
+	val() {};
+	val(ValueType value) : value(value) {};
 	// copy constructor
-	val(const val<ValueType>& other) : base_value(), value(other.value) {};
-
+	val(const val<ValueType>& other) : value(other.value) {};
 	// move constructor
-	val(const val<ValueType>&& other) : base_value(), value(other.value) {};
+	val(const val<ValueType>&& other) : value(other.value) {};
 #endif
 
 	~val() {
@@ -217,8 +140,10 @@ public:
 	explicit operator val<OtherType>() const {
 		// cast
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			auto resultRef = tracing::traceCast(state, tracing::to_type<OtherType>());
 			return val<OtherType>(resultRef);
+#endif
 		}
 		return val<OtherType>(value);
 	}
@@ -253,24 +178,30 @@ public:
 		return temp;
 	}
 
-	ValueType value;
+	static ValueType toNativeValue(val<ValueType>& value) {
+		return value.value;
+	}
+	static val<ValueType> fromNativeType(ValueType& value) {
+		return val<ValueType>(value);
+	}
 
 private:
 	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
+	ValueType value;
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::add(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::sub(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::div(val<LHS>& left, val<RHS>& right);
 
-	template <is_fundamental LHS, is_fundamental RHS>
+	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE details::mod(val<LHS>& left, val<RHS>& right);
 
 	template <is_fundamental LHS, is_fundamental RHS>
@@ -314,38 +245,29 @@ private:
 };
 
 template <>
-class val<bool> : public base_value {
+class val<bool> {
 public:
 	using raw_type = bool;
 	using basic_type = bool;
+
 #ifdef ENABLE_TRACING
 
-	val() : base_value(tracing::traceConstant(0)), value(false) {};
-
-	val(bool value) : base_value(tracing::traceConstant(value)), value(value) {};
-
+	tracing::value_ref state;
+	val() : state(tracing::traceConstant(0)), value(false) {};
+	val(bool value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
-	val(const val<bool>& other) : base_value(tracing::traceCopy(other.state)), value(other.value) {};
-
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	val(const val<bool>&& other) noexcept : base_value(other.state), value(other.value) {};
+	val(const val<bool>&& other) noexcept : state(other.state), value(other.value) {};
+	val(tracing::value_ref& tc) : state(tc) {};
 
 #else
-
-	val() : base_value() {};
-
-	val(bool value) : base_value(), value(value) {};
-
+	val() {};
+	val(bool value) : value(value) {};
 	// copy constructor
-	val(const val<bool>& other) : base_value(), value(other.value) {};
-
+	val(const val<bool>& other) : value(other.value) {};
 	// move constructor
-	val(const val<bool>&& other) : base_value(), value(other.value) {};
-#endif
-
-#ifdef ENABLE_TRACING
-
-	val(tracing::value_ref& tc) : base_value(tc) {};
+	val(const val<bool>&& other) : value(other.value) {};
 #endif
 
 	~val() {
@@ -360,17 +282,23 @@ public:
 	}
 
 	val<bool>& operator=(const val<bool>& other) {
+
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			tracing::traceAssignment(state, other.state, tracing::to_type<bool>());
+#endif
 		}
+
 		this->value = other.value;
 		return *this;
 	};
 
 	operator bool() const {
 		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
 			auto ref = state;
 			return tracing::traceBool(ref);
+#endif
 		}
 		return value;
 	}
@@ -382,6 +310,9 @@ template <class T>
 concept is_fundamental_value =
     requires(val<T> value) { std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type>; };
 
+template <class T>
+concept is_arithmetic_value = std::is_arithmetic_v<typename std::remove_reference_t<T>::basic_type>;
+
 template <is_fundamental_value Type>
 auto inline&& make_value(Type&& value) {
 	return std::forward<Type>(value);
@@ -391,7 +322,11 @@ template <convertible_to_fundamental Type>
 auto inline make_value(const Type& value) {
 	if constexpr (std::is_fundamental_v<Type>) {
 		return val<Type>(value);
+	} else if constexpr (is_ptr<Type>) {
+		return val<Type>(value);
 	} else if constexpr (is_fundamental_ptr<Type>) {
+		return val<Type>(value);
+	} else if constexpr (std::is_enum_v<Type>) {
 		return val<Type>(value);
 	} else if constexpr (std::is_convertible_v<Type, int>) {
 		return val<int>(value);
@@ -410,6 +345,11 @@ auto inline cast_value(LeftType&& value) {
 }
 
 template <typename LeftType, is_bool RightType>
+auto&& cast_value(LeftType&& value) {
+	return std::forward<LeftType>(value);
+};
+
+template <typename LeftType, is_enum RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
 };
@@ -449,10 +389,10 @@ namespace details {
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(lValue.state, rValue.state);               \
+			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(details::getState(lValue), details::getState(rValue));       \
 			return RES_TYPE(tc);                                                                                       \
 		}                                                                                                              \
-		return RES_TYPE(lValue.value OP rValue.value);                                                                 \
+		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                   \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
@@ -512,8 +452,17 @@ LHS inline getRawValue(val<LHS>& val) {
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
 		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                        \
 	}
+#define DEFINE_ARITHMETICAL_BINARY_OPERATOR(OP, FUNC)                                                                  \
+	template <typename LHS, typename RHS>                                                                              \
+	    requires(is_arithmetic_value<LHS> && (is_arithmetic_value<RHS> || convertible_to_fundamental<RHS>) ) ||        \
+	            ((is_arithmetic_value<LHS> || convertible_to_fundamental<LHS>) && is_arithmetic_value<RHS>)            \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
+		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
+		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
+		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                        \
+	}
 
-DEFINE_BINARY_OPERATOR(+, add)
+DEFINE_ARITHMETICAL_BINARY_OPERATOR(+, add)
 
 DEFINE_BINARY_OPERATOR(-, sub)
 
@@ -608,13 +557,6 @@ template <typename LHS, typename RHS>
 auto& operator>>=(val<LHS>& left, RHS right) {
 	left = left >> right;
 	return left;
-}
-
-template <typename LHS>
-    requires is_fundamental<LHS>
-std::ostream& operator<<(std::ostream& out, const val<LHS>& v) {
-	out << v.value;
-	return out;
 }
 
 namespace details {
