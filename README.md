@@ -1,4 +1,5 @@
 # Nautilus: A tracing jit compiler for C++
+[![Build Nautilus](https://github.com/nebulastream/nautilus/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/build.yml)
 
 Nautilus is a lightweight and adaptable just-in-time (JIT) compiler for C++ projects. 
 It offers:
