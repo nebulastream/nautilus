@@ -147,9 +147,7 @@ TEST_CASE("Expression Trace Test") {
 	    {"castInt8ToInt64AddExpression2", details::createFunctionWrapper(castInt8ToInt64AddExpression2)}};
 	runTraceTests(tests);
 }
-
 TEST_CASE("Control-flow Trace Test") {
-
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
 	    {"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},

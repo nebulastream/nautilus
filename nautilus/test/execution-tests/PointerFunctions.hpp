@@ -10,6 +10,12 @@ val<int32_t> load(val<int32_t*> array, val<int32_t> index) {
 	return value;
 }
 
+int32_t globalPtr;
+val<int32_t> loadConst() {
+	val<int32_t> value = *val<int32_t*>(&globalPtr);
+	return value;
+}
+
 val<int32_t> castVoidPtr(val<void*> array) {
 	auto intPtr = static_cast<val<int32_t*>>(array);
 	return intPtr[0];
@@ -32,7 +38,6 @@ void addArray(val<T*> array, val<T*> array2, val<T> length) {
 		array[i] = left + right;
 	}
 }
-
 
 
 void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {

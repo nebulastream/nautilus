@@ -12,13 +12,34 @@ cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENAB
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_COMPILER" OFF)
 
+option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)
+option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer." OFF)
+option(ENABLE_THREAD_SANITIZER "Enable thread sanitizer." OFF)
+option(ENABLE_UB_SANITIZER "Enable undefined behavior sanitizer." OFF)
 project(nautilus VERSION 0.1)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic -Werror=extra -Werror=all -fpermissive -fPIC -fno-omit-frame-pointer")
+
+if (ENABLE_TEST_COVERAGE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoverage-mapping -fprofile-instr-generate")
+endif ()
+
+if (ENABLE_SANITIZER)
+    add_link_options(-fsanitize=address)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+elseif (ENABLE_THREAD_SANITIZER)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+elseif (ENABLE_UB_SANITIZER)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
+elseif (ENABLE_LEAK_SANITIZER)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
+endif ()
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_DEBUG} -O3")
+
 
 include(cmake/macros.cmake)
 

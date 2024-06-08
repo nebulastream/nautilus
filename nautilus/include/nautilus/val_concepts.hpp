@@ -52,6 +52,9 @@ template <class T>
 concept is_bool = std::is_same_v<T, bool>;
 
 template <class T>
+concept is_bool_ref = std::is_same_v<std::remove_reference<T>, bool> && std::is_reference_v<T>;
+
+template <class T>
 concept is_enum = std::is_enum_v<T>;
 
 template <typename T>

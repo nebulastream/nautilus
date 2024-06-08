@@ -79,7 +79,7 @@ public:
 	using pointer_type = ValuePtrType;
 
 	base_ptr_val() : value() {};
-	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
+	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
 	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
 	base_ptr_val(val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
@@ -120,7 +120,9 @@ public:
 #endif
 	};
 
-	val<ValType&> operator[](val<int32_t> indexOffset) {
+	template <class T>
+	val<ValType&> operator[](T&& io) {
+		auto indexOffset = static_cast<val<int32_t>>(io);
 		auto valuePtr = (*this) + indexOffset;
 #ifdef ENABLE_TRACING
 		return val<ValType&>(valuePtr, this->state);
@@ -167,7 +169,7 @@ public:
 template <is_arithmetic_ptr ValueType, typename IndexType>
 val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
-	auto size = ((typename IndexType::raw_type)(sizeof(typename IndexType::raw_type)));
+	auto size = ((typename IndexType::raw_type)(sizeof(typename std::remove_pointer_t<ValueType>)));
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -220,5 +222,74 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 	return val<bool>(left.value != right.value);
 }
+
+template <>
+class val<bool&> {
+public:
+	using baseType = std::remove_cvref_t<bool&>;
+	using ref_less_type = std::remove_reference_t<bool&>;
+	using ptrType = ref_less_type*;
+
+#ifdef ENABLE_TRACING
+	tracing::value_ref state;
+	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {};
+	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
+#else
+	val(ValueType ref) : ptr(&ref) {};
+	val(val<ptrType> ptr) : ptr(ptr) {};
+#endif
+
+	template <class T>
+	    requires std::is_convertible_v<T, baseType>
+	void operator=(T other) noexcept {
+		auto value = make_value<baseType>(other);
+
+		// store value
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceStore(state, value.state, tracing::to_type<bool&>());
+			return;
+		}
+#endif
+		auto rawPtr = details::getRawValue(ptr);
+		*rawPtr = details::getRawValue(value);
+	}
+
+	template <class T>
+	    requires std::is_convertible_v<T, baseType>
+	void operator=(val<T> other) noexcept {
+		// store value
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceStore(ptr.state, other.state, tracing::to_type<bool&>());
+			return;
+		}
+#endif
+		auto rawPtr = details::getRawValue(ptr);
+		*rawPtr = details::getRawValue(other);
+	}
+
+	operator val<baseType>() {
+		// load
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto ref = tracing::traceLoad(ptr.state, tracing::to_type<bool&>());
+			return val<baseType>(ref);
+		}
+#endif
+		auto rawPtr = details::getRawValue(ptr);
+		return val<baseType>(*rawPtr);
+	}
+
+	operator bool() {
+		val<bool> boolValue = *this;
+		return boolValue;
+	}
+
+private:
+	val<bool*> ptr;
+	friend val<ptrType>;
+};
 
 } // namespace nautilus

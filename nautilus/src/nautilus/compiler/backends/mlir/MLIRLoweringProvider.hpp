@@ -15,6 +15,7 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
@@ -105,6 +106,7 @@ private:
 	void generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame);
 
 	void generateMLIR(ir::ConstBooleanOperation* constBooleanOp, ValueFrame& frame);
+	void generateMLIR(ir::ConstPtrOperation* constPtrOperation, ValueFrame& frame);
 
 	void generateMLIR(ir::AddOperation* addIntOp, ValueFrame& frame);
 

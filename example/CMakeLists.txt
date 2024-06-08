@@ -13,4 +13,4 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_BINARY_DIR}/naut
 
 add_executable(demo src/DemoJit.cpp)
 
-target_link_libraries(demo nautilus)
+target_link_libraries(demo PRIVATE nautilus)

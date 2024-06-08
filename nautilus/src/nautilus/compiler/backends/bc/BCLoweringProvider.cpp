@@ -770,6 +770,17 @@ void BCLoweringProvider::LoweringContext::process(ir::BranchOperation* branchOp,
 void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short block,
                                                   RegisterFrame& frame) {
 	switch (opt->getOperationType()) {
+	case ir::Operation::OperationType::ConstPtrOp: {
+		auto constPtr = as<ir::ConstPtrOperation>(opt);
+		auto defaultRegister = registerProvider.allocRegister();
+		defaultRegisterFile[defaultRegister] = (int64_t)constPtr->getValue();
+
+		auto targetRegister = registerProvider.allocRegister();
+		frame.setValue(constPtr->getIdentifier(), targetRegister);
+		OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
+		program.blocks[block].code.emplace_back(oc);
+		return;
+	}
 	case ir::Operation::OperationType::ConstBooleanOp: {
 		auto constInt = as<ir::ConstBooleanOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
