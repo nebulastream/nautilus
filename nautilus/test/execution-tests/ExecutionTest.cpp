@@ -514,8 +514,9 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		for (auto i = 0; i < 10; i++) {
 			REQUIRE(values[i] == ref[i]);
 		}
+		delete[] ref;
 	}
-
+	delete[] values;
 	SECTION("castVoidPtr") {
 		auto f = engine.registerFunction(castVoidPtr);
 		int x = 42;

@@ -79,7 +79,11 @@ public:
 	using pointer_type = ValuePtrType;
 
 	base_ptr_val() : value() {};
+#ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
+#else
+	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
+#endif
 	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
 	base_ptr_val(val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
 	}
@@ -236,7 +240,7 @@ public:
 	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
 	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
 #else
-	val(ValueType ref) : ptr(&ref) {};
+	val(bool ref) : ptr(&ref) {};
 	val(val<ptrType> ptr) : ptr(ptr) {};
 #endif
 
