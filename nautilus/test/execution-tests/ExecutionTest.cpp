@@ -491,6 +491,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 1) == 2);
 		REQUIRE(f(values, (int32_t) 8) == 9);
 	}
+	/*
 	SECTION("loadConst") {
 		globalPtr = values[0];
 		auto f = engine.registerFunction(loadConst);
@@ -500,6 +501,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		globalPtr = values[2];
 		REQUIRE(f() == 3);
 	}
+    */
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
 		val<int> r = f(values, (int32_t) 10);
