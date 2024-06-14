@@ -474,11 +474,10 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(1, 1) == 1);
 		REQUIRE(f(0, 1) == 0);
 	}
-	// SECTION("voidCall") {
-	//     auto f = engine.registerFunction(voidFuncCall);
-	//     REQUIRE(f(10, 10) == 10);
-	//     REQUIRE(f(0, 1) == 0);
-	// }
+	SECTION("voidCall") {
+		auto f = engine.registerFunction(voidFuncCall);
+		REQUIRE_NOTHROW(f(10, 10));
+	}
 }
 
 void pointerExecutionTest(engine::NautilusEngine& engine) {
@@ -493,15 +492,15 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 	}
 	/*
 	SECTION("loadConst") {
-		globalPtr = values[0];
-		auto f = engine.registerFunction(loadConst);
-		REQUIRE(f() == 1);
-		globalPtr = values[1];
-		REQUIRE(f() == 2);
-		globalPtr = values[2];
-		REQUIRE(f() == 3);
+	    globalPtr = values[0];
+	    auto f = engine.registerFunction(loadConst);
+	    REQUIRE(f() == 1);
+	    globalPtr = values[1];
+	    REQUIRE(f() == 2);
+	    globalPtr = values[2];
+	    REQUIRE(f() == 3);
 	}
-    */
+	*/
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
 		val<int> r = f(values, (int32_t) 10);
@@ -516,7 +515,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		}
 		delete[] ref;
 	}
-	delete[] values;
+	// delete[] values;
 	SECTION("castVoidPtr") {
 		auto f = engine.registerFunction(castVoidPtr);
 		int x = 42;

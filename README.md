@@ -10,7 +10,7 @@ It offers:
 Nautilus is used for the query compiler of NebulaStream, a data management system from the DIMA group at TU Berlin.
 Learn more about Nebula Stream at https://www.nebula.stream
 
-## Example
+### Example
 
 The example below demonstrates Nautilus with a simplified aggregation operator,
 `ConditionalSum`. This function aggregates integer values based on a boolean mask.
@@ -49,7 +49,7 @@ int main(int, char* []) {
 }
 ```
 
-## Build:
+### Build:
 
 To build Nautilus from source execute use cmake:
 
@@ -60,7 +60,7 @@ cmake ..
 cmake --build . --target nautilus
 ```
 
-## Components:
+### Components:
 
 The codebase is structured in the following components:
 
@@ -70,10 +70,10 @@ The codebase is structured in the following components:
 | [tracing](nautilus/src/tracing)   | Hosts core functionality for tracing generic C++ code.                                                    |
 | [compiler](nautilus/src/compiler) | Implements the Nautilus compiler, including its IR, optimization passes, and various generation backends. |
 
-## Publication:
+### Publication:
 
-This paper discusses Nautilus's architecture and its application in the NebulaStream query compiler. 
-Note that it references an earlier version of the code-generation API, which has since been updated.
+This paper discusses Nautilus's architecture and its usage in the NebulaStream query compiler. 
+Note that it references an earlier version of the code-generation API, which has changed.
 
 ```BibTeX
 @article{10.1145/3654968,
@@ -91,5 +91,29 @@ Note that it references an earlier version of the code-generation API, which has
 }
 ```
 
-## Related Work:
-Nautilus is inspired by following projects: 
+### Related Work:
+The following work is related to Nautilus and influenced our design decisions.
+
+* [Tidy Tuples and Flying Start](db.in.tum.de/~kersten/Tidy%20Tuples%20and%20Flying%20Start%20Fast%20Compilation%20and%20Fast%20Execution%20of%20Relational%20Queries%20in%20Umbra.pdf):
+This paper describes the low-latency query compilation approach of [Umbra](https://umbra-db.com/). 
+This work was one of the main motivations for the creation of the Nautilus project and its use in NebulaStream.
+
+* [Flounder](https://vldb.org/pvldb/vol14/p2691-funke.pdf):
+Flounder is simple low latency jit compiler that based on [AsmJit](https://asmjit.com/), which is designed for query compilation.
+
+* [Build-It](https://buildit.so/): 
+BuildIt is a framework for developing Domain Specific Languages in C++. 
+It pioneered the capability of extracting control-flow information form imperative C++ code.
+
+* [GraalVM](https://www.graalvm.org/):
+The GraalVM project provides a framework to implement AST interpreters that can be turned into high-performance code through partial evaluation.
+
+* [MLIR](https://mlir.llvm.org/):
+The MLIR project provides a novel approach to building reusable and extensible compiler infrastructure.
+Nautilus leverages it as a foundation for its high-performance compilation backend.
+
+* [MIR](https://github.com/vnmakarov/mir):
+The MIR projects provides a lightweight jit compiler that targets low compilation latency. 
+Nautilus leverages MIR as a low latency compilation backend.
+
+

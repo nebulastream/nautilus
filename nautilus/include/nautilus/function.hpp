@@ -12,12 +12,8 @@ namespace nautilus {
 template <typename R, typename... FunctionArguments>
 std::string getFunctionName(R (*fnptr)(FunctionArguments...)) {
 	Dl_info info;
-
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
-
 	if (info.dli_sname != nullptr) {
-		std::cout << info.dli_sname << std::endl;
-		std::cout << abi::__cxa_demangle(info.dli_sname, NULL, NULL, NULL) << std::endl;
 		return info.dli_sname;
 	}
 	return "xxx";
@@ -155,7 +151,6 @@ using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
 template <typename R, typename... FunctionArguments>
 auto Function(R (*fnptr)(FunctionArguments...)) {
-
 	return CallableNautilusFunction<R, FunctionArguments...>(fnptr);
 }
 
