@@ -10,6 +10,10 @@ jobs:
       matrix:
         include:
           - os: 'ubuntu-24.04'
+            cc: 'gcc-12'
+            cxx: 'g++-12'
+            flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+          - os: 'ubuntu-24.04'
             cc: 'clang-18'
             cxx: 'clang++-18'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
