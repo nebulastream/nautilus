@@ -56,8 +56,7 @@ value_ref TraceContext::traceLoad(value_ref src, Type resultType) {
 	auto input = InputVariant(src);
 	auto op = Op::LOAD;
 	auto tag = recordSnapshot();
-	auto inputs = std::vector<InputVariant> {input};
-	if (executionTrace->checkTag(tag, inputs)) {
+	if (executionTrace->checkTag(tag)) {
 		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {input});
 		return resultRef;
 	}
@@ -73,8 +72,7 @@ void TraceContext::traceStore(value_ref target, value_ref src, Type valueType) {
 	}
 	auto op = Op::STORE;
 	auto tag = recordSnapshot();
-	auto inputs = std::vector<InputVariant> {src};
-	if (executionTrace->checkTag(tag, inputs)) {
+	if (executionTrace->checkTag(tag)) {
 		executionTrace->addOperation(tag, op, valueType, target, src);
 		return;
 	}
@@ -122,9 +120,7 @@ value_ref TraceContext::traceCopy(nautilus::tracing::value_ref ref) {
 		return currentOperation.resultRef;
 	}
 	auto tag = recordSnapshot();
-
-	auto inputs = std::vector<InputVariant> {ref};
-	if (executionTrace->checkTag(tag, inputs)) {
+	if (executionTrace->checkTag(tag)) {
 		auto resultRef = executionTrace->getNextValueRef();
 		executionTrace->addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 		return {resultRef, ref.type};
@@ -143,8 +139,7 @@ value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, T
 	}
 
 	auto tag = recordSnapshot();
-	auto inputs = std::vector<InputVariant> {};
-	if (executionTrace->checkTag(tag, inputs)) {
+	if (executionTrace->checkTag(tag)) {
 		auto functionArguments = InputVariant(FunctionCall {
 		    .functionName = functionName,
 		    .ptr = fptn,
@@ -167,19 +162,16 @@ void TraceContext::traceAssignment(value_ref targetRef, value_ref sourceRef, Typ
 		return;
 	}
 	auto tag = recordSnapshot();
-
+	/*
 	auto found = executionTrace->globalTagMap.find(tag);
 	if (found != executionTrace->globalTagMap.end()) {
-	    auto currentOp = executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
-	    if(std::get<value_ref>(currentOp.input[0]) != sourceRef){
-	        executionTrace->getCurrentBlock().operations.emplace_back(tag, ASSIGN, resultType, targetRef, std::vector<InputVariant> {sourceRef});
+		auto currentOp = executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
+		if(std::get<value_ref>(currentOp.input[0]) != sourceRef){
+			executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
 			return;
-			//executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
-	        //return;
-	    };
-	}
-	auto inputs = std::vector<InputVariant> {sourceRef};
-	if (executionTrace->checkTag(tag, inputs)) {
+		};
+	}*/
+	if (executionTrace->checkTag(tag)) {
 		executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
 		return;
 	}
@@ -199,10 +191,8 @@ value_ref TraceContext::traceCast(value_ref state, Type resultType) {
 	// we are in a know operation if the operation at the current block[currentOperationCounter] is equal to the
 	// received operation.
 	auto tag = recordSnapshot();
-	auto leftIV = InputVariant(state);
-	auto inputs = std::vector<InputVariant> {leftIV};
-	if (executionTrace->checkTag(tag, inputs)) {
-
+	if (executionTrace->checkTag(tag)) {
+		auto leftIV = InputVariant(state);
 		auto op = Op::CAST;
 		auto resultRef =
 		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV});
@@ -235,12 +225,11 @@ value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, value_ref& 
 	}
 
 	auto tag = recordSnapshot();
-
-	auto leftIV = InputVariant(leftRef);
-	auto rightIV = InputVariant(rightRef);
-	auto inputs = std::vector<InputVariant> {leftIV, rightIV};
-	if (executionTrace->checkTag(tag, inputs)) {
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::move(inputs));
+	if (executionTrace->checkTag(tag)) {
+		auto leftIV = InputVariant(leftRef);
+		auto rightIV = InputVariant(rightRef);
+		auto resultRef =
+		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV, rightIV});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -255,8 +244,7 @@ bool TraceContext::traceCmp(value_ref targetRef) {
 	} else {
 		// record
 		auto tag = recordSnapshot();
-		auto inputs = std::vector<InputVariant> {};
-		if (executionTrace->checkTag(tag, inputs)) {
+		if (executionTrace->checkTag(tag)) {
 			executionTrace->addCmpOperation(tag, targetRef);
 			result = symbolicExecutionContext->record(tag);
 		} else {
