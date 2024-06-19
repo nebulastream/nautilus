@@ -29,7 +29,7 @@ public:
 
 	void addReturn(Snapshot&, Type type, value_ref ref);
 
-	bool checkTag(Snapshot& snapshot);
+	bool checkTag(Snapshot& snapshot, std::vector<InputVariant>& inputs);
 
 	void resetExecution();
 
@@ -106,7 +106,7 @@ public:
 	 * @param operationIndex
 	 * @return Block&
 	 */
-	Block& processControlFlowMerge(operation_identifier oi);
+	Block& processControlFlowMerge(operation_identifier oi, std::vector<InputVariant>& inputs);
 
 	/**
 	 * @brief Returns the return reference

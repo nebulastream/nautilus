@@ -11,14 +11,14 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 	createBlock();
 };
 
-bool ExecutionTrace::checkTag(Snapshot& snapshot) {
+bool ExecutionTrace::checkTag(Snapshot& snapshot, std::vector<InputVariant>& inputs) {
 	// check if operation is in global map -> we have a repeating operation -> this is a control-flow merge
 	// std::cout << "\n checkTag \n" << std::endl;
 	// std::cout << *this << std::endl;
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		processControlFlowMerge(ref);
+		processControlFlowMerge(ref, inputs);
 		return false;
 	}
 
@@ -27,7 +27,7 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 		// TODO #3500 Fix handling of repeated operations
 		auto& ref = localTagIter->second;
 		// add loop iteration to tag
-		processControlFlowMerge(ref);
+		processControlFlowMerge(ref, inputs);
 		return false;
 	}
 	return true;
@@ -145,7 +145,8 @@ uint16_t ExecutionTrace::createBlock() {
 	return blocks.size() - 1;
 }
 
-Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
+Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi,
+                                               [[maybe_unused]] std::vector<InputVariant>& inputs) {
 	if (oi.blockIndex == currentBlockIndex) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
 	}
@@ -158,6 +159,10 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto mergedBlockId = createBlock();
 	// perform a control flow merge and merge the current block with operations in some other block.
 	auto& referenceBlock = blocks[oi.blockIndex];
+	auto& referenceOp = referenceBlock.operations[oi.operationIndex];
+	if (referenceOp.input.size() == inputs.size()) {
+		//for (referenceOp == )
+	}
 	auto& currentBlock = blocks[currentBlockIndex];
 
 	auto& mergeBlock = getBlock(mergedBlockId);

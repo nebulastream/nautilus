@@ -33,6 +33,14 @@ val<int32_t> assignment5(val<int32_t> x) {
 	return x;
 }
 
+val<int32_t> assignmentSwap(val<int32_t> x) {
+	auto t = x;
+	x = 42;
+	x = t + x;
+	return x;
+}
+
+
 val<int8_t> int8AddExpression(val<int8_t> x) {
 	val<int8_t> y = (int8_t) 2;
 	return y + x;

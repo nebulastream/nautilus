@@ -86,49 +86,67 @@ tracing::value_ref getState(T&& value) {
 
 } // namespace details
 
-// val substitution for all arithmetic value type, integer, float, bool
-template <is_arithmetic ValueType>
-class val<ValueType> {
+template <typename ValueType>
+class base_val {
 public:
 	using raw_type = ValueType;
 	using basic_type = ValueType;
-
 #ifdef ENABLE_TRACING
 	const tracing::value_ref state;
-	inline val() : state(tracing::traceConstant(0)) {};
-	inline val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
+	base_val() : state(tracing::traceConstant(0)) {};
+	base_val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
-	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	base_val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	inline val(const val<ValueType>&& other) noexcept : state(other.state), value(other.value) {};
-	inline val(tracing::value_ref& tc) : state(tc), value() {};
+	base_val(const val<ValueType>&& other) noexcept
+	    : state(other.state),
+	      value(other.value) {
+	          // std::cout << "move con" << state.toString() << " = " << other.state.toString() << std::endl;
+	      };
+	base_val(tracing::value_ref& tc) : state(tc), value() {};
 #else
-	val() {};
-	val(ValueType value) : value(value) {};
+	base_val() {};
+	base_val(ValueType value) : value(value) {};
 	// copy constructor
-	val(const val<ValueType>& other) : value(other.value) {};
+	base_val(const val<ValueType>& other) : value(other.value) {};
 	// move constructor
-	val(const val<ValueType>&& other) : value(other.value) {};
+	base_val(const val<ValueType>&& other) : value(other.value) {};
 #endif
 
-	~val() {
+	virtual ~base_val() {
+	}
 
+protected:
+	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
+	ValueType value;
+};
+
+// val substitution for all arithmetic value type, integer, float, bool
+template <is_arithmetic ValueType>
+class val<ValueType> : public base_val<ValueType> {
+public:
+
+	using base_val<ValueType>::base_val;
+
+	// copy constructor
+	val(const val<ValueType>& other) : base_val<ValueType>(other) {}
+	// move constructor
+	val(const val<ValueType>&& other) : base_val<ValueType>(std::move(other)) {}
+
+	val<ValueType>& operator=(const val<ValueType>&& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-
-			// tracing::getVarRefMap()[state.ref]--;
-			// if (tracing::getVarRefMap()[state.ref] == 0) {
-			//  tracing::traceValueDestruction(state);
-			// std::cout << "destructor " << state << " - " << tag << std::endl;
-			//  }
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValueType>());
 		}
 #endif
-	}
+		this->value = other.value;
+		return *this;
+	};
 
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(state, other.state, tracing::to_type<ValueType>());
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValueType>());
 		}
 #endif
 		this->value = other.value;
@@ -141,11 +159,11 @@ public:
 		// cast
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			auto resultRef = tracing::traceCast(state, tracing::to_type<OtherType>());
+			auto resultRef = tracing::traceCast(this->state, tracing::to_type<OtherType>());
 			return val<OtherType>(resultRef);
 #endif
 		}
-		return val<OtherType>(value);
+		return val<OtherType>(this->value);
 	}
 
 	const val<ValueType>& operator++() {
@@ -186,9 +204,6 @@ public:
 	}
 
 private:
-	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
-	ValueType value;
-
 	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
 
@@ -245,41 +260,15 @@ private:
 };
 
 template <>
-class val<bool> {
+class val<bool> : public base_val<bool> {
 public:
 	using raw_type = bool;
 	using basic_type = bool;
-
-#ifdef ENABLE_TRACING
-
-	tracing::value_ref state;
-	val() : state(tracing::traceConstant(0)), value(false) {};
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {};
+	using base_val<bool>::base_val;
 	// copy constructor
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	val(const val<bool>& other) : base_val<bool>(other) {};
 	// move constructor
-	val(const val<bool>&& other) noexcept : state(other.state), value(other.value) {};
-	val(tracing::value_ref& tc) : state(tc) {};
-
-#else
-	val() {};
-	val(bool value) : value(value) {};
-	// copy constructor
-	val(const val<bool>& other) : value(other.value) {};
-	// move constructor
-	val(const val<bool>&& other) : value(other.value) {};
-#endif
-
-	~val() {
-		if SHOULD_TRACE () {
-
-			// tracing::getVarRefMap()[state.ref]--;
-			// if (tracing::getVarRefMap()[state.ref] == 0) {
-			//  tracing::traceValueDestruction(state);
-			// std::cout << "destructor " << state << " - " << tag << std::endl;
-			//  }
-		}
-	}
+	val(const val<bool>&& other) noexcept : base_val<bool>(std::move(other)) {};
 
 	val<bool>& operator=(const val<bool>& other) {
 
@@ -302,8 +291,6 @@ public:
 		}
 		return value;
 	}
-
-	bool value;
 };
 
 template <class T>
@@ -389,7 +376,8 @@ namespace details {
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(details::getState(lValue), details::getState(rValue));       \
+			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, commonType>(details::getState(lValue),                 \
+			                                                                details::getState(rValue));                \
 			return RES_TYPE(tc);                                                                                       \
 		}                                                                                                              \
 		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                   \
@@ -567,7 +555,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 		return val<bool> {tc};
 	}
 #endif
-	return left.value || right.value;
+	return getRawValue(left) || getRawValue(right);
 }
 
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
@@ -577,7 +565,7 @@ val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 		return val<bool> {tc};
 	}
 #endif
-	return left.value && right.value;
+	return getRawValue(left) && getRawValue(right);
 }
 
 val<bool> inline lNot(val<bool>& arg) {
@@ -587,7 +575,7 @@ val<bool> inline lNot(val<bool>& arg) {
 		return val<bool> {tc};
 	}
 #endif
-	return !arg.value;
+	return !getRawValue(arg);
 }
 } // namespace details
 

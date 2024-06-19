@@ -136,6 +136,7 @@ TEST_CASE("Expression Trace Test") {
 	    {"assignment3", details::createFunctionWrapper(assignment3)},
 	    {"assignment4", details::createFunctionWrapper(assignment4)},
 	    {"assignment5", details::createFunctionWrapper(assignment5)},
+	    {"assignmentSwap", details::createFunctionWrapper(assignmentSwap)},
 	    {"int8AddExpression", details::createFunctionWrapper(int8AddExpression)},
 	    {"int16AddExpression", details::createFunctionWrapper(int16AddExpression)},
 	    {"int32AddExpression", details::createFunctionWrapper(int32AddExpression)},
@@ -175,6 +176,7 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"varyingComplexity", details::createFunctionWrapper(varyingComplexity)},
 	    {"logicalXOR", details::createFunctionWrapper(logicalXOR)},
 	    {"nestedIfElseDifferentLevels", details::createFunctionWrapper(nestedIfElseDifferentLevels)},
+
 	};
 	runTraceTests(tests);
 }
