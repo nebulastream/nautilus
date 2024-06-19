@@ -89,21 +89,19 @@ tracing::value_ref getState(T&& value) {
 template <typename ValueType>
 class base_val {
 public:
-	using raw_type = ValueType;
-	using basic_type = ValueType;
 #ifdef ENABLE_TRACING
 	const tracing::value_ref state;
-	base_val() : state(tracing::traceConstant(0)) {};
-	base_val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
+	inline base_val() : state(tracing::traceConstant(0)) {};
+	inline base_val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
-	base_val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	inline base_val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	base_val(const val<ValueType>&& other) noexcept
+	inline base_val(const val<ValueType>&& other) noexcept
 	    : state(other.state),
 	      value(other.value) {
 	          // std::cout << "move con" << state.toString() << " = " << other.state.toString() << std::endl;
 	      };
-	base_val(tracing::value_ref& tc) : state(tc), value() {};
+	inline base_val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	base_val() {};
 	base_val(ValueType value) : value(value) {};
@@ -125,13 +123,15 @@ protected:
 template <is_arithmetic ValueType>
 class val<ValueType> : public base_val<ValueType> {
 public:
-
+	using raw_type = ValueType;
+	using basic_type = ValueType;
 	using base_val<ValueType>::base_val;
 
 	// copy constructor
-	val(const val<ValueType>& other) : base_val<ValueType>(other) {}
-	// move constructor
-	val(const val<ValueType>&& other) : base_val<ValueType>(std::move(other)) {}
+	inline val(const val<ValueType>& other) : base_val<ValueType>(other) {
+	} // move constructor
+	inline val(const val<ValueType>&& other) noexcept : base_val<ValueType>(std::move(other)) {
+	}
 
 	val<ValueType>& operator=(const val<ValueType>&& other) {
 #ifdef ENABLE_TRACING
