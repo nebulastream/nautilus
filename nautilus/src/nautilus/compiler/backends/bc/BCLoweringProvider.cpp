@@ -773,7 +773,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstPtrOp: {
 		auto constPtr = as<ir::ConstPtrOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
-		defaultRegisterFile[defaultRegister] = (int64_t)constPtr->getValue();
+		defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
 		auto targetRegister = registerProvider.allocRegister();
 		frame.setValue(constPtr->getIdentifier(), targetRegister);
