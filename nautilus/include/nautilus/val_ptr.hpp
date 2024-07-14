@@ -108,6 +108,12 @@ template <is_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
+
+	// enable cast to type T
+	template <class T>
+	operator val<T*>() const {
+		return val<T*>((T*)this->value, this->state);
+	}
 };
 
 template <is_arithmetic_ptr ValuePtrType>
