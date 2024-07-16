@@ -527,9 +527,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ModOperation* divIntOp, ValueFrame& 
 void MLIRLoweringProvider::generateMLIR(ir::StoreOperation* storeOp, ValueFrame& frame) {
 	auto value = frame.getValue(storeOp->getValue()->getIdentifier());
 	auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
-	auto bitcast = builder->create<mlir::LLVM::BitcastOp>(getNameLoc("Address Bitcasted"),
-	                                                      mlir::LLVM::LLVMPointerType::get(context), address);
-	builder->create<mlir::LLVM::StoreOp>(getNameLoc("outputStore"), value, bitcast);
+	builder->create<mlir::LLVM::StoreOp>(getNameLoc("outputStore"), value, address);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame) {

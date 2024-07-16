@@ -406,7 +406,7 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(int32_t, ValueF
                                                                  TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.resultRef));
 	auto value = frame.getValue(createValueIdentifier(operation.input[0]));
-	currentBlock->addOperation<StoreOperation>(address, value);
+	currentBlock->addOperation<StoreOperation>(value, address);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFrame& frame, BasicBlock* currentBlock,

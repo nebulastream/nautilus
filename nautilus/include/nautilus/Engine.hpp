@@ -6,6 +6,7 @@
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
+#include <functional>
 
 namespace nautilus::engine {
 
@@ -55,40 +56,61 @@ template <typename R, typename... FunctionArguments>
 std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
 }
+
+template <size_t... Indices, typename R, typename... FunctionArguments>
+std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std::function<R(FunctionArguments...)>  func) {
+	[[maybe_unused]] std::size_t args = sizeof...(FunctionArguments);
+	auto traceFunc = [=]() {
+		if constexpr (std::is_void_v<R>) {
+			func(details::createTraceArgument<FunctionArguments, Indices>()...);
+			tracing::traceReturnOperation(Type::v, tracing::value_ref());
+		} else {
+			auto returnValue = func(details::createTraceArgument<FunctionArguments, Indices>()...);
+			auto type = tracing::to_type<typename decltype(returnValue)::basic_type>();
+			tracing::traceReturnOperation(type, returnValue.state);
+		}
+	};
+	return traceFunc;
+}
+
+template <typename R, typename... FunctionArguments>
+std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...)>  func) {
+	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, func);
+}
 #endif
 } // namespace details
 
 template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
-	explicit CallableFunction(void* func) : func(func), executable(nullptr) {
+	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
 	}
 
 	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
-	    : func(), executable(std::move(executable)) {
-		if (this->executable->hasInvocableFunctionPtr()) {
-			func = this->executable->getInvocableFunctionPtr("execute");
-		}
-	}
+	    : func(), executable(std::move(executable)) {}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
 	auto operator()(FunctionArgumentsRaw... args) {
 		// function is called from an external context.
-		using FunctionType = void(FunctionArguments...);
-		auto fnptr = reinterpret_cast<FunctionType*>(func);
-		fnptr(details::transform((args))...);
+		// no executable is defined, call the underling function directly and convert all arguments to val objects
+		if (executable == nullptr) {
+			func(details::transform((args))...);
+			return;
+		}
+		auto callable =
+		    this->executable->template getInvocableMember<void, FunctionArgumentsRaw...>("execute");
+		callable(args...);
+		return;
 	}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw... args) {
 		// function is called from an external context.
-
+		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			using FunctionType = R(FunctionArguments...);
-			auto fnptr = reinterpret_cast<FunctionType*>(func);
-			auto result = fnptr(details::transform((args))...);
+			auto result = func(details::transform((args))...);
 			return nautilus::details::getRawValue(result);
 		}
 		auto callable =
@@ -97,7 +119,7 @@ public:
 	}
 
 private:
-	void* func;
+	std::function<R(FunctionArguments...)> func;
 	std::unique_ptr<compiler::Executable> executable;
 };
 
@@ -117,16 +139,38 @@ public:
 			return CallableFunction<val<R>, val<FunctionArguments>...>(executable);
 		}
 #endif
-		return CallableFunction<val<R>, val<FunctionArguments>...>((void*) fnptr);
+		std::function<val<R>(val<FunctionArguments>...)> inputWrapper = fnptr;
+		return CallableFunction<val<R>, val<FunctionArguments>...>(inputWrapper);
 	}
 
 	template <typename... FunctionArguments>
 	auto registerFunction(void (*fnptr)(FunctionArguments...)) const {
-		// auto wrapper = createFunctionWrapper(fnptr);
-		// auto executable = jit->compile(wrapper);
-		// auto ptr = reinterpret_cast<R (*)(FunctionArguments...)>(executable);
-		return CallableFunction<void, FunctionArguments...>((void*) fnptr);
+#ifdef ENABLE_TRACING
+		if (options.getOptionOrDefault("engine.Compilation", true)) {
+			auto wrapper = details::createFunctionWrapper(fnptr);
+			auto executable = jit.compile(wrapper);
+			return CallableFunction<void, FunctionArguments...>(executable);
+		}
+#endif
+		std::function<void(FunctionArguments...)> inputWrapper = fnptr;
+		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
+
+
+	template <typename R, typename... FunctionArguments>
+	auto registerFunction(std::function<val<R>(val<FunctionArguments>...)> func) const {
+#ifdef ENABLE_TRACING
+		if (options.getOptionOrDefault("engine.Compilation", true)) {
+			auto wrapper = details::createFunctionWrapper(func);
+			auto executable = jit.compile(wrapper);
+			return CallableFunction<val<R>, val<FunctionArguments>...>(executable);
+		}
+#endif
+		return CallableFunction<val<R>, val<FunctionArguments>...>(func);
+	}
+
+
+
 
 private:
 	const compiler::JITCompiler jit;
