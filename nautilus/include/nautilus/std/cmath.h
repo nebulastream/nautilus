@@ -10,6 +10,10 @@ namespace nautilus {
  */
 val<float> abs(val<float> x);
 val<double> abs(val<double> x);
+val<int8_t> abs(val<int8_t> x);
+val<int16_t> abs(val<int16_t> x);
+val<int32_t> abs(val<int32_t> x);
+val<int64_t> abs(val<int64_t> x);
 val<float> fabs(val<float> x);
 val<double> fabs(val<double> x);
 val<float> fabsf(val<float> x);

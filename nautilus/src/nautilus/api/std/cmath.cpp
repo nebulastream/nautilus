@@ -20,6 +20,22 @@ val<double> fabs(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::fabs(x); }, x);
 }
+val<int8_t> abs(val<int8_t> x) {
+	return invoke<>(
+	    +[](int8_t x) -> int8_t { return std::abs(x); }, x);
+}
+val<int16_t > abs(val<int16_t > x) {
+	return invoke<>(
+	    +[](int16_t x) -> int16_t { return std::abs(x); }, x);
+}
+val<int32_t > abs(val<int32_t > x) {
+	return invoke<>(
+	    +[](int32_t x) -> int32_t { return std::abs(x); }, x);
+}
+val<int64_t> abs(val<int64_t> x) {
+	return invoke<>(
+	    +[](int64_t x) -> int64_t { return std::abs(x); }, x);
+}
 #if defined(_LIBCPP_VERSION)
 val<float> fabsf(val<float> x) {
 	return invoke<>(

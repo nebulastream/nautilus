@@ -86,7 +86,7 @@ public:
 	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	explicit CallableFunction(std::function<void(val<signed char*>, val<signed char*>, val<signed char*>)> executable)
 	    : func(), executable(std::move(executable)) {}
 
 	template <typename... FunctionArgumentsRaw>
@@ -95,7 +95,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			func(details::transform((args))...);
+			func(static_cast<signed char*>(details::transform((args)))...);
 			return;
 		}
 		auto callable =
@@ -130,7 +130,7 @@ public:
 	NautilusEngine(const Options& options);
 
 	template <is_val R, is_val... FunctionArguments>
-	auto registerFunction(val<R> (*fnptr)(val<FunctionArguments>...)) const {
+	auto registerFunction(std::function<val<R> (val<FunctionArguments>...)> fnptr) const {
 
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
