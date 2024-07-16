@@ -405,12 +405,13 @@ void MLIRLoweringProvider::generateMLIR(ir::ConstIntOperation* constIntOp, Value
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* , ValueFrame& ) {
-	//builder->create<mlir::LLVM::C>(getNameLoc("location"), mlir::LLVM::LLVMPointerType, constPtrOperation->getValue());
-
-	//frame.setValue(constPtrOperation->getIdentifier(),
-	//               getConstInt("ConstantOp", constIntOp->getStamp(), constIntOp->getValue()));
-
+void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* constPtr, ValueFrame& frame) {
+	int64_t val = (int64_t) constPtr->getValue();
+	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), builder->getI64Type(),
+	                                                         builder->getIntegerAttr(builder->getI64Type(), val));
+	auto elementAddress = builder->create<mlir::LLVM::IntToPtrOp>(getNameLoc("fieldAccess"),
+	                                                              mlir::LLVM::LLVMPointerType::get(context), constInt);
+	frame.setValue(constPtr->getIdentifier(), elementAddress);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {

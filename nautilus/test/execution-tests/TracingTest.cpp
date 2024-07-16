@@ -206,7 +206,7 @@ TEST_CASE("Loop Trace Test") {
 	    {"addArrayInt32", details::createFunctionWrapper(addArray<int32_t>)},
 	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
 	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
-	    {"passCustomStruct", details::createFunctionWrapper(passCustomStruct)},
+	    {"passCustomStruct", details::createFunctionWrapper(passCustomClass)},
 	    {"specializeType", details::createFunctionWrapper(specializeType)},
 	    {"useWrapper", details::createFunctionWrapper(useWrapper)},
 	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};

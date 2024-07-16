@@ -483,6 +483,37 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 void pointerExecutionTest(engine::NautilusEngine& engine) {
 	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
 	// int* ptr = &values;
+	SECTION("castVoidInt8") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int8_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int8_t) 42);
+	}
+	SECTION("castVoidInt16") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int16_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int16_t) 42);
+	}
+	SECTION("castVoidInt32") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int32_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int32_t) 42);
+	}
+	SECTION("castVoidInt64") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int64_t>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((int64_t*) &x));
+	}
+	SECTION("castVoidFloat") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, float>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((float*) &x));
+	}
+	SECTION("castVoidFloat") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, double>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((double*) &x));
+	}
+
 	SECTION("load") {
 		auto f = engine.registerFunction(load);
 
@@ -490,7 +521,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 1) == 2);
 		REQUIRE(f(values, (int32_t) 8) == 9);
 	}
-	/*
 	SECTION("loadConst") {
 	    globalPtr = values[0];
 	    auto f = engine.registerFunction(loadConst);
@@ -500,7 +530,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 	    globalPtr = values[2];
 	    REQUIRE(f() == 3);
 	}
-	*/
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
 		val<int> r = f(values, (int32_t) 10);
@@ -521,9 +550,17 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		int x = 42;
 		REQUIRE(f((void*) &x) == 42);
 	}
-	SECTION("passCustomStruct") {
-		auto f = engine.registerFunction(passCustomStruct);
-		CustomStruct x = {.x = 42};
+	SECTION("castCustomClass") {
+		auto f = engine.registerFunction(castCustomClass);
+		CustomClass x;
+		x.x = 42;
+		BaseClass* BaseClass = &x;
+		REQUIRE(f(BaseClass) == 42);
+	}
+	SECTION("passCustomClass") {
+		auto f = engine.registerFunction(passCustomClass);
+		CustomClass x;
+		x.x = 42;
 		REQUIRE(f(&x) == 42);
 	}
 	SECTION("specializeType") {
