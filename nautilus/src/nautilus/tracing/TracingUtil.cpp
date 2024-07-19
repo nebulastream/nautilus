@@ -380,7 +380,8 @@ void popStaticVal() {
 }
 
 std::string TypedValueRef::toString() const {
-	return fmt::format("${}", ref);
+//	return fmt::format("${}", ref);
+	return std::to_string(ref);
 }
 
 } // namespace nautilus::tracing
