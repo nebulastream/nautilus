@@ -522,13 +522,13 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 8) == 9);
 	}
 	SECTION("loadConst") {
-	    globalPtr = values[0];
-	    auto f = engine.registerFunction(loadConst);
-	    REQUIRE(f() == 1);
-	    globalPtr = values[1];
-	    REQUIRE(f() == 2);
-	    globalPtr = values[2];
-	    REQUIRE(f() == 3);
+		globalPtr = values[0];
+		auto f = engine.registerFunction(loadConst);
+		REQUIRE(f() == 1);
+		globalPtr = values[1];
+		REQUIRE(f() == 2);
+		globalPtr = values[2];
+		REQUIRE(f() == 3);
 	}
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
@@ -576,8 +576,57 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+class Clazz{
+public:
+	val<int32_t> function(val<int32_t> arg){
+		return arg + 20;
+	}
+
+	val<int32_t> functionWithStateAccess(val<int32_t> arg){
+		return arg + state;
+	}
+
+	int state;
+};
+
+void registerFunctionTest(engine::NautilusEngine& engine) {
+
+	SECTION("pureFunction") {
+		auto f = engine.registerFunction(std::function([](val<int32_t> arg) { return arg; }));
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(1) == 1);
+	}
+
+	SECTION("functionWithClosure") {
+		auto closure = 42;
+		auto f = engine.registerFunction(std::function([closure](val<int32_t> arg) { return arg + closure; }));
+		REQUIRE(f(42) == 84);
+		REQUIRE(f(1) == 43);
+	}
+
+	SECTION("functionBindMember") {
+		auto clazz = Clazz();
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::function, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 62);
+		REQUIRE(f(1) == 21);
+	}
+
+	SECTION("functionBindMember2") {
+		auto clazz = Clazz();
+		clazz.state = 100;
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 142);
+		REQUIRE(f(1) == 101);
+	}
+}
+
 void runAllTests(engine::NautilusEngine& engine) {
 
+	SECTION("registerFunctionTest") {
+		registerFunctionTest(engine);
+	}
 	SECTION("expressionTest") {
 		addTest(engine);
 	}
@@ -596,16 +645,6 @@ void runAllTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Engine Interpreter Test") {
-	/*
-	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> ||
-	convertible_to_fundamental<val<int>>)) << std::endl; std::cout << (is_arithmetic_value<val<int>>) << std::endl;
-	std::cout << (is_arithmetic_value<val<Color>>) << std::endl;
-	std::cout << std::is_arithmetic_v<typename std::remove_reference_t<val<Color>>::basic_type> << std::endl;
-	std::cout << "Is int is_value? " << is_val<val<int>> << std::endl;
-	std::cout << "Is int is_value? " << is_val<int> << std::endl;
-	std::cout << "Is int is_value? " << is_val<int*> << std::endl;
-	std::cout << "Is int is_value? " << is_traceable_value<val<int>> << std::endl;
-	*/
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
