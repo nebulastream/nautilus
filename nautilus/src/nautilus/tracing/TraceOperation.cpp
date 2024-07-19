@@ -1,5 +1,5 @@
 #include "nautilus/tracing/TraceOperation.hpp"
-#include <spdlog/spdlog.h>
+//#include <spdlog/spdlog.h>
 
 namespace nautilus::tracing {
 
@@ -44,7 +44,8 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 	os << operation.resultRef.toString() << "\t";
 	for (const InputVariant& opInput : operation.input) {
 		if (auto inputRef = std::get_if<value_ref>(&opInput)) {
-			os << fmt::format("${}\t", inputRef->ref);
+//			os << fmt::format("${}\t", inputRef->ref);
+			os << std::to_string(inputRef->ref) << "\t";
 		} else if (auto blockRef = std::get_if<BlockRef>(&opInput)) {
 			os << *blockRef << "\t";
 		} else if (auto fCall = std::get_if<FunctionCall>(&opInput)) {
@@ -73,7 +74,8 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 			}
 		}
 	}
-	os << fmt::format(":{}\t", toString(operation.resultType));
+//	os << fmt::format(":{}\t", toString(operation.resultType));
+	os << toString(operation.resultType) << "\t";
 	return os;
 };
 } // namespace nautilus::tracing

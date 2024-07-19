@@ -86,7 +86,7 @@ public:
 	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::function<void(val<signed char*>, val<signed char*>, val<signed char*>)> executable)
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
 	    : func(), executable(std::move(executable)) {}
 
 	template <typename... FunctionArgumentsRaw>
@@ -130,7 +130,7 @@ public:
 	NautilusEngine(const Options& options);
 
 	template <is_val R, is_val... FunctionArguments>
-	auto registerFunction(std::function<val<R> (val<FunctionArguments>...)> fnptr) const {
+	auto registerFunction(val<R> (*fnptr)(val<FunctionArguments>...)) const {
 
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
@@ -148,6 +148,20 @@ public:
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
+			auto executable = jit.compile(wrapper);
+			return CallableFunction<void, FunctionArguments...>(executable);
+		}
+#endif
+		std::function<void(FunctionArguments...)> inputWrapper = fnptr;
+		return CallableFunction<void, FunctionArguments...>(inputWrapper);
+	}
+
+
+	template <typename R, typename... FunctionArguments>
+	auto registerFunction(std::function<val<R>(val<FunctionArguments>...)> func) const {
+#ifdef ENABLE_TRACING
+		if (options.getOptionOrDefault("engine.Compilation", true)) {
+			auto wrapper = details::createFunctionWrapper(func);
 			auto executable = jit.compile(wrapper);
 			return CallableFunction<void, FunctionArguments...>(executable);
 		}

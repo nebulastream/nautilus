@@ -82,7 +82,7 @@ bool TraceContext::isFollowing() {
 }
 
 value_ref TraceContext::traceConstValue(Type type, std::any constValue) {
-	log::debug("Trace Constant");
+//	log::debug("Trace Constant");
 	if (isFollowing()) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -110,7 +110,7 @@ Tag* TraceContext::getTag() {
 }
 
 value_ref TraceContext::traceCopy(nautilus::tracing::value_ref ref) {
-	log::debug("Trace Copy");
+//	log::debug("Trace Copy");
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -270,7 +270,7 @@ bool TraceContext::traceCmp(value_ref targetRef) {
 }
 
 std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction) {
-	log::debug("Initialize Tracing");
+//	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 	auto tc = initialize(tr);
@@ -278,8 +278,8 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	while (tc->symbolicExecutionContext->shouldContinue()) {
 		try {
 			traceIteration = traceIteration + 1;
-			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", tc->executionTrace->toString());
+//			log::trace("Trace Iteration {}", traceIteration);
+//			log::trace("{}", tc->executionTrace->toString());
 
 			tc->symbolicExecutionContext->next();
 			tc->executionTrace->resetExecution();
@@ -290,8 +290,8 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	}
 	auto trace = std::move(tc->executionTrace);
 	terminate();
-	log::debug("Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", trace->toString());
+//	log::debug("Tracing Terminated with {} iterations", traceIteration);
+//	log::trace("Final trace: {}", trace->toString());
 	return trace;
 }
 

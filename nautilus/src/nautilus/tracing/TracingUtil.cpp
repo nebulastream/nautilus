@@ -1,7 +1,7 @@
 
 #include "TraceContext.hpp"
 #include "nautilus/common/traceing.hpp"
-#include <spdlog/fmt/fmt.h>
+//#include <spdlog/fmt/fmt.h>
 
 namespace nautilus::tracing {
 

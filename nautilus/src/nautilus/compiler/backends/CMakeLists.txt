@@ -1,6 +1,6 @@
 
 if (ENABLE_TRACING)
-    add_subdirectory(bc)
+#    add_subdirectory(bc)
     add_subdirectory(cpp)
     add_subdirectory(mlir)
 endif ()

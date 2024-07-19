@@ -17,9 +17,9 @@ if (ENABLE_STACKTRACE)
 endif ()
 
 
-if (ENABLE_BC_BACKEND)
-    add_subdirectory(dyncall)
-endif ()
+#if (ENABLE_BC_BACKEND)
+#    add_subdirectory(dyncall)
+#endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
     set(ASMJIT_STATIC ON)
