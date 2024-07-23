@@ -93,6 +93,10 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 				}
 			}
 		}
+
+		if (operation.op == STORE) {
+			processValueRef(block, operation.resultRef, operation.resultType, i);
+		}
 	}
 	processedBlocks.emplace(block.blockId);
 	// Recursively process the predecessors of this block
