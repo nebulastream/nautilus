@@ -618,7 +618,7 @@ auto inline operator&&(LHS left, RHS right) {
 }
 
 template <typename LHS>
-auto inline operator!(LHS left) {
+auto inline operator!(val<LHS> left) {
 	return details::lNot(left);
 }
 

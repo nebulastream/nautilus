@@ -158,15 +158,15 @@ public:
 
 
 	template <typename R, typename... FunctionArguments>
-	auto registerFunction(std::function<val<R>(val<FunctionArguments>...)> func) const {
+	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
 #ifdef ENABLE_TRACING
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
 			auto wrapper = details::createFunctionWrapper(func);
 			auto executable = jit.compile(wrapper);
-			return CallableFunction<val<R>, val<FunctionArguments>...>(executable);
+			return CallableFunction<R, val<FunctionArguments>...>(executable);
 		}
 #endif
-		return CallableFunction<val<R>, val<FunctionArguments>...>(func);
+		return CallableFunction<R, val<FunctionArguments>...>(func);
 	}
 
 

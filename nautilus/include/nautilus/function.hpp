@@ -105,6 +105,7 @@ public:
 			auto ptr = (void*) fnptr;
 			auto functionArgumentReferences = getArgumentReferences("functionName", (void*) fnptr, args...);
 			tracing::traceCall(functionName, ptr, Type::v, functionArgumentReferences);
+            return;
 		}
 #endif
 		fnptr(transform((args))...);

@@ -576,13 +576,13 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
-class Clazz{
+class Clazz {
 public:
-	val<int32_t> function(val<int32_t> arg){
+	val<int32_t> function(val<int32_t> arg) {
 		return arg + 20;
 	}
 
-	val<int32_t> functionWithStateAccess(val<int32_t> arg){
+	val<int32_t> functionWithStateAccess(val<int32_t> arg) {
 		return arg + state;
 	}
 
@@ -595,6 +595,20 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(std::function([](val<int32_t> arg) { return arg; }));
 		REQUIRE(f(42) == 42);
 		REQUIRE(f(1) == 1);
+	}
+
+	SECTION("pureFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> val<int8_t> { return *arg; }));
+		int8_t val = 42;
+		REQUIRE(f(&val) == 42);
+	}
+
+	SECTION("pureVoidFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> void { *arg = 42; }));
+		int8_t val = 1;
+		REQUIRE(val == 1);
+		f(&val);
+		REQUIRE(val == 42);
 	}
 
 	SECTION("functionWithClosure") {
@@ -615,7 +629,8 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 	SECTION("functionBindMember2") {
 		auto clazz = Clazz();
 		clazz.state = 100;
-		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		std::function<val<int32_t>(val<int32_t>)> bound =
+		    std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
 		auto f = engine.registerFunction(bound);
 		REQUIRE(f(42) == 142);
 		REQUIRE(f(1) == 101);
