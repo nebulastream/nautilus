@@ -9,12 +9,14 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
@@ -100,6 +102,8 @@ private:
 		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
 
 		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
 

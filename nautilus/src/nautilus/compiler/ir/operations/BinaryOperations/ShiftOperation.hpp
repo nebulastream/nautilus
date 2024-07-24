@@ -17,6 +17,8 @@ public:
 
 	bool classof(const Operation* Op);
 
+	ShiftType getType() const;
+
 private:
 	ShiftType type;
 };

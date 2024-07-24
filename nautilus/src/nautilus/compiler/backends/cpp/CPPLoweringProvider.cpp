@@ -201,8 +201,7 @@ void CPPLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi,
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
-		                   << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
@@ -263,6 +262,30 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 	}
 	case ir::Operation::OperationType::ModOp: {
 		processBinary<ir::ModOperation>(opt, "%", blockIndex, frame);
+		return;
+	}
+	case ir::Operation::OperationType::ShiftOp: {
+		auto op = static_cast<ir::ShiftOperation*>(opt.get());
+		if (op->getType() == ir::ShiftOperation::LS) {
+			processBinary<ir::ShiftOperation>(opt, "<<", blockIndex, frame);
+		} else {
+			processBinary<ir::ShiftOperation>(opt, ">>", blockIndex, frame);
+		}
+		return;
+	}
+	case ir::Operation::OperationType::BinaryComp: {
+		auto op = static_cast<ir::BinaryCompOperation*>(opt.get());
+		switch (op->getType()) {
+		case ir::BinaryCompOperation::BAND:
+			processBinary<ir::BinaryCompOperation>(opt, "&", blockIndex, frame);
+			break;
+		case ir::BinaryCompOperation::BOR:
+			processBinary<ir::BinaryCompOperation>(opt, "|", blockIndex, frame);
+			break;
+		case ir::BinaryCompOperation::XOR:
+			processBinary<ir::BinaryCompOperation>(opt, "^", blockIndex, frame);
+			break;
+		}
 		return;
 	}
 	case ir::Operation::OperationType::ReturnOp: {
@@ -351,8 +374,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		argTypes << getType(arg->getStamp());
 	}
 	if (!functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto " << opt->getFunctionSymbol() << " = "
-		          << "(" << returnType << "(*)(" << argTypes.str() << "))" << opt->getFunctionPtr() << ";\n";
+		functions << "auto " << opt->getFunctionSymbol() << " = " << "(" << returnType << "(*)(" << argTypes.str()
+		          << "))" << opt->getFunctionPtr() << ";\n";
 		functionNames.emplace(opt->getFunctionSymbol());
 	}
 	if (opt->getStamp() != Type::v) {

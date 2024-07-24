@@ -185,6 +185,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t sco
 	case BAND:
 		processBinaryComp(scope, frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::BAND);
 		return;
+	case BXOR:
+		processBinaryComp(scope, frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::XOR);
+		return;
 	}
 
 	throw NotImplementedException("Type is not implemented.");

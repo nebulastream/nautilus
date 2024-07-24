@@ -230,7 +230,52 @@ enum class ByteCode : short {
 	DYNCALL_call_i64,
 	DYNCALL_call_ptr,
 	DYNCALL_call_f,
-	DYNCALL_call_d
+	DYNCALL_call_d,
+	// band
+	BAND_i8,
+	BAND_i16,
+	BAND_i32,
+	BAND_i64,
+	BAND_ui8,
+	BAND_ui16,
+	BAND_ui32,
+	BAND_ui64,
+	// bor
+	BOR_i8,
+	BOR_i16,
+	BOR_i32,
+	BOR_i64,
+	BOR_ui8,
+	BOR_ui16,
+	BOR_ui32,
+	BOR_ui64,
+	// bxor
+	BXOR_i8,
+	BXOR_i16,
+	BXOR_i32,
+	BXOR_i64,
+	BXOR_ui8,
+	BXOR_ui16,
+	BXOR_ui32,
+	BXOR_ui64,
+	// blsh
+	BLSH_i8,
+	BLSH_i16,
+	BLSH_i32,
+	BLSH_i64,
+	BLSH_ui8,
+	BLSH_ui16,
+	BLSH_ui32,
+	BLSH_ui64,
+	// brsh
+	BRSH_i8,
+	BRSH_i16,
+	BRSH_i32,
+	BRSH_i64,
+	BRSH_ui8,
+	BRSH_ui16,
+	BRSH_ui32,
+	BRSH_ui64,
 };
 
 /**
@@ -497,6 +542,41 @@ void cast(const OpCode& c, RegisterFile& regs) {
 	auto src = readReg<SrcRegisterType>(regs, c.reg1);
 	TargetRegisterType value = src;
 	writeReg<TargetRegisterType>(regs, c.output, value);
+}
+
+template <class RegisterType>
+void bitwiseAnd(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	auto r = readReg<RegisterType>(regs, c.reg2);
+	writeReg(regs, c.output, l & r);
+}
+
+template <class RegisterType>
+void bitwiseOr(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	auto r = readReg<RegisterType>(regs, c.reg2);
+	writeReg(regs, c.output, l | r);
+}
+
+template <class RegisterType>
+void bitwiseXOr(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	auto r = readReg<RegisterType>(regs, c.reg2);
+	writeReg(regs, c.output, l ^ r);
+}
+
+template <class RegisterType>
+void bitwiseLSH(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	auto r = readReg<RegisterType>(regs, c.reg2);
+	writeReg(regs, c.output, l << r);
+}
+
+template <class RegisterType>
+void bitwiseRSH(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	auto r = readReg<RegisterType>(regs, c.reg2);
+	writeReg(regs, c.output, l >> r);
 }
 
 /**

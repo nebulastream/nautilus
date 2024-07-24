@@ -24,6 +24,22 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(Color::GREEN) == 0);
 	}
 
+	SECTION("lAnd") {
+		auto f = engine.registerFunction(lAnd);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(true, false) == false);
+		REQUIRE(f(false, false) == false);
+		REQUIRE(f(false, true) == false);
+	}
+
+	SECTION("lOr") {
+		auto f = engine.registerFunction(lOr);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(true, false) == true);
+		REQUIRE(f(false, false) == false);
+		REQUIRE(f(false, true) == true);
+	}
+
 	SECTION("incrementPost") {
 		auto f = engine.registerFunction(incrementPost);
 		REQUIRE(f(1) == 3);
@@ -69,7 +85,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(7) == 2);
 		REQUIRE(f(5) == 0);
 	}
-	/*
 	SECTION("assignAnd") {
 	    auto f = engine.registerFunction(assignAnd);
 	    REQUIRE(f(7) == 5);
@@ -79,11 +94,13 @@ void addTest(engine::NautilusEngine& engine) {
 	    auto f = engine.registerFunction(assignOr);
 	    REQUIRE(f(7) == 7);
 	    REQUIRE(f(5) == 5);
-	} SECTION("assignXor") {
+	}
+	SECTION("assignXor") {
 	    auto f = engine.registerFunction(assignXor);
 	    REQUIRE(f(7) == 2);
 	    REQUIRE(f(5) == 0);
-	}SECTION("assignShl") {
+	}
+	SECTION("assignShl") {
 	    auto f = engine.registerFunction(assignShl);
 	    REQUIRE(f(7) == 224);
 	    REQUIRE(f(5) == 160);
@@ -91,7 +108,7 @@ void addTest(engine::NautilusEngine& engine) {
 	    auto f = engine.registerFunction(assignShr);
 	    REQUIRE(f(7) == 0);
 	    REQUIRE(f(5) == 0);
-	}*/
+	}
 	SECTION("assignment1") {
 		auto f = engine.registerFunction(assignment1);
 		REQUIRE(f(1) == 1);

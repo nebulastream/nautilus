@@ -111,89 +111,263 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 static Operation* OpTable[] = {
     (Operation*) regMov,
     // add
-    (Operation*) add<int8_t>, (Operation*) add<int16_t>, (Operation*) add<int32_t>, (Operation*) add<int64_t>,
-    (Operation*) add<uint8_t>, (Operation*) add<uint16_t>, (Operation*) add<uint32_t>, (Operation*) add<uint64_t>,
-    (Operation*) add<float>, (Operation*) add<double>,
+    (Operation*) add<int8_t>,
+    (Operation*) add<int16_t>,
+    (Operation*) add<int32_t>,
+    (Operation*) add<int64_t>,
+    (Operation*) add<uint8_t>,
+    (Operation*) add<uint16_t>,
+    (Operation*) add<uint32_t>,
+    (Operation*) add<uint64_t>,
+    (Operation*) add<float>,
+    (Operation*) add<double>,
     // sub
-    (Operation*) sub<int8_t>, (Operation*) sub<int16_t>, (Operation*) sub<int32_t>, (Operation*) sub<int64_t>,
-    (Operation*) sub<uint8_t>, (Operation*) sub<uint16_t>, (Operation*) sub<uint32_t>, (Operation*) sub<uint64_t>,
-    (Operation*) sub<float>, (Operation*) sub<double>,
+    (Operation*) sub<int8_t>,
+    (Operation*) sub<int16_t>,
+    (Operation*) sub<int32_t>,
+    (Operation*) sub<int64_t>,
+    (Operation*) sub<uint8_t>,
+    (Operation*) sub<uint16_t>,
+    (Operation*) sub<uint32_t>,
+    (Operation*) sub<uint64_t>,
+    (Operation*) sub<float>,
+    (Operation*) sub<double>,
     // mul
-    (Operation*) mul<int8_t>, (Operation*) mul<int16_t>, (Operation*) mul<int32_t>, (Operation*) mul<int64_t>,
-    (Operation*) mul<uint8_t>, (Operation*) mul<uint16_t>, (Operation*) mul<uint32_t>, (Operation*) mul<uint64_t>,
-    (Operation*) mul<float>, (Operation*) mul<double>,
+    (Operation*) mul<int8_t>,
+    (Operation*) mul<int16_t>,
+    (Operation*) mul<int32_t>,
+    (Operation*) mul<int64_t>,
+    (Operation*) mul<uint8_t>,
+    (Operation*) mul<uint16_t>,
+    (Operation*) mul<uint32_t>,
+    (Operation*) mul<uint64_t>,
+    (Operation*) mul<float>,
+    (Operation*) mul<double>,
     // div
-    (Operation*) div<int8_t>, (Operation*) div<int16_t>, (Operation*) div<int32_t>, (Operation*) div<int64_t>,
-    (Operation*) div<uint8_t>, (Operation*) div<uint16_t>, (Operation*) div<uint32_t>, (Operation*) div<uint64_t>,
-    (Operation*) div<float>, (Operation*) div<double>,
+    (Operation*) div<int8_t>,
+    (Operation*) div<int16_t>,
+    (Operation*) div<int32_t>,
+    (Operation*) div<int64_t>,
+    (Operation*) div<uint8_t>,
+    (Operation*) div<uint16_t>,
+    (Operation*) div<uint32_t>,
+    (Operation*) div<uint64_t>,
+    (Operation*) div<float>,
+    (Operation*) div<double>,
     // mod
-    (Operation*) mod<int8_t>, (Operation*) mod<int16_t>, (Operation*) mod<int32_t>, (Operation*) mod<int64_t>,
-    (Operation*) mod<uint8_t>, (Operation*) mod<uint16_t>, (Operation*) mod<uint32_t>, (Operation*) mod<uint64_t>,
+    (Operation*) mod<int8_t>,
+    (Operation*) mod<int16_t>,
+    (Operation*) mod<int32_t>,
+    (Operation*) mod<int64_t>,
+    (Operation*) mod<uint8_t>,
+    (Operation*) mod<uint16_t>,
+    (Operation*) mod<uint32_t>,
+    (Operation*) mod<uint64_t>,
     // equals
-    (Operation*) equals<int8_t>, (Operation*) equals<int16_t>, (Operation*) equals<int32_t>,
-    (Operation*) equals<int64_t>, (Operation*) equals<uint8_t>, (Operation*) equals<uint16_t>,
-    (Operation*) equals<uint32_t>, (Operation*) equals<uint64_t>, (Operation*) equals<float>,
-    (Operation*) equals<double>, (Operation*) equals<bool>,
+    (Operation*) equals<int8_t>,
+    (Operation*) equals<int16_t>,
+    (Operation*) equals<int32_t>,
+    (Operation*) equals<int64_t>,
+    (Operation*) equals<uint8_t>,
+    (Operation*) equals<uint16_t>,
+    (Operation*) equals<uint32_t>,
+    (Operation*) equals<uint64_t>,
+    (Operation*) equals<float>,
+    (Operation*) equals<double>,
+    (Operation*) equals<bool>,
     // less than
-    (Operation*) lessThan<int8_t>, (Operation*) lessThan<int16_t>, (Operation*) lessThan<int32_t>,
-    (Operation*) lessThan<int64_t>, (Operation*) lessThan<uint8_t>, (Operation*) lessThan<uint16_t>,
-    (Operation*) lessThan<uint32_t>, (Operation*) lessThan<uint64_t>, (Operation*) lessThan<float>,
+    (Operation*) lessThan<int8_t>,
+    (Operation*) lessThan<int16_t>,
+    (Operation*) lessThan<int32_t>,
+    (Operation*) lessThan<int64_t>,
+    (Operation*) lessThan<uint8_t>,
+    (Operation*) lessThan<uint16_t>,
+    (Operation*) lessThan<uint32_t>,
+    (Operation*) lessThan<uint64_t>,
+    (Operation*) lessThan<float>,
     (Operation*) lessThan<double>,
     // less than equals
-    (Operation*) lessThanEquals<int8_t>, (Operation*) lessThanEquals<int16_t>, (Operation*) lessThanEquals<int32_t>,
-    (Operation*) lessThanEquals<int64_t>, (Operation*) lessThanEquals<uint8_t>, (Operation*) lessThanEquals<uint16_t>,
-    (Operation*) lessThanEquals<uint32_t>, (Operation*) lessThanEquals<uint64_t>, (Operation*) lessThanEquals<float>,
+    (Operation*) lessThanEquals<int8_t>,
+    (Operation*) lessThanEquals<int16_t>,
+    (Operation*) lessThanEquals<int32_t>,
+    (Operation*) lessThanEquals<int64_t>,
+    (Operation*) lessThanEquals<uint8_t>,
+    (Operation*) lessThanEquals<uint16_t>,
+    (Operation*) lessThanEquals<uint32_t>,
+    (Operation*) lessThanEquals<uint64_t>,
+    (Operation*) lessThanEquals<float>,
     (Operation*) lessThanEquals<double>,
     // greater than
-    (Operation*) greaterThan<int8_t>, (Operation*) greaterThan<int16_t>, (Operation*) greaterThan<int32_t>,
-    (Operation*) greaterThan<int64_t>, (Operation*) greaterThan<uint8_t>, (Operation*) greaterThan<uint16_t>,
-    (Operation*) greaterThan<uint32_t>, (Operation*) greaterThan<uint64_t>, (Operation*) greaterThan<float>,
+    (Operation*) greaterThan<int8_t>,
+    (Operation*) greaterThan<int16_t>,
+    (Operation*) greaterThan<int32_t>,
+    (Operation*) greaterThan<int64_t>,
+    (Operation*) greaterThan<uint8_t>,
+    (Operation*) greaterThan<uint16_t>,
+    (Operation*) greaterThan<uint32_t>,
+    (Operation*) greaterThan<uint64_t>,
+    (Operation*) greaterThan<float>,
     (Operation*) greaterThan<double>,
     // greater than equals
-    (Operation*) greaterThanEquals<int8_t>, (Operation*) greaterThanEquals<int16_t>,
-    (Operation*) greaterThanEquals<int32_t>, (Operation*) greaterThanEquals<int64_t>,
-    (Operation*) greaterThanEquals<uint8_t>, (Operation*) greaterThanEquals<uint16_t>,
-    (Operation*) greaterThanEquals<uint32_t>, (Operation*) greaterThanEquals<uint64_t>,
-    (Operation*) greaterThanEquals<float>, (Operation*) greaterThanEquals<double>,
+    (Operation*) greaterThanEquals<int8_t>,
+    (Operation*) greaterThanEquals<int16_t>,
+    (Operation*) greaterThanEquals<int32_t>,
+    (Operation*) greaterThanEquals<int64_t>,
+    (Operation*) greaterThanEquals<uint8_t>,
+    (Operation*) greaterThanEquals<uint16_t>,
+    (Operation*) greaterThanEquals<uint32_t>,
+    (Operation*) greaterThanEquals<uint64_t>,
+    (Operation*) greaterThanEquals<float>,
+    (Operation*) greaterThanEquals<double>,
     // not equals
-    (Operation*) notEquals<bool>, (Operation*) notEquals<int8_t>, (Operation*) notEquals<int16_t>,
-    (Operation*) notEquals<int32_t>, (Operation*) notEquals<int64_t>, (Operation*) notEquals<uint8_t>,
-    (Operation*) notEquals<uint16_t>, (Operation*) notEquals<uint32_t>, (Operation*) notEquals<uint64_t>,
-    (Operation*) notEquals<float>, (Operation*) notEquals<double>,
+    (Operation*) notEquals<bool>,
+    (Operation*) notEquals<int8_t>,
+    (Operation*) notEquals<int16_t>,
+    (Operation*) notEquals<int32_t>,
+    (Operation*) notEquals<int64_t>,
+    (Operation*) notEquals<uint8_t>,
+    (Operation*) notEquals<uint16_t>,
+    (Operation*) notEquals<uint32_t>,
+    (Operation*) notEquals<uint64_t>,
+    (Operation*) notEquals<float>,
+    (Operation*) notEquals<double>,
     // load
-    (Operation*) load<int8_t>, (Operation*) load<int16_t>, (Operation*) load<int32_t>, (Operation*) load<int64_t>,
-    (Operation*) load<uint8_t>, (Operation*) load<uint16_t>, (Operation*) load<uint32_t>, (Operation*) load<uint64_t>,
-    (Operation*) load<float>, (Operation*) load<double>, (Operation*) load<bool>,
+    (Operation*) load<int8_t>,
+    (Operation*) load<int16_t>,
+    (Operation*) load<int32_t>,
+    (Operation*) load<int64_t>,
+    (Operation*) load<uint8_t>,
+    (Operation*) load<uint16_t>,
+    (Operation*) load<uint32_t>,
+    (Operation*) load<uint64_t>,
+    (Operation*) load<float>,
+    (Operation*) load<double>,
+    (Operation*) load<bool>,
     // store
-    (Operation*) store<int8_t>, (Operation*) store<int16_t>, (Operation*) store<int32_t>, (Operation*) store<int64_t>,
-    (Operation*) store<uint8_t>, (Operation*) store<uint16_t>, (Operation*) store<uint32_t>,
-    (Operation*) store<uint64_t>, (Operation*) store<float>, (Operation*) store<double>, (Operation*) store<bool>,
+    (Operation*) store<int8_t>,
+    (Operation*) store<int16_t>,
+    (Operation*) store<int32_t>,
+    (Operation*) store<int64_t>,
+    (Operation*) store<uint8_t>,
+    (Operation*) store<uint16_t>,
+    (Operation*) store<uint32_t>,
+    (Operation*) store<uint64_t>,
+    (Operation*) store<float>,
+    (Operation*) store<double>,
+    (Operation*) store<bool>,
     // and
-    (Operation*) andOp<bool>, (Operation*) orOp<bool>, (Operation*) notOp<bool>,
+    (Operation*) andOp<bool>,
+    (Operation*) orOp<bool>,
+    (Operation*) notOp<bool>,
     // Casts
     // int to int
-    (Operation*) cast<int8_t, int16_t>, (Operation*) cast<int8_t, int32_t>, (Operation*) cast<int8_t, int64_t>,
-    (Operation*) cast<int16_t, int32_t>, (Operation*) cast<int16_t, int64_t>, (Operation*) cast<int32_t, int64_t>,
+    (Operation*) cast<int8_t, int16_t>,
+    (Operation*) cast<int8_t, int32_t>,
+    (Operation*) cast<int8_t, int64_t>,
+    (Operation*) cast<int16_t, int32_t>,
+    (Operation*) cast<int16_t, int64_t>,
+    (Operation*) cast<int32_t, int64_t>,
     // uint to int
-    (Operation*) cast<uint8_t, int16_t>, (Operation*) cast<uint8_t, int32_t>, (Operation*) cast<uint8_t, int64_t>,
-    (Operation*) cast<uint16_t, int32_t>, (Operation*) cast<uint16_t, int64_t>, (Operation*) cast<uint32_t, int64_t>,
+    (Operation*) cast<uint8_t, int16_t>,
+    (Operation*) cast<uint8_t, int32_t>,
+    (Operation*) cast<uint8_t, int64_t>,
+    (Operation*) cast<uint16_t, int32_t>,
+    (Operation*) cast<uint16_t, int64_t>,
+    (Operation*) cast<uint32_t, int64_t>,
     // uint to uint
-    (Operation*) cast<uint8_t, uint16_t>, (Operation*) cast<uint8_t, uint32_t>, (Operation*) cast<uint8_t, uint64_t>,
-    (Operation*) cast<uint16_t, uint32_t>, (Operation*) cast<uint16_t, uint64_t>, (Operation*) cast<uint32_t, uint64_t>,
+    (Operation*) cast<uint8_t, uint16_t>,
+    (Operation*) cast<uint8_t, uint32_t>,
+    (Operation*) cast<uint8_t, uint64_t>,
+    (Operation*) cast<uint16_t, uint32_t>,
+    (Operation*) cast<uint16_t, uint64_t>,
+    (Operation*) cast<uint32_t, uint64_t>,
     // int to uint
-    (Operation*) cast<int8_t, uint8_t>, (Operation*) cast<int8_t, uint16_t>, (Operation*) cast<int8_t, uint32_t>,
-    (Operation*) cast<int8_t, uint64_t>, (Operation*) cast<int16_t, uint16_t>, (Operation*) cast<int16_t, uint32_t>,
-    (Operation*) cast<int16_t, uint64_t>, (Operation*) cast<int32_t, uint32_t>, (Operation*) cast<int32_t, uint64_t>,
-    (Operation*) cast<int64_t, uint64_t>, (Operation*) cast<float, double>, (Operation*) cast<int8_t, float>,
-    (Operation*) cast<int8_t, double>, (Operation*) cast<int16_t, float>, (Operation*) cast<int16_t, double>,
-    (Operation*) cast<int32_t, float>, (Operation*) cast<int32_t, double>, (Operation*) cast<int64_t, float>,
+    (Operation*) cast<int8_t, uint8_t>,
+    (Operation*) cast<int8_t, uint16_t>,
+    (Operation*) cast<int8_t, uint32_t>,
+    (Operation*) cast<int8_t, uint64_t>,
+    (Operation*) cast<int16_t, uint16_t>,
+    (Operation*) cast<int16_t, uint32_t>,
+    (Operation*) cast<int16_t, uint64_t>,
+    (Operation*) cast<int32_t, uint32_t>,
+    (Operation*) cast<int32_t, uint64_t>,
+    (Operation*) cast<int64_t, uint64_t>,
+    (Operation*) cast<float, double>,
+    (Operation*) cast<int8_t, float>,
+    (Operation*) cast<int8_t, double>,
+    (Operation*) cast<int16_t, float>,
+    (Operation*) cast<int16_t, double>,
+    (Operation*) cast<int32_t, float>,
+    (Operation*) cast<int32_t, double>,
+    (Operation*) cast<int64_t, float>,
     (Operation*) cast<int64_t, double>,
     // FUNCTION CALLS
-    (Operation*) dyncallReset, (Operation*) dyncallArgB, (Operation*) dyncallArgI8, (Operation*) dyncallArgI16,
-    (Operation*) dyncallArgI32, (Operation*) dyncallArgI64, (Operation*) dyncallArgF, (Operation*) dyncallArgD,
-    (Operation*) dyncallArgPtr, (Operation*) dyncallCallV, (Operation*) dyncallCallB, (Operation*) dyncallCallI8,
-    (Operation*) dyncallCallI16, (Operation*) dyncallCallI32, (Operation*) dyncallCallI64, (Operation*) dyncallCallPtr,
-    (Operation*) dyncallCallf, (Operation*) dyncallCalld};
+    (Operation*) dyncallReset,
+    (Operation*) dyncallArgB,
+    (Operation*) dyncallArgI8,
+    (Operation*) dyncallArgI16,
+    (Operation*) dyncallArgI32,
+    (Operation*) dyncallArgI64,
+    (Operation*) dyncallArgF,
+    (Operation*) dyncallArgD,
+    (Operation*) dyncallArgPtr,
+    (Operation*) dyncallCallV,
+    (Operation*) dyncallCallB,
+    (Operation*) dyncallCallI8,
+    (Operation*) dyncallCallI16,
+    (Operation*) dyncallCallI32,
+    (Operation*) dyncallCallI64,
+    (Operation*) dyncallCallPtr,
+    (Operation*) dyncallCallf,
+    (Operation*) dyncallCalld,
+    // BITWISE OPS
+    // band
+    (Operation*) bitwiseAnd<int8_t>,
+    (Operation*) bitwiseAnd<int16_t>,
+    (Operation*) bitwiseAnd<int32_t>,
+    (Operation*) bitwiseAnd<int64_t>,
+    (Operation*) bitwiseAnd<uint8_t>,
+    (Operation*) bitwiseAnd<uint16_t>,
+    (Operation*) bitwiseAnd<uint32_t>,
+    (Operation*) bitwiseAnd<uint64_t>,
+    // bor
+    (Operation*) bitwiseOr<int8_t>,
+    (Operation*) bitwiseOr<int16_t>,
+    (Operation*) bitwiseOr<int32_t>,
+    (Operation*) bitwiseOr<int64_t>,
+    (Operation*) bitwiseOr<uint8_t>,
+    (Operation*) bitwiseOr<uint16_t>,
+    (Operation*) bitwiseOr<uint32_t>,
+    (Operation*) bitwiseOr<uint64_t>,
+    // bxor
+    (Operation*) bitwiseXOr<int8_t>,
+    (Operation*) bitwiseXOr<int16_t>,
+    (Operation*) bitwiseXOr<int32_t>,
+    (Operation*) bitwiseXOr<int64_t>,
+    (Operation*) bitwiseXOr<uint8_t>,
+    (Operation*) bitwiseXOr<uint16_t>,
+    (Operation*) bitwiseXOr<uint32_t>,
+    (Operation*) bitwiseXOr<uint64_t>,
+    // blsh
+    (Operation*) bitwiseLSH<int8_t>,
+    (Operation*) bitwiseLSH<int16_t>,
+    (Operation*) bitwiseLSH<int32_t>,
+    (Operation*) bitwiseLSH<int64_t>,
+    (Operation*) bitwiseLSH<uint8_t>,
+    (Operation*) bitwiseLSH<uint16_t>,
+    (Operation*) bitwiseLSH<uint32_t>,
+    (Operation*) bitwiseLSH<uint64_t>,
+    // brsh
+    (Operation*) bitwiseRSH<int8_t>,
+    (Operation*) bitwiseRSH<int16_t>,
+    (Operation*) bitwiseRSH<int32_t>,
+    (Operation*) bitwiseRSH<int64_t>,
+    (Operation*) bitwiseRSH<uint8_t>,
+    (Operation*) bitwiseRSH<uint16_t>,
+    (Operation*) bitwiseRSH<uint32_t>,
+    (Operation*) bitwiseRSH<uint64_t>,
+
+};
 
 FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> arguments, void* functionPtr)
     : arguments(std::move(arguments)), functionPtr(functionPtr) {
@@ -251,6 +425,8 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 		} else if (auto* value = std::any_cast<float>(&args[i])) {
 			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<double>(&args[i])) {
+			writeReg<>(registerFile, code.arguments[i], *value);
+		} else if (auto* value = std::any_cast<bool>(&args[i])) {
 			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<void*>(&args[i])) {
 			auto val = (int64_t) *value;
@@ -338,24 +514,18 @@ std::ostream& operator<<(std::ostream& os, const CodeBlock& block) {
 
 	// handle terminator
 	if (const auto* res = std::get_if<BranchOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "BR " << res->nextBlock << "\n";
+		os << "\t" << "BR " << res->nextBlock << "\n";
 	} else if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "CMP "
-		   << "r" << res->conditionalReg << " " << res->trueBlock << " " << res->falseBlock << "\n";
+		os << "\t" << "CMP " << "r" << res->conditionalReg << " " << res->trueBlock << " " << res->falseBlock << "\n";
 	} else if (const auto* res = std::get_if<ReturnOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "Return "
-		   << "r" << res->resultReg << "\n";
+		os << "\t" << "Return " << "r" << res->resultReg << "\n";
 	}
 	return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const OpCode& code) {
 	// auto str = std::string(code.op);
-	os << "str"
-	   << " r" << code.reg1;
+	os << "str" << " r" << code.reg1;
 	if (code.reg2 != -1) {
 		os << " r" << code.reg2;
 	}

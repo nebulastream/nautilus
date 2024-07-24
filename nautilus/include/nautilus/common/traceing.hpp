@@ -42,6 +42,7 @@ enum Op : uint8_t {
 	LSH,
 	RSH,
 	BOR,
+	BXOR,
 	BAND,
 	NEGATE,
 };

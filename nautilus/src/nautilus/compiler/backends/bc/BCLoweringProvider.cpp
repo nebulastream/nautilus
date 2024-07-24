@@ -720,6 +720,228 @@ void BCLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, s
 	program.blocks[block].code.emplace_back(oc);
 }
 
+void BCLoweringProvider::LoweringContext::process(ir::BinaryCompOperation* binaryCompOperation, short block,
+                                                  RegisterFrame& frame) {
+	auto leftReg = frame.getValue(binaryCompOperation->getLeftInput()->getIdentifier());
+	auto rightReg = frame.getValue(binaryCompOperation->getRightInput()->getIdentifier());
+	auto resultReg = getResultRegister(binaryCompOperation, frame);
+	frame.setValue(binaryCompOperation->getIdentifier(), resultReg);
+	auto type = binaryCompOperation->getStamp();
+	auto opType = binaryCompOperation->getType();
+	ByteCode bc;
+	switch ((type)) {
+	case Type::i8:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_i8;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_i8;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_i8;
+			break;
+		}
+		break;
+	case Type::i16:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_i16;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_i16;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_i16;
+			break;
+		}
+		break;
+	case Type::i32:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_i32;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_i32;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_i32;
+			break;
+		}
+		break;
+	case Type::i64:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_i64;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_i64;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_i64;
+			break;
+		}
+		break;
+	case Type::ui8:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_ui8;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_ui8;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_ui8;
+			break;
+		}
+		break;
+	case Type::ui16:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_ui16;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_ui16;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_ui16;
+			break;
+		}
+		break;
+	case Type::ui32:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_ui32;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_ui32;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_ui32;
+			break;
+		}
+		break;
+	case Type::ui64:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_ui64;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_ui64;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_ui64;
+			break;
+		}
+		break;
+	default: {
+		throw NotImplementedException("This type is not supported.");
+	}
+	}
+
+	OpCode oc = {bc, leftReg, rightReg, resultReg};
+	program.blocks[block].code.emplace_back(oc);
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOperation, short block,
+                                                  RegisterFrame& frame) {
+	auto leftReg = frame.getValue(shiftOperation->getLeftInput()->getIdentifier());
+	auto rightReg = frame.getValue(shiftOperation->getRightInput()->getIdentifier());
+	auto resultReg = getResultRegister(shiftOperation, frame);
+	frame.setValue(shiftOperation->getIdentifier(), resultReg);
+	auto type = shiftOperation->getStamp();
+	auto opType = shiftOperation->getType();
+	ByteCode bc;
+	switch ((type)) {
+	case Type::i8:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_i8;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_i8;
+			break;
+		}
+		break;
+	case Type::i16:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_i16;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_i16;
+			break;
+		}
+		break;
+	case Type::i32:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_i32;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_i32;
+			break;
+		}
+		break;
+	case Type::i64:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_i64;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_i64;
+			break;
+		}
+		break;
+	case Type::ui8:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_ui8;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_ui8;
+			break;
+		}
+		break;
+	case Type::ui16:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_ui16;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_ui16;
+			break;
+		}
+		break;
+	case Type::ui32:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_ui32;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_ui32;
+			break;
+		}
+		break;
+	case Type::ui64:
+		switch (opType) {
+		case ir::ShiftOperation::LS:
+			bc = ByteCode::BLSH_ui64;
+			break;
+		case ir::ShiftOperation::RS:
+			bc = ByteCode::BRSH_ui64;
+			break;
+		}
+		break;
+	default: {
+		throw NotImplementedException("This type is not supported.");
+	}
+	}
+
+	OpCode oc = {bc, leftReg, rightReg, resultReg};
+	program.blocks[block].code.emplace_back(oc);
+}
+
 void BCLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi, short block,
                                                   RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
@@ -773,7 +995,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstPtrOp: {
 		auto constPtr = as<ir::ConstPtrOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
-		defaultRegisterFile[defaultRegister] = (int64_t)constPtr->getValue();
+		defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
 		auto targetRegister = registerProvider.allocRegister();
 		frame.setValue(constPtr->getIdentifier(), targetRegister);
@@ -906,6 +1128,16 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	}
 	case ir::Operation::OperationType::ModOp: {
 		auto cast = as<ir::ModOperation>(opt);
+		process(cast, block, frame);
+		return;
+	}
+	case ir::Operation::OperationType::BinaryComp: {
+		auto cast = as<ir::BinaryCompOperation>(opt);
+		process(cast, block, frame);
+		return;
+	}
+	case ir::Operation::OperationType::ShiftOp: {
+		auto cast = as<ir::ShiftOperation>(opt);
 		process(cast, block, frame);
 		return;
 	}

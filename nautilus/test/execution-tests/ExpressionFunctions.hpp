@@ -78,6 +78,14 @@ val<int64_t> castInt8ToInt64AddExpression2(val<int8_t> x) {
 	return y + x;
 }
 
+val<bool> lAnd(val<bool> a, val<bool> b) {
+	return a && b;
+}
+
+val<bool> lOr(val<bool> a, val<bool> b) {
+	return a || b;
+}
+
 val<int32_t> incrementPost(val<int32_t> x) {
 	auto y = x++;
 	return y + x;

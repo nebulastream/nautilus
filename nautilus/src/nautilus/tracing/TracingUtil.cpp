@@ -347,6 +347,9 @@ std::ostream& operator<<(std::ostream& os, const Op& operation) {
 	case BAND:
 		os << "BAND";
 		break;
+	case BXOR:
+		os << "BXOR";
+		break;
 	case NEGATE:
 		os << "NEGATE";
 		break;

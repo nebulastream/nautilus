@@ -63,6 +63,8 @@ public:
 		ReturnOp,
 		StoreOp,
 		SubOp,
+		BinaryComp,
+		ShiftOp,
 	};
 
 	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,

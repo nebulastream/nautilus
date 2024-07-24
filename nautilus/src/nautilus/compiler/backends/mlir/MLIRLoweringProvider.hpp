@@ -10,6 +10,8 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
@@ -109,36 +111,23 @@ private:
 	void generateMLIR(ir::ConstPtrOperation* constPtrOperation, ValueFrame& frame);
 
 	void generateMLIR(ir::AddOperation* addIntOp, ValueFrame& frame);
-
 	void generateMLIR(ir::SubOperation* subIntOp, ValueFrame& frame);
-
 	void generateMLIR(ir::MulOperation* mulIntOp, ValueFrame& frame);
-
 	void generateMLIR(ir::DivOperation* divFloatOp, ValueFrame& frame);
-
 	void generateMLIR(ir::ModOperation* divFloatOp, ValueFrame& frame);
-
 	void generateMLIR(ir::StoreOperation* storeOp, ValueFrame& frame);
-
 	void generateMLIR(ir::LoadOperation* loadOp, ValueFrame& frame);
-
 	void generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame);
-
 	void generateMLIR(ir::CompareOperation* compareOp, ValueFrame& frame);
-
 	void generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame);
-
 	void generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame);
-
 	void generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame);
-
 	void generateMLIR(ir::OrOperation* yieldOperation, ValueFrame& frame);
-
 	void generateMLIR(ir::AndOperation* yieldOperation, ValueFrame& frame);
-
 	void generateMLIR(ir::NegateOperation* yieldOperation, ValueFrame& frame);
-
 	void generateMLIR(ir::CastOperation* castOperation, ValueFrame& frame);
+	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
+	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
 
 	/**
 	 * @brief Generates a basic block inside of the current MLIR module. Used for control flow (if,loop).
