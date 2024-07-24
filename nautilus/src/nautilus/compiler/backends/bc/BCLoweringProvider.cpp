@@ -728,7 +728,7 @@ void BCLoweringProvider::LoweringContext::process(ir::BinaryCompOperation* binar
 	frame.setValue(binaryCompOperation->getIdentifier(), resultReg);
 	auto type = binaryCompOperation->getStamp();
 	auto opType = binaryCompOperation->getType();
-	ByteCode bc;
+	ByteCode bc = ByteCode::BLSH_i8;
 	switch ((type)) {
 	case Type::i8:
 		switch (opType) {
@@ -851,7 +851,7 @@ void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOpera
 	frame.setValue(shiftOperation->getIdentifier(), resultReg);
 	auto type = shiftOperation->getStamp();
 	auto opType = shiftOperation->getType();
-	ByteCode bc;
+	ByteCode bc = ByteCode::BLSH_i8;
 	switch ((type)) {
 	case Type::i8:
 		switch (opType) {
