@@ -429,10 +429,12 @@ DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 
 template <is_fundamental LHS>
 val<LHS>  neg(val<LHS>& val) {
+#ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = traceUnaryOp<tracing::NEGATE, LHS>(val.state);
 		return tc;
 	}
+#endif
 	return ~getRawValue(val);
 }
 
