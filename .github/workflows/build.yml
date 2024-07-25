@@ -66,6 +66,6 @@ jobs:
       - name: test
         shell: bash
         run: |
-          ctest --test-dir nautilus --output-on-failure -V
+          ctest --test-dir nautilus --output-on-failure
 
 

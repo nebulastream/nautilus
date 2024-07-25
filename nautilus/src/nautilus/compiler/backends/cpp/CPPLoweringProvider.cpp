@@ -345,6 +345,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(call, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::NotOp: {
+		auto call = as<ir::NotOperation>(opt);
+		process(call, blockIndex, frame);
+		return;
+	}
 	case ir::Operation::OperationType::CastOp: {
 		auto cast = as<ir::CastOperation>(opt);
 		process(cast, blockIndex, frame);
@@ -393,6 +398,15 @@ void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOp
 	auto resultVar = getVariable(negateOperation->getIdentifier());
 	blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
 	frame.setValue(negateOperation->getIdentifier(), resultVar);
+	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperation, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
+	auto resultVar = getVariable(notOperation->getIdentifier());
+	blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";
+	frame.setValue(notOperation->getIdentifier(), resultVar);
 	blocks[blockIndex] << resultVar << "= !" << input << ";\n";
 }
 

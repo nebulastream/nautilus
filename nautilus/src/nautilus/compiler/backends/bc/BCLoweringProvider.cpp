@@ -1121,6 +1121,11 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 		process(call, block, frame);
 		return;
 	}
+	case ir::Operation::OperationType::NotOp: {
+		auto call = as<ir::NotOperation>(opt);
+		process(call, block, frame);
+		return;
+	}
 	case ir::Operation::OperationType::CastOp: {
 		auto cast = as<ir::CastOperation>(opt);
 		process(cast, block, frame);
@@ -1272,12 +1277,22 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short block,
+void BCLoweringProvider::LoweringContext::process(ir::NotOperation* negateOperation, short block,
                                                   RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
 	ByteCode bc = ByteCode::NOT_b;
+	OpCode oc = {bc, input, -1, resultReg};
+	program.blocks[block].code.emplace_back(oc);
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short block,
+                                                  RegisterFrame& frame) {
+	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
+	auto resultReg = getResultRegister(negateOperation, frame);
+	frame.setValue(negateOperation->getIdentifier(), resultReg);
+	ByteCode bc = ByteCode::BNEGATE_I64;
 	OpCode oc = {bc, input, -1, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }

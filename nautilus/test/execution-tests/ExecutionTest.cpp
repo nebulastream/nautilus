@@ -12,6 +12,43 @@ namespace nautilus::engine {
 
 void addTest(engine::NautilusEngine& engine) {
 
+	SECTION("staticCast") {
+		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
+		REQUIRE(f((int8_t)34) == 34);
+	}
+
+
+	SECTION("logicalNot") {
+		auto f = engine.registerFunction(logicalNot<bool>);
+		REQUIRE(f(true) == false);
+		REQUIRE(f(false) == true);
+	}
+
+	SECTION("intBitwiseNegate") {
+		auto f = engine.registerFunction(negate<int32_t>);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(1) == -2);
+		REQUIRE(f(INT_MAX) == INT_MIN);
+		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("uintBitwiseNegate") {
+		auto f = engine.registerFunction(negate<uint32_t>);
+		REQUIRE(f((uint32_t)0) == UINT_MAX);
+		REQUIRE(f((uint32_t)1) == UINT_MAX -1);
+		REQUIRE(f((uint32_t)INT_MAX) == (uint32_t)INT_MIN);
+		REQUIRE(f((uint32_t)INT_MIN) == (uint32_t)INT_MAX);
+		REQUIRE(f(UINT_MAX) == 0);
+	}
+
+	SECTION("charBitwiseNegate") {
+		auto f = engine.registerFunction(negate<char>);
+		REQUIRE(f((char)0) == (char)-1);
+		REQUIRE(f((char)1) == (char)-2);
+		REQUIRE(f((char)CHAR_MAX) == (char)CHAR_MIN);
+		REQUIRE(f((char)CHAR_MIN) == (char)CHAR_MAX);
+	}
+
 	SECTION("callEnumFunction") {
 		auto f = engine.registerFunction(callEnumFunction);
 		REQUIRE(f(Color::BLUE) == 42);

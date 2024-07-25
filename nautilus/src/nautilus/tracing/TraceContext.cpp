@@ -206,6 +206,25 @@ void TraceContext::traceReturnOperation(Type type, value_ref ref) {
 	return;
 }
 
+value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType,
+                                            nautilus::tracing::value_ref& inputRef) {
+	if (isFollowing()) {
+		auto currentOperation = executionTrace->getCurrentOperation();
+		executionTrace->nextOperation();
+		assert(currentOperation.op == op);
+		return currentOperation.resultRef;
+	}
+
+	auto tag = recordSnapshot();
+	if (executionTrace->checkTag(tag)) {
+		auto inputVariant = InputVariant(inputRef);
+		auto resultRef =
+		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {inputVariant});
+		return resultRef;
+	}
+	throw TraceTerminationException();
+}
+
 value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, value_ref& leftRef, value_ref& rightRef) {
 	// std::cout <<executionTrace->variableBitset << std::endl;
 	if (isFollowing()) {

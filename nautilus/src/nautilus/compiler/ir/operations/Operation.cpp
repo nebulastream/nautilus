@@ -10,7 +10,7 @@
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"

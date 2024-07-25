@@ -77,6 +77,9 @@ public:
 				if constexpr (!std::is_void_v<R>) {
 					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
 					auto res = genericFunction->invokeGeneric(inputs_);
+					if (std::is_same_v<R, char>) {
+						return std::any_cast<int8_t>(res);
+					}
 					return std::any_cast<R>(res);
 				} else {
 					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};

@@ -5,13 +5,13 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
@@ -118,6 +118,10 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t sco
 		processNegate(scope, frame, currentIrBlock, operation);
 		return;
 	};
+	case Op::NOT: {
+		processNot(scope, frame, currentIrBlock, operation);
+		return;
+	};
 	case Op::AND: {
 		processAnd(scope, frame, currentIrBlock, operation);
 		return;
@@ -167,8 +171,6 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t sco
 		processCall(scope, frame, currentIrBlock, operation);
 		return;
 	case FREE:
-		break;
-	case NOT:
 		break;
 	case MOD:
 		processMod(scope, frame, currentIrBlock, operation);
@@ -336,6 +338,14 @@ void TraceToIRConversionPhase::IRConversionContext::processNegate(int32_t, Value
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto negateOperation = currentBlock->addOperation<NegateOperation>(resultIdentifier, input);
 	frame.setValue(resultIdentifier, negateOperation);
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processNot(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
+                                                                  TraceOperation& operation) {
+	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto notOperation = currentBlock->addOperation<NotOperation>(resultIdentifier, input);
+	frame.setValue(resultIdentifier, notOperation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processLessThan(int32_t, ValueFrame& frame,

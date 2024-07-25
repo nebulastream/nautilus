@@ -276,6 +276,8 @@ enum class ByteCode : short {
 	BRSH_ui16,
 	BRSH_ui32,
 	BRSH_ui64,
+	// negate
+	BNEGATE_I64,
 };
 
 /**
@@ -577,6 +579,12 @@ void bitwiseRSH(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	auto r = readReg<RegisterType>(regs, c.reg2);
 	writeReg(regs, c.output, l >> r);
+}
+
+template <class RegisterType>
+void bitwiseNot(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	writeReg(regs, c.output, ~l);
 }
 
 /**

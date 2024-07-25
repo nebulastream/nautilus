@@ -366,6 +366,8 @@ static Operation* OpTable[] = {
     (Operation*) bitwiseRSH<uint16_t>,
     (Operation*) bitwiseRSH<uint32_t>,
     (Operation*) bitwiseRSH<uint64_t>,
+    // bnot
+    (Operation*) bitwiseNot<int64_t>,
 
 };
 
@@ -427,6 +429,8 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 		} else if (auto* value = std::any_cast<double>(&args[i])) {
 			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<bool>(&args[i])) {
+			writeReg<>(registerFile, code.arguments[i], *value);
+		} else if (auto* value = std::any_cast<char>(&args[i])) {
 			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<void*>(&args[i])) {
 			auto val = (int64_t) *value;

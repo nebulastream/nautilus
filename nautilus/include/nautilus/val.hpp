@@ -77,7 +77,7 @@ template <is_integral LHS, is_integral RHS>
 auto shr(val<LHS>& left, val<RHS>& right);
 
 template <is_fundamental LHS>
-auto neg(val<LHS>& val);
+val<LHS> neg(val<LHS>& val);
 
 template <typename T>
 tracing::value_ref getState(T&& value) {
@@ -428,12 +428,12 @@ DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 
 template <is_fundamental LHS>
-val<LHS> inline neg(val<LHS>& val) {
+val<LHS>  neg(val<LHS>& val) {
 	if (tracing::inTracer()) {
 		auto tc = traceUnaryOp<tracing::NEGATE, LHS>(val.state);
 		return tc;
 	}
-	return ~val.value;
+	return ~getRawValue(val);
 }
 
 template <typename LHS>

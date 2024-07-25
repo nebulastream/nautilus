@@ -67,7 +67,8 @@ value_ref traceCall(const std::string& functionName, void* fptn, Type resultType
 
 template <Op op, typename T>
 [[maybe_unused]] value_ref traceUnaryOp(value_ref leftState) {
-	return TraceContext::get()->traceUnaryOperation(op, leftState);
+	auto type = to_type<T>();
+	return TraceContext::get()->traceUnaryOperation(op, type, leftState);
 }
 
 #if __APPLE__
@@ -254,6 +255,16 @@ template value_ref traceConstant<uint16_t*>(uint16_t* value);
 template value_ref traceConstant<uint32_t*>(uint32_t* value);
 
 template value_ref traceConstant<uint64_t*>(uint64_t* value);
+
+template value_ref traceUnaryOp<NEGATE, int8_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, int16_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, int32_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, int64_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, uint8_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, uint16_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, uint32_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, uint64_t>(value_ref leftState);
+template value_ref traceUnaryOp<NEGATE, char>(value_ref leftState);
 
 #if __APPLE__
 

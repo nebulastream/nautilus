@@ -275,6 +275,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 	case ir::Operation::OperationType::NegateOp:
 		generateMLIR(as<ir::NegateOperation>(operation), frame);
 		break;
+	case ir::Operation::OperationType::NotOp:
+		generateMLIR(as<ir::NotOperation>(operation), frame);
+		break;
 	case ir::Operation::OperationType::CastOp:
 		generateMLIR(as<ir::CastOperation>(operation), frame);
 		break;
@@ -295,14 +298,17 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 
 void MLIRLoweringProvider::generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
-	auto negate = builder->create<mlir::arith::CmpIOp>(getNameLoc("comparison"), mlir::arith::CmpIPredicate::eq, input,
-	                                                   getConstBool("bool", false));
-	frame.setValue(negateOperation->
+	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
+	                                                         builder->getIntegerAttr(input.getType(), ~0));
+	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
+	frame.setValue(negateOperation->getIdentifier(), negate);
+}
 
-	               getIdentifier(),
-	               negate
-
-	);
+void MLIRLoweringProvider::generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame) {
+	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
+	auto constInt = getConstBool("loc", true);
+	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
+	frame.setValue(notOperation->getIdentifier(), negate);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame) {

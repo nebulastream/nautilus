@@ -40,6 +40,7 @@ public:
 	enum class OperationType : uint8_t {
 		AddOp,
 		AndOp,
+		NotOp,
 		BasicBlockArgument,
 		BlockInvocation,
 		BranchOp,
