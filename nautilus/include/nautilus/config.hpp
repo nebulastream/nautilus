@@ -1,0 +1,11 @@
+
+#define ENABLE_TRACING
+/* #undef ENABLE_LOGGING */
+#define ENABLE_C_BACKEND
+#define ENABLE_MLIR_BACKEND
+/* #undef ENABLE_ASMJIT_BACKEND */
+#define ENABLE_COMPILER
+/* #undef TEST_DATA_FOLDER */
+
+// Backends
+/* #undef NAUTILUS_ACTIVATE_MLIR_BACKEND */

@@ -168,6 +168,18 @@ public:
 		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
 
+	template <typename R, typename... FunctionArguments>
+	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
+#ifdef ENABLE_TRACING
+		if (options.getOptionOrDefault("engine.Compilation", true)) {
+			auto wrapper = details::createFunctionWrapper(func);
+			auto executable = jit.compile(wrapper);
+			return CallableFunction<R, val<FunctionArguments>...>(executable);
+		}
+#endif
+		return CallableFunction<R, val<FunctionArguments>...>(func);
+	}
+
 
 	template <typename R, typename... FunctionArguments>
 	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
