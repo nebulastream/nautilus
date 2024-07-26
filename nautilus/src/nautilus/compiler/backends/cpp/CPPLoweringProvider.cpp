@@ -201,8 +201,7 @@ void CPPLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi,
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
-		                   << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
@@ -265,6 +264,30 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		processBinary<ir::ModOperation>(opt, "%", blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::ShiftOp: {
+		auto op = static_cast<ir::ShiftOperation*>(opt.get());
+		if (op->getType() == ir::ShiftOperation::LS) {
+			processBinary<ir::ShiftOperation>(opt, "<<", blockIndex, frame);
+		} else {
+			processBinary<ir::ShiftOperation>(opt, ">>", blockIndex, frame);
+		}
+		return;
+	}
+	case ir::Operation::OperationType::BinaryComp: {
+		auto op = static_cast<ir::BinaryCompOperation*>(opt.get());
+		switch (op->getType()) {
+		case ir::BinaryCompOperation::BAND:
+			processBinary<ir::BinaryCompOperation>(opt, "&", blockIndex, frame);
+			break;
+		case ir::BinaryCompOperation::BOR:
+			processBinary<ir::BinaryCompOperation>(opt, "|", blockIndex, frame);
+			break;
+		case ir::BinaryCompOperation::XOR:
+			processBinary<ir::BinaryCompOperation>(opt, "^", blockIndex, frame);
+			break;
+		}
+		return;
+	}
 	case ir::Operation::OperationType::ReturnOp: {
 		auto returnOpt = static_cast<ir::ReturnOperation*>(opt.get());
 		if (returnOpt->hasReturnValue()) {
@@ -322,6 +345,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(call, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::NotOp: {
+		auto call = as<ir::NotOperation>(opt);
+		process(call, blockIndex, frame);
+		return;
+	}
 	case ir::Operation::OperationType::CastOp: {
 		auto cast = as<ir::CastOperation>(opt);
 		process(cast, blockIndex, frame);
@@ -351,8 +379,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		argTypes << getType(arg->getStamp());
 	}
 	if (!functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto " << opt->getFunctionSymbol() << " = "
-		          << "(" << returnType << "(*)(" << argTypes.str() << "))" << opt->getFunctionPtr() << ";\n";
+		functions << "auto " << opt->getFunctionSymbol() << " = " << "(" << returnType << "(*)(" << argTypes.str()
+		          << "))" << opt->getFunctionPtr() << ";\n";
 		functionNames.emplace(opt->getFunctionSymbol());
 	}
 	if (opt->getStamp() != Type::v) {
@@ -370,6 +398,15 @@ void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOp
 	auto resultVar = getVariable(negateOperation->getIdentifier());
 	blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
 	frame.setValue(negateOperation->getIdentifier(), resultVar);
+	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperation, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
+	auto resultVar = getVariable(notOperation->getIdentifier());
+	blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";
+	frame.setValue(notOperation->getIdentifier(), resultVar);
 	blocks[blockIndex] << resultVar << "= !" << input << ";\n";
 }
 

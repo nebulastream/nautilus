@@ -275,11 +275,20 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 	case ir::Operation::OperationType::NegateOp:
 		generateMLIR(as<ir::NegateOperation>(operation), frame);
 		break;
+	case ir::Operation::OperationType::NotOp:
+		generateMLIR(as<ir::NotOperation>(operation), frame);
+		break;
 	case ir::Operation::OperationType::CastOp:
 		generateMLIR(as<ir::CastOperation>(operation), frame);
 		break;
 	case ir::Operation::OperationType::ConstBooleanOp:
 		generateMLIR(as<ir::ConstBooleanOperation>(operation), frame);
+		break;
+	case ir::Operation::OperationType::BinaryComp:
+		generateMLIR(as<ir::BinaryCompOperation>(operation), frame);
+		break;
+	case ir::Operation::OperationType::ShiftOp:
+		generateMLIR(as<ir::ShiftOperation>(operation), frame);
 		break;
 	default: {
 		throw NotImplementedException("");
@@ -289,14 +298,17 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 
 void MLIRLoweringProvider::generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
-	auto negate = builder->create<mlir::arith::CmpIOp>(getNameLoc("comparison"), mlir::arith::CmpIPredicate::eq, input,
-	                                                   getConstBool("bool", false));
-	frame.setValue(negateOperation->
+	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
+	                                                         builder->getIntegerAttr(input.getType(), ~0));
+	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
+	frame.setValue(negateOperation->getIdentifier(), negate);
+}
 
-	               getIdentifier(),
-	               negate
-
-	);
+void MLIRLoweringProvider::generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame) {
+	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
+	auto constInt = getConstBool("loc", true);
+	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
+	frame.setValue(notOperation->getIdentifier(), negate);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame) {
@@ -354,21 +366,8 @@ void MLIRLoweringProvider::generateMLIR(ir::FunctionOperation* functionOp, Value
 
 	// Store references to function args in the valueMap map.
 	auto valueMapIterator = mlirFunction.args_begin();
-	for (int i = 0;
-
-	     i < (int)
-
-	             functionOp->getFunctionBasicBlock()
-	                 ->getArguments()
-	                 .
-
-	         size();
-
-	     ++i) {
-		frame.setValue(functionOp->getFunctionBasicBlock()->getArguments().at(i)->
-
-		               getIdentifier(),
-		               valueMapIterator[i]
+	for (int i = 0; i < (int) functionOp->getFunctionBasicBlock()->getArguments().size(); ++i) {
+		frame.setValue(functionOp->getFunctionBasicBlock()->getArguments().at(i)->getIdentifier(), valueMapIterator[i]
 
 		);
 	}
@@ -725,6 +724,43 @@ void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLo
 	} else {
 		throw NotImplementedException("Cast is not supported.");
 	}
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::BinaryCompOperation* binaryCompOperation,
+                                        nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
+	auto leftInput = frame.getValue(binaryCompOperation->getLeftInput()->getIdentifier());
+	auto rightInput = frame.getValue(binaryCompOperation->getRightInput()->getIdentifier());
+
+	mlir::Value op;
+	switch (binaryCompOperation->getType()) {
+	case ir::BinaryCompOperation::BAND:
+		op = builder->create<mlir::arith::AndIOp>(getNameLoc("location"), leftInput, rightInput);
+		break;
+	case ir::BinaryCompOperation::BOR:
+		op = builder->create<mlir::arith::OrIOp>(getNameLoc("location"), leftInput, rightInput);
+		break;
+	case ir::BinaryCompOperation::XOR:
+		op = builder->create<mlir::arith::XOrIOp>(getNameLoc("location"), leftInput, rightInput);
+		break;
+	}
+	frame.setValue(binaryCompOperation->getIdentifier(), op);
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::ShiftOperation* shiftOperation,
+                                        nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
+	auto leftInput = frame.getValue(shiftOperation->getLeftInput()->getIdentifier());
+	auto rightInput = frame.getValue(shiftOperation->getRightInput()->getIdentifier());
+
+	mlir::Value op;
+	switch (shiftOperation->getType()) {
+	case ir::ShiftOperation::LS:
+		op = builder->create<mlir::arith::ShLIOp>(getNameLoc("location"), leftInput, rightInput);
+		break;
+	case ir::ShiftOperation::RS:
+		op = builder->create<mlir::arith::ShRSIOp>(getNameLoc("location"), leftInput, rightInput);
+		break;
+	}
+	frame.setValue(shiftOperation->getIdentifier(), op);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstBooleanOperation* constBooleanOp,

@@ -8,6 +8,9 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
@@ -18,7 +21,7 @@
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
@@ -77,8 +80,11 @@ private:
 		void process(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::NotOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
 
 		static std::string getVariable(const ir::OperationIdentifier& id);
 

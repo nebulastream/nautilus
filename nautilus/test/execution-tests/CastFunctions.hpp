@@ -4,24 +4,6 @@
 
 namespace nautilus::engine {
 
-template<typename In, typename Out>
-val<Out> implicitCastExpression(val<In> x) {
-	val<Out> y = x;
-	return y;
-}
-
-template<typename In, typename Out>
-val<Out> staticCastExpression(val<In> x) {
-	val<Out> y = static_cast<val<Out>>(x);
-	return y;
-}
-
-template<typename In, typename Out>
-val<Out> dynamicCastExpression(val<In> x) {
-	val<Out> y = dynamic_cast<Out>(x);
-	return y;
-}
-
 val<int32_t> assignment1(val<int32_t> x) {
 	auto y = x;
 	return y;
@@ -80,8 +62,6 @@ val<double> doubleAddExpression(val<double> x) {
 	val<double> y = 7.0;
 	return x + y;
 }
-
-
 
 val<double> castFloatToDoubleAddExpression(val<float> x) {
 	val<double> y = 7.0;

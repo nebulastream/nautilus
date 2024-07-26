@@ -14,6 +14,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/tracing/Block.hpp"
@@ -85,6 +86,8 @@ private:
 
 		void processNegate(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
 		                   TraceOperation& operation);
+		void processNot(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
+		                TraceOperation& operation);
 
 		void processAnd(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
 		                TraceOperation& operation);

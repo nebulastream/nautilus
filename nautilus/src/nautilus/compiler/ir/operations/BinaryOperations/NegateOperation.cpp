@@ -1,18 +1,18 @@
 
-#include "nautilus/compiler/ir/operations/LogicalOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 
 namespace nautilus::compiler::ir {
 
 NegateOperation::NegateOperation(OperationIdentifier identifier, Operation* input)
-    : Operation(OperationType::NegateOp, identifier, Type::b, {input}) {
+    : Operation(OperationType::NegateOp, identifier, input->getStamp(), {input}) {
 }
 
 std::string NegateOperation::toString() {
-	return identifier.toString() + "= not " + getInput()->getIdentifier().toString();
+	return identifier.toString() + "= ~" + getInput()->getIdentifier().toString();
 }
 
 bool NegateOperation::classof(const Operation* Op) {
-	return Op->getOperationType() == OperationType::AddOp;
+	return Op->getOperationType() == OperationType::NegateOp;
 }
 
 Operation* NegateOperation::getInput() {
