@@ -443,6 +443,11 @@ LHS inline getRawValue(val<LHS>& val) {
 	return val.value;
 }
 
+template <typename LHS>
+LHS inline getRawValue(const val<LHS>& val) {
+	return val.value;
+}
+
 } // namespace details
 
 #define DEFINE_BINARY_OPERATOR(OP, FUNC)                                                                               \
@@ -466,11 +471,11 @@ LHS inline getRawValue(val<LHS>& val) {
 
 DEFINE_ARITHMETICAL_BINARY_OPERATOR(+, add)
 
-DEFINE_BINARY_OPERATOR(-, sub)
+DEFINE_ARITHMETICAL_BINARY_OPERATOR(-, sub)
 
-DEFINE_BINARY_OPERATOR(*, mul)
+DEFINE_ARITHMETICAL_BINARY_OPERATOR(*, mul)
 
-DEFINE_BINARY_OPERATOR(/, div)
+DEFINE_ARITHMETICAL_BINARY_OPERATOR(/, div)
 
 DEFINE_BINARY_OPERATOR(%, mod)
 

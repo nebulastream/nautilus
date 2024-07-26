@@ -5,8 +5,8 @@
 namespace nautilus {
 
 RuntimeException::RuntimeException(std::string msg) : errorMessage(std::move(msg)) {
-	auto stackStrace = printAndCollectCurrentStacktrace();
-	errorMessage.append(stackStrace);
+//	auto stackStrace = printAndCollectCurrentStacktrace();
+//	errorMessage.append(stackStrace);
 }
 
 RuntimeException::~RuntimeException() noexcept = default;

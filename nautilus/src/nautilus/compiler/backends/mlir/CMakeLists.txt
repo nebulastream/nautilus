@@ -1,6 +1,6 @@
 
 if (ENABLE_MLIR_BACKEND)
-
+    message("Enabling MLIR backend")
     include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/AddMLIR.cmake)
 
     add_source_files(nautilus

@@ -83,8 +83,7 @@ std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...
 template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
-	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
-	}
+	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {	}
 
 	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
 	    : func(), executable(std::move(executable)) {}
@@ -156,7 +155,6 @@ public:
 		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
 
-
 	template <typename R, typename... FunctionArguments>
 	auto registerFunction(std::function<val<R>(val<FunctionArguments>...)> func) const {
 #ifdef ENABLE_TRACING
@@ -182,6 +180,9 @@ public:
 #endif
 		return CallableFunction<R, val<FunctionArguments>...>(func);
 	}
+
+
+
 
 
 

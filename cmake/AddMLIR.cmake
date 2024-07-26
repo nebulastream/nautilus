@@ -1,7 +1,7 @@
 find_package(MLIR REQUIRED CONFIG)
 if (MLIR_FOUND)
     message(STATUS MLIR_INCLUDE_DIRS=${MLIR_INCLUDE_DIRS})
-    target_include_directories(nautilus SYSTEM PRIVATE
+    target_include_directories(nautilus PUBLIC
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>
             $<INSTALL_INTERFACE:include/nebulastream/>)
     add_compile_definitions(MLIR_COMPILER)
@@ -15,7 +15,7 @@ if (MLIR_FOUND)
     message(STATUS "conversion_libs: ${conversion_libs}")
     message(STATUS "extension_libs: ${extension_libs}")
     target_link_libraries(nautilus
-            PRIVATE
+            PUBLIC
             ${dialect_libs}
             ${extension_libs}
             MLIRAnalysis
