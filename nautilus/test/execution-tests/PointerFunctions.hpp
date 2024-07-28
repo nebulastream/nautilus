@@ -21,6 +21,46 @@ val<int32_t> castVoidPtr(val<void*> array) {
 	return intPtr[0];
 }
 
+template <typename T>
+val<bool> isNullptr(val<T*> ptr) {
+	return ptr == nullptr;
+}
+
+template <typename T>
+val<bool> isNotNullptr(val<T*> ptr) {
+	return ptr != nullptr;
+}
+
+template <typename T>
+val<bool> ptrEquals(val<T*> left, val<T*> right) {
+	return left == right;
+}
+
+template <typename T>
+val<bool> ptrNotEquals(val<T*> left, val<T*> right) {
+	return left != right;
+}
+
+template <typename T>
+val<bool> ptrLessThan(val<T*> left, val<T*> right) {
+	return left < right;
+}
+
+template <typename T>
+val<bool> ptrLessThanEquals(val<T*> left, val<T*> right) {
+	return left <= right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThan(val<T*> left, val<T*> right) {
+	return left > right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThanEquals(val<T*> left, val<T*> right) {
+	return left >= right;
+}
+
 template <typename A, typename B>
 val<B> castPtrAndGetValue(val<A*> array) {
 	auto intPtr = static_cast<val<B*>>(array);

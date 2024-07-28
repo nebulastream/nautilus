@@ -140,6 +140,26 @@ mlir::arith::CmpFPredicate convertToFloatMLIRComparison(ir::CompareOperation::Co
 	}
 }
 
+mlir::LLVM::ICmpPredicate convertToLLVMComparison(ir::CompareOperation::Comparator comparisonType) {
+	switch (comparisonType) {
+	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons are always signed.
+	case (ir::CompareOperation::Comparator::LT):
+		return  mlir::LLVM::ICmpPredicate::ult;
+	case (ir::CompareOperation::Comparator::LE):
+		return mlir::LLVM::ICmpPredicate::ule;
+	case (ir::CompareOperation::Comparator::EQ):
+		return mlir::LLVM::ICmpPredicate::eq;
+	case (ir::CompareOperation::Comparator::GT):
+		return mlir::LLVM::ICmpPredicate::ugt;
+	case (ir::CompareOperation::Comparator::GE):
+		return mlir::LLVM::ICmpPredicate::uge;
+	case (ir::CompareOperation::Comparator::NE):
+		return mlir::LLVM::ICmpPredicate::ne;
+	default:
+		assert(false);
+	}
+}
+
 mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::Comparator comparisonType) {
 	switch (comparisonType) {
 	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons are always signed.
@@ -601,6 +621,12 @@ void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFr
 		                                                  convertToBooleanMLIRComparison(compareOp->getComparator()),
 		                                                  frame.getValue(compareOp->getLeftInput()->getIdentifier()),
 		                                                  frame.getValue(compareOp->getRightInput()->getIdentifier()));
+		frame.setValue(compareOp->getIdentifier(), cmpOp);
+	} else if (leftStamp == Type::ptr && rightStamp == Type::ptr) {
+		// handle float comparison
+		auto cmpOp = builder->create<mlir::LLVM::ICmpOp>(getNameLoc("comparison"), convertToLLVMComparison(compareOp->getComparator()),
+		                                                 frame.getValue(compareOp->getLeftInput()->getIdentifier()),
+		                                                 frame.getValue(compareOp->getRightInput()->getIdentifier()));
 		frame.setValue(compareOp->getIdentifier(), cmpOp);
 	} else {
 		throw NotImplementedException("Unknown type to compare");
