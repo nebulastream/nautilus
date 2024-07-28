@@ -662,8 +662,8 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrLessThan<int8_t>);
 			int8_t x = 42;
 			int8_t x2 = 42;
-			REQUIRE(f(&x, &x2) == &x < &x2);
-			REQUIRE(f(&x2, &x) == &x2 < &x);
+			REQUIRE(f(&x, &x2) == (&x < &x2));
+			REQUIRE(f(&x2, &x) == (&x2 < &x));
 		}
 	}
 
@@ -672,9 +672,9 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrLessThanEquals<int8_t>);
 			int8_t x = 42;
 			int8_t x2 = 42;
-			REQUIRE(f(&x, &x2) == &x <= &x2);
-			REQUIRE(f(&x, &x) == &x <= &x);
-			REQUIRE(f(&x2, &x) == &x2 <= &x);
+			REQUIRE(f(&x, &x2) == (&x <= &x2));
+			REQUIRE(f(&x, &x) == (&x <= &x));
+			REQUIRE(f(&x2, &x) == (&x2 <= &x));
 		}
 	}
 	SECTION("ptrGreaterThan") {
@@ -682,9 +682,9 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrGreaterThan<int8_t>);
 			int8_t x = 42;
 			int8_t x2 = 42;
-			REQUIRE(f(&x, &x2) == &x > &x2);
-			REQUIRE(f(&x, &x) == &x > &x);
-			REQUIRE(f(&x2, &x) == &x2 > &x);
+			REQUIRE(f(&x, &x2) == (&x > &x2));
+			REQUIRE(f(&x, &x) == (&x > &x));
+			REQUIRE(f(&x2, &x) == (&x2 > &x));
 		}
 	}
 
@@ -693,9 +693,9 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrGreaterThanEquals<int8_t>);
 			int8_t x = 42;
 			int8_t x2 = 42;
-			REQUIRE(f(&x, &x2) == &x >= &x2);
-			REQUIRE(f(&x, &x) == &x >= &x);
-			REQUIRE(f(&x2, &x) == &x2 >= &x);
+			REQUIRE(f(&x, &x2) == (&x >= &x2));
+			REQUIRE(f(&x, &x) == (&x >= &x));
+			REQUIRE(f(&x2, &x) == (&x2 >= &x));
 		}
 	}
 	// int* ptr = &values;

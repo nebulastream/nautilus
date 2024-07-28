@@ -324,6 +324,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, s
 		auto type = cmpOp->getLeftInput()->getStamp();
 		ByteCode bc;
 		switch ((type)) {
+		case Type::b:
+			bc = ByteCode::EQ_b;
+			break;
 		case Type::i8:
 			bc = ByteCode::EQ_i8;
 			break;
