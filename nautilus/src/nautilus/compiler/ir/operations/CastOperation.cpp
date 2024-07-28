@@ -3,8 +3,7 @@
 
 namespace nautilus::compiler::ir {
 
-CastOperation::CastOperation(OperationIdentifier identifier, Operation* input, Type targetStamp)
-    : Operation(OperationType::CastOp, identifier, targetStamp, {input}) {
+CastOperation::CastOperation(OperationIdentifier identifier, Operation* input, Type targetStamp) : Operation(OperationType::CastOp, identifier, targetStamp, {input}) {
 }
 
 Operation* CastOperation::getInput() {
@@ -16,8 +15,7 @@ void CastOperation::setInput(Operation* newInput) {
 }
 
 std::string CastOperation::toString() {
-	return identifier.toString() + " = " + getInput()->getIdentifier().toString() + " cast_to " +
-	       nautilus::toString(getStamp());
+	return identifier.toString() + " = " + getInput()->getIdentifier().toString() + " cast_to " + nautilus::toString(getStamp());
 }
 
 } // namespace nautilus::compiler::ir

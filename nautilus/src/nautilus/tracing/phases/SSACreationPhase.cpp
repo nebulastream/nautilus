@@ -11,8 +11,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	return phaseContext.process();
 };
 
-SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace)
-    : trace(std::move(trace)) {
+SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace) : trace(std::move(trace)) {
 }
 
 Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
@@ -32,8 +31,7 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
 		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
 		auto snap = Snapshot();
-		returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(
-		    snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
+		returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
@@ -60,8 +58,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, value_ref& ref, Type,
-                                                                uint32_t operationIndex) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, value_ref& ref, Type, uint32_t operationIndex) {
 	// A value ref is defined in the local scope, if it is the result of an operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
 		auto& resOperation = block.operations[i];
@@ -110,8 +107,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, value_ref& ref, Type ref_type,
-                                                                uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, value_ref& ref, Type ref_type, uint32_t operationIndex) {
 	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in the current block
 	} else {
@@ -144,8 +140,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, va
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef,
-                                                                uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex) {
 	// a block ref has a set of arguments, which are handled the same as all other value references.
 	for (auto& input : blockRef.arguments) {
 		processValueRef(block, input, input.type, operationIndex);

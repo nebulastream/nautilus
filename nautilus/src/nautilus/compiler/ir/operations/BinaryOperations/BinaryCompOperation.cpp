@@ -4,8 +4,7 @@
 
 namespace nautilus::compiler::ir {
 
-BinaryCompOperation::BinaryCompOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
-                                         Type type)
+BinaryCompOperation::BinaryCompOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput, Type type)
     : BinaryOperation(OperationType::BinaryComp, identifier, leftInput->getStamp(), leftInput, rightInput), type(type) {
 }
 
@@ -24,8 +23,7 @@ std::string BinaryCompOperation::toString() {
 		break;
 	}
 
-	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + opSymbol +
-	       getRightInput()->getIdentifier().toString();
+	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + opSymbol + getRightInput()->getIdentifier().toString();
 }
 
 BinaryCompOperation::Type BinaryCompOperation::getType() const {

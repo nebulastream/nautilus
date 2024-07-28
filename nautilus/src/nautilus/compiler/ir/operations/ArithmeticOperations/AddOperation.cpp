@@ -3,13 +3,11 @@
 
 namespace nautilus::compiler::ir {
 
-AddOperation::AddOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
-    : BinaryOperation(OperationType::AddOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
+AddOperation::AddOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::AddOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
 }
 
 std::string AddOperation::toString() {
-	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " + " +
-	       getRightInput()->getIdentifier().toString();
+	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " + " + getRightInput()->getIdentifier().toString();
 }
 
 bool AddOperation::classof(const Operation* Op) {

@@ -24,13 +24,9 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
 
 		// Add target-specific attributes to the 'execute' function.
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features",
-		                             targetMachinePtr->getTargetFeatureString()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features", targetMachinePtr->getTargetFeatureString()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
 		llvm::SMDiagnostic Err;
 
 		// Load LLVM IR module from proxy inlining input path (We assert that it exists in CompilationOptions).

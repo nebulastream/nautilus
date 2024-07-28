@@ -34,10 +34,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 
 	// trace->getBlock(trace->getReturn().front().blockIndex).operations.back();
 	auto returnStamp = returnType;
-	auto functionOperation =
-	    std::make_unique<FunctionOperation>("execute", currentBasicBlocks,
-	                                        /*argumentTypes*/ std::vector<Type> {},
-	                                        /*arguments*/ std::vector<std::string> {}, returnStamp);
+	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks,
+	                                                             /*argumentTypes*/ std::vector<Type> {},
+	                                                             /*arguments*/ std::vector<std::string> {}, returnStamp);
 
 	ir->addRootOperation(std::move(functionOperation));
 	return ir;
@@ -69,9 +68,7 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(int32_t 
 	return irBasicBlockPtr;
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t scope, ValueFrame& frame,
-                                                                     Block& currentBlock, BasicBlock*& currentIrBlock,
-                                                                     TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t scope, ValueFrame& frame, Block& currentBlock, BasicBlock*& currentIrBlock, TraceOperation& operation) {
 
 	switch (operation.op) {
 	case Op::ADD: {
@@ -195,8 +192,7 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(int32_t sco
 	throw NotImplementedException("Type is not implemented.");
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processJMP(int32_t scope, ValueFrame& frame, BasicBlock* block,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processJMP(int32_t scope, ValueFrame& frame, BasicBlock* block, TraceOperation& operation) {
 	// NES_DEBUG("current block " << block->getIdentifier() << " " << operation);
 	auto blockRef = get<BlockRef>(operation.input[0]);
 	BasicBlockInvocation blockInvocation;
@@ -213,8 +209,7 @@ void TraceToIRConversionPhase::IRConversionContext::processJMP(int32_t scope, Va
 	block->addNextBlock(resultTargetBlock, blockInvocation.getArguments());
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processCMP(int32_t scope, ValueFrame& frame, Block&,
-                                                               BasicBlock* currentIrBlock, TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processCMP(int32_t scope, ValueFrame& frame, Block&, BasicBlock* currentIrBlock, TraceOperation& operation) {
 
 	auto valueRef = get<value_ref>(operation.input[0]);
 	auto trueCaseBlockRef = get<BlockRef>(operation.input[1]);
@@ -246,9 +241,7 @@ std::vector<OperationIdentifier> TraceToIRConversionPhase::IRConversionContext::
 	return blockArgumentIdentifiers;
 }
 
-void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
-                                                                         BasicBlockInvocation& blockInvocation,
-                                                                         BlockRef val) {
+void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame, BasicBlockInvocation& blockInvocation, BlockRef val) {
 	for (auto& arg : val.arguments) {
 		auto valueIdentifier = createValueIdentifier(arg);
 		blockInvocation.addArgument(frame.getValue(valueIdentifier));
@@ -263,9 +256,7 @@ OperationIdentifier TraceToIRConversionPhase::IRConversionContext::createValueId
 		return OperationIdentifier(0);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processAdd(int32_t, ValueFrame& frame,
-                                                               compiler::ir::BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processAdd(int32_t, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -274,9 +265,7 @@ void TraceToIRConversionPhase::IRConversionContext::processAdd(int32_t, ValueFra
 	currentBlock->addOperation(std::move(addOperation));
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processSub(int32_t, ValueFrame& frame,
-                                                               compiler::ir::BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processSub(int32_t, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -284,9 +273,7 @@ void TraceToIRConversionPhase::IRConversionContext::processSub(int32_t, ValueFra
 	frame.setValue(resultIdentifier, subOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processMul(int32_t, ValueFrame& frame,
-                                                               compiler::ir::BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processMul(int32_t, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -294,8 +281,7 @@ void TraceToIRConversionPhase::IRConversionContext::processMul(int32_t, ValueFra
 	frame.setValue(resultIdentifier, mulOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processDiv(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processDiv(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -303,8 +289,7 @@ void TraceToIRConversionPhase::IRConversionContext::processDiv(int32_t, ValueFra
 	frame.setValue(resultIdentifier, divOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processMod(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processMod(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -312,9 +297,8 @@ void TraceToIRConversionPhase::IRConversionContext::processMod(int32_t, ValueFra
 	frame.setValue(resultIdentifier, divOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(
-    int32_t, nautilus::tracing::TraceToIRConversionPhase::ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
-    nautilus::tracing::TraceOperation& operation, compiler::ir::BinaryCompOperation::Type type) {
+void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(int32_t, nautilus::tracing::TraceToIRConversionPhase::ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, nautilus::tracing::TraceOperation& operation,
+                                                                      compiler::ir::BinaryCompOperation::Type type) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -322,9 +306,8 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(
 	frame.setValue(resultIdentifier, divOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processShift(
-    int32_t, nautilus::tracing::TraceToIRConversionPhase::ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
-    nautilus::tracing::TraceOperation& operation, compiler::ir::ShiftOperation::ShiftType type) {
+void TraceToIRConversionPhase::IRConversionContext::processShift(int32_t, nautilus::tracing::TraceToIRConversionPhase::ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, nautilus::tracing::TraceOperation& operation,
+                                                                 compiler::ir::ShiftOperation::ShiftType type) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -332,48 +315,38 @@ void TraceToIRConversionPhase::IRConversionContext::processShift(
 	frame.setValue(resultIdentifier, divOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processNegate(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                  TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processNegate(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto negateOperation = currentBlock->addOperation<NegateOperation>(resultIdentifier, input);
 	frame.setValue(resultIdentifier, negateOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processNot(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                  TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processNot(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto notOperation = currentBlock->addOperation<NotOperation>(resultIdentifier, input);
 	frame.setValue(resultIdentifier, notOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processLessThan(int32_t, ValueFrame& frame,
-                                                                    BasicBlock* currentBlock,
-                                                                    TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processLessThan(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput,
-	                                                                     CompareOperation::Comparator::LT);
+	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput, CompareOperation::Comparator::LT);
 	frame.setValue(resultIdentifier, compareOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processGreaterThan(int32_t, ValueFrame& frame,
-                                                                       BasicBlock* currentBlock,
-                                                                       TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processGreaterThan(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput,
-	                                                                     CompareOperation::Comparator::GT);
+	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput, CompareOperation::Comparator::GT);
 	frame.setValue(resultIdentifier, compareOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processEquals(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                  TraceOperation& operation,
-                                                                  CompareOperation::Comparator comp) {
+void TraceToIRConversionPhase::IRConversionContext::processEquals(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation, CompareOperation::Comparator comp) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -381,8 +354,7 @@ void TraceToIRConversionPhase::IRConversionContext::processEquals(int32_t, Value
 	frame.setValue(resultIdentifier, compareOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processAnd(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                               TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processAnd(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -390,8 +362,7 @@ void TraceToIRConversionPhase::IRConversionContext::processAnd(int32_t, ValueFra
 	frame.setValue(resultIdentifier, andOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processOr(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                              TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processOr(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
@@ -399,8 +370,7 @@ void TraceToIRConversionPhase::IRConversionContext::processOr(int32_t, ValueFram
 	frame.setValue(resultIdentifier, orOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processLoad(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processLoad(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	// TODO add load data type
 	// auto constOperation =
 	// std::make_shared<LoadOperation>(createValueIdentifier(operation.result),
@@ -415,15 +385,13 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(int32_t, ValueFr
 	currentBlock->addOperation(std::move(loadOperation));
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processStore(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                 TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processStore(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.resultRef));
 	auto value = frame.getValue(createValueIdentifier(operation.input[0]));
 	currentBlock->addOperation<StoreOperation>(value, address);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 
 	auto inputArguments = std::vector<Operation*> {};
 	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
@@ -435,8 +403,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(int32_t, ValueFr
 
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
-	    functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
+	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier, inputArguments, resultType);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -466,46 +433,35 @@ bool TraceToIRConversionPhase::IRConversionContext::isBlockInLoop(uint32_t paren
 	return false;
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceToIRConversionPhase::ValueFrame& frame,
-                                                                 BasicBlock* currentBlock, TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceToIRConversionPhase::ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 	auto constant = &std::get<std::any>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = (operation.resultType);
 	Operation* constOperation;
 	if (constant->type() == typeid(int8_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int8_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int8_t>(*constant), resultType);
 	} else if (constant->type() == typeid(int16_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int16_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int16_t>(*constant), resultType);
 	} else if (constant->type() == typeid(int32_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int32_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int32_t>(*constant), resultType);
 	} else if (constant->type() == typeid(int64_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int64_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int64_t>(*constant), resultType);
 	} else if (constant->type() == typeid(uint8_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint8_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint8_t>(*constant), resultType);
 	} else if (constant->type() == typeid(uint16_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint16_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint16_t>(*constant), resultType);
 
 	} else if (constant->type() == typeid(uint32_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint32_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint32_t>(*constant), resultType);
 
 	} else if (constant->type() == typeid(uint64_t)) {
-		constOperation =
-		    currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint64_t>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint64_t>(*constant), resultType);
 
 	} else if (constant->type() == typeid(float)) {
-		constOperation =
-		    currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<float>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<float>(*constant), resultType);
 
 	} else if (constant->type() == typeid(double)) {
-		constOperation =
-		    currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<double>(*constant), resultType);
+		constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<double>(*constant), resultType);
 
 	} else if (constant->type() == typeid(bool)) {
 		constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, any_cast<bool>(*constant));
@@ -518,8 +474,7 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceT
 	frame.setValue(resultIdentifier, constOperation);
 }
 
-void TraceToIRConversionPhase::IRConversionContext::processCast(int32_t, TraceToIRConversionPhase::ValueFrame& frame,
-                                                                BasicBlock* currentBlock, TraceOperation& operation) {
+void TraceToIRConversionPhase::IRConversionContext::processCast(int32_t, TraceToIRConversionPhase::ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
 
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));

@@ -43,9 +43,7 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 	throw NotImplementedException("pass is not supported");
 }
 
-int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module,
-                                                const std::vector<LoweringPass>& loweringPasses,
-                                                const std::vector<OptimizationPass>& optimizationPasses) {
+int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module, const std::vector<LoweringPass>& loweringPasses, const std::vector<OptimizationPass>& optimizationPasses) {
 	mlir::PassManager passManager(module->getContext());
 
 	// Apply optimization passes.

@@ -43,9 +43,8 @@ void addTest(engine::NautilusEngine& engine) {
 
 	SECTION("staticCast") {
 		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
-		REQUIRE(f((int8_t)34) == 34);
+		REQUIRE(f((int8_t) 34) == 34);
 	}
-
 
 	SECTION("logicalNot") {
 		auto f = engine.registerFunction(logicalNot<bool>);
@@ -63,19 +62,19 @@ void addTest(engine::NautilusEngine& engine) {
 
 	SECTION("uintBitwiseNegate") {
 		auto f = engine.registerFunction(negate<uint32_t>);
-		REQUIRE(f((uint32_t)0) == UINT_MAX);
-		REQUIRE(f((uint32_t)1) == UINT_MAX -1);
-		REQUIRE(f((uint32_t)INT_MAX) == (uint32_t)INT_MIN);
-		REQUIRE(f((uint32_t)INT_MIN) == (uint32_t)INT_MAX);
+		REQUIRE(f((uint32_t) 0) == UINT_MAX);
+		REQUIRE(f((uint32_t) 1) == UINT_MAX - 1);
+		REQUIRE(f((uint32_t) INT_MAX) == (uint32_t) INT_MIN);
+		REQUIRE(f((uint32_t) INT_MIN) == (uint32_t) INT_MAX);
 		REQUIRE(f(UINT_MAX) == 0);
 	}
 
 	SECTION("charBitwiseNegate") {
 		auto f = engine.registerFunction(negate<char>);
-		REQUIRE(f((char)0) == (char)-1);
-		REQUIRE(f((char)1) == (char)-2);
-		REQUIRE(f((char)CHAR_MAX) == (char)CHAR_MIN);
-		REQUIRE(f((char)CHAR_MIN) == (char)CHAR_MAX);
+		REQUIRE(f((char) 0) == (char) -1);
+		REQUIRE(f((char) 1) == (char) -2);
+		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
+		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
 	}
 
 	SECTION("callEnumFunction") {
@@ -141,23 +140,9 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(5) == 5);
 	}
 	SECTION("assignOr") {
-	    auto f = engine.registerFunction(assignOr);
-	    REQUIRE(f(7) == 7);
-	    REQUIRE(f(5) == 5);
-	}
-	SECTION("assignXor") {
-	    auto f = engine.registerFunction(assignXor);
-	    REQUIRE(f(7) == 2);
-	    REQUIRE(f(5) == 0);
-	}
-	SECTION("assignShl") {
-	    auto f = engine.registerFunction(assignShl);
-	    REQUIRE(f(7) == 224);
-	    REQUIRE(f(5) == 160);
-	}SECTION("assignShr") {
-	    auto f = engine.registerFunction(assignShr);
-	    REQUIRE(f(7) == 0);
-	    REQUIRE(f(5) == 0);
+		auto f = engine.registerFunction(assignOr);
+		REQUIRE(f(7) == 7);
+		REQUIRE(f(5) == 5);
 	}
 	SECTION("assignXor") {
 		auto f = engine.registerFunction(assignXor);
@@ -173,7 +158,21 @@ void addTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(assignShr);
 		REQUIRE(f(7) == 0);
 		REQUIRE(f(5) == 0);
-
+	}
+	SECTION("assignXor") {
+		auto f = engine.registerFunction(assignXor);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignShl") {
+		auto f = engine.registerFunction(assignShl);
+		REQUIRE(f(7) == 224);
+		REQUIRE(f(5) == 160);
+	}
+	SECTION("assignShr") {
+		auto f = engine.registerFunction(assignShr);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(5) == 0);
 	}
 	SECTION("assignment1") {
 		auto f = engine.registerFunction(assignment1);
@@ -623,7 +622,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			REQUIRE(f(&x, nu) == false);
 			REQUIRE(f(nu, nu) == true);
 		}
-
 	}
 
 	SECTION("ptrNotEquals") {
@@ -657,7 +655,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			REQUIRE(f(&x, nu) == true);
 			REQUIRE(f(nu, nu) == false);
 		}
-
 	}
 
 	SECTION("ptrLessThan") {
@@ -848,8 +845,7 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 	SECTION("functionBindMember2") {
 		auto clazz = Clazz();
 		clazz.state = 100;
-		std::function<val<int32_t>(val<int32_t>)> bound =
-		    std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
 		auto f = engine.registerFunction(bound);
 		REQUIRE(f(42) == 142);
 		REQUIRE(f(1) == 101);

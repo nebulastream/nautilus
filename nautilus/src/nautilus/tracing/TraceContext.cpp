@@ -23,9 +23,7 @@ void TraceContext::terminate() {
 	traceContext = nullptr;
 }
 
-TraceContext::TraceContext(TagRecorder& tagRecorder)
-    : tagRecorder(tagRecorder), executionTrace(std::make_unique<ExecutionTrace>()),
-      symbolicExecutionContext(std::make_unique<SymbolicExecutionContext>()) {
+TraceContext::TraceContext(TagRecorder& tagRecorder) : tagRecorder(tagRecorder), executionTrace(std::make_unique<ExecutionTrace>()), symbolicExecutionContext(std::make_unique<SymbolicExecutionContext>()) {
 }
 
 value_ref TraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -128,8 +126,7 @@ value_ref TraceContext::traceCopy(nautilus::tracing::value_ref ref) {
 	throw TraceTerminationException();
 }
 
-value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, Type resultType,
-                                  std::vector<tracing::value_ref> arguments) {
+value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -146,8 +143,7 @@ value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, T
 		    .arguments = arguments,
 		});
 		auto op = Op::CALL;
-		auto resultRef =
-		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {functionArguments});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {functionArguments});
 		//  executionTrace->variableBitset[resultRef] = true;
 		return resultRef;
 	}
@@ -186,8 +182,7 @@ value_ref TraceContext::traceCast(value_ref state, Type resultType) {
 	if (executionTrace->checkTag(tag)) {
 		auto leftIV = InputVariant(state);
 		auto op = Op::CAST;
-		auto resultRef =
-		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV});
 		//  executionTrace->variableBitset[resultRef] = true;
 		return resultRef;
 	}
@@ -206,8 +201,7 @@ void TraceContext::traceReturnOperation(Type type, value_ref ref) {
 	return;
 }
 
-value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType,
-                                            nautilus::tracing::value_ref& inputRef) {
+value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType, nautilus::tracing::value_ref& inputRef) {
 	if (isFollowing()) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -218,8 +212,7 @@ value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resul
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
 		auto inputVariant = InputVariant(inputRef);
-		auto resultRef =
-		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {inputVariant});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {inputVariant});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -239,8 +232,7 @@ value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, value_ref& 
 	if (executionTrace->checkTag(tag)) {
 		auto leftIV = InputVariant(leftRef);
 		auto rightIV = InputVariant(rightRef);
-		auto resultRef =
-		    executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV, rightIV});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV, rightIV});
 		return resultRef;
 	}
 	throw TraceTerminationException();

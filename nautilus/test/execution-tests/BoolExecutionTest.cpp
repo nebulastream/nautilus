@@ -80,7 +80,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(false, true) == false);
 		REQUIRE(f(true, false) == false);
 	}
-
 }
 
 TEST_CASE("Bool Interpreter Test") {

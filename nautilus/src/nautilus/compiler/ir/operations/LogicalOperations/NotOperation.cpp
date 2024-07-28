@@ -3,8 +3,7 @@
 
 namespace nautilus::compiler::ir {
 
-NotOperation::NotOperation(OperationIdentifier identifier, Operation* input)
-    : Operation(OperationType::NotOp, identifier, Type::b, {input}) {
+NotOperation::NotOperation(OperationIdentifier identifier, Operation* input) : Operation(OperationType::NotOp, identifier, Type::b, {input}) {
 }
 
 std::string NotOperation::toString() {

@@ -3,15 +3,11 @@
 #include <utility>
 
 namespace nautilus::compiler::ir {
-ProxyCallOperation::ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments,
-                                       Type resultType)
-    : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments) {
+ProxyCallOperation::ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments, Type resultType) : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments) {
 }
 
-ProxyCallOperation::ProxyCallOperation(std::string functionSymbol, void* functionPtr, OperationIdentifier identifier,
-                                       std::vector<Operation*> inputArguments, Type resultType)
-    : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, std::move(inputArguments)),
-      mangedFunctionSymbol(std::move(functionSymbol)), functionPtr(functionPtr) {
+ProxyCallOperation::ProxyCallOperation(std::string functionSymbol, void* functionPtr, OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType)
+    : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, std::move(inputArguments)), mangedFunctionSymbol(std::move(functionSymbol)), functionPtr(functionPtr) {
 }
 
 const std::vector<Operation*>& ProxyCallOperation::getInputArguments() const {

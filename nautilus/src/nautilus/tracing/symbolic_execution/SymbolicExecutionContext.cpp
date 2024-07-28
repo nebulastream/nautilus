@@ -58,8 +58,7 @@ bool SymbolicExecutionContext::follow() {
 }
 
 bool SymbolicExecutionContext::shouldFollow() {
-	return currentMode == SymbolicExecutionContext::MODE::FOLLOW &&
-	       currentOperation < currentExecutionPath.getSize() - 1;
+	return currentMode == SymbolicExecutionContext::MODE::FOLLOW && currentOperation < currentExecutionPath.getSize() - 1;
 }
 
 bool SymbolicExecutionContext::shouldContinue() {

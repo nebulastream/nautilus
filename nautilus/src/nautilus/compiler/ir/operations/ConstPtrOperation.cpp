@@ -6,8 +6,7 @@
 
 namespace nautilus::compiler::ir {
 
-ConstPtrOperation::ConstPtrOperation(OperationIdentifier identifier, void* constantValue)
-    : Operation(OperationType::ConstPtrOp, identifier, Type::ptr), constantValue(constantValue) {
+ConstPtrOperation::ConstPtrOperation(OperationIdentifier identifier, void* constantValue) : Operation(OperationType::ConstPtrOp, identifier, Type::ptr), constantValue(constantValue) {
 }
 
 void* ConstPtrOperation::getValue() {
