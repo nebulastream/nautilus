@@ -5,8 +5,7 @@
 
 namespace nautilus::compiler::ir {
 
-ConstFloatOperation::ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp)
-    : Operation(OperationType::ConstFloatOp, identifier, stamp), constantValue(constantValue) {
+ConstFloatOperation::ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp) : Operation(OperationType::ConstFloatOp, identifier, stamp), constantValue(constantValue) {
 }
 
 double ConstFloatOperation::getValue() {

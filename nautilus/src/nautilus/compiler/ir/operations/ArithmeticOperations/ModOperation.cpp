@@ -4,13 +4,11 @@
 #include <string>
 
 namespace nautilus::compiler::ir {
-ModOperation::ModOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
-    : BinaryOperation(OperationType::ModOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
+ModOperation::ModOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::ModOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
 }
 
 std::string ModOperation::toString() {
-	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " % " +
-	       getRightInput()->getIdentifier().toString();
+	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " % " + getRightInput()->getIdentifier().toString();
 }
 
 bool ModOperation::classof(const Operation* Op) {

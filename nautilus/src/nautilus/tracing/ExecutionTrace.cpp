@@ -49,8 +49,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, value_ref ref) {
 	returnRefs.emplace_back(operationIdentifier);
 }
 
-void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::value_ref targetRef,
-                                            nautilus::tracing::value_ref srcRef, Type resultType) {
+void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef, Type resultType) {
 	// std::cout << "\n Add Assign:" << std::endl;
 	// std::cout << targetRef.ref << " - " << srcRef.ref << std::endl;
 	// std::cout << *this << std::endl;
@@ -65,8 +64,7 @@ void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracin
 	addTag(snapshot, operationIdentifier);
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType,
-                                  nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef) {
 	// std::cout << "\n Add Operation:" << operation << std::endl;
 	// std::cout << targetRef.ref << " - " << srcRef.ref << std::endl;
 	// std::cout << *this << std::endl;
@@ -77,8 +75,7 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resul
 	operations.emplace_back(snapshot, operation, resultType, targetRef, std::vector<InputVariant> {srcRef});
 }
 
-value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                 std::vector<InputVariant>&& inputs) {
+value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
 	// std::cout << "\n Add Operation:" << operation << std::endl;
 	// std::cout << *this << std::endl;
 	if (blocks.empty()) {
@@ -86,8 +83,7 @@ value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operati
 	}
 
 	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, value_ref(getNextValueRef(), resultType),
-	                                   std::forward<std::vector<InputVariant>>(inputs));
+	auto& to = operations.emplace_back(snapshot, operation, resultType, value_ref(getNextValueRef(), resultType), std::forward<std::vector<InputVariant>>(inputs));
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -108,8 +104,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, nautilus::tracing::valu
 	auto operationInputs = std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)};
 
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, CMP, Type::v, value_ref(getNextValueRef(), Type::v),
-	                        std::forward<std::vector<InputVariant>>(operationInputs));
+	operations.emplace_back(snapshot, CMP, Type::v, value_ref(getNextValueRef(), Type::v), std::forward<std::vector<InputVariant>>(operationInputs));
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -183,8 +178,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	}
 
 	// remove content beyond opID
-	referenceBlock.operations.erase(referenceBlock.operations.begin() + oi.operationIndex,
-	                                referenceBlock.operations.end());
+	referenceBlock.operations.erase(referenceBlock.operations.begin() + oi.operationIndex, referenceBlock.operations.end());
 
 	// add jump from referenced block to merge block
 	auto mergeBlockRef = BlockRef(mergedBlockId);

@@ -4,7 +4,7 @@ AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: false
 AllowShortLambdasOnASingleLine: Inline
 AlwaysBreakTemplateDeclarations: Yes
-ColumnLimit: 120
+ColumnLimit: 240
 CompactNamespaces: true
 IncludeBlocks: Merge
 IncludeCategories:

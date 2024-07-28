@@ -128,23 +128,22 @@ void runTraceTests(std::vector<std::tuple<std::string, std::function<void()>>>& 
 }
 
 TEST_CASE("Expression Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"assignShr", details::createFunctionWrapper(assignShr)},
-	    {"assignShl", details::createFunctionWrapper(assignShl)},
-	    {"assignment1", details::createFunctionWrapper(assignment1)},
-	    {"assignment2", details::createFunctionWrapper(assignment2)},
-	    {"assignment3", details::createFunctionWrapper(assignment3)},
-	    {"assignment4", details::createFunctionWrapper(assignment4)},
-	    {"assignment5", details::createFunctionWrapper(assignment5)},
-	    {"int8AddExpression", details::createFunctionWrapper(int8AddExpression)},
-	    {"int16AddExpression", details::createFunctionWrapper(int16AddExpression)},
-	    {"int32AddExpression", details::createFunctionWrapper(int32AddExpression)},
-	    {"int64AddExpression", details::createFunctionWrapper(int64AddExpression)},
-	    {"floatAddExpression", details::createFunctionWrapper(floatAddExpression)},
-	    {"doubleAddExpression", details::createFunctionWrapper(doubleAddExpression)},
-	    {"castFloatToDoubleAddExpression", details::createFunctionWrapper(castFloatToDoubleAddExpression)},
-	    {"castInt8ToInt64AddExpression", details::createFunctionWrapper(castInt8ToInt64AddExpression)},
-	    {"castInt8ToInt64AddExpression2", details::createFunctionWrapper(castInt8ToInt64AddExpression2)}};
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"assignShr", details::createFunctionWrapper(assignShr)},
+	                                                                          {"assignShl", details::createFunctionWrapper(assignShl)},
+	                                                                          {"assignment1", details::createFunctionWrapper(assignment1)},
+	                                                                          {"assignment2", details::createFunctionWrapper(assignment2)},
+	                                                                          {"assignment3", details::createFunctionWrapper(assignment3)},
+	                                                                          {"assignment4", details::createFunctionWrapper(assignment4)},
+	                                                                          {"assignment5", details::createFunctionWrapper(assignment5)},
+	                                                                          {"int8AddExpression", details::createFunctionWrapper(int8AddExpression)},
+	                                                                          {"int16AddExpression", details::createFunctionWrapper(int16AddExpression)},
+	                                                                          {"int32AddExpression", details::createFunctionWrapper(int32AddExpression)},
+	                                                                          {"int64AddExpression", details::createFunctionWrapper(int64AddExpression)},
+	                                                                          {"floatAddExpression", details::createFunctionWrapper(floatAddExpression)},
+	                                                                          {"doubleAddExpression", details::createFunctionWrapper(doubleAddExpression)},
+	                                                                          {"castFloatToDoubleAddExpression", details::createFunctionWrapper(castFloatToDoubleAddExpression)},
+	                                                                          {"castInt8ToInt64AddExpression", details::createFunctionWrapper(castInt8ToInt64AddExpression)},
+	                                                                          {"castInt8ToInt64AddExpression2", details::createFunctionWrapper(castInt8ToInt64AddExpression2)}};
 	runTraceTests(tests);
 }
 TEST_CASE("Control-flow Trace Test") {
@@ -180,47 +179,45 @@ TEST_CASE("Control-flow Trace Test") {
 }
 
 TEST_CASE("Loop Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},
-	    {"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
-	    {"sumLoop", details::createFunctionWrapper(sumLoop)},
-	    {"nestedSumLoop", details::createFunctionWrapper(nestedSumLoop)},
-	    {"ifSumLoop", details::createFunctionWrapper(ifSumLoop)},
-	    {"ifElseSumLoop", details::createFunctionWrapper(ifElseSumLoop)},
-	    {"elseOnlySumLoop", details::createFunctionWrapper(elseOnlySumLoop)},
-	    {"nestedIfSumLoop", details::createFunctionWrapper(nestedIfSumLoop)},
-	    {"nestedIfElseSumLoop", details::createFunctionWrapper(nestedIfElseSumLoop)},
-	    {"nestedElseOnlySumLoop", details::createFunctionWrapper(nestedElseOnlySumLoop)},
-	    {"sumOfNumbers", details::createFunctionWrapper(sumOfNumbers)},
-	    {"factorial", details::createFunctionWrapper(factorial)},
-	    {"reverseNumber", details::createFunctionWrapper(reverseNumber)},
-	    {"fibonacci", details::createFunctionWrapper(fibonacci)},
-	    {"gcd", details::createFunctionWrapper(gcd)},
-	    {"decimalToBinary", details::createFunctionWrapper(decimalToBinary)},
-	    {"isPrime", details::createFunctionWrapper(isPrime)},
-	    {"collatz", details::createFunctionWrapper(collatz)},
-	    {"digitSum", details::createFunctionWrapper(digitSum)},
-	    {"sumOfSquares", details::createFunctionWrapper(sumOfSquares)},
-	    {"countDigits", details::createFunctionWrapper(countDigits)},
-	    {"sumArray", details::createFunctionWrapper(sumArray)},
-	    {"addArrayInt32", details::createFunctionWrapper(addArray<int32_t>)},
-	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
-	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
-	    {"passCustomStruct", details::createFunctionWrapper(passCustomClass)},
-	    {"specializeType", details::createFunctionWrapper(specializeType)},
-	    {"useWrapper", details::createFunctionWrapper(useWrapper)},
-	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},
+	                                                                          {"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
+	                                                                          {"sumLoop", details::createFunctionWrapper(sumLoop)},
+	                                                                          {"nestedSumLoop", details::createFunctionWrapper(nestedSumLoop)},
+	                                                                          {"ifSumLoop", details::createFunctionWrapper(ifSumLoop)},
+	                                                                          {"ifElseSumLoop", details::createFunctionWrapper(ifElseSumLoop)},
+	                                                                          {"elseOnlySumLoop", details::createFunctionWrapper(elseOnlySumLoop)},
+	                                                                          {"nestedIfSumLoop", details::createFunctionWrapper(nestedIfSumLoop)},
+	                                                                          {"nestedIfElseSumLoop", details::createFunctionWrapper(nestedIfElseSumLoop)},
+	                                                                          {"nestedElseOnlySumLoop", details::createFunctionWrapper(nestedElseOnlySumLoop)},
+	                                                                          {"sumOfNumbers", details::createFunctionWrapper(sumOfNumbers)},
+	                                                                          {"factorial", details::createFunctionWrapper(factorial)},
+	                                                                          {"reverseNumber", details::createFunctionWrapper(reverseNumber)},
+	                                                                          {"fibonacci", details::createFunctionWrapper(fibonacci)},
+	                                                                          {"gcd", details::createFunctionWrapper(gcd)},
+	                                                                          {"decimalToBinary", details::createFunctionWrapper(decimalToBinary)},
+	                                                                          {"isPrime", details::createFunctionWrapper(isPrime)},
+	                                                                          {"collatz", details::createFunctionWrapper(collatz)},
+	                                                                          {"digitSum", details::createFunctionWrapper(digitSum)},
+	                                                                          {"sumOfSquares", details::createFunctionWrapper(sumOfSquares)},
+	                                                                          {"countDigits", details::createFunctionWrapper(countDigits)},
+	                                                                          {"sumArray", details::createFunctionWrapper(sumArray)},
+	                                                                          {"addArrayInt32", details::createFunctionWrapper(addArray<int32_t>)},
+	                                                                          {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
+	                                                                          {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+	                                                                          {"passCustomStruct", details::createFunctionWrapper(passCustomClass)},
+	                                                                          {"specializeType", details::createFunctionWrapper(specializeType)},
+	                                                                          {"useWrapper", details::createFunctionWrapper(useWrapper)},
+	                                                                          {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};
 	runTraceTests(tests);
 }
 
 TEST_CASE("Static Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
-	    // {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
-	    {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
-	    // {"staticIterator", details::createFunctionWrapper(staticIterator)},
-	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
-	    {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"staticLoop", details::createFunctionWrapper(staticLoop)},
+	                                                                          // {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
+	                                                                          {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	                                                                          // {"staticIterator", details::createFunctionWrapper(staticIterator)},
+	                                                                          {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
+	                                                                          {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
 	runTraceTests(tests);
 }
 } // namespace nautilus::engine

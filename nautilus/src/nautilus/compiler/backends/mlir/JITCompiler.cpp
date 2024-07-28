@@ -8,11 +8,8 @@
 
 namespace nautilus::compiler::mlir {
 
-std::unique_ptr<::mlir::ExecutionEngine>
-JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
-                              const llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
-                              const std::vector<std::string>& jitProxyFunctionSymbols,
-                              const std::vector<void*>& jitProxyFunctionTargetAddresses) {
+std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, const llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
+                                                                       const std::vector<std::string>& jitProxyFunctionSymbols, const std::vector<void*>& jitProxyFunctionTargetAddresses) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we can JIT-compile.
 	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
@@ -48,8 +45,7 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 
 		for (int i = 0; i < (int) jitProxyFunctionSymbols.size(); ++i) {
 			auto address = jitProxyFunctionTargetAddresses.at(i);
-			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address),
-			                                                      llvm::JITSymbolFlags::Exported};
+			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address), llvm::JITSymbolFlags::Exported};
 		}
 		return symbolMap;
 	};

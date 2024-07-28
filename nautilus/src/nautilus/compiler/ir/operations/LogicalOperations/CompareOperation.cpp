@@ -3,10 +3,8 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 
 namespace nautilus::compiler::ir {
-CompareOperation::CompareOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
-                                   Comparator comparator)
-    : BinaryOperation(Operation::OperationType::CompareOp, identifier, Type::b, leftInput, rightInput),
-      comparator(comparator) {
+CompareOperation::CompareOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput, Comparator comparator)
+    : BinaryOperation(Operation::OperationType::CompareOp, identifier, Type::b, leftInput, rightInput), comparator(comparator) {
 }
 
 CompareOperation::Comparator CompareOperation::getComparator() {
@@ -64,8 +62,7 @@ std::string CompareOperation::getComparatorAsString() {
 }
 
 std::string CompareOperation::toString() {
-	return identifier.toString() + " = " + getLeftInput()->getIdentifier().toString() + " " + getComparatorAsString() +
-	       " " + getRightInput()->getIdentifier().toString();
+	return identifier.toString() + " = " + getLeftInput()->getIdentifier().toString() + " " + getComparatorAsString() + " " + getRightInput()->getIdentifier().toString();
 }
 
 } // namespace nautilus::compiler::ir

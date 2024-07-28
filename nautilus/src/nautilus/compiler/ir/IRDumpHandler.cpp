@@ -17,16 +17,14 @@ std::shared_ptr<NESIRDumpHandler> NESIRDumpHandler::create(std::ostream& out) {
 	return std::make_shared<NESIRDumpHandler>(out);
 }
 
-const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock,
-                                                                       int ifParentBlockLevel) {
+const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock, int ifParentBlockLevel) {
 	auto& terminatorOp = thenBlock->getOperations().back();
 	if (terminatorOp->getOperationType() == Operation::OperationType::BranchOp) {
 		auto branchOp = dynamic_cast<BranchOperation*>(terminatorOp.get());
 		if (branchOp->getNextBlockInvocation().getBlock()->getScopeLevel() <= (uint32_t) ifParentBlockLevel) {
 			return branchOp->getNextBlockInvocation().getBlock();
 		} else {
-			return getNextLowerOrEqualLevelBasicBlock(branchOp->getNextBlockInvocation().getBlock(),
-			                                          ifParentBlockLevel);
+			return getNextLowerOrEqualLevelBasicBlock(branchOp->getNextBlockInvocation().getBlock(), ifParentBlockLevel);
 		}
 	} else if (terminatorOp->getOperationType() == Operation::OperationType::IfOp) {
 		auto ifOp = dynamic_cast<IfOperation*>(terminatorOp.get());
@@ -49,9 +47,8 @@ void NESIRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
 	}
 	case Operation::OperationType::IfOp: {
 		auto ifOp = static_cast<IfOperation*>(terminatorOp);
-		auto lastTerminatorOp = getNextLowerOrEqualLevelBasicBlock(
-		    ifOp->getTrueBlockInvocation().getBlock(),
-		    ifOp->getTrueBlockInvocation().getBlock()->getScopeLevel() - 1); // todo can lead to error #3234
+		auto lastTerminatorOp = getNextLowerOrEqualLevelBasicBlock(ifOp->getTrueBlockInvocation().getBlock(),
+		                                                           ifOp->getTrueBlockInvocation().getBlock()->getScopeLevel() - 1); // todo can lead to error #3234
 		dumpHelper(ifOp->getTrueBlockInvocation().getBlock());
 		dumpHelper(ifOp->getFalseBlockInvocation().getBlock());
 		if (lastTerminatorOp) {
@@ -72,11 +69,9 @@ void NESIRDumpHandler::dumpHelper(const BasicBlock* basicBlock) {
 		visitedBlocks.emplace(basicBlock->getIdentifier());
 		out << '\n' << "Block_" << basicBlock->getIdentifier() << '(';
 		if (basicBlock->getArguments().size() > 0) {
-			out << basicBlock->getArguments().at(0)->getIdentifier().toString() << ":"
-			    << toString(basicBlock->getArguments().at(0)->getStamp());
+			out << basicBlock->getArguments().at(0)->getIdentifier().toString() << ":" << toString(basicBlock->getArguments().at(0)->getStamp());
 			for (int i = 1; i < (int) basicBlock->getArguments().size(); ++i) {
-				out << ", " << basicBlock->getArguments().at(i)->getIdentifier().toString() << ":"
-				    << toString(basicBlock->getArguments().at(i)->getStamp());
+				out << ", " << basicBlock->getArguments().at(i)->getIdentifier().toString() << ":" << toString(basicBlock->getArguments().at(i)->getStamp());
 			}
 		}
 		out << "):" << '\n';

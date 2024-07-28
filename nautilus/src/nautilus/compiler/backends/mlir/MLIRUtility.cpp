@@ -46,8 +46,7 @@ int MLIRUtility::loadAndExecuteModuleFromString(const std::string& mlirString, c
 		return 0;
 }
 
-std::unique_ptr<mlir::ExecutionEngine>
-MLIRUtility::compileNESIRToMachineCode(std::shared_ptr<NES::Nautilus::IR::IRGraph> ir) {
+std::unique_ptr<mlir::ExecutionEngine> MLIRUtility::compileNESIRToMachineCode(std::shared_ptr<NES::Nautilus::IR::IRGraph> ir) {
 	mlir::MLIRContext context;
 	auto loweringProvider = std::make_unique<MLIR::MLIRLoweringProvider>(context);
 	auto module = loweringProvider->generateModuleFromIR(ir);
@@ -60,7 +59,6 @@ MLIRUtility::compileNESIRToMachineCode(std::shared_ptr<NES::Nautilus::IR::IRGrap
 	auto optPipeline = MLIR::LLVMIROptimizer::getLLVMOptimizerPipeline(/*inlining*/ false);
 
 	// JIT compile LLVM IR module and return engine that provides access compiled execute function.
-	return MLIR::JITCompiler::jitCompileModule(module, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                           loweringProvider->getJitProxyTargetAddresses());
+	return MLIR::JITCompiler::jitCompileModule(module, optPipeline, loweringProvider->getJitProxyFunctionSymbols(), loweringProvider->getJitProxyTargetAddresses());
 }
 } // namespace nautilus::compiler::mlir
