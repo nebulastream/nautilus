@@ -11,9 +11,6 @@
 namespace nautilus::engine {
 
 void addTest(engine::NautilusEngine& engine) {
-
-<<<<<<< Updated upstream
-=======
 	SECTION("staticCast") {
 		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
 		REQUIRE(f((int8_t) 34) == 34);
@@ -44,7 +41,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
 	}
 
->>>>>>> Stashed changes
 	SECTION("staticCast") {
 		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
 		REQUIRE(f((int8_t)34) == 34);
@@ -145,7 +141,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(5) == 5);
 	}
 	SECTION("assignOr") {
-<<<<<<< Updated upstream
 	    auto f = engine.registerFunction(assignOr);
 	    REQUIRE(f(7) == 7);
 	    REQUIRE(f(5) == 5);
@@ -163,11 +158,6 @@ void addTest(engine::NautilusEngine& engine) {
 	    auto f = engine.registerFunction(assignShr);
 	    REQUIRE(f(7) == 0);
 	    REQUIRE(f(5) == 0);
-	}*/
-=======
-		auto f = engine.registerFunction(assignOr);
-		REQUIRE(f(7) == 7);
-		REQUIRE(f(5) == 5);
 	}
 	SECTION("assignXor") {
 		auto f = engine.registerFunction(assignXor);
@@ -183,8 +173,7 @@ void addTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(assignShr);
 		REQUIRE(f(7) == 0);
 		REQUIRE(f(5) == 0);
-	}
->>>>>>> Stashed changes
+
 	}
 	SECTION("assignment1") {
 		auto f = engine.registerFunction(assignment1);
