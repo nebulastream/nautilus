@@ -4,7 +4,7 @@
 
 namespace nautilus::engine {
 
-val<int32_t> staticLoop(val<int32_t>) {
+val<int32_t> staticLoop() {
 	val<int32_t> agg = val<int32_t>(1);
 	for (static_val<int> start = 0; start < 10; start = start + 1) {
 		agg = agg + 10;
@@ -47,7 +47,7 @@ val<int32_t> staticIterator(val<int32_t> ref) {
 	return sum;
 }
 
-val<int32_t> staticLoopIncrement(val<int32_t>) {
+val<int32_t> staticLoopIncrement() {
 	val<int32_t> agg = val<int32_t>(1);
 	for (static_val<int> start = 0; start < 10; start++) {
 		agg = agg + 10;
