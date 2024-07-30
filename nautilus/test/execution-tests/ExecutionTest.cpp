@@ -10,7 +10,27 @@
 
 namespace nautilus::engine {
 
+struct RObject {
+	val<int32_t> a;
+	val<int32_t> b;
+};
+
+RObject returnObject(val<int32_t> a, val<int32_t> b) {
+	if (a > b) {
+		return {.a = a, .b = b};
+	}
+	return {.a = 0, .b = 0};
+}
+
+val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
+	auto r = returnObject(a, b);
+	auto t1 = r.a + 1;
+	auto t2 = r.b + 1;
+	return t1 + t2;
+}
+
 void addTest(engine::NautilusEngine& engine) {
+
 	SECTION("staticCast") {
 		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
 		REQUIRE(f((int8_t) 34) == 34);
@@ -902,8 +922,14 @@ TEST_CASE("Engine Compiler Test") {
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
+			SECTION("constructComplexReturnObject") {
+				// we assume that this throws a runtime exception with
+				// wrong number of arguments after tracing"
+				REQUIRE_THROWS(engine.registerFunction(constructComplexReturnObject));
+			}
 		}
 	}
+
 }
 #endif
 } // namespace nautilus::engine
