@@ -1,4 +1,6 @@
 
+#include <nautilus/exceptions/RuntimeException.hpp>
+#include <nautilus/logging.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <unordered_map>
@@ -53,6 +55,11 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// As a result two blocks, can't use the same value references.
 	makeBlockArgumentsUnique();
 
+	// check arguments
+	if (trace->arguments.size() != trace->getBlocks().front().arguments.size()) {
+		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", trace->arguments.size(), trace->getBlocks().front().arguments.size()));
+	}
+	// sort arguments
 	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
 
 	return std::move(trace);
