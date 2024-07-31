@@ -76,9 +76,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	value_ref traceUnaryOperation(const Op&, value_ref& inputRef) {
-		return inputRef;
-	}
+	value_ref traceUnaryOperation(Op op, Type resultType, value_ref& inputRef);
 
 	/**
 	 * @brief Trace a binary operation, e.g., add, sub, div.
@@ -102,7 +100,8 @@ public:
 	 */
 	void traceAssignment(value_ref targetRef, value_ref sourceRef, Type resultType);
 
-	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
+	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType,
+	                    std::vector<tracing::value_ref> arguments);
 
 	bool traceCmp(value_ref targetRef);
 

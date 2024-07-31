@@ -21,6 +21,52 @@ val<int32_t> castVoidPtr(val<void*> array) {
 	return intPtr[0];
 }
 
+template <typename T>
+val<bool> isNullptr(val<T*> ptr) {
+	return ptr == nullptr;
+}
+
+template <typename T>
+val<bool> isNotNullptr(val<T*> ptr) {
+	return ptr != nullptr;
+}
+
+template <typename T>
+val<bool> ptrEquals(val<T*> left, val<T*> right) {
+	return left == right;
+}
+
+template <typename T>
+val<bool> ptrNotEquals(val<T*> left, val<T*> right) {
+	return left != right;
+}
+
+template <typename T>
+val<bool> ptrLessThan(val<T*> left, val<T*> right) {
+	return left < right;
+}
+
+template <typename T>
+val<bool> ptrLessThanEquals(val<T*> left, val<T*> right) {
+	return left <= right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThan(val<T*> left, val<T*> right) {
+	return left > right;
+}
+
+template <typename T>
+val<bool> ptrGreaterThanEquals(val<T*> left, val<T*> right) {
+	return left >= right;
+}
+
+template <typename A, typename B>
+val<B> castPtrAndGetValue(val<A*> array) {
+	auto intPtr = static_cast<val<B*>>(array);
+	return intPtr[0];
+}
+
 val<int32_t> sumArray(val<int32_t*> array, val<int32_t> length) {
 	val<int32_t> sum = val<int32_t>(0);
 	for (val<int32_t> i = 0; i < length; i = i + 1) {
@@ -39,17 +85,25 @@ void addArray(val<T*> array, val<T*> array2, val<T> length) {
 	}
 }
 
-
 void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {
 	memcpy(dest, src, 0);
 }
 
-struct CustomStruct {
+class BaseClass {};
+
+class CustomClass : public BaseClass {
+public:
 	int x;
 };
 
-val<int32_t> passCustomStruct(val<CustomStruct*> customStructPtr) {
-	return invoke<>(+[](CustomStruct* ptr) { return ptr->x; }, customStructPtr);
+val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
+	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);
+}
+
+val<int32_t> castCustomClass(val<BaseClass*> voidPtr) {
+	// cast base struct to custom struct
+	auto resultPtr = static_cast<val<CustomClass*>>(voidPtr);
+	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, resultPtr);
 }
 
 struct CustomStruct2 {
@@ -68,8 +122,8 @@ public:
 	}
 };
 
-val<int32_t> specializeType(val<CustomStruct2*> customStructPtr) {
-	return customStructPtr.getX();
+val<int32_t> specializeType(val<CustomStruct2*> customClassPtr) {
+	return customClassPtr.getX();
 }
 
 class WrapperType {

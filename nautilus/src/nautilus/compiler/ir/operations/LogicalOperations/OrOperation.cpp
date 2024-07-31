@@ -3,13 +3,11 @@
 
 namespace nautilus::compiler::ir {
 
-OrOperation::OrOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
-    : BinaryOperation(OperationType::OrOp, identifier, Type::b, leftInput, rightInput) {
+OrOperation::OrOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::OrOp, identifier, Type::b, leftInput, rightInput) {
 }
 
 std::string OrOperation::toString() {
-	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " or " +
-	       getRightInput()->getIdentifier().toString();
+	return getIdentifier().toString() + " = " + getLeftInput()->getIdentifier().toString() + " or " + getRightInput()->getIdentifier().toString();
 	;
 }
 

@@ -30,12 +30,10 @@ std::ostream& operator<<(std::ostream& os, const BlockRef& ref) {
 	return os;
 }
 
-TraceOperation::TraceOperation(Snapshot& tag, Op op, Type resultType, value_ref ref, std::vector<InputVariant>&& input)
-    : tag(tag), op(op), resultType(resultType), resultRef(ref), input(input) {
+TraceOperation::TraceOperation(Snapshot& tag, Op op, Type resultType, value_ref ref, std::vector<InputVariant>&& input) : tag(tag), op(op), resultType(resultType), resultRef(ref), input(input) {
 }
 
-TraceOperation::TraceOperation(Op op, std::vector<InputVariant>&& input)
-    : tag(), op(op), resultType(Type::v), resultRef(), input(input) {
+TraceOperation::TraceOperation(Op op, std::vector<InputVariant>&& input) : tag(), op(op), resultType(Type::v), resultRef(), input(input) {
 }
 
 std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {

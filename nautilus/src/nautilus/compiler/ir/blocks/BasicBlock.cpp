@@ -7,11 +7,8 @@
 #include <utility>
 
 namespace nautilus::compiler::ir {
-BasicBlock::BasicBlock(const std::string& identifier, int32_t scopeLevel,
-                       std::vector<std::unique_ptr<Operation>>& operations,
-                       std::vector<std::unique_ptr<BasicBlockArgument>>& arguments)
-    : identifier(identifier), scopeLevel(scopeLevel), numLoopBackEdges(0), operations(std::move(operations)),
-      arguments(std::move(arguments)) {
+BasicBlock::BasicBlock(const std::string& identifier, int32_t scopeLevel, std::vector<std::unique_ptr<Operation>>& operations, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments)
+    : identifier(identifier), scopeLevel(scopeLevel), numLoopBackEdges(0), operations(std::move(operations)), arguments(std::move(arguments)) {
 }
 
 void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation*>& ops) {

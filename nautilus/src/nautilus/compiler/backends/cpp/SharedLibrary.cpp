@@ -8,8 +8,7 @@
 
 namespace nautilus::compiler::cpp {
 
-SharedLibrary::SharedLibrary(void* shareLib, std::string soAbsolutePath)
-    : shareLib(shareLib), soAbsolutePath(std::move(soAbsolutePath)) {
+SharedLibrary::SharedLibrary(void* shareLib, std::string soAbsolutePath) : shareLib(shareLib), soAbsolutePath(std::move(soAbsolutePath)) {
 }
 
 SharedLibrary::~SharedLibrary() {

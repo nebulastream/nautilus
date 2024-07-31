@@ -40,6 +40,7 @@ public:
 	enum class OperationType : uint8_t {
 		AddOp,
 		AndOp,
+		NotOp,
 		BasicBlockArgument,
 		BlockInvocation,
 		BranchOp,
@@ -63,6 +64,8 @@ public:
 		ReturnOp,
 		StoreOp,
 		SubOp,
+		BinaryComp,
+		ShiftOp,
 	};
 
 	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,

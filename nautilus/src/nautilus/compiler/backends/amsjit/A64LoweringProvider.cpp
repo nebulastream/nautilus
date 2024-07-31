@@ -16,8 +16,7 @@ namespace nautilus::compiler::asmjit {
 
 using namespace ::asmjit;
 
-A64LoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code)
-    : cc(&code), ir(std::move(ir)) {
+A64LoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code) : cc(&code), ir(std::move(ir)) {
 }
 
 void* A64LoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime) {

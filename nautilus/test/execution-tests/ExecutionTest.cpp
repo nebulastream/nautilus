@@ -10,7 +10,92 @@
 
 namespace nautilus::engine {
 
+struct RObject {
+	val<int32_t> a;
+	val<int32_t> b;
+};
+
+RObject returnObject(val<int32_t> a, val<int32_t> b) {
+	if (a > b) {
+		return {.a = a, .b = b};
+	}
+	return {.a = 0, .b = 0};
+}
+
+val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
+	auto r = returnObject(a, b);
+	auto t1 = r.a + 1;
+	auto t2 = r.b + 1;
+	return t1 + t2;
+}
+
 void addTest(engine::NautilusEngine& engine) {
+
+	SECTION("staticCast") {
+		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
+		REQUIRE(f((int8_t) 34) == 34);
+	}
+
+	SECTION("intBitwiseNegate") {
+		auto f = engine.registerFunction(negate<int32_t>);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(1) == -2);
+		REQUIRE(f(INT_MAX) == INT_MIN);
+		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("uintBitwiseNegate") {
+		auto f = engine.registerFunction(negate<uint32_t>);
+		REQUIRE(f((uint32_t) 0) == UINT_MAX);
+		REQUIRE(f((uint32_t) 1) == UINT_MAX - 1);
+		REQUIRE(f((uint32_t) INT_MAX) == (uint32_t) INT_MIN);
+		REQUIRE(f((uint32_t) INT_MIN) == (uint32_t) INT_MAX);
+		REQUIRE(f(UINT_MAX) == 0);
+	}
+
+	SECTION("charBitwiseNegate") {
+		auto f = engine.registerFunction(negate<char>);
+		REQUIRE(f((char) 0) == (char) -1);
+		REQUIRE(f((char) 1) == (char) -2);
+		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
+		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
+	}
+
+	SECTION("staticCast") {
+		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
+		REQUIRE(f((int8_t) 34) == 34);
+	}
+
+	SECTION("logicalNot") {
+		auto f = engine.registerFunction(logicalNot<bool>);
+		REQUIRE(f(true) == false);
+		REQUIRE(f(false) == true);
+	}
+
+	SECTION("intBitwiseNegate") {
+		auto f = engine.registerFunction(negate<int32_t>);
+		REQUIRE(f(0) == -1);
+		REQUIRE(f(1) == -2);
+		REQUIRE(f(INT_MAX) == INT_MIN);
+		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("uintBitwiseNegate") {
+		auto f = engine.registerFunction(negate<uint32_t>);
+		REQUIRE(f((uint32_t) 0) == UINT_MAX);
+		REQUIRE(f((uint32_t) 1) == UINT_MAX - 1);
+		REQUIRE(f((uint32_t) INT_MAX) == (uint32_t) INT_MIN);
+		REQUIRE(f((uint32_t) INT_MIN) == (uint32_t) INT_MAX);
+		REQUIRE(f(UINT_MAX) == 0);
+	}
+
+	SECTION("charBitwiseNegate") {
+		auto f = engine.registerFunction(negate<char>);
+		REQUIRE(f((char) 0) == (char) -1);
+		REQUIRE(f((char) 1) == (char) -2);
+		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
+		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
+	}
 
 	SECTION("callEnumFunction") {
 		auto f = engine.registerFunction(callEnumFunction);
@@ -69,29 +154,46 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(7) == 2);
 		REQUIRE(f(5) == 0);
 	}
-	/*
 	SECTION("assignAnd") {
-	    auto f = engine.registerFunction(assignAnd);
-	    REQUIRE(f(7) == 5);
-	    REQUIRE(f(5) == 5);
+		auto f = engine.registerFunction(assignAnd);
+		REQUIRE(f(7) == 5);
+		REQUIRE(f(5) == 5);
 	}
 	SECTION("assignOr") {
-	    auto f = engine.registerFunction(assignOr);
-	    REQUIRE(f(7) == 7);
-	    REQUIRE(f(5) == 5);
-	} SECTION("assignXor") {
-	    auto f = engine.registerFunction(assignXor);
-	    REQUIRE(f(7) == 2);
-	    REQUIRE(f(5) == 0);
-	}SECTION("assignShl") {
-	    auto f = engine.registerFunction(assignShl);
-	    REQUIRE(f(7) == 224);
-	    REQUIRE(f(5) == 160);
-	}SECTION("assignShr") {
-	    auto f = engine.registerFunction(assignShr);
-	    REQUIRE(f(7) == 0);
-	    REQUIRE(f(5) == 0);
-	}*/
+		auto f = engine.registerFunction(assignOr);
+		REQUIRE(f(7) == 7);
+		REQUIRE(f(5) == 5);
+	}
+	SECTION("assignXor") {
+		auto f = engine.registerFunction(assignXor);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignShl") {
+		auto f = engine.registerFunction(assignShl);
+		REQUIRE(f(7) == 224);
+		REQUIRE(f(5) == 160);
+	}
+	SECTION("assignShr") {
+		auto f = engine.registerFunction(assignShr);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignXor") {
+		auto f = engine.registerFunction(assignXor);
+		REQUIRE(f(7) == 2);
+		REQUIRE(f(5) == 0);
+	}
+	SECTION("assignShl") {
+		auto f = engine.registerFunction(assignShl);
+		REQUIRE(f(7) == 224);
+		REQUIRE(f(5) == 160);
+	}
+	SECTION("assignShr") {
+		auto f = engine.registerFunction(assignShr);
+		REQUIRE(f(7) == 0);
+		REQUIRE(f(5) == 0);
+	}
 	SECTION("assignment1") {
 		auto f = engine.registerFunction(assignment1);
 		REQUIRE(f(1) == 1);
@@ -482,7 +584,172 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 
 void pointerExecutionTest(engine::NautilusEngine& engine) {
 	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+	SECTION("isNullptr") {
+		auto f = engine.registerFunction(isNullptr<int8_t>);
+		int x = 42;
+		int8_t* ptr = nullptr;
+		REQUIRE(f(&x) == false);
+		REQUIRE(f(ptr) == true);
+
+		auto f2 = engine.registerFunction(isNullptr<bool>);
+		bool x2 = true;
+		bool* ptr2 = nullptr;
+		REQUIRE(f2(&x2) == false);
+		REQUIRE(f2(ptr2) == true);
+
+		auto f3 = engine.registerFunction(isNullptr<CustomStruct2>);
+		CustomStruct2* ptr3 = nullptr;
+		REQUIRE(f3(ptr3) == true);
+	}
+
+	SECTION("isNotNullptr") {
+		auto f = engine.registerFunction(isNotNullptr<int8_t>);
+		int x = 42;
+		int8_t* ptr = nullptr;
+		REQUIRE(f(&x) == true);
+		REQUIRE(f(ptr) == false);
+	}
+
+	SECTION("ptrEquals") {
+		{
+			auto f = engine.registerFunction(ptrEquals<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			int8_t* nu = nullptr;
+			REQUIRE(f(&x, &x2) == false);
+			REQUIRE(f(&x, &x) == true);
+			REQUIRE(f(&x, nu) == false);
+			REQUIRE(f(nu, nu) == true);
+		}
+		{
+			auto f = engine.registerFunction(ptrEquals<bool>);
+			bool x = 42;
+			bool x2 = 42;
+			bool* nu = nullptr;
+			REQUIRE(f(&x, &x2) == false);
+			REQUIRE(f(&x, &x) == true);
+			REQUIRE(f(&x, nu) == false);
+			REQUIRE(f(nu, nu) == true);
+		}
+		{
+			auto f = engine.registerFunction(ptrEquals<CustomStruct2>);
+			CustomStruct2 x;
+			CustomStruct2 x2;
+			bool* nu = nullptr;
+			REQUIRE(f(&x, &x2) == false);
+			REQUIRE(f(&x, &x) == true);
+			REQUIRE(f(&x, nu) == false);
+			REQUIRE(f(nu, nu) == true);
+		}
+	}
+
+	SECTION("ptrNotEquals") {
+		{
+			auto f = engine.registerFunction(ptrNotEquals<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			int8_t* nu = nullptr;
+			REQUIRE(f(&x, &x2) == true);
+			REQUIRE(f(&x, &x) == false);
+			REQUIRE(f(&x, nu) == true);
+			REQUIRE(f(nu, nu) == false);
+		}
+		{
+			auto f = engine.registerFunction(ptrNotEquals<bool>);
+			bool x = 42;
+			bool x2 = 42;
+			bool* nu = nullptr;
+			REQUIRE(f(&x, &x2) == true);
+			REQUIRE(f(&x, &x) == false);
+			REQUIRE(f(&x, nu) == true);
+			REQUIRE(f(nu, nu) == false);
+		}
+		{
+			auto f = engine.registerFunction(ptrNotEquals<CustomStruct2>);
+			CustomStruct2 x;
+			CustomStruct2 x2;
+			bool* nu = nullptr;
+			REQUIRE(f(&x, &x2) == true);
+			REQUIRE(f(&x, &x) == false);
+			REQUIRE(f(&x, nu) == true);
+			REQUIRE(f(nu, nu) == false);
+		}
+	}
+
+	SECTION("ptrLessThan") {
+		{
+			auto f = engine.registerFunction(ptrLessThan<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			REQUIRE(f(&x, &x2) == (&x < &x2));
+			REQUIRE(f(&x2, &x) == (&x2 < &x));
+		}
+	}
+
+	SECTION("ptrLessThanEquals") {
+		{
+			auto f = engine.registerFunction(ptrLessThanEquals<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			REQUIRE(f(&x, &x2) == (&x <= &x2));
+			REQUIRE(f(&x, &x) == (&x <= &x));
+			REQUIRE(f(&x2, &x) == (&x2 <= &x));
+		}
+	}
+	SECTION("ptrGreaterThan") {
+		{
+			auto f = engine.registerFunction(ptrGreaterThan<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			REQUIRE(f(&x, &x2) == (&x > &x2));
+			REQUIRE(f(&x, &x) == (&x > &x));
+			REQUIRE(f(&x2, &x) == (&x2 > &x));
+		}
+	}
+
+	SECTION("ptrGreaterThanEquals") {
+		{
+			auto f = engine.registerFunction(ptrGreaterThanEquals<int8_t>);
+			int8_t x = 42;
+			int8_t x2 = 42;
+			REQUIRE(f(&x, &x2) == (&x >= &x2));
+			REQUIRE(f(&x, &x) == (&x >= &x));
+			REQUIRE(f(&x2, &x) == (&x2 >= &x));
+		}
+	}
 	// int* ptr = &values;
+	SECTION("castVoidInt8") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int8_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int8_t) 42);
+	}
+	SECTION("castVoidInt16") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int16_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int16_t) 42);
+	}
+	SECTION("castVoidInt32") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int32_t>);
+		int x = 42;
+		REQUIRE(f((void*) &x) == (int32_t) 42);
+	}
+	SECTION("castVoidInt64") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, int64_t>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((int64_t*) &x));
+	}
+	SECTION("castVoidFloat") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, float>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((float*) &x));
+	}
+	SECTION("castVoidFloat") {
+		auto f = engine.registerFunction(castPtrAndGetValue<void, double>);
+		int64_t x = 42;
+		REQUIRE(f((void*) &x) == *((double*) &x));
+	}
+
 	SECTION("load") {
 		auto f = engine.registerFunction(load);
 
@@ -490,17 +757,15 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 1) == 2);
 		REQUIRE(f(values, (int32_t) 8) == 9);
 	}
-	/*
 	SECTION("loadConst") {
-	    globalPtr = values[0];
-	    auto f = engine.registerFunction(loadConst);
-	    REQUIRE(f() == 1);
-	    globalPtr = values[1];
-	    REQUIRE(f() == 2);
-	    globalPtr = values[2];
-	    REQUIRE(f() == 3);
+		globalPtr = values[0];
+		auto f = engine.registerFunction(loadConst);
+		REQUIRE(f() == 1);
+		globalPtr = values[1];
+		REQUIRE(f() == 2);
+		globalPtr = values[2];
+		REQUIRE(f() == 3);
 	}
-	*/
 	SECTION("sumArray") {
 		auto f = engine.registerFunction(sumArray);
 		val<int> r = f(values, (int32_t) 10);
@@ -521,9 +786,17 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		int x = 42;
 		REQUIRE(f((void*) &x) == 42);
 	}
-	SECTION("passCustomStruct") {
-		auto f = engine.registerFunction(passCustomStruct);
-		CustomStruct x = {.x = 42};
+	SECTION("castCustomClass") {
+		auto f = engine.registerFunction(castCustomClass);
+		CustomClass x;
+		x.x = 42;
+		BaseClass* BaseClass = &x;
+		REQUIRE(f(BaseClass) == 42);
+	}
+	SECTION("passCustomClass") {
+		auto f = engine.registerFunction(passCustomClass);
+		CustomClass x;
+		x.x = 42;
 		REQUIRE(f(&x) == 42);
 	}
 	SECTION("specializeType") {
@@ -539,8 +812,71 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+class Clazz {
+public:
+	val<int32_t> function(val<int32_t> arg) {
+		return arg + 20;
+	}
+
+	val<int32_t> functionWithStateAccess(val<int32_t> arg) {
+		return arg + state;
+	}
+
+	int state;
+};
+
+void registerFunctionTest(engine::NautilusEngine& engine) {
+
+	SECTION("pureFunction") {
+		auto f = engine.registerFunction(std::function([](val<int32_t> arg) { return arg; }));
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(1) == 1);
+	}
+
+	SECTION("pureFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> val<int8_t> { return *arg; }));
+		int8_t val = 42;
+		REQUIRE(f(&val) == 42);
+	}
+
+	SECTION("pureVoidFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> void { *arg = 42; }));
+		int8_t val = 1;
+		REQUIRE(val == 1);
+		f(&val);
+		REQUIRE(val == 42);
+	}
+
+	SECTION("functionWithClosure") {
+		auto closure = 42;
+		auto f = engine.registerFunction(std::function([closure](val<int32_t> arg) { return arg + closure; }));
+		REQUIRE(f(42) == 84);
+		REQUIRE(f(1) == 43);
+	}
+
+	SECTION("functionBindMember") {
+		auto clazz = Clazz();
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::function, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 62);
+		REQUIRE(f(1) == 21);
+	}
+
+	SECTION("functionBindMember2") {
+		auto clazz = Clazz();
+		clazz.state = 100;
+		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		auto f = engine.registerFunction(bound);
+		REQUIRE(f(42) == 142);
+		REQUIRE(f(1) == 101);
+	}
+}
+
 void runAllTests(engine::NautilusEngine& engine) {
 
+	SECTION("registerFunctionTest") {
+		registerFunctionTest(engine);
+	}
 	SECTION("expressionTest") {
 		addTest(engine);
 	}
@@ -559,16 +895,6 @@ void runAllTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Engine Interpreter Test") {
-	/*
-	std::cout << (is_arithmetic_value<val<int>> && (is_arithmetic_value<val<int>> ||
-	convertible_to_fundamental<val<int>>)) << std::endl; std::cout << (is_arithmetic_value<val<int>>) << std::endl;
-	std::cout << (is_arithmetic_value<val<Color>>) << std::endl;
-	std::cout << std::is_arithmetic_v<typename std::remove_reference_t<val<Color>>::basic_type> << std::endl;
-	std::cout << "Is int is_value? " << is_val<val<int>> << std::endl;
-	std::cout << "Is int is_value? " << is_val<int> << std::endl;
-	std::cout << "Is int is_value? " << is_val<int*> << std::endl;
-	std::cout << "Is int is_value? " << is_traceable_value<val<int>> << std::endl;
-	*/
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
@@ -596,8 +922,14 @@ TEST_CASE("Engine Compiler Test") {
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
+			SECTION("constructComplexReturnObject") {
+				// we assume that this throws a runtime exception with
+				// wrong number of arguments after tracing"
+				REQUIRE_THROWS(engine.registerFunction(constructComplexReturnObject));
+			}
 		}
 	}
+
 }
 #endif
 } // namespace nautilus::engine
