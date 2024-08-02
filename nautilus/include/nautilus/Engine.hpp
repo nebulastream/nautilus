@@ -83,7 +83,8 @@ std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...
 template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
-	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {	}
+	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
+	}
 
 	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
 	    : func(), executable(std::move(executable)) {}
@@ -94,7 +95,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			func(static_cast<signed char*>(details::transform((args)))...);
+			func(details::transform((args))...);
 			return;
 		}
 		auto callable =
@@ -109,7 +110,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			auto result = func(static_cast<signed char*>(details::transform((args)))...);
+			auto result = func(details::transform((args))...);
 			return nautilus::details::getRawValue(result);
 		}
 		auto callable =
@@ -155,18 +156,6 @@ public:
 		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
 
-	template <typename R, typename... FunctionArguments>
-	auto registerFunction(std::function<val<R>(val<FunctionArguments>...)> func) const {
-#ifdef ENABLE_TRACING
-		if (options.getOptionOrDefault("engine.Compilation", true)) {
-			auto wrapper = details::createFunctionWrapper(func);
-			auto executable = jit.compile(wrapper);
-			return CallableFunction<void, FunctionArguments...>(executable);
-		}
-#endif
-		std::function<void(FunctionArguments...)> inputWrapper = func;
-		return CallableFunction<void, FunctionArguments...>(inputWrapper);
-	}
 
 	template <typename R, typename... FunctionArguments>
 	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
@@ -179,6 +168,10 @@ public:
 #endif
 		return CallableFunction<R, val<FunctionArguments>...>(func);
 	}
+
+
+
+
 private:
 	const compiler::JITCompiler jit;
 	const Options options;

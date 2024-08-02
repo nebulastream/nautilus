@@ -192,6 +192,10 @@ public:
 		return val<ValueType>(value);
 	}
 
+	std::string toString() const {
+		return std::to_string(value);
+	}
+
 private:
 	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
 	ValueType value;
@@ -308,6 +312,10 @@ public:
 #endif
 		}
 		return value;
+	}
+
+	std::string toString() const {
+		return std::to_string(value);
 	}
 
 	bool value;
@@ -468,11 +476,11 @@ val<LHS>  neg(val<LHS>& val) {
 
 DEFINE_ARITHMETICAL_BINARY_OPERATOR(+, add)
 
-DEFINE_ARITHMETICAL_BINARY_OPERATOR(-, sub)
+DEFINE_BINARY_OPERATOR(-, sub)
 
-DEFINE_ARITHMETICAL_BINARY_OPERATOR(*, mul)
+DEFINE_BINARY_OPERATOR(*, mul)
 
-DEFINE_ARITHMETICAL_BINARY_OPERATOR(/, div)
+DEFINE_BINARY_OPERATOR(/, div)
 
 DEFINE_BINARY_OPERATOR(%, mod)
 
