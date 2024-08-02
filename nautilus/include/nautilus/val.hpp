@@ -19,7 +19,14 @@ constexpr auto getType();
 namespace details {
 
 template <typename LHS>
-LHS getRawValue(val<LHS>& val);
+LHS getRawValue(val<LHS>& val) {
+	return val.value;
+}
+
+template <typename LHS>
+LHS inline getRawValue(const val<LHS>& val) {
+	return val.value;
+}
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
 
@@ -436,16 +443,6 @@ val<LHS>  neg(val<LHS>& val) {
 	}
 #endif
 	return ~getRawValue(val);
-}
-
-template <typename LHS>
-LHS inline getRawValue(val<LHS>& val) {
-	return val.value;
-}
-
-template <typename LHS>
-LHS inline getRawValue(const val<LHS>& val) {
-	return val.value;
 }
 
 } // namespace details
