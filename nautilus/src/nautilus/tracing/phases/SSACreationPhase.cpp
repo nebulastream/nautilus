@@ -57,7 +57,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 	// check arguments
 	if (trace->arguments.size() != trace->getBlocks().front().arguments.size()) {
-		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", trace->arguments.size(), trace->getBlocks().front().arguments.size()));
+//		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", trace->arguments.size(), trace->getBlocks().front().arguments.size()));
+		throw RuntimeException("Wrong number of arguments in trace\n");
 	}
 	// sort arguments
 	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());

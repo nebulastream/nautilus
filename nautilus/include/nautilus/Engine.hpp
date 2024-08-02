@@ -109,7 +109,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			auto result = func(details::transform((args))...);
+			auto result = func(static_cast<signed char*>(details::transform((args)))...);
 			return nautilus::details::getRawValue(result);
 		}
 		auto callable =
@@ -164,7 +164,7 @@ public:
 			return CallableFunction<void, FunctionArguments...>(executable);
 		}
 #endif
-		std::function<void(FunctionArguments...)> inputWrapper = fnptr;
+		std::function<void(FunctionArguments...)> inputWrapper = func;
 		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
 
@@ -179,26 +179,6 @@ public:
 #endif
 		return CallableFunction<R, val<FunctionArguments>...>(func);
 	}
-
-
-	template <typename R, typename... FunctionArguments>
-	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
-#ifdef ENABLE_TRACING
-		if (options.getOptionOrDefault("engine.Compilation", true)) {
-			auto wrapper = details::createFunctionWrapper(func);
-			auto executable = jit.compile(wrapper);
-			return CallableFunction<R, val<FunctionArguments>...>(executable);
-		}
-#endif
-		return CallableFunction<R, val<FunctionArguments>...>(func);
-	}
-
-
-
-
-
-
-
 private:
 	const compiler::JITCompiler jit;
 	const Options options;
