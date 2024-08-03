@@ -29,6 +29,13 @@ val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
 	return t1 + t2;
 }
 
+val<bool> makeConstantOfTracingValue(val<int> ref) {
+	auto r = ref == 42;
+	bool concreteValue = r;
+	val<bool> res = concreteValue && r;
+	return res;
+}
+
 void addTest(engine::NautilusEngine& engine) {
 
 	SECTION("staticCast") {
@@ -927,9 +934,14 @@ TEST_CASE("Engine Compiler Test") {
 				// wrong number of arguments after tracing"
 				REQUIRE_THROWS(engine.registerFunction(constructComplexReturnObject));
 			}
+			SECTION("makeConstantOfTracingValue") {
+				// we assume that this throws a runtime exception with
+				// wrong number of arguments after tracing"
+				engine.registerFunction(makeConstantOfTracingValue);
+				// REQUIRE();
+			}
 		}
 	}
-
 }
 #endif
 } // namespace nautilus::engine
