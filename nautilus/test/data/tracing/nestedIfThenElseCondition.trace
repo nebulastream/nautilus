@@ -1,13 +1,13 @@
 B0()
 	CONST	$3	42	:i32	
-	EQ	$4	$1	$3	:i32	
+	EQ	$4	$1	$3	:bool	
 	CMP	$5	$4	B1()	B2()	:void	
 B1()
 	CONST	$6	2	:i32	
 	JMP	$0	B5()	:void	
 B2()
 	CONST	$11	8	:i32	
-	EQ	$12	$2	$11	:i32	
+	EQ	$12	$2	$11	:bool	
 	CMP	$13	$12	B3()	B4()	:void	
 B3()
 	CONST	$14	2	:i32	

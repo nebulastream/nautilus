@@ -12,5 +12,5 @@ B1($1:i32,$5:i32,$3:i32,$2:i32)
 B2($3:i32)
 	RETURN	$3	:i32	
 B3($3:i32,$5:i32,$1:i32,$2:i32) ControlFlowMerge
-	LTE	$6	$5	$1	:i32	
+	LTE	$6	$5	$1	:bool	
 	CMP	$7	$6	B1($1,$5,$3,$2)	B2($3)	:void	

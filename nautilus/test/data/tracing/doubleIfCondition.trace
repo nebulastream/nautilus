@@ -1,7 +1,7 @@
 B0()
 	CONST	$1	1	:i32	
 	CONST	$2	8	:i32	
-	EQ	$3	$1	$2	:i32	
+	EQ	$3	$1	$2	:bool	
 	CMP	$4	$3	B1()	B2()	:void	
 B1()
 	CONST	$5	1	:i32	
@@ -21,7 +21,7 @@ B4()
 	ASSIGN	$10	$14	:i32	
 	JMP	$0	B6()	:void	
 B5() ControlFlowMerge
-	EQ	$6	$1	$5	:i32	
+	EQ	$6	$1	$5	:bool	
 	CMP	$7	$6	B3()	B4()	:void	
 B6() ControlFlowMerge
 	ADD	$11	$1	$10	:i32	

@@ -12,5 +12,5 @@ B1()
 B2()
 	RETURN	$1	:i32	
 B3() ControlFlowMerge
-	NEQ	$4	$2	$3	:i32	
+	NEQ	$4	$2	$3	:bool	
 	CMP	$5	$4	B1()	B2()	:void	

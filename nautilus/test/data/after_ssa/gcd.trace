@@ -8,5 +8,5 @@ B1($1:i32,$2:i32)
 B2($1:i32)
 	RETURN	$1	:i32	
 B3($1:i32,$2:i32,$3:i32) ControlFlowMerge
-	NEQ	$4	$2	$3	:i32	
+	NEQ	$4	$2	$3	:bool	
 	CMP	$5	$4	B1($1,$2)	B2($1)	:void	

@@ -1,6 +1,6 @@
 B0()
 	CONST	$2	5	:i32	
-	GT	$3	$1	$2	:i32	
+	GT	$3	$1	$2	:bool	
 	CMP	$4	$3	B1()	B2()	:void	
 B1()
 	CONST	$5	10	:i32	
@@ -19,5 +19,5 @@ B3()
 B4()
 	RETURN	$5	:i32	
 B5() ControlFlowMerge
-	EQ	$7	$1	$6	:i32	
+	EQ	$7	$1	$6	:bool	
 	CMP	$8	$7	B3()	B4()	:void	
