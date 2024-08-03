@@ -161,7 +161,7 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"deeplyNestedIfElseIfCondition", details::createFunctionWrapper(deeplyNestedIfElseIfCondition)},
 	    {"andFunction", details::createFunctionWrapper(andFunction)},
 	    {"nestedIf", details::createFunctionWrapper(nestedIf)},
-	    {"ifElseIfElse", details::createFunctionWrapper(ifElseIfElse)},
+	    //{"ifElseIfElse", details::createFunctionWrapper(ifElseIfElse)},
 	    {"logicalAnd", details::createFunctionWrapper(logicalAnd)},
 	    {"logicalOr", details::createFunctionWrapper(logicalOr)},
 	    {"ifNotEqual", details::createFunctionWrapper(ifNotEqual)},

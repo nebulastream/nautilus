@@ -158,7 +158,15 @@ void TraceContext::traceAssignment(value_ref targetRef, value_ref sourceRef, Typ
 		return;
 	}
 	auto tag = recordSnapshot();
-
+	/*
+	auto found = executionTrace->globalTagMap.find(tag);
+	if (found != executionTrace->globalTagMap.end()) {
+		auto currentOp = executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
+		if(std::get<value_ref>(currentOp.input[0]) != sourceRef){
+			executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
+			return;
+		};
+	}*/
 	if (executionTrace->checkTag(tag)) {
 		executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
 		return;
