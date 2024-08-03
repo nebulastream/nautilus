@@ -31,5 +31,5 @@ B1()
 B2()
 	RETURN	$0	:void	
 B3() ControlFlowMerge
-	LT	$5	$4	$3	:i32	
+	LT	$5	$4	$3	:bool	
 	CMP	$6	$5	B1()	B2()	:void	

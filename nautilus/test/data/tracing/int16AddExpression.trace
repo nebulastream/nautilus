@@ -1,4 +1,4 @@
 B0()
 	CONST	$2	5	:i16	
-	ADD	$3	$1	$2	:i16	
+	ADD	$3	$1	$2	:i32	
 	RETURN	$3	:i16	

@@ -16,5 +16,5 @@ B3() ControlFlowMerge
 	DIV	$7	$1	$6	:i32	
 	ASSIGN	$1	$7	:i32	
 	CONST	$8	0	:i32	
-	GT	$9	$1	$8	:i32	
+	GT	$9	$1	$8	:bool	
 	CMP	$10	$9	B1()	B2()	:void	

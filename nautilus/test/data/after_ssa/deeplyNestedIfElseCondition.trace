@@ -1,11 +1,11 @@
 B0()
 	CONST	$1	5	:i32	
 	CONST	$2	8	:i32	
-	LT	$3	$1	$2	:i32	
+	LT	$3	$1	$2	:bool	
 	CMP	$4	$3	B1($1)	B2($1)	:void	
 B1($1:i32)
 	CONST	$5	6	:i32	
-	GT	$6	$1	$5	:i32	
+	GT	$6	$1	$5	:bool	
 	CMP	$7	$6	B3($1)	B4($1)	:void	
 B2($1:i32)
 	CONST	$13	20	:i32	
@@ -19,13 +19,13 @@ B3($1:i32)
 	JMP	$0	B5($9,$10)	:void	
 B4($1:i32)
 	CONST	$16	6	:i32	
-	LT	$17	$1	$16	:i32	
+	LT	$17	$1	$16	:bool	
 	CMP	$18	$17	B6($1)	B7($1)	:void	
 B5($1:i32,$10:i32) ControlFlowMerge
 	JMP	$0	B10($1,$10)	:void	
 B6($1:i32)
 	CONST	$19	5	:i32	
-	EQ	$20	$1	$19	:i32	
+	EQ	$20	$1	$19	:bool	
 	CMP	$21	$20	B8($1)	B9($1)	:void	
 B7($1:i32)
 	CONST	$25	2	:i32	

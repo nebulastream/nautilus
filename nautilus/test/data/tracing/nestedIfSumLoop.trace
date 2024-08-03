@@ -5,13 +5,13 @@ B0()
 	JMP	$0	B7()	:void	
 B1()
 	CONST	$6	50	:i32	
-	LT	$7	$1	$6	:i32	
+	LT	$7	$1	$6	:bool	
 	CMP	$8	$7	B3()	B4()	:void	
 B2()
 	RETURN	$1	:i32	
 B3()
 	CONST	$9	40	:i32	
-	LT	$10	$1	$9	:i32	
+	LT	$10	$1	$9	:bool	
 	CMP	$11	$10	B5()	B6()	:void	
 B4()
 	CONST	$17	1	:i32	
@@ -31,7 +31,7 @@ B6()
 	ASSIGN	$14	$20	:i32	
 	JMP	$0	B9()	:void	
 B7() ControlFlowMerge
-	LT	$4	$2	$3	:i32	
+	LT	$4	$2	$3	:bool	
 	CMP	$5	$4	B1()	B2()	:void	
 B8() ControlFlowMerge
 	JMP	$0	B9()	:void	

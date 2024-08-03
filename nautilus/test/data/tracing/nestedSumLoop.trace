@@ -21,8 +21,8 @@ B4()
 	ASSIGN	$3	$16	:i32	
 	JMP	$0	B6()	:void	
 B5() ControlFlowMerge
-	LT	$7	$6	$1	:i32	
+	LT	$7	$6	$1	:bool	
 	CMP	$8	$7	B3()	B4()	:void	
 B6() ControlFlowMerge
-	LT	$4	$3	$1	:i32	
+	LT	$4	$3	$1	:bool	
 	CMP	$5	$4	B1()	B2()	:void	
