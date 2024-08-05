@@ -1,4 +1,5 @@
 
+#include <iostream>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
@@ -108,6 +109,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	// If the current block is a control-flow merge it may have multiple predecessors.
 	// We avoid visiting them again by checking the processedBlocks set.
 	for (auto pred : block.predecessors) {
+		std::cout << "Cur " << block.blockId <<  " --> " << pred << std::endl;
 		auto& predBlock = trace->getBlock(pred);
 		if (!processedBlocks.contains(pred)) {
 			processBlock(predBlock);

@@ -31,6 +31,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	// create ssa
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
+	std::cout << afterSSA->toString() << std::endl;
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA));

@@ -17,7 +17,7 @@ class TraceContext;
 class SymbolicExecutionContext {
 public:
 	// The number of iterations we want to spend maximally to explore executions.
-	static const uint64_t MAX_ITERATIONS = 100000;
+	static const uint64_t MAX_ITERATIONS = 1000000;
 
 	enum class MODE : const uint8_t { FOLLOW, RECORD };
 
