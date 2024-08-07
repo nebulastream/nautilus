@@ -76,7 +76,8 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 // Todo Issue #3004: Currently, we are simply adding 'Query_1' as the FileLineLoc name. Moreover,
 //      the provided 'name' often is not meaningful either.
 mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
-	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
+	static auto tmp = 0;
+	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, tmp++);
 	return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
 }
 

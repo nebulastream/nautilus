@@ -16,7 +16,7 @@ std::string getFunctionName(R (*fnptr)(FunctionArguments...)) {
 	if (info.dli_sname != nullptr) {
 		return info.dli_sname;
 	}
-	return "xxx";
+	return "unknown";
 }
 
 template <typename R, typename... FunctionArguments>
