@@ -3,6 +3,7 @@
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IRReader/IRReader.h>
@@ -42,6 +43,12 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		auto optimizedModule = optPipeline(llvmIRModule);
 
 		// Print debug information to file/console if set in options.
+
+		std::string llvmIRString;
+		llvm::raw_string_ostream llvmStringStream(llvmIRString);
+		llvmIRModule->print(llvmStringStream, nullptr);
+		// auto* basicError = new std::error_code();
+		std::cout << llvmIRString << std::endl;
 		/*if (options.isDumpToConsole() || options.isDumpToFile()) {
 		    // Write the llvmIRModule to a string.
 		    std::string llvmIRString;

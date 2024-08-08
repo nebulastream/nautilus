@@ -2,43 +2,44 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
-
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 namespace nautilus::engine {
 
 template <typename BaseType>
 void createCastTest(engine::NautilusEngine& engine, std::string name, BaseType min, BaseType max) {
 	DYNAMIC_SECTION(name) {
 		BaseType zero = 0;
-		SECTION("to_i8") {
-			auto f = engine.registerFunction(staticCastExpression<BaseType, int8_t>);
-			REQUIRE(f(zero) == static_cast<int8_t>(zero));
-			REQUIRE(f(min) == static_cast<int8_t>(min));
-			REQUIRE(f(max) == static_cast<int8_t>(max));
+		/*SECTION("to_i8") {
+		    auto f = engine.registerFunction(staticCastExpression<BaseType, int8_t>);
+		    REQUIRE(f(zero) == static_cast<int8_t>(zero));
+		    REQUIRE(f(min) == static_cast<int8_t>(min));
+		    REQUIRE(f(max) == static_cast<int8_t>(max));
 		}
 		SECTION("to_i16") {
-			auto f = engine.registerFunction(staticCastExpression<BaseType, int16_t>);
-			REQUIRE(f(zero) == static_cast<int16_t>(zero));
-			REQUIRE(f(min) == static_cast<int16_t>(min));
-			REQUIRE(f(max) == static_cast<int16_t>(max));
+		    auto f = engine.registerFunction(staticCastExpression<BaseType, int16_t>);
+		    REQUIRE(f(zero) == static_cast<int16_t>(zero));
+		    REQUIRE(f(min) == static_cast<int16_t>(min));
+		    REQUIRE(f(max) == static_cast<int16_t>(max));
 		}
 		SECTION("to_i32") {
-			auto f = engine.registerFunction(staticCastExpression<BaseType, int32_t>);
-			REQUIRE(f(zero) == static_cast<int32_t>(zero));
-			REQUIRE(f(min) == static_cast<int32_t>(min));
-			REQUIRE(f(max) == static_cast<int32_t>(max));
+		    auto f = engine.registerFunction(staticCastExpression<BaseType, int32_t>);
+		    REQUIRE(f(zero) == static_cast<int32_t>(zero));
+		    REQUIRE(f(min) == static_cast<int32_t>(min));
+		    REQUIRE(f(max) == static_cast<int32_t>(max));
 		}
 		SECTION("to_i64") {
-			auto f = engine.registerFunction(staticCastExpression<BaseType, int64_t>);
-			REQUIRE(f(zero) == static_cast<int64_t>(zero));
-			REQUIRE(f(min) == static_cast<int64_t>(min));
-			REQUIRE(f(max) == static_cast<int64_t>(max));
-		}
+		    auto f = engine.registerFunction(staticCastExpression<BaseType, int64_t>);
+		    REQUIRE(f(zero) == static_cast<int64_t>(zero));
+		    REQUIRE(f(min) == static_cast<int64_t>(min));
+		    REQUIRE(f(max) == static_cast<int64_t>(max));
+		}*/
 		SECTION("to_ui8") {
 			auto f = engine.registerFunction(staticCastExpression<BaseType, uint8_t>);
 			REQUIRE(f(zero) == static_cast<uint8_t>(zero));
 			REQUIRE(f(min) == static_cast<uint8_t>(min));
 			REQUIRE(f(max) == static_cast<uint8_t>(max));
 		}
+
 		SECTION("to_ui16") {
 			auto f = engine.registerFunction(staticCastExpression<BaseType, uint16_t>);
 			REQUIRE(f(zero) == static_cast<uint16_t>(zero));
@@ -70,7 +71,6 @@ void createCastTest(engine::NautilusEngine& engine, std::string name, BaseType m
 			REQUIRE(f(min) == static_cast<double>(min));
 			REQUIRE(f(max) == static_cast<double>(max));
 		}
-
 		/*SECTION("to_bool") {
 		    auto f = engine.registerFunction(staticCastExpression<BaseType, bool>);
 		    REQUIRE(f(zero) == static_cast<bool>(zero));

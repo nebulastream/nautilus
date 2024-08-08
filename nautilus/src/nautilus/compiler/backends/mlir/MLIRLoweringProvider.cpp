@@ -358,12 +358,20 @@ void MLIRLoweringProvider::generateMLIR(ir::FunctionOperation* functionOp, Value
 		inputTypes.emplace_back(getMLIRType(inputArg->getStamp()));
 	}
 	llvm::SmallVector<mlir::Type> outputTypes(1, getMLIRType(functionOp->getOutputArg()));
+	;
 	auto functionInOutTypes = builder->getFunctionType(inputTypes, outputTypes);
 	auto loc = getNameLoc("EntryPoint");
 	auto mlirFunction = builder->create<mlir::func::FuncOp>(loc, functionOp->getName(), functionInOutTypes);
 
 	// Avoid function name mangling.
 	mlirFunction->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(context));
+	if (isUnsignedInteger(functionOp->getStamp())) {
+		mlirFunction.setResultAttr(0, "llvm.zeroext", mlir::UnitAttr::get(context));
+	} else if (isSignedInteger(functionOp->getStamp())) {
+		mlirFunction.setResultAttr(0, "llvm.signext", mlir::UnitAttr::get(context));
+	}
+	// mlirFunction.setArgAttr(0, "llvm.signext",  mlir::UnitAttr::get(context));
+
 	mlirFunction.
 
 	    addEntryBlock();
