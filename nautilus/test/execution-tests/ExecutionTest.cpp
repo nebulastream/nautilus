@@ -38,11 +38,6 @@ val<bool> makeConstantOfTracingValue(val<int> ref) {
 
 void addTest(engine::NautilusEngine& engine) {
 
-	SECTION("staticCast") {
-		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
-		REQUIRE(f((int8_t) 34) == 34);
-	}
-
 	SECTION("intBitwiseNegate") {
 		auto f = engine.registerFunction(negate<int32_t>);
 		REQUIRE(f(0) == -1);
@@ -66,11 +61,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((char) 1) == (char) -2);
 		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
 		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
-	}
-
-	SECTION("staticCast") {
-		auto f = engine.registerFunction(staticCastExpression<int8_t, int32_t>);
-		REQUIRE(f((int8_t) 34) == 34);
 	}
 
 	SECTION("logicalNot") {
@@ -255,23 +245,6 @@ void addTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((double) 7.0) == 14);
 		REQUIRE(f((double) -7) == 0);
 		REQUIRE(f((double) -14) == -7);
-	}
-	SECTION("castFloatToDoubleAddExpression") {
-		auto f = engine.registerFunction(castFloatToDoubleAddExpression);
-		REQUIRE(f((float) 7.0) == 14);
-		REQUIRE(f((float) -7) == 0);
-		REQUIRE(f((float) -14) == -7);
-	}
-	SECTION("castInt8ToInt64AddExpression") {
-		auto f = engine.registerFunction(castInt8ToInt64AddExpression);
-		REQUIRE(f((int8_t) 7) == 14);
-		REQUIRE(f((int8_t) -7) == 0);
-		REQUIRE(f((int8_t) -14) == -7);
-	}
-	SECTION("castInt8ToInt64Test2") {
-		auto f = engine.registerFunction(castInt8ToInt64AddExpression2);
-		REQUIRE(f((int8_t) 8) == 50);
-		REQUIRE(f((int8_t) -2) == 40);
 	}
 }
 

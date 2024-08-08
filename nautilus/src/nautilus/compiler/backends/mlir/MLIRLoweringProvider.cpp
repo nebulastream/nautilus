@@ -673,38 +673,78 @@ MLIRLoweringProvider::ValueFrame MLIRLoweringProvider::createFrameFromParentBloc
 void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputStamp = castOperation->getInput()->getStamp();
 	auto outputStamp = castOperation->getStamp();
+	auto mlirInput = frame.getValue(castOperation->getInput()->getIdentifier());
+	auto outputType = getMLIRType(outputStamp);
 
-	if (isInteger(inputStamp) && isInteger(outputStamp)) {
-		auto mlirInput = frame.getValue(castOperation->getInput()->getIdentifier());
-		if (inputStamp == outputStamp) {
-			// we skip the cast if input bit width are the same.
+	if (inputStamp == outputStamp) {
+		// we skip the cast if input and output is the same stamp.
+		frame.setValue(castOperation->getIdentifier(), mlirInput);
+		return;
+	}
+
+	if (isFloat(inputStamp) && isFloat(outputStamp)) {
+		if (getBitWith(inputStamp) == getBitWith(outputStamp)) {
+			// we skip the cast if input and output is the same bitwith.
 			frame.setValue(castOperation->getIdentifier(), mlirInput);
-		} else if (isSignedInteger(outputStamp)) {
+			return;
+		} else if (getBitWith(inputStamp) < getBitWith(outputStamp)) {
+			// upcast
+			auto mlirCast = builder->create<mlir::arith::ExtFOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		} else if (getBitWith(inputStamp) > getBitWith(outputStamp)) {
+			// downcast
+			auto mlirCast = builder->create<mlir::arith::TruncFOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		}
+	} else if (isInteger(inputStamp) && isFloat(outputStamp)) {
+		if (isSignedInteger(inputStamp)) {
+			// cast to signed int to float
+			auto mlirCast = builder->create<mlir::arith::SIToFPOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		} else {
+			// cast to signed int to double
+			auto mlirCast = builder->create<mlir::arith::UIToFPOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		}
+	} else if (isFloat(inputStamp) && isInteger(outputStamp)) {
+		if (isSignedInteger(outputStamp)) {
+			// cast float or double to signed int
+			auto mlirCast = builder->create<mlir::arith::FPToSIOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		} else if (isUnsignedInteger(outputStamp)) {
+			// cast float or double to unsigned int
+			auto mlirCast = builder->create<mlir::arith::FPToUIOp>(getNameLoc("location"), outputType, mlirInput);
+			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
+		}
+	} else if (isInteger(inputStamp) && isInteger(outputStamp) && getBitWith(inputStamp) == getBitWith(outputStamp)) {
+		// we skip the cast if input and output is the same stamp.
+		frame.setValue(castOperation->getIdentifier(), mlirInput);
+		return;
+	} else if (getBitWith(inputStamp) < getBitWith(outputStamp)) {
+		// upcast
+		if (isSignedInteger(inputStamp) && (isUnsignedInteger(outputStamp) || isSignedInteger(outputStamp))) {
 			auto mlirCast = builder->create<mlir::arith::ExtSIOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
 			frame.setValue(castOperation->getIdentifier(), mlirCast);
-		} else {
+			return;
+		} else if (isUnsignedInteger(inputStamp) && (isUnsignedInteger(outputStamp) || isSignedInteger(outputStamp))) {
 			auto mlirCast = builder->create<mlir::arith::ExtUIOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
 			frame.setValue(castOperation->getIdentifier(), mlirCast);
+			return;
 		}
-		return;
-	} else if (isFloat(inputStamp) && isFloat(outputStamp)) {
-		auto mlirInput = frame.getValue(castOperation->getInput()->getIdentifier());
-		auto mlirCast = builder->create<mlir::arith::ExtFOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
+	} else if (isInteger(inputStamp) && isInteger(outputStamp) && getBitWith(inputStamp) > getBitWith(outputStamp)) {
+		// downcast
+		auto mlirCast = builder->create<mlir::arith::TruncIOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
 		frame.setValue(castOperation->getIdentifier(), mlirCast);
 		return;
-	} else if (isInteger(inputStamp) && isFloat(outputStamp)) {
-		auto mlirInput = frame.getValue(castOperation->getInput()->getIdentifier());
-		if (isSignedInteger(inputStamp)) {
-			auto mlirCast = builder->create<mlir::arith::SIToFPOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
-			frame.setValue(castOperation->getIdentifier(), mlirCast);
-		} else {
-			auto mlirCast = builder->create<mlir::arith::UIToFPOp>(getNameLoc("location"), getMLIRType(outputStamp), mlirInput);
-			frame.setValue(castOperation->getIdentifier(), mlirCast);
-		}
-		return;
-	} else {
-		throw NotImplementedException("Cast is not supported.");
 	}
+
+	throw NotImplementedException("Cast is not supported.");
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::BinaryCompOperation* binaryCompOperation, nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
