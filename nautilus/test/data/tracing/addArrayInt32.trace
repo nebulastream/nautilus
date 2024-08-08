@@ -1,4 +1,4 @@
-B0()
+B0($1:ptr,$2:ptr,$3:i32)
 	CONST	$4	0	:i32	
 	JMP	$0	B3()	:void	
 B1()

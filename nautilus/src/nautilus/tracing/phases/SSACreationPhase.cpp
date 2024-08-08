@@ -43,7 +43,7 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 }
 
 std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::process() {
-	// trace->getBlock(0).arguments = trace->getArguments();
+	auto rootBlockNumberOfArguments = trace->getArguments().size();
 	//  In the first step we get the return block, which contains the return call.
 	//  Starting with this block we trace all inputs
 
@@ -56,8 +56,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	makeBlockArgumentsUnique();
 
 	// check arguments
-	if (trace->arguments.size() != trace->getBlocks().front().arguments.size()) {
-		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", trace->arguments.size(), trace->getBlocks().front().arguments.size()));
+	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
+		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
 	}
 	// sort arguments
 	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
@@ -78,6 +78,7 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, va
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
+
 	// Process the inputs of all operations in the current block
 	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
 		auto& operation = block.operations[i];

@@ -834,6 +834,24 @@ public:
 
 void registerFunctionTest(engine::NautilusEngine& engine) {
 
+	SECTION("useFirstArg") {
+		auto f = engine.registerFunction(useFirstArg);
+		REQUIRE(f(42, 1) == 42);
+		REQUIRE(f(1, 42) == 1);
+	}
+
+	SECTION("useSecondArg") {
+		auto f = engine.registerFunction(useSecondArg);
+		REQUIRE(f(42, 1) == 1);
+		REQUIRE(f(1, 42) == 42);
+	}
+
+	SECTION("useNoArg") {
+		auto f = engine.registerFunction(useNoArg);
+		REQUIRE(f(43, 1) == 42);
+		REQUIRE(f(1, 43) == 42);
+	}
+
 	SECTION("pureFunction") {
 		auto f = engine.registerFunction(std::function([](val<int32_t> arg) { return arg; }));
 		REQUIRE(f(42) == 42);

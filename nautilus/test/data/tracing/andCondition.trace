@@ -1,4 +1,4 @@
-B0()
+B0($1:i32,$2:i32)
 	CONST	$3	1	:i32	
 	CONST	$4	8	:i32	
 	EQ	$5	$1	$4	:bool	

@@ -208,6 +208,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 value_ref ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	uint16_t argRef = index + 1;
+	auto& arguments = blocks[0].arguments;
 	if (arguments.size() < argRef) {
 		arguments.resize(argRef);
 	}

@@ -38,6 +38,18 @@ void voidFunc(int32_t x, int32_t y) {
 	[[maybe_unused]] auto z = x + y;
 }
 
+val<int32_t> useFirstArg(val<int32_t> x, [[maybe_unused]] val<int32_t> y) {
+	return x;
+}
+
+val<int32_t> useSecondArg([[maybe_unused]] val<int32_t> x, val<int32_t> y) {
+	return y;
+}
+
+val<int32_t> useNoArg([[maybe_unused]] val<int32_t> x, [[maybe_unused]] val<int32_t> y) {
+	return 42;
+}
+
 int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
@@ -58,6 +70,5 @@ val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
 	invoke<>(voidFunc, x, y);
 	return x;
 }
-
 
 } // namespace nautilus::engine
