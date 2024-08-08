@@ -127,7 +127,6 @@ public:
 	uint16_t currentBlockIndex;
 	uint16_t currentOperationIndex;
 	std::vector<Block> blocks;
-	std::vector<value_ref> arguments;
 	std::vector<operation_identifier> returnRefs;
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
