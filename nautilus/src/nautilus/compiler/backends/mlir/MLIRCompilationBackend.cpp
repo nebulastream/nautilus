@@ -29,6 +29,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(std::shared_ptr<ir::
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context);
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
+	if (*mlirModule == nullptr) {
+		throw RuntimeException("verification of MLIR module failed!");
+	};
 
 	// 2.a dump MLIR to console or a file
 	// if (options.isDumpToConsole() || options.isDumpToFile()) {

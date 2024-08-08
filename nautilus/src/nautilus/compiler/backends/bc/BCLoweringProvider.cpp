@@ -1334,11 +1334,17 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		}
 	} else if (srcType == Type::i16) {
 		switch (tar) {
+		case Type::i8:
+			bc = ByteCode::CAST_i16_i8;
+			break;
 		case Type::i32:
 			bc = ByteCode::CAST_i16_i32;
 			break;
 		case Type::i64:
 			bc = ByteCode::CAST_i16_i64;
+			break;
+		case Type::ui8:
+			bc = ByteCode::CAST_i16_ui8;
 			break;
 		case Type::ui16:
 			bc = ByteCode::CAST_i16_ui16;
@@ -1360,8 +1366,20 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		}
 	} else if (srcType == Type::i32) {
 		switch (tar) {
+		case Type::i8:
+			bc = ByteCode::CAST_i32_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_i32_i16;
+			break;
 		case Type::i64:
 			bc = ByteCode::CAST_i32_i64;
+			break;
+		case Type::ui8:
+			bc = ByteCode::CAST_i32_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_i32_ui64;
 			break;
 		case Type::ui32:
 			bc = ByteCode::CAST_i32_ui32;
@@ -1380,6 +1398,24 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		}
 	} else if (srcType == Type::i64) {
 		switch (tar) {
+		case Type::i8:
+			bc = ByteCode::CAST_i64_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_i64_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_i64_i32;
+			break;
+		case Type::ui8:
+			bc = ByteCode::CAST_i64_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_i64_ui16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::CAST_i64_ui32;
+			break;
 		case Type::ui64:
 			bc = ByteCode::CAST_i64_ui64;
 			break;
@@ -1403,6 +1439,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::ui64:
 			bc = ByteCode::CAST_ui8_ui64;
 			break;
+		case Type::i8:
+			bc = ByteCode::CAST_ui8_i8;
+			break;
 		case Type::i16:
 			bc = ByteCode::CAST_ui8_i16;
 			break;
@@ -1412,16 +1451,31 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::i64:
 			bc = ByteCode::CAST_ui8_i64;
 			break;
+		case Type::f32:
+			bc = ByteCode::CAST_ui8_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_ui8_d;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
 	} else if (srcType == Type::ui16) {
 		switch (tar) {
+		case Type::ui8:
+			bc = ByteCode::CAST_ui16_ui8;
+			break;
 		case Type::ui32:
 			bc = ByteCode::CAST_ui16_ui32;
 			break;
 		case Type::ui64:
 			bc = ByteCode::CAST_ui16_ui64;
+			break;
+		case Type::i8:
+			bc = ByteCode::CAST_ui16_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_ui16_i16;
 			break;
 		case Type::i32:
 			bc = ByteCode::CAST_ui16_i32;
@@ -1429,17 +1483,146 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::i64:
 			bc = ByteCode::CAST_ui16_i64;
 			break;
+		case Type::f32:
+			bc = ByteCode::CAST_ui16_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_ui16_d;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
-	} else if (srcType == Type::ui32 && tar == Type::ui64) {
-		bc = ByteCode::CAST_ui32_ui64;
-	} else if (srcType == Type::ui32 && tar == Type::i64) {
-		bc = ByteCode::CAST_ui32_i64;
-	} else if (srcType == Type::f32 && tar == Type::f64) {
-		bc = ByteCode::CAST_f_d;
-	} else {
+	} else if (srcType == Type::ui32) {
+		switch (tar) {
+		case Type::ui8:
+			bc = ByteCode::CAST_ui32_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_ui32_ui16;
+			break;
+		case Type::ui64:
+			bc = ByteCode::CAST_ui32_ui64;
+			break;
+		case Type::i8:
+			bc = ByteCode::CAST_ui32_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_ui32_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_ui32_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::CAST_ui32_i64;
+			break;
+		case Type::f32:
+			bc = ByteCode::CAST_ui32_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_ui32_d;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
 
+	} else if (srcType == Type::ui64) {
+		switch (tar) {
+		case Type::ui8:
+			bc = ByteCode::CAST_ui64_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_ui64_ui16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::CAST_ui64_ui32;
+			break;
+		case Type::i8:
+			bc = ByteCode::CAST_ui64_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_ui64_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_ui64_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::CAST_ui64_i64;
+			break;
+		case Type::f32:
+			bc = ByteCode::CAST_ui64_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_ui64_d;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
+
+	} else if (srcType == Type::f32) {
+		switch (tar) {
+		case Type::ui8:
+			bc = ByteCode::CAST_f_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_f_ui16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::CAST_f_ui32;
+			break;
+		case Type::ui64:
+			bc = ByteCode::CAST_f_ui64;
+			break;
+		case Type::i8:
+			bc = ByteCode::CAST_f_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_f_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_f_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::CAST_f_i64;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_f_d;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
+	} else if (srcType == Type::f64) {
+		switch (tar) {
+		case Type::ui8:
+			bc = ByteCode::CAST_d_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_d_ui16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::CAST_d_ui32;
+			break;
+		case Type::ui64:
+			bc = ByteCode::CAST_d_ui64;
+			break;
+		case Type::i8:
+			bc = ByteCode::CAST_d_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_d_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_d_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::CAST_d_i64;
+			break;
+		case Type::f32:
+			bc = ByteCode::CAST_d_f;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
+	} else {
 		throw NotImplementedException("This type is not supported.");
 	}
 	OpCode oc = {bc, input, -1, resultReg};

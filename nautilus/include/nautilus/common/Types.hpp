@@ -78,5 +78,29 @@ constexpr bool isFloat(Type type) {
 	}
 }
 
+constexpr int8_t getBitWith(Type type) {
+	switch (type) {
+	case Type::v:
+		return -1;
+	case Type::b:
+	case Type::i8:
+	case Type::ui8:
+		return 8;
+	case Type::i16:
+	case Type::ui16:
+		return 16;
+	case Type::i32:
+	case Type::ui32:
+	case Type::f32:
+		return 32;
+	case Type::i64:
+	case Type::ui64:
+	case Type::f64:
+	case Type::ptr:
+		return 64;
+	}
+	return -1;
+}
+
 std::ostream& operator<<(std::ostream& os, const Type& type);
 } // namespace nautilus
