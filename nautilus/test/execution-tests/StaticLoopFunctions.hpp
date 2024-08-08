@@ -47,6 +47,18 @@ val<int32_t> staticIterator(val<int32_t> ref) {
 	return sum;
 }
 
+const std::vector<int> constVec = {1, 2, 3, 4, 5};
+
+val<int32_t> staticConstIterator(val<int32_t> ref) {
+	val<int32_t> sum = 0;
+	for (auto x : static_iterable(constVec)) {
+		if (ref > x) {
+			sum = sum + 1;
+		}
+	}
+	return sum;
+}
+
 val<int32_t> staticLoopIncrement() {
 	val<int32_t> agg = val<int32_t>(1);
 	for (static_val<int> start = 0; start < 10; start++) {

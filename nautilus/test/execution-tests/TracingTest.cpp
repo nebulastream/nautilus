@@ -213,9 +213,10 @@ TEST_CASE("Loop Trace Test") {
 
 TEST_CASE("Static Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"staticLoop", details::createFunctionWrapper(staticLoop)},
-	                                                                          // {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
+	                                                                          {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
 	                                                                          {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
-	                                                                          // {"staticIterator", details::createFunctionWrapper(staticIterator)},
+	                                                                          {"staticIterator", details::createFunctionWrapper(staticIterator)},
+	                                                                          {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	                                                                          {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
 	                                                                          {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
 	runTraceTests(tests);

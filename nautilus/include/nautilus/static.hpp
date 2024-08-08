@@ -159,12 +159,12 @@ public:
 	static_iterable(Container& container) : m_container(container) {
 	}
 
-	static_iterator<typename Container::iterator> begin() {
-		return static_iterator<typename Container::iterator>(m_container.begin());
+	auto begin() {
+		return static_iterator<decltype(m_container.begin())>(m_container.begin());
 	}
 
-	static_iterator<typename Container::iterator> end() {
-		return static_iterator<typename Container::iterator>(m_container.end());
+	auto end() {
+		return static_iterator<decltype(m_container.end())>(m_container.end());
 	}
 
 private:
