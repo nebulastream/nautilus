@@ -33,7 +33,6 @@ set_target_properties(nautilus PROPERTIES
 )
 
 if (ENABLE_LOGGING)
-    find_package(spdlog CONFIG REQUIRED)
     target_link_libraries(nautilus PRIVATE spdlog::spdlog)
 endif ()
 
@@ -50,16 +49,17 @@ endif ()
 # Handle CMake Install
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)
+
 install(
-    TARGETS nautilus
-    EXPORT ${PROJECT_NAME}-config
-    ARCHIVE DESTINATION  "${CMAKE_INSTALL_LIBDIR}"
+        TARGETS nautilus ${EXPORT_TARGETS}
+        EXPORT ${PROJECT_NAME}-config
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
 )
 
 install(
-  EXPORT ${PROJECT_NAME}-config
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
-  NAMESPACE   "${PROJECT_NAME}::"
+        EXPORT ${PROJECT_NAME}-config
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
+        NAMESPACE "${PROJECT_NAME}::"
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/${PROJECT_NAME}/
