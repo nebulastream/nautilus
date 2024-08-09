@@ -1,0 +1,3 @@
+B0($1:ui32)
+	ASSIGN	$2	$1	:ui32	
+	RETURN	$2	:ui32	

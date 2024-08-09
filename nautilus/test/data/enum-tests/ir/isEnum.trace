@@ -1,0 +1,28 @@
+NESIR {
+execute() {
+Block_0($1:ui32):
+    $2 = 0 :ui32
+    $3 = $1 == $2 :bool
+    if $3 ? Block_1() : Block_2($1) :void
+
+Block_1():
+    $5 = 1 :i32
+    br Block_5($5) :void
+
+Block_5($5:i32):
+    return ($5) :i32
+
+Block_2($1:ui32):
+    $7 = 1 :ui32
+    $8 = $1 == $7 :bool
+    if $8 ? Block_3() : Block_4() :void
+
+Block_3():
+    $10 = 2 :i32
+    br Block_5($10) :void
+
+Block_4():
+    $12 = 42 :i32
+    br Block_5($12) :void
+}
+} //NESIR

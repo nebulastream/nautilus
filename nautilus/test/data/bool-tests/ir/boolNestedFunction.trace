@@ -1,0 +1,18 @@
+NESIR {
+execute() {
+Block_0($1:bool, $2:bool):
+    $5 = $1 == $2 :bool
+    if $5 ? Block_1() : Block_2() :void
+
+Block_1():
+    $7 = 1 :bool
+    br Block_3($7) :void
+
+Block_3($7:bool):
+    return ($7) :bool
+
+Block_2():
+    $10 = 0 :bool
+    br Block_3($10) :void
+}
+} //NESIR

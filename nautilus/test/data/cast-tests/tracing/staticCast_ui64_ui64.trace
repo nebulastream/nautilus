@@ -1,0 +1,3 @@
+B0($1:ui64)
+	ASSIGN	$2	$1	:ui64	
+	RETURN	$2	:ui64	
