@@ -1,0 +1,7 @@
+NESIR {
+execute() {
+Block_0($1:bool, $2:bool):
+    $3 = $1 != $2 :bool
+    return ($3) :bool
+}
+} //NESIR

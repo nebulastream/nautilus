@@ -1,0 +1,3 @@
+B0($1:bool,$2:bool)
+	AND	$5	$1	$2	:bool	
+	RETURN	$5	:bool	

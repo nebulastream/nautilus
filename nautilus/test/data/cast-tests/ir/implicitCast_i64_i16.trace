@@ -1,0 +1,7 @@
+NESIR {
+execute() {
+Block_0($1:i64):
+    $2 = $1 cast_to i16 :i16
+    return ($2) :i16
+}
+} //NESIR

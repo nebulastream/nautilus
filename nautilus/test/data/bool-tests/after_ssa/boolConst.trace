@@ -1,0 +1,4 @@
+B0($1:bool)
+	CONST	$3	:bool	
+	AND	$4	$1	$3	:bool	
+	RETURN	$4	:bool	

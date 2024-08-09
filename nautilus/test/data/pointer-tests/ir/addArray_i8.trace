@@ -1,0 +1,37 @@
+NESIR {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:i8):
+    $4 = 0 :i8
+    br Block_3($4, $3, $1, $2) :void
+
+Block_3($4:i8, $3:i8, $1:ptr, $2:ptr):
+    $5 = $4 < $3 :bool
+    if $5 ? Block_1($3, $4, $1, $2) : Block_2() :void
+
+Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
+    $7 = $4 cast_to i32 :i32
+    $10 = 1 :i32
+    $11 = $7 * $10 :i32
+    $12 = $1 + $11 :ptr
+    $13 = load($12) :i8
+    $14 = $4 cast_to i32 :i32
+    $17 = 1 :i32
+    $18 = $14 * $17 :i32
+    $19 = $2 + $18 :ptr
+    $20 = load($19) :i8
+    $21 = $13 + $20 :i8
+    $22 = $4 cast_to i32 :i32
+    $25 = 1 :i32
+    $26 = $22 * $25 :i32
+    $27 = $1 + $26 :ptr
+    store($21, $27) :void
+    $28 = 1 :i32
+    $29 = $4 cast_to i32 :i32
+    $30 = $29 + $28 :i32
+    $31 = $30 cast_to i8 :i8
+    br Block_3($31, $3, $1, $2) :void
+
+Block_2():
+    return :void
+}
+} //NESIR

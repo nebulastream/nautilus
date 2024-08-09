@@ -1,0 +1,6 @@
+NESIR {
+execute() {
+Block_0($1:ui32):
+    return ($1) :ui32
+}
+} //NESIR

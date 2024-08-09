@@ -1,0 +1,4 @@
+B0($1:bool)
+	ASSIGN	$2	$1	:bool	
+	NOT	$3	$2	:bool	
+	RETURN	$3	:bool	

@@ -137,7 +137,7 @@ public:
 
 	template <typename OtherType>
 	    requires std::is_convertible_v<ValueType, OtherType>
-	explicit operator val<OtherType>() const {
+	operator val<OtherType>() const {
 		// cast
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING

@@ -66,6 +66,8 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 				os << any_cast<uint32_t>(*constant) << "\t";
 			} else if (constant->type() == typeid(uint64_t)) {
 				os << any_cast<uint64_t>(*constant) << "\t";
+			} else if (constant->type() == typeid(size_t)) {
+				os << any_cast<size_t>(*constant) << "\t";
 			} else if (constant->type() == typeid(float)) {
 				os << any_cast<float>(*constant) << "\t";
 			} else if (constant->type() == typeid(double)) {

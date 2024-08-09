@@ -1,0 +1,3 @@
+B0($1:f32)
+	CAST	$2	$1	:ui16	
+	RETURN	$2	:ui16	

@@ -3,6 +3,17 @@
 #include <nautilus/Engine.hpp>
 
 namespace nautilus::engine {
+
+val<int32_t> ifInsideLoop(val<int32_t> value) {
+	val<int32_t> result = 0;
+	for (val<int32_t> i = 0; i < value; i = i + 1) {
+		if (i % 2 == 0) {
+			result += 1;
+		}
+	}
+	return result;
+}
+
 val<int32_t> sumLoop(val<int32_t> upperLimit) {
 	val<int32_t> agg = val<int32_t>(1);
 	for (val<int32_t> start = 0; start < upperLimit; start = start + 1) {
@@ -125,15 +136,6 @@ val<int32_t> reverseNumber(val<int32_t> n) {
 		n /= 10;
 	} while (n > 0);
 	return reversed;
-}
-
-void multiplicationTable(val<int32_t> n) {
-	for (int i = 1; i <= n; ++i) {
-		for (int j = 1; j <= n; ++j) {
-			std::cout << i * j << " ";
-		}
-		std::cout << std::endl;
-	}
 }
 
 val<int32_t> fibonacci(val<int32_t> n) {

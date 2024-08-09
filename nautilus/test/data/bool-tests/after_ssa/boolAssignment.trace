@@ -1,0 +1,2 @@
+B0($1:bool)
+	RETURN	$1	:bool	

@@ -1,0 +1,4 @@
+B0($1:ptr,$2:ptr)
+	CONST	$3	0	:ui64	
+	CALL	$6	($2,$1,$3)	:ptr	
+	RETURN	$0	:void	

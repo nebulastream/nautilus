@@ -1,0 +1,9 @@
+B0($1:ptr)
+	CONST	$2	0	:i32	
+	ASSIGN	$3	$2	:i32	
+	ASSIGN	$4	$3	:i32	
+	CONST	$5	2	:i32	
+	MUL	$6	$4	$5	:i32	
+	ADD	$7	$1	$6	:ptr	
+	LOAD	$8	$7	:i16	
+	RETURN	$8	:i16	

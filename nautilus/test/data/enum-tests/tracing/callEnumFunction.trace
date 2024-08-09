@@ -1,0 +1,5 @@
+B0($1:ui32)
+	ASSIGN	$2	$1	:ui32	
+	ASSIGN	$3	$2	:ui32	
+	CALL	$4	($3)	:i32	
+	RETURN	$4	:i32	

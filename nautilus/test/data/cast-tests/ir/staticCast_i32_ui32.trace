@@ -1,0 +1,7 @@
+NESIR {
+execute() {
+Block_0($1:i32):
+    $2 = $1 cast_to ui32 :ui32
+    return ($2) :ui32
+}
+} //NESIR
