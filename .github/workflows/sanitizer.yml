@@ -1,6 +1,12 @@
 name: Sanitizer Nautilus
 run-name: ${{ github.actor }} builds Nautilus
-on: [ push, pull_request ]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 jobs:
   build-test:
     runs-on: ${{matrix.os}}
