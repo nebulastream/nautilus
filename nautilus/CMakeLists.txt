@@ -33,7 +33,8 @@ set_target_properties(nautilus PROPERTIES
 )
 
 if (ENABLE_LOGGING)
-    target_link_libraries(nautilus PRIVATE spdlog)
+    find_package(spdlog CONFIG REQUIRED)
+    target_link_libraries(nautilus PRIVATE spdlog::spdlog)
 endif ()
 
 if (ENABLE_STACKTRACE)
