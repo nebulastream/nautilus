@@ -104,7 +104,7 @@ public:
 		if (hasInvocableFunctionPtr()) {
 			return Invocable<R, Args...>(getInvocableFunctionPtr(member));
 		} else {
-			return Invocable<R, Args...>(std::move(getGenericInvocable(member)));
+			return Invocable<R, Args...>(getGenericInvocable(member));
 		}
 	}
 
