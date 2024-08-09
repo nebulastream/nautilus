@@ -23,8 +23,9 @@ std::string printAndCollectCurrentStacktrace() {
 } // namespace nautilus
 #else
 namespace nautilus {
-void printCurrentStacktrace() {
+std::string printAndCollectCurrentStacktrace() {
 	// nop if stacktrace is disabled.
+	return {};
 }
 } // namespace nautilus
 #endif
