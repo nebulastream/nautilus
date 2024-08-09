@@ -1,7 +1,0 @@
-NESIR {
-execute() {
-Block_0($1:ptr):
-    $2 = ($1) :i32
-    return ($2) :i32
-}
-} //NESIR

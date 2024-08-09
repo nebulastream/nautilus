@@ -219,15 +219,7 @@ val<int32_t> ifWithTernary(val<int32_t> value) {
 	}
 	return result;
 }
-val<int32_t> ifInsideLoop(val<int32_t> value) {
-	val<int32_t> result = 0;
-	for (val<int32_t> i = 0; i < value; i = i + 1) {
-		if (i % 2 == 0) {
-			result += 1;
-		}
-	}
-	return result;
-}
+
 val<int32_t> complexLogicalExpressions(val<int32_t> value) {
 	val<int32_t> result = 0;
 	if ((value > 5 && value < 10) || (value > 15 && value < 20)) {

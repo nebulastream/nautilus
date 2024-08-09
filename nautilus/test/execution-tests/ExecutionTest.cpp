@@ -1,5 +1,5 @@
 #include "ControlFlowFunctions.hpp"
-#include "EnumFunction.h"
+#include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "PointerFunctions.hpp"

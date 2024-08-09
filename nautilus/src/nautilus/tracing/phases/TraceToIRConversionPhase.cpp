@@ -456,6 +456,8 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceT
 
 	} else if (constant->type() == typeid(uint64_t)) {
 		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint64_t>(*constant), resultType);
+	} else if (constant->type() == typeid(size_t)) {
+		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, (uint64_t) any_cast<size_t>(*constant), resultType);
 
 	} else if (constant->type() == typeid(float)) {
 		constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<float>(*constant), resultType);
