@@ -100,7 +100,7 @@ public:
 	// copy constructor
 	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	inline val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {};
+	inline val(const val<ValueType>&& other) noexcept : state((other.state)), value(other.value) {};
 	inline val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	val() {};
