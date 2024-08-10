@@ -95,13 +95,13 @@ public:
 
 #ifdef ENABLE_TRACING
 	const tracing::TypedValueRefHolder state;
-	inline val() : state(tracing::traceConstant(0)) {};
-	inline val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
+	val() : state(tracing::traceConstant(0)) {};
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
-	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	inline val(const val<ValueType>&& other) noexcept : state((other.state)), value(other.value) {};
-	inline val(tracing::value_ref& tc) : state(tc), value() {};
+	val(const val<ValueType>&& other) noexcept : state((other.state)), value(other.value) {};
+	val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	val() {};
 	val(ValueType value) : value(value) {};
