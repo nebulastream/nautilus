@@ -912,12 +912,6 @@ TEST_CASE("Engine Compiler Test") {
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
-			SECTION("makeConstantOfTracingValue") {
-				// we assume that this throws a runtime exception with
-				// wrong number of arguments after tracing"
-				engine.registerFunction(makeConstantOfTracingValue);
-				// REQUIRE();
-			}
 		}
 	}
 }
