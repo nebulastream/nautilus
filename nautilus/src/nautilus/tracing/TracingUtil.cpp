@@ -1,9 +1,55 @@
 
 #include "TraceContext.hpp"
 #include "nautilus/common/traceing.hpp"
+#include "nautilus/logging.hpp"
 #include <spdlog/fmt/fmt.h>
-
 namespace nautilus::tracing {
+
+TypedValueRef::TypedValueRef() : ref(0), type(Type::v) {
+}
+
+TypedValueRef::TypedValueRef(uint16_t ref, nautilus::Type type) : ref(ref), type(type) {
+}
+
+TypedValueRefHolder::operator const TypedValueRef&() const {
+	return valueRef;
+}
+
+TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRef valueRef) : valueRef(valueRef) {
+	if (!inTracer())
+		return;
+	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
+	refCounter++;
+}
+
+TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder& other) : valueRef(other.valueRef) {
+	if (!inTracer())
+		return;
+	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
+	refCounter++;
+}
+
+TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRefHolder&& other) : valueRef(other.valueRef) {
+}
+
+TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::TypedValueRefHolder& other) {
+	valueRef = other.valueRef;
+	return *this;
+}
+
+TypedValueRefHolder& TypedValueRefHolder::operator=(nautilus::tracing::TypedValueRefHolder&& other) {
+	valueRef = std::move(other.valueRef);
+	return *this;
+}
+
+TypedValueRefHolder::~TypedValueRefHolder() {
+	if (!inTracer())
+		return;
+	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
+	// the ref counter should always be greater than zero.
+	assert(refCounter > 0);
+	refCounter--;
+}
 
 void traceAssignment(value_ref target, value_ref source, Type resultType) {
 	TraceContext::get()->traceAssignment(target, source, resultType);
@@ -44,6 +90,10 @@ value_ref traceConstant(Type type, std::any&& value) {
 [[maybe_unused]] value_ref traceCast(value_ref state, Type resultType) {
 	return TraceContext::get()->traceCast(state, resultType);
 };
+
+DynamicValueMap& getVarRefMap() {
+	return TraceContext::get()->getDynamicVars();
+}
 
 [[maybe_unused]] value_ref traceCopy(value_ref state) {
 	if (inTracer()) {

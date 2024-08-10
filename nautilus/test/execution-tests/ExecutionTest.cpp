@@ -7,27 +7,7 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
-
 namespace nautilus::engine {
-
-struct RObject {
-	val<int32_t> a;
-	val<int32_t> b;
-};
-
-RObject returnObject(val<int32_t> a, val<int32_t> b) {
-	if (a > b) {
-		return {.a = a, .b = b};
-	}
-	return {.a = 0, .b = 0};
-}
-
-val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
-	auto r = returnObject(a, b);
-	auto t1 = r.a + 1;
-	auto t2 = r.b + 1;
-	return t1 + t2;
-}
 
 val<bool> makeConstantOfTracingValue(val<int> ref) {
 	auto r = ref == 42;
@@ -37,6 +17,18 @@ val<bool> makeConstantOfTracingValue(val<int> ref) {
 }
 
 void addTest(engine::NautilusEngine& engine) {
+
+	SECTION("constructComplexReturnObject") {
+		auto f = engine.registerFunction(constructComplexReturnObject);
+		REQUIRE(f(0, 2) == 2);
+		REQUIRE(f(3, 1) == 6);
+	}
+
+	SECTION("constructComplexReturnObject2") {
+		auto f = engine.registerFunction(constructComplexReturnObject2);
+		REQUIRE(f(0, 2) == 44);
+		REQUIRE(f(3, 1) == 48);
+	}
 
 	SECTION("intBitwiseNegate") {
 		auto f = engine.registerFunction(negate<int32_t>);
@@ -920,11 +912,6 @@ TEST_CASE("Engine Compiler Test") {
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
-			SECTION("constructComplexReturnObject") {
-				// we assume that this throws a runtime exception with
-				// wrong number of arguments after tracing"
-				REQUIRE_THROWS(engine.registerFunction(constructComplexReturnObject));
-			}
 			SECTION("makeConstantOfTracingValue") {
 				// we assume that this throws a runtime exception with
 				// wrong number of arguments after tracing"

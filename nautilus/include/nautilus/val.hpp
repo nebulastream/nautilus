@@ -94,13 +94,13 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	const tracing::value_ref state;
+	const tracing::TypedValueRefHolder state;
 	inline val() : state(tracing::traceConstant(0)) {};
 	inline val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
 	inline val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	inline val(const val<ValueType>&& other) noexcept : state(other.state), value(other.value) {};
+	inline val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {};
 	inline val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	val() {};
@@ -110,20 +110,6 @@ public:
 	// move constructor
 	val(const val<ValueType>&& other) : value(other.value) {};
 #endif
-
-	~val() {
-
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-
-			// tracing::getVarRefMap()[state.ref]--;
-			// if (tracing::getVarRefMap()[state.ref] == 0) {
-			//  tracing::traceValueDestruction(state);
-			// std::cout << "destructor " << state << " - " << tag << std::endl;
-			//  }
-		}
-#endif
-	}
 
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING

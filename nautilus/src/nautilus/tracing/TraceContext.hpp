@@ -10,10 +10,7 @@
 #include <memory>
 
 namespace nautilus::tracing {
-class OperationRef;
-
 class ExecutionTrace;
-
 class SymbolicExecutionContext;
 
 struct StaticVarHolder {
@@ -22,21 +19,10 @@ struct StaticVarHolder {
 
 private:
 	const size_t* ptr;
-
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
 };
 
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
-
-inline uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& value : data) {
-		hash ^= *value.ptr;
-		hash *= fnv_prime;
-	}
-	return hash;
-}
+using DynamicValueMap = std::array<uint8_t, 256>;
 
 /**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
@@ -100,8 +86,7 @@ public:
 	 */
 	void traceAssignment(value_ref targetRef, value_ref sourceRef, Type resultType);
 
-	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType,
-	                    std::vector<tracing::value_ref> arguments);
+	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
 
 	bool traceCmp(value_ref targetRef);
 
@@ -119,6 +104,7 @@ public:
 
 	void resume() {
 		staticVars.clear();
+		dynamicVars.fill(0);
 	}
 
 	static TraceContext* initialize(TagRecorder& tagRecorder);
@@ -126,6 +112,7 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction);
 
 	std::vector<StaticVarHolder>& getStaticVars();
+	std::array<uint8_t, 256>& getDynamicVars();
 
 private:
 	explicit TraceContext(TagRecorder& tagRecorder);
@@ -141,6 +128,7 @@ private:
 	std::unique_ptr<ExecutionTrace> executionTrace;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
 	std::vector<StaticVarHolder> staticVars;
+	DynamicValueMap dynamicVars;
 };
 
 } // namespace nautilus::tracing

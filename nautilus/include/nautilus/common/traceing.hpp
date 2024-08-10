@@ -47,15 +47,14 @@ enum Op : uint8_t {
 	NEGATE,
 };
 
+using ValueRef = uint16_t;
+
 struct TypedValueRef {
-	uint16_t ref;
+	ValueRef ref;
 	Type type;
 
-	TypedValueRef(uint16_t ref, Type type) : ref(ref), type(type) {
-	}
-
-	TypedValueRef() : ref(0), type(Type::v) {
-	}
+	TypedValueRef(uint16_t ref, Type type);
+	TypedValueRef();
 
 	bool operator==(const TypedValueRef& rhs) const {
 		return ref == rhs.ref;
@@ -84,6 +83,18 @@ struct TypedValueRef {
 	[[nodiscard]] std::string toString() const;
 };
 
+class TypedValueRefHolder {
+public:
+	TypedValueRefHolder(TypedValueRef valueRef);
+	TypedValueRefHolder(const TypedValueRefHolder&);
+	TypedValueRefHolder& operator=(const TypedValueRefHolder& other);
+	TypedValueRefHolder(TypedValueRefHolder&&);
+	TypedValueRefHolder& operator=(TypedValueRefHolder&& other);
+	~TypedValueRefHolder();
+	operator const TypedValueRef&() const;
+	TypedValueRef valueRef;
+};
+
 using value_ref = TypedValueRef;
 
 template <typename T>
@@ -94,7 +105,7 @@ constexpr Type to_type() {
 	using type = std::remove_cvref_t<T>;
 	if constexpr (std::is_same_v<type, bool>) {
 		return Type::b;
-	} else if constexpr (std::is_same_v<type, int8_t> || (std::is_same_v<type, char>)) {
+	} else if constexpr (std::is_same_v<type, int8_t> || (std::is_same_v<type, char>) ) {
 		return Type::i8;
 	} else if constexpr (std::is_same_v<type, int16_t>) {
 		return Type::i16;
@@ -163,8 +174,7 @@ value_ref traceCast(value_ref state, Type resultType);
 
 std::array<uint8_t, 256>& getVarRefMap();
 
-value_ref traceCall(const std::string& functionName, void* fptn, Type resultType,
-                    std::vector<tracing::value_ref> arguments);
+value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
 
 std::ostream& operator<<(std::ostream& os, const Op& operation);
 

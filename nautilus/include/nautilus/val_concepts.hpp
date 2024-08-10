@@ -83,7 +83,6 @@ constexpr bool has_state_member_v = has_state_member<T>::value;
 // checks if T is a value and it is traceable
 template <typename T>
 concept is_traceable_value = requires(T a) {
-	is_val<T>;
 	{ a.state };
 };
 
