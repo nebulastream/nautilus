@@ -11,7 +11,9 @@ B2()
 	CMP	$9	$8	B3()	B4()	:void	
 B3()
 	CONST	$10	2	:i32	
-	RETURN	$10	:i32	
+	ASSIGN	$5	$10	:i32	
+	RETURN	$5	:i32	
 B4()
 	CONST	$12	42	:i32	
-	RETURN	$12	:i32	
+	ASSIGN	$5	$12	:i32	
+	RETURN	$5	:i32	
