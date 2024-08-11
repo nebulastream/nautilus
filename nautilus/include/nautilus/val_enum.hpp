@@ -47,7 +47,9 @@ public:
 		return *this;
 	};
 
+#ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
+#endif
 	const T value;
 
 private:
