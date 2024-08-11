@@ -100,7 +100,7 @@ public:
 	// copy constructor
 	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	val(const val<ValueType>&& other) noexcept : state((other.state)), value(other.value) {};
+	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {};
 	val(tracing::value_ref& tc) : state(tc), value() {};
 #else
 	val() {};
@@ -162,13 +162,6 @@ public:
 		auto temp = *this;
 		*this = *this - (ValueType) 1;
 		return temp;
-	}
-
-	static ValueType toNativeValue(val<ValueType>& value) {
-		return value.value;
-	}
-	static val<ValueType> fromNativeType(ValueType& value) {
-		return val<ValueType>(value);
 	}
 
 private:

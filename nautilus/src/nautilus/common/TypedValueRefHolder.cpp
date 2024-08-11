@@ -32,7 +32,13 @@ TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefH
 #endif
 }
 
-TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRefHolder&& other) : valueRef(other.valueRef) {
+TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder&& other) : valueRef(other.valueRef) {
+#ifdef ENABLE_TRACING
+	if (!inTracer())
+		return;
+	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
+	refCounter++;
+#endif
 }
 
 TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::TypedValueRefHolder& other) {
@@ -45,6 +51,7 @@ TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::Typ
 }
 
 TypedValueRefHolder& TypedValueRefHolder::operator=(nautilus::tracing::TypedValueRefHolder&& other) {
+
 	valueRef = std::move(other.valueRef);
 	return *this;
 }
