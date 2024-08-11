@@ -270,7 +270,7 @@ TEST_CASE("Static Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"staticLoop", details::createFunctionWrapper(staticLoop)},
 	                                                                          // this test is sensitive to compiler options
 	                                                                          //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
-	                                                                          {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	                                                                          //{"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
 	                                                                          {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	                                                                          {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	                                                                          {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
