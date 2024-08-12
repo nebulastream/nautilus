@@ -94,7 +94,6 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	const tracing::TypedValueRefHolder state;
 	val() : state(tracing::traceConstant(0)) {};
 	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
@@ -163,10 +162,13 @@ public:
 		*this = *this - (ValueType) 1;
 		return temp;
 	}
-
+#ifdef ENABLE_TRACING
+	const tracing::TypedValueRefHolder state;
+#endif
 private:
 	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
 	ValueType value;
+
 
 	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
@@ -230,8 +232,11 @@ public:
 	using basic_type = bool;
 
 #ifdef ENABLE_TRACING
+	const tracing::TypedValueRefHolder state;
+#endif
 
-	tracing::value_ref state;
+#ifdef ENABLE_TRACING
+
 	val() : state(tracing::traceConstant(0)), value(false) {};
 	val(bool value) : state(tracing::traceConstant(value)), value(value) {};
 	// copy constructor
@@ -248,17 +253,6 @@ public:
 	// move constructor
 	val(const val<bool>&& other) : value(other.value) {};
 #endif
-
-	~val() {
-		if SHOULD_TRACE () {
-
-			// tracing::getVarRefMap()[state.ref]--;
-			// if (tracing::getVarRefMap()[state.ref] == 0) {
-			//  tracing::traceValueDestruction(state);
-			// std::cout << "destructor " << state << " - " << tag << std::endl;
-			//  }
-		}
-	}
 
 	val<bool>& operator=(const val<bool>& other) {
 

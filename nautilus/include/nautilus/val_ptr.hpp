@@ -14,7 +14,9 @@ public:
 	using ptrType = ref_less_type*;
 
 #ifdef ENABLE_TRACING
-	tracing::value_ref state;
+	const tracing::TypedValueRefHolder state;
+#endif
+#ifdef ENABLE_TRACING
 	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {};
 	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
 	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};

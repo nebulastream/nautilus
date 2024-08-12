@@ -7,5 +7,4 @@ B1()
 	RETURN	$5	:i32	
 B2()
 	CONST	$7	120	:i32	
-	ASSIGN	$5	$7	:i32	
-	RETURN	$5	:i32	
+	RETURN	$7	:i32	
