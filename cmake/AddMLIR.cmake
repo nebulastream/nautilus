@@ -36,10 +36,6 @@ if (MLIR_FOUND)
             MLIRTargetLLVMIRExport
             MLIRTransforms
     )
-
-    # Include necessary mlir library in the deb package and install it in the lib folder
-    install(IMPORTED_RUNTIME_ARTIFACTS mlir_float16_utils mlir_runner_utils mlir_c_runner_utils mlir_async_runtime DESTINATION lib)
-
 else ()
     message(FATAL_ERROR "Cannot find mlir")
 endif (MLIR_FOUND)
