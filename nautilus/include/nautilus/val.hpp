@@ -13,11 +13,7 @@
 
 namespace nautilus {
 
-template <class T>
-constexpr auto getType();
-
 namespace details {
-
 template <typename LHS>
 LHS getRawValue(val<LHS>& val);
 
