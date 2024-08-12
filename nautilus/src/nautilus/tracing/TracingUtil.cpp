@@ -1,8 +1,8 @@
 
 #include "TraceContext.hpp"
 #include "nautilus/common/traceing.hpp"
+#include "nautilus/logging.hpp"
 #include <spdlog/fmt/fmt.h>
-
 namespace nautilus::tracing {
 
 void traceAssignment(value_ref target, value_ref source, Type resultType) {
@@ -44,6 +44,10 @@ value_ref traceConstant(Type type, std::any&& value) {
 [[maybe_unused]] value_ref traceCast(value_ref state, Type resultType) {
 	return TraceContext::get()->traceCast(state, resultType);
 };
+
+DynamicValueMap& getVarRefMap() {
+	return TraceContext::get()->getDynamicVars();
+}
 
 [[maybe_unused]] value_ref traceCopy(value_ref state) {
 	if (inTracer()) {

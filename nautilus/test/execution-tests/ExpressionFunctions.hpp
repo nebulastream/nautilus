@@ -171,4 +171,31 @@ val<T> logicalNot(val<T> x) {
 	return !x;
 }
 
+struct RObject {
+	val<int32_t> a;
+	val<int32_t> b;
+};
+
+RObject returnObject(val<int32_t> a, val<int32_t> b) {
+	if (a > b) {
+		return {.a = a, .b = b};
+	}
+	return {.a = 0, .b = 0};
+}
+
+val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
+	auto r = returnObject(a, b);
+	auto t1 = r.a + 1;
+	auto t2 = r.b + 1;
+	return t1 + t2;
+}
+
+val<int32_t> constructComplexReturnObject2(val<int32_t> a, val<int32_t> b) {
+	val<int32_t> t = 0;
+	{
+		t = constructComplexReturnObject(a, b);
+	}
+	return t + 42;
+}
+
 } // namespace nautilus::engine

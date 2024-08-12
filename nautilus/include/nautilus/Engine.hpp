@@ -126,7 +126,6 @@ private:
 class NautilusEngine {
 public:
 	NautilusEngine();
-
 	NautilusEngine(const Options& options);
 
 	template <is_val R, is_val... FunctionArguments>
@@ -156,7 +155,6 @@ public:
 		return CallableFunction<void, FunctionArguments...>(inputWrapper);
 	}
 
-
 	template <typename R, typename... FunctionArguments>
 	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
 #ifdef ENABLE_TRACING
@@ -168,9 +166,6 @@ public:
 #endif
 		return CallableFunction<R, val<FunctionArguments>...>(func);
 	}
-
-
-
 
 private:
 	const compiler::JITCompiler jit;

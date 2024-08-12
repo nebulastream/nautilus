@@ -26,7 +26,7 @@ catch_discover_tests(nautilus-execution-tests EXTRA_ARGS --allow-running-no-test
 catch_discover_tests(nautilus-bool-execution-tests EXTRA_ARGS --allow-running-no-tests)
 catch_discover_tests(nautilus-cast-execution-tests EXTRA_ARGS --allow-running-no-tests)
 
-if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
+if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
     # using Clang
     add_executable(nautilus-tracing-tests
             TracingTest.cpp

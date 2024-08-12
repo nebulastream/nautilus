@@ -307,8 +307,33 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 	return staticVars;
 }
 
+DynamicValueMap& TraceContext::getDynamicVars() {
+	return dynamicVars;
+}
+
+constexpr size_t fnv_prime = 0x100000001b3;
+constexpr size_t offset_basis = 0xcbf29ce484222325;
+
+uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
+	size_t hash = offset_basis;
+	for (auto& value : data) {
+		hash ^= *value.ptr;
+		hash *= fnv_prime;
+	}
+	return hash;
+}
+
+uint64_t hashDynamicVector(const DynamicValueMap& data) {
+	size_t hash = offset_basis;
+	for (auto& value : data) {
+		hash ^= value;
+		hash *= fnv_prime;
+	}
+	return hash;
+}
+
 Snapshot TraceContext::recordSnapshot() {
-	return {tagRecorder.createTag(), hashStaticVector(staticVars)};
+	return {tagRecorder.createTag(), hashStaticVector(staticVars) ^ hashDynamicVector(dynamicVars)};
 }
 
 } // namespace nautilus::tracing

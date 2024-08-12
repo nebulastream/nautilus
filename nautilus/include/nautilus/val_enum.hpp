@@ -25,6 +25,7 @@ public:
 #ifdef ENABLE_TRACING
 	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {};
 	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {};
+	val(val<T>&& t) : state(t.state), value(t.value) {};
 	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {};
 #else
 	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {};
@@ -46,7 +47,9 @@ public:
 		return *this;
 	};
 
-	tracing::value_ref state;
+#ifdef ENABLE_TRACING
+	tracing::TypedValueRefHolder state;
+#endif
 	const T value;
 
 private:
