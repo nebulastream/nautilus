@@ -242,7 +242,7 @@ public:
 	// copy constructor
 	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
 	// move constructor
-	val(const val<bool>&& other) noexcept : state(other.state), value(other.value) {};
+	val(const val<bool>&& other) : state(other.state), value(other.value) {};
 	val(tracing::value_ref& tc) : state(tc) {};
 
 #else
