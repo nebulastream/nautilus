@@ -306,6 +306,7 @@ TEST_CASE("Static Trace Test") {
 
 TEST_CASE("Pointer Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"ptrAssignment", details::createFunctionWrapper(ptrAssignment)},
 	    {"load", details::createFunctionWrapper(load)},
 	    {"loadConst", details::createFunctionWrapper(loadConst)},
 	    {"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},

@@ -87,22 +87,12 @@ public:
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
 #endif
 	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
-	base_ptr_val(val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
-	}
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(tc), value(ptr) {};
+
 	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
 
-	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
-		}
-#endif
-		this->value = other.value;
-		return *this;
-	};
-
-	tracing::value_ref state;
+	tracing::TypedValueRefHolder state;
 	ValuePtrType value;
 };
 
@@ -116,6 +106,19 @@ public:
 	operator val<T*>() const {
 		return val<T*>((T*) this->value, this->state);
 	}
+
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
 };
 
 template <is_arithmetic_ptr ValuePtrType>
@@ -123,6 +126,19 @@ class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
+
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
 
 	val<ValType&> operator*() {
 #ifdef ENABLE_TRACING
@@ -166,6 +182,20 @@ template <is_void_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
+
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
+
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
 	operator val<OtherType>() const {
@@ -308,7 +338,7 @@ public:
 	using ptrType = ref_less_type*;
 
 #ifdef ENABLE_TRACING
-	tracing::value_ref state;
+	tracing::TypedValueRefHolder state;
 	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {};
 	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
 	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};

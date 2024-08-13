@@ -192,6 +192,11 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				if (foundAssignment != assignmentMap.end()) {
 					operation.resultRef.ref = foundAssignment->second;
 				}
+			} else if (operation.op == Op::STORE) {
+				auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
+				if (foundAssignment != assignmentMap.end()) {
+					operation.resultRef.ref = foundAssignment->second;
+				}
 			} else {
 				for (auto& input : operation.input) {
 					if (auto* valueRef = std::get_if<value_ref>(&input)) {
