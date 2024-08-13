@@ -50,6 +50,16 @@ val<int32_t> useNoArg([[maybe_unused]] val<int32_t> x, [[maybe_unused]] val<int3
 	return 42;
 }
 
+void multipleVoidReturnsFunction(val<int32_t*> x) {
+	val<int32_t> val = *x;
+	if (val > 10) {
+		*x = 1;
+		return;
+	}
+	*x = 42;
+	return;
+}
+
 int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
