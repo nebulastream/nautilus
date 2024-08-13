@@ -83,16 +83,18 @@ public:
 	base_ptr_val() : value() {};
 #ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
-#else
-	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
-#endif
 	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
 	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(tc), value(ptr) {};
 
 	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
+#else
+	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
+#endif
 
+#ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
+#endif
 	ValuePtrType value;
 };
 
@@ -104,11 +106,20 @@ public:
 	// enable cast to type T
 	template <typename T>
 	operator val<T*>() const {
+#ifdef ENABLE_TRACING
 		return val<T*>((T*) this->value, this->state);
+#else
+		return val<T*>((T*) this->value);
+#endif
 	}
 
+#ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
 
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
@@ -127,8 +138,13 @@ public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
 
+#ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
 
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
@@ -183,8 +199,13 @@ class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 
+#ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
 
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
