@@ -799,6 +799,15 @@ public:
 
 void registerFunctionTest(engine::NautilusEngine& engine) {
 
+	SECTION("multipleVoidReturnsFunction") {
+		auto f = engine.registerFunction(multipleVoidReturnsFunction);
+		int32_t x = 11;
+		f(&x);
+		REQUIRE(x==1);
+		f(&x);
+		REQUIRE(x==42);
+	}
+
 	SECTION("useFirstArg") {
 		auto f = engine.registerFunction(useFirstArg);
 		REQUIRE(f(42, 1) == 42);

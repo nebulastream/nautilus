@@ -193,8 +193,8 @@ TEST_CASE("Expression Trace Test") {
 }
 TEST_CASE("Control-flow Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
-	                                                                          //{"conditionalReturn",
-	                                                                          // details::createFunctionWrapper(conditionalReturn)},
+	                                                                          {"multipleVoidReturnsFunction", details::createFunctionWrapper(multipleVoidReturnsFunction)},
+	                                                                          //{"conditionalReturn",details::createFunctionWrapper(conditionalReturn)},
 	                                                                          {"ifThenElseCondition", details::createFunctionWrapper(ifThenElseCondition)},
 	                                                                          {"nestedIfThenElseCondition", details::createFunctionWrapper(nestedIfThenElseCondition)},
 	                                                                          {"nestedIfNoElseCondition", details::createFunctionWrapper(nestedIfNoElseCondition)},
@@ -306,6 +306,7 @@ TEST_CASE("Static Trace Test") {
 
 TEST_CASE("Pointer Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"ptrAssignment", details::createFunctionWrapper(ptrAssignment)},
 	    {"load", details::createFunctionWrapper(load)},
 	    {"loadConst", details::createFunctionWrapper(loadConst)},
 	    {"castVoidPtr", details::createFunctionWrapper(castVoidPtr)},

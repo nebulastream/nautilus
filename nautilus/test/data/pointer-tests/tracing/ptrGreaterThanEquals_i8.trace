@@ -1,3 +1,5 @@
 B0($1:ptr,$2:ptr)
-	GTE	$3	$1	$2	:ptr	
-	RETURN	$3	:bool	
+	ASSIGN	$3	$1	:ptr	
+	ASSIGN	$4	$2	:ptr	
+	GTE	$5	$3	$4	:bool	
+	RETURN	$5	:bool	

@@ -28,9 +28,11 @@ JITCompiler::~JITCompiler() = default;
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
 	// derive trace from function
 	auto executionTrace = tracing::TraceContext::trace(function);
+	std::cout << executionTrace->toString() << std::endl;
 	// create ssa
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
+	std::cout << afterSSA->toString() << std::endl;
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA));

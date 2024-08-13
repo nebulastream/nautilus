@@ -1,0 +1,15 @@
+B0($1:ptr)
+	LOAD	$4	$1	:i32	
+	CONST	$5	10	:i32	
+	GT	$6	$4	$5	:bool	
+	CMP	$7	$6	B1($1)	B2($1)	:void	
+B1($1:ptr)
+	CONST	$10	1	:i32	
+	STORE	$1	$10	:i32	
+	JMP	$0	B3()	:void	
+B2($1:ptr)
+	CONST	$14	42	:i32	
+	STORE	$1	$14	:i32	
+	JMP	$0	B3()	:void	
+B3()
+	RETURN	$0	:void	

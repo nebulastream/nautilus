@@ -28,12 +28,15 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	// add return block
 	auto& returnBlock = trace->getBlock(trace->createBlock());
 	returnBlock.operations.emplace_back(defaultReturnOp);
-
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
 		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
-		auto snap = Snapshot();
-		returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
+		if (returnValue.resultType == Type::v) {
+			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
+		} else {
+			auto snap = Snapshot();
+			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
+		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
@@ -185,6 +188,11 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 					assignmentMap[operation.resultRef.ref] = get<value_ref>(operation.input[0]).ref;
 				}
 			} else if (operation.op == Op::RETURN) {
+				auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
+				if (foundAssignment != assignmentMap.end()) {
+					operation.resultRef.ref = foundAssignment->second;
+				}
+			} else if (operation.op == Op::STORE) {
 				auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
 				if (foundAssignment != assignmentMap.end()) {
 					operation.resultRef.ref = foundAssignment->second;

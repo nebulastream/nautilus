@@ -21,6 +21,12 @@ val<int32_t> castVoidPtr(val<void*> array) {
 	return intPtr[0];
 }
 
+val<int32_t> ptrAssignment(val<int32_t*> ptr, val<int32_t*> ptr2) {
+	auto tempPtr = ptr;
+	ptr = ptr2;
+	return val<int32_t>(*ptr) + val<int32_t>(*tempPtr);
+}
+
 template <typename T>
 val<bool> isNullptr(val<T*> ptr) {
 	return ptr == nullptr;

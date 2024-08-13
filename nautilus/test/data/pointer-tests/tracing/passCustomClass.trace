@@ -1,3 +1,5 @@
 B0($1:ptr)
-	CALL	$2	($1)	:i32	
-	RETURN	$2	:i32	
+	ASSIGN	$2	$1	:ptr	
+	ASSIGN	$3	$2	:ptr	
+	CALL	$4	($3)	:i32	
+	RETURN	$4	:i32	

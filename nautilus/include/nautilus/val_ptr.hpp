@@ -83,26 +83,18 @@ public:
 	base_ptr_val() : value() {};
 #ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
+	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(tc), value(ptr) {};
+
+	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
+	}
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
 #endif
-	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
-	base_ptr_val(val<ValuePtrType>& otherValue) : state(otherValue.state), value(otherValue.value) {
-	}
-	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
-	}
 
-	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
-		}
+	tracing::TypedValueRefHolder state;
 #endif
-		this->value = other.value;
-		return *this;
-	};
-
-	tracing::value_ref state;
 	ValuePtrType value;
 };
 
@@ -114,8 +106,31 @@ public:
 	// enable cast to type T
 	template <typename T>
 	operator val<T*>() const {
+#ifdef ENABLE_TRACING
 		return val<T*>((T*) this->value, this->state);
+#else
+		return val<T*>((T*) this->value);
+#endif
 	}
+
+#ifdef ENABLE_TRACING
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
 };
 
 template <is_arithmetic_ptr ValuePtrType>
@@ -123,6 +138,24 @@ class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
+
+#ifdef ENABLE_TRACING
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
 
 	val<ValType&> operator*() {
 #ifdef ENABLE_TRACING
@@ -166,6 +199,25 @@ template <is_void_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
+
+#ifdef ENABLE_TRACING
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	}
+#else
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+#endif
+
+	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+		}
+#endif
+		this->value = other.value;
+		return *this;
+	};
+
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
 	operator val<OtherType>() const {
@@ -205,7 +257,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::EQ, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::EQ, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -231,7 +283,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LTE, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::LTE, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -243,7 +295,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LT, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::LT, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -255,7 +307,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GT, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::GT, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -267,7 +319,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GTE, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::GTE, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -279,7 +331,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::NEQ, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::NEQ, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -308,7 +360,7 @@ public:
 	using ptrType = ref_less_type*;
 
 #ifdef ENABLE_TRACING
-	tracing::value_ref state;
+	tracing::TypedValueRefHolder state;
 	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {};
 	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
 	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
