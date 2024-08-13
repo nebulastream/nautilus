@@ -116,6 +116,7 @@ public:
 #ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
@@ -256,7 +257,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::EQ, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::EQ, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -282,7 +283,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LTE, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::LTE, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -294,7 +295,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LT, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::LT, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -306,7 +307,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GT, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::GT, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -318,7 +319,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GTE, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::GTE, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -330,7 +331,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::NEQ, ValueType>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp<tracing::NEQ, bool>(left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
