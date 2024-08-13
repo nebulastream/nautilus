@@ -5,7 +5,7 @@
 
 namespace nautilus::engine {
 
-void addTest(engine::NautilusEngine& engine) {
+void boolTest(engine::NautilusEngine& engine) {
 
 	SECTION("boolNot") {
 		auto f = engine.registerFunction(boolNot);
@@ -86,7 +86,7 @@ TEST_CASE("Bool Interpreter Test") {
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
-	addTest(engine);
+	boolTest(engine);
 }
 
 #ifdef ENABLE_TRACING
@@ -109,7 +109,7 @@ TEST_CASE("Bool Compiler Test") {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
-			addTest(engine);
+			boolTest(engine);
 		}
 	}
 }

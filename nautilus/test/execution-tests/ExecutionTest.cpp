@@ -16,7 +16,7 @@ val<bool> makeConstantOfTracingValue(val<int> ref) {
 	return res;
 }
 
-void addTest(engine::NautilusEngine& engine) {
+void expressionTests(engine::NautilusEngine& engine) {
 
 	SECTION("constructComplexReturnObject") {
 		auto f = engine.registerFunction(constructComplexReturnObject);
@@ -913,7 +913,7 @@ void runAllTests(engine::NautilusEngine& engine) {
 		registerFunctionTest(engine);
 	}
 	SECTION("expressionTest") {
-		addTest(engine);
+		expressionTests(engine);
 	}
 	SECTION("controlFlowTest") {
 		controlFlowTest(engine);
