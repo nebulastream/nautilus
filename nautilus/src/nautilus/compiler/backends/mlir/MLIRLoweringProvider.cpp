@@ -73,7 +73,8 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 	return builder->create<mlir::LLVM::ConstantOp>(getNameLoc(location), builder->getI1Type(), builder->getIntegerAttr(builder->getIndexType(), value));
 }
 
-// Todo Issue #3004: Currently, we are simply adding 'Query_1' as the FileLineLoc name. Moreover,
+// Todo Issue #3004: Currently, we are simply adding 'Query_1' as the
+// FileLineLoc name. Moreover,
 //      the provided 'name' often is not meaningful either.
 mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
@@ -121,7 +122,8 @@ mlir::arith::CmpIPredicate convertToIntMLIRComparison(ir::CompareOperation::Comp
 
 mlir::arith::CmpFPredicate convertToFloatMLIRComparison(ir::CompareOperation::Comparator comparisonType) {
 	switch (comparisonType) {
-	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons are always signed.
+	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons
+	// are always signed.
 	case (ir::CompareOperation::Comparator::LT):
 		return mlir::arith::CmpFPredicate::OLT;
 	case (ir::CompareOperation::Comparator::LE):
@@ -141,7 +143,8 @@ mlir::arith::CmpFPredicate convertToFloatMLIRComparison(ir::CompareOperation::Co
 
 mlir::LLVM::ICmpPredicate convertToLLVMComparison(ir::CompareOperation::Comparator comparisonType) {
 	switch (comparisonType) {
-	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons are always signed.
+	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons
+	// are always signed.
 	case (ir::CompareOperation::Comparator::LT):
 		return mlir::LLVM::ICmpPredicate::ult;
 	case (ir::CompareOperation::Comparator::LE):
@@ -161,7 +164,8 @@ mlir::LLVM::ICmpPredicate convertToLLVMComparison(ir::CompareOperation::Comparat
 
 mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::Comparator comparisonType) {
 	switch (comparisonType) {
-	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons are always signed.
+	// the U in U(LT/LE/..) stands for unordered, not unsigned! Float comparisons
+	// are always signed.
 	case (ir::CompareOperation::Comparator::EQ):
 		return mlir::arith::CmpIPredicate::eq;
 	case (ir::CompareOperation::Comparator::NE):
@@ -183,7 +187,8 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	// Create function arg & result types (currently only int for result).
 	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes, varArgs);
 
-	// The InsertionGuard saves the current insertion point (IP) and restores it after scope is left.
+	// The InsertionGuard saves the current insertion point (IP) and restores it
+	// after scope is left.
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 	builder->restoreInsertionPoint(*globalInsertPoint);
 	// Create function in global scope. Return reference.
@@ -201,7 +206,8 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 //==-- MAIN WORK - Generating MLIR --==//
 //==---------------------------------==//
 MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context(&context) {
-	// Create builder object, which helps to generate MLIR. Create Module, which contains generated MLIR.
+	// Create builder object, which helps to generate MLIR. Create Module, which
+	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
 	builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
 	builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
@@ -219,7 +225,8 @@ MLIRLoweringProvider::~MLIRLoweringProvider() {
 mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir) {
 	ValueFrame firstFrame;
 	this->generateMLIR(ir->getRootOperation(), firstFrame);
-	// If MLIR module creation is incorrect, gracefully emit error message, return nullptr, and continue.
+	// If MLIR module creation is incorrect, gracefully emit error message, return
+	// nullptr, and continue.
 	if (failed(mlir::verify(theModule))) {
 		theModule.emitError("module verification error");
 		return nullptr;
@@ -411,8 +418,10 @@ void MLIRLoweringProvider::generateMLIR(ir::LoadOperation* loadOp, ValueFrame& f
 
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
 
-	// auto bitcast = builder->create<mlir::LLVM::BitcastOp>(getNameLoc("Bitcasted address"),
-	//                                                       mlir::LLVM::LLVMPointerType::get(context), address);
+	// auto bitcast = builder->create<mlir::LLVM::BitcastOp>(getNameLoc("Bitcasted
+	// address"),
+	//                                                       mlir::LLVM::LLVMPointerType::get(context),
+	//                                                       address);
 	auto mlirLoadOp = builder->create<mlir::LLVM::LoadOp>(getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
 	frame.setValue(loadOp->getIdentifier(), mlirLoadOp);
 }
@@ -573,8 +582,10 @@ void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFr
 		// add null check
 		throw NotImplementedException("Null check is not implemented");
 		// auto null =
-		//         builder->create<mlir::LLVM::NullOp>(getNameLoc("null"), mlir::LLVM::LLVMPointerType::get(context));
-		// auto cmpOp = builder->create<mlir::LLVM::ICmpOp>(getNameLoc("comparison"),
+		//         builder->create<mlir::LLVM::NullOp>(getNameLoc("null"),
+		//         mlir::LLVM::LLVMPointerType::get(context));
+		// auto cmpOp =
+		// builder->create<mlir::LLVM::ICmpOp>(getNameLoc("comparison"),
 		//                                                  mlir::LLVM::ICmpPredicate::eq,
 		//                                                  frame.getValue(compareOp->getLeftInput()->getIdentifier()),
 		//                                                  null);
@@ -665,10 +676,11 @@ MLIRLoweringProvider::ValueFrame MLIRLoweringProvider::createFrameFromParentBloc
 	auto invocationArguments = invocation.getArguments();
 	auto& childBlockArguments = invocation.getBlock()->getArguments();
 	// NES_ASSERT(invocationArguments.size() == childBlockArguments.size(),
-	//            "the number of invocation parameters has to be the same as the number of block arguments in the
-	//            invoked block.");
+	//            "the number of invocation parameters has to be the same as the
+	//            number of block arguments in the invoked block.");
 	ValueFrame childFrame;
-	// Copy all frame values to the child frame that are arguments of the child block.
+	// Copy all frame values to the child frame that are arguments of the child
+	// block.
 	for (uint64_t i = 0; i < invocationArguments.size(); i++) {
 		auto parentOperation = invocationArguments[i];
 		auto parentValue = frame.getValue(parentOperation->getIdentifier());

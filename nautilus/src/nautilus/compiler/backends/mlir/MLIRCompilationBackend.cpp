@@ -18,7 +18,8 @@ namespace nautilus::compiler::mlir {
 
 std::unique_ptr<Executable> MLIRCompilationBackend::compile(std::shared_ptr<ir::IRGraph> ir) {
 
-	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an MLIR module.
+	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
+	// MLIR module.
 	::mlir::DialectRegistry registry;
 	::mlir::func::registerAllExtensions(registry);
 	registerBuiltinDialectTranslation(registry);
@@ -43,7 +44,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(std::shared_ptr<ir::
 	//  dumpHelper.dump("3. MLIR.mlir", result);
 	//}
 
-	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering and optimization passes.
+	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
+	// and optimization passes.
 	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, {})) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 		//    NES_FATAL_ERROR("Could not lower and optimize MLIR");
@@ -52,7 +54,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(std::shared_ptr<ir::
 	// 3. Lower MLIR module to LLVM IR and create LLVM IR optimization pipeline.
 	auto optPipeline = LLVMIROptimizer::getLLVMOptimizerPipeline();
 
-	// 4. JIT compile LLVM IR module and return engine that provides access compiled execute function.
+	// 4. JIT compile LLVM IR module and return engine that provides access
+	// compiled execute function.
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(), loweringProvider->getJitProxyTargetAddresses());
 
 	// 5. Get execution function from engine. Create and return execution context.

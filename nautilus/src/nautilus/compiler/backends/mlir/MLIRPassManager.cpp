@@ -14,10 +14,12 @@ namespace nautilus::compiler::mlir {
 using namespace ::mlir;
 
 /**
- * @brief Takes a LoweringPass Enum and returns the corresponding mlir lowering pass.
+ * @brief Takes a LoweringPass Enum and returns the corresponding mlir lowering
+ * pass.
  *
  * @param loweringPass: Used to get the correct mlir lowering pass.
- * @return std::unique_ptr<mlir::Pass>: MLIR lowering pass corresponding to supplied Enum.
+ * @return std::unique_ptr<mlir::Pass>: MLIR lowering pass corresponding to
+ * supplied Enum.
  */
 std::unique_ptr<mlir::Pass> getMLIRLoweringPass(MLIRPassManager::LoweringPass loweringPass) {
 	switch (loweringPass) {
@@ -30,10 +32,12 @@ std::unique_ptr<mlir::Pass> getMLIRLoweringPass(MLIRPassManager::LoweringPass lo
 }
 
 /**
- * @brief Takes a OptimizationPass Enum and returns the corresponding mlir optimization pass.
+ * @brief Takes a OptimizationPass Enum and returns the corresponding mlir
+ * optimization pass.
  *
  * @param optimizationPass: Used to get the correct mlir optimization pass.
- * @return std::unique_ptr<mlir::Pass>: MLIR optimization pass corresponding to supplied Enum.
+ * @return std::unique_ptr<mlir::Pass>: MLIR optimization pass corresponding to
+ * supplied Enum.
  */
 std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::OptimizationPass optimizationPass) {
 	switch (optimizationPass) {
@@ -67,7 +71,9 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 
 	// Run passes.
 	if (mlir::failed(passManager.run(*module))) {
-		llvm::errs() << "MLIRPassManager::lowerAndOptimizeMLIRModule: Failed to apply passes to generated MLIR" << '\n';
+		llvm::errs() << "MLIRPassManager::lowerAndOptimizeMLIRModule: Failed to "
+		                "apply passes to generated MLIR"
+		             << '\n';
 		return 1;
 	}
 	return 0;

@@ -49,7 +49,8 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	// }
 	// if (request->enableCompilationProfiling()) {
 	//     compilationFlags.addFlag(CPPCompilerFlags::TRACE_COMPILATION_TIME);
-	//     NES_DEBUG("Compilation Time tracing is activated open: chrome://tracing/");
+	//     NES_DEBUG("Compilation Time tracing is activated open:
+	//     chrome://tracing/");
 	// }
 	compilationFlags.addFlag("-shared");
 	compilationFlags.addFlag("-g");
@@ -81,7 +82,8 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	     std::filesystem::remove(sourceFileName);
 	     std::filesystem::remove(libraryFileName);
 	 }*/
-	// NES_INFO("CPPCompiler Runtime: " << (double) timer.getRuntime() / (double) 1000000 << "ms");// print runtime
+	// NES_INFO("CPPCompiler Runtime: " << (double) timer.getRuntime() / (double)
+	// 1000000 << "ms");// print runtime
 	std::filesystem::remove(libraryFileName);
 	return sharedLibrary;
 }
@@ -96,7 +98,8 @@ void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<File>
 		compilerCall << arg << " ";
 	}
 	// NES_ERROR("Compiler: compile with: '" << compilerCall.str() << "'");
-	//  Creating a pointer to an open stream and a buffer, to read the output of the compiler
+	//  Creating a pointer to an open stream and a buffer, to read the output of
+	//  the compiler
 	FILE* fp = nullptr;
 	char buffer[8192];
 
@@ -117,10 +120,12 @@ void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<File>
 		strstream << buffer;
 	}
 
-	// Closing the stream, which also gives us the exit status of the compiler call
+	// Closing the stream, which also gives us the exit status of the compiler
+	// call
 	auto ret = pclose(fp);
 
-	// If the compilation didn't return with 0, we throw an exception containing the compiler output
+	// If the compilation didn't return with 0, we throw an exception containing
+	// the compiler output
 	if (ret != 0) {
 		// NES_ERROR("Compiler: compilation of " << libraryFileName << " failed.");
 		throw std::runtime_error(strstream.str());

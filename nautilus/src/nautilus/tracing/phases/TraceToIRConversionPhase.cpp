@@ -217,7 +217,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(int32_t scope, Va
 
 	//  if (isBlockInLoop(scope, currentBlock.blockId, trueCaseBlockRef.block)) {
 	//     NES_DEBUG("1. found loop");
-	//} else if (isBlockInLoop(scope, currentBlock.blockId, falseCaseBlockRef.block)) {
+	//} else if (isBlockInLoop(scope, currentBlock.blockId,
+	// falseCaseBlockRef.block)) {
 	//    NES_DEBUG("2. found loop");
 	//} else {
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
@@ -424,8 +425,8 @@ bool TraceToIRConversionPhase::IRConversionContext::isBlockInLoop(uint32_t paren
 		auto trueCaseBlockRef = get<BlockRef>(terminationOp.input[0]);
 		auto falseCaseBlockRef = get<BlockRef>(terminationOp.input[1]);
 		return currentBlock.type == Block::Type::ControlFlowMerge;
-		// isBlockInLoop(parentBlockId, trueCaseBlockRef.block) || isBlockInLoop(parentBlockId,
-		// falseCaseBlockRef.block);
+		// isBlockInLoop(parentBlockId, trueCaseBlockRef.block) ||
+		// isBlockInLoop(parentBlockId, falseCaseBlockRef.block);
 	} else if (terminationOp.op == Op::JMP) {
 		auto target = get<BlockRef>(terminationOp.input[0]);
 		return isBlockInLoop(parentBlockId, target.block);

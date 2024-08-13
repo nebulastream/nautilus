@@ -461,7 +461,8 @@ std::unique_ptr<Executable::GenericInvocable> BCInterpreter::getGenericInvocable
 
 std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 	// TODO this causes an bug with the decimal data type
-	//    NES_ASSERT(args.size() == code.arguments.size(), "Arguments are not of the correct size");
+	//    NES_ASSERT(args.size() == code.arguments.size(), "Arguments are not of
+	//    the correct size");
 
 	for (size_t i = 0; i < args.size(); i++) {
 		if (auto* value = std::any_cast<int8_t>(&args[i])) {

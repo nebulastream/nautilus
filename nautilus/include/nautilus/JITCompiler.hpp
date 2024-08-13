@@ -13,7 +13,7 @@ public:
 	using wrapper_function = std::function<void()>;
 
 	JITCompiler();
-	JITCompiler(engine::Options  options);
+	JITCompiler(engine::Options options);
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const;
 

@@ -24,11 +24,6 @@ auto createTraceableArgument() {
 	return val<typename ArgValueType::raw_type>(valueRef);
 }
 
-template <typename Arg>
-auto transform(Arg argument) {
-	return make_value(argument);
-}
-
 #ifdef ENABLE_TRACING
 
 template <size_t... Indices, typename R, typename... FunctionArguments>
@@ -69,7 +64,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			func(details::transform((args))...);
+			func(make_value((args))...);
 			return;
 		}
 		auto callable =
@@ -83,7 +78,7 @@ public:
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
-			auto result = func(details::transform((args))...);
+			auto result = func(make_value((args))...);
 			return nautilus::details::getRawValue(result);
 		}
 		auto callable =
@@ -96,6 +91,12 @@ private:
 	std::unique_ptr<compiler::Executable> executable;
 };
 
+/**
+ * The Nautilus Engine maintains the execution context of one or multiple nautilus functions,
+ * which are registered using registerFunction.
+ * Depending on the provided options, this functions may be compiled using a compilation backend or are executed directly.
+ * In general, the NautilusEngine mussed outlive any registered functions.
+ */
 class NautilusEngine {
 public:
 	NautilusEngine(const Options& options = Options());

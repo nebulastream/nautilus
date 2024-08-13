@@ -158,7 +158,8 @@ TagVector TagRecorder::createBaseTag() {
 static void* getReturnAddress(uint32_t offset);
 
 TagVector TagRecorder::createBaseTag() {
-	// throw NotImplementedException("No plugin registered that can handle this operation between");
+	// throw NotImplementedException("No plugin registered that can handle this
+	// operation between");
 	[[maybe_unused]] void* root = __builtin_thread_pointer();
 	std::vector<TagAddress> addresses;
 	for (size_t i = 0; i < MAX_TAG_SIZE; i++) {
@@ -199,7 +200,8 @@ Tag* TagRecorder::createReferenceTagBacktrace() {
 		}
 		currentTagNode = currentTagNode->append(tagAddress);
 	}
-	throw TagCreationException("Stack is too deep. This could indicate the use of recursive control-flow,"
+	throw TagCreationException("Stack is too deep. This could indicate the use "
+	                           "of recursive control-flow,"
 	                           " which is not supported in Nautilus code.");
 }
 
@@ -217,7 +219,8 @@ Tag* TagRecorder::createReferenceTagBuildin() {
 		}
 		currentTagNode = currentTagNode->append(tagAddress);
 	}
-	throw TagCreationException("Stack is too deep. This could indicate the use of recursive control-flow,"
+	throw TagCreationException("Stack is too deep. This could indicate the use "
+	                           "of recursive control-flow,"
 	                           " which is not supported in Nautilus code.");
 }
 

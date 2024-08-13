@@ -35,7 +35,8 @@ val<char*> strcpy(val<char*> s1, val<const char*> s2);
 
 /**
  * Copies up to `n` characters from the C-string `s2` to `s1`.
- * If `s2` is less than `n` characters long, the remainder of `s1` is filled with null characters.
+ * If `s2` is less than `n` characters long, the remainder of `s1` is filled
+ * with null characters.
  *
  * @param s1 Destination C-string.
  * @param s2 Source C-string.
@@ -70,8 +71,8 @@ val<char*> strncat(val<char*> s1, val<const char*> s2, val<size_t> n);
  * @param s1 First memory area.
  * @param s2 Second memory area.
  * @param n Number of bytes to compare.
- * @return An integer less than, equal to, or greater than zero if `s1` is found,
- *         respectively, to be less than, to match, or be greater than `s2`.
+ * @return An integer less than, equal to, or greater than zero if `s1` is
+ * found, respectively, to be less than, to match, or be greater than `s2`.
  */
 val<int> memcmp(val<void*> s1, val<void*> s2, val<size_t> n);
 
@@ -80,8 +81,8 @@ val<int> memcmp(val<void*> s1, val<void*> s2, val<size_t> n);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return An integer less than, equal to, or greater than zero if `s1` is found,
- *         respectively, to be less than, to match, or be greater than `s2`.
+ * @return An integer less than, equal to, or greater than zero if `s1` is
+ * found, respectively, to be less than, to match, or be greater than `s2`.
  */
 val<int> strcmp(val<const char*> s1, val<const char*> s2);
 
@@ -90,8 +91,8 @@ val<int> strcmp(val<const char*> s1, val<const char*> s2);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return An integer less than, equal to, or greater than zero if `s1` is found,
- *         respectively, to be less than, to match, or be greater than `s2`.
+ * @return An integer less than, equal to, or greater than zero if `s1` is
+ * found, respectively, to be less than, to match, or be greater than `s2`.
  */
 val<int> strcoll(val<const char*> s1, val<const char*> s2);
 
@@ -101,8 +102,8 @@ val<int> strcoll(val<const char*> s1, val<const char*> s2);
  * @param s1 First C-string.
  * @param s2 Second C-string.
  * @param n Maximum number of characters to compare.
- * @return An integer less than, equal to, or greater than zero if `s1` is found,
- *         respectively, to be less than, to match, or be greater than `s2`.
+ * @return An integer less than, equal to, or greater than zero if `s1` is
+ * found, respectively, to be less than, to match, or be greater than `s2`.
  */
 val<int> strncmp(val<const char*> s1, val<const char*> s2, val<size_t> n);
 
@@ -113,18 +114,20 @@ val<int> strncmp(val<const char*> s1, val<const char*> s2, val<size_t> n);
  * @param s1 Destination C-string.
  * @param s2 Source C-string.
  * @param n Maximum number of characters to write (including null character).
- * @return The length of the transformed string (not including the null character).
+ * @return The length of the transformed string (not including the null
+ * character).
  */
 val<size_t> strxfrm(val<char*> s1, val<const char*> s2, val<size_t> n);
 
 /**
- * Searches for the first occurrence of the character `c` (interpreted as an unsigned char)
- * in the first `n` bytes of the memory area `s`.
+ * Searches for the first occurrence of the character `c` (interpreted as an
+ * unsigned char) in the first `n` bytes of the memory area `s`.
  *
  * @param s Memory area.
  * @param c Character to search for.
  * @param n Number of bytes to search.
- * @return A pointer to the matching byte, or nullptr if the character does not occur.
+ * @return A pointer to the matching byte, or nullptr if the character does not
+ * occur.
  */
 val<const void*> memchr(val<const void*> s, val<int> c, val<size_t> n);
 val<void*> memchr(val<void*> s, val<int> c, val<size_t> n);
@@ -134,7 +137,8 @@ val<void*> memchr(val<void*> s, val<int> c, val<size_t> n);
  *
  * @param s C-string.
  * @param c Character to search for.
- * @return A pointer to the matching character, or nullptr if the character does not occur.
+ * @return A pointer to the matching character, or nullptr if the character does
+ * not occur.
  */
 val<const char*> strchr(val<const char*> s, val<int> c);
 val<char*> strchr(val<char*> s, val<int> c);
@@ -145,7 +149,8 @@ val<char*> strchr(val<char*> s, val<int> c);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return The length of the initial segment of `s1` containing no characters from `s2`.
+ * @return The length of the initial segment of `s1` containing no characters
+ * from `s2`.
  */
 val<size_t> strcspn(val<const char*> s1, val<const char*> s2);
 
@@ -154,8 +159,8 @@ val<size_t> strcspn(val<const char*> s1, val<const char*> s2);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return A pointer to the first occurrence in `s1` of any of the characters in `s2`,
- *         or nullptr if no such character is found.
+ * @return A pointer to the first occurrence in `s1` of any of the characters in
+ * `s2`, or nullptr if no such character is found.
  */
 val<const char*> strpbrk(val<const char*> s1, val<const char*> s2);
 val<char*> strpbrk(val<char*> s1, val<const char*> s2);
@@ -165,7 +170,8 @@ val<char*> strpbrk(val<char*> s1, val<const char*> s2);
  *
  * @param s C-string.
  * @param c Character to search for.
- * @return A pointer to the matching character, or nullptr if the character does not occur.
+ * @return A pointer to the matching character, or nullptr if the character does
+ * not occur.
  */
 val<const char*> strrchr(val<const char*> s, val<int> c);
 val<char*> strrchr(val<char*> s, val<int> c);
@@ -176,7 +182,8 @@ val<char*> strrchr(val<char*> s, val<int> c);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return The length of the initial segment of `s1` containing only characters from `s2`.
+ * @return The length of the initial segment of `s1` containing only characters
+ * from `s2`.
  */
 val<size_t> strspn(val<const char*> s1, val<const char*> s2);
 
@@ -185,13 +192,15 @@ val<size_t> strspn(val<const char*> s1, val<const char*> s2);
  *
  * @param s1 First C-string.
  * @param s2 Second C-string.
- * @return A pointer to the first occurrence of `s2` in `s1`, or nullptr if `s2` is not found.
+ * @return A pointer to the first occurrence of `s2` in `s1`, or nullptr if `s2`
+ * is not found.
  */
 val<const char*> strstr(val<const char*> s1, val<const char*> s2);
 val<char*> strstr(val<char*> s1, val<const char*> s2);
 
 /**
- * Breaks the C-string `s1` into tokens separated by characters in the C-string `s2`.
+ * Breaks the C-string `s1` into tokens separated by characters in the C-string
+ * `s2`.
  *
  * @param s1 C-string to tokenize (subsequent calls should be nullptr).
  * @param s2 C-string containing delimiter characters.
@@ -200,7 +209,8 @@ val<char*> strstr(val<char*> s1, val<const char*> s2);
 val<char*> strtok(val<char*> s1, val<const char*> s2);
 
 /**
- * Fills the first `n` bytes of the memory area pointed to by `s` with the constant byte `c`.
+ * Fills the first `n` bytes of the memory area pointed to by `s` with the
+ * constant byte `c`.
  *
  * @param s Memory area.
  * @param c Value to be set.

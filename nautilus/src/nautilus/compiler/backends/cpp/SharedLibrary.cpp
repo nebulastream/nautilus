@@ -14,7 +14,8 @@ SharedLibrary::SharedLibrary(void* shareLib, std::string soAbsolutePath) : share
 SharedLibrary::~SharedLibrary() {
 	auto returnCode = dlclose(shareLib);
 	if (returnCode != 0) {
-		// throw RuntimeException("SharedLibrary: error during dlclose. error code: " + std::to_string(returnCode));
+		// throw RuntimeException("SharedLibrary: error during dlclose. error code:
+		// " + std::to_string(returnCode));
 	}
 	std::filesystem::remove(soAbsolutePath);
 }

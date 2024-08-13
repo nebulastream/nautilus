@@ -31,9 +31,9 @@ value_ref TraceContext::registerFunctionArgument(Type type, size_t index) {
 }
 
 void TraceContext::traceValueDestruction(nautilus::tracing::value_ref) {
-	/*if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-	    auto currentOperation = executionTrace->getCurrentOperation();
-	    executionTrace->nextOperation();
+	/*if (symbolicExecutionContext->getCurrentMode() ==
+	SymbolicExecutionContext::MODE::FOLLOW) { auto currentOperation =
+	executionTrace->getCurrentOperation(); executionTrace->nextOperation();
 	    assert(currentOperation.op == FREE);
 	    return;
 	}*/
@@ -161,10 +161,11 @@ void TraceContext::traceAssignment(value_ref targetRef, value_ref sourceRef, Typ
 	/*
 	auto found = executionTrace->globalTagMap.find(tag);
 	if (found != executionTrace->globalTagMap.end()) {
-	    auto currentOp = executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
+	    auto currentOp =
+	executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
 	    if(std::get<value_ref>(currentOp.input[0]) != sourceRef){
-	        executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
-	        return;
+	        executionTrace->addAssignmentOperation(tag, targetRef, sourceRef,
+	resultType); return;
 	    };
 	}*/
 	if (executionTrace->checkTag(tag)) {
@@ -183,9 +184,9 @@ value_ref TraceContext::traceCast(value_ref state, Type resultType) {
 		//   executionTrace->variableBitset[currentOperation.resultRef] = true;
 		return currentOperation.resultRef;
 	}
-	// TODO is expected? check if we repeat a known trace or if this is a new operation.
-	// we are in a know operation if the operation at the current block[currentOperationCounter] is equal to the
-	// received operation.
+	// TODO is expected? check if we repeat a known trace or if this is a new
+	// operation. we are in a know operation if the operation at the current
+	// block[currentOperationCounter] is equal to the received operation.
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
 		auto leftIV = InputVariant(state);
