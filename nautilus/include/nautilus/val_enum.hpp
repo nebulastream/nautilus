@@ -18,7 +18,7 @@ class val<T> {
 public:
 	using underlying_type_t = std::underlying_type_t<T>;
 	using raw_type = underlying_type_t;
-	using basic_type = T;
+	using basic_type = raw_type;
 
 	val() : value() {};
 
@@ -50,9 +50,10 @@ public:
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
 #endif
-	const T value;
 
 private:
+	friend T details::getRawValue<T>(val<T>& left);
+	const T value;
 };
 
 } // namespace nautilus

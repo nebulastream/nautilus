@@ -2,6 +2,6 @@ NESIR {
 execute() {
 Block_0():
     $1 = 0 :ui32
-    return :void
+    return ($1) :ui32
 }
 } //NESIR

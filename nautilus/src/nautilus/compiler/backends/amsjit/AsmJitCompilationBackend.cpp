@@ -14,7 +14,8 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(std::shared_ptr<ir
 	          rt.cpuFeatures());
 	a64::Compiler cc(&code); // Create and attach x86::Compiler to code.
 
-	cc.addFunc(FuncSignature::build<int>()); // Begin a function of `int fn(void)` signature.
+	cc.addFunc(FuncSignature::build<int>()); // Begin a function of `int fn(void)`
+	                                         // signature.
 
 	a64::Gp vReg = cc.newInt32(); // Create a 32-bit general purpose register.
 	cc.mov(vReg, 1);              // Move one to our virtual register `vReg`.
@@ -22,7 +23,8 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(std::shared_ptr<ir
 
 	cc.endFunc();  // End of the function body.
 	cc.finalize(); // Translate and assemble the whole 'cc' content.
-	// ----> x86::Compiler is no longer needed from here and can be destroyed <----
+	// ----> x86::Compiler is no longer needed from here and can be destroyed
+	// <----
 	typedef int (*Func)(void);
 	Func fn;
 	auto err = rt.add(&fn, &code); // Add the generated code to the runtime.

@@ -95,8 +95,10 @@ void addTest(engine::NautilusEngine& engine) {
 	createCastTest<uint32_t>(engine, "cast_from_ui32", 0, UINT32_MAX);
 	createCastTest<uint64_t>(engine, "cast_from_ui64", 0, UINT64_MAX);
 	createCastTest<bool>(engine, "cast_from_bool", true, false);
-	// createCastTest<float>(engine, "cast_from_float", std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
-	// createCastTest<double>(engine, "cast_from_double", std::numeric_limits<double>::min(), std::numeric_limits<double>::max());
+	// createCastTest<float>(engine, "cast_from_float",
+	// std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+	// createCastTest<double>(engine, "cast_from_double",
+	// std::numeric_limits<double>::min(), std::numeric_limits<double>::max());
 }
 
 TEST_CASE("Cast Interpreter Test") {

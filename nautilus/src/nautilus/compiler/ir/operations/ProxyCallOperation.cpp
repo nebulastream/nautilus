@@ -28,7 +28,8 @@ std::string ProxyCallOperation::toString() {
 	if (!inputs.empty()) {
 		// baseString += inputArguments[0].lock()->getIdentifier().toString();
 		// for (int i = 1; i < (int) inputArguments.size(); ++i) {
-		//     baseString += ", " + inputArguments.at(i).lock()->getIdentifier().toString();
+		//     baseString += ", " +
+		//     inputArguments.at(i).lock()->getIdentifier().toString();
 
 		baseString += inputs[0]->getIdentifier().toString();
 		// baseString += inputArguments[0].lock()->getIdentifier();

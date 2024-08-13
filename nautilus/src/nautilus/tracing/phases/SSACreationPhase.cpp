@@ -49,7 +49,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 	auto& returnBlock = getReturnBlock();
 	processBlock(returnBlock);
-	// Eliminate all assign operations. We only needed them to create the SSA from.
+	// Eliminate all assign operations. We only needed them to create the SSA
+	// from.
 	removeAssignOperations();
 	// Finally we make all block arguments unique to their local block.
 	// As a result two blocks, can't use the same value references.
@@ -66,7 +67,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 }
 
 bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, value_ref& ref, Type, uint32_t operationIndex) {
-	// A value ref is defined in the local scope, if it is the result of an operation before the operationIndex
+	// A value ref is defined in the local scope, if it is the result of an
+	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
 		auto& resOperation = block.operations[i];
 		if (resOperation.resultRef == ref) {
@@ -105,8 +107,9 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	}
 	processedBlocks.emplace(block.blockId);
 	// Recursively process the predecessors of this block
-	// If the current block is a control-flow merge it may have multiple predecessors.
-	// We avoid visiting them again by checking the processedBlocks set.
+	// If the current block is a control-flow merge it may have multiple
+	// predecessors. We avoid visiting them again by checking the processedBlocks
+	// set.
 	for (auto pred : block.predecessors) {
 		auto& predBlock = trace->getBlock(pred);
 		if (!processedBlocks.contains(pred)) {
@@ -117,10 +120,11 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 
 void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, value_ref& ref, Type ref_type, uint32_t operationIndex) {
 	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
-		// variable is a local ref -> don't do anything as the value is defined in the current block
+		// variable is a local ref -> don't do anything as the value is defined in
+		// the current block
 	} else {
-		// The valeRef references a different block, so we have to add it to the local arguments and append it to the
-		// pre-predecessor calls
+		// The valeRef references a different block, so we have to add it to the
+		// local arguments and append it to the pre-predecessor calls
 		block.addArgument(ref);
 		// add to parameters in parent blocks
 		for (auto& predecessor : block.predecessors) {
@@ -142,14 +146,16 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, va
 				}
 			} else {
 				// NES_ERROR(trace->toString());
-				// NES_THROW_RUNTIME_ERROR("Last operation of pred block should be JMP or CMP");
+				// NES_THROW_RUNTIME_ERROR("Last operation of pred block should be JMP
+				// or CMP");
 			}
 		}
 	}
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex) {
-	// a block ref has a set of arguments, which are handled the same as all other value references.
+	// a block ref has a set of arguments, which are handled the same as all other
+	// value references.
 	for (auto& input : blockRef.arguments) {
 		processValueRef(block, input, input.type, operationIndex);
 	}
@@ -199,7 +205,8 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 							if (foundAssignment != assignmentMap.end()) {
 								// valueRef = &foundAssignment->second;
 								blockArgument.ref = foundAssignment->second;
-								// blockArgument.operationId = foundAssignment->second.operationId;
+								// blockArgument.operationId =
+								// foundAssignment->second.operationId;
 							}
 						}
 					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
@@ -208,7 +215,8 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 							if (foundAssignment != assignmentMap.end()) {
 								// valueRef = &foundAssignment->second;
 								funcArg.ref = foundAssignment->second;
-								// blockArgument.operationId = foundAssignment->second.operationId;
+								// blockArgument.operationId =
+								// foundAssignment->second.operationId;
 							}
 						}
 					}
@@ -223,12 +231,14 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> blockArgumentMap;
 
-		// iterate over all arguments of this block and create new ValRefs if the argument ref is not local.
-		// for (uint64_t argIndex = 0; argIndex < block.arguments.size(); argIndex++) {
+		// iterate over all arguments of this block and create new ValRefs if the
+		// argument ref is not local. for (uint64_t argIndex = 0; argIndex <
+		// block.arguments.size(); argIndex++) {
 		//    auto argRef = block.arguments[argIndex];
 		//    if (argRef.blockId != block.blockId) {
 		//        auto newLocalRef =
-		//                ValueRef(block.blockId, block.operations.size() + blockArgumentMap.size() + 100,
+		//                ValueRef(block.blockId, block.operations.size() +
+		//                blockArgumentMap.size() + 100,
 		//                         argRef.type);
 		//        blockArgumentMap[argRef] = newLocalRef;
 		//        block.arguments[argIndex] = newLocalRef;
@@ -254,7 +264,8 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 							// valueRef = &foundAssignment->second;
 							blockArgument.ref = foundAssignment->second;
 							// blockArgument.blockId = foundAssignment->second.blockId;
-							// blockArgument.operationId = foundAssignment->second.operationId;
+							// blockArgument.operationId =
+							// foundAssignment->second.operationId;
 						}
 					}
 				}

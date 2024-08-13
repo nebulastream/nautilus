@@ -40,7 +40,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		program.arguments.emplace_back(argumentRegister);
 	}
 	this->process(functionBasicBlock, rootFrame);
-	// NES_INFO("Allocated Registers: " << this->registerProvider.allocRegister());
+	// NES_INFO("Allocated Registers: " <<
+	// this->registerProvider.allocRegister());
 	return std::make_tuple(program, defaultRegisterFile);
 }
 
@@ -1148,7 +1149,8 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	default: {
 
 		throw NotImplementedException("This type is not supported.");
-		// NES_THROW_RUNTIME_ERROR("Operation " << opt->toString() << " not handled");
+		// NES_THROW_RUNTIME_ERROR("Operation " << opt->toString() << " not
+		// handled");
 		return;
 	}
 	}
@@ -1161,7 +1163,8 @@ void BCLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, s
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame) {
 	auto& code = program.blocks[block].code;
-	// NES_DEBUG("CREATE " << opt->toString() << " : " << opt->getStamp()->toString())
+	// NES_DEBUG("CREATE " << opt->toString() << " : " <<
+	// opt->getStamp()->toString())
 	auto arguments = opt->getInputArguments();
 
 	// 1. reset dyncall stack
@@ -1632,16 +1635,17 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, RegisterFrame&) {
 	// auto optResultIdentifier = opt->getIdentifier();
 
-	// if the result value of opt is directly passed to an block argument, then we can directly write the value to the
-	// correct target register.
+	// if the result value of opt is directly passed to an block argument, then we
+	// can directly write the value to the correct target register.
 
 	/*
 	if (opt->getUsages().size() == 1) {
 	    auto *usage = opt->getUsages()[0];
-	    if (usage->getOperationType() == ir::Operation::OperationType::BlockInvocation) {
-	        auto bi = dynamic_cast<const ir::BasicBlockInvocation *>(usage);
-	        auto blockInputArguments = bi->getArguments();
-	        auto blockTargetArguments = bi->getBlock()->getArguments();
+	    if (usage->getOperationType() ==
+	ir::Operation::OperationType::BlockInvocation) { auto bi = dynamic_cast<const
+	ir::BasicBlockInvocation *>(usage); auto blockInputArguments =
+	bi->getArguments(); auto blockTargetArguments =
+	bi->getBlock()->getArguments();
 
 	        std::vector<uint64_t> matchingArguments;
 
@@ -1653,9 +1657,10 @@ short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, Reg
 	        }
 
 	        if (matchingArguments.size() == 1) {
-	            auto blockTargetArgumentIdentifier = blockTargetArguments[matchingArguments[0]]->getIdentifier();
-	            if (!frame.contains(blockTargetArgumentIdentifier)) {
-	                auto resultReg = registerProvider.allocRegister();
+	            auto blockTargetArgumentIdentifier =
+	blockTargetArguments[matchingArguments[0]]->getIdentifier(); if
+	(!frame.contains(blockTargetArgumentIdentifier)) { auto resultReg =
+	registerProvider.allocRegister();
 	                frame.setValue(blockTargetArgumentIdentifier, resultReg);
 	                return resultReg;
 	            } else {

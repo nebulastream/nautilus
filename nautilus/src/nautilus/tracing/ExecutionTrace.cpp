@@ -12,8 +12,8 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 };
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
-	// check if operation is in global map -> we have a repeating operation -> this is a control-flow merge
-	// std::cout << "\n checkTag \n" << std::endl;
+	// check if operation is in global map -> we have a repeating operation ->
+	// this is a control-flow merge std::cout << "\n checkTag \n" << std::endl;
 	// std::cout << *this << std::endl;
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
@@ -151,7 +151,8 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 	// create new merge block
 	auto mergedBlockId = createBlock();
-	// perform a control flow merge and merge the current block with operations in some other block.
+	// perform a control flow merge and merge the current block with operations in
+	// some other block.
 	auto& referenceBlock = blocks[oi.blockIndex];
 	auto& currentBlock = blocks[currentBlockIndex];
 
@@ -159,7 +160,8 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
 	// 1. move operation to new block
-	// copy everything from the reference block between opId and end to merge block;
+	// copy everything from the reference block between opId and end to merge
+	// block;
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
 		auto sourceOperation = referenceBlock.operations[opIndex];
 		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));

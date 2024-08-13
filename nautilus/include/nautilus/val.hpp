@@ -13,11 +13,7 @@
 
 namespace nautilus {
 
-template <class T>
-constexpr auto getType();
-
 namespace details {
-
 template <typename LHS>
 LHS getRawValue(val<LHS>& val);
 
@@ -279,13 +275,7 @@ public:
 	bool value;
 };
 
-template <class T>
-concept is_fundamental_value = requires(val<T> value) { std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type>; };
-
-template <class T>
-concept is_arithmetic_value = std::is_arithmetic_v<typename std::remove_reference_t<T>::basic_type>;
-
-template <is_fundamental_value Type>
+template <is_fundamental_val Type>
 auto inline&& make_value(Type&& value) {
 	return std::forward<Type>(value);
 };
@@ -421,22 +411,14 @@ LHS inline getRawValue(val<LHS>& val) {
 
 #define DEFINE_BINARY_OPERATOR(OP, FUNC)                                                                                                                                                                                                       \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
-	    requires(is_fundamental_value<LHS> && (is_fundamental_value<RHS> || convertible_to_fundamental<RHS>) ) || ((is_fundamental_value<LHS> || convertible_to_fundamental<LHS>) && is_fundamental_value<RHS>)                                \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
-		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
-		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                                                                                                                                                \
-	}
-#define DEFINE_ARITHMETICAL_BINARY_OPERATOR(OP, FUNC)                                                                                                                                                                                          \
-	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
-	    requires(is_arithmetic_value<LHS> && (is_arithmetic_value<RHS> || convertible_to_fundamental<RHS>) ) || ((is_arithmetic_value<LHS> || convertible_to_fundamental<LHS>) && is_arithmetic_value<RHS>)                                    \
+	    requires(is_fundamental_val<LHS> && (is_fundamental_val<RHS> || convertible_to_fundamental<RHS>) ) || ((is_fundamental_val<LHS> || convertible_to_fundamental<LHS>) && is_fundamental_val<RHS>)                                \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
 		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                                                                                                                                                \
 	}
 
-DEFINE_ARITHMETICAL_BINARY_OPERATOR(+, add)
+DEFINE_BINARY_OPERATOR(+, add)
 
 DEFINE_BINARY_OPERATOR(-, sub)
 

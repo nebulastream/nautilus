@@ -49,7 +49,8 @@ val<float> remquof(val<float> x, val<float> y, val<int*> quo);
 val<double> remquo(val<double> x, val<double> y, val<int*> quo);
 
 /**
- * @brief Computes x * y + z as if to infinite precision and rounded only once to fit the result type.
+ * @brief Computes x * y + z as if to infinite precision and rounded only once
+ * to fit the result type.
  *
  * @param x floating-point
  * @param y floating-point
@@ -61,8 +62,9 @@ val<double> fma(val<double> x, val<double> y, val<double> z);
 val<float> fmaf(val<float> x, val<float> y, val<float> z);
 
 /**
- * @brief Computes the larger of two floating point arguments, treating NaNs as missing data (between a NaN and a
- * numeric value, the numeric value is chosen).
+ * @brief Computes the larger of two floating point arguments, treating NaNs as
+ * missing data (between a NaN and a numeric value, the numeric value is
+ * chosen).
  *
  * @param x floating-point
  * @param y floating-point
@@ -73,8 +75,9 @@ val<double> fmax(val<double> x, val<double> y);
 val<float> fmaxf(val<float> x, val<float> y);
 
 /**
- * @brief Computes the smaller of two floating point arguments, treating NaNs as missing data (between a NaN and a
- * numeric value, the numeric value is chosen).
+ * @brief Computes the smaller of two floating point arguments, treating NaNs as
+ * missing data (between a NaN and a numeric value, the numeric value is
+ * chosen).
  *
  * @param x floating-point
  * @param y floating-point
@@ -85,8 +88,8 @@ val<double> fmin(val<double> x, val<double> y);
 val<float> fminf(val<float> x, val<float> y);
 
 /**
- * @brief Computes he positive difference between x and y, that is, if x > y, returns x - y, otherwise (i.e. if x <= y)
- * returns +0
+ * @brief Computes he positive difference between x and y, that is, if x > y,
+ * returns x - y, otherwise (i.e. if x <= y) returns +0
  *
  * @param x floating-point
  * @param y floating-point
@@ -99,7 +102,8 @@ val<float> fdimf(val<float> x, val<float> y);
 /**
  * @brief Generates a quiet NaN (Not-a-Number).
  *
- * @param tagp Implementation-specific C-string to distinguish different NaN values.
+ * @param tagp Implementation-specific C-string to distinguish different NaN
+ * values.
  * @return Quiet NaN.
  */
 val<float> nanf(val<const char*> tagp);
@@ -132,7 +136,8 @@ val<double> exp2(val<double> x);
 val<float> exp2f(val<float> x);
 
 /**
- * @brief Computes the e (Euler's number, 2.7182818...) raised to the given power num, minus 1.0.
+ * @brief Computes the e (Euler's number, 2.7182818...) raised to the given
+ * power num, minus 1.0.
  *
  * @param num floating-point .
  * @return returns e raised to the given power, minus one.
@@ -383,7 +388,8 @@ val<double> tgamma(val<double> x);
 val<float> tgammaf(val<float> x);
 
 /**
- * @brief Computes the natural logarithm of the absolute value of the gamma function of x.
+ * @brief Computes the natural logarithm of the absolute value of the gamma
+ * function of x.
  *
  * @param x Value.
  * @return Natural logarithm of the absolute value of the gamma function of x.
@@ -459,7 +465,8 @@ val<double> nearbyint(val<double> x);
 val<float> nearbyintf(val<float> x);
 
 /**
- * @brief Rounds x to the nearest integer value according to the current rounding mode.
+ * @brief Rounds x to the nearest integer value according to the current
+ * rounding mode.
  *
  * @param x Value.
  * @return Rounded value.
@@ -469,7 +476,8 @@ val<float> rintf(val<float> x);
 val<double> rint(val<double> x);
 
 /**
- * @brief Rounds x to the nearest integer value according to the current rounding mode and returns it as a long integer.
+ * @brief Rounds x to the nearest integer value according to the current
+ * rounding mode and returns it as a long integer.
  *
  * @param x Value.
  * @return Rounded value as long.
@@ -479,8 +487,8 @@ val<long> lrint(val<double> x);
 val<long> lrintf(val<float> x);
 
 /**
- * @brief Rounds x to the nearest integer value according to the current rounding mode and returns it as a long long
- * integer.
+ * @brief Rounds x to the nearest integer value according to the current
+ * rounding mode and returns it as a long long integer.
  *
  * @param x Value.
  * @return Rounded value as long long.
@@ -491,7 +499,8 @@ val<long long> llrintf(val<float> x);
 
 // Floating-point manipulation functions
 /**
- * @brief Breaks the floating point number x into its binary significand and an integral exponent for 2.
+ * @brief Breaks the floating point number x into its binary significand and an
+ * integral exponent for 2.
  *
  * @param x Value.
  * @param exp Pointer to an integer to store the exponent.
@@ -513,7 +522,8 @@ val<float> ldexpf(val<float> x, val<int> exp);
 val<double> ldexp(val<double> x, val<int> exp);
 
 /**
- * @brief Breaks the floating point number x into an integral and a fractional part.
+ * @brief Breaks the floating point number x into an integral and a fractional
+ * part.
  *
  * @param x Value.
  * @param intpart Pointer to store the integral part.
@@ -782,8 +792,8 @@ val<double> cyl_bessel_j(val<double> nu, val<double> x);
 val<float> cyl_bessel_jf(val<float> nu, val<float> x);
 
 /**
- * @brief Computes the irregular modified cylindrical Bessel function (also known as modified Bessel function of the
- * second kind) of nu and x.
+ * @brief Computes the irregular modified cylindrical Bessel function (also
+ * known as modified Bessel function of the second kind) of nu and x.
  *
  * @param k
  * @return cyl_bessel_k
@@ -793,8 +803,8 @@ val<double> cyl_bessel_k(val<double> nu, val<double> x);
 val<float> cyl_bessel_kf(val<float> nu, val<float> x);
 
 /**
- * @brief Computes the cylindrical Neumann function (also known as Bessel function of the second kind or Weber function)
- * of nu and x
+ * @brief Computes the cylindrical Neumann function (also known as Bessel
+ * function of the second kind or Weber function) of nu and x
  *
  * @param k
  * @return cyl_neumann
@@ -804,10 +814,12 @@ val<double> cyl_neumann(val<double> nu, val<double> x);
 val<float> cyl_neumannf(val<float> nu, val<float> x);
 
 /**
- * @brief Computes the incomplete elliptic integral of the first kind of k and phi.
+ * @brief Computes the incomplete elliptic integral of the first kind of k and
+ * phi.
  *
  * @param k elliptic modulus or eccentricity (a floating-point or integer value)
- * @param phi Jacobi amplitude (a floating-point or integer value, measured in radians)
+ * @param phi Jacobi amplitude (a floating-point or integer value, measured in
+ * radians)
  * @return ellint_1f
  */
 val<float> ellint_1(val<float> k, val<float> phi);
@@ -815,10 +827,12 @@ val<double> ellint_1(val<double> k, val<double> phi);
 val<float> ellint_1f(val<float> k, val<float> phi);
 
 /**
- * @brief Computes the incomplete elliptic integral of the second kind of k and phi.
+ * @brief Computes the incomplete elliptic integral of the second kind of k and
+ * phi.
  *
  * @param k elliptic modulus or eccentricity (a floating-point or integer value)
- * @param phi Jacobi amplitude (a floating-point or integer value, measured in radians)
+ * @param phi Jacobi amplitude (a floating-point or integer value, measured in
+ * radians)
  * @return ellint_2f
  */
 val<float> ellint_2(val<float> k, val<float> phi);
@@ -826,10 +840,12 @@ val<double> ellint_2(val<double> k, val<double> phi);
 val<float> ellint_2f(val<float> k, val<float> phi);
 
 /**
- * @brief Computes the incomplete elliptic integral of the third kind of k and phi.
+ * @brief Computes the incomplete elliptic integral of the third kind of k and
+ * phi.
  *
  * @param k elliptic modulus or eccentricity (a floating-point or integer value)
- * @param phi Jacobi amplitude (a floating-point or integer value, measured in radians)
+ * @param phi Jacobi amplitude (a floating-point or integer value, measured in
+ * radians)
  * @return ellint_3
  */
 val<float> ellint_3(val<float> k, val<float> phi);
@@ -847,7 +863,8 @@ val<double> expint(val<double> k);
 val<float> ellint_f(val<float> k);
 
 /**
- * @brief Computes the (physicist's) Hermite polynomials of the degree n and argument x.
+ * @brief Computes the (physicist's) Hermite polynomials of the degree n and
+ * argument x.
  *
  * @param num floating-point or integer value
  * @return hermite
@@ -857,7 +874,8 @@ val<double> hermite(val<unsigned int> k, val<double> x);
 val<float> hermitef(val<unsigned int> k, val<float> x);
 
 /**
- * @brief Computes the unassociated Legendre polynomials of the degree n and argument x.
+ * @brief Computes the unassociated Legendre polynomials of the degree n and
+ * argument x.
  *
  * @param n the degree of the polynomial
  * @param x	the argument, a floating-point or integer value
@@ -868,7 +886,8 @@ val<double> legendre(val<unsigned int> n, val<double> x);
 val<float> legendref(val<unsigned int> n, val<float> x);
 
 /**
- * @brief Computes the non-associated Laguerre polynomials of the degree n and argument x
+ * @brief Computes the non-associated Laguerre polynomials of the degree n and
+ * argument x
  *
  * @param n the degree of the polynomial
  * @param x	the argument, a floating-point or integer value
@@ -899,7 +918,8 @@ val<double> sph_bessel(val<unsigned int> n, val<double> x);
 val<float> sph_besself(val<unsigned int> n, val<float> x);
 
 /**
- * @brief Computes the spherical associated Legendre function of degree l, order m, and polar angle theta
+ * @brief Computes the spherical associated Legendre function of degree l, order
+ * m, and polar angle theta
  *
  * @param l degree
  * @param m order
@@ -910,8 +930,8 @@ val<double> sph_legendre(val<unsigned int> l, val<unsigned int> m, val<double> t
 val<float> sph_legendref(val<unsigned int> l, val<unsigned int> m, val<float> theta);
 
 /**
- * @brief Computes the spherical Bessel function of the second kind, also known as the spherical Neumann function, of n
- * and x.
+ * @brief Computes the spherical Bessel function of the second kind, also known
+ * as the spherical Neumann function, of n and x.
  *
  * @param n the order of the function
  * @param x the argument of the function

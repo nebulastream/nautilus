@@ -44,7 +44,8 @@ void IfOperation::setMergeBlock(BasicBlockPtr mergeBlock) {
 
 std::string IfOperation::toString() {
 	std::string baseString = "if " + getValue()->getIdentifier().toString() + " ? Block_" + trueBlockInvocation.getBlock()->getIdentifier() + '(';
-	// "if " + comparatorOp->getIdentifier() + " ? Block_" + trueBlockInvocation.getBlock()->getIdentifier() + '(';
+	// "if " + comparatorOp->getIdentifier() + " ? Block_" +
+	// trueBlockInvocation.getBlock()->getIdentifier() + '(';
 	if (trueBlockInvocation.getArguments().size() > 0) {
 		baseString += trueBlockInvocation.getArguments()[0]->getIdentifier().toString();
 		for (int i = 1; i < (int) trueBlockInvocation.getArguments().size(); ++i) {

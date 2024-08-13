@@ -25,19 +25,21 @@ RuntimePathConfig loadRuntimePathConfig() {
 
 	// verify is runtime path config is valid
 	if (!std::filesystem::exists(runtimePathConfig.clangBinaryPath)) {
-		// throw CompilerException("Selected clang binary path dose not exists. Path: " +
-		// runtimePathConfig.clangBinaryPath);
+		// throw CompilerException("Selected clang binary path dose not exists.
+		// Path: " + runtimePathConfig.clangBinaryPath);
 	}
 
 	for (auto includeDir : runtimePathConfig.includePaths) {
 		if (!std::filesystem::exists(includeDir)) {
-			//  throw CompilerException("Selected include path dose not exists. Path: " + includeDir);
+			//  throw CompilerException("Selected include path dose not exists. Path:
+			//  " + includeDir);
 		}
 	}
 
 	for (auto libDir : runtimePathConfig.libPaths) {
 		if (!std::filesystem::exists(libDir)) {
-			// throw CompilerException("Selected lib path dose not exists. Path: " + libDir);
+			// throw CompilerException("Selected lib path dose not exists. Path: " +
+			// libDir);
 		}
 	}
 

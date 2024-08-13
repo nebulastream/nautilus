@@ -11,7 +11,8 @@ namespace nautilus::compiler::mlir {
 std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, const llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
                                                                        const std::vector<std::string>& jitProxyFunctionSymbols, const std::vector<void*>& jitProxyFunctionTargetAddresses) {
 
-	// Register the translation from MLIR to LLVM IR, which must happen before we can JIT-compile.
+	// Register the translation from MLIR to LLVM IR, which must happen before we
+	// can JIT-compile.
 	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
 	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 

@@ -3,6 +3,7 @@
 
 #include "nautilus/common/TypedValueRef.hpp"
 #include "nautilus/common/Types.hpp"
+#include "nautilus/val_concepts.hpp"
 #include <any>
 #include <array>
 #include <cstdint>
@@ -48,13 +49,15 @@ enum Op : uint8_t {
 	NEGATE,
 };
 
-
-
-
-template <typename T>
+template <is_compatible_val_type T>
 constexpr Type to_type();
 
-template <typename T>
+/**
+ * Returns the nautilus type for a C++ type.
+ * @tparam T
+ * @return Type
+ */
+template <is_compatible_val_type T>
 constexpr Type to_type() {
 	using type = std::remove_cvref_t<T>;
 	if constexpr (std::is_same_v<type, bool>) {
