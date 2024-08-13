@@ -1,23 +1,12 @@
 
-#include "nautilus/val_concepts.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 #include <iostream>
 
 namespace nautilus {
 
-TEMPLATE_TEST_CASE("Val Concept Test", "[value][template]",
-                   int8_t,
-                   int16_t,
-                   int32_t,
-                   int64_t,
-                   uint8_t,
-                   uint16_t,
-                   uint32_t,
-                   uint64_t,
-                   size_t,
-                   float,
-                   double) {
+TEMPLATE_TEST_CASE("Val Concept Test", "[value][template]", int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, size_t, float, double) {
 	SECTION("convertible_to_fundamental") {
 		REQUIRE(convertible_to_fundamental<TestType>);
 		REQUIRE(convertible_to_fundamental<const TestType>);

@@ -50,9 +50,10 @@ public:
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
 #endif
-	const T value;
 
 private:
+	friend T details::getRawValue<T>(val<T>& left);
+	const T value;
 };
 
 } // namespace nautilus
