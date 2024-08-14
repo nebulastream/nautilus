@@ -478,7 +478,12 @@ void MLIRLoweringProvider::generateMLIR(ir::AddOperation* addOp, ValueFrame& fra
 void MLIRLoweringProvider::generateMLIR(ir::SubOperation* subIntOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(subIntOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(subIntOp->getRightInput()->getIdentifier());
-	if (isFloat(subIntOp->getStamp())) {
+	if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
+		// if we add something to a ptr we have to use a llvm getelementptr
+		mlir::Value elementAddress = builder->create<mlir::LLVM::GEPOp>(getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(), leftInput, mlir::ArrayRef<mlir::Value>({rightInput}));
+		frame.setValue(subIntOp->getIdentifier(), elementAddress);
+
+	} else if (isFloat(subIntOp->getStamp())) {
 		auto mlirSubOp = builder->create<mlir::LLVM::FSubOp>(getNameLoc("binOpResult"), leftInput, rightInput, mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::fast));
 		frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
 	} else {

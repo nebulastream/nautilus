@@ -230,10 +230,10 @@ public:
 	}
 };
 
-template <is_arithmetic_ptr ValueType, typename IndexType>
+template <is_arithmetic_ptr ValueType, is_fundamental_val IndexType>
 val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
-	auto size = ((typename IndexType::raw_type)(sizeof(typename std::remove_pointer_t<ValueType>)));
+	auto size = ((size_t)(sizeof(typename std::remove_pointer_t<ValueType>)));
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -245,10 +245,15 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	return val<ValueType>(newPtr);
 }
 
-template <typename ValueType>
-    requires std::is_pointer_v<ValueType>
-auto inline operator-(val<ValueType> left, std::remove_pointer_t<ValueType> right) {
-	return val<ValueType>(left.ptr, left.index - right);
+template <is_arithmetic_ptr ValueType, is_integral IndexType>
+val<ValueType> inline operator+(val<ValueType>& left, IndexType offset) {
+	return left + val<size_t>(offset);
+}
+
+template <is_arithmetic_ptr ValueType, typename IndexType>
+requires is_integral<IndexType> || is_fundamental_val<IndexType>
+val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
+	return left + (0 - offset);
 }
 
 template <typename ValueType>

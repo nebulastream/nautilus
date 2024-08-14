@@ -557,6 +557,29 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 void pointerExecutionTest(engine::NautilusEngine& engine) {
 	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
+	SECTION("pointerAdd") {
+		auto f = engine.registerFunction(pointerAdd);
+		REQUIRE(f(values, (int32_t) 0) == 1);
+		REQUIRE(f(values, (int32_t) 1) == 2);
+	}
+	SECTION("pointerAddConst") {
+		auto f = engine.registerFunction(pointerAddConst);
+		REQUIRE(f(values) == 3);
+	}
+
+	SECTION("pointerSub") {
+		auto f = engine.registerFunction(pointerSub);
+		REQUIRE(f(values, (int32_t) 0) == 1);
+		REQUIRE(f(&values[1], (int32_t) 1) == 1);
+		REQUIRE(f(&values[2], (int32_t) 2) == 1);
+	}
+
+	SECTION("pointerSubConst") {
+		auto f = engine.registerFunction(pointerSubConst);
+		REQUIRE(f(&values[2]) == 1);
+		REQUIRE(f(&values[3]) == 2);
+	}
+
 	SECTION("isNullptr") {
 		auto f = engine.registerFunction(isNullptr<int8_t>);
 		int x = 42;
