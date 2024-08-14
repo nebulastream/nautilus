@@ -1,0 +1,6 @@
+B0($1:ptr,$2:i32)
+	CONST	$6	12	:ui64	
+	CAST	$7	$2	:ui64	
+	MUL	$8	$7	$6	:ui64	
+	ADD	$9	$1	$8	:ptr	
+	RETURN	$9	:ptr	
