@@ -82,7 +82,6 @@ public:
 		}
 		auto callable = this->executable->template getInvocableMember<typename R::raw_type, FunctionArguments...>("execute");
 		return callable(args...);
-		;
 	}
 
 private:
