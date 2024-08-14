@@ -2,10 +2,11 @@ NESIR {
 execute() {
 Block_0($1:ptr):
     $2 = 0 :i32
-    $6 = 2 :i32
-    $7 = $2 * $6 :i32
-    $8 = $1 + $7 :ptr
-    $11 = load($8) :i16
-    return ($11) :i16
+    $6 = 2 :ui64
+    $7 = $2 cast_to ui64 :ui64
+    $8 = $7 * $6 :ui64
+    $9 = $1 + $8 :ptr
+    $12 = load($9) :i16
+    return ($12) :i16
 }
 } //NESIR
