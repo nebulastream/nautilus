@@ -562,6 +562,13 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(values, (int32_t) 0) == 1);
 		REQUIRE(f(values, (int32_t) 1) == 2);
 	}
+
+	SECTION("customPointerAdd") {
+		auto* values2 = new CustomClass[10] {};
+		auto f2 = engine.registerFunction(customPointerAdd);
+		auto res = f2(values2, 3);
+		REQUIRE(res == &values2[3]);
+	}
 	SECTION("pointerAddConst") {
 		auto f = engine.registerFunction(pointerAddConst);
 		REQUIRE(f(values) == 3);
@@ -582,7 +589,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 
 	SECTION("isNullptr") {
 		auto f = engine.registerFunction(isNullptr<int8_t>);
-		int x = 42;
+		int8_t x = 42;
 		int8_t* ptr = nullptr;
 		REQUIRE(f(&x) == false);
 		REQUIRE(f(ptr) == true);
@@ -600,7 +607,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 
 	SECTION("isNotNullptr") {
 		auto f = engine.registerFunction(isNotNullptr<int8_t>);
-		int x = 42;
+		int8_t x = 42;
 		int8_t* ptr = nullptr;
 		REQUIRE(f(&x) == true);
 		REQUIRE(f(ptr) == false);
@@ -631,7 +638,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrEquals<CustomStruct2>);
 			CustomStruct2 x;
 			CustomStruct2 x2;
-			bool* nu = nullptr;
+			CustomStruct2* nu = nullptr;
 			REQUIRE(f(&x, &x2) == false);
 			REQUIRE(f(&x, &x) == true);
 			REQUIRE(f(&x, nu) == false);
@@ -664,7 +671,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 			auto f = engine.registerFunction(ptrNotEquals<CustomStruct2>);
 			CustomStruct2 x;
 			CustomStruct2 x2;
-			bool* nu = nullptr;
+			CustomStruct2* nu = nullptr;
 			REQUIRE(f(&x, &x2) == true);
 			REQUIRE(f(&x, &x) == false);
 			REQUIRE(f(&x, nu) == true);
@@ -826,9 +833,9 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(multipleVoidReturnsFunction);
 		int32_t x = 11;
 		f(&x);
-		REQUIRE(x==1);
+		REQUIRE(x == 1);
 		f(&x);
-		REQUIRE(x==42);
+		REQUIRE(x == 42);
 	}
 
 	SECTION("useFirstArg") {

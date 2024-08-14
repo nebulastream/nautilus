@@ -120,7 +120,14 @@ class BaseClass {};
 class CustomClass : public BaseClass {
 public:
 	int x;
+	int y;
+	int z;
 };
+
+val<CustomClass*> customPointerAdd(val<CustomClass*> customClassPtr, val<int32_t> offset) {
+	auto result = customClassPtr + offset;
+	return result;
+}
 
 val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
 	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);

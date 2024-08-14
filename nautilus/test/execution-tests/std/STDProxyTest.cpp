@@ -16,7 +16,7 @@ val<T> sinTest(val<T> x) {
 	return sin(x);
 }
 
-auto getInt(val<char*> str) {
+auto getInt(val<const char*> str) {
 	return atoi(str);
 }
 
