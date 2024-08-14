@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <utility>
 #include "nautilus/function.hpp"
 #include "nautilus/val.hpp"
 
@@ -84,7 +85,7 @@ public:
 #ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
 	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
-	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(tc), value(ptr) {};
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {};
 
 	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
@@ -99,41 +100,6 @@ public:
 };
 
 template <is_ptr ValuePtrType>
-class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
-public:
-	using base_ptr_val<ValuePtrType>::base_ptr_val;
-
-	// enable cast to type T
-	template <typename T>
-	operator val<T*>() const {
-#ifdef ENABLE_TRACING
-		return val<T*>((T*) this->value, this->state);
-#else
-		return val<T*>((T*) this->value);
-#endif
-	}
-
-#ifdef ENABLE_TRACING
-	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
-	}
-
-#else
-	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
-	}
-#endif
-
-	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
-		}
-#endif
-		this->value = other.value;
-		return *this;
-	};
-};
-
-template <is_arithmetic_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
@@ -157,7 +123,9 @@ public:
 		return *this;
 	};
 
-	val<ValType&> operator*() {
+	val<ValType&> operator*()
+	    requires is_arithmetic<ValType>
+	{
 #ifdef ENABLE_TRACING
 		return val<ValType&>(*this, this->state);
 #else
@@ -166,7 +134,9 @@ public:
 	};
 
 	template <class T>
-	val<ValType&> operator[](T&& io) {
+	val<ValType&> operator[](T&& io)
+	    requires is_arithmetic<ValType>
+	{
 		auto indexOffset = static_cast<val<int32_t>>(io);
 		auto valuePtr = (*this) + indexOffset;
 #ifdef ENABLE_TRACING
@@ -233,7 +203,7 @@ public:
 template <is_ptr ValueType, is_fundamental_val IndexType>
 val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
-	auto size = ((size_t)(sizeof(typename std::remove_pointer_t<ValueType>)));
+	auto size = ((size_t) (sizeof(typename std::remove_pointer_t<ValueType>)));
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -251,7 +221,7 @@ val<ValueType> inline operator+(val<ValueType>& left, IndexType offset) {
 }
 
 template <is_ptr ValueType, typename IndexType>
-requires is_integral<IndexType> || is_fundamental_val<IndexType>
+    requires is_integral<IndexType> || is_fundamental_val<IndexType>
 val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
 	return left + (0 - offset);
 }
