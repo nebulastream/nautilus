@@ -18,12 +18,12 @@ namespace nautilus {
 template <class CharT, class Traits, class Allocator>
 class val<std::basic_stringstream<CharT, Traits, Allocator>> : public val<std::basic_ostream<CharT, Traits>> {
 public:
-	val(): val<std::basic_ostream<CharT, Traits>>(nullptr) {
+	val() : val<std::basic_ostream<CharT, Traits>>(nullptr) {
 		auto data_ptr = invoke(+[]() -> auto* {
 			auto sb = new std::basic_stringstream<CharT, Traits, Allocator>();
-			return dynamic_cast<std::basic_ostream<CharT, Traits>*>(sb);;
+			return dynamic_cast<std::basic_ostream<CharT, Traits>*>(sb);
 		});
-	    this->stream = data_ptr;
+		this->stream = data_ptr;
 	}
 	val<std::basic_string_view<CharT, Traits>> view() {
 		auto view_ptr = invoke(
@@ -37,7 +37,6 @@ public:
 		return val<std::basic_string_view<CharT, Traits>>(view_ptr);
 	};
 
-
 	val<std::basic_string<CharT, Traits>> str() {
 		auto str_ptr = invoke(
 		    +[](std::basic_ostream<CharT, Traits>* ptr) -> auto {
@@ -50,8 +49,8 @@ public:
 	};
 
 	~val() {
-		invoke(+[](std::basic_ostream<CharT, Traits>* ptr) -> void {
-			delete ptr; }, this->stream);
+		invoke(
+		    +[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
 	}
 };
 
