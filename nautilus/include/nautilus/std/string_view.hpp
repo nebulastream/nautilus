@@ -9,14 +9,14 @@ template <class CharT, class Traits>
 class val<std::basic_string_view<CharT, Traits>> {
 public:
 	using base_type = std::basic_string_view<CharT, Traits>;
-	using value_type = base_type::value_type;
-	using size_type = base_type::size_type;
-	using const_reference = base_type::const_reference;
-	using iterator = base_type::iterator;
-	using const_iterator = base_type::const_iterator;
-	using reference = base_type::reference;
-	using pointer = base_type::pointer;
-	using const_pointer = base_type::const_pointer;
+	using value_type = typename base_type::value_type;
+	using size_type = typename base_type::size_type;
+	using const_reference = typename base_type::const_reference;
+	using iterator = typename base_type::iterator;
+	using const_iterator = typename base_type::const_iterator;
+	using reference = typename base_type::reference;
+	using pointer = typename base_type::pointer;
+	using const_pointer = typename base_type::const_pointer;
 
 	val<std::basic_string_view<CharT, Traits>>() : data_ptr(nullptr) {
 		auto string_vew = new std::basic_string_view<CharT, Traits>();
