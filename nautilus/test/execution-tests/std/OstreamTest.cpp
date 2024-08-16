@@ -17,12 +17,13 @@ void cerrTest(val<int32_t> val) {
 	cerr << "val" << flush;
 }
 
+/*
 val<char> sstreamTest(val<int32_t> value) {
 	// allocates ptr
 	stringstream ss;
 	ss << "val" << value << endl;
 	return ss.view().data()[4];
-}
+}*/
 
 val<char> sstreamToStrTest(val<int32_t> value) {
 	// allocates a stringstream, which is managed by the runtime and freed when the object goes out of scope

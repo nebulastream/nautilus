@@ -25,6 +25,7 @@ public:
 		});
 		this->stream = data_ptr;
 	}
+	/*
 	val<std::basic_string_view<CharT, Traits>> view() {
 		auto view_ptr = invoke(
 		    +[](std::basic_ostream<CharT, Traits>* ptr) -> const char* {
@@ -36,6 +37,7 @@ public:
 		    this->stream);
 		return val<std::basic_string_view<CharT, Traits>>(view_ptr);
 	};
+	 */
 
 	val<std::basic_string<CharT, Traits>> str() {
 		auto str_ptr = invoke(
