@@ -33,9 +33,12 @@ public:
 
 	val<std::basic_string_view<CharT, Traits>>(val<const CharT*> s) : data_ptr(nullptr) {
 		// call new on val<base_type *>
-		auto raw_s = details::getRawValue(s);
-		auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);
-		data_ptr = val<base_type*>(string_vew);
+		//auto raw_s = details::getRawValue(s);
+		//auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);
+		auto ptr = invoke(+[](const CharT* s) -> auto {
+			return new std::basic_string_view<CharT, Traits>(s);
+		}, s);
+		data_ptr = val<base_type*>(ptr);
 	}
 
 	val<const_iterator> begin() const {

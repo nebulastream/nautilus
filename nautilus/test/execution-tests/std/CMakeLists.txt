@@ -1,5 +1,6 @@
 add_executable(nautilus-std-tests
         STDProxyTest.cpp
+        OstreamTest.cpp
 )
 
 target_link_libraries(nautilus-std-tests PUBLIC nautilus Catch2::Catch2WithMain)
