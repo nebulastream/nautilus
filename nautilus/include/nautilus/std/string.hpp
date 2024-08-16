@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/val_ptr.hpp"
+#include "nautilus/std/string_view.hpp"
 #include <string>
 
 namespace nautilus {
@@ -55,7 +56,7 @@ public:
 	 * is valid and the values in it correspond to the values stored in the string with an additional null
 	 * character after the last position.
 	 */
-	val<const CharT*> c_str() {
+	val<const CharT*> c_str() const {
 		return invoke(+[](base_type* ptr) -> const CharT* { return ptr->c_str(); }, data_ptr);
 	}
 

@@ -57,17 +57,17 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->cend(); }, data_ptr);
 	}
 
-	val<const_reference> operator[](val<size_type> pos) const {
+	val<value_type> operator[](val<size_type> pos) const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos) -> const_reference {
+		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos) -> value_type {
 			    return ptr->operator[](pos);
 		    },
 		    data_ptr, pos);
 	}
 
-	const val<const_reference> at(val<size_type> index) const {
+	const val<value_type> at(val<size_type> index) const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type index) -> const_reference {
+		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type index) -> value_type {
 			    return ptr->at(index);
 		    },
 		    data_ptr, index);
@@ -89,14 +89,14 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->empty(); }, data_ptr);
 	}
 
-	val<const_reference> front() const {
+	val<value_type> front() const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr) -> const_reference { return ptr->front(); }, data_ptr);
+		    +[](std::basic_string_view<CharT, Traits>* ptr) -> value_type { return ptr->front(); }, data_ptr);
 	}
 
-	val<const_reference> back() const {
+	val<value_type> back() const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr) -> const_reference { return ptr->back(); }, data_ptr);
+		    +[](std::basic_string_view<CharT, Traits>* ptr) -> value_type { return ptr->back(); }, data_ptr);
 	}
 
 	val<const_pointer> data() const {
