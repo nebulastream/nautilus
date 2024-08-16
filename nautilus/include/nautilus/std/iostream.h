@@ -26,7 +26,8 @@ public:
 	}
 };
 
-static cout_helper cout;
-static cerr_helper cerr;
+
+[[maybe_unused]] static cout_helper cout;
+[[maybe_unused]] static cerr_helper cerr;
 
 } // namespace nautilus
