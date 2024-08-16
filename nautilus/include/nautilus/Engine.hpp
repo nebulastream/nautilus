@@ -27,7 +27,7 @@ auto createTraceableArgument() {
 #ifdef ENABLE_TRACING
 
 template <size_t... Indices, typename R, typename... FunctionArguments>
-std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std::function<R(FunctionArguments...)>  func) {
+std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std::function<R(FunctionArguments...)> func) {
 	[[maybe_unused]] std::size_t args = sizeof...(FunctionArguments);
 	auto traceFunc = [=]() {
 		if constexpr (std::is_void_v<R>) {
@@ -35,7 +35,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std
 			tracing::traceReturnOperation(Type::v, tracing::value_ref());
 		} else {
 			auto returnValue = func(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			auto type = tracing::to_type<typename decltype(returnValue)::basic_type>();
+			auto type = tracing::to_type<typename decltype(returnValue)::raw_type>();
 			tracing::traceReturnOperation(type, returnValue.state);
 		}
 	};
@@ -43,7 +43,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std
 }
 
 template <typename R, typename... FunctionArguments>
-std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...)>  func) {
+std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...)> func) {
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, func);
 }
 #endif
@@ -52,42 +52,40 @@ std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...
 template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
-	explicit CallableFunction(std::function<R(FunctionArguments...)>  func) : func(func), executable(nullptr) {
+	explicit CallableFunction(std::function<R(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
-	    : func(), executable(std::move(executable)) {}
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable) : func(), executable(std::move(executable)) {
+	}
 
-	template <typename... FunctionArgumentsRaw>
+	auto operator()(FunctionArguments... args)
 	    requires std::is_void_v<R>
-	auto operator()(FunctionArgumentsRaw... args) {
+	{
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
 			func(make_value((args))...);
 			return;
 		}
-		auto callable =
-		    this->executable->template getInvocableMember<void, FunctionArgumentsRaw...>("execute");
+		auto callable = this->executable->template getInvocableMember<void, FunctionArguments...>("execute");
 		callable(args...);
 	}
 
-	template <typename... FunctionArgumentsRaw>
+	auto operator()(FunctionArguments... args)
 	    requires(!std::is_void_v<R>)
-	auto operator()(FunctionArgumentsRaw... args) {
+	{
 		// function is called from an external context.
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
 			auto result = func(make_value((args))...);
 			return nautilus::details::getRawValue(result);
 		}
-		auto callable =
-		    this->executable->template getInvocableMember<typename R::raw_type, FunctionArgumentsRaw...>("execute");
-		return callable(args...);;
+		auto callable = this->executable->template getInvocableMember<typename R::raw_type, FunctionArguments...>("execute");
+		return callable(args...);
 	}
 
 private:
-	std::function<R(FunctionArguments...)> func;
+	std::function<R(val<FunctionArguments>...)> func;
 	std::unique_ptr<compiler::Executable> executable;
 };
 
@@ -113,10 +111,10 @@ public:
 		if (options.getOptionOrDefault("engine.Compilation", true)) {
 			auto wrapper = details::createFunctionWrapper(func);
 			auto executable = jit.compile(wrapper);
-			return CallableFunction<R, val<FunctionArguments>...>(executable);
+			return CallableFunction<R, FunctionArguments...>(executable);
 		}
 #endif
-		return CallableFunction<R, val<FunctionArguments>...>(func);
+		return CallableFunction<R, FunctionArguments...>(func);
 	}
 
 private:

@@ -73,6 +73,26 @@ val<B> castPtrAndGetValue(val<A*> array) {
 	return intPtr[0];
 }
 
+val<int32_t> pointerAdd(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr + offset;
+	return *result;
+}
+
+val<int32_t> pointerSub(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+val<int32_t> pointerAddConst(val<int32_t*> ptr) {
+	auto result = ptr + 2;
+	return *result;
+}
+
+val<int32_t> pointerSubConst(val<int32_t*> ptr) {
+	auto result = ptr - 2;
+	return *result;
+}
+
 val<int32_t> sumArray(val<int32_t*> array, val<int32_t> length) {
 	val<int32_t> sum = val<int32_t>(0);
 	for (val<int32_t> i = 0; i < length; i = i + 1) {
@@ -100,7 +120,14 @@ class BaseClass {};
 class CustomClass : public BaseClass {
 public:
 	int x;
+	int y;
+	int z;
 };
+
+val<CustomClass*> customPointerAdd(val<CustomClass*> customClassPtr, val<int32_t> offset) {
+	auto result = customClassPtr + offset;
+	return result;
+}
 
 val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
 	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);

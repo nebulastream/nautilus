@@ -86,7 +86,9 @@ tracing::value_ref getState(T&& value) {
 template <is_arithmetic ValueType>
 class val<ValueType> {
 public:
+	// raw type is the val type
 	using raw_type = ValueType;
+	// basic type is the underling val type
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING

@@ -1,0 +1,11 @@
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr	
+	CONST	$3	2	:ui64	
+	ASSIGN	$4	$3	:ui64	
+	CONST	$5	4	:ui64	
+	MUL	$6	$4	$5	:ui64	
+	ADD	$7	$2	$6	:ptr	
+	ASSIGN	$8	$7	:ptr	
+	ASSIGN	$9	$8	:ptr	
+	LOAD	$10	$9	:i32	
+	RETURN	$10	:i32	

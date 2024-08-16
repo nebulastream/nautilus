@@ -33,7 +33,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (
 			tracing::traceReturnOperation(Type::v, tracing::value_ref());
 		} else {
 			auto returnValue = fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			auto type = tracing::to_type<typename decltype(returnValue)::basic_type>();
+			auto type = tracing::to_type<typename decltype(returnValue)::raw_type>();
 			tracing::traceReturnOperation(type, returnValue.state);
 		}
 	};
@@ -306,6 +306,11 @@ TEST_CASE("Static Trace Test") {
 
 TEST_CASE("Pointer Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"customPointerAdd", details::createFunctionWrapper(customPointerAdd)},
+	    {"pointerAdd", details::createFunctionWrapper(pointerAdd)},
+	    {"pointerAddConst", details::createFunctionWrapper(pointerAddConst)},
+	    {"pointerSub", details::createFunctionWrapper(pointerSub)},
+	    {"pointerSubConst", details::createFunctionWrapper(pointerSubConst)},
 	    {"ptrAssignment", details::createFunctionWrapper(ptrAssignment)},
 	    {"load", details::createFunctionWrapper(load)},
 	    {"loadConst", details::createFunctionWrapper(loadConst)},

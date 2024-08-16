@@ -1,5 +1,4 @@
-B0($1:ptr)
-	CONST	$2	0	:i32	
+B0($1:ptr,$2:i32)
 	CONST	$6	4	:ui64	
 	CAST	$7	$2	:ui64	
 	MUL	$8	$7	$6	:ui64	
