@@ -105,7 +105,7 @@ private:
 	static void tellp(std::basic_ostream<CharT, Traits>* ptr) {
 		ptr->tellp();
 	};
-	static void seekp(std::basic_ostream<CharT, Traits>* ptr, Traits::pos_type pos) {
+	static void seekp(std::basic_ostream<CharT, Traits>* ptr, typename Traits::pos_type pos) {
 		ptr->seekp(pos);
 	};
 };
