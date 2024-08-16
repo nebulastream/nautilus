@@ -18,9 +18,9 @@ class val<std::basic_string<CharT, Traits>> {
 	using const_pointer = typename base_type::const_pointer;
 
 public:
-	val<std::basic_string<CharT, Traits>>(val<std::basic_string<CharT, Traits>*> str) : data_ptr(str) {
+	val(val<std::basic_string<CharT, Traits>*> str) : data_ptr(str) {
 	}
-	val<std::basic_string<CharT, Traits>>(val<const CharT*> s) : data_ptr(nullptr) {
+	val(val<const CharT*> s) : data_ptr(nullptr) {
 		data_ptr = invoke(+[](const CharT* s) -> base_type* { return new base_type(s); }, s);
 	}
 
@@ -110,7 +110,7 @@ public:
 		return invoke(+[](base_type* ptr) -> size_type { return ptr->capacity(); }, data_ptr);
 	}
 
-	~val<std::basic_string<CharT, Traits>>() {
+	~val() {
 		invoke(+[](base_type* ptr) -> void { delete ptr; }, data_ptr);
 	}
 

@@ -18,12 +18,12 @@ public:
 	using pointer = typename base_type::pointer;
 	using const_pointer = typename base_type::const_pointer;
 
-	val<std::basic_string_view<CharT, Traits>>() : data_ptr(nullptr) {
+	val() : data_ptr(nullptr) {
 		auto string_vew = new std::basic_string_view<CharT, Traits>();
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val<std::basic_string_view<CharT, Traits>>(val<const CharT*> s, val<size_type> count) : data_ptr(nullptr) {
+	val(val<const CharT*> s, val<size_type> count) : data_ptr(nullptr) {
 		// call new on val<base_type *>
 		auto raw_s = details::getRawValue(s);
 		auto raw_count = details::getRawValue(count);
@@ -31,7 +31,7 @@ public:
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val<std::basic_string_view<CharT, Traits>>(val<const CharT*> s) : data_ptr(nullptr) {
+	val(val<const CharT*> s) : data_ptr(nullptr) {
 		// call new on val<base_type *>
 		//auto raw_s = details::getRawValue(s);
 		//auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);

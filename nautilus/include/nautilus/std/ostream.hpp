@@ -88,25 +88,25 @@ private:
 	static void pipe(std::basic_ostream<CharT, Traits>* ptr, T value) {
 		auto& s = *ptr;
 		s << value;
-	};
+	}
 
 	static void flash(std::basic_ostream<CharT, Traits>* ptr) {
 		ptr->flush();
-	};
+	}
 
 	static void put(std::basic_ostream<CharT, Traits>* ptr, CharT ch) {
 		ptr->put(ch);
-	};
+	}
 	static void write(std::basic_ostream<CharT, Traits>* ptr, const CharT* ch, size_t count) {
 		ptr->write(ch, count);
-	};
+	}
 
 	static void tellp(std::basic_ostream<CharT, Traits>* ptr) {
 		ptr->tellp();
-	};
+	}
 	static void seekp(std::basic_ostream<CharT, Traits>* ptr, typename Traits::pos_type pos) {
 		ptr->seekp(pos);
-	};
+	}
 };
 
 } // namespace nautilus
