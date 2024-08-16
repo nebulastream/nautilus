@@ -79,7 +79,6 @@ public:
 		return *this;
 	}
 
-protected:
 	val<std::basic_ostream<CharT, Traits>*> stream;
 
 private:
