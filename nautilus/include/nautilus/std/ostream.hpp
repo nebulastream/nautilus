@@ -41,7 +41,7 @@ class val<std::basic_ostream<CharT, Traits>> {
 public:
 	explicit val(val<std::basic_ostream<CharT, Traits>*> stream) : stream(stream) {};
 	template <class _CharT, class _Traits>
-	val(val<std::basic_ostream<_CharT, _Traits>>& other) : stream(other.stream) {};
+	val(val<std::basic_ostream<_CharT, _Traits>>& other) : stream(other.stream) {}
 
 	template <class T>
 	val<std::basic_ostream<CharT, Traits>>& operator<<(val<T>& value) {
@@ -82,8 +82,6 @@ public:
 	val<std::basic_ostream<CharT, Traits>*> stream;
 
 private:
-	friend val<std::basic_ostream<CharT, Traits>>& nautilus::endl(val<std::basic_ostream<CharT, Traits>>& __os);
-	friend val<std::basic_ostream<CharT, Traits>>& nautilus::flush(val<std::basic_ostream<CharT, Traits>>& __os);
 	template <class T>
 	static void pipe(std::basic_ostream<CharT, Traits>* ptr, T value) {
 		auto& s = *ptr;

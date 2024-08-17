@@ -12,6 +12,8 @@
 
 namespace nautilus::tracing {
 
+std::string getFunctionName(void* fnptr);
+
 enum Op : uint8_t {
 	JMP,
 	CMP,

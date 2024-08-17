@@ -156,6 +156,17 @@ public:
 #endif
 	}
 
+	template <typename OtherType>
+	    requires std::is_pointer_v<OtherType>
+	operator val<const OtherType>() const {
+		// ptr cast
+#ifdef ENABLE_TRACING
+		return val<OtherType>((OtherType) this->value, this->state);
+#else
+		return val<OtherType>((OtherType) this->value);
+#endif
+	}
+
 	const val<ValuePtrType>& operator++() {
 		// increment
 		++this->value;

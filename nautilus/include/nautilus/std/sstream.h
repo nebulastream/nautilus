@@ -27,15 +27,15 @@ public:
 	}
 	/*
 	val<std::basic_string_view<CharT, Traits>> view() {
-		auto view_ptr = invoke(
-		    +[](std::basic_ostream<CharT, Traits>* ptr) -> const char* {
-			    auto sb = dynamic_cast<std::basic_stringstream<CharT, Traits, Allocator>*>(ptr);
-			    auto view = sb->view();
-			    auto data = view.data();
-			    return data;
-		    },
-		    this->stream);
-		return val<std::basic_string_view<CharT, Traits>>(view_ptr);
+	    auto view_ptr = invoke(
+	        +[](std::basic_ostream<CharT, Traits>* ptr) -> const char* {
+	            auto sb = dynamic_cast<std::basic_stringstream<CharT, Traits, Allocator>*>(ptr);
+	            auto view = sb->view();
+	            auto data = view.data();
+	            return data;
+	        },
+	        this->stream);
+	    return val<std::basic_string_view<CharT, Traits>>(view_ptr);
 	};
 	 */
 

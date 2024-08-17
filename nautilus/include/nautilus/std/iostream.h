@@ -26,7 +26,6 @@ public:
 	}
 };
 
-
 [[maybe_unused]] static cout_helper cout;
 [[maybe_unused]] static cerr_helper cerr;
 
