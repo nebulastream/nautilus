@@ -109,17 +109,5 @@ void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	func(std::forward<ValueArguments>(args)...);
 }
 
-template <class>
-constexpr bool is_reference_wrapper_v = false;
-template <class U>
-constexpr bool is_reference_wrapper_v<std::reference_wrapper<U>> = true;
-
-template <class T>
-using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
-
-template <typename R, typename... FunctionArguments>
-auto Function(R (*fnptr)(FunctionArguments...)) {
-	return CallableNautilusFunction<R, FunctionArguments...>(fnptr);
-}
 
 } // namespace nautilus
