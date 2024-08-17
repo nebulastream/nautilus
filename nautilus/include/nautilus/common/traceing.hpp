@@ -12,7 +12,7 @@
 
 namespace nautilus::tracing {
 
-std::string getFunctionName(void* fnptr);
+extern std::string getFunctionName(void* fnptr);
 
 enum Op : uint8_t {
 	JMP,
