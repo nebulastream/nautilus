@@ -2,13 +2,13 @@ B0($1:i32,$2:i32)
 	CONST	$3	0	:i32	
 	CONST	$4	0	:i32	
 	JMP	$0	B3($3,$4,$1,$2)	:void	
-B1($1:i32,$4:i32,$2:i32,$3:i32)
-	CALL	$11	($3,$2)	:i32	
-	CONST	$12	1	:i32	
-	ADD	$13	$4	$12	:i32	
-	JMP	$0	B3($11,$13,$1,$2)	:void	
+B1($1:i32,$4:i32,$3:i32,$2:i32)
+	CALL	$7	($3,$2)	:i32	
+	CONST	$8	1	:i32	
+	ADD	$9	$4	$8	:i32	
+	JMP	$0	B3($7,$9,$1,$2)	:void	
 B2($3:i32)
 	RETURN	$3	:i32	
 B3($3:i32,$4:i32,$1:i32,$2:i32) ControlFlowMerge
 	LT	$5	$4	$1	:bool	
-	CMP	$6	$5	B1($1,$4,$2,$3)	B2($3)	:void	
+	CMP	$6	$5	B1($1,$4,$3,$2)	B2($3)	:void	

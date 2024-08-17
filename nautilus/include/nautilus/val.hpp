@@ -16,6 +16,8 @@ namespace nautilus {
 namespace details {
 template <typename LHS>
 LHS getRawValue(val<LHS>& val);
+template <typename LHS>
+LHS getRawValue(const val<LHS>& val);
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
 
@@ -165,6 +167,7 @@ public:
 #endif
 private:
 	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
+	friend ValueType details::getRawValue<ValueType>(const val<ValueType>& left);
 	ValueType value;
 
 
@@ -408,6 +411,12 @@ template <typename LHS>
 LHS inline getRawValue(val<LHS>& val) {
 	return val.value;
 }
+
+template <typename LHS>
+LHS inline getRawValue(const val<LHS>& val) {
+	return val.value;
+}
+
 
 } // namespace details
 

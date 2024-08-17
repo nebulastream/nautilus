@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 #include <functional>
 #include <type_traits>
+#include <utility> // For std::forward
 
 namespace nautilus {
 
@@ -18,40 +19,6 @@ std::string getFunctionName(R (*fnptr)(FunctionArguments...)) {
 	}
 	return "xxx";
 }
-
-template <typename R, typename... FunctionArguments>
-class CallableNautilusFunction {
-public:
-	CallableNautilusFunction(R (*fnptr)(FunctionArguments...)) : fnptr(fnptr) {};
-
-	template <typename Arg>
-	auto transform(Arg argument) {
-		return make_value(argument);
-	}
-
-	template <typename... FunctionArgumentsRaw>
-	auto operator()(FunctionArgumentsRaw... args) {
-		// we are in the nautilus context
-		// keep current tracing context and continue tracing
-		// TODO implement polymorphic inline cache
-		return fnptr((args)...);
-	}
-
-	template <is_integral... FunctionArgumentsRaw>
-	auto operator()(FunctionArgumentsRaw... args) {
-		// function is called from an external context.
-		auto result = fnptr(transform((args))...);
-		return details::getRawValue(result);
-	}
-
-	template <is_integral... FunctionArgumentsRaw>
-	auto invoke(FunctionArgumentsRaw... args) {
-		return (*this)(args...);
-	}
-
-private:
-	R (*fnptr)(FunctionArguments...);
-};
 
 template <is_traceable_value Arg>
 tracing::value_ref getRefs(Arg& argument) {
@@ -74,46 +41,46 @@ template <typename R, typename... FunctionArguments>
 class CallableRuntimeFunction {
 public:
 	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...), std::string& functionName)
-	    : fnptr(fnptr), functionName(functionName) {};
+	    : fnptr(fnptr), functionName(functionName) {}
 
 	template <typename Arg>
-	auto transform(Arg argument) {
+	auto transform(Arg&& argument) {
 		return details::getRawValue(argument);
 	}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
-	auto operator()(FunctionArgumentsRaw... args) {
+	auto operator()(FunctionArgumentsRaw&&... args) {
 		// function is called from an external context.
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto ptr = (void*) fnptr;
-			auto functionArgumentReferences = getArgumentReferences(functionName, (void*) fnptr, args...);
+			auto functionArgumentReferences = getArgumentReferences(functionName, (void*) fnptr, std::forward<FunctionArgumentsRaw>(args)...);
 			auto resultRef = tracing::traceCall(functionName, ptr, tracing::to_type<R>(), functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
-		return val<R>(fnptr(transform((args))...));
+		return val<R>(fnptr(transform(std::forward<FunctionArgumentsRaw>(args))...));
 	}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
-	void operator()(FunctionArgumentsRaw... args) {
+	void operator()(FunctionArgumentsRaw&&... args) {
 		// function is called from an external context.
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto ptr = (void*) fnptr;
-			auto functionArgumentReferences = getArgumentReferences("functionName", (void*) fnptr, args...);
+			auto functionArgumentReferences = getArgumentReferences("functionName", (void*) fnptr, std::forward<FunctionArgumentsRaw>(args)...);
 			tracing::traceCall(functionName, ptr, Type::v, functionArgumentReferences);
             return;
 		}
 #endif
-		fnptr(transform((args))...);
+		fnptr(transform(std::forward<FunctionArgumentsRaw>(args))...);
 	}
 
 	template <is_integral... FunctionArgumentsRaw>
-	auto invoke(FunctionArgumentsRaw... args) {
-		return (*this)(args...);
+	auto invoke(FunctionArgumentsRaw&&... args) {
+		return (*this)(std::forward<FunctionArgumentsRaw>(args)...);
 	}
 
 private:
@@ -122,24 +89,24 @@ private:
 };
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
-auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments... args) {
+auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, name)(args...);
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, name)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
-auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments... args) {
+auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
 	typedef R (*DecisionFn)(FunctionArguments...);
 	DecisionFn fnptr = func.template target<R(FunctionArguments...)>();
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, name)(args...);
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, name)(std::forward<ValueArguments>(args)...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
-void invoke(void (*fnptr)(FunctionArguments...), ValueArguments... args) {
+void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	[[maybe_unused]] auto name = getFunctionName(fnptr);
 	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr, name);
-	func(args...);
+	func(std::forward<ValueArguments>(args)...);
 }
 
 template <class>
