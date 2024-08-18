@@ -2,8 +2,20 @@
 #include "TraceContext.hpp"
 #include "nautilus/common/traceing.hpp"
 #include "nautilus/logging.hpp"
+#include <cxxabi.h>
+#include <dlfcn.h>
 #include <spdlog/fmt/fmt.h>
 namespace nautilus::tracing {
+
+std::string getFunctionName(void* fnptr) {
+	Dl_info info;
+	dladdr(reinterpret_cast<void*>(fnptr), &info);
+	if (info.dli_sname != nullptr) {
+		return info.dli_sname;
+	}
+	static uint64_t functionCounter = 0;
+	return fmt::format("function_{}", functionCounter++);
+}
 
 void traceAssignment(value_ref target, value_ref source, Type resultType) {
 	TraceContext::get()->traceAssignment(target, source, resultType);
@@ -60,8 +72,8 @@ DynamicValueMap& getVarRefMap() {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
-	return TraceContext::get()->traceCall(functionName, fptn, resultType, arguments);
+value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+	return TraceContext::get()->traceCall(getFunctionName(fptn), fptn, resultType, arguments);
 }
 
 [[maybe_unused]] value_ref traceBinaryOp(Op operation, Type resultType, value_ref leftState, value_ref rightState) {

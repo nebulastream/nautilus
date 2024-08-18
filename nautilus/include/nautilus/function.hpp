@@ -2,35 +2,18 @@
 
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
-#include <cxxabi.h>
-#include <dlfcn.h>
 #include <functional>
 #include <type_traits>
-#include <utility> // For std::forward
+#include <utility>
 
 namespace nautilus {
-
-template <typename R, typename... FunctionArguments>
-std::string getFunctionName(R (*fnptr)(FunctionArguments...)) {
-	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
-		return info.dli_sname;
-	}
-	return "xxx";
-}
-
-template <is_traceable_value Arg>
-tracing::value_ref getRefs(Arg& argument) {
-	return argument.state;
-}
 
 template <typename... ValueArguments>
 auto getArgumentReferences(const ValueArguments&... arguments) {
 	std::vector<tracing::value_ref> functionArgumentReferences;
 	if constexpr (sizeof...(ValueArguments) > 0) {
 		functionArgumentReferences.reserve(sizeof...(ValueArguments));
-		for (const tracing::value_ref& p : {getRefs(arguments)...}) {
+		for (const tracing::value_ref& p : {details::getState(arguments)...}) {
 			functionArgumentReferences.emplace_back(p);
 		}
 	}
@@ -46,11 +29,10 @@ public:
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
-		// function is called from an external context.
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(getFunctionName(fnptr), reinterpret_cast<void*>(fnptr), tracing::to_type<R>(), functionArgumentReferences);
+			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::to_type<R>(), functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
@@ -60,11 +42,10 @@ public:
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
 	void operator()(FunctionArgumentsRaw&&... args) {
-		// function is called from an external context.
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(getFunctionName(fnptr), reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences);
+			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences);
 			return;
 		}
 #endif
@@ -87,8 +68,7 @@ auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
-	typedef R (*DecisionFn)(FunctionArguments...);
-	DecisionFn fnptr = func.template target<R(FunctionArguments...)>();
+	auto fnptr = func.template target<R(FunctionArguments...)>();
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
 }
 

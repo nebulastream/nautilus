@@ -167,7 +167,6 @@ private:
 	friend ValueType details::getRawValue<ValueType>(const val<ValueType>& left);
 	ValueType value;
 
-
 	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
 
