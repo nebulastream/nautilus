@@ -1,0 +1,4 @@
+B0($1:i32)
+	CALL	$2	function__ZZN8nautilus6engine27nestedLambdaRuntimeFunctionENS_3valIiEEEN3$_48__invokeEi591($1)	:i32	
+	CALL	$3	function__ZZN8nautilus6engine27nestedLambdaRuntimeFunctionENS_3valIiEEEN3$_38__invokeEi592($2)	:i32	
+	RETURN	$3	:i32	

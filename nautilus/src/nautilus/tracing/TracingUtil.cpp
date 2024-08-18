@@ -8,12 +8,12 @@
 namespace nautilus::tracing {
 
 std::string getFunctionName(void* fnptr) {
+	static uint64_t functionCounter = 0;
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
 	if (info.dli_sname != nullptr) {
-		return info.dli_sname;
+		return fmt::format("function_{}{}", info.dli_sname, functionCounter++);
 	}
-	static uint64_t functionCounter = 0;
 	return fmt::format("function_{}", functionCounter++);
 }
 

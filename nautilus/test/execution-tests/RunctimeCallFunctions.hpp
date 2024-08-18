@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nautilus/val_ptr.hpp>
 #include <nautilus/Engine.hpp>
 
 namespace nautilus {
@@ -11,6 +12,10 @@ public:
 
 class Clazz : public ClazzBase {
 public:
+	int32_t get() {
+		return i;
+	}
+
 	int32_t add(int32_t x) override {
 		return x + i;
 	}
@@ -20,14 +25,6 @@ public:
 	}
 
 	int i = 42;
-};
-
-template <>
-class val<Clazz*> {
-public:
-	val();
-
-	val<int32_t> addConst(val<int32_t> x);
 };
 
 } // namespace nautilus
@@ -57,7 +54,6 @@ void multipleVoidReturnsFunction(val<int32_t*> x) {
 		return;
 	}
 	*x = 42;
-	return;
 }
 
 int32_t add(int32_t x, int32_t y) {
@@ -79,6 +75,27 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
 	invoke<>(voidFunc, x, y);
 	return x;
+}
+
+val<int32_t> lambdaRuntimeFunction(val<int32_t> x) {
+	return invoke<>(+[](int32_t x) { return x * 2; }, x);
+}
+
+val<int32_t> nestedLambdaRuntimeFunction(val<int32_t> x) {
+	return invoke<>(+[](int32_t x) { return x * 2; }, invoke<>(+[](int32_t x) { return x + 2; }, x));
+}
+
+val<int32_t> callSameFunction(val<int32_t> x) {
+	auto func = function(add);
+	x = func(x, x);
+	x = func(x, x);
+	return x;
+}
+
+val<int32_t> callMemberFunction(val<Clazz*> x) {
+	auto& func = memberFunc(&Clazz::get);
+	auto res = func(x);
+	return res;
 }
 
 } // namespace nautilus::engine

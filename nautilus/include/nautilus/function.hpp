@@ -78,4 +78,53 @@ void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	func(std::forward<ValueArguments>(args)...);
 }
 
+template <typename R, typename... FunctionArguments>
+auto function(R (*fnptr)(FunctionArguments...)) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
+}
+
+class MemberFuncWrapper {};
+
+template <typename T, typename Rp, typename Tp>
+class MemberFuncWrapperImpl : public MemberFuncWrapper {
+public:
+	MemberFuncWrapperImpl(T func)
+	    : func(func), callableRuntimeFunction(function(+[](MemberFuncWrapper* ptr, Tp* clazzPtr) -> auto {
+		      auto p = static_cast<MemberFuncWrapperImpl<T, Rp, Tp>*>(ptr);
+		      // return p->func(clazzPtr);
+		      Rp (Tp::*func)() = p->func;
+		      return (*clazzPtr.*func)();
+		      // return std::invoke(p->func, clazzPtr);
+	      })) {};
+
+	template <typename... FunctionArgumentsRaw>
+	auto operator()(FunctionArgumentsRaw... args) {
+		auto state = val<MemberFuncWrapper*>(this);
+		return callableRuntimeFunction(state, args...);
+	}
+	T func;
+	CallableRuntimeFunction<Rp, MemberFuncWrapper*, Tp*> callableRuntimeFunction;
+};
+
+template <typename T>
+struct member_function_traits;
+
+template <typename C, typename R, typename... Args>
+struct member_function_traits<R (C::*)(Args...)> {
+	using class_type = C;
+	using return_type = R;
+	using arg_types = std::tuple<Args...>;
+};
+
+template <typename T>
+auto& memberFunc(T func) {
+	using traits = member_function_traits<T>;
+	using ClassType = typename traits::class_type;
+	using ReturnType = typename traits::return_type;
+	//using ArgTypes = typename traits::arg_types;
+	auto ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
+	return *ptr;
+
+}
+
 } // namespace nautilus

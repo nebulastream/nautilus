@@ -1,3 +1,3 @@
 B0($1:i32,$2:i32)
-	CALL	$3	_ZN8nautilus6engine8voidFuncEii($1,$2)	:void	
+	CALL	$3	function__ZN8nautilus6engine8voidFuncEii643($1,$2)	:void	
 	RETURN	$1	:i32	
