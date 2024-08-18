@@ -4,8 +4,7 @@
 namespace nautilus::tracing {
 
 std::ostream& operator<<(std::ostream& os, const FunctionCall& call) {
-	os << ""
-	   << "(";
+	os << call.functionName << "(";
 	for (size_t i = 0; i < call.arguments.size(); i++) {
 		if (i != 0) {
 			os << ",";

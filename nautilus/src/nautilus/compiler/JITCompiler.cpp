@@ -1,12 +1,12 @@
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <utility>
 
 #ifdef ENABLE_COMPILER
 
-#include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"

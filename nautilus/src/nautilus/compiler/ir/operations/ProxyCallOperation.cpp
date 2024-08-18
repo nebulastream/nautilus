@@ -23,8 +23,7 @@ std::string ProxyCallOperation::toString() {
 	if (!identifier.toString().empty()) {
 		baseString = identifier.toString() + " = ";
 	}
-	baseString = baseString + "(";
-	// baseString = baseString + getFunctionSymbol() + "(";
+	baseString = baseString + getFunctionSymbol() + "(";
 	if (!inputs.empty()) {
 		// baseString += inputArguments[0].lock()->getIdentifier().toString();
 		// for (int i = 1; i < (int) inputArguments.size(); ++i) {

@@ -3,7 +3,7 @@ B0($1:i32,$2:i32)
 	CONST	$4	0	:i32	
 	JMP	$0	B3()	:void	
 B1()
-	CALL	$7	($3,$2)	:i32	
+	CALL	$7	_ZN8nautilus6engine3addEii($3,$2)	:i32	
 	ASSIGN	$3	$7	:i32	
 	CONST	$8	1	:i32	
 	ADD	$9	$4	$8	:i32	

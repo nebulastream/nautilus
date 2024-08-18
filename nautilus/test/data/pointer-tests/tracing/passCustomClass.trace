@@ -1,3 +1,3 @@
 B0($1:ptr)
-	CALL	$2	($1)	:i32	
+	CALL	$2	_ZZN8nautilus15passCustomClassENS_3valIPNS_11CustomClassEEEEN3$_08__invokeES2_($1)	:i32	
 	RETURN	$2	:i32	
