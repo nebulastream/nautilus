@@ -52,7 +52,7 @@ public:
 #endif
 
 private:
-	friend T details::getRawValue<T>(val<T>& left);
+	friend T details::getRawValue<T>(const val<T>& left);
 	const T value;
 };
 
