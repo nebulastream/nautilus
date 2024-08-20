@@ -126,7 +126,7 @@ value_ref TraceContext::traceCopy(nautilus::tracing::value_ref ref) {
 	throw TraceTerminationException();
 }
 
-value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
+value_ref TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -139,6 +139,7 @@ value_ref TraceContext::traceCall(const std::string& functionName, void* fptn, T
 	if (executionTrace->checkTag(tag)) {
 		auto functionArguments = InputVariant(FunctionCall {
 		    .functionName = functionName,
+		    .mangledName = mangledName,
 		    .ptr = fptn,
 		    .arguments = arguments,
 		});

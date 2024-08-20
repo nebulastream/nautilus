@@ -1,7 +1,7 @@
 NESIR {
 execute() {
 Block_0($1:ptr):
-    $2 = function__ZZN8nautilus15castCustomClassENS_3valIPNS_9BaseClassEEEEN3$_18__invokeEPNS_11CustomClassE404($1) :i32
+    $2 = nautilus::castCustomClass(nautilus::val<nautilus::BaseClass*>)::$_1::__invoke(nautilus::CustomClass*)($1) :i32
     return ($2) :i32
 }
 } //NESIR

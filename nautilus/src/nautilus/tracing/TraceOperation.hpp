@@ -18,6 +18,7 @@ class None {};
 
 struct FunctionCall {
 	std::string functionName;
+	std::string mangledName;
 	void* ptr;
 	std::vector<value_ref> arguments;
 

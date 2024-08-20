@@ -12,7 +12,6 @@
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
-
 struct StaticVarHolder {
 	explicit StaticVarHolder(size_t* ptr) : ptr(ptr) {
 	}
@@ -86,7 +85,7 @@ public:
 	 */
 	void traceAssignment(value_ref targetRef, value_ref sourceRef, Type resultType);
 
-	value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
+	value_ref traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
 
 	bool traceCmp(value_ref targetRef);
 

@@ -1,4 +1,4 @@
 B0($1:i32)
-	CALL	$2	function__ZN8nautilus6engine3addEii625($1,$1)	:i32	
-	CALL	$3	function__ZN8nautilus6engine3addEii626($2,$2)	:i32	
+	CALL	$2	nautilus::engine::add(int, int)($1,$1)	:i32	
+	CALL	$3	nautilus::engine::add(int, int)($2,$2)	:i32	
 	RETURN	$3	:i32	

@@ -31,8 +31,9 @@ public:
 	auto operator()(FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
+			const std::type_info &ti = typeid(fnptr);
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::to_type<R>(), functionArgumentReferences);
+			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), ti, tracing::to_type<R>(), functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
@@ -44,8 +45,9 @@ public:
 	void operator()(FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
+			const std::type_info &ti = typeid(fnptr);
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences);
+			tracing::traceCall(reinterpret_cast<void*>(fnptr), ti, Type::v, functionArgumentReferences);
 			return;
 		}
 #endif

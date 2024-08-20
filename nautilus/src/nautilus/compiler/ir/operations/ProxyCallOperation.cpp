@@ -6,8 +6,8 @@ namespace nautilus::compiler::ir {
 ProxyCallOperation::ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments, Type resultType) : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments) {
 }
 
-ProxyCallOperation::ProxyCallOperation(std::string functionSymbol, void* functionPtr, OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType)
-    : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, std::move(inputArguments)), mangedFunctionSymbol(std::move(functionSymbol)), functionPtr(functionPtr) {
+ProxyCallOperation::ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr, OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType)
+    : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, std::move(inputArguments)), mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr) {
 }
 
 const std::vector<Operation*>& ProxyCallOperation::getInputArguments() const {
@@ -23,7 +23,7 @@ std::string ProxyCallOperation::toString() {
 	if (!identifier.toString().empty()) {
 		baseString = identifier.toString() + " = ";
 	}
-	baseString = baseString + getFunctionSymbol() + "(";
+	baseString = baseString + getFunctionName() + "(";
 	if (!inputs.empty()) {
 		// baseString += inputArguments[0].lock()->getIdentifier().toString();
 		// for (int i = 1; i < (int) inputArguments.size(); ++i) {
@@ -40,7 +40,11 @@ std::string ProxyCallOperation::toString() {
 	return baseString + ")";
 }
 
-std::string ProxyCallOperation::getFunctionSymbol() {
+const std::string& ProxyCallOperation::getFunctionName() {
+	return functionName;
+}
+
+const std::string& ProxyCallOperation::getFunctionSymbol() {
 	return mangedFunctionSymbol;
 }
 
