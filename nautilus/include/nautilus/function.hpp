@@ -124,7 +124,6 @@ auto& memberFunc(T func) {
 	//using ArgTypes = typename traits::arg_types;
 	auto ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
 	return *ptr;
-
 }
 
 } // namespace nautilus
