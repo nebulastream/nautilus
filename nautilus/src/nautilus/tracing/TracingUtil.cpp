@@ -2,8 +2,34 @@
 #include "TraceContext.hpp"
 #include "nautilus/common/traceing.hpp"
 #include "nautilus/logging.hpp"
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <iostream>
 #include <spdlog/fmt/fmt.h>
+#include <sstream>
 namespace nautilus::tracing {
+
+std::array<const char*, 4> lookup = {{"The demangling operation succeeded", "A memory allocation failure occurred", "mangled_name is not a valid name under the C++ ABI mangling rules", "One of the arguments is invalid"}};
+
+std::string getMangledName(void* fnptr, const std::type_info& ti) {
+	Dl_info info;
+	dladdr(reinterpret_cast<void*>(fnptr), &info);
+	if (info.dli_sname != nullptr) {
+		return info.dli_sname;
+	}
+	return ti.name();
+}
+
+std::string getFunctionName(const std::string& mangledName) {
+	std::size_t sz = 25;
+	char* buffer = static_cast<char*>(std::malloc(sz));
+	int status;
+	char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
+	if (realname) {
+		return realname;
+	}
+	return mangledName;
+}
 
 void traceAssignment(value_ref target, value_ref source, Type resultType) {
 	TraceContext::get()->traceAssignment(target, source, resultType);
@@ -60,8 +86,10 @@ DynamicValueMap& getVarRefMap() {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(const std::string& functionName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments) {
-	return TraceContext::get()->traceCall(functionName, fptn, resultType, arguments);
+value_ref traceCall(void* fptn, const std::type_info& ti, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+	auto mangledName = getMangledName(fptn, ti);
+	auto functionName = getFunctionName(mangledName);
+	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
 }
 
 [[maybe_unused]] value_ref traceBinaryOp(Op operation, Type resultType, value_ref leftState, value_ref rightState) {

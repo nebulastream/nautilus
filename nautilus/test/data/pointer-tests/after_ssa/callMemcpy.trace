@@ -1,4 +1,4 @@
 B0($1:ptr,$2:ptr)
 	CONST	$3	0	:ui64	
-	CALL	$10	($2,$1,$3)	:ptr	
+	CALL	$4	nautilus::memcpy(nautilus::val<void*>, nautilus::val<void const*>, nautilus::val<unsigned long>)::$_0::__invoke(void*, void const*, unsigned long)($2,$1,$3)	:ptr	
 	RETURN	$0	:void	

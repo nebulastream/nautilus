@@ -2,7 +2,6 @@
 #pragma once
 
 #include <utility>
-#include "nautilus/function.hpp"
 #include "nautilus/val.hpp"
 
 namespace nautilus {
@@ -94,7 +93,7 @@ public:
 #endif
 
 #ifdef ENABLE_TRACING
-	tracing::TypedValueRefHolder state;
+	const tracing::TypedValueRefHolder state;
 #endif
 	ValuePtrType value;
 };

@@ -15,7 +15,7 @@ namespace nautilus {
 
 namespace details {
 template <typename LHS>
-LHS getRawValue(val<LHS>& val);
+LHS getRawValue(const val<LHS>& val);
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
 
@@ -164,9 +164,8 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 private:
-	friend ValueType details::getRawValue<ValueType>(val<ValueType>& left);
+	friend ValueType details::getRawValue<ValueType>(const val<ValueType>& left);
 	ValueType value;
-
 
 	template <is_arithmetic LHS, is_arithmetic RHS>
 	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
@@ -405,9 +404,10 @@ val<LHS> neg(val<LHS>& val) {
 }
 
 template <typename LHS>
-LHS inline getRawValue(val<LHS>& val) {
+LHS inline getRawValue(const val<LHS>& val) {
 	return val.value;
 }
+
 
 } // namespace details
 

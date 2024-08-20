@@ -552,6 +552,12 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(voidFuncCall);
 		REQUIRE_NOTHROW(f(10, 10));
 	}
+	SECTION("callMemberFunction") {
+		auto f = engine.registerFunction(callMemberFunction);
+		auto c = Clazz();
+		auto res = f(&c);
+		REQUIRE(res == 42);
+	}
 }
 
 void pointerExecutionTest(engine::NautilusEngine& engine) {

@@ -261,6 +261,9 @@ TEST_CASE("Runtime Call Trace Test") {
 	                                                                          {"useFirstArg", details::createFunctionWrapper(useFirstArg)},
 	                                                                          {"useSecondArg", details::createFunctionWrapper(useSecondArg)},
 	                                                                          {"useNoArg", details::createFunctionWrapper(useNoArg)},
+	                                                                          {"lambdaRuntimeFunction", details::createFunctionWrapper(lambdaRuntimeFunction)},
+	                                                                          {"nestedLambdaRuntimeFunction", details::createFunctionWrapper(nestedLambdaRuntimeFunction)},
+	                                                                          {"callSameFunction", details::createFunctionWrapper(callSameFunction)},
 	                                                                          {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)}};
 	runTraceTests("runtime-call-tests", tests);
 }

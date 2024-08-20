@@ -1,5 +1,6 @@
 
 #include <cstring>
+#include <nautilus/function.hpp>
 #include <nautilus/std/cstring.h>
 namespace nautilus {
 val<void*> memcpy(val<void*> dest, val<const void*> src, val<size_t> count) {
