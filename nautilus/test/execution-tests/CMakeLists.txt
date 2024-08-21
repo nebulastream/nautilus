@@ -3,7 +3,6 @@ add_executable(nautilus-execution-tests
         ExecutionTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
-        TracingBenchmark.cpp
 )
 
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain)
@@ -17,7 +16,6 @@ if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
     # using Clang
     add_executable(nautilus-tracing-tests
             TracingTest.cpp
-            TracingBenchmark.cpp
     )
 
     target_include_directories(nautilus-tracing-tests PRIVATE
@@ -30,3 +28,16 @@ if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
 endif ()
 
 add_subdirectory(std)
+
+# using Clang
+add_executable(nautilus-tracing-benchmarks
+        TracingBenchmark.cpp
+)
+
+target_include_directories(nautilus-tracing-benchmarks PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>
+        $<INSTALL_INTERFACE:src/nautilus/>)
+
+target_link_libraries(nautilus-tracing-benchmarks PUBLIC nautilus Catch2::Catch2WithMain)
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+catch_discover_tests(nautilus-tracing-benchmarks EXTRA_ARGS --allow-running-no-tests)

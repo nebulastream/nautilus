@@ -1,0 +1,51 @@
+
+name: Benchmark
+on:
+  push:
+    branches:
+      - *
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  benchmark:
+    name: Run Catch2 C++ Benchmark Framework example (v3.x)
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.13
+        with:
+          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.flags }}  -G Ninja -S . -B .
+      - name: build
+        shell: bash
+        run: |
+          cmake --build . --target all
+      - name: test
+        shell: bash
+        run: |
+          ./nautilus/test/execution-tests/nautilus-tracing-benchmarks | tee benchmark_result.txt
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Catch2 Benchmark (v3)
+          tool: 'catch2'
+          output-file-path: benchmark_result.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Show alert with commit comment on detecting possible performance regression
+          alert-threshold: '200%'
+          comment-on-alert: true
+          fail-on-alert: true
+          alert-comment-cc-users: '@ktrz'
