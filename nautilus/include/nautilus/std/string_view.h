@@ -9,21 +9,21 @@ template <class CharT, class Traits>
 class val<std::basic_string_view<CharT, Traits>> {
 public:
 	using base_type = std::basic_string_view<CharT, Traits>;
-	using value_type = base_type::value_type;
-	using size_type = base_type::size_type;
-	using const_reference = base_type::const_reference;
-	using iterator = base_type::iterator;
-	using const_iterator = base_type::const_iterator;
-	using reference = base_type::reference;
-	using pointer = base_type::pointer;
-	using const_pointer = base_type::const_pointer;
+	using value_type = typename base_type::value_type;
+	using size_type = typename base_type::size_type;
+	using const_reference = typename base_type::const_reference;
+	using iterator = typename base_type::iterator;
+	using const_iterator = typename base_type::const_iterator;
+	using reference = typename base_type::reference;
+	using pointer = typename base_type::pointer;
+	using const_pointer = typename base_type::const_pointer;
 
-	val<std::basic_string_view<CharT, Traits>>() : data_ptr(nullptr) {
+	val() : data_ptr(nullptr) {
 		auto string_vew = new std::basic_string_view<CharT, Traits>();
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val<std::basic_string_view<CharT, Traits>>(val<const CharT*> s, val<size_type> count) : data_ptr(nullptr) {
+	val(val<const CharT*> s, val<size_type> count) : data_ptr(nullptr) {
 		// call new on val<base_type *>
 		auto raw_s = details::getRawValue(s);
 		auto raw_count = details::getRawValue(count);
@@ -31,11 +31,14 @@ public:
 		data_ptr = val<base_type*>(string_vew);
 	}
 
-	val<std::basic_string_view<CharT, Traits>>(val<const CharT*> s) : data_ptr(nullptr) {
+	val(val<const CharT*> s) : data_ptr(nullptr) {
 		// call new on val<base_type *>
-		auto raw_s = details::getRawValue(s);
-		auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);
-		data_ptr = val<base_type*>(string_vew);
+		//auto raw_s = details::getRawValue(s);
+		//auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);
+		auto ptr = invoke(+[](const CharT* s) -> auto {
+			return new std::basic_string_view<CharT, Traits>(s);
+		}, s);
+		data_ptr = val<base_type*>(ptr);
 	}
 
 	val<const_iterator> begin() const {
@@ -54,17 +57,17 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->cend(); }, data_ptr);
 	}
 
-	val<const_reference> operator[](val<size_type> pos) const {
+	val<value_type> operator[](val<size_type> pos) const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos) -> const_reference {
+		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type pos) -> value_type {
 			    return ptr->operator[](pos);
 		    },
 		    data_ptr, pos);
 	}
 
-	const val<const_reference> at(val<size_type> index) const {
+	const val<value_type> at(val<size_type> index) const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type index) -> const_reference {
+		    +[](std::basic_string_view<CharT, Traits>* ptr, size_type index) -> value_type {
 			    return ptr->at(index);
 		    },
 		    data_ptr, index);
@@ -86,14 +89,14 @@ public:
 		return invoke(+[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->empty(); }, data_ptr);
 	}
 
-	val<const_reference> front() const {
+	val<value_type> front() const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr) -> const_reference { return ptr->front(); }, data_ptr);
+		    +[](std::basic_string_view<CharT, Traits>* ptr) -> value_type { return ptr->front(); }, data_ptr);
 	}
 
-	val<const_reference> back() const {
+	val<value_type> back() const {
 		return invoke(
-		    +[](std::basic_string_view<CharT, Traits>* ptr) -> const_reference { return ptr->back(); }, data_ptr);
+		    +[](std::basic_string_view<CharT, Traits>* ptr) -> value_type { return ptr->back(); }, data_ptr);
 	}
 
 	val<const_pointer> data() const {
