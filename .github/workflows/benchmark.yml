@@ -52,3 +52,4 @@ jobs:
           comment-on-alert: false
           fail-on-alert: false
           alert-comment-cc-users: '@ktrz'
+          gh-pages-branch: 'pages'
