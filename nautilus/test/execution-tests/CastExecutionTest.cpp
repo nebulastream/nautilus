@@ -85,7 +85,7 @@ void createCastTest(engine::NautilusEngine& engine, std::string name, BaseType m
 	}
 }
 
-void addTest(engine::NautilusEngine& engine) {
+void castTest(engine::NautilusEngine& engine) {
 	createCastTest<int8_t>(engine, "cast_from_i8", INT8_MIN, INT8_MAX);
 	createCastTest<int16_t>(engine, "cast_from_i16", INT16_MIN, INT16_MAX);
 	createCastTest<int32_t>(engine, "cast_from_i32", INT32_MIN, INT32_MAX);
@@ -105,7 +105,7 @@ TEST_CASE("Cast Interpreter Test") {
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
-	addTest(engine);
+	castTest(engine);
 }
 
 #ifdef ENABLE_TRACING
@@ -128,7 +128,7 @@ TEST_CASE("Cast Compiler Test") {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
-			addTest(engine);
+			castTest(engine);
 		}
 	}
 }
