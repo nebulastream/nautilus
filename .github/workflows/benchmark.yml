@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -42,7 +39,7 @@ jobs:
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          name: Catch2 Benchmark (v3)
+          name: Tracing Benchmark
           tool: 'catch2'
           output-file-path: benchmark_result.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
