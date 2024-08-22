@@ -1,6 +1,6 @@
 
 #include "nautilus/Engine.hpp"
-#include "nautilus/std/string.hpp"
+#include "nautilus/std/string.h"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {

@@ -1,6 +1,6 @@
 #pragma once
 #include "nautilus/function.hpp"
-#include "ostream.hpp"
+#include "ostream.h"
 namespace nautilus {
 
 std::basic_ostream<char, std::char_traits<char>>* getCout();

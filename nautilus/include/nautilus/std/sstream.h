@@ -1,6 +1,6 @@
 
 #include "nautilus/function.hpp"
-#include "ostream.hpp"
+#include "ostream.h"
 #include "sstream"
 #pragma once
 namespace nautilus {

@@ -2,8 +2,8 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/std/iostream.h"
 #include "nautilus/std/sstream.h"
-#include "nautilus/std/string.hpp"
-#include "nautilus/std/string_view.hpp"
+#include "nautilus/std/string.h"
+#include "nautilus/std/string_view.h"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
