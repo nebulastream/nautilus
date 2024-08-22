@@ -20,27 +20,6 @@
 
 namespace nautilus::engine {
 
-val<int8_t> addFunction(val<int8_t> x) {
-	val<int8_t> y = (int8_t) 2;
-	return y + x;
-}
-
-val<int8_t> ifThenElse(val<int8_t> x) {
-	if (x > 42) {
-		x = x + 2;
-	} else {
-		x = x + 1;
-	}
-	return x * 2;
-}
-
-val<int8_t> loop(val<int8_t> x) {
-	for (val<int8_t> i = 0; i < 1000; i++) {
-		x = x + 1;
-	}
-	return x;
-}
-
 static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
     {"add", details::createFunctionWrapper(int8AddExpression)},
     {"ifThenElse", details::createFunctionWrapper(ifThenCondition)},
