@@ -12,9 +12,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	auto result = BCLoweringProvider().lower(ir);
 
 	auto code = std::get<0>(result);
-	dumpHandler.dump("bc", [&]() {
-		return code.toString();;
-	});
+	dumpHandler.dump("after_bc_generation", "bc", [&]() { return code.toString(); });
 
 	return std::make_unique<BCInterpreter>(std::get<0>(result), std::get<1>(result));
 }

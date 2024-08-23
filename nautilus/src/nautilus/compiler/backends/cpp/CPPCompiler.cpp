@@ -1,8 +1,8 @@
 
 #include "nautilus/compiler/backends/cpp/CPPCompiler.hpp"
+#include "nautilus/common/File.hpp"
 #include "nautilus/compiler/backends/cpp/CPPCompilerFlags.hpp"
 #include "nautilus/compiler/backends/cpp/ExecutablePath.hpp"
-#include "nautilus/compiler/backends/cpp/File.hpp"
 #include "nautilus/compiler/backends/cpp/SharedLibrary.hpp"
 #include <filesystem>
 #include <iostream>
@@ -35,7 +35,7 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 #error "Unknown platform"
 #endif
 
-	auto file = File::createFile(sourceFileName, code);
+	auto file = common::File::createFile(sourceFileName, code);
 	auto compilationFlags = CPPCompilerFlags::createDefaultCompilerFlags();
 	// if (request->enableOptimizations()) {
 	//  NES_DEBUG("Compile with optimizations.");
@@ -88,7 +88,7 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	return sharedLibrary;
 }
 
-void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<File> sourceFile, std::string) const {
+void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile, std::string) const {
 	// lock file, such that no one can operate on the file at the same time
 	const std::lock_guard<std::mutex> fileLock(sourceFile->getFileMutex());
 

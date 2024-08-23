@@ -51,7 +51,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		auto optPipeline = ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
 		auto optimizedModule = optPipeline(llvmIRModule);
 
-		handler.dump("llvm", [&]() {
+		handler.dump("llvm", "ll", [&]() {
 			std::string llvmIRString;
 			llvm::raw_string_ostream llvmStringStream(llvmIRString);
 			llvmIRModule->print(llvmStringStream, nullptr);

@@ -47,9 +47,9 @@ std::string createCompilationUnitID() {
 	std::mt19937 generator(rd());
 	std::uniform_int_distribution<> distribution(0, 15);
 
-	// Generate a 4-character UUID
+	// Generate a 7-character UUID
 	std::string uuid;
-	for (int i = 0; i < 4; ++i) {
+	for (int i = 0; i < 7; ++i) {
 		int random_number = distribution(generator);
 		if (random_number < 10)
 			uuid += std::to_string(random_number);
@@ -66,16 +66,16 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
 	auto executionTrace = tracing::TraceContext::trace(function);
-	dumpHandler.dump("after_tracing", [&]() { return executionTrace->toString(); });
+	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
 	// create ssa
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
-	dumpHandler.dump("after_ssa", [&]() { return afterSSA->toString(); });
+	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
-	dumpHandler.dump("after_ir_creation", [&]() { return ir->toString(); });
+	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);

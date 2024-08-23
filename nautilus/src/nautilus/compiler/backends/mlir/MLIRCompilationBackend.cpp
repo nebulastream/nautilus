@@ -35,7 +35,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	};
 
 	// 2.a dump MLIR to console or a file
-	dumpHandler.dump("mlir", [&]() {
+	dumpHandler.dump("after_mlir_generation", "mlir", [&]() {
 		::mlir::OpPrintingFlags flags;
 		std::string result;
 		auto output = llvm::raw_string_ostream(result);
