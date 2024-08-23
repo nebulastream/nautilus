@@ -8,6 +8,10 @@ namespace nautilus::compiler {
 
 class Executable;
 class CompilationBackendRegistry;
+
+
+using CompilationUnitID = std::string;
+
 class JITCompiler {
 public:
 	using wrapper_function = std::function<void()>;
@@ -23,6 +27,5 @@ private:
 	const engine::Options options;
 	std::unique_ptr<CompilationBackendRegistry> backends;
 };
-
 
 } // namespace nautilus::compiler

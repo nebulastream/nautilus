@@ -7,11 +7,15 @@
 
 namespace nautilus::compiler::ir {
 
-IRGraph::IRGraph() = default;
+IRGraph::IRGraph(const compiler::CompilationUnitID& id) : id(id) {};
 
 std::unique_ptr<FunctionOperation>& IRGraph::addRootOperation(std::unique_ptr<FunctionOperation> root) {
 	this->rootOperation = std::move(root);
 	return this->rootOperation;
+}
+
+const CompilationUnitID& IRGraph::getId() const {
+	return id;
 }
 
 FunctionOperation* IRGraph::getRootOperation() {

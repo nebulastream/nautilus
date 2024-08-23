@@ -10,7 +10,7 @@ namespace nautilus::compiler::asmjit {
  */
 class AsmJitCompilationBackend : public CompilationBackend {
 public:
-	std::unique_ptr<Executable> compile(std::shared_ptr<ir::IRGraph> ir) override;
+	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) override;
 };
 
-} // namespace nautilus::compiler::cpp
+} // namespace nautilus::compiler::asmjit

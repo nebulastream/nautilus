@@ -23,8 +23,8 @@
 namespace nautilus::tracing {
 using namespace compiler::ir;
 
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace) {
-	auto phaseContext = IRConversionContext(std::move(trace));
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) {
+	auto phaseContext = IRConversionContext(std::move(trace), id);
 	return phaseContext.process();
 };
 

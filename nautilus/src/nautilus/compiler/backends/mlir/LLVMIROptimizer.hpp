@@ -1,5 +1,6 @@
 #pragma once
-
+#include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/options.hpp"
 namespace NES {
 class DumpHelper;
 namespace Nautilus {
@@ -23,6 +24,6 @@ public:
 	LLVMIROptimizer();  // Disable default constructor
 	~LLVMIROptimizer(); // Disable default destructor
 
-	static std::function<llvm::Error(llvm::Module*)> getLLVMOptimizerPipeline();
+	static std::function<llvm::Error(llvm::Module*)> getLLVMOptimizerPipeline(const engine::Options& options, const DumpHandler& handler);
 };
 } // namespace nautilus::compiler::mlir
