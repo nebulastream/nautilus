@@ -13,8 +13,7 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
-	// this is a control-flow merge std::cout << "\n checkTag \n" << std::endl;
-	// std::cout << *this << std::endl;
+	// this is a control-flow merge
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
@@ -34,8 +33,6 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 }
 
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, value_ref ref) {
-	// std::cout << "\n Add Return:" <<  std::endl;
-	// std::cout << *this << std::endl;
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -50,9 +47,6 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, value_ref ref) {
 }
 
 void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef, Type resultType) {
-	// std::cout << "\n Add Assign:" << std::endl;
-	// std::cout << targetRef.ref << " - " << srcRef.ref << std::endl;
-	// std::cout << *this << std::endl;
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -65,9 +59,6 @@ void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracin
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef) {
-	// std::cout << "\n Add Operation:" << operation << std::endl;
-	// std::cout << targetRef.ref << " - " << srcRef.ref << std::endl;
-	// std::cout << *this << std::endl;
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -76,8 +67,6 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resul
 }
 
 value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
-	// std::cout << "\n Add Operation:" << operation << std::endl;
-	// std::cout << *this << std::endl;
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -144,10 +133,6 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	if (oi.blockIndex == currentBlockIndex) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
 	}
-
-	// std::cout << "\n processControlFlowMerge \n" << std::endl;
-	// std::cout << oi.blockIndex << " - " << oi.operationIndex << std::endl;
-	// std::cout << *this << std::endl;
 
 	// create new merge block
 	auto mergedBlockId = createBlock();

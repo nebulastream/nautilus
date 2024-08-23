@@ -2,8 +2,6 @@
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>

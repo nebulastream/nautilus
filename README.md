@@ -1,8 +1,10 @@
 # Nautilus: A tracing jit compiler for C++
+
 [![Build Nautilus](https://github.com/nebulastream/nautilus/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/build.yml)
 
-Nautilus is a lightweight and adaptable just-in-time (JIT) compiler for C++ projects. 
+Nautilus is a lightweight and adaptable just-in-time (JIT) compiler for C++ projects.
 It offers:
+
 1. A high-level code generation API that accommodates C++ control flows.
 2. A tracing JIT compiler that produces a lightweight intermediate representation (IR) from imperative code fragments.
 3. Multiple code-generation backends, allowing users to balance compilation latency and code quality at runtime.
@@ -16,7 +18,8 @@ The example below demonstrates Nautilus with a simplified aggregation operator,
 `ConditionalSum`. This function aggregates integer values based on a boolean mask.
 Nautilus introduce `val<>` objects to capture all executed operations in an intermediate representation during tracing.
 Depending on the execution context, it can utilize a bytecode interpreter or generate efficient MLIR or C++ code.
-This enables Nautilus to trade of performance characteristics and to optimize the generated code towards the target hardware.
+This enables Nautilus to trade of performance characteristics and to optimize the generated code towards the target
+hardware.
 
 ```c++
 val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> array) {
@@ -72,7 +75,7 @@ The codebase is structured in the following components:
 
 ### Publication:
 
-This paper discusses Nautilus's architecture and its usage in the NebulaStream query compiler. 
+This paper discusses Nautilus's architecture and its usage in the NebulaStream query compiler.
 Note that it references an earlier version of the code-generation API, which has changed.
 
 ```BibTeX
@@ -92,28 +95,31 @@ Note that it references an earlier version of the code-generation API, which has
 ```
 
 ### Related Work:
+
 The following work is related to Nautilus and influenced our design decisions.
 
 * [Tidy Tuples and Flying Start](db.in.tum.de/~kersten/Tidy%20Tuples%20and%20Flying%20Start%20Fast%20Compilation%20and%20Fast%20Execution%20of%20Relational%20Queries%20in%20Umbra.pdf):
-This paper describes the low-latency query compilation approach of [Umbra](https://umbra-db.com/). 
-This work was one of the main motivations for the creation of the Nautilus project and its use in NebulaStream.
+  This paper describes the low-latency query compilation approach of [Umbra](https://umbra-db.com/).
+  This work was one of the main motivations for the creation of the Nautilus project and its use in NebulaStream.
 
 * [Flounder](https://vldb.org/pvldb/vol14/p2691-funke.pdf):
-Flounder is simple low latency jit compiler that based on [AsmJit](https://asmjit.com/), which is designed for query compilation.
+  Flounder is simple low latency jit compiler that based on [AsmJit](https://asmjit.com/), which is designed for query
+  compilation.
 
-* [Build-It](https://buildit.so/): 
-BuildIt is a framework for developing Domain Specific Languages in C++. 
-It pioneered the capability of extracting control-flow information form imperative C++ code.
+* [Build-It](https://buildit.so/):
+  BuildIt is a framework for developing Domain Specific Languages in C++.
+  It pioneered the capability of extracting control-flow information form imperative C++ code.
 
 * [GraalVM](https://www.graalvm.org/):
-The GraalVM project provides a framework to implement AST interpreters that can be turned into high-performance code through partial evaluation.
+  The GraalVM project provides a framework to implement AST interpreters that can be turned into high-performance code
+  through partial evaluation.
 
 * [MLIR](https://mlir.llvm.org/):
-The MLIR project provides a novel approach to building reusable and extensible compiler infrastructure.
-Nautilus leverages it as a foundation for its high-performance compilation backend.
+  The MLIR project provides a novel approach to building reusable and extensible compiler infrastructure.
+  Nautilus leverages it as a foundation for its high-performance compilation backend.
 
 * [MIR](https://github.com/vnmakarov/mir):
-The MIR projects provides a lightweight jit compiler that targets low compilation latency. 
-Nautilus leverages MIR as a low latency compilation backend.
+  The MIR projects provides a lightweight jit compiler that targets low compilation latency.
+  Nautilus leverages MIR as a low latency compilation backend.
 
 
