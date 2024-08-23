@@ -606,7 +606,7 @@ std::ostream& operator<<(std::ostream& os, const OpCode& code) {
 
 std::string Code::toString() {
 	std::stringstream ss;
-	ss << this;
+	ss << *this;
 	return ss.str();
 }
 

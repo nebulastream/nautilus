@@ -7,7 +7,6 @@ if (ENABLE_C_BACKEND)
             CPPLoweringProvider.cpp
             CPPCompilerFlags.cpp
             SharedLibrary.cpp
-            File.cpp
             ExecutablePath.cpp
     )
 endif ()

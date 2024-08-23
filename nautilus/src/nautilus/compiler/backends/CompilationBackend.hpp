@@ -1,4 +1,6 @@
 #pragma once
+#include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/options.hpp"
 #include <map>
 #include <memory>
 
@@ -17,7 +19,7 @@ public:
 	 * @brief Compiles ir graph to executable.
 	 * @return std::unique_ptr<Executable>
 	 */
-	virtual std::unique_ptr<Executable> compile(std::shared_ptr<ir::IRGraph>) = 0;
+	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) = 0;
 
 	virtual ~CompilationBackend();
 };
@@ -28,8 +30,7 @@ public:
 	CompilationBackend* getBackend(const std::string& name);
 
 private:
-	std::map<std::string, std::unique_ptr<CompilationBackend>> items =
-	    std::map<std::string, std::unique_ptr<CompilationBackend>>();
+	std::map<std::string, std::unique_ptr<CompilationBackend>> items = std::map<std::string, std::unique_ptr<CompilationBackend>>();
 };
 
 } // namespace nautilus::compiler

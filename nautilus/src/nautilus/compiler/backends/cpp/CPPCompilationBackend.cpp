@@ -6,18 +6,12 @@
 #include <iostream>
 namespace nautilus::compiler::cpp {
 
-std::unique_ptr<Executable> CPPCompilationBackend::compile(std::shared_ptr<ir::IRGraph> ir) {
-	// auto timer = Timer<>("CPP");
-	// timer.start();
-
+std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options&) {
 	auto code = CPPLoweringProvider::lower(ir);
-	// dumpHelper.dump("code.cpp", code);
-	std::cout << code << std::endl;
-	// timer.snapshot("CPPGen");
+	dumpHandler.dump("after_c_generation", ".c", [&]() { return code; });
 
 	auto compiler = CPPCompiler::create();
-	auto res = compiler->compile("test", code);
-
+	auto res = compiler->compile("nautilus_" + ir->getId(), code);
 	return std::make_unique<CPPExecutable>(res);
 }
 

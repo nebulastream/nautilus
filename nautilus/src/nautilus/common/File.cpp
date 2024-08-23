@@ -2,9 +2,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <nautilus/compiler/backends/cpp/File.hpp>
+#include <nautilus/common/File.hpp>
 #include <utility>
-namespace nautilus::compiler::cpp {
+namespace nautilus::common {
 
 File::File(std::string path) : path(std::move(path)) {
 }
@@ -14,7 +14,6 @@ std::string File::getPath() const {
 }
 
 std::shared_ptr<File> File::createFile(const std::string& absoluteFilePath, const std::string& content) {
-	// NES_DEBUG("Create File to file://" << absoluteFilePath);
 	std::ofstream resultFile(absoluteFilePath, std::ios::trunc | std::ios::out);
 	resultFile << content;
 	resultFile.flush();
@@ -32,11 +31,10 @@ std::string File::read() const {
 
 void File::print() const {
 	auto sourceCode = read();
-	// NES_DEBUG("Compiler: code \n" << sourceCode);
 }
 
 std::mutex& File::getFileMutex() {
 	return fileMutex;
 }
 
-} // namespace nautilus::compiler::cpp
+} // namespace nautilus::common

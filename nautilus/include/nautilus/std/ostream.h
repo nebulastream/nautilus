@@ -41,7 +41,8 @@ class val<std::basic_ostream<CharT, Traits>> {
 public:
 	explicit val(val<std::basic_ostream<CharT, Traits>*> stream) : stream(stream) {};
 	template <class _CharT, class _Traits>
-	val(val<std::basic_ostream<_CharT, _Traits>>& other) : stream(other.stream) {}
+	val(val<std::basic_ostream<_CharT, _Traits>>& other) : stream(other.stream) {
+	}
 
 	template <class T>
 	val<std::basic_ostream<CharT, Traits>>& operator<<(val<T>& value) {

@@ -1,8 +1,15 @@
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include <chrono>
+#include <iomanip>
+#include <iostream>
+#include <random>
+#include <sstream>
+#include <string>
 #include <utility>
 
 #ifdef ENABLE_COMPILER
@@ -25,22 +32,54 @@ JITCompiler::~JITCompiler() = default;
 
 #if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
 
+std::string createCompilationUnitID() {
+	// Get the current time point
+	auto now = std::chrono::system_clock::now();
+	auto time = std::chrono::system_clock::to_time_t(now);
+	auto local_time = *std::localtime(&time);
+
+	// Create a timestamp string from the current time
+	std::ostringstream timestamp;
+	timestamp << std::put_time(&local_time, "%Y-%m-%d_%H-%M-%S");
+
+	// Create a random device and generator
+	std::random_device rd;
+	std::mt19937 generator(rd());
+	std::uniform_int_distribution<> distribution(0, 15);
+
+	// Generate a 7-character UUID
+	std::string uuid;
+	for (int i = 0; i < 7; ++i) {
+		int random_number = distribution(generator);
+		if (random_number < 10)
+			uuid += std::to_string(random_number);
+		else
+			uuid += char('A' + random_number - 10);
+	}
+
+	// Concatenate timestamp and UUID
+	return timestamp.str() + "_#" + uuid;
+}
+
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
+	CompilationUnitID compilationId = createCompilationUnitID();
+	auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
 	auto executionTrace = tracing::TraceContext::trace(function);
-	std::cout << executionTrace->toString() << std::endl;
+	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
+
 	// create ssa
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
-	std::cout << afterSSA->toString() << std::endl;
+	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	auto ir = irGenerationPhase.apply(std::move(afterSSA));
-	std::cout << ir->toString() << std::endl;
+	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
+	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);
-	auto executable = backend->compile(ir);
+	auto executable = backend->compile(ir, dumpHandler, options);
 	return executable;
 }
 

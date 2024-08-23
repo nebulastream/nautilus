@@ -177,7 +177,6 @@ void TraceContext::traceAssignment(value_ref targetRef, value_ref sourceRef, Typ
 }
 
 value_ref TraceContext::traceCast(value_ref state, Type resultType) {
-	// std::cout <<executionTrace->variableBitset << std::endl;
 	if (isFollowing()) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -229,7 +228,6 @@ value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resul
 }
 
 value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, value_ref& leftRef, value_ref& rightRef) {
-	// std::cout <<executionTrace->variableBitset << std::endl;
 	if (isFollowing()) {
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();

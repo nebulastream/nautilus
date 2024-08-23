@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/JITCompiler.hpp"
 #include <memory>
 #include <ostream>
 #include <string>
@@ -14,7 +15,7 @@ class FunctionOperation;
  */
 class IRGraph {
 public:
-	IRGraph();
+	IRGraph(const CompilationUnitID& id);
 
 	~IRGraph() = default;
 
@@ -23,11 +24,13 @@ public:
 	FunctionOperation* getRootOperation();
 
 	[[nodiscard]] std::string toString() const;
+	[[nodiscard]] const CompilationUnitID& getId() const;
 
 	friend std::ostream& operator<<(std::ostream& os, const IRGraph& graph);
 
 private:
 	std::unique_ptr<FunctionOperation> rootOperation;
+	const CompilationUnitID id;
 };
 
 } // namespace nautilus::compiler::ir

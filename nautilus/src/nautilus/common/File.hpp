@@ -4,7 +4,7 @@
 #include <mutex>
 #include <string>
 
-namespace nautilus::compiler::cpp {
+namespace nautilus::common {
 
 /**
  * @brief Represents for a file at a specific path

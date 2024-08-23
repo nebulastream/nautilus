@@ -1,8 +1,7 @@
 
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
-#include <filesystem>
-#include <fstream>
+#include "nautilus/compiler/DumpHandler.hpp"
 #include <iostream>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
@@ -12,9 +11,13 @@
 
 namespace nautilus::compiler::mlir {
 
-std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline() {
+int getOptimizationLevel(const engine::Options& options) {
+	return options.getOptionOrDefault("mlir.optimizationLevel", 3);
+}
+
+std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options, const DumpHandler& handler) {
 	// Return LLVM optimizer pipeline.
-	return [](llvm::Module* llvmIRModule) {
+	return [options, handler](llvm::Module* llvmIRModule) {
 		// Currently, we do not increase the sizeLevel requirement of the
 		// optimizingTransformer beyond 0.
 		constexpr int SIZE_LEVEL = 0;
@@ -42,27 +45,17 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		//     llvm::Linker::linkModules(*llvmIRModule, std::move(proxyFunctionsIR),
 		//     llvm::Linker::Flags::OverrideFromSrc);
 		// }
-		auto optPipeline = ::mlir::makeOptimizingTransformer(3, SIZE_LEVEL, targetMachinePtr);
+
+		auto optPipeline = ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
 		auto optimizedModule = optPipeline(llvmIRModule);
 
-		// Print debug information to file/console if set in options.
+		handler.dump("llvm", "ll", [&]() {
+			std::string llvmIRString;
+			llvm::raw_string_ostream llvmStringStream(llvmIRString);
+			llvmIRModule->print(llvmStringStream, nullptr);
+			return llvmIRString;
+		});
 
-		std::string llvmIRString;
-		llvm::raw_string_ostream llvmStringStream(llvmIRString);
-		llvmIRModule->print(llvmStringStream, nullptr);
-		// auto* basicError = new std::error_code();
-		std::cout << llvmIRString << std::endl;
-		/*if (options.isDumpToConsole() || options.isDumpToFile()) {
-		    // Write the llvmIRModule to a string.
-		    std::string llvmIRString;
-		    llvm::raw_string_ostream llvmStringStream(llvmIRString);
-		    llvmIRModule->print(llvmStringStream, nullptr);
-		    auto* basicError = new std::error_code();
-
-		    // Dump the generated llvmIRModule.
-		    dumpHelper.dump("5. LLVM.ll", llvmIRString);
-		}
-		 */
 		return optimizedModule;
 	};
 }
