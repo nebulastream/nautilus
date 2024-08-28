@@ -20,6 +20,22 @@ val<double> fabs(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::fabs(x); }, x);
 }
+val<int8_t> abs(val<int8_t> x) {
+	return invoke<>(
+	    +[](int8_t x) -> int8_t { return std::abs(x); }, x);
+}
+val<int16_t > abs(val<int16_t > x) {
+	return invoke<>(
+	    +[](int16_t x) -> int16_t { return std::abs(x); }, x);
+}
+val<int32_t > abs(val<int32_t > x) {
+	return invoke<>(
+	    +[](int32_t x) -> int32_t { return std::abs(x); }, x);
+}
+val<int64_t> abs(val<int64_t> x) {
+	return invoke<>(
+	    +[](int64_t x) -> int64_t { return std::abs(x); }, x);
+}
 #if defined(_LIBCPP_VERSION)
 val<float> fabsf(val<float> x) {
 	return invoke<>(
@@ -86,11 +102,11 @@ val<float> cosf(val<float> x) {
 #endif
 val<float> acos(val<float> x) {
 	return invoke<>(
-	    +[](float x) { return std::asin(x); }, x);
+	    +[](float x) { return std::acos(x); }, x);
 }
 val<double> acos(val<double> x) {
 	return invoke<>(
-	    +[](double x) { return std::asin(x); }, x);
+	    +[](double x) { return std::acos(x); }, x);
 }
 
 #if defined(_LIBCPP_VERSION)
@@ -613,6 +629,15 @@ val<float> log10(val<float> x) {
 val<double> log10(val<double> x) {
 	return invoke<>(
 	    +[](double x) { return std::log10(x); }, x);
+}
+
+val<float> log2(val<float> x) {
+	return invoke<>(
+		+[](float x) { return std::log2(x); }, x);
+}
+val<double> log2(val<double> x) {
+	return invoke<>(
+		+[](double x) { return std::log2(x); }, x);
 }
 
 #if defined(_LIBCPP_VERSION)

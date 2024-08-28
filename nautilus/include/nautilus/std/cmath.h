@@ -10,6 +10,10 @@ namespace nautilus {
  */
 val<float> abs(val<float> x);
 val<double> abs(val<double> x);
+val<int8_t> abs(val<int8_t> x);
+val<int16_t> abs(val<int16_t> x);
+val<int32_t> abs(val<int32_t> x);
+val<int64_t> abs(val<int64_t> x);
 val<float> fabs(val<float> x);
 val<double> fabs(val<double> x);
 val<float> fabsf(val<float> x);
@@ -164,7 +168,18 @@ val<float> logf(val<float> x);
  */
 val<float> log10(val<float> x);
 val<double> log10(val<double> x);
+#if defined(_LIBCPP_VERSION)
 val<float> log10f(val<float> x);
+#endif
+/**
+ * @brief Computes the base-2 logarithm of x.
+ *
+ * @param x Value.
+ * @return Base-2 logarithm of x.
+ */
+val<float> log2(val<float> x);
+val<double> log2(val<double> x);
+
 
 /**
  * @brief natural logarithm (to base e) of 1 plus the given number (ln(1+x))
