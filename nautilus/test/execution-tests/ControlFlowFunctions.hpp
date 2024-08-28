@@ -294,4 +294,13 @@ val<int32_t> nestedIfElseDifferentLevels(val<int32_t> value) {
 	return result;
 }
 
+val<int32_t> multipleReturns(val<int32_t> value) {
+	if (value == 1){
+		return 1;
+	} else if (value < 10) {
+		return 42;
+	}
+	return value + value + 1;
+}
+
 } // namespace nautilus::engine
