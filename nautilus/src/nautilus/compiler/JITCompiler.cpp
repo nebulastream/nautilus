@@ -2,6 +2,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
+#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <chrono>
@@ -75,6 +76,8 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+	auto url = ir::createGraphVizFromIr(ir);
+	std::cout << url << std::endl;
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);
