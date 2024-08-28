@@ -11,7 +11,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	// Initialize a new context and perform the inference of the SSA values
 	auto phaseContext = SSACreationPhaseContext(std::move(trace));
 	return phaseContext.process();
-};
+}
 
 SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace) : trace(std::move(trace)) {
 }
@@ -163,7 +163,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	for (auto& input : blockRef.arguments) {
 		processValueRef(block, input, input.type, operationIndex);
 	}
-};
+}
 
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.

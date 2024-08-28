@@ -29,7 +29,7 @@ const Snapshot& SymbolicExecutionPath::getFinalTag() const {
 
 void SymbolicExecutionPath::setFinalTag(const Snapshot& t) {
 	this->finalTag = t;
-};
+}
 
 std::vector<bool>& SymbolicExecutionPath::getPath() {
 	return path;

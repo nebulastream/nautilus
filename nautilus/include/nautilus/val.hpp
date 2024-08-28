@@ -310,12 +310,12 @@ auto inline cast_value(LeftType&& value) {
 template <typename LeftType, is_bool RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
-};
+}
 
 template <typename LeftType, is_enum RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
-};
+}
 
 namespace details {
 

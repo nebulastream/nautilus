@@ -9,7 +9,7 @@ namespace nautilus::tracing {
 
 ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0), blocks() {
 	createBlock();
-};
+}
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
@@ -202,7 +202,7 @@ value_ref ExecutionTrace::setArgument(Type type, size_t index) {
 	// arguments[index] = {argRef, type};
 	arguments[index] = value_ref(argRef, type);
 	return arguments[index];
-};
+}
 
 void ExecutionTrace::destruct(nautilus::tracing::value_ref) {
 	// variableBitset[inputs] = false;
