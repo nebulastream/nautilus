@@ -17,6 +17,7 @@ public:
 	BasicBlock* addFunctionBasicBlock(BasicBlockPtr functionBasicBlock);
 
 	BasicBlock* getFunctionBasicBlock();
+	std::vector<std::unique_ptr<BasicBlock>>& getBasicBlocks();
 
 	[[nodiscard]] const std::vector<Type>& getInputArgs() const;
 

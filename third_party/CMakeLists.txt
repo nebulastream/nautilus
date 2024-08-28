@@ -1,4 +1,4 @@
-
+git
 
 if (ENABLE_TESTS)
     add_subdirectory(Catch2)
