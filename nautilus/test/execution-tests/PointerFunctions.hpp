@@ -1,7 +1,10 @@
 #pragma once
 
+#include <nautilus/val.hpp>
+#include <nautilus/val_ptr.hpp>
 #include <nautilus/Engine.hpp>
 #include <nautilus/std/cstring.h>
+
 
 namespace nautilus {
 
