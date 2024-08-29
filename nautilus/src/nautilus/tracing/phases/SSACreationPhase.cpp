@@ -50,6 +50,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	//  In the first step we get the return block, which contains the return call.
 	//  Starting with this block we trace all inputs
 
+	// Merging all potential return blocks into a single (new) return block
 	auto& returnBlock = getReturnBlock();
 	processBlock(returnBlock);
 	// Eliminate all assign operations. We only needed them to create the SSA
