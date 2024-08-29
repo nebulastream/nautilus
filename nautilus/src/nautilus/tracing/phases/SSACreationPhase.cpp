@@ -11,7 +11,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	// Initialize a new context and perform the inference of the SSA values
 	auto phaseContext = SSACreationPhaseContext(std::move(trace));
 	return phaseContext.process();
-};
+}
 
 SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace) : trace(std::move(trace)) {
 }
@@ -50,6 +50,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	//  In the first step we get the return block, which contains the return call.
 	//  Starting with this block we trace all inputs
 
+	// Merging all potential return blocks into a single (new) return block
 	auto& returnBlock = getReturnBlock();
 	processBlock(returnBlock);
 	// Eliminate all assign operations. We only needed them to create the SSA
@@ -162,7 +163,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	for (auto& input : blockRef.arguments) {
 		processValueRef(block, input, input.type, operationIndex);
 	}
-};
+}
 
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.

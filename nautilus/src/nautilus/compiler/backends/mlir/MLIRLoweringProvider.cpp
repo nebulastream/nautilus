@@ -216,7 +216,7 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context
 	this->theModule = mlir::ModuleOp::create(getNameLoc("module"));
 	// Store InsertPoint for inserting globals such as Strings or TupleBuffers.
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());
-};
+}
 
 MLIRLoweringProvider::~MLIRLoweringProvider() {
 	delete globalInsertPoint;

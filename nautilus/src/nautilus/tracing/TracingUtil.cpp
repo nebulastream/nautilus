@@ -53,7 +53,7 @@ value_ref registerFunctionArgument(Type type, size_t index) {
 
 [[maybe_unused]] value_ref traceLoad(value_ref src, Type resultType) {
 	return TraceContext::get()->traceLoad(src, resultType);
-};
+}
 
 [[maybe_unused]] void traceStore(value_ref target, value_ref src, Type valueType) {
 	TraceContext::get()->traceStore(target, src, valueType);
@@ -69,7 +69,7 @@ value_ref traceConstant(Type type, std::any&& value) {
 
 [[maybe_unused]] value_ref traceCast(value_ref state, Type resultType) {
 	return TraceContext::get()->traceCast(state, resultType);
-};
+}
 
 DynamicValueMap& getVarRefMap() {
 	return TraceContext::get()->getDynamicVars();
@@ -80,7 +80,7 @@ DynamicValueMap& getVarRefMap() {
 		return TraceContext::get()->traceCopy(state);
 	}
 	return {};
-};
+}
 
 [[maybe_unused]] bool inTracer() {
 	return TraceContext::get() != nullptr;

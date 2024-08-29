@@ -13,52 +13,52 @@ void regMov(const OpCode& c, RegisterFile& regs) {
 
 void dyncallReset(const OpCode&, RegisterFile&) {
 	Dyncall::getVM().reset();
-};
+}
 
 void dyncallArgB(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<bool>(regs, op.reg1);
 	Dyncall::getVM().addArgB(value);
-};
+}
 
 void dyncallArgI8(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<int8_t>(regs, op.reg1);
 	Dyncall::getVM().addArgI8(value);
-};
+}
 
 void dyncallArgI16(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<int16_t>(regs, op.reg1);
 	Dyncall::getVM().addArgI16(value);
-};
+}
 
 void dyncallArgI32(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<int32_t>(regs, op.reg1);
 	Dyncall::getVM().addArgI32(value);
-};
+}
 
 void dyncallArgI64(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<int64_t>(regs, op.reg1);
 	Dyncall::getVM().addArgI32(value);
-};
+}
 
 void dyncallArgF(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<float>(regs, op.reg1);
 	Dyncall::getVM().addArgF(value);
-};
+}
 
 void dyncallArgD(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<double>(regs, op.reg1);
 	Dyncall::getVM().addArgD(value);
-};
+}
 
 void dyncallArgPtr(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<void*>(regs, op.reg1);
 	Dyncall::getVM().addArgPtr(value);
-};
+}
 
 void dyncallCallV(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<void*>(regs, op.reg1);
 	Dyncall::getVM().callVoid(value);
-};
+}
 
 void dyncallCallB(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);

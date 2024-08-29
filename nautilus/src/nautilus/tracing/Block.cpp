@@ -4,7 +4,7 @@
 
 namespace nautilus::tracing {
 
-Block::Block(uint16_t blockId) : blockId(blockId), type(Type::Default) {};
+Block::Block(uint16_t blockId) : blockId(blockId), type(Type::Default) {}
 
 operation_identifier Block::addOperation(nautilus::tracing::TraceOperation&& operation) {
 	uint16_t operationIndex = operations.size();

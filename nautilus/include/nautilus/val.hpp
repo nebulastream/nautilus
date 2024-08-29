@@ -310,12 +310,12 @@ auto inline cast_value(LeftType&& value) {
 template <typename LeftType, is_bool RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
-};
+}
 
 template <typename LeftType, is_enum RightType>
 auto&& cast_value(LeftType&& value) {
 	return std::forward<LeftType>(value);
-};
+}
 
 namespace details {
 
@@ -358,7 +358,6 @@ namespace details {
 		}                                                                                                                                                                                                                                      \
 		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                                                                                                                                           \
 	}
-
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
 
@@ -413,7 +412,7 @@ LHS inline getRawValue(const val<LHS>& val) {
 
 #define DEFINE_BINARY_OPERATOR(OP, FUNC)                                                                                                                                                                                                       \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
-	    requires(is_fundamental_val<LHS> && (is_fundamental_val<RHS> || convertible_to_fundamental<RHS>) ) || ((is_fundamental_val<LHS> || convertible_to_fundamental<LHS>) && is_fundamental_val<RHS>)                                \
+	    requires(is_fundamental_val<LHS> && (is_fundamental_val<RHS> || convertible_to_fundamental<RHS>)) || ((is_fundamental_val<LHS> || convertible_to_fundamental<LHS>) && is_fundamental_val<RHS>)                                         \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
@@ -549,34 +548,31 @@ val<bool> inline lNot(val<bool>& arg) {
 }
 } // namespace details
 
-template <typename LHS, typename RHS>
-auto inline operator||(LHS left, RHS right) {
-	if constexpr (std::is_same_v<LHS, bool>) {
-		auto leftV = make_value(left);
-		return details::lOr(leftV, right);
-	} else if constexpr (std::is_same_v<RHS, bool>) {
-		auto rightV = make_value(right);
-		return details::lOr(left, rightV);
-	} else {
-		return details::lOr(left, right);
-	}
+auto inline operator||(bool left, val<bool> right) {
+	auto leftVal = make_value(left);
+	return details::lOr(leftVal, right);
+}
+auto inline operator||(val<bool> left, bool right) {
+	auto rightVal = make_value(right);
+	return details::lOr(left, rightVal);
+}
+auto inline operator||(val<bool> left, val<bool> right) {
+	return details::lOr(left, right);
 }
 
-template <typename LHS, typename RHS>
-auto inline operator&&(LHS left, RHS right) {
-	if constexpr (std::is_same_v<LHS, bool>) {
-		auto leftV = make_value(left);
-		return details::lAnd(leftV, right);
-	} else if constexpr (std::is_same_v<RHS, bool>) {
-		auto rightV = make_value(right);
-		return details::lAnd(left, rightV);
-	} else {
-		return details::lAnd(left, right);
-	}
+auto inline operator&&(bool left, val<bool> right) {
+	auto leftVal = make_value(left);
+	return details::lAnd(leftVal, right);
+}
+auto inline operator&&(val<bool> left, bool right) {
+	auto rightVal = make_value(right);
+	return details::lAnd(left, rightVal);
+}
+auto inline operator&&(val<bool> left, val<bool> right) {
+	return details::lAnd(left, right);
 }
 
-template <typename LHS>
-auto inline operator!(val<LHS> left) {
+auto inline operator!(val<bool> left) {
 	return details::lNot(left);
 }
 

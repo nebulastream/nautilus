@@ -59,7 +59,7 @@ value_ref TraceContext::traceLoad(value_ref src, Type resultType) {
 		return resultRef;
 	}
 	throw TraceTerminationException();
-};
+}
 
 void TraceContext::traceStore(value_ref target, value_ref src, Type valueType) {
 	if (isFollowing()) {
