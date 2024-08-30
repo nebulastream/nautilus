@@ -1,9 +1,17 @@
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
-#include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
-#include "nautilus/compiler/backends/bc/BCInterpreterBackend.hpp"
-#include "nautilus/compiler/backends/cpp/CPPCompilationBackend.hpp"
-#include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/config.hpp"
+#ifdef ENABLE_ASMJIT_BACKEND
+#include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
+#endif
+#ifdef ENABLE_BC_BACKEND
+#include "nautilus/compiler/backends/bc/BCInterpreterBackend.hpp"
+#endif
+#ifdef ENABLE_C_BACKEND
+#include "nautilus/compiler/backends/cpp/CPPCompilationBackend.hpp"
+#endif
+#ifdef ENABLE_MLIR_BACKEND
+#include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
+#endif
 #include "nautilus/exceptions/RuntimeException.hpp"
 
 namespace nautilus::compiler {
