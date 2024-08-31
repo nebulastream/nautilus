@@ -17,6 +17,10 @@ Operation::OperationType Operation::getOperationType() const {
 	return opType;
 }
 
+std::vector<Operation*> Operation::getInputs() {
+	return inputs;
+}
+
 const OperationIdentifier& Operation::getIdentifier() const {
 	return identifier;
 }
