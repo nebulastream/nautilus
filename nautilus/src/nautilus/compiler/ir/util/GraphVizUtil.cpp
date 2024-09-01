@@ -14,10 +14,10 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <set>
 
 namespace nautilus::compiler::ir {
 /*
@@ -188,7 +188,7 @@ public:
 				}
 			}
 
-			if (map.contains(from)){
+			if (map.contains(from)) {
 				auto srcInput = map[from];
 				for (auto src : srcInput) {
 					inputs.emplace_back(src);
@@ -201,7 +201,7 @@ public:
 	}
 
 	void getBlockArgumentMap(const BasicBlock* block, std::set<const BasicBlock*>& visitedBlocks, std::map<Operation*, std::vector<Operation*>>& map) {
-		if (visitedBlocks.contains(block)){
+		if (visitedBlocks.contains(block)) {
 			return;
 		}
 		visitedBlocks.emplace(block);
@@ -232,32 +232,18 @@ public:
 				const auto& to = nodeIdMap[op.get()];
 				// process inputs of node
 				for (auto input : op->getInputs()) {
-					if (input->getOperationType() == Operation::OperationType::BasicBlockArgument && operatorDataflowMapping.contains(input)) {
-						//auto srcOps = operatorDataflowMapping[input];
-						for (auto srcI : operatorDataflowMapping[input]){
-							const auto& from = nodeIdMap[srcI];
-							write_edge(from, to, "data", input->getIdentifier().toString());
-						}
-					} else {
-						const auto& from = nodeIdMap[input];
-						write_edge(from, to, "data", input->getIdentifier().toString());
-					}
+					const auto& from = nodeIdMap[input];
+					write_edge(from, to, "data", input->getIdentifier().toString());
 				}
 
 				// handle control-flow arguments
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
 					[[maybe_unused]] auto ifOp = as<IfOperation>(op);
-					[[maybe_unused]] auto preBlock = getPredecessorBlocks(graph, block.get());
-					// if (!hideIntermediateBlockArguments && preBlock.size() != 1) {
-					// write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(), hideIntermediateBlockArguments);
-					// write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(), hideIntermediateBlockArguments);
-					//}
+					write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(), hideIntermediateBlockArguments);
+					write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(), hideIntermediateBlockArguments);
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
-					[[maybe_unused]] auto preBlock = getPredecessorBlocks(graph, block.get());
-					// if (!hideIntermediateBlockArguments && preBlock.size() != 1) {
-					// write_block_argument_edges(graph, branchOp->getNextBlockInvocation(), hideIntermediateBlockArguments);
-					//}
+					write_block_argument_edges(graph, branchOp->getNextBlockInvocation(), hideIntermediateBlockArguments);
 				}
 			}
 		}
@@ -477,7 +463,7 @@ public:
 std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph) {
 	std::stringstream ss;
 	auto writer = GraphvizWriter(ss);
-	writer.write_graph(graph, false, true);
+	writer.write_graph(graph, false, false);
 	auto content = ss.str();
 	std::cout << content << std::endl;
 	return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);

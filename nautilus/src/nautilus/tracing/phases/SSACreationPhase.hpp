@@ -74,6 +74,7 @@ private:
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
 		std::set<uint32_t> processedBlocks;
+		ValueRef maxValueRef = 1024;
 	};
 };
 
