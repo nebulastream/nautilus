@@ -20,9 +20,7 @@ if (ENABLE_MLIR_BACKEND)
             MLIRExecutionEngine
             MLIRFuncAllExtensions
             # Dialects
-            MLIRSCFDialect
             MLIRFuncToLLVM
-            MLIRSCFToControlFlow
     )
 
     add_source_files(nautilus
