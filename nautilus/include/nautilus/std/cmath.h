@@ -180,7 +180,6 @@ val<float> log10f(val<float> x);
 val<float> log2(val<float> x);
 val<double> log2(val<double> x);
 
-
 /**
  * @brief natural logarithm (to base e) of 1 plus the given number (ln(1+x))
  *

@@ -24,11 +24,11 @@ val<int8_t> abs(val<int8_t> x) {
 	return invoke<>(
 	    +[](int8_t x) -> int8_t { return std::abs(x); }, x);
 }
-val<int16_t > abs(val<int16_t > x) {
+val<int16_t> abs(val<int16_t> x) {
 	return invoke<>(
 	    +[](int16_t x) -> int16_t { return std::abs(x); }, x);
 }
-val<int32_t > abs(val<int32_t > x) {
+val<int32_t> abs(val<int32_t> x) {
 	return invoke<>(
 	    +[](int32_t x) -> int32_t { return std::abs(x); }, x);
 }
@@ -633,11 +633,11 @@ val<double> log10(val<double> x) {
 
 val<float> log2(val<float> x) {
 	return invoke<>(
-		+[](float x) { return std::log2(x); }, x);
+	    +[](float x) { return std::log2(x); }, x);
 }
 val<double> log2(val<double> x) {
 	return invoke<>(
-		+[](double x) { return std::log2(x); }, x);
+	    +[](double x) { return std::log2(x); }, x);
 }
 
 #if defined(_LIBCPP_VERSION)

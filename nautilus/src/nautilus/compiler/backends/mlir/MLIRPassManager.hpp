@@ -9,14 +9,11 @@ namespace nautilus::compiler::mlir {
 // and applies configured lowering & optimization passes to it.
 class MLIRPassManager {
 public:
-	enum class LoweringPass : uint8_t { LLVM };
 	enum class OptimizationPass : uint8_t { Inline };
 
 	MLIRPassManager();  // Disable default constructor
 	~MLIRPassManager(); // Disable default destructor
 
-	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
-	                                      const std::vector<LoweringPass>& loweringPasses,
-	                                      const std::vector<OptimizationPass>& optimizationPasses);
+	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module, const std::vector<OptimizationPass>& optimizationPasses);
 };
 } // namespace nautilus::compiler::mlir
