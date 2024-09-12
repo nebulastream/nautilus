@@ -100,7 +100,7 @@ public:
 	void resume() {
 		staticVars.clear();
 		dynamicVars.clear();
-		dynamicVars.resize(12,0);
+		dynamicVars.resize(0,0);
 	}
 
 	static TraceContext* initialize(TagRecorder& tagRecorder);

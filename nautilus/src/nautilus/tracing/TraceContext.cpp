@@ -15,6 +15,7 @@ TraceContext* TraceContext::get() {
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder) {
 	traceContext = new TraceContext(tagRecorder);
+	traceContext->dynamicVars.resize(0, 0);
 	return traceContext;
 }
 
@@ -318,6 +319,9 @@ void TraceContext::freeValRef(ValueRef ref) {
 	// the ref counter should always be greater than zero.
 	assert(refCounter > 0);
 	refCounter--;
+	while (!dynamicVars.empty() && dynamicVars.back() == 0){
+		dynamicVars.pop_back();
+	}
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;
@@ -334,7 +338,9 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 uint64_t hashDynamicVector(const DynamicValueMap& data) {
 	size_t hash = offset_basis;
-	for (auto& value : data) {
+	for (auto value : data) {
+		//if (value == 0)
+		//	continue;
 		hash ^= value;
 		hash *= fnv_prime;
 	}
