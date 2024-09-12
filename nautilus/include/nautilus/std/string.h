@@ -31,6 +31,11 @@ public:
 	val(const CharT* s) : val(val<const CharT*>(s)) {
 	}
 
+	val<std::basic_string<CharT, Traits>>& operator=(const val<std::basic_string<CharT, Traits>>& other) {
+		this->data_ptr = other.data_ptr;
+		return *this;
+	}
+
 	val<CharT> at(val<size_type> pos) {
 		return invoke(
 		    +[](base_type* ptr, size_type p) -> CharT { return ptr->at(p); }, data_ptr, pos);
@@ -259,7 +264,7 @@ public:
 		auto ptr = std::move(data_ptr);
 		data_ptr = nullptr;
 		return ptr;
-	};
+	}
 
 private:
 	val<base_type*> data_ptr;

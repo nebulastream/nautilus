@@ -17,12 +17,12 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 #ifdef ENABLE_TRACING
-	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {};
-	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
+	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {}
+	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {}
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {}
 #else
-	val(ValueType ref) : ptr(&ref) {};
-	val(val<ptrType> ptr) : ptr(ptr) {};
+	val(ValueType ref) : ptr(&ref) {}
+	val(val<ptrType> ptr) : ptr(ptr) {}
 #endif
 
 	template <class T>
@@ -80,16 +80,16 @@ public:
 	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
-	base_ptr_val() : value() {};
+	base_ptr_val() : value() {}
 #ifdef ENABLE_TRACING
-	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {};
-	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {};
-	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {};
+	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {}
+	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {}
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {}
 
 	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
 #else
-	base_ptr_val(ValuePtrType ptr) : value(ptr) {};
+	base_ptr_val(ValuePtrType ptr) : value(ptr) {}
 #endif
 
 #ifdef ENABLE_TRACING
@@ -120,7 +120,7 @@ public:
 #endif
 		this->value = other.value;
 		return *this;
-	};
+	}
 
 	val<ValType&> operator*()
 	    requires is_arithmetic<ValType>
@@ -130,7 +130,7 @@ public:
 #else
 		return val<ValType&>(*this);
 #endif
-	};
+	}
 
 	template <class T>
 	val<ValType&> operator[](T&& io)
@@ -196,7 +196,7 @@ public:
 #endif
 		this->value = other.value;
 		return *this;
-	};
+	}
 
 	template <typename OtherType>
 	    requires std::is_pointer_v<OtherType>
@@ -346,12 +346,12 @@ public:
 
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
-	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {};
-	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {};
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {};
+	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {}
+	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {}
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {}
 #else
-	val(bool ref) : ptr(&ref) {};
-	val(val<ptrType> ptr) : ptr(ptr) {};
+	val(bool ref) : ptr(&ref) {}
+	val(val<ptrType> ptr) : ptr(ptr) {}
 #endif
 
 	template <class T>

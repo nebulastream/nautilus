@@ -16,11 +16,11 @@ public:
 
 	static_val() {
 		tracing::pushStaticVal(&value);
-	};
+	}
 
 	static_val(T v) : value(v) {
 		tracing::pushStaticVal((void*) &value);
-	};
+	}
 
 	static_val(const static_val& other) : static_val((T) other) {
 	}

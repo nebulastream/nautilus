@@ -92,20 +92,20 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)) {};
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {};
+	val() : state(tracing::traceConstant(0)) {}
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {}
 	// copy constructor
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {}
 	// move constructor
-	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {};
-	val(tracing::value_ref& tc) : state(tc), value() {};
+	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {}
+	val(tracing::value_ref& tc) : state(tc), value() {}
 #else
-	val() {};
-	val(ValueType value) : value(value) {};
+	val() {}
+	val(ValueType value) : value(value) {}
 	// copy constructor
-	val(const val<ValueType>& other) : value(other.value) {};
+	val(const val<ValueType>& other) : value(other.value) {}
 	// move constructor
-	val(const val<ValueType>&& other) : value(other.value) {};
+	val(const val<ValueType>&& other) : value(other.value) {}
 #endif
 
 	val<ValueType>& operator=(const val<ValueType>& other) {
@@ -116,7 +116,7 @@ public:
 #endif
 		this->value = other.value;
 		return *this;
-	};
+	}
 
 	template <typename OtherType>
 	    requires std::is_convertible_v<ValueType, OtherType>
@@ -234,21 +234,21 @@ public:
 
 #ifdef ENABLE_TRACING
 
-	val() : state(tracing::traceConstant(0)), value(false) {};
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {};
+	val() : state(tracing::traceConstant(0)), value(false) {}
+	val(bool value) : state(tracing::traceConstant(value)), value(value) {}
 	// copy constructor
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {};
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {}
 	// move constructor
-	val(const val<bool>&& other) : state(other.state), value(other.value) {};
-	val(tracing::value_ref& tc) : state(tc) {};
+	val(const val<bool>&& other) : state(other.state), value(other.value) {}
+	val(tracing::value_ref& tc) : state(tc) {}
 
 #else
-	val() {};
-	val(bool value) : value(value) {};
+	val() {}
+	val(bool value) : value(value) {}
 	// copy constructor
-	val(const val<bool>& other) : value(other.value) {};
+	val(const val<bool>& other) : value(other.value) {}
 	// move constructor
-	val(const val<bool>&& other) : value(other.value) {};
+	val(const val<bool>&& other) : value(other.value) {}
 #endif
 
 	val<bool>& operator=(const val<bool>& other) {
@@ -261,7 +261,7 @@ public:
 
 		this->value = other.value;
 		return *this;
-	};
+	}
 
 	operator bool() const {
 		if SHOULD_TRACE () {
@@ -279,7 +279,7 @@ public:
 template <is_fundamental_val Type>
 auto inline&& make_value(Type&& value) {
 	return std::forward<Type>(value);
-};
+}
 
 template <convertible_to_fundamental Type>
 auto inline make_value(const Type& value) {

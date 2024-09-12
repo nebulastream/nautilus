@@ -93,11 +93,9 @@ public:
 	MemberFuncWrapperImpl(T func)
 	    : func(func), callableRuntimeFunction(function(+[](MemberFuncWrapper* ptr, Tp* clazzPtr) -> auto {
 		      auto p = static_cast<MemberFuncWrapperImpl<T, Rp, Tp>*>(ptr);
-		      // return p->func(clazzPtr);
 		      Rp (Tp::*func)() = p->func;
 		      return (*clazzPtr.*func)();
-		      // return std::invoke(p->func, clazzPtr);
-	      })) {};
+	      })) {}
 
 	template <typename... FunctionArgumentsRaw>
 	auto operator()(FunctionArgumentsRaw... args) {

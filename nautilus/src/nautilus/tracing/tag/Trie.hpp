@@ -34,7 +34,7 @@ public:
 		} else {
 			return found->get();
 		}
-	};
+	}
 
 private:
 	T content;
