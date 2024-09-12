@@ -10,7 +10,6 @@
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
-#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -212,7 +211,6 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context
 	builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
 	builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
 	builder->getContext()->loadDialect<mlir::func::FuncDialect>();
-	builder->getContext()->loadDialect<mlir::scf::SCFDialect>();
 	this->theModule = mlir::ModuleOp::create(getNameLoc("module"));
 	// Store InsertPoint for inserting globals such as Strings or TupleBuffers.
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());

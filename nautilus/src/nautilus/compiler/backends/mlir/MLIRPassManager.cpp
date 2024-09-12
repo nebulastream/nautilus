@@ -4,7 +4,6 @@
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
-#include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
@@ -25,8 +24,6 @@ std::unique_ptr<mlir::Pass> getMLIRLoweringPass(MLIRPassManager::LoweringPass lo
 	switch (loweringPass) {
 	case MLIRPassManager::LoweringPass::LLVM:
 		return mlir::createConvertControlFlowToLLVMPass();
-	case MLIRPassManager::LoweringPass::SCF:
-		return mlir::createConvertSCFToCFPass();
 	}
 	throw NotImplementedException("pass is not supported");
 }
@@ -64,7 +61,6 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 			passManager.addPass(getMLIRLoweringPass(loweringPass));
 		}
 	} else {
-		passManager.addPass(mlir::createConvertSCFToCFPass());
 		passManager.addPass(mlir::createConvertFuncToLLVMPass());
 		passManager.addPass(mlir::createConvertControlFlowToLLVMPass());
 	}

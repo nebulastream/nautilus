@@ -9,7 +9,7 @@ namespace nautilus::compiler::mlir {
 // and applies configured lowering & optimization passes to it.
 class MLIRPassManager {
 public:
-	enum class LoweringPass : uint8_t { SCF, LLVM };
+	enum class LoweringPass : uint8_t { LLVM };
 	enum class OptimizationPass : uint8_t { Inline };
 
 	MLIRPassManager();  // Disable default constructor
