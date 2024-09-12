@@ -45,7 +45,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
 	// and optimization passes.
-	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, {})) {
+	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {})) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 

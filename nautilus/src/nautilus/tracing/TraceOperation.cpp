@@ -15,7 +15,8 @@ std::ostream& operator<<(std::ostream& os, const FunctionCall& call) {
 	return os;
 }
 
-BlockRef::BlockRef(uint16_t block) : block(block) {}
+BlockRef::BlockRef(uint16_t block) : block(block) {
+}
 
 std::ostream& operator<<(std::ostream& os, const BlockRef& ref) {
 	os << "B" << ref.block << "(";
