@@ -131,7 +131,8 @@ void traceValueDestruction(value_ref ref);
 
 value_ref traceCast(value_ref state, Type resultType);
 
-std::vector<uint8_t>& getVarRefMap();
+void allocateValRef(ValueRef ref);
+void freeValRef(ValueRef ref);
 
 value_ref traceCall(void* fptn, const std::type_info& ti, Type resultType, const std::vector<tracing::value_ref>& arguments);
 

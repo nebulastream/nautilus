@@ -307,8 +307,17 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 	return staticVars;
 }
 
-DynamicValueMap& TraceContext::getDynamicVars() {
-	return dynamicVars;
+void TraceContext::allocateValRef(ValueRef ref) {
+	if (dynamicVars.size() <= ref) {
+		dynamicVars.resize(ref+1, 0);
+	}
+	dynamicVars.at(ref)++;
+}
+void TraceContext::freeValRef(ValueRef ref) {
+	auto& refCounter = dynamicVars.at(ref);
+	// the ref counter should always be greater than zero.
+	assert(refCounter > 0);
+	refCounter--;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;

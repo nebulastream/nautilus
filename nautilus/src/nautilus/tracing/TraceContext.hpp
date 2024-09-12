@@ -104,7 +104,7 @@ public:
 	void resume() {
 		staticVars.clear();
 		dynamicVars.clear();
-		dynamicVars.reserve(255);
+		dynamicVars.resize(12,0);
 	}
 
 	static TraceContext* initialize(TagRecorder& tagRecorder);
@@ -112,7 +112,8 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction);
 
 	std::vector<StaticVarHolder>& getStaticVars();
-	DynamicValueMap& getDynamicVars();
+	void allocateValRef(ValueRef ref);
+	void freeValRef(ValueRef ref);
 
 private:
 	explicit TraceContext(TagRecorder& tagRecorder);
