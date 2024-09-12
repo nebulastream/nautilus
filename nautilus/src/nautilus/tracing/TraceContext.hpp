@@ -97,10 +97,6 @@ public:
 
 	~TraceContext() = default;
 
-	void pause() {
-		active = false;
-	}
-
 	void resume() {
 		staticVars.clear();
 		dynamicVars.clear();
@@ -124,7 +120,6 @@ private:
 
 	Snapshot recordSnapshot();
 
-	bool active = false;
 	TagRecorder& tagRecorder;
 	std::unique_ptr<ExecutionTrace> executionTrace;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
