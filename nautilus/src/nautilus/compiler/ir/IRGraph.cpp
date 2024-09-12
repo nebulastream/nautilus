@@ -7,7 +7,8 @@
 
 namespace nautilus::compiler::ir {
 
-IRGraph::IRGraph(const compiler::CompilationUnitID& id) : id(id) {}
+IRGraph::IRGraph(const compiler::CompilationUnitID& id) : id(id) {
+}
 
 std::unique_ptr<FunctionOperation>& IRGraph::addRootOperation(std::unique_ptr<FunctionOperation> root) {
 	this->rootOperation = std::move(root);
@@ -24,10 +25,10 @@ FunctionOperation* IRGraph::getRootOperation() {
 
 std::string IRGraph::toString() const {
 	std::stringstream ss;
-	ss << "NESIR {\n";
-	auto dumpHandler = NESIRDumpHandler::create(ss);
-	dumpHandler->dump(rootOperation);
-	ss << "} //NESIR";
+	ss << "NautilusIR {\n";
+	auto dumpHandler = IRDumpHandler::create(ss);
+	dumpHandler->dump(rootOperation.get());
+	ss << "}";
 	return ss.str();
 }
 

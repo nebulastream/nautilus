@@ -8,16 +8,19 @@
 
 namespace nautilus::compiler::ir {
 
-NESIRDumpHandler::~NESIRDumpHandler() = default;
+IRDumpHandler::~IRDumpHandler() = default;
 
-NESIRDumpHandler::NESIRDumpHandler(std::ostream& out) : out(out) {
+IRDumpHandler::IRDumpHandler(std::ostream& out, const std::string& fileName) : out(out), fileName(fileName){
 }
 
-std::shared_ptr<NESIRDumpHandler> NESIRDumpHandler::create(std::ostream& out) {
-	return std::make_shared<NESIRDumpHandler>(out);
+std::shared_ptr<IRDumpHandler> IRDumpHandler::create(std::ostream& out) {
+	return std::make_shared<IRDumpHandler>(out, "");
+}
+std::shared_ptr<IRDumpHandler> IRDumpHandler::create(std::ostream& out, const std::string& fileName) {
+	return std::make_shared<IRDumpHandler>(out, fileName);
 }
 
-const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock, int ifParentBlockLevel) {
+const BasicBlock* IRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock, int ifParentBlockLevel) {
 	auto& terminatorOp = thenBlock->getOperations().back();
 	if (terminatorOp->getOperationType() == Operation::OperationType::BranchOp) {
 		auto branchOp = dynamic_cast<BranchOperation*>(terminatorOp.get());
@@ -38,7 +41,8 @@ const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const Bas
 	}
 }
 
-void NESIRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
+void IRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
+	terminatorOp->setLocation(compiler::ir::FileLineLocation{fileName, currentLine, 0});
 	switch (terminatorOp->getOperationType()) {
 	case Operation::OperationType::BranchOp: {
 		auto branchOp = static_cast<BranchOperation*>(terminatorOp);
@@ -63,28 +67,37 @@ void NESIRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
 	}
 }
 
-void NESIRDumpHandler::dumpHelper(const BasicBlock* basicBlock) {
+void IRDumpHandler::dumpHelper(const BasicBlock* basicBlock) {
 	if (!visitedBlocks.contains(basicBlock->getIdentifier())) {
-		// int32_t indent = basicBlock->getScopeLevel() + 1;
 		visitedBlocks.emplace(basicBlock->getIdentifier());
+		currentLine++;
 		out << '\n' << "Block_" << basicBlock->getIdentifier() << '(';
-		if (basicBlock->getArguments().size() > 0) {
-			out << basicBlock->getArguments().at(0)->getIdentifier().toString() << ":" << toString(basicBlock->getArguments().at(0)->getStamp());
-			for (int i = 1; i < (int) basicBlock->getArguments().size(); ++i) {
-				out << ", " << basicBlock->getArguments().at(i)->getIdentifier().toString() << ":" << toString(basicBlock->getArguments().at(i)->getStamp());
+		auto& blockArguments = basicBlock->getArguments();
+		if (!blockArguments.empty()) {
+			auto& first = blockArguments.front();
+			first->setLocation(compiler::ir::FileLineLocation{fileName, currentLine, 0});
+			out << first->getIdentifier().toString() << ":" << toString(first->getStamp());
+			for (int i = 1; i < (int) blockArguments.size(); ++i) {
+				auto& current = blockArguments.at(i);
+				current->setLocation(compiler::ir::FileLineLocation{fileName, currentLine, 0});
+				out << ", " << current->getIdentifier().toString() << ":" << toString(current->getStamp());
 			}
 		}
 		out << "):" << '\n';
+		currentLine++;
 		for (auto& operation : basicBlock->getOperations()) {
+			operation->setLocation(compiler::ir::FileLineLocation{fileName, currentLine, 0});
 			out << std::string(4, ' ') << operation->toString() << " :" << toString(operation->getStamp()) << std::endl;
+			currentLine++;
 		}
 		auto& terminatorOp = basicBlock->getOperations().back();
 		dumpHelper(terminatorOp.get(), basicBlock->getScopeLevel());
 	}
 }
 
-void NESIRDumpHandler::dump(const std::unique_ptr<FunctionOperation>& funcOp) {
+void IRDumpHandler::dump(FunctionOperation* funcOp) {
 	out << funcOp->toString() << " {";
+	currentLine = 2;
 	dumpHelper(funcOp->getFunctionBasicBlock());
 	out << "}\n";
 }

@@ -38,6 +38,18 @@ const Type& Operation::getStamp() const {
 	return stamp;
 }
 
+const FileLineLocation& Operation::getLocation() const {
+	return *location;
+}
+
+bool Operation::hasLocation() const {
+	return location != nullptr;
+}
+
+void Operation::setLocation(const nautilus::compiler::ir::FileLineLocation& loc) {
+	this->location = std::make_unique<FileLineLocation>(loc);
+}
+
 OperationIdentifier::OperationIdentifier(uint32_t ir) : id(ir) {
 }
 

@@ -35,6 +35,12 @@ private:
 	uint32_t id;
 };
 
+struct FileLineLocation {
+	std::string filename;
+	size_t line;
+	size_t column;
+};
+
 class Operation {
 public:
 	enum class OperationType : uint8_t {
@@ -68,8 +74,7 @@ public:
 		ShiftOp,
 	};
 
-	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,
-	                   const std::vector<Operation*>& inputs = {});
+	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type, const std::vector<Operation*>& inputs = {});
 
 	explicit Operation(OperationType opType, Type type, const std::vector<Operation*>& inputs = {});
 
@@ -80,21 +85,20 @@ public:
 	virtual std::string toString() = 0;
 
 	OperationType getOperationType() const;
-
-	// std::string getOperationTypeAsString() const;
 	const Type& getStamp() const;
-
 	bool isConstOperation() const;
-
 	std::vector<std::shared_ptr<Operation>> getInputs();
-
 	void replaceInput(Operation* toReplace, std::shared_ptr<Operation> replaceWith);
+	bool hasLocation() const;
+	const FileLineLocation& getLocation() const;
+	void setLocation(const FileLineLocation& location);
 
 protected:
 	const OperationType opType;
 	const OperationIdentifier identifier;
 	const Type stamp;
 	std::vector<Operation*> inputs;
+	std::unique_ptr<FileLineLocation> location;
 };
 
 template <typename T>
@@ -109,8 +113,7 @@ T* as(const std::unique_ptr<Operation>& op) {
 
 class BinaryOperation : public Operation {
 public:
-	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left,
-	                Operation* right);
+	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left, Operation* right);
 
 	Operation* getLeftInput();
 

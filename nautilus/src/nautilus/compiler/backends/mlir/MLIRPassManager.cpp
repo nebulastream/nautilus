@@ -8,6 +8,7 @@
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
+#include <mlir/Dialect/LLVMIR/Transforms/Passes.h>
 
 namespace nautilus::compiler::mlir {
 
@@ -49,7 +50,6 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 
 int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module, const std::vector<LoweringPass>& loweringPasses, const std::vector<OptimizationPass>& optimizationPasses) {
 	mlir::PassManager passManager(module->getContext());
-
 	// Apply optimization passes.
 	if (!optimizationPasses.empty()) {
 		for (auto optimizationPass : optimizationPasses) {
@@ -58,6 +58,10 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	} else {
 		passManager.addPass(mlir::createInlinerPass());
 	}
+	//StringRef fileName = "./temp.mlir";
+	//::mlir::OpPrintingFlags flags;
+	//flags.enableDebugInfo(true);
+	//passManager.addPass(mlir::createLocationSnapshotPass(flags, fileName));
 	// Apply lowering passes.
 	if (!loweringPasses.empty()) {
 		for (auto loweringPass : loweringPasses) {
@@ -67,7 +71,14 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 		passManager.addPass(mlir::createConvertSCFToCFPass());
 		passManager.addPass(mlir::createConvertFuncToLLVMPass());
 		passManager.addPass(mlir::createConvertControlFlowToLLVMPass());
+		passManager.addPass(mlir::createSetLLVMModuleDataLayoutPass());
+
+		//passManager.addPass(mlir::LLVM::createDIScopeForLLVMFuncOpPass());
+
 	}
+
+
+
 
 	// Run passes.
 	if (mlir::failed(passManager.run(*module))) {

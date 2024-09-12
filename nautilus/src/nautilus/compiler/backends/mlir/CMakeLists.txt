@@ -17,12 +17,14 @@ if (ENABLE_MLIR_BACKEND)
     message(STATUS "extension_libs: ${extension_libs}")
     target_link_libraries(nautilus
             PRIVATE
+
+            ${mlir_libs} ${dialect_libs}
+            ${conversion_libs}
+            MLIRReconcileUnrealizedCasts
+            MLIRMemRefToLLVM
             MLIRExecutionEngine
-            MLIRFuncAllExtensions
-            # Dialects
-            MLIRSCFDialect
-            MLIRFuncToLLVM
-            MLIRSCFToControlFlow
+            MLIRParser
+            MLIRAsmParser
     )
 
     add_source_files(nautilus

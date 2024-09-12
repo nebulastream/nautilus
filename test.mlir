@@ -1,0 +1,32 @@
+#loc = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_22-08-04_#26627F0/final_ir.ir":0:0)
+#loc4 = loc(unknown)
+#loc5 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":8:0)
+#loc8 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":12:0)
+module {
+  llvm.func @_ZN8nautilus6engine3addEii(i32, i32, ...) -> i32 loc(#loc)
+  func.func @execute(%arg0: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_22-08-04_#26627F0/final_ir.ir":0:0), %arg1: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_22-08-04_#26627F0/final_ir.ir":0:0)) -> (i32 {llvm.signext}) attributes {llvm.emit_c_interface} {
+    %c0_i32 = arith.constant 0 : i32 loc(#loc1)
+    %c0_i32_0 = arith.constant 0 : i32 loc(#loc2)
+    cf.br ^bb1(%c0_i32, %c0_i32_0, %arg0, %arg1 : i32, i32, i32, i32) loc(#loc3)
+  ^bb1(%0: i32 loc(unknown), %1: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":8:0), %2: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":8:0), %3: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":8:0)):  // 2 preds: ^bb0, ^bb2
+    %4 = arith.cmpi slt, %1, %2 : i32 loc(#loc6)
+    cf.cond_br %4, ^bb2(%2, %1, %0, %3 : i32, i32, i32, i32), ^bb3(%0 : i32) loc(#loc7)
+  ^bb2(%5: i32 loc(unknown), %6: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":12:0), %7: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":12:0), %8: i32 loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":12:0)):  // pred: ^bb1
+    %9 = llvm.call @_ZN8nautilus6engine3addEii(%7, %8) : (i32, i32) -> i32 loc(#loc9)
+    %c1_i32 = arith.constant 1 : i32 loc(#loc10)
+    %10 = llvm.add %6, %c1_i32  : i32 loc(#loc11)
+    cf.br ^bb1(%9, %10, %5, %8 : i32, i32, i32, i32) loc(#loc12)
+  ^bb3(%11: i32 loc(unknown)):  // pred: ^bb1
+    llvm.return %11 : i32 loc(#loc13)
+  } loc(#loc)
+} loc(#loc)
+#loc1 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":4:0)
+#loc2 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":5:0)
+#loc3 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":7:0)
+#loc6 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":9:0)
+#loc7 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":11:0)
+#loc9 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":13:0)
+#loc10 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":14:0)
+#loc11 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":15:0)
+#loc12 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":17:0)
+#loc13 = loc("/var/folders/jf/4514n07j3mz7nywrfrzqttym0000gp/T/dump/2024-09-01_23-18-46_#301D149/final_ir.ir":20:0)

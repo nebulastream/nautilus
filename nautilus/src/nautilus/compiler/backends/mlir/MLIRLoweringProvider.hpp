@@ -155,9 +155,9 @@ private:
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.
 	 * @param name: Name of the location. Used for debugging.
 	 */
-	::mlir::Location getNameLoc(const std::string& name);
+	::mlir::Location getLocationFromOperation(const ir::Operation* op);
 
-	/**
+	    /**
 	 * @brief Get MLIR Type from a basic  type.
 	 * @param type:  basic type.
 	 * @return mlir::Type: MLIR Type.

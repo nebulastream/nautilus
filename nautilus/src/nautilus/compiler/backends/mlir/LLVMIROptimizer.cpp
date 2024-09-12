@@ -27,7 +27,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// JITTargetMachineBuilder for the host");
 		auto targetMachine = tmBuilderOrError->createTargetMachine();
 		llvm::TargetMachine* targetMachinePtr = targetMachine->get();
-		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::None);
 
 		// Add target-specific attributes to the 'execute' function.
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
@@ -52,7 +52,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		handler.dump("llvm", "ll", [&]() {
 			std::string llvmIRString;
 			llvm::raw_string_ostream llvmStringStream(llvmIRString);
-			llvmIRModule->print(llvmStringStream, nullptr);
+			llvmIRModule->print(llvmStringStream, nullptr, false,true);
 			return llvmIRString;
 		});
 

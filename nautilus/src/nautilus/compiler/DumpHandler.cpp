@@ -31,12 +31,21 @@ void DumpHandler::dump(std::string_view dumpName, std::string_view extension, co
 	}
 }
 
+void DumpHandler::dump(std::string_view dumpName, std::string_view extension, const std::function<std::string(const std::string& path)>& dumpFunction) const {
+	if (shouldDump(dumpName) && dumpToFile()) {
+		auto filePath = rootPath / fmt::format("{}.{}", dumpName, extension);
+		auto content = dumpFunction(filePath.string());
+		common::File::createFile(filePath.string(), content);
+		fmt::println("{} -- {} -- file://{}", dumpName, id, filePath.native());
+	}
+}
+
 bool DumpHandler::shouldDump(std::string_view dumpName) const {
 	return options.getOptionOrDefault("dump.all", false) || options.getOptionOrDefault("dump." + std::string(dumpName), false);
 }
 
 bool DumpHandler::dumpToConsole() const {
-	return options.getOptionOrDefault("dump.console", false);
+	return options.getOptionOrDefault("dump.console", true);
 }
 
 bool DumpHandler::dumpToFile() const {

@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/mlir/JITCompiler.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include <mlir/Debug/ExecutionContext.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
@@ -18,14 +19,21 @@ std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(::mlir::O
 
 	// Convert the module to LLVM IR in a new LLVM IR context.
 	llvm::LLVMContext llvmContext;
+	llvmContext.enableDebugTypeODRUniquing();
 	auto llvmModule = ::mlir::translateModuleToLLVMIR(mlirModule->getOperation(), llvmContext);
 	if (!llvmModule) {
 		llvm::errs() << "Failed to emit LLVM IR\n";
 	}
+	llvmModule->convertToNewDbgValues();
+	llvmModule->debug_compile_units();
+
+
 
 	// Initialize information about the local machine in LLVM.
 	LLVMInitializeNativeTarget();
 	LLVMInitializeNativeAsmPrinter();
+	LLVMInitializeNativeDisassembler();
+	LLVMInitializeAllDisassemblers();
 
 	//(void) dumpHelper;
 	// if (compilerOptions.isDumpToConsole() || compilerOptions.isDumpToFile()) {
@@ -34,8 +42,10 @@ std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(::mlir::O
 
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
-	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::None;
 	options.transformer = optPipeline;
+	options.enableGDBNotificationListener = true;
+	//options.enableObjectDump = true;
 	auto maybeEngine = ::mlir::ExecutionEngine::create(*mlirModule, options);
 
 	assert(maybeEngine && "failed to construct an execution engine");
@@ -51,7 +61,9 @@ std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(::mlir::O
 		return symbolMap;
 	};
 	auto& engine = maybeEngine.get();
+
 	engine->registerSymbols(runtimeSymbolMap);
+
 	return std::move(engine);
 }
 } // namespace nautilus::compiler::mlir

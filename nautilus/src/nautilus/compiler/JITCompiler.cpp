@@ -2,6 +2,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
+#include "nautilus/compiler/ir/IRDumpHandler.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <chrono>
@@ -75,7 +76,17 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
-	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+	//dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+
+	dumpHandler.dump("final_ir", "ir", [&](const std::string& path) {
+		std::stringstream ss;
+		ss << "NautilusIR {\n";
+		auto irDumper = ir::IRDumpHandler::create(ss, path);
+		irDumper->dump(ir->getRootOperation());
+		ss << "}";
+		return ss.str();
+	});
+
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);

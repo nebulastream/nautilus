@@ -8,27 +8,30 @@
 namespace nautilus::compiler::ir {
 
 /**
- * @brief Converts query plans and pipeline plans to the .nesviz format and dumps them to a file.m
+ * @brief Generates a string representation of the IR object
  */
-class NESIRDumpHandler {
+class IRDumpHandler {
 
 public:
-	virtual ~NESIRDumpHandler();
+	virtual ~IRDumpHandler();
 
-	static std::shared_ptr<NESIRDumpHandler> create(std::ostream& out);
+	static std::shared_ptr<IRDumpHandler> create(std::ostream& out);
+	static std::shared_ptr<IRDumpHandler> create(std::ostream& out, const std::string& fileName);
 
-	explicit NESIRDumpHandler(std::ostream& out);
+	explicit IRDumpHandler(std::ostream& out, const std::string& fileName);
 
 	/**
 	 * @brief Dump the NESIR of the funcOp into the 'out' stringstream.
 	 * @param funcOp: FunctionOperation that exists on the top level of a NESIR module.
 	 */
-	void dump(const std::unique_ptr<FunctionOperation>& funcOp);
+	void dump(FunctionOperation* funcOp);
 
 private:
 	std::ostream& out;
-	std::unordered_set<std::string> visitedBlocks; // We keep track of visited blocks to avoid multi or infinite
-	                                               // dumping.
+	// We keep track of visited blocks to avoid multi or infinite dumping.
+	std::unordered_set<std::string> visitedBlocks;
+	size_t currentLine;
+	std::string fileName;
 
 	/**
 	 * @brief Traverses the NESIR to find a BB that is on the same or higher 'blockScopeLevel' compared to the initial
