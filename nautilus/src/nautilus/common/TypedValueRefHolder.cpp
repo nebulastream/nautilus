@@ -18,8 +18,11 @@ TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRef valueR
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;
-	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
-	refCounter++;
+	auto& varRef = tracing::getVarRefMap();
+	if (varRef.size() <= valueRef.ref) {
+		varRef.resize(valueRef.ref+1, 0);
+	}
+	varRef[valueRef.ref]++;
 #endif
 }
 
@@ -27,8 +30,11 @@ TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefH
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;
-	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
-	refCounter++;
+	auto& varRef = tracing::getVarRefMap();
+	if (varRef.size() <= valueRef.ref) {
+		varRef.resize(valueRef.ref+1, 0);
+	}
+	varRef[valueRef.ref]++;
 #endif
 }
 
@@ -36,15 +42,21 @@ TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefH
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;
-	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
-	refCounter++;
+	auto& varRef = tracing::getVarRefMap();
+	if (varRef.size() <= valueRef.ref) {
+		varRef.resize(valueRef.ref+1, 0);
+	}
+	varRef[valueRef.ref]++;
 #endif
 }
 
 TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::TypedValueRefHolder& other) {
 #ifdef ENABLE_TRACING
-	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
-	refCounter++;
+	auto& varRef = tracing::getVarRefMap();
+	if (varRef.size() <= valueRef.ref) {
+		varRef.resize(valueRef.ref+1, 0);
+	}
+	varRef[valueRef.ref]++;
 #endif
 	valueRef = other.valueRef;
 	return *this;
@@ -60,7 +72,11 @@ TypedValueRefHolder::~TypedValueRefHolder() {
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;
-	auto& refCounter = tracing::getVarRefMap()[valueRef.ref];
+	auto& varRef = tracing::getVarRefMap();
+	if (varRef.size() <= valueRef.ref) {
+		varRef.resize(valueRef.ref+1, 0);
+	}
+	auto& refCounter = varRef[valueRef.ref];
 	// the ref counter should always be greater than zero.
 	assert(refCounter > 0);
 	refCounter--;

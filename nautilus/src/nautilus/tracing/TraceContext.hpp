@@ -21,7 +21,7 @@ private:
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
 };
 
-using DynamicValueMap = std::array<uint8_t, 10240>;
+using DynamicValueMap = std::vector<uint8_t>;
 
 /**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
@@ -103,7 +103,8 @@ public:
 
 	void resume() {
 		staticVars.clear();
-		dynamicVars.fill(0);
+		dynamicVars.clear();
+		dynamicVars.reserve(255);
 	}
 
 	static TraceContext* initialize(TagRecorder& tagRecorder);
