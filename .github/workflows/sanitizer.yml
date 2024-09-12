@@ -7,10 +7,14 @@ on:
   pull_request:
     branches:
       - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-test:
     runs-on: ${{matrix.os}}
     name: Build on ${{ matrix.os }} with ${{ matrix.cc }} ${{ matrix.flags }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
