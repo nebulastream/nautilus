@@ -309,8 +309,8 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 }
 
 void TraceContext::allocateValRef(ValueRef ref) {
-	if (dynamicVars.size() <= ref) {
-		dynamicVars.resize(ref+1, 0);
+	while (dynamicVars.size() <= ref) {
+		dynamicVars.emplace_back(0);
 	}
 	dynamicVars.at(ref)++;
 }
@@ -319,7 +319,7 @@ void TraceContext::freeValRef(ValueRef ref) {
 	// the ref counter should always be greater than zero.
 	assert(refCounter > 0);
 	refCounter--;
-	while (!dynamicVars.empty() && dynamicVars.back() == 0){
+	while (!dynamicVars.empty() && dynamicVars.back() == 0) {
 		dynamicVars.pop_back();
 	}
 }
@@ -339,8 +339,6 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 uint64_t hashDynamicVector(const DynamicValueMap& data) {
 	size_t hash = offset_basis;
 	for (auto value : data) {
-		//if (value == 0)
-		//	continue;
 		hash ^= value;
 		hash *= fnv_prime;
 	}
