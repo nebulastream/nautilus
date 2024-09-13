@@ -89,7 +89,7 @@ void freeValRef(ValueRef ref) {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(void* fptn, const std::type_info&, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(mangledName);
 	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);

@@ -197,7 +197,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi,
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
+		                   << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
@@ -372,7 +373,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		argTypes << getType(arg->getStamp());
 	}
 	if (!functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto f_" << opt->getFunctionSymbol() << " = " << "(" << returnType << "(*)(" << argTypes.str() << "))" << opt->getFunctionPtr() << ";\n";
+		functions << "auto f_" << opt->getFunctionSymbol() << " = "
+		          << "(" << returnType << "(*)(" << argTypes.str() << "))" << opt->getFunctionPtr() << ";\n";
 		functionNames.emplace(opt->getFunctionSymbol());
 	}
 	if (opt->getStamp() != Type::v) {
