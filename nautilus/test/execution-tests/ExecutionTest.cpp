@@ -969,9 +969,6 @@ TEST_CASE("Engine Compiler Test") {
 		DYNAMIC_SECTION(backend) {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
-			options.setOption("dump.after_ir_creation", true);
-			options.setOption("dump.llvm", true);
-			options.setOption("dump.console", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}
