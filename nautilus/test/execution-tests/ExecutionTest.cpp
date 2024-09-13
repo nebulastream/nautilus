@@ -553,7 +553,7 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	SECTION("twoDistinctFunctionCalls") {
 		auto f = engine.registerFunction(callTwoFunctions);
 		REQUIRE(f(10, 10) == 20); // 10 + 10 + (10 - 10)
-		REQUIRE(f(0, 1) == 0); // (0 + 1) + (0 - 1)
+		REQUIRE(f(0, 1) == 0);    // (0 + 1) + (0 - 1)
 	}
 
 	SECTION("loopDirectCall") {
@@ -969,6 +969,9 @@ TEST_CASE("Engine Compiler Test") {
 		DYNAMIC_SECTION(backend) {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
+			options.setOption("dump.after_ir_creation", true);
+			options.setOption("dump.llvm", true);
+			options.setOption("dump.console", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}

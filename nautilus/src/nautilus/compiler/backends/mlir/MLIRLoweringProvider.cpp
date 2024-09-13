@@ -402,12 +402,7 @@ void MLIRLoweringProvider::generateMLIR(ir::FunctionOperation* functionOp, Value
 	}
 
 	// Generate MLIR for operations in function body (BasicBlock).
-	generateMLIR(functionOp->
-
-	             getFunctionBasicBlock(),
-	             frame
-
-	);
+	generateMLIR(functionOp->getFunctionBasicBlock(), frame);
 
 	theModule.push_back(mlirFunction);
 }
