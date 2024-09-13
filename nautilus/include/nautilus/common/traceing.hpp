@@ -131,7 +131,7 @@ void traceValueDestruction(value_ref ref);
 
 value_ref traceCast(value_ref state, Type resultType);
 
-value_ref traceCall(void* fptn, const std::type_info& ti, Type resultType, const std::vector<tracing::value_ref>& arguments);
+value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments);
 
 std::ostream& operator<<(std::ostream& os, const Op& operation);
 
