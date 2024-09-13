@@ -9,8 +9,6 @@
 #include <sstream>
 namespace nautilus::tracing {
 
-std::array<const char*, 4> lookup = {{"The demangling operation succeeded", "A memory allocation failure occurred", "mangled_name is not a valid name under the C++ ABI mangling rules", "One of the arguments is invalid"}};
-
 std::string getMangledName(void* fnptr) {
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
