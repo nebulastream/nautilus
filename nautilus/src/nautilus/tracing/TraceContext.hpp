@@ -97,11 +97,7 @@ public:
 
 	~TraceContext() = default;
 
-	void resume() {
-		staticVars.clear();
-		dynamicVars.clear();
-		dynamicVars.resize(0,0);
-	}
+	void resume();
 
 	static TraceContext* initialize(TagRecorder& tagRecorder);
 
