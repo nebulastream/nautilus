@@ -15,7 +15,14 @@ TraceContext* TraceContext::get() {
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder) {
 	traceContext = new TraceContext(tagRecorder);
+	traceContext->dynamicVars.reserve(128);
 	return traceContext;
+}
+
+void TraceContext::resume() {
+	staticVars.clear();
+	dynamicVars.clear();
+	traceContext->dynamicVars.reserve(128);
 }
 
 void TraceContext::terminate() {
@@ -145,7 +152,6 @@ value_ref TraceContext::traceCall(const std::string& functionName, const std::st
 		});
 		auto op = Op::CALL;
 		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {functionArguments});
-		//  executionTrace->variableBitset[resultRef] = true;
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -207,7 +213,6 @@ void TraceContext::traceReturnOperation(Type type, value_ref ref) {
 	}
 	auto tag = recordSnapshot();
 	executionTrace->addReturn(tag, type, ref);
-	return;
 }
 
 value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType, nautilus::tracing::value_ref& inputRef) {
@@ -288,7 +293,6 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 			traceIteration = traceIteration + 1;
 			log::trace("Trace Iteration {}", traceIteration);
 			log::trace("{}", tc->executionTrace->toString());
-
 			tc->symbolicExecutionContext->next();
 			tc->executionTrace->resetExecution();
 			TraceContext::get()->resume();
@@ -307,8 +311,20 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 	return staticVars;
 }
 
-DynamicValueMap& TraceContext::getDynamicVars() {
-	return dynamicVars;
+void TraceContext::allocateValRef(ValueRef ref) {
+	while (dynamicVars.size() <= ref) {
+		dynamicVars.emplace_back(0);
+	}
+	dynamicVars.at(ref)++;
+}
+void TraceContext::freeValRef(ValueRef ref) {
+	auto& refCounter = dynamicVars.at(ref);
+	// the ref counter should always be greater than zero.
+	assert(refCounter > 0);
+	refCounter--;
+	while (!dynamicVars.empty() && dynamicVars.back() == 0) {
+		dynamicVars.pop_back();
+	}
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;
@@ -325,7 +341,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 uint64_t hashDynamicVector(const DynamicValueMap& data) {
 	size_t hash = offset_basis;
-	for (auto& value : data) {
+	for (auto value : data) {
 		hash ^= value;
 		hash *= fnv_prime;
 	}

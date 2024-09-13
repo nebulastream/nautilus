@@ -71,8 +71,11 @@ value_ref traceConstant(Type type, std::any&& value) {
 	return TraceContext::get()->traceCast(state, resultType);
 }
 
-DynamicValueMap& getVarRefMap() {
-	return TraceContext::get()->getDynamicVars();
+void allocateValRef(ValueRef ref) {
+	TraceContext::get()->allocateValRef(ref);
+}
+void freeValRef(ValueRef ref) {
+	TraceContext::get()->freeValRef(ref);
 }
 
 [[maybe_unused]] value_ref traceCopy(value_ref state) {
