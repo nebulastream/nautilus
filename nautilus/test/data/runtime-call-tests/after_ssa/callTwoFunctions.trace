@@ -1,0 +1,5 @@
+B0($1:i32,$2:i32)
+	CALL	$3	nautilus::engine::add(int, int)($1,$2)	:i32	
+	CALL	$4	nautilus::engine::sub(int, int)($1,$2)	:i32	
+	ADD	$5	$3	$4	:i32	
+	RETURN	$5	:i32	
