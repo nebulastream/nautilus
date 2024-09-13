@@ -60,8 +60,16 @@ int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
 
+int32_t sub(int32_t x, int32_t y) {
+	return x - y;
+}
+
 val<int32_t> simpleDirectCall(val<int32_t> x, val<int32_t> y) {
 	return invoke<>(add, x, y);
+}
+
+val<int32_t> callTwoFunctions(val<int32_t> x, val<int32_t> y) {
+	return invoke<>(add, x, y) + invoke<>(sub, x, y);
 }
 
 val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
