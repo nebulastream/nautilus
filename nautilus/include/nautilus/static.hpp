@@ -144,12 +144,11 @@ public:
 	}
 
 	bool operator==(const static_iterator& other) {
-		val = val + 1;
 		return m_iterator == other.m_iterator;
 	}
 
 	bool operator!=(const static_iterator& other) const {
-		return *this != other;
+		return m_iterator != other.m_iterator;
 	}
 
 private:
