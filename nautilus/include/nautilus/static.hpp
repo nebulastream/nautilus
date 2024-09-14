@@ -149,7 +149,7 @@ public:
 	}
 
 	bool operator!=(const static_iterator& other) const {
-		return !(*this == other);
+		return *this != other;
 	}
 
 private:
