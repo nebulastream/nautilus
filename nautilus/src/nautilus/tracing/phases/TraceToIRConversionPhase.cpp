@@ -1,6 +1,5 @@
 
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
@@ -17,6 +16,7 @@
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include <cstdint>
 #include <vector>
 
