@@ -143,10 +143,14 @@ public:
 		return tmp;
 	}
 
-	bool operator==(const static_iterator& other) {
-		return m_iterator == other.m_iterator;
+	// Define comparison operators as friends to control their argument order
+	friend bool operator==(const static_iterator& lhs, const static_iterator& rhs) {
+		return lhs.m_iterator == rhs.m_iterator;
 	}
 
+	friend bool operator!=(const static_iterator& lhs, const static_iterator& rhs) {
+		return lhs.m_iterator != rhs.m_iterator;
+	}
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
