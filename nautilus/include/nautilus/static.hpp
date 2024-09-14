@@ -91,6 +91,10 @@ public:
 		return value == other;
 	}
 
+	bool operator!=(const T& other) const {
+		return value != other;
+	}
+
 	bool operator>(const T& other) const {
 		return value > other;
 	}
