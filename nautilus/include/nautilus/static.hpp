@@ -16,11 +16,11 @@ public:
 
 	static_val() {
 		tracing::pushStaticVal(&value);
-	};
+	}
 
 	static_val(T v) : value(v) {
 		tracing::pushStaticVal((void*) &value);
-	};
+	}
 
 	static_val(const static_val& other) : static_val((T) other) {
 	}
@@ -91,6 +91,10 @@ public:
 		return value == other;
 	}
 
+	bool operator!=(const T& other) const {
+		return value != other;
+	}
+
 	bool operator>(const T& other) const {
 		return value > other;
 	}
@@ -139,15 +143,14 @@ public:
 		return tmp;
 	}
 
-	bool operator==(const static_iterator& other) {
-		val = val + 1;
-		return m_iterator == other.m_iterator;
+	// Define comparison operators as friends to control their argument order
+	friend bool operator==(const static_iterator& lhs, const static_iterator& rhs) {
+		return lhs.m_iterator == rhs.m_iterator;
 	}
 
-	bool operator!=(const static_iterator& other) const {
-		return !(*this == other);
+	friend bool operator!=(const static_iterator& lhs, const static_iterator& rhs) {
+		return lhs.m_iterator != rhs.m_iterator;
 	}
-
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;

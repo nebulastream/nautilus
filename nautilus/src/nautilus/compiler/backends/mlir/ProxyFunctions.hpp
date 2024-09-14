@@ -12,7 +12,7 @@ class ProxyFunctions {
 public:
 	ProxyFunctions() {
 		functionNameToAddressMap.emplace(std::pair {"printValueFromMLIR", (void*) &printValueFromMLIR});
-	};
+	}
 	~ProxyFunctions() = default;
 	void* getProxyFunctionAddress(std::string name) {
 		return functionNameToAddressMap[name];

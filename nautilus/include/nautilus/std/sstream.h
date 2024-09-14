@@ -48,7 +48,7 @@ public:
 		    },
 		    this->stream);
 		return val<std::basic_string<CharT, Traits>>(str_ptr);
-	};
+	}
 
 	~val() {
 		invoke(

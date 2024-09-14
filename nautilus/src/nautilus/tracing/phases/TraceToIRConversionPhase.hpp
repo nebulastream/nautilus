@@ -45,7 +45,7 @@ private:
 	 */
 	class IRConversionContext {
 	public:
-		IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {};
+		IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {}
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
 

@@ -38,9 +38,9 @@ public:
 	public:
 		using FunctionType = R(Args...);
 
-		explicit Invocable(void* fptr) : function(reinterpret_cast<FunctionType*>(fptr)) {};
+		explicit Invocable(void* fptr) : function(reinterpret_cast<FunctionType*>(fptr)) {}
 
-		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : function(std::move(generic)) {};
+		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : function(std::move(generic)) {}
 
 		template <typename T>
 		    requires(std::is_fundamental_v<T> || std::is_fundamental_v<std::remove_cvref_t<T>>)
@@ -132,7 +132,7 @@ public:
 	 */
 	virtual std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string&) {
 		return nullptr;
-	};
+	}
 };
 
 } // namespace nautilus::compiler

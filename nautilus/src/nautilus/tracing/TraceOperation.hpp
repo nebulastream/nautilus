@@ -45,11 +45,7 @@ public:
 
 	TraceOperation(Op op, std::vector<InputVariant>&& input);
 
-	TraceOperation(const TraceOperation& other) = default;
-
 	friend std::ostream& operator<<(std::ostream& os, const TraceOperation& operation);
-
-	~TraceOperation() = default;
 
 	Snapshot tag;
 	Op op;

@@ -166,7 +166,7 @@ class WrapperType {
 public:
 	val<int32_t> add() {
 		return a.getX() + b.getX();
-	};
+	}
 	val<CustomStruct2*> a;
 	val<CustomStruct2*> b;
 };
