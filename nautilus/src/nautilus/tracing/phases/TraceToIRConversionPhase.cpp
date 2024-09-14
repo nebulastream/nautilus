@@ -1,6 +1,6 @@
 
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"

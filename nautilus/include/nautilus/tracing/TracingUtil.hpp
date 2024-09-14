@@ -12,8 +12,6 @@
 
 namespace nautilus::tracing {
 
-std::string getFunctionName(void* fnptr);
-
 enum Op : uint8_t {
 	JMP,
 	CMP,
@@ -93,13 +91,7 @@ constexpr Type to_type() {
 
 [[maybe_unused, nodiscard]] bool inTracer();
 
-[[maybe_unused]] value_ref traceBinaryOp(Op operation, Type resultType, value_ref leftState, value_ref rightState);
-
-template <Op op, typename T>
-[[maybe_unused]] value_ref traceBinaryOp(value_ref leftState, value_ref rightState) {
-	auto type = to_type<T>();
-	return traceBinaryOp(op, type, leftState, rightState);
-}
+value_ref traceBinaryOp(Op operation, Type resultType, value_ref leftState, value_ref rightState);
 
 template <Op op, typename T>
 [[maybe_unused]] value_ref traceUnaryOp(value_ref inputState);

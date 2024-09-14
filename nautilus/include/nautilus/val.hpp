@@ -7,7 +7,7 @@
 
 #ifdef ENABLE_TRACING
 
-#include "common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 
 #endif
 
@@ -248,7 +248,7 @@ namespace details {
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                                                                                                                                                 \
 		using resultType = decltype(getRawValue(lValue) OP getRawValue(rValue));                                                                                                                                                               \
 		if SHOULD_TRACE () {                                                                                                                                                                                                                   \
-			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, resultType>(details::getState(lValue), details::getState(rValue));                                                                                                             \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::to_type<resultType>(), details::getState(lValue), details::getState(rValue));                                                                                         \
 			return RES_TYPE(tc);                                                                                                                                                                                                               \
 		}                                                                                                                                                                                                                                      \
 		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                                                                                                                                           \
@@ -431,7 +431,7 @@ namespace details {
 val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp<tracing::OR, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::OR,  tracing::to_type<bool>(), left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
@@ -441,7 +441,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp<tracing::AND, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::AND, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif

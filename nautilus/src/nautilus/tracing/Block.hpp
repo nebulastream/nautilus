@@ -2,7 +2,7 @@
 #pragma once
 
 #include "TraceOperation.hpp"
-#include "nautilus/common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
 #include <ostream>
 #include <vector>

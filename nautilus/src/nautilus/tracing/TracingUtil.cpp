@@ -1,6 +1,6 @@
 
 #include "TraceContext.hpp"
-#include "nautilus/common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/logging.hpp"
 #include <cxxabi.h>
 #include <dlfcn.h>
@@ -105,34 +105,6 @@ template <Op op, typename T>
 	return TraceContext::get()->traceUnaryOperation(op, type, leftState);
 }
 
-#if __APPLE__
-#define INSTANTIATE_TRACE_FUNC(OP)                                                                                                                                                                                                             \
-	template value_ref traceBinaryOp<OP, int8_t>(value_ref leftState, value_ref rightState);                                                                                                                                                   \
-	template value_ref traceBinaryOp<OP, int16_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, int32_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, int64_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, uint8_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, uint16_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, uint32_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, uint64_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, float>(value_ref leftState, value_ref rightState);                                                                                                                                                    \
-	template value_ref traceBinaryOp<OP, double>(value_ref leftState, value_ref rightState);                                                                                                                                                   \
-	template value_ref traceBinaryOp<OP, size_t>(value_ref leftState, value_ref rightState);
-
-#else
-#define INSTANTIATE_TRACE_FUNC(OP)                                                                                                                                                                                                             \
-	template value_ref traceBinaryOp<OP, int8_t>(value_ref leftState, value_ref rightState);                                                                                                                                                   \
-	template value_ref traceBinaryOp<OP, int16_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, int32_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, int64_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, uint8_t>(value_ref leftState, value_ref rightState);                                                                                                                                                  \
-	template value_ref traceBinaryOp<OP, uint16_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, uint32_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, uint64_t>(value_ref leftState, value_ref rightState);                                                                                                                                                 \
-	template value_ref traceBinaryOp<OP, float>(value_ref leftState, value_ref rightState);                                                                                                                                                    \
-	template value_ref traceBinaryOp<OP, double>(value_ref leftState, value_ref rightState);
-#endif
-
 #define INSTANTIATE_TRACE_UN_FUNC(OP)                                                                                                                                                                                                          \
 	template value_ref traceUnaryOp<OP, int8_t>(value_ref leftState);                                                                                                                                                                          \
 	template value_ref traceUnaryOp<OP, int16_t>(value_ref leftState);                                                                                                                                                                         \
@@ -146,90 +118,6 @@ template <Op op, typename T>
 	template value_ref traceUnaryOp<OP, double>(value_ref leftState);
 
 template value_ref traceUnaryOp<NOT, bool>(value_ref leftState);
-
-template value_ref traceBinaryOp<EQ, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<LT, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<LTE, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<GT, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<GTE, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<NEQ, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<AND, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<OR, bool>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, const char*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, int8_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, int16_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, int32_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, int64_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, uint8_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, uint16_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, uint32_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<ADD, uint64_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, int8_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, int16_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, int32_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, int64_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, uint8_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, uint16_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, uint32_t*>(value_ref leftState, value_ref rightState);
-
-template value_ref traceBinaryOp<SUB, uint64_t*>(value_ref leftState, value_ref rightState);
-
-INSTANTIATE_TRACE_FUNC(EQ)
-
-INSTANTIATE_TRACE_FUNC(NEQ)
-
-INSTANTIATE_TRACE_FUNC(LT)
-
-INSTANTIATE_TRACE_FUNC(LTE)
-
-INSTANTIATE_TRACE_FUNC(GT)
-
-INSTANTIATE_TRACE_FUNC(GTE)
-
-INSTANTIATE_TRACE_FUNC(AND)
-
-INSTANTIATE_TRACE_FUNC(OR)
-
-INSTANTIATE_TRACE_FUNC(ADD)
-
-INSTANTIATE_TRACE_FUNC(SUB)
-
-INSTANTIATE_TRACE_FUNC(DIV)
-
-INSTANTIATE_TRACE_FUNC(MUL)
-
-INSTANTIATE_TRACE_FUNC(MOD)
-
-INSTANTIATE_TRACE_FUNC(LSH)
-
-INSTANTIATE_TRACE_FUNC(RSH)
-
-INSTANTIATE_TRACE_FUNC(BOR)
-
-INSTANTIATE_TRACE_FUNC(BAND)
 
 INSTANTIATE_TRACE_UN_FUNC(NOT)
 

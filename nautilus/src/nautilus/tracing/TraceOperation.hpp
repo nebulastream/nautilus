@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "nautilus/common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
