@@ -147,10 +147,6 @@ public:
 		return m_iterator == other.m_iterator;
 	}
 
-	bool operator!=(const static_iterator& other) const {
-		return m_iterator != other.m_iterator;
-	}
-
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
