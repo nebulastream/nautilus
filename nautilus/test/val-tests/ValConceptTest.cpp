@@ -6,6 +6,15 @@
 
 namespace nautilus {
 
+template <typename LHS, typename RHS>
+bool defineOperator() {
+	if constexpr (requires(LHS l, RHS r) { l & r; }) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 TEMPLATE_TEST_CASE("Val Concept Test", "[value][template]", int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, size_t, float, double) {
 	SECTION("convertible_to_fundamental") {
 		REQUIRE(convertible_to_fundamental<TestType>);
@@ -47,6 +56,15 @@ TEMPLATE_TEST_CASE("Val Concept Test", "[value][template]", int8_t, int16_t, int
 	SECTION("is_val_type") {
 		REQUIRE(!is_val_type<TestType>);
 		REQUIRE(is_val_type<val<TestType>>);
+	}
+	SECTION("checkOpDefine") {
+		REQUIRE(defineOperator<val<int>, val<int>>());
+		REQUIRE(defineOperator<val<int>&, val<int>>());
+		REQUIRE(defineOperator<val<int>&, val<int>&>());
+		REQUIRE(defineOperator<val<int>&, val<int>&>());
+		REQUIRE(defineOperator<val<int>&, int&>());
+		REQUIRE(defineOperator<val<int>&, int&>());
+		REQUIRE(!defineOperator<val<float>, val<float>>());
 	}
 }
 } // namespace nautilus

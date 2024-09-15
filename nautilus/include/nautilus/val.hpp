@@ -17,60 +17,9 @@ namespace details {
 template <typename LHS>
 LHS getRawValue(const val<LHS>& val);
 
-#define COMMON_RETURN_TYPE val<typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type>
+#define COMMON_RETURN_TYPE val<typename std::common_type<typename std::remove_cvref_t<LHS>::basic_type, typename std::remove_cvref_t<RHS>::basic_type>::type>
 
 #define INFERED_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
-
-template <typename LHS, typename RHS>
-COMMON_RETURN_TYPE add(LHS& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE sub(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE div(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE mod(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-val<bool> eq(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-val<bool> lt(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-val<bool> gt(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-val<bool> lte(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-val<bool> gte(val<LHS>& left, val<RHS>& right);
-
-val<bool> lAnd(val<bool>& left, val<bool>& right);
-
-val<bool> lOr(val<bool>& left, val<bool>& right);
-
-val<bool> lNot(val<bool>& val);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE bAnd(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE bOr(val<LHS>& left, val<RHS>& right);
-
-template <is_fundamental LHS, is_fundamental RHS>
-COMMON_RETURN_TYPE bXOr(val<LHS>& left, val<RHS>& right);
-
-template <is_integral LHS, is_integral RHS>
-auto shl(val<LHS>& left, val<RHS>& right);
-
-template <is_integral LHS, is_integral RHS>
-auto shr(val<LHS>& left, val<RHS>& right);
 
 template <is_fundamental LHS>
 val<LHS> neg(val<LHS>& val);
@@ -175,60 +124,6 @@ public:
 private:
 	friend ValueType details::getRawValue<ValueType>(const val<ValueType>& left);
 	ValueType value;
-
-	template <is_arithmetic LHS, is_arithmetic RHS>
-	friend COMMON_RETURN_TYPE mul(val<LHS>& left, val<RHS>& right);
-
-	template <is_arithmetic LHS, is_arithmetic RHS>
-	friend COMMON_RETURN_TYPE details::add(val<LHS>& left, val<RHS>& right);
-
-	template <is_arithmetic LHS, is_arithmetic RHS>
-	friend COMMON_RETURN_TYPE details::sub(val<LHS>& left, val<RHS>& right);
-
-	template <is_arithmetic LHS, is_arithmetic RHS>
-	friend COMMON_RETURN_TYPE details::div(val<LHS>& left, val<RHS>& right);
-
-	template <is_arithmetic LHS, is_arithmetic RHS>
-	friend COMMON_RETURN_TYPE details::mod(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend val<bool> details::eq(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend val<bool> details::lt(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend val<bool> details::gt(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend val<bool> details::lte(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend val<bool> details::gte(val<LHS>& left, val<RHS>& right);
-
-	friend val<bool> details::lAnd(val<bool>& left, val<bool>& right);
-
-	friend val<bool> details::lOr(val<bool>& left, val<bool>& right);
-
-	friend val<bool> details::lNot(val<bool>& val);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend COMMON_RETURN_TYPE details::bAnd(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend COMMON_RETURN_TYPE details::bOr(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS, is_fundamental RHS>
-	friend COMMON_RETURN_TYPE details::bXOr(val<LHS>& left, val<RHS>& right);
-
-	template <is_integral LHS, is_integral RHS>
-	friend auto details::shl(val<LHS>& left, val<RHS>& right);
-
-	template <is_integral LHS, is_integral RHS>
-	friend auto details::shr(val<LHS>& left, val<RHS>& right);
-
-	template <is_fundamental LHS>
-	friend auto details::neg(val<LHS>& val);
 };
 
 template <>
@@ -243,21 +138,30 @@ public:
 
 #ifdef ENABLE_TRACING
 
-	val() : state(tracing::traceConstant(0)), value(false) {}
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {}
+	val() : state(tracing::traceConstant(0)), value(false) {
+	}
+	val(bool value) : state(tracing::traceConstant(value)), value(value) {
+	}
 	// copy constructor
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {}
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	}
 	// move constructor
-	val(const val<bool>&& other) : state(other.state), value(other.value) {}
-	val(tracing::value_ref& tc) : state(tc) {}
+	val(const val<bool>&& other) : state(other.state), value(other.value) {
+	}
+	val(tracing::value_ref& tc) : state(tc) {
+	}
 
 #else
-	val() {}
-	val(bool value) : value(value) {}
+	val() {
+	}
+	val(bool value) : value(value) {
+	}
 	// copy constructor
-	val(const val<bool>& other) : value(other.value) {}
+	val(const val<bool>& other) : value(other.value) {
+	}
 	// move constructor
-	val(const val<bool>&& other) : value(other.value) {}
+	val(const val<bool>&& other) : value(other.value) {
+	}
 #endif
 
 	val<bool>& operator=(const val<bool>& other) {
@@ -307,7 +211,7 @@ auto inline make_value(const Type& value) {
 
 template <typename LeftType, is_fundamental RightType>
 auto inline cast_value(LeftType&& value) {
-	typedef typename LeftType::basic_type basic_type;
+	typedef typename std::remove_reference_t<LeftType>::basic_type basic_type;
 	typedef typename std::common_type<basic_type, RightType>::type commonType;
 	if constexpr (std::is_same_v<basic_type, RightType>) {
 		return std::forward<LeftType>(value);
@@ -341,10 +245,10 @@ namespace details {
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                                                                                                                                         \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                                                                                                                                             \
-		typedef typename std::common_type<typename LHS::basic_type, typename RHS::basic_type>::type commonType;                                                                                                                                \
+		typedef typename std::common_type<typename std::remove_reference_t<LHS>::basic_type, typename std::remove_reference_t<RHS>::basic_type>::type commonType;                                                                              \
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                                                                                                                                                  \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                                                                                                                                                 \
-		using resultType = decltype(getRawValue(lValue) OP getRawValue(rValue));                                                                                                                                                                  \
+		using resultType = decltype(getRawValue(lValue) OP getRawValue(rValue));                                                                                                                                                               \
 		if SHOULD_TRACE () {                                                                                                                                                                                                                   \
 			auto tc = tracing::traceBinaryOp<tracing::OP_TRACE, resultType>(details::getState(lValue), details::getState(rValue));                                                                                                             \
 			return RES_TYPE(tc);                                                                                                                                                                                                               \
@@ -400,16 +304,25 @@ LHS inline getRawValue(const val<LHS>& val) {
 	return val.value;
 }
 
-
 } // namespace details
 
-#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON, CONV_TO)                                                                                                                                                                                         \
+#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON_VAL, CON_VALUE)                                                                                                                                                                                   \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
-	    requires(CON<LHS> && (CON<RHS> || CONV_TO<RHS>) ) || ((CON<LHS> || CONV_TO<LHS>) && CON<RHS>)                                                                                                                                          \
+	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                                                                                                                                                 \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
-		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
-		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                                                                                                                                                \
+		return details::FUNC(std::forward<LHS>(left), std::forward<RHS>(right));                                                                                                                                                               \
+	}                                                                                                                                                                                                                                          \
+                                                                                                                                                                                                                                               \
+	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
+	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                                                                                                                                               \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
+		return details::FUNC(std::forward<LHS>(left), make_value(std::forward<RHS>(right)));                                                                                                                                                   \
+	}                                                                                                                                                                                                                                          \
+                                                                                                                                                                                                                                               \
+	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
+	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                                                                                                                                               \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
+		return details::FUNC(make_value(std::forward<LHS>(left)), std::forward<RHS>(right));                                                                                                                                                   \
 	}
 
 DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
@@ -432,17 +345,17 @@ DEFINE_BINARY_OPERATOR(>=, gte, is_fundamental_val, convertible_to_fundamental)
 
 DEFINE_BINARY_OPERATOR(<, lt, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, is_fundamental_convertable)
 
-DEFINE_BINARY_OPERATOR(>>, shr, is_integral_val, convertible_to_integral)
+DEFINE_BINARY_OPERATOR(>>, shr, is_integral_val, is_integral)
 
-DEFINE_BINARY_OPERATOR(<<, shl, is_integral_val, convertible_to_integral)
+DEFINE_BINARY_OPERATOR(<<, shl, is_integral_val, is_integral)
 
-DEFINE_BINARY_OPERATOR(|, bOr, is_integral_val, convertible_to_integral)
+DEFINE_BINARY_OPERATOR(|, bOr, is_integral_val, is_integral)
 
-DEFINE_BINARY_OPERATOR(&, bAnd, is_integral_val, convertible_to_integral)
+DEFINE_BINARY_OPERATOR(&, bAnd, is_integral_val, is_integral)
 
-DEFINE_BINARY_OPERATOR(^, bXOr, is_integral_val, convertible_to_integral)
+DEFINE_BINARY_OPERATOR(^, bXOr, is_integral_val, is_integral)
 
 template <typename LHS>
 auto inline operator~(LHS left) {
