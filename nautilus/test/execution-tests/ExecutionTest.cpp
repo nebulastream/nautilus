@@ -84,7 +84,6 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((char) 1) == (char) -2);
 		REQUIRE(f((char) CHAR_MAX) == (char) CHAR_MIN);
 		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
-
 	}
 
 	SECTION("callEnumFunction") {
