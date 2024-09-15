@@ -549,6 +549,13 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(10, 10) == 20);
 		REQUIRE(f(0, 1) == 1);
 	}
+
+	SECTION("twoDistinctFunctionCalls") {
+		auto f = engine.registerFunction(callTwoFunctions);
+		REQUIRE(f(10, 10) == 20); // 10 + 10 + (10 - 10)
+		REQUIRE(f(0, 1) == 0);    // (0 + 1) + (0 - 1)
+	}
+
 	SECTION("loopDirectCall") {
 		auto f = engine.registerFunction(loopDirectCall);
 		REQUIRE(f(10, 10) == 100);

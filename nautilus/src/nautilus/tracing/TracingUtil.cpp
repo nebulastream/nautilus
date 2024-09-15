@@ -9,15 +9,15 @@
 #include <sstream>
 namespace nautilus::tracing {
 
-std::array<const char*, 4> lookup = {{"The demangling operation succeeded", "A memory allocation failure occurred", "mangled_name is not a valid name under the C++ ABI mangling rules", "One of the arguments is invalid"}};
-
-std::string getMangledName(void* fnptr, const std::type_info& ti) {
+std::string getMangledName(void* fnptr) {
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
 	if (info.dli_sname != nullptr) {
 		return info.dli_sname;
 	}
-	return ti.name();
+	std::stringstream ss;
+	ss << fnptr;
+	return ss.str();
 }
 
 std::string getFunctionName(const std::string& mangledName) {
@@ -89,8 +89,8 @@ void freeValRef(ValueRef ref) {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(void* fptn, const std::type_info& ti, Type resultType, const std::vector<tracing::value_ref>& arguments) {
-	auto mangledName = getMangledName(fptn, ti);
+value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(mangledName);
 	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
 }
