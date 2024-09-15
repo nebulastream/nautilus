@@ -19,10 +19,7 @@ LHS getRawValue(const val<LHS>& val);
 
 #define COMMON_RETURN_TYPE val<typename std::common_type<typename std::remove_cvref_t<LHS>::basic_type, typename std::remove_cvref_t<RHS>::basic_type>::type>
 
-#define INFERED_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
-
-template <is_fundamental LHS>
-val<LHS> neg(val<LHS>& val);
+#define DEDUCT_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
 
 template <typename T>
 tracing::value_ref getState(T&& value) {
@@ -165,7 +162,6 @@ public:
 #endif
 
 	val<bool>& operator=(const val<bool>& other) {
-
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
 			tracing::traceAssignment(state, other.state, tracing::to_type<bool>());
@@ -186,6 +182,8 @@ public:
 		return value;
 	}
 
+private:
+	friend bool details::getRawValue<bool>(const val<bool>& left);
 	bool value;
 };
 
@@ -278,9 +276,9 @@ DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, val<bool>)
 
 DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, val<bool>)
 
-DEFINE_BINARY_OPERATOR_HELPER(>>, shr, RSH, INFERED_RETURN_TYPE(>>))
+DEFINE_BINARY_OPERATOR_HELPER(>>, shr, RSH, DEDUCT_RETURN_TYPE(>>))
 
-DEFINE_BINARY_OPERATOR_HELPER(<<, shl, LSH, INFERED_RETURN_TYPE(<<))
+DEFINE_BINARY_OPERATOR_HELPER(<<, shl, LSH, DEDUCT_RETURN_TYPE(<<))
 
 DEFINE_BINARY_OPERATOR_HELPER(&, bAnd, BAND, COMMON_RETURN_TYPE)
 
@@ -288,7 +286,7 @@ DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
 
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 
-template <is_fundamental LHS>
+template <is_integral LHS>
 val<LHS> neg(val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -435,7 +433,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 		return val<bool> {tc};
 	}
 #endif
-	return left.value || right.value;
+	return getRawValue(left) || getRawValue(right);
 }
 
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
@@ -445,7 +443,7 @@ val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 		return val<bool> {tc};
 	}
 #endif
-	return left.value && right.value;
+	return getRawValue(left) && getRawValue(right);
 }
 
 val<bool> inline lNot(val<bool>& arg) {
@@ -455,7 +453,7 @@ val<bool> inline lNot(val<bool>& arg) {
 		return val<bool> {tc};
 	}
 #endif
-	return !arg.value;
+	return !getRawValue(arg);
 }
 } // namespace details
 
