@@ -10,20 +10,24 @@ namespace nautilus {
 #define SHOULD_TRACE() constexpr(false)
 #endif
 
-
 template <typename T>
 class val;
 
 template <typename T>
-concept convertible_to_fundamental = (std::is_convertible_v<T, int> || std::is_convertible_v<T, double> || std::is_convertible_v<T, char> || std::is_convertible_v<T, bool> || std::is_convertible_v<T, float> ||
-                                      std::is_convertible_v<T, long> || std::is_convertible_v<T, short> || std::is_convertible_v<T, unsigned long> || std::is_convertible_v<T, unsigned int> || std::is_convertible_v<T, unsigned short> ||
-                                      std::is_convertible_v<T, long long> || std::is_convertible_v<T, unsigned long long>);
+concept convertible_to_integral = (std::is_convertible_v<T, int> || std::is_convertible_v<T, char> || std::is_convertible_v<T, long> || std::is_convertible_v<T, short> || std::is_convertible_v<T, unsigned long> ||
+                                   std::is_convertible_v<T, unsigned int> || std::is_convertible_v<T, unsigned short> || std::is_convertible_v<T, long long> || std::is_convertible_v<T, unsigned long long>);
+
+template <typename T>
+concept convertible_to_fundamental = (convertible_to_integral<T> || std::is_convertible_v<T, float> || std::is_convertible_v<T, double> || std::is_convertible_v<T, bool>);
 
 template <typename T>
 concept is_arithmetic = std::is_arithmetic_v<T>;
 
 template <typename T>
 concept is_fundamental_val = requires(val<T> value) { std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type>; };
+
+template <typename T>
+concept is_integral_val = requires(val<T> value) { std::is_integral_v<typename std::remove_reference_t<T>::basic_type>; };
 
 template <typename T>
 concept is_ptr = std::is_pointer_v<T>;
@@ -82,6 +86,6 @@ concept is_traceable_value = requires(T a) {
 };
 
 template <typename T>
-concept is_compatible_val_type = is_ptr<T>  || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
+concept is_compatible_val_type = is_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
 
 } // namespace nautilus

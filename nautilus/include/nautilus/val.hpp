@@ -92,20 +92,29 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)) {}
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {}
+	val() : state(tracing::traceConstant(0)) {
+	}
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
+	}
 	// copy constructor
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {}
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	}
 	// move constructor
-	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {}
-	val(tracing::value_ref& tc) : state(tc), value() {}
+	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {
+	}
+	val(tracing::value_ref& tc) : state(tc), value() {
+	}
 #else
-	val() {}
-	val(ValueType value) : value(value) {}
+	val() {
+	}
+	val(ValueType value) : value(value) {
+	}
 	// copy constructor
-	val(const val<ValueType>& other) : value(other.value) {}
+	val(const val<ValueType>& other) : value(other.value) {
+	}
 	// move constructor
-	val(const val<ValueType>&& other) : value(other.value) {}
+	val(const val<ValueType>&& other) : value(other.value) {
+	}
 #endif
 
 	val<ValueType>& operator=(const val<ValueType>& other) {
@@ -320,22 +329,6 @@ auto&& cast_value(LeftType&& value) {
 namespace details {
 
 #ifdef ENABLE_TRACING
-#define TRAC_BINARY_OP(OP)                                                                                                                                                                                                                     \
-	if (tracing::inTracer()) {                                                                                                                                                                                                                 \
-		auto tc = tracing::traceBinaryOp<tracing::OP, commonType>(lValue.state, rValue.state);                                                                                                                                                 \
-		return val<commonType>(tc);                                                                                                                                                                                                            \
-	}
-
-#define TRAC_BINARY_OP_DIRECT(OP)                                                                                                                                                                                                              \
-	if (tracing::inTracer()) {                                                                                                                                                                                                                 \
-		auto tc = tracing::traceBinaryOp<tracing::OP, commonType>(left.state, right.state);                                                                                                                                                    \
-		return val<commonType>(tc);                                                                                                                                                                                                            \
-	}
-#else
-#define TRAC_OP(OP)
-#endif
-
-#ifdef ENABLE_TRACING
 #define TRAC_LOGICAL_BINARY_OP(OP)                                                                                                                                                                                                             \
 	if (tracing::inTracer()) {                                                                                                                                                                                                                 \
 		auto tc = tracing::traceBinaryOp<tracing::OP, bool>(lValue.state, rValue.state);                                                                                                                                                       \
@@ -410,46 +403,46 @@ LHS inline getRawValue(const val<LHS>& val) {
 
 } // namespace details
 
-#define DEFINE_BINARY_OPERATOR(OP, FUNC)                                                                                                                                                                                                       \
+#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON, CONV_TO)                                                                                                                                                                                         \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
-	    requires(is_fundamental_val<LHS> && (is_fundamental_val<RHS> || convertible_to_fundamental<RHS>)) || ((is_fundamental_val<LHS> || convertible_to_fundamental<LHS>) && is_fundamental_val<RHS>)                                         \
+	    requires(CON<LHS> && (CON<RHS> || CONV_TO<RHS>) ) || ((CON<LHS> || CONV_TO<LHS>) && CON<RHS>)                                                                                                                                          \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
 		return details::FUNC(std::move(lhsV), std::move(rhsV));                                                                                                                                                                                \
 	}
 
-DEFINE_BINARY_OPERATOR(+, add)
+DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(-, sub)
+DEFINE_BINARY_OPERATOR(-, sub, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(*, mul)
+DEFINE_BINARY_OPERATOR(*, mul, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(/, div)
+DEFINE_BINARY_OPERATOR(/, div, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(%, mod)
+DEFINE_BINARY_OPERATOR(%, mod, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(==, eq)
+DEFINE_BINARY_OPERATOR(==, eq, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(!=, neq)
+DEFINE_BINARY_OPERATOR(!=, neq, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(>, gt)
+DEFINE_BINARY_OPERATOR(>, gt, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(>=, gte)
+DEFINE_BINARY_OPERATOR(>=, gte, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(<, lt)
+DEFINE_BINARY_OPERATOR(<, lt, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(<=, lte)
+DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(>>, shr)
+DEFINE_BINARY_OPERATOR(>>, shr, is_integral_val, convertible_to_integral)
 
-DEFINE_BINARY_OPERATOR(<<, shl)
+DEFINE_BINARY_OPERATOR(<<, shl, is_integral_val, convertible_to_integral)
 
-DEFINE_BINARY_OPERATOR(|, bOr)
+DEFINE_BINARY_OPERATOR(|, bOr, is_integral_val, convertible_to_integral)
 
-DEFINE_BINARY_OPERATOR(&, bAnd)
+DEFINE_BINARY_OPERATOR(&, bAnd, is_integral_val, convertible_to_integral)
 
-DEFINE_BINARY_OPERATOR(^, bXOr)
+DEFINE_BINARY_OPERATOR(^, bXOr, is_integral_val, convertible_to_integral)
 
 template <typename LHS>
 auto inline operator~(LHS left) {
@@ -487,30 +480,35 @@ auto& operator%=(val<LHS>& left, RHS right) {
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS> && (is_integral_val<RHS> || convertible_to_integral<RHS>) )
 auto& operator|=(val<LHS>& left, RHS right) {
 	left = left | right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS> && (is_integral_val<RHS> || convertible_to_integral<RHS>) )
 auto& operator^=(val<LHS>& left, RHS right) {
 	left = left ^ right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS> && (is_integral_val<RHS> || convertible_to_integral<RHS>) )
 auto& operator&=(val<LHS>& left, RHS right) {
 	left = left & right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS> && (is_integral_val<RHS> || convertible_to_integral<RHS>) )
 auto& operator<<=(val<LHS>& left, RHS right) {
 	left = left << right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS> && (is_integral_val<RHS> || convertible_to_integral<RHS>) )
 auto& operator>>=(val<LHS>& left, RHS right) {
 	left = left >> right;
 	return left;
