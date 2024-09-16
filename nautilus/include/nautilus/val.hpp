@@ -308,19 +308,21 @@ LHS inline getRawValue(const val<LHS>& val) {
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                                                                                                                                                 \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		return details::FUNC(std::forward<LHS>(left), std::forward<RHS>(right));                                                                                                                                                               \
+		return details::FUNC(std::move(left), std::move(right));                                                                                                                                                               \
 	}                                                                                                                                                                                                                                          \
                                                                                                                                                                                                                                                \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                                                                                                                                               \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		return details::FUNC(std::forward<LHS>(left), make_value(std::forward<RHS>(right)));                                                                                                                                                   \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                            \
+        auto&& rhsV = make_value(std::forward<RHS>(right));\
+		return details::FUNC(std::move(left),  std::move(rhsV));                                                                                                                                                   \
 	}                                                                                                                                                                                                                                          \
                                                                                                                                                                                                                                                \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                                                                                                                                               \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		return details::FUNC(make_value(std::forward<LHS>(left)), std::forward<RHS>(right));                                                                                                                                                   \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                            \
+        auto&& lhsV = make_value(std::forward<LHS>(left));\
+		return details::FUNC(std::move(lhsV), std::move(right));                                                                                                                                                   \
 	}
 
 DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
