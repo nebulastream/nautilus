@@ -345,7 +345,7 @@ DEFINE_BINARY_OPERATOR(>=, gte, is_fundamental_val, convertible_to_fundamental)
 
 DEFINE_BINARY_OPERATOR(<, lt, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, is_fundamental_convertable)
+DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, convertible_to_fundamental)
 
 DEFINE_BINARY_OPERATOR(>>, shr, is_integral_val, is_integral)
 
