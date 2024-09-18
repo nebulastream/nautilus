@@ -81,7 +81,7 @@ public:
 	}
 
 	template <class T>
-	val<std::basic_ostream<CharT, Traits>>& operator<<(val<T>& value) {
+	val<std::basic_ostream<CharT, Traits>>& operator<<(const val<T>& value) {
 		invoke(pipe<T>, stream, value);
 		return *this;
 	}
