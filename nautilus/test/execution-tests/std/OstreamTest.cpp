@@ -1,6 +1,7 @@
 
 #include "nautilus/Engine.hpp"
 #include "nautilus/std/iostream.h"
+#include "nautilus/std/ostream.h"
 #include "nautilus/std/sstream.h"
 #include "nautilus/std/string.h"
 #include "nautilus/std/string_view.h"
@@ -25,6 +26,24 @@ val<char> sstreamTest(val<int32_t> value) {
     return ss.view().data()[4];
 }*/
 
+void sstreamHexTest(val<int32_t> value) {
+	// allocates a stringstream, which is managed by the runtime and freed when the object goes out of scope
+	stringstream ss;
+	ss << hex << value << endl;
+}
+
+void sstreamDecTest(val<int32_t> value) {
+	// allocates a stringstream, which is managed by the runtime and freed when the object goes out of scope
+	stringstream ss;
+	ss << dec << value << endl;
+}
+
+void sstreamOctTest(val<int32_t> value) {
+	// allocates a stringstream, which is managed by the runtime and freed when the object goes out of scope
+	stringstream ss;
+	ss << oct << value << endl;
+}
+
 val<char> sstreamToStrTest(val<int32_t> value) {
 	// allocates a stringstream, which is managed by the runtime and freed when the object goes out of scope
 	stringstream ss;
@@ -48,6 +67,24 @@ void runOstreamTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(cerrTest);
 		f(42);
 		f(44);
+	}
+
+	SECTION("hex") {
+		auto f = engine.registerFunction(sstreamHexTest);
+		f(42);
+		f(23);
+	}
+
+	SECTION("dec") {
+		auto f = engine.registerFunction(sstreamDecTest);
+		f(42);
+		f(23);
+	}
+
+	SECTION("oct") {
+		auto f = engine.registerFunction(sstreamOctTest);
+		f(42);
+		f(23);
 	}
 }
 
