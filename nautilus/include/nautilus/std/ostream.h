@@ -1,7 +1,9 @@
 #pragma once
 #include "nautilus/val_ptr.hpp"
+#include "nautilus/val.hpp"
+#include "nautilus/std/string.h"
 #include <ostream>
-#include <string>
+#include <ios>
 namespace nautilus {
 
 template <class _CharT, class _Traits>
@@ -36,6 +38,39 @@ val<std::basic_ostream<_CharT, _Traits>>& flush(val<std::basic_ostream<_CharT, _
 	return __os;
 }
 
+template <class _CharT, class _Traits>
+void callHex(std::basic_ostream<_CharT, _Traits>* ptr) {
+	std::hex(*ptr);
+}
+
+template <class _CharT, class _Traits>
+val<std::basic_ostream<_CharT, _Traits>>& hex(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+	invoke(callHex<_CharT, _Traits>, __os.stream);
+	return __os;
+}
+
+template <class _CharT, class _Traits>
+void callDec(std::basic_ostream<_CharT, _Traits>* ptr) {
+	std::dec(*ptr);
+}
+
+template <class _CharT, class _Traits>
+val<std::basic_ostream<_CharT, _Traits>>& dec(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+	invoke(callDec<_CharT, _Traits>, __os.stream);
+	return __os;
+}
+
+template <class _CharT, class _Traits>
+void callOct(std::basic_ostream<_CharT, _Traits>* ptr) {
+	std::oct(*ptr);
+}
+
+template <class _CharT, class _Traits>
+val<std::basic_ostream<_CharT, _Traits>>& oct(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+	invoke(callOct<_CharT, _Traits>, __os.stream);
+	return __os;
+}
+
 template <class CharT, class Traits>
 class val<std::basic_ostream<CharT, Traits>> {
 public:
@@ -46,7 +81,7 @@ public:
 	}
 
 	template <class T>
-	val<std::basic_ostream<CharT, Traits>>& operator<<(val<T>& value) {
+	val<std::basic_ostream<CharT, Traits>>& operator<<(const val<T>& value) {
 		invoke(pipe<T>, stream, value);
 		return *this;
 	}
