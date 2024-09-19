@@ -55,6 +55,8 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 				    using T = std::decay_t<decltype(value)>;
 				    if constexpr (!std::is_pointer_v<T>) {
 					    os << value << "\t";
+				    } else {
+					    os << "*\t";
 				    }
 			    },
 			    *constant);
