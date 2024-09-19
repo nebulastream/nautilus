@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include <utility>
 #include "nautilus/val.hpp"
+#include <utility>
 
 namespace nautilus {
 
@@ -17,12 +17,17 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 #ifdef ENABLE_TRACING
-	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {}
-	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {}
+	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {
+	}
+	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	}
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	}
 #else
-	val(ValueType ref) : ptr(&ref) {}
-	val(val<ptrType> ptr) : ptr(ptr) {}
+	val(ValueType ref) : ptr(&ref) {
+	}
+	val(val<ptrType> ptr) : ptr(ptr) {
+	}
 #endif
 
 	template <class T>
@@ -80,16 +85,21 @@ public:
 	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
-	base_ptr_val() : value() {}
+	base_ptr_val() : value() {
+	}
 #ifdef ENABLE_TRACING
-	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {}
-	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {}
-	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {}
+	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
+	}
+	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {
+	}
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {
+	}
 
 	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
 	}
 #else
-	base_ptr_val(ValuePtrType ptr) : value(ptr) {}
+	base_ptr_val(ValuePtrType ptr) : value(ptr) {
+	}
 #endif
 
 #ifdef ENABLE_TRACING
@@ -217,7 +227,7 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::ADD, ValueType>(left.state, offsetBytes.state);
+		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::to_type<ValueType>(), left.state, offsetBytes.state);
 		return val<ValueType>(tc);
 	}
 #endif
@@ -242,7 +252,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::EQ, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::EQ, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -268,7 +278,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LTE, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LTE, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -280,7 +290,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::LT, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LT, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -292,7 +302,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GT, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GT, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -304,7 +314,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::GTE, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GTE, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -316,7 +326,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp<tracing::NEQ, bool>(left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::NEQ, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -346,12 +356,17 @@ public:
 
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
-	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {}
-	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {}
+	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {
+	}
+	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	}
+	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	}
 #else
-	val(bool ref) : ptr(&ref) {}
-	val(val<ptrType> ptr) : ptr(ptr) {}
+	val(bool ref) : ptr(&ref) {
+	}
+	val(val<ptrType> ptr) : ptr(ptr) {
+	}
 #endif
 
 	template <class T>

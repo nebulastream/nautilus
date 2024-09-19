@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nautilus/common/Types.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <any>
 #include <array>

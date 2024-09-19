@@ -1,5 +1,5 @@
 B0($1:bool)
 	ASSIGN	$2	$1	:bool	
-	CONST	$3	:bool	
+	CONST	$3	1	:bool	
 	AND	$4	$2	$3	:bool	
 	RETURN	$4	:bool	

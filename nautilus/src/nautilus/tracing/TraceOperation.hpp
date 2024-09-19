@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include "nautilus/common/traceing.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
 #include <ostream>
@@ -34,7 +34,7 @@ struct BlockRef {
 	friend std::ostream& operator<<(std::ostream& os, const BlockRef& ref);
 };
 
-using InputVariant = std::variant<value_ref, None, std::any, BlockRef, FunctionCall>;
+using InputVariant = std::variant<value_ref, None, ConstantLiteral, BlockRef, FunctionCall>;
 
 /**
  * @brief Represents an individual operation in a trace.

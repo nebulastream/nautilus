@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nautilus/common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include <iostream>
 #include <iterator>
 #include <type_traits>

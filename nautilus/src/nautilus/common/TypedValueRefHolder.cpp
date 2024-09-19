@@ -1,5 +1,5 @@
-#include "nautilus/common/traceing.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include <cassert>
 
 namespace nautilus::tracing {

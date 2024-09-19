@@ -6,7 +6,7 @@
 
 #ifdef ENABLE_TRACING
 
-#include "common/traceing.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 
 #endif
 

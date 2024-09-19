@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "nautilus/common/Types.hpp"
+#include "nautilus/tracing/Types.hpp"
 namespace nautilus::tracing {
 
 using ValueRef = uint16_t;

@@ -49,9 +49,9 @@ public:
 	 * @param valueReference reference to the const value.
 	 * @param constValue constant value.
 	 */
-	value_ref traceConstValue(Type type, std::any constValue);
+	value_ref traceConstValue(Type type, const ConstantLiteral& constValue);
 
-	value_ref traceCopy(value_ref ref);
+	value_ref traceCopy(const value_ref& ref);
 
 	Tag* getTag();
 
@@ -61,7 +61,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	value_ref traceUnaryOperation(Op op, Type resultType, value_ref& inputRef);
+	value_ref traceUnaryOperation(Op op, Type resultType, const value_ref& inputRef);
 
 	/**
 	 * @brief Trace a binary operation, e.g., add, sub, div.
@@ -70,30 +70,30 @@ public:
 	 * @param rightRef reference to the right input.
 	 * @param resultRef reference to the result.
 	 */
-	value_ref traceBinaryOperation(Op op, Type resultType, value_ref& leftRef, value_ref& rightRef);
+	value_ref traceBinaryOperation(Op op, Type resultType, const value_ref& leftRef, const value_ref& rightRef);
 
 	/**
 	 * @brief Trace the return function.
 	 * @param resultRef referent to the return value.
 	 */
-	void traceReturnOperation(Type type, value_ref ref);
+	void traceReturnOperation(Type type, const value_ref& ref);
 
 	/**
 	 * @brief Trace a value assignment.
 	 * @param targetRef reference to the target value.
 	 * @param sourceRef reference to the source value.
 	 */
-	void traceAssignment(value_ref targetRef, value_ref sourceRef, Type resultType);
+	void traceAssignment(const value_ref& targetRef, const value_ref& sourceRef, Type resultType);
 
-	value_ref traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, std::vector<tracing::value_ref> arguments);
+	value_ref traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments);
 
-	bool traceCmp(value_ref targetRef);
+	bool traceCmp(const value_ref& targetRef);
 
-	value_ref traceLoad(value_ref src, Type resultType);
+	value_ref traceLoad(const value_ref& src, Type resultType);
 
-	value_ref traceCast(value_ref state, Type resultType);
+	value_ref traceCast(const value_ref& state, Type resultType);
 
-	void traceStore(value_ref target, value_ref src, Type valueType);
+	void traceStore(const value_ref& target, const value_ref& src, Type valueType);
 
 	~TraceContext() = default;
 
