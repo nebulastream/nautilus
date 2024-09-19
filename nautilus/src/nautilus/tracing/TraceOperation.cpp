@@ -40,7 +40,7 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 	if (operation.op == FREE) {
 		return os;
 	}
-	os << operation.op << "\t";
+	os << fmt::format("{}\t", toString(operation.op));
 	os << operation.resultRef.toString() << "\t";
 	for (const InputVariant& opInput : operation.input) {
 		if (auto inputRef = std::get_if<value_ref>(&opInput)) {
