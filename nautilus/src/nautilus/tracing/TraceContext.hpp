@@ -49,7 +49,7 @@ public:
 	 * @param valueReference reference to the const value.
 	 * @param constValue constant value.
 	 */
-	value_ref traceConstValue(Type type, std::any constValue);
+	value_ref traceConstValue(Type type, const ConstantLiteral& constValue);
 
 	value_ref traceCopy(const value_ref& ref);
 

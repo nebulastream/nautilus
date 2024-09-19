@@ -49,30 +49,8 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 			os << *blockRef << "\t";
 		} else if (auto fCall = std::get_if<FunctionCall>(&opInput)) {
 			os << *fCall << "\t";
-		} else if (auto constant = std::get_if<std::any>(&opInput)) {
-			if (constant->type() == typeid(int8_t)) {
-				os << any_cast<int8_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(int16_t)) {
-				os << any_cast<int16_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(int32_t)) {
-				os << any_cast<int32_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(int64_t)) {
-				os << any_cast<int64_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(uint8_t)) {
-				os << any_cast<uint8_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(uint16_t)) {
-				os << any_cast<uint16_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(uint32_t)) {
-				os << any_cast<uint32_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(uint64_t)) {
-				os << any_cast<uint64_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(size_t)) {
-				os << any_cast<size_t>(*constant) << "\t";
-			} else if (constant->type() == typeid(float)) {
-				os << any_cast<float>(*constant) << "\t";
-			} else if (constant->type() == typeid(double)) {
-				os << any_cast<double>(*constant) << "\t";
-			}
+		} else if (auto constant = std::get_if<ConstantLiteral>(&opInput)) {
+			std::visit([&](auto&& value) -> void { os << value << "\t"; }, *constant);
 		}
 	}
 	os << fmt::format(":{}\t", toString(operation.resultType));

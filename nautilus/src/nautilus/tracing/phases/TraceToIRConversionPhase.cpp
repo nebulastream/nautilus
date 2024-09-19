@@ -435,44 +435,27 @@ bool TraceToIRConversionPhase::IRConversionContext::isBlockInLoop(uint32_t paren
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(int32_t, TraceToIRConversionPhase::ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
-	auto constant = &std::get<std::any>(operation.input[0]);
+	auto constant = std::get<ConstantLiteral>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = (operation.resultType);
 	Operation* constOperation;
-	if (constant->type() == typeid(int8_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int8_t>(*constant), resultType);
-	} else if (constant->type() == typeid(int16_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int16_t>(*constant), resultType);
-	} else if (constant->type() == typeid(int32_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int32_t>(*constant), resultType);
-	} else if (constant->type() == typeid(int64_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<int64_t>(*constant), resultType);
-	} else if (constant->type() == typeid(uint8_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint8_t>(*constant), resultType);
-	} else if (constant->type() == typeid(uint16_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint16_t>(*constant), resultType);
 
-	} else if (constant->type() == typeid(uint32_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint32_t>(*constant), resultType);
-
-	} else if (constant->type() == typeid(uint64_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, any_cast<uint64_t>(*constant), resultType);
-	} else if (constant->type() == typeid(size_t)) {
-		constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, (uint64_t) any_cast<size_t>(*constant), resultType);
-
-	} else if (constant->type() == typeid(float)) {
-		constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<float>(*constant), resultType);
-
-	} else if (constant->type() == typeid(double)) {
-		constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, any_cast<double>(*constant), resultType);
-
-	} else if (constant->type() == typeid(bool)) {
-		constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, any_cast<bool>(*constant));
-	} else if (constant->type() == typeid(void*)) {
-		constOperation = currentBlock->addOperation<ConstPtrOperation>(resultIdentifier, any_cast<void*>(*constant));
-	} else {
-		throw NotImplementedException("Not constant implemented.");
-	}
+	std::visit(
+	    [&](auto&& value) {
+		    using T = std::decay_t<decltype(value)>;
+		    if constexpr (std::is_same_v<T, bool>) {
+			    constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, value);
+		    } else if constexpr (std::is_integral_v<T>) {
+			    constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, value, resultType);
+		    } else if constexpr (std::is_floating_point_v<T>) {
+			    constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, value, resultType);
+		    } else if constexpr (std::is_pointer_v<T>) {
+			    constOperation = currentBlock->addOperation<ConstPtrOperation>(resultIdentifier, value);
+		    } else {
+			    // static_assert(false, "non-exhaustive visitor!");
+		    }
+	    },
+	    constant);
 
 	frame.setValue(resultIdentifier, constOperation);
 }

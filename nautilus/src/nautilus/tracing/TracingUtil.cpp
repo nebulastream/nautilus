@@ -43,23 +43,19 @@ void traceReturnOperation(Type type, const TypedValueRef& ref) {
 	TraceContext::get()->traceReturnOperation(type, ref);
 }
 
-Tag* getTag() {
-	return TraceContext::get()->getTag();
-}
-
 value_ref registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-[[maybe_unused]] value_ref traceLoad(const TypedValueRef& src, Type resultType) {
+value_ref traceLoad(const TypedValueRef& src, Type resultType) {
 	return TraceContext::get()->traceLoad(src, resultType);
 }
 
-[[maybe_unused]] void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType) {
+void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType) {
 	TraceContext::get()->traceStore(target, src, valueType);
 }
 
-value_ref traceConstant(Type type, std::any&& value) {
+value_ref traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
@@ -85,7 +81,7 @@ value_ref traceCopy(const value_ref& state) {
 	return {};
 }
 
-[[maybe_unused]] bool inTracer() {
+bool inTracer() {
 	return TraceContext::get() != nullptr;
 }
 

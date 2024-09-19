@@ -88,7 +88,7 @@ bool TraceContext::isFollowing() {
 	return symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-value_ref TraceContext::traceConstValue(Type type, std::any constValue) {
+value_ref TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	if (isFollowing()) {
 		auto currentOperation = executionTrace->getCurrentOperation();

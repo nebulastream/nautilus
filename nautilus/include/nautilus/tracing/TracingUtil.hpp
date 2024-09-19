@@ -30,13 +30,13 @@ value_ref registerFunctionArgument(Type type, size_t index);
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 
-value_ref traceConstant(Type type, std::any&& value);
+value_ref traceConstant(Type type, const ConstantLiteral& value);
 
 template <typename T>
 value_ref traceConstant(T value) {
 	if (!inTracer())
 		return {0, to_type<T>()};
-	return traceConstant(to_type<T>(), std::any(value));
+	return traceConstant(to_type<T>(), createConstLiteral(value));
 }
 
 void traceReturnOperation(Type type, const value_ref& ref);
