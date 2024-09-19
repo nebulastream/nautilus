@@ -105,6 +105,8 @@ constexpr const char* toString(Op type) {
 		return "BXOR";
 	case NEGATE:
 		return "NEGATE";
+	default:
+		__builtin_unreachable();
 	}
 }
 
