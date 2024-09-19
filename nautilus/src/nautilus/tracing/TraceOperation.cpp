@@ -50,7 +50,14 @@ std::ostream& operator<<(std::ostream& os, const TraceOperation& operation) {
 		} else if (auto fCall = std::get_if<FunctionCall>(&opInput)) {
 			os << *fCall << "\t";
 		} else if (auto constant = std::get_if<ConstantLiteral>(&opInput)) {
-			std::visit([&](auto&& value) -> void { os << value << "\t"; }, *constant);
+			std::visit(
+			    [&](auto&& value) -> void {
+				    using T = std::decay_t<decltype(value)>;
+				    if constexpr (!std::is_pointer_v<T>) {
+					    os << value << "\t";
+				    }
+			    },
+			    *constant);
 		}
 	}
 	os << fmt::format(":{}\t", toString(operation.resultType));
