@@ -62,9 +62,9 @@ public:
 		return val<std::basic_string<CharT, Traits>>(str_ptr);
 	}
 
-	~val() {
-		invoke(+[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
-	}
+	// ~val() {
+	// 	invoke(+[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
+	// }
 };
 
 typedef val<std::basic_stringstream<char>> stringstream;
