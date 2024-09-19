@@ -25,6 +25,18 @@ public:
 		});
 		this->stream = data_ptr;
 	}
+
+	explicit val(val<std::basic_ostream<CharT, Traits>*> stream) : val<std::basic_ostream<CharT, Traits>>(stream) {
+	}
+
+	static val<std::basic_stringstream<CharT, Traits, Allocator>> create() {
+		auto data_ptr = invoke(+[]() -> auto* {
+			auto sb = new std::basic_stringstream<CharT, Traits, Allocator>();
+			return dynamic_cast<std::basic_ostream<CharT, Traits>*>(sb);
+		});
+		return val<std::basic_stringstream<CharT, Traits, Allocator>>(data_ptr);
+	}
+
 	/*
 	val<std::basic_string_view<CharT, Traits>> view() {
 	    auto view_ptr = invoke(
@@ -51,8 +63,7 @@ public:
 	}
 
 	~val() {
-		invoke(
-		    +[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
+		invoke(+[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
 	}
 };
 
