@@ -20,18 +20,54 @@ public:
 	using raw_type = underlying_type_t;
 	using basic_type = raw_type;
 
-	val() : value() {}
-
 #ifdef ENABLE_TRACING
-	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {}
-	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {}
-	val(val<T>&& t) : state(t.state), value(t.value) {}
-	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {}
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(val<T>& val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {
+	}
+	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {
+	}
+	val(val<T>&& t) : state(t.state), value(t.value) {
+	}
+	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {
+	}
 #else
-	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {}
-	val(val<T>& t) : value(t.value) {}
-	val(T val) : value(val) {}
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(T val) : value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(val<T>& val) : value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {
+	}
+	val(val<T>& t) : value(t.value) {
+	}
+	val(T val) : value(val) {
+	}
 #endif
+
+	template <typename RHS>
+	    requires std::is_enum_v<RHS> && (!std::is_convertible_v<RHS, std::underlying_type_t<RHS>>)
+	bool operator==(const RHS& other) const {
+		return val(value) == val(static_cast<std::underlying_type_t<RHS>>(other));
+	}
+
+	template <typename RHS>
+	    requires std::is_enum_v<RHS> && (!std::is_convertible_v<RHS, std::underlying_type_t<RHS>>)
+	bool operator!=(const RHS& other) const {
+		return val(value) != val(static_cast<std::underlying_type_t<RHS>>(other));
+	}
 
 	operator val<underlying_type_t>() const {
 		return value;
