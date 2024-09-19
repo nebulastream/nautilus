@@ -1,9 +1,9 @@
 #pragma once
-#include "nautilus/val_ptr.hpp"
-#include "nautilus/val.hpp"
 #include "nautilus/std/string.h"
-#include <ostream>
+#include "nautilus/val.hpp"
+#include "nautilus/val_ptr.hpp"
 #include <ios>
+#include <ostream>
 namespace nautilus {
 
 template <class _CharT, class _Traits>

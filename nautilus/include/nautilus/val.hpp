@@ -290,7 +290,7 @@ template <is_integral LHS>
 val<LHS> neg(val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = traceUnaryOp<tracing::NEGATE, LHS>(val.state);
+		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::to_type<LHS>(), val.state);
 		return tc;
 	}
 #endif
@@ -308,21 +308,21 @@ LHS inline getRawValue(const val<LHS>& val) {
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                                                                                                                                                 \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
-		return details::FUNC(std::move(left), std::move(right));                                                                                                                                                               \
+		return details::FUNC(std::move(left), std::move(right));                                                                                                                                                                               \
 	}                                                                                                                                                                                                                                          \
                                                                                                                                                                                                                                                \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                                                                                                                                               \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                            \
-        auto&& rhsV = make_value(std::forward<RHS>(right));\
-		return details::FUNC(std::move(left),  std::move(rhsV));                                                                                                                                                   \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
+		auto&& rhsV = make_value(std::forward<RHS>(right));                                                                                                                                                                                    \
+		return details::FUNC(std::move(left), std::move(rhsV));                                                                                                                                                                                \
 	}                                                                                                                                                                                                                                          \
                                                                                                                                                                                                                                                \
 	template <typename LHS, typename RHS>                                                                                                                                                                                                      \
 	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                                                                                                                                               \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                            \
-        auto&& lhsV = make_value(std::forward<LHS>(left));\
-		return details::FUNC(std::move(lhsV), std::move(right));                                                                                                                                                   \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                                                                                                                                         \
+		auto&& lhsV = make_value(std::forward<LHS>(left));                                                                                                                                                                                     \
+		return details::FUNC(std::move(lhsV), std::move(right));                                                                                                                                                                               \
 	}
 
 DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
@@ -431,7 +431,7 @@ namespace details {
 val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::OR,  tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::OR, tracing::to_type<bool>(), left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
@@ -451,7 +451,7 @@ val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 val<bool> inline lNot(val<bool>& arg) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceUnaryOp<tracing::NOT, bool>(arg.state);
+		auto tc = tracing::traceUnaryOp(tracing::NOT, Type::b, arg.state);
 		return val<bool> {tc};
 	}
 #endif

@@ -98,7 +98,4 @@ concept is_traceable_value = requires(T a) {
 	{ a.state };
 };
 
-template <typename T>
-concept is_compatible_val_type = is_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
-
 } // namespace nautilus

@@ -1,6 +1,6 @@
 #include "nautilus/tracing/Block.hpp"
-#include "nautilus/common/Types.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/Types.hpp"
 
 namespace nautilus::tracing {
 

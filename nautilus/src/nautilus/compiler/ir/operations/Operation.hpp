@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "nautilus/common/Types.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include <cstdint>
 #include <memory>
 #include <ostream>
