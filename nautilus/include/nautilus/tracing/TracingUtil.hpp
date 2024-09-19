@@ -33,10 +33,11 @@ void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, T
 value_ref traceConstant(Type type, const ConstantLiteral& value);
 
 template <typename T>
-value_ref traceConstant(T value) {
-	if (!inTracer())
-		return {0, to_type<T>()};
-	return traceConstant(to_type<T>(), createConstLiteral(value));
+value_ref traceConstant(T&& value) {
+	if (inTracer()) {
+		return traceConstant(to_type<T>(), createConstLiteral(value));
+	}
+	return {0, to_type<T>()};
 }
 
 void traceReturnOperation(Type type, const value_ref& ref);

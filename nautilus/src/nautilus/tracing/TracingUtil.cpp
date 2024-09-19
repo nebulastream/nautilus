@@ -99,69 +99,6 @@ value_ref traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input
 	return TraceContext::get()->traceUnaryOperation(operation, resultType, inputState);
 }
 
-template value_ref traceConstant<char>(char value);
-
-template value_ref traceConstant<int8_t>(int8_t value);
-
-template value_ref traceConstant<int16_t>(int16_t value);
-
-template value_ref traceConstant<int32_t>(int32_t value);
-
-template value_ref traceConstant<int64_t>(int64_t value);
-
-template value_ref traceConstant<uint8_t>(uint8_t value);
-
-template value_ref traceConstant<uint16_t>(uint16_t value);
-
-template value_ref traceConstant<uint32_t>(uint32_t value);
-
-template value_ref traceConstant<uint64_t>(uint64_t value);
-
-#if __APPLE__
-
-template value_ref traceConstant<size_t>(size_t value);
-
-#endif
-
-template value_ref traceConstant<float>(float value);
-
-template value_ref traceConstant<double>(double value);
-
-template value_ref traceConstant<bool>(bool value);
-
-template value_ref traceConstant<char*>(char* value);
-
-template value_ref traceConstant<const char*>(const char* value);
-
-// template value_ref traceConstant<char8_t*>(char8_t* value);
-template value_ref traceConstant<char16_t*>(char16_t* value);
-
-template value_ref traceConstant<char32_t*>(char32_t* value);
-
-template value_ref traceConstant<wchar_t*>(wchar_t* value);
-
-template value_ref traceConstant<int8_t*>(int8_t* value);
-
-template value_ref traceConstant<int16_t*>(int16_t* value);
-
-template value_ref traceConstant<int32_t*>(int32_t* value);
-
-template value_ref traceConstant<int64_t*>(int64_t* value);
-
-template value_ref traceConstant<uint8_t*>(uint8_t* value);
-
-template value_ref traceConstant<uint16_t*>(uint16_t* value);
-
-template value_ref traceConstant<uint32_t*>(uint32_t* value);
-
-template value_ref traceConstant<uint64_t*>(uint64_t* value);
-
-#if __APPLE__
-
-template value_ref traceConstant<size_t*>(size_t* value);
-
-#endif
-
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
 	switch (operation) {
 	case FREE:
