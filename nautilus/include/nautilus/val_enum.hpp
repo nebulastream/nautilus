@@ -3,6 +3,7 @@
 #include "nautilus/val_concepts.hpp"
 #include <iostream>
 #include <memory>
+#include <utility>
 
 #ifdef ENABLE_TRACING
 
@@ -36,7 +37,7 @@ public:
 	}
 	val(val<T>&& t) : state(t.state), value(t.value) {
 	}
-	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {
+	val(T val) : state(tracing::traceConstant(std::__to_underlying(val))), value(val) {
 	}
 #else
 	template <T>
@@ -57,20 +58,38 @@ public:
 	}
 #endif
 
-	template <typename RHS>
-	    requires std::is_enum_v<RHS> && (!std::is_convertible_v<RHS, std::underlying_type_t<RHS>>)
-	bool operator==(const RHS& other) const {
-		return val(value) == val(static_cast<std::underlying_type_t<RHS>>(other));
+
+	val<bool> operator==(val<T>& other) const {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, state, other.state);
+			return val<bool>(tc);
+		}
+#endif
+		return value == other.value;
 	}
 
-	template <typename RHS>
-	    requires std::is_enum_v<RHS> && (!std::is_convertible_v<RHS, std::underlying_type_t<RHS>>)
-	bool operator!=(const RHS& other) const {
-		return val(value) != val(static_cast<std::underlying_type_t<RHS>>(other));
+	bool operator==(const T& other) const {
+		auto res = val<T>(other);
+		return *this == res;
+	}
+
+	val<bool> operator!=(val<T>& other) const {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, state, other.state);
+			return val<bool>(tc);
+		}
+#endif
+		return value != other.value;
+	}
+
+	val<bool> operator!=(const T& other) const {
+		return *this == val<T>(other);
 	}
 
 	operator val<underlying_type_t>() const {
-		return value;
+		return val<underlying_type_t>(state);
 	}
 
 	val<T>& operator=(const val<T>& other) {
