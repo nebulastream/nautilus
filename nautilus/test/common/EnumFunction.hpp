@@ -42,28 +42,20 @@ int32_t enumFunction(Color value) {
 
 auto enumClassFunction(LogLevel level) {
 	switch (level) {
-
 	case LogLevel::LOG_NONE:
-		return 42;
-		break;
+		return 1;
 	case LogLevel::LOG_FATAL_ERROR:
-		return 42;
-		break;
+		return 2;
 	case LogLevel::LOG_ERROR:
-		return 42;
-		break;
+		return 3;
 	case LogLevel::LOG_WARNING:
-		return 42;
-		break;
+		return 4;
 	case LogLevel::LOG_INFO:
-		return 42;
-		break;
+		return 5;
 	case LogLevel::LOG_DEBUG:
-		return 42;
-		break;
+		return 6;
 	case LogLevel::LOG_TRACE:
-		return 42;
-		break;
+		return 7;
 	}
 
 	return 43;

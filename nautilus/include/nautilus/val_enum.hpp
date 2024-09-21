@@ -89,7 +89,12 @@ public:
 	}
 
 	operator val<underlying_type_t>() const {
-		return val<underlying_type_t>(state);
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			return val<underlying_type_t>(state);
+		}
+#endif
+		return val<underlying_type_t>(static_cast<std::underlying_type_t<T>>(value));
 	}
 
 	val<T>& operator=(const val<T>& other) {
@@ -110,5 +115,11 @@ private:
 	friend T details::getRawValue<T>(const val<T>& left);
 	const T value;
 };
+
+template <typename Type>
+requires std::is_enum_v<Type>
+auto inline make_value(const Type& value) {
+	return val<Type>(value);
+}
 
 } // namespace nautilus
