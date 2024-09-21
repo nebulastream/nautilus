@@ -37,7 +37,7 @@ public:
 	}
 	val(val<T>&& t) : state(t.state), value(t.value) {
 	}
-	val(T val) : state(tracing::traceConstant(std::__to_underlying(val))), value(val) {
+	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(val) {
 	}
 #else
 	template <T>
