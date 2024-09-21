@@ -1,11 +1,11 @@
 B0($1:ptr,$2:ptr)
-	ASSIGN	$3	$1	:ptr	
-	ASSIGN	$1	$2	:ptr	
-	ASSIGN	$4	$1	:ptr	
-	ASSIGN	$5	$4	:ptr	
-	LOAD	$6	$5	:i32	
-	ASSIGN	$7	$3	:ptr	
-	ASSIGN	$8	$7	:ptr	
-	LOAD	$9	$8	:i32	
-	ADD	$10	$6	$9	:i32	
-	RETURN	$10	:i32	
+	ASSIGN	$3	$1	:ptr
+	ASSIGN	$1	$2	:ptr
+	ASSIGN	$4	$1	:ptr
+	ASSIGN	$5	$4	:ptr
+	LOAD	$6	$5	:i32
+	ASSIGN	$7	$3	:ptr
+	ASSIGN	$8	$7	:ptr
+	LOAD	$9	$8	:i32
+	ADD	$10	$6	$9	:i32
+	RETURN	$10	:i32

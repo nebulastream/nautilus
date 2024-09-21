@@ -1,6 +1,6 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:ui16):
-    return ($1) :ui16
+	return ($1) :ui16
 }
 } //NESIR

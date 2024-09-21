@@ -102,7 +102,7 @@ private:
 	 */
 	void generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame);
 
-	void generateMLIR(ir::FunctionOperation* funcOp, ValueFrame& frame);
+	void generateMLIR(const ir::FunctionOperation& funcOp, ValueFrame& frame);
 
 	void generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
 
@@ -147,9 +147,7 @@ private:
 	 * @param varArgs: Include variable arguments.
 	 * @return FlatSymbolRefAttr: Reference to function used in CallOps.
 	 */
-	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr,
-	                                                 ::mlir::Type resultType, std::vector<::mlir::Type> argTypes,
-	                                                 bool varArgs);
+	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, ::mlir::Type resultType, std::vector<::mlir::Type> argTypes, bool varArgs);
 
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.

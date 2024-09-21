@@ -14,8 +14,6 @@ public:
 
 	~BinaryCompOperation() override = default;
 
-	std::string toString() override;
-
 	bool classof(const Operation* Op);
 
 	Type getType() const;

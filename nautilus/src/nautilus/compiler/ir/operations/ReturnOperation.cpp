@@ -10,15 +10,7 @@ ReturnOperation::ReturnOperation() : Operation(Operation::OperationType::ReturnO
 ReturnOperation::ReturnOperation(Operation* returnValue) : Operation(Operation::OperationType::ReturnOp, returnValue->getStamp(), {returnValue}) {
 }
 
-std::string ReturnOperation::toString() {
-	if (hasReturnValue()) {
-		return "return (" + getReturnValue()->getIdentifier().toString() + ")";
-	} else {
-		return "return";
-	}
-}
-
-Operation* ReturnOperation::getReturnValue() {
+Operation* ReturnOperation::getReturnValue() const {
 	return inputs[0];
 }
 
@@ -26,7 +18,7 @@ void ReturnOperation::setReturnValue(Operation* newReturnValue) {
 	inputs[0] = newReturnValue;
 }
 
-bool ReturnOperation::hasReturnValue() {
+bool ReturnOperation::hasReturnValue() const {
 	return stamp != Type::v;
 }
 

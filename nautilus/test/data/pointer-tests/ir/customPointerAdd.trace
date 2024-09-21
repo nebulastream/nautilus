@@ -1,10 +1,10 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:ptr, $2:i32):
-    $6 = 12 :ui64
-    $7 = $2 cast_to ui64 :ui64
-    $8 = $7 * $6 :ui64
-    $9 = $1 + $8 :ptr
-    return ($9) :ptr
+	$6 = 12 :ui64
+	$7 = $2 cast_to ui64 :ui64
+	$8 = $7 * $6 :ui64
+	$9 = $1 + $8 :ptr
+	return ($9) :ptr
 }
 } //NESIR

@@ -35,8 +35,6 @@ struct TypedValueRef {
 	bool operator>=(const TypedValueRef& rhs) const {
 		return !(*this < rhs);
 	}
-
-	[[nodiscard]] std::string toString() const;
 };
 
 class TypedValueRefHolder {

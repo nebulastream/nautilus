@@ -11,7 +11,7 @@ public:
 
 	~IfOperation() override = default;
 
-	Operation* getValue();
+	Operation* getValue() const;
 
 	BasicBlockPtr getMergeBlock();
 
@@ -22,16 +22,15 @@ public:
 	void setMergeBlock(BasicBlockPtr mergeBlock);
 
 	BasicBlockInvocation& getTrueBlockInvocation();
-
+	const BasicBlockInvocation& getTrueBlockInvocation() const;
 	BasicBlockInvocation& getFalseBlockInvocation();
+	const BasicBlockInvocation& getFalseBlockInvocation() const;
 
 	void setTrueBlockInvocation(BasicBlock* trueBlockInvocation);
 
 	void setFalseBlockInvocation(BasicBlock* falseBlockInvocation);
 
 	bool hasFalseCase();
-
-	std::string toString() override;
 
 private:
 	BasicBlockInvocation trueBlockInvocation;

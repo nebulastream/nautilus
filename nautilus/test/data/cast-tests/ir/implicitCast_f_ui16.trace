@@ -1,7 +1,7 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:f32):
-    $2 = $1 cast_to ui16 :ui16
-    return ($2) :ui16
+	$2 = $1 cast_to ui16 :ui16
+	return ($2) :ui16
 }
 } //NESIR

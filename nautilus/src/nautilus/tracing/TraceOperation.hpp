@@ -5,8 +5,6 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
-#include <ostream>
-#include <sstream>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -21,17 +19,12 @@ struct FunctionCall {
 	std::string mangledName;
 	void* ptr;
 	std::vector<value_ref> arguments;
-
-	friend std::ostream& operator<<(std::ostream& os, const FunctionCall& call);
 };
 
 struct BlockRef {
 	explicit BlockRef(uint16_t block);
-
 	uint16_t block;
 	std::vector<TypedValueRef> arguments;
-
-	friend std::ostream& operator<<(std::ostream& os, const BlockRef& ref);
 };
 
 using InputVariant = std::variant<value_ref, None, ConstantLiteral, BlockRef, FunctionCall>;
@@ -42,11 +35,7 @@ using InputVariant = std::variant<value_ref, None, ConstantLiteral, BlockRef, Fu
 class TraceOperation {
 public:
 	TraceOperation(Snapshot& tag, Op op, Type resultType, value_ref ref, std::vector<InputVariant>&& input);
-
 	TraceOperation(Op op, std::vector<InputVariant>&& input);
-
-	friend std::ostream& operator<<(std::ostream& os, const TraceOperation& operation);
-
 	Snapshot tag;
 	Op op;
 	Type resultType;

@@ -4,4 +4,4 @@ add_subdirectory(operations)
 add_subdirectory(phases)
 #add_subdirectory(Types)
 
-add_source_files(nautilus IRGraph.cpp IRDumpHandler.cpp)
+add_source_files(nautilus IRGraph.cpp)

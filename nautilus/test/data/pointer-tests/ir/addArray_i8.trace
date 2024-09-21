@@ -1,40 +1,40 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:ptr, $2:ptr, $3:i8):
-    $4 = 0 :i8
-    br Block_3($4, $3, $1, $2) :void
+	$4 = 0 :i8
+	br Block_3($4, $3, $1, $2) :void
 
 Block_3($4:i8, $3:i8, $1:ptr, $2:ptr):
-    $5 = $4 < $3 :bool
-    if $5 ? Block_1($3, $4, $1, $2) : Block_2() :void
+	$5 = $4 < $3 :bool
+	if $5 ? Block_1($3, $4, $1, $2) : Block_2() :void
 
 Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
-    $7 = $4 cast_to i32 :i32
-    $11 = 1 :ui64
-    $12 = $7 cast_to ui64 :ui64
-    $13 = $12 * $11 :ui64
-    $14 = $1 + $13 :ptr
-    $17 = load($14) :i8
-    $18 = $4 cast_to i32 :i32
-    $22 = 1 :ui64
-    $23 = $18 cast_to ui64 :ui64
-    $24 = $23 * $22 :ui64
-    $25 = $2 + $24 :ptr
-    $28 = load($25) :i8
-    $29 = $17 + $28 :i8
-    $30 = $4 cast_to i32 :i32
-    $34 = 1 :ui64
-    $35 = $30 cast_to ui64 :ui64
-    $36 = $35 * $34 :ui64
-    $37 = $1 + $36 :ptr
-    store($29, $37) :void
-    $40 = 1 :i32
-    $41 = $4 cast_to i32 :i32
-    $42 = $41 + $40 :i32
-    $43 = $42 cast_to i8 :i8
-    br Block_3($43, $3, $1, $2) :void
+	$7 = $4 cast_to i32 :i32
+	$11 = 1 :ui64
+	$12 = $7 cast_to ui64 :ui64
+	$13 = $12 * $11 :ui64
+	$14 = $1 + $13 :ptr
+	$17 = load($14) :i8
+	$18 = $4 cast_to i32 :i32
+	$22 = 1 :ui64
+	$23 = $18 cast_to ui64 :ui64
+	$24 = $23 * $22 :ui64
+	$25 = $2 + $24 :ptr
+	$28 = load($25) :i8
+	$29 = $17 + $28 :i8
+	$30 = $4 cast_to i32 :i32
+	$34 = 1 :ui64
+	$35 = $30 cast_to ui64 :ui64
+	$36 = $35 * $34 :ui64
+	$37 = $1 + $36 :ptr
+	store($29, $37) :void
+	$40 = 1 :i32
+	$41 = $4 cast_to i32 :i32
+	$42 = $41 + $40 :i32
+	$43 = $42 cast_to i8 :i8
+	br Block_3($43, $3, $1, $2) :void
 
 Block_2():
-    return :void
+	return :void
 }
 } //NESIR

@@ -10,14 +10,13 @@ public:
 
 	~StoreOperation() override = default;
 
-	Operation* getValue();
+	Operation* getValue() const;
 
-	Operation* getAddress();
+	Operation* getAddress() const;
 
 	void setValue(Operation* newValue);
 
 	void setAddress(Operation* newAddress);
 
-	std::string toString() override;
 };
 } // namespace nautilus::compiler::ir

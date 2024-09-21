@@ -4,7 +4,6 @@
 #include "TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
-#include <ostream>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -38,8 +37,6 @@ public:
 	 */
 	void addArgument(TypedValueRef ref);
 
-	friend std::ostream& operator<<(std::ostream& os, const Block& block);
-
 	/**
 	 * @brief defines the id of this block.
 	 */
@@ -67,3 +64,5 @@ public:
 };
 
 } // namespace nautilus::tracing
+
+

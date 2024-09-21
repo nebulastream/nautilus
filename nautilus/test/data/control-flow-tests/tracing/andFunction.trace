@@ -1,21 +1,21 @@
 B0($1:i32)
-	CONST	$2	1	:bool	
-	ASSIGN	$3	$2	:bool	
-	CONST	$4	42	:i64	
-	CAST	$5	$1	:i64	
-	EQ	$6	$5	$4	:bool	
-	AND	$7	$3	$6	:bool	
-	ASSIGN	$2	$7	:bool	
-	ASSIGN	$8	$2	:bool	
-	CONST	$9	42	:i64	
-	CAST	$10	$1	:i64	
-	EQ	$11	$10	$9	:bool	
-	AND	$12	$8	$11	:bool	
-	ASSIGN	$2	$12	:bool	
-	ASSIGN	$13	$2	:bool	
-	CONST	$14	42	:i64	
-	CAST	$15	$1	:i64	
-	EQ	$16	$15	$14	:bool	
-	AND	$17	$13	$16	:bool	
-	ASSIGN	$2	$17	:bool	
-	RETURN	$2	:bool	
+	CONST	$2	true	:bool
+	ASSIGN	$3	$2	:bool
+	CONST	$4	42	:i64
+	CAST	$5	$1	:i64
+	EQ	$6	$5	$4	:bool
+	AND	$7	$3	$6	:bool
+	ASSIGN	$2	$7	:bool
+	ASSIGN	$8	$2	:bool
+	CONST	$9	42	:i64
+	CAST	$10	$1	:i64
+	EQ	$11	$10	$9	:bool
+	AND	$12	$8	$11	:bool
+	ASSIGN	$2	$12	:bool
+	ASSIGN	$13	$2	:bool
+	CONST	$14	42	:i64
+	CAST	$15	$1	:i64
+	EQ	$16	$15	$14	:bool
+	AND	$17	$13	$16	:bool
+	ASSIGN	$2	$17	:bool
+	RETURN	$2	:bool

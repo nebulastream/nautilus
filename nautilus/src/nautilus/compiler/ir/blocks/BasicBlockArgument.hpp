@@ -15,7 +15,6 @@ public:
 
 	friend std::ostream& operator<<(std::ostream& os, const BasicBlockArgument& argument);
 
-	std::string toString() override;
 };
 
 } // namespace nautilus::compiler::ir

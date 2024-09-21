@@ -1,22 +1,22 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:ptr):
-    $4 = load($1) :i32
-    $5 = 10 :i32
-    $6 = $4 > $5 :bool
-    if $6 ? Block_1($1) : Block_2($1) :void
+	$4 = load($1) :i32
+	$5 = 10 :i32
+	$6 = $4 > $5 :bool
+	if $6 ? Block_1($1) : Block_2($1) :void
 
 Block_1($1:ptr):
-    $10 = 1 :i32
-    store($10, $1) :void
-    br Block_3() :void
+	$10 = 1 :i32
+	store($10, $1) :void
+	br Block_3() :void
 
 Block_3():
-    return :void
+	return :void
 
 Block_2($1:ptr):
-    $14 = 42 :i32
-    store($14, $1) :void
-    br Block_3() :void
+	$14 = 42 :i32
+	store($14, $1) :void
+	br Block_3() :void
 }
 } //NESIR

@@ -1,17 +1,17 @@
 B0($1:i32)
-	CONST	$2	0	:i32	
-	CONST	$3	0	:i32	
-	GT	$4	$1	$3	:bool	
-	CONST	$5	10	:i32	
-	LT	$6	$1	$5	:bool	
-	AND	$7	$4	$6	:bool	
-	CONST	$8	20	:i32	
-	EQ	$9	$1	$8	:bool	
-	OR	$10	$7	$9	:bool	
-	CMP	$11	$10	B1()	B2()	:void	
+	CONST	$2	0	:i32
+	CONST	$3	0	:i32
+	GT	$4	$1	$3	:bool
+	CONST	$5	10	:i32
+	LT	$6	$1	$5	:bool
+	AND	$7	$4	$6	:bool
+	CONST	$8	20	:i32
+	EQ	$9	$1	$8	:bool
+	OR	$10	$7	$9	:bool
+	CMP	$11	$10	B1()	B2()	:void
 B1()
-	CONST	$12	1	:i32	
-	ASSIGN	$2	$12	:i32	
-	RETURN	$2	:i32	
+	CONST	$12	1	:i32
+	ASSIGN	$2	$12	:i32
+	RETURN	$2	:i32
 B2()
-	RETURN	$2	:i32	
+	RETURN	$2	:i32

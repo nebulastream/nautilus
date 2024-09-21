@@ -11,9 +11,7 @@ public:
 
 	~CastOperation() override = default;
 
-	std::string toString() override;
-
-	Operation* getInput();
+	Operation* getInput() const;
 
 	void setInput(Operation* newInput);
 };

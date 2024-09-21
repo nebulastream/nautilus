@@ -1,4 +1,4 @@
 B0($1:ui32)
-	CONST	$2	0	:ui32	
-	EQ	$3	$1	$2	:bool	
-	RETURN	$3	:bool	
+	CONST	$2	0	:ui32
+	EQ	$3	$1	$2	:bool
+	RETURN	$3	:bool

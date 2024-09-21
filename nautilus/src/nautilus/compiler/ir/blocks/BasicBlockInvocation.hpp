@@ -30,7 +30,6 @@ public:
 	 */
 	int getOperationArgIndex(Operation*);
 
-	std::string toString() override;
 
 private:
 	BasicBlock* basicBlock;

@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include <vector>
+#include <string>
 
 namespace nautilus::compiler::ir {
 class ProxyCallOperation : public Operation {
@@ -15,11 +16,8 @@ public:
 
 	void setInputArguments(std::vector<Operation*>& newInputArguments);
 
-	const std::string& getFunctionSymbol();
-	const std::string& getFunctionName();
-
-	std::string toString() override;
-
+	const std::string& getFunctionSymbol() const;
+	const std::string& getFunctionName() const;
 	void* getFunctionPtr();
 
 private:

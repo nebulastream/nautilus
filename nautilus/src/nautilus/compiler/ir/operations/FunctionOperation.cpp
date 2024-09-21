@@ -12,27 +12,20 @@ const std::string& FunctionOperation::getName() const {
 	return name;
 }
 
-BasicBlock* FunctionOperation::getFunctionBasicBlock() {
-	return functionBasicBlocks[0].get();
+const BasicBlock& FunctionOperation::getFunctionBasicBlock() const {
+	return *functionBasicBlocks.front();
 }
 
 const std::vector<Type>& FunctionOperation::getInputArgs() const {
 	return inputArgs;
 }
 
-Type FunctionOperation::getOutputArg() const {
-	return getStamp();
+const std::vector<std::unique_ptr<BasicBlock>>& FunctionOperation::getBasicBlocks() const {
+	return functionBasicBlocks;
 }
 
-std::string FunctionOperation::toString() {
-	std::string baseString = name + '(';
-	if (inputArgNames.size() > 0) {
-		baseString += inputArgNames[0];
-		for (int i = 1; i < (int) inputArgNames.size(); ++i) {
-			baseString += ", " + inputArgNames.at(i);
-		}
-	}
-	return baseString + ')';
+Type FunctionOperation::getOutputArg() const {
+	return getStamp();
 }
 
 bool FunctionOperation::classof(const Operation* Op) {

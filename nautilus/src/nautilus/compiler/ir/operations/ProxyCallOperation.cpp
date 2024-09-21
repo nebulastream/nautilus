@@ -18,33 +18,11 @@ void ProxyCallOperation::setInputArguments(std::vector<Operation*>& newInputArgu
 	this->inputs = newInputArguments;
 }
 
-std::string ProxyCallOperation::toString() {
-	std::string baseString = "";
-	if (!identifier.toString().empty()) {
-		baseString = identifier.toString() + " = ";
-	}
-	baseString = baseString + getFunctionName() + "(";
-	if (!inputs.empty()) {
-		// baseString += inputArguments[0].lock()->getIdentifier().toString();
-		// for (int i = 1; i < (int) inputArguments.size(); ++i) {
-		//     baseString += ", " +
-		//     inputArguments.at(i).lock()->getIdentifier().toString();
-
-		baseString += inputs[0]->getIdentifier().toString();
-		// baseString += inputArguments[0].lock()->getIdentifier();
-		for (int i = 1; i < (int) inputs.size(); ++i) {
-			baseString += ", " + inputs.at(i)->getIdentifier().toString();
-			// baseString += ", " + inputArguments.at(i).lock()->getIdentifier();
-		}
-	}
-	return baseString + ")";
-}
-
-const std::string& ProxyCallOperation::getFunctionName() {
+const std::string& ProxyCallOperation::getFunctionName() const {
 	return functionName;
 }
 
-const std::string& ProxyCallOperation::getFunctionSymbol() {
+const std::string& ProxyCallOperation::getFunctionSymbol() const {
 	return mangedFunctionSymbol;
 }
 

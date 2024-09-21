@@ -8,16 +8,12 @@ namespace nautilus::compiler::ir {
 ConstFloatOperation::ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp) : Operation(OperationType::ConstFloatOp, identifier, stamp), constantValue(constantValue) {
 }
 
-double ConstFloatOperation::getValue() {
+double ConstFloatOperation::getValue() const {
 	return constantValue;
 }
 
 bool ConstFloatOperation::classof(const Operation* Op) {
 	return Op->getOperationType() == OperationType::ConstIntOp;
-}
-
-std::string ConstFloatOperation::toString() {
-	return identifier.toString() + " = " + std::to_string(constantValue);
 }
 
 } // namespace nautilus::compiler::ir

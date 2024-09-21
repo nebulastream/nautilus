@@ -3,7 +3,6 @@
 
 #include "nautilus/JITCompiler.hpp"
 #include <memory>
-#include <ostream>
 #include <string>
 
 namespace nautilus::compiler::ir {
@@ -21,12 +20,10 @@ public:
 
 	std::unique_ptr<FunctionOperation>& addRootOperation(std::unique_ptr<FunctionOperation> rootOperation);
 
-	FunctionOperation* getRootOperation();
+	const FunctionOperation& getRootOperation() const;
+	std::string toString() const;
 
-	[[nodiscard]] std::string toString() const;
 	[[nodiscard]] const CompilationUnitID& getId() const;
-
-	friend std::ostream& operator<<(std::ostream& os, const IRGraph& graph);
 
 private:
 	std::unique_ptr<FunctionOperation> rootOperation;

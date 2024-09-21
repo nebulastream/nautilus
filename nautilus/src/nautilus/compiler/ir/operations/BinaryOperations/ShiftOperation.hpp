@@ -13,8 +13,6 @@ public:
 
 	~ShiftOperation() override = default;
 
-	std::string toString() override;
-
 	bool classof(const Operation* Op);
 
 	ShiftType getType() const;

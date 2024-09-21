@@ -1,21 +1,5 @@
 
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
-#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
-#include "nautilus/compiler/ir/operations/CastOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/compiler/ir/operations/StoreOperation.hpp"
-#include <string>
 
 namespace nautilus::compiler::ir {
 Operation::Operation(OperationType opType, const OperationIdentifier& identifier, Type stamp, const std::vector<Operation*>& inputs) : opType(opType), identifier(identifier), stamp(stamp), inputs(inputs) {
@@ -41,9 +25,8 @@ const Type& Operation::getStamp() const {
 OperationIdentifier::OperationIdentifier(uint32_t ir) : id(ir) {
 }
 
-std::ostream& operator<<(std::ostream& os, const OperationIdentifier& identifier) {
-	os << identifier.id;
-	return os;
+uint32_t OperationIdentifier::getId() const {
+	return id;
 }
 
 bool OperationIdentifier::operator==(const OperationIdentifier& rhs) const {
@@ -83,11 +66,11 @@ bool Operation::isConstOperation() const {
 BinaryOperation::BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left, Operation* right) : Operation(opType, identifier, type, {left, right}) {
 }
 
-Operation* BinaryOperation::getLeftInput() {
+Operation* BinaryOperation::getLeftInput() const {
 	return inputs[0];
 }
 
-Operation* BinaryOperation::getRightInput() {
+Operation* BinaryOperation::getRightInput() const {
 	return inputs[1];
 }
 

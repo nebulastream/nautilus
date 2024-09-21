@@ -9,11 +9,9 @@ public:
 
 	~NegateOperation() override = default;
 
-	Operation* getInput();
+	Operation* getInput() const;
 
 	void setInput(Operation* newInput);
-
-	std::string toString() override;
 
 	bool classof(const Operation* Op);
 };

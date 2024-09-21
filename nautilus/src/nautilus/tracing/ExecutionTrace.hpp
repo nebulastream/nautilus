@@ -18,8 +18,7 @@ public:
 
 	~ExecutionTrace() = default;
 
-	value_ref addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                 std::vector<InputVariant>&& inputs);
+	value_ref addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs);
 
 	void addCmpOperation(Snapshot& snapshot, value_ref inputs);
 
@@ -78,8 +77,7 @@ public:
 		return currentBlockIndex;
 	}
 
-	void addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef,
-	                  nautilus::tracing::value_ref srcRef);
+	void addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef);
 
 	/**
 	 * @brief Returns the current block
@@ -118,8 +116,6 @@ public:
 
 	uint16_t getNextValueRef();
 
-	friend std::ostream& operator<<(std::ostream& os, const ExecutionTrace& tag);
-
 private:
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
 
@@ -136,3 +132,5 @@ public:
 };
 
 } // namespace nautilus::tracing
+
+
