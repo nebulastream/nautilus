@@ -24,6 +24,10 @@ Type FunctionOperation::getOutputArg() const {
 	return getStamp();
 }
 
+std::vector<std::unique_ptr<BasicBlock>>& FunctionOperation::getBasicBlocks() {
+	return functionBasicBlocks;
+}
+
 std::string FunctionOperation::toString() {
 	std::string baseString = name + '(';
 	if (inputArgNames.size() > 0) {

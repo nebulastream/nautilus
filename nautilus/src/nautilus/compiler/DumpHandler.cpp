@@ -32,7 +32,7 @@ void DumpHandler::dump(std::string_view dumpName, std::string_view extension, co
 }
 
 bool DumpHandler::shouldDump(std::string_view dumpName) const {
-	return options.getOptionOrDefault("dump.all", false) || options.getOptionOrDefault("dump." + std::string(dumpName), false);
+	return options.getOptionOrDefault("dump.all", true) || options.getOptionOrDefault("dump." + std::string(dumpName), false);
 }
 
 bool DumpHandler::dumpToConsole() const {
