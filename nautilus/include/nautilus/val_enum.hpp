@@ -69,7 +69,7 @@ public:
 		return value == other.value;
 	}
 
-	bool operator==(const T& other) const {
+	val<bool> operator==(const T& other) const {
 		auto res = val<T>(other);
 		return *this == res;
 	}

@@ -1,19 +1,7 @@
 B0($1:ui8)
 	CONST	$2	6	:ui8	
 	EQ	$3	$1	$2	:bool	
-	CMP	$4	$3	B1()	B2($1)	:void	
-B1()
-	CONST	$5	true	:bool	
-	JMP	$0	B5($5)	:void	
-B2($1:ui8)
-	CONST	$7	5	:ui8	
-	EQ	$8	$1	$7	:bool	
-	CMP	$9	$8	B3()	B4()	:void	
-B3()
-	CONST	$10	true	:bool	
-	JMP	$0	B5($10)	:void	
-B4()
-	CONST	$12	false	:bool	
-	JMP	$0	B5($12)	:void	
-B5($5:bool)
-	RETURN	$5	:bool	
+	CONST	$4	5	:ui8	
+	EQ	$5	$1	$4	:bool	
+	OR	$6	$3	$5	:bool	
+	RETURN	$6	:bool	
