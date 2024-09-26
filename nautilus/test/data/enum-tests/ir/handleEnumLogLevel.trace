@@ -1,0 +1,11 @@
+NESIR {
+execute() {
+Block_0($1:ui8):
+    $2 = 6 :ui8
+    $3 = $1 == $2 :bool
+    $4 = 5 :ui8
+    $5 = $1 == $4 :bool
+    $6 = $3 or $5 :bool
+    return ($6) :bool
+}
+} //NESIR
