@@ -100,7 +100,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 			auto func = std::get<1>(test);
 			auto name = std::get<0>(test);
 
-			Catch::Benchmark::Benchmark("backend_compilation_" + backend + "_" + name).operator=([&func, &registry](Catch::Benchmark::Chronometer meter) {
+			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name).operator=([&func, &registry](Catch::Benchmark::Chronometer meter) {
 				std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				trace = ssaCreationPhase.apply(trace);
