@@ -36,7 +36,7 @@ jobs:
       - name: test
         shell: bash
         run: |
-          ./nautilus/test/execution-tests/nautilus-tracing-benchmarks | tee benchmark_result.txt
+          ./nautilus/test/benchmark/nautilus-tracing-benchmarks | tee benchmark_result.txt
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
