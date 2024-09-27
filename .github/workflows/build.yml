@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - mlir-19
   pull_request:
     branches:
       - main

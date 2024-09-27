@@ -4,7 +4,7 @@ include(cmake/macros.cmake)
 if (NAUTILUS_DOWNLOAD_MLIR)
     execute_process(COMMAND uname -m OUTPUT_VARIABLE NES_HOST_PROCESSOR)
 
-    set(MLIR_VERSION 18.1.5)
+    set(MLIR_VERSION 19.1.0)
     if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         # Linux-specific stuff
         get_linux_lsb_release_information()
@@ -32,12 +32,12 @@ if (NAUTILUS_DOWNLOAD_MLIR)
     set(MLIR_COMPRESSED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${CLANG_COMPRESSED_BINARY_NAME}.7z)
     IF (NOT EXISTS ${MLIR_COMPRESSED_FILE})
         message(STATUS "MLIR binaries at ${MLIR_COMPRESSED_FILE} do not exist!")
-        download_file(https://github.com/nebulastream/mlir-binaries/releases/download/v18_1_5/${CLANG_COMPRESSED_BINARY_NAME}.7z
+        download_file(https://github.com/nebulastream/mlir-binaries/releases/download/v19_1_0/${CLANG_COMPRESSED_BINARY_NAME}.7z
                 ${MLIR_COMPRESSED_FILE}_tmp)
         file(RENAME ${MLIR_COMPRESSED_FILE}_tmp ${MLIR_COMPRESSED_FILE})
     endif ()
     IF (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/mlir-${MLIR_VERSION})
-        message(STATUS "Un-compress clang binaries!")
+        message(STATUS "Un-compress mlir binaries!")
         file(REMOVE_RECURSE ${CMAKE_CURRENT_BINARY_DIR}/mlir-${MLIR_VERSION}_tmp)
         file(ARCHIVE_EXTRACT INPUT ${MLIR_COMPRESSED_FILE} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/mlir-${MLIR_VERSION}_tmp PATTERNS mlir)
         file(RENAME ${CMAKE_CURRENT_BINARY_DIR}/mlir-${MLIR_VERSION}_tmp ${CMAKE_CURRENT_BINARY_DIR}/mlir-${MLIR_VERSION})
