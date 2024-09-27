@@ -55,7 +55,12 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 4. JIT compile LLVM IR module and return engine that provides access
 	// compiled execute function.
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(), loweringProvider->getJitProxyTargetAddresses());
-
+	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
+		auto result = engine->lookupPacked("execute");
+		if (!result) {
+			llvm::errs() << "Could not compile function" << result.takeError() << "\n";
+		}
+	}
 	// 5. Get execution function from engine. Create and return execution context.
 	return std::make_unique<MLIRExecutable>(std::move(engine));
 }
