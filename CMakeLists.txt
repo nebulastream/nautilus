@@ -71,6 +71,7 @@ if (USE_EXTERNAL_FMT)
     find_package(fmt CONFIG REQUIRED)
 else ()
     add_subdirectory(${THIRD_PARTY_DIR}/fmt EXCLUDE_FROM_ALL)
+    disable_target_warnings(fmt)
     list(APPEND EXPORT_TARGETS fmt)
 endif ()
 

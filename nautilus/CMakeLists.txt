@@ -32,7 +32,6 @@ set_target_properties(nautilus PROPERTIES
         EXPORT_NAME nautilus
 )
 
-disable_target_warnings(fmt)
 target_link_libraries(nautilus PRIVATE fmt::fmt)
 
 if (ENABLE_LOGGING)
