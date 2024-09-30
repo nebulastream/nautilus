@@ -1,4 +1,4 @@
-if (ENABLE_TRACING)
+if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     add_executable(nautilus-tracing-benchmarks
             TracingBenchmark.cpp
     )

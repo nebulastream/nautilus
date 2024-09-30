@@ -28,7 +28,7 @@ jobs:
       - name: cmake
         shell: bash
         run: |
-          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.flags }}  -G Ninja -S . -B .
+          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_BENCHMARKS=ON ${{ matrix.flags }}  -G Ninja -S . -B .
       - name: build
         shell: bash
         run: |
