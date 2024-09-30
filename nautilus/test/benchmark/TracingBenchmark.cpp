@@ -100,18 +100,19 @@ TEST_CASE("Backend Compilation Benchmark") {
 			auto func = std::get<1>(test);
 			auto name = std::get<0>(test);
 
-			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name).operator=([&func, &registry](Catch::Benchmark::Chronometer meter) {
+			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name).operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
 				std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				trace = ssaCreationPhase.apply(trace);
-				auto backend = registry.getBackend("mlir");
+				auto backendBackend = registry.getBackend("mlir");
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				auto ir = irConversionPhase.apply(trace);
 				auto op = engine::Options();
 				// force compilation for the MLIR backend.
 				op.setOption("mlir.eager_compilation", true);
+				op.setOption("engine.backend", backend);
 				auto dh = compiler::DumpHandler(op, "");
-				meter.measure([&] { return backend->compile(ir, dh, op); });
+				meter.measure([&] { return backendBackend->compile(ir, dh, op); });
 			});
 		}
 	}
