@@ -32,6 +32,8 @@ set_target_properties(nautilus PROPERTIES
         EXPORT_NAME nautilus
 )
 
+target_link_libraries(nautilus PRIVATE fmt::fmt)
+
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus PRIVATE spdlog::spdlog)
 endif ()
@@ -54,6 +56,7 @@ install(
         TARGETS nautilus ${EXPORT_TARGETS}
         EXPORT ${PROJECT_NAME}-config
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/
 )
 
 install(

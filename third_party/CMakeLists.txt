@@ -8,8 +8,12 @@ endif ()
 if (ENABLE_LOGGING)
     set(SPDLOG_COMPILED_LIB ON)
     set(SPDLOG_BUILD_SHARED OFF)
+    set(SPDLOG_FMT_EXTERNAL ON)
     add_subdirectory(spdlog)
 endif ()
+
+add_subdirectory(fmt)
+disable_target_warnings(fmt)
 
 if (ENABLE_STACKTRACE)
     # Also requires one of: libbfd (gnu binutils), libdwarf, libdw (elfutils)
