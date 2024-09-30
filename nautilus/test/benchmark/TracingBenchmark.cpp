@@ -104,7 +104,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 				std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				trace = ssaCreationPhase.apply(trace);
-				auto backendBackend = registry.getBackend("mlir");
+				auto backendBackend = registry.getBackend(backend);
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				auto ir = irConversionPhase.apply(trace);
 				auto op = engine::Options();
