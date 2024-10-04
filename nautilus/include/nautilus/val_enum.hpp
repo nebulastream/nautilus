@@ -3,6 +3,7 @@
 #include "nautilus/val_concepts.hpp"
 #include <iostream>
 #include <memory>
+#include <utility>
 
 #ifdef ENABLE_TRACING
 
@@ -20,21 +21,80 @@ public:
 	using raw_type = underlying_type_t;
 	using basic_type = raw_type;
 
-	val() : value() {}
-
 #ifdef ENABLE_TRACING
-	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {}
-	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {}
-	val(val<T>&& t) : state(t.state), value(t.value) {}
-	val(T val) : state(tracing::traceConstant((underlying_type_t) val)), value(val) {}
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(val<T>& val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {
+	}
+	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {
+	}
+	val(val<T>&& t) : state(t.state), value(t.value) {
+	}
+	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(val) {
+	}
 #else
-	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {}
-	val(val<T>& t) : value(t.value) {}
-	val(T val) : value(val) {}
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(T val) : value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(val<T>& val) : value(static_cast<std::underlying_type_t<T>>(val)) {
+	}
+
+	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {
+	}
+	val(val<T>& t) : value(t.value) {
+	}
+	val(T val) : value(val) {
+	}
 #endif
 
+
+	val<bool> operator==(val<T>& other) const {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, state, other.state);
+			return val<bool>(tc);
+		}
+#endif
+		return value == other.value;
+	}
+
+	val<bool> operator==(const T& other) const {
+		auto res = val<T>(other);
+		return *this == res;
+	}
+
+	val<bool> operator!=(val<T>& other) const {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, state, other.state);
+			return val<bool>(tc);
+		}
+#endif
+		return value != other.value;
+	}
+
+	val<bool> operator!=(const T& other) const {
+		return *this == val<T>(other);
+	}
+
 	operator val<underlying_type_t>() const {
-		return value;
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			return val<underlying_type_t>(state);
+		}
+#endif
+		return val<underlying_type_t>(static_cast<std::underlying_type_t<T>>(value));
 	}
 
 	val<T>& operator=(const val<T>& other) {
@@ -55,5 +115,11 @@ private:
 	friend T details::getRawValue<T>(const val<T>& left);
 	const T value;
 };
+
+template <typename Type>
+requires std::is_enum_v<Type>
+auto inline make_value(const Type& value) {
+	return val<Type>(value);
+}
 
 } // namespace nautilus

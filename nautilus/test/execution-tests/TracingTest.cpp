@@ -135,8 +135,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 	for (auto& test : tests) {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
-		auto executionTrace = tracing::TraceContext::trace(func);
 		DYNAMIC_SECTION(name) {
+			auto executionTrace = tracing::TraceContext::trace(func);
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get(), category, "tracing", name));
 			}
@@ -276,6 +276,8 @@ TEST_CASE("Enum Trace Test") {
 	    {"isEnum", details::createFunctionWrapper(isEnum)},
 	    {"getEnum", details::createFunctionWrapper(getEnum)},
 	    {"callEnumFunction", details::createFunctionWrapper(callEnumFunction)},
+	    {"callEnumClassFunction", details::createFunctionWrapper(callEnumClassFunction)},
+	    {"handleEnumLogLevel", details::createFunctionWrapper(handleEnumLogLevel)},
 	};
 	runTraceTests("enum-tests", tests);
 }

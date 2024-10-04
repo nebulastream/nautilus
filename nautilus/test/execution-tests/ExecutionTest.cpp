@@ -86,6 +86,19 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((char) CHAR_MIN) == (char) CHAR_MAX);
 	}
 
+	SECTION("callEnumClassFunction") {
+		auto f = engine.registerFunction(callEnumClassFunction);
+		REQUIRE(f(LogLevel::LOG_DEBUG) == 6);
+		REQUIRE(f(LogLevel::LOG_NONE) == 1);
+	}
+
+	SECTION("handleEnumLogLevel") {
+		auto f = engine.registerFunction(handleEnumLogLevel);
+		REQUIRE(f(LogLevel::LOG_INFO));
+		REQUIRE(f(LogLevel::LOG_DEBUG));
+		REQUIRE(!f(LogLevel::LOG_NONE));
+	}
+
 	SECTION("callEnumFunction") {
 		auto f = engine.registerFunction(callEnumFunction);
 		REQUIRE(f(Color::BLUE) == 42);
