@@ -1,3 +1,3 @@
 B0($1:bool,$2:bool)
-	OR	$6	$1	$2	:bool	
-	RETURN	$6	:bool	
+	OR	$6	$1	$2	:bool
+	RETURN	$6	:bool

@@ -11,9 +11,7 @@ public:
 
 	~ConstPtrOperation() override = default;
 
-	void* getValue();
-
-	std::string toString() override;
+	void* getValue() const;
 
 	static bool classof(const Operation* Op);
 

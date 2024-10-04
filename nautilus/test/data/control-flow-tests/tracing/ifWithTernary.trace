@@ -1,23 +1,23 @@
 B0($1:i32)
-	CONST	$2	5	:i32	
-	GT	$3	$1	$2	:bool	
-	CMP	$4	$3	B1()	B2()	:void	
+	CONST	$2	5	:i32
+	GT	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
 B1()
-	CONST	$5	10	:i32	
-	CONST	$6	0	:i32	
-	JMP	$0	B5()	:void	
+	CONST	$5	10	:i32
+	CONST	$6	0	:i32
+	JMP	$0	B5()	:void
 B2()
-	CONST	$11	5	:i32	
-	ASSIGN	$5	$11	:i32	
-	CONST	$12	0	:i32	
-	ASSIGN	$6	$12	:i32	
-	JMP	$0	B5()	:void	
+	CONST	$11	5	:i32
+	ASSIGN	$5	$11	:i32
+	CONST	$12	0	:i32
+	ASSIGN	$6	$12	:i32
+	JMP	$0	B5()	:void
 B3()
-	CONST	$9	-1	:i32	
-	ASSIGN	$5	$9	:i32	
-	RETURN	$5	:i32	
+	CONST	$9	-1	:i32
+	ASSIGN	$5	$9	:i32
+	RETURN	$5	:i32
 B4()
-	RETURN	$5	:i32	
+	RETURN	$5	:i32
 B5() ControlFlowMerge
-	EQ	$7	$1	$6	:bool	
-	CMP	$8	$7	B3()	B4()	:void	
+	EQ	$7	$1	$6	:bool
+	CMP	$8	$7	B3()	B4()	:void

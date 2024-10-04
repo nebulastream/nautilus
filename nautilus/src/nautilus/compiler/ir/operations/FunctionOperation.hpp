@@ -7,8 +7,7 @@
 namespace nautilus::compiler::ir {
 class FunctionOperation : public Operation {
 public:
-	explicit FunctionOperation(std::string name, std::vector<std::unique_ptr<BasicBlock>>& functionBasicBlocks,
-	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
+	explicit FunctionOperation(std::string name, std::vector<std::unique_ptr<BasicBlock>>& functionBasicBlocks, std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
 
 	~FunctionOperation() override = default;
 
@@ -16,15 +15,14 @@ public:
 
 	BasicBlock* addFunctionBasicBlock(BasicBlockPtr functionBasicBlock);
 
-	BasicBlock* getFunctionBasicBlock();
+	const BasicBlock& getFunctionBasicBlock() const;
+	const std::vector<std::unique_ptr<BasicBlock>>& getBasicBlocks() const;
 
 	[[nodiscard]] const std::vector<Type>& getInputArgs() const;
 
 	[[nodiscard]] Type getOutputArg() const;
 
 	[[nodiscard]] const std::vector<std::string>& getInputArgNames() const;
-
-	std::string toString() override;
 
 	static bool classof(const Operation* Op);
 

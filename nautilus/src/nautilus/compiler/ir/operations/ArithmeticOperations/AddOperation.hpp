@@ -9,8 +9,6 @@ public:
 
 	~AddOperation() override = default;
 
-	std::string toString() override;
-
 	bool classof(const Operation* Op);
 };
 } // namespace nautilus::compiler::ir

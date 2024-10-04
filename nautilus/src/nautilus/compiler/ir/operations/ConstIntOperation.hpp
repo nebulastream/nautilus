@@ -10,12 +10,10 @@ public:
 
 	~ConstIntOperation() override = default;
 
-	int64_t getValue();
+	int64_t getValue() const ;
 
 	template <class T>
 	T getIntegerViaType();
-
-	std::string toString() override;
 
 	static bool classof(const Operation* Op);
 

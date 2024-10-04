@@ -9,8 +9,6 @@ public:
 
 	~LoadOperation() override = default;
 
-	const Operation* getAddress();
-
-	std::string toString() override;
+	const Operation* getAddress() const;
 };
 } // namespace nautilus::compiler::ir

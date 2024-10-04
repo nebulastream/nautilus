@@ -30,16 +30,16 @@ void BCLoweringProvider::RegisterProvider::freeRegister() {
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 	defaultRegisterFile.fill(0);
-	auto functionOperation = ir->getRootOperation();
+	const auto& functionOperation = ir->getRootOperation();
 	RegisterFrame rootFrame;
-	auto functionBasicBlock = functionOperation->getFunctionBasicBlock();
-	for (auto i = 0ull; i < functionBasicBlock->getArguments().size(); i++) {
-		auto& argument = functionBasicBlock->getArguments()[i];
+	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
+	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
+		auto& argument = functionBasicBlock.getArguments()[i];
 		auto argumentRegister = registerProvider.allocRegister();
 		rootFrame.setValue(argument->getIdentifier(), argumentRegister);
 		program.arguments.emplace_back(argumentRegister);
 	}
-	this->process(functionBasicBlock, rootFrame);
+	this->process(&functionBasicBlock, rootFrame);
 	// NES_INFO("Allocated Registers: " <<
 	// this->registerProvider.allocRegister());
 	return std::make_tuple(program, defaultRegisterFile);
@@ -944,7 +944,7 @@ void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOpera
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi, short block, RegisterFrame& parentFrame) {
+void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short block, RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	std::vector<short> tempArgs;

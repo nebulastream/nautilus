@@ -13,9 +13,8 @@ public:
 
 	~BranchOperation() override = default;
 
+	const BasicBlockInvocation& getNextBlockInvocation()const;
 	BasicBlockInvocation& getNextBlockInvocation();
-
-	std::string toString() override;
 
 	static bool classof(const Operation* Op);
 

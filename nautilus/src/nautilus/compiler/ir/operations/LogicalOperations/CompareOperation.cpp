@@ -7,7 +7,7 @@ CompareOperation::CompareOperation(OperationIdentifier identifier, Operation* le
     : BinaryOperation(Operation::OperationType::CompareOp, identifier, Type::b, leftInput, rightInput), comparator(comparator) {
 }
 
-CompareOperation::Comparator CompareOperation::getComparator() {
+CompareOperation::Comparator CompareOperation::getComparator() const {
 	return comparator;
 }
 
@@ -59,10 +59,6 @@ std::string CompareOperation::getComparatorAsString() {
 		return ">=";
 	}
 	return "";
-}
-
-std::string CompareOperation::toString() {
-	return identifier.toString() + " = " + getLeftInput()->getIdentifier().toString() + " " + getComparatorAsString() + " " + getRightInput()->getIdentifier().toString();
 }
 
 } // namespace nautilus::compiler::ir

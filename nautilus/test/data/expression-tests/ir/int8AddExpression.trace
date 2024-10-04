@@ -1,8 +1,8 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:i8):
-    $2 = 2 :i8
-    $3 = $2 + $1 :i8
-    return ($3) :i8
+	$2 = 2 :i8
+	$3 = $2 + $1 :i8
+	return ($3) :i8
 }
 } //NESIR

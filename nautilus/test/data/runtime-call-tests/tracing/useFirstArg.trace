@@ -1,2 +1,2 @@
 B0($1:i32,$2:i32)
-	RETURN	$1	:i32	
+	RETURN	$1	:i32

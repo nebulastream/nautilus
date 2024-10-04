@@ -11,9 +11,7 @@ public:
 
 	~ConstBooleanOperation() override = default;
 
-	bool getValue();
-
-	std::string toString() override;
+	bool getValue() const;
 
 	static bool classof(const Operation* Op);
 

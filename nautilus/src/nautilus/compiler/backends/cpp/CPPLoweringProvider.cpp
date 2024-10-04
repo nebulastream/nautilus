@@ -63,17 +63,17 @@ std::string CPPLoweringProvider::LoweringContext::getType(const Type& stamp) {
 
 std::stringstream CPPLoweringProvider::LoweringContext::process() {
 
-	auto functionOperation = ir->getRootOperation();
+	const auto& functionOperation = ir->getRootOperation();
 	RegisterFrame rootFrame;
 	std::vector<std::string> arguments;
-	auto functionBasicBlock = functionOperation->getFunctionBasicBlock();
-	for (auto i = 0ull; i < functionBasicBlock->getArguments().size(); i++) {
-		auto argument = functionBasicBlock->getArguments()[i].get();
+	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
+	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
+		auto argument = functionBasicBlock.getArguments()[i].get();
 		auto var = getVariable(argument->getIdentifier());
 		rootFrame.setValue(argument->getIdentifier(), var);
 		arguments.emplace_back(getType(argument->getStamp()) + " " + var);
 	}
-	this->process(functionBasicBlock, rootFrame);
+	this->process(&functionBasicBlock, rootFrame);
 
 	std::stringstream pipelineCode;
 	pipelineCode << "\n";
@@ -179,7 +179,7 @@ void CPPLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, 
 	blocks[blockIndex] << "*reinterpret_cast<" << type << "*>(" << address << ") = " << value << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::BasicBlockInvocation& bi, short blockIndex, RegisterFrame& parentFrame) {
+void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short blockIndex, RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	blocks[blockIndex] << "// prepare block arguments\n";
@@ -351,8 +351,7 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		return;
 	}
 	default: {
-		throw NotImplementedException("Operation is not implemented:" + opt->toString());
-		return;
+		throw NotImplementedException("Operation is not implemented");
 	}
 	}
 }

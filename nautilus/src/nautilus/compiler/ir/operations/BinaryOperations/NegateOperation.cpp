@@ -6,15 +6,11 @@ namespace nautilus::compiler::ir {
 NegateOperation::NegateOperation(OperationIdentifier identifier, Operation* input) : Operation(OperationType::NegateOp, identifier, input->getStamp(), {input}) {
 }
 
-std::string NegateOperation::toString() {
-	return identifier.toString() + "= ~" + getInput()->getIdentifier().toString();
-}
-
 bool NegateOperation::classof(const Operation* Op) {
 	return Op->getOperationType() == OperationType::NegateOp;
 }
 
-Operation* NegateOperation::getInput() {
+Operation* NegateOperation::getInput() const {
 	return inputs[0];
 }
 

@@ -53,7 +53,7 @@ void writeTestFile(T* trace, std::string filePath) {
 	// Check if the file is open
 	if (file.is_open()) {
 		// Write the string to the file
-		file << *trace;
+		file << trace->toString();
 		// Close the file
 		file.close();
 	} else {
@@ -84,7 +84,7 @@ bool checkTestFile(T* trace, const std::string category, const std::string group
 
 	std::ifstream file(filePath);
 	std::stringstream targetString;
-	targetString << *trace; // Ensure this operation is valid
+	targetString << trace->toString();
 
 	if (!file.is_open()) {
 		std::cerr << "Unable to open file\n";
@@ -126,7 +126,7 @@ bool checkTestFile(T* trace, const std::string category, const std::string group
 
 	if (differencesFound) {
 		std::cout << "Got Trace" << std::endl;
-		std::cout << *trace << std::endl;
+		std::cout << trace->toString() << std::endl;
 	}
 	return !differencesFound;
 }

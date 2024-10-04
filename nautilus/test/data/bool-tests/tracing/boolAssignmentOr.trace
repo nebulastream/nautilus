@@ -1,7 +1,7 @@
 B0($1:bool,$2:bool)
-	ASSIGN	$3	$1	:bool	
-	ASSIGN	$1	$2	:bool	
-	ASSIGN	$4	$3	:bool	
-	ASSIGN	$5	$2	:bool	
-	OR	$6	$4	$5	:bool	
-	RETURN	$6	:bool	
+	ASSIGN	$3	$1	:bool
+	ASSIGN	$1	$2	:bool
+	ASSIGN	$4	$3	:bool
+	ASSIGN	$5	$2	:bool
+	OR	$6	$4	$5	:bool
+	RETURN	$6	:bool

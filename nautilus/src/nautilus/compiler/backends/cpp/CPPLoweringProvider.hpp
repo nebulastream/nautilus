@@ -63,7 +63,7 @@ private:
 
 		std::string process(const ir::BasicBlock*, RegisterFrame& frame);
 
-		void process(ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
+		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
 		void process(const std::unique_ptr<ir::Operation>& operation, short block, RegisterFrame& frame);
 
@@ -97,13 +97,11 @@ private:
 			blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
 			frame.setValue(constValue->getIdentifier(), var);
 
-			blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue()
-			                   << ";\n";
+			blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue() << ";\n";
 		}
 
 		template <class Type>
-		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex,
-		                   RegisterFrame& frame) {
+		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex, RegisterFrame& frame) {
 			auto op = static_cast<Type*>(o.get());
 			auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 			auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());

@@ -241,7 +241,7 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame) {
 	switch (operation->getOperationType()) {
 	case ir::Operation::OperationType::FunctionOp:
-		generateMLIR(as<ir::FunctionOperation>(operation), frame);
+		// generateMLIR(as<ir::FunctionOperation>(operation), frame);
 		break;
 	case ir::Operation::OperationType::ConstIntOp:
 		generateMLIR(as<ir::ConstIntOperation>(operation), frame);
@@ -356,23 +356,23 @@ void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFra
 	);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::FunctionOperation* functionOp, ValueFrame& frame) {
+void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp, ValueFrame& frame) {
 	// Generate execute function. Set input/output types and get its entry block.
 	llvm::SmallVector<mlir::Type> inputTypes(0);
-	for (auto& inputArg : functionOp->getFunctionBasicBlock()->getArguments()) {
+	for (auto& inputArg : functionOp.getFunctionBasicBlock().getArguments()) {
 		inputTypes.emplace_back(getMLIRType(inputArg->getStamp()));
 	}
-	llvm::SmallVector<mlir::Type> outputTypes(1, getMLIRType(functionOp->getOutputArg()));
+	llvm::SmallVector<mlir::Type> outputTypes(1, getMLIRType(functionOp.getOutputArg()));
 	;
 	auto functionInOutTypes = builder->getFunctionType(inputTypes, outputTypes);
 	auto loc = getNameLoc("EntryPoint");
-	auto mlirFunction = builder->create<mlir::func::FuncOp>(loc, functionOp->getName(), functionInOutTypes);
+	auto mlirFunction = builder->create<mlir::func::FuncOp>(loc, functionOp.getName(), functionInOutTypes);
 
 	// Avoid function name mangling.
 	mlirFunction->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(context));
-	if (isUnsignedInteger(functionOp->getStamp())) {
+	if (isUnsignedInteger(functionOp.getStamp())) {
 		mlirFunction.setResultAttr(0, "llvm.zeroext", mlir::UnitAttr::get(context));
-	} else if (isSignedInteger(functionOp->getStamp())) {
+	} else if (isSignedInteger(functionOp.getStamp())) {
 		mlirFunction.setResultAttr(0, "llvm.signext", mlir::UnitAttr::get(context));
 	}
 	// mlirFunction.setArgAttr(0, "llvm.signext",  mlir::UnitAttr::get(context));
@@ -395,14 +395,14 @@ void MLIRLoweringProvider::generateMLIR(ir::FunctionOperation* functionOp, Value
 
 	// Store references to function args in the valueMap map.
 	auto valueMapIterator = mlirFunction.args_begin();
-	for (int i = 0; i < (int) functionOp->getFunctionBasicBlock()->getArguments().size(); ++i) {
-		frame.setValue(functionOp->getFunctionBasicBlock()->getArguments().at(i)->getIdentifier(), valueMapIterator[i]
+	for (int i = 0; i < (int) functionOp.getFunctionBasicBlock().getArguments().size(); ++i) {
+		frame.setValue(functionOp.getFunctionBasicBlock().getArguments().at(i)->getIdentifier(), valueMapIterator[i]
 
 		);
 	}
 
 	// Generate MLIR for operations in function body (BasicBlock).
-	generateMLIR(functionOp->getFunctionBasicBlock(), frame);
+	generateMLIR(&functionOp.getFunctionBasicBlock(), frame);
 
 	theModule.push_back(mlirFunction);
 }

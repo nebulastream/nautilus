@@ -7,11 +7,11 @@ namespace nautilus::compiler::ir {
 StoreOperation::StoreOperation(Operation* value, Operation* address) : Operation(OperationType::StoreOp, Type::v, {value, address}) {
 }
 
-Operation* StoreOperation::getValue() {
+Operation* StoreOperation::getValue() const {
 	return inputs[0];
 }
 
-Operation* StoreOperation::getAddress() {
+Operation* StoreOperation::getAddress() const {
 	return inputs[1];
 }
 
@@ -23,7 +23,4 @@ void StoreOperation::setAddress(Operation* newAddress) {
 	inputs[1] = newAddress;
 }
 
-std::string StoreOperation::toString() {
-	return "store(" + getValue()->getIdentifier().toString() + ", " + getAddress()->getIdentifier().toString() + ")";
-}
 } // namespace nautilus::compiler::ir

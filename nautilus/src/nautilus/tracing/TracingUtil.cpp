@@ -3,8 +3,8 @@
 #include "TraceContext.hpp"
 #include <cxxabi.h>
 #include <dlfcn.h>
+#include <fmt/format.h>
 #include <iostream>
-#include <spdlog/fmt/fmt.h>
 #include <sstream>
 namespace nautilus::tracing {
 
@@ -115,10 +115,6 @@ void popStaticVal() {
 	}
 }
 
-std::string TypedValueRef::toString() const {
-	return fmt::format("${}", ref);
-}
-
 } // namespace nautilus::tracing
 
 namespace nautilus {
@@ -127,3 +123,25 @@ std::ostream& operator<<(std::ostream& os, const Type& type) {
 	return os;
 }
 } // namespace nautilus
+
+namespace fmt {
+template <>
+struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
+	auto format(nautilus::ConstantLiteral c, format_context& ctx) const -> format_context::iterator;
+};
+} // namespace fmt
+
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const -> format_context::iterator {
+	auto out = ctx.out();
+	std::visit(
+	    [&](auto&& value) {
+		    using T = std::decay_t<decltype(value)>;
+		    if constexpr (!std::is_pointer_v<T>) {
+			    fmt::format_to(out, "{}\t", value);
+		    } else {
+			    fmt::format_to(out, "*\t");
+		    }
+	    },
+	    lit);
+	return out;
+}

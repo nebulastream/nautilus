@@ -4,7 +4,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <cstdint>
 #include <memory>
-#include <ostream>
+#include <string>
 #include <vector>
 
 namespace nautilus::compiler::ir {
@@ -12,8 +12,6 @@ namespace nautilus::compiler::ir {
 class OperationIdentifier {
 public:
 	OperationIdentifier(uint32_t id);
-
-	friend std::ostream& operator<<(std::ostream& os, const OperationIdentifier& identifier);
 
 	bool operator==(const OperationIdentifier& rhs) const;
 
@@ -30,6 +28,8 @@ public:
 	bool operator<=(const OperationIdentifier& rhs) const;
 
 	bool operator>=(const OperationIdentifier& rhs) const;
+
+	uint32_t getId() const;
 
 private:
 	uint32_t id;
@@ -68,16 +68,13 @@ public:
 		ShiftOp,
 	};
 
-	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,
-	                   const std::vector<Operation*>& inputs = {});
+	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type, const std::vector<Operation*>& inputs = {});
 
 	explicit Operation(OperationType opType, Type type, const std::vector<Operation*>& inputs = {});
 
 	virtual ~Operation() noexcept;
 
 	const OperationIdentifier& getIdentifier() const;
-
-	virtual std::string toString() = 0;
 
 	OperationType getOperationType() const;
 
@@ -89,6 +86,11 @@ public:
 	std::vector<std::shared_ptr<Operation>> getInputs();
 
 	void replaceInput(Operation* toReplace, std::shared_ptr<Operation> replaceWith);
+
+	template <typename OP>
+	const OP* dynCast() const {
+		return dynamic_cast<const OP*>(this);
+	}
 
 protected:
 	const OperationType opType;
@@ -109,18 +111,15 @@ T* as(const std::unique_ptr<Operation>& op) {
 
 class BinaryOperation : public Operation {
 public:
-	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left,
-	                Operation* right);
+	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left, Operation* right);
 
-	Operation* getLeftInput();
+	Operation* getLeftInput() const;
 
-	Operation* getRightInput();
+	Operation* getRightInput() const;
 
 	void setLeftInput(Operation* newLeftInput);
 
 	void setRightInput(Operation* newRightInput);
-
-	virtual std::string toString() = 0;
 };
 
 } // namespace nautilus::compiler::ir

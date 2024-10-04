@@ -1,7 +1,7 @@
 B0($1:ptr)
-	CONST	$3	18446744073709551614	:ui64	
-	CONST	$5	4	:ui64	
-	MUL	$6	$3	$5	:ui64	
-	ADD	$7	$1	$6	:ptr	
-	LOAD	$10	$7	:i32	
-	RETURN	$10	:i32	
+	CONST	$3	18446744073709551614	:ui64
+	CONST	$5	4	:ui64
+	MUL	$6	$3	$5	:ui64
+	ADD	$7	$1	$6	:ptr
+	LOAD	$10	$7	:i32
+	RETURN	$10	:i32

@@ -11,12 +11,10 @@ public:
 
 	~ConstFloatOperation() override = default;
 
-	double getValue();
+	double getValue() const;
 
 	template <class T>
 	T getFloatViaType();
-
-	std::string toString() override;
 
 	static bool classof(const Operation* Op);
 

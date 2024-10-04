@@ -9,16 +9,12 @@ namespace nautilus::compiler::ir {
 ConstPtrOperation::ConstPtrOperation(OperationIdentifier identifier, void* constantValue) : Operation(OperationType::ConstPtrOp, identifier, Type::ptr), constantValue(constantValue) {
 }
 
-void* ConstPtrOperation::getValue() {
+void* ConstPtrOperation::getValue() const {
 	return constantValue;
 }
 
 bool ConstPtrOperation::classof(const Operation*) {
 	return false;
-}
-
-std::string ConstPtrOperation::toString() {
-	return identifier.toString() + " = ptr";
 }
 
 } // namespace nautilus::compiler::ir

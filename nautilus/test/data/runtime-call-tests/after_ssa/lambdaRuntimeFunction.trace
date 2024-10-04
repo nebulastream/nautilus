@@ -1,3 +1,3 @@
 B0($1:i32)
-	CALL	$2	nautilus::engine::lambdaRuntimeFunction(nautilus::val<int>)::$_2::__invoke(int)($1)	:i32	
-	RETURN	$2	:i32	
+	CALL	$2	nautilus::engine::lambdaRuntimeFunction(nautilus::val<int>)::$_2::__invoke(int)($1)	:i32
+	RETURN	$2	:i32

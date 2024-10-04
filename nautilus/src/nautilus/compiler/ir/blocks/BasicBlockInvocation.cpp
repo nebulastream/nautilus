@@ -55,8 +55,4 @@ const std::vector<Operation*>& BasicBlockInvocation::getArguments() const {
 	return operations;
 }
 
-std::string BasicBlockInvocation::toString() {
-	return "BasicBlockInvocation";
-}
-
 } // namespace nautilus::compiler::ir

@@ -88,7 +88,7 @@ private:
 
 		void process(ir::BranchOperation* opt, short block, RegisterFrame& frame);
 
-		void process(ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
+		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
 		void process(ir::LoadOperation* opt, short block, RegisterFrame& frame);
 

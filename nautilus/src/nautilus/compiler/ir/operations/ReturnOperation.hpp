@@ -12,12 +12,10 @@ public:
 
 	~ReturnOperation() override = default;
 
-	Operation* getReturnValue();
+	Operation* getReturnValue() const;
 
 	void setReturnValue(Operation* newReturnValue);
 
-	bool hasReturnValue();
-
-	std::string toString() override;
+	bool hasReturnValue() const;
 };
 } // namespace nautilus::compiler::ir

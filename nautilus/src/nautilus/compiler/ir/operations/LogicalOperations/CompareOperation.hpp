@@ -18,7 +18,7 @@ public:
 
 	~CompareOperation() override = default;
 
-	Comparator getComparator();
+	Comparator getComparator() const;
 
 	bool isLessThan();
 
@@ -37,8 +37,6 @@ public:
 	bool isGreater();
 
 	std::string getComparatorAsString();
-
-	std::string toString() override;
 
 private:
 	Comparator comparator;

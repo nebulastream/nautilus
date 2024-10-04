@@ -1,6 +1,6 @@
-NESIR {
+NautilusIr {
 execute() {
 Block_0($1:bool):
-    return ($1) :bool
+	return ($1) :bool
 }
 } //NESIR
