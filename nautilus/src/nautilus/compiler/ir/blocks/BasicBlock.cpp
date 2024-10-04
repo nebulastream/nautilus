@@ -7,8 +7,7 @@
 #include <utility>
 
 namespace nautilus::compiler::ir {
-BasicBlock::BasicBlock(const std::string& identifier, int32_t scopeLevel, std::vector<std::unique_ptr<Operation>>& operations, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments)
-    : identifier(identifier), scopeLevel(scopeLevel), numLoopBackEdges(0), operations(std::move(operations)), arguments(std::move(arguments)) {
+BasicBlock::BasicBlock(uint16_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments) : identifier(identifier), operations(), arguments(std::move(arguments)) {
 }
 
 void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation*>& ops) {
@@ -27,32 +26,8 @@ void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation
 
 BasicBlock::~BasicBlock() = default;
 
-const std::string& BasicBlock::getIdentifier() const {
-	return identifier;
-}
-
-void BasicBlock::setIdentifier(const std::string& identifier) {
-	this->identifier = identifier;
-}
-
-uint32_t BasicBlock::getScopeLevel() const {
-	return scopeLevel;
-}
-
-void BasicBlock::setScopeLevel(uint32_t scopeLevel) {
-	this->scopeLevel = scopeLevel;
-}
-
-uint32_t BasicBlock::getNumLoopBackEdges() {
-	return numLoopBackEdges;
-}
-
-void BasicBlock::incrementNumLoopBackEdge() {
-	++this->numLoopBackEdges;
-}
-
-bool BasicBlock::isLoopHeaderBlock() {
-	return numLoopBackEdges > 0;
+const std::string BasicBlock::getIdentifier() const {
+	return std::to_string(identifier);
 }
 
 const std::vector<std::unique_ptr<Operation>>& BasicBlock::getOperations() const {
@@ -82,7 +57,7 @@ uint64_t BasicBlock::getIndexOfArgument(Operation* arg) {
 
 void BasicBlock::replaceTerminatorOperation(Operation* loopOperation) {
 	operations.pop_back();
-	operations.emplace_back(std::move(loopOperation));
+	operations.emplace_back(loopOperation);
 }
 
 BasicBlock* BasicBlock::addOperation(std::unique_ptr<Operation> operation) {

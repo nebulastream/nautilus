@@ -15,34 +15,11 @@ public:
 	 * @param Operations: A list of Operations that are executed in the BasicBlock.
 	 * @param nextBlocks : The BasicBlock that is next in the control flow of the execution.
 	 */
-	explicit BasicBlock(const std::string& identifier, int32_t scopeLevel,
-	                    std::vector<std::unique_ptr<Operation>>& operations,
-	                    std::vector<std::unique_ptr<BasicBlockArgument>>& arguments);
+	explicit BasicBlock(uint16_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments);
 
 	virtual ~BasicBlock();
 
-	[[nodiscard]] const std::string& getIdentifier() const;
-
-	void setIdentifier(const std::string& identifier);
-
-	[[nodiscard]] uint32_t getScopeLevel() const;
-
-	void setScopeLevel(uint32_t scopeLevel);
-
-	/**
-	 * @brief Get the number of edges that lead back from the loop body to the loop header.
-	 */
-	[[nodiscard]] uint32_t getNumLoopBackEdges();
-
-	/**
-	 * @brief Increment counter for edges that lead back from the loop body to the loop header.
-	 */
-	void incrementNumLoopBackEdge();
-
-	/**
-	 * @brief Check if the counter for edges that lead back from the loop body to the loop header is > 0.
-	 */
-	[[nodiscard]] bool isLoopHeaderBlock();
+	[[nodiscard]] const std::string getIdentifier() const;
 
 	[[nodiscard]] const std::vector<std::unique_ptr<Operation>>& getOperations() const;
 
@@ -83,15 +60,12 @@ public:
 
 	uint64_t getIndexOfArgument(Operation* arg);
 
-	// void popOperation();
 	void replaceTerminatorOperation(Operation* newTerminatorOperation);
 
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();
 
 private:
-	std::string identifier;
-	uint32_t scopeLevel;
-	uint32_t numLoopBackEdges;
+	uint16_t identifier;
 	std::vector<std::unique_ptr<Operation>> operations;
 	std::vector<std::unique_ptr<BasicBlockArgument>> arguments;
 	std::vector<BasicBlock*> predecessors;

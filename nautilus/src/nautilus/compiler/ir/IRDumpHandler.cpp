@@ -17,28 +17,24 @@ std::shared_ptr<NESIRDumpHandler> NESIRDumpHandler::create(std::ostream& out) {
 	return std::make_shared<NESIRDumpHandler>(out);
 }
 
-const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock, int ifParentBlockLevel) {
+const BasicBlock* NESIRDumpHandler::getNextLowerOrEqualLevelBasicBlock(const BasicBlock* thenBlock) {
 	auto& terminatorOp = thenBlock->getOperations().back();
 	if (terminatorOp->getOperationType() == Operation::OperationType::BranchOp) {
 		auto branchOp = dynamic_cast<BranchOperation*>(terminatorOp.get());
-		if (branchOp->getNextBlockInvocation().getBlock()->getScopeLevel() <= (uint32_t) ifParentBlockLevel) {
-			return branchOp->getNextBlockInvocation().getBlock();
-		} else {
-			return getNextLowerOrEqualLevelBasicBlock(branchOp->getNextBlockInvocation().getBlock(), ifParentBlockLevel);
-		}
+		return getNextLowerOrEqualLevelBasicBlock(branchOp->getNextBlockInvocation().getBlock());
 	} else if (terminatorOp->getOperationType() == Operation::OperationType::IfOp) {
 		auto ifOp = dynamic_cast<IfOperation*>(terminatorOp.get());
 		if (ifOp->getFalseBlockInvocation().getBlock() != nullptr) {
-			return getNextLowerOrEqualLevelBasicBlock(ifOp->getFalseBlockInvocation().getBlock(), ifParentBlockLevel);
+			return getNextLowerOrEqualLevelBasicBlock(ifOp->getFalseBlockInvocation().getBlock());
 		} else {
-			return getNextLowerOrEqualLevelBasicBlock(ifOp->getTrueBlockInvocation().getBlock(), ifParentBlockLevel);
+			return getNextLowerOrEqualLevelBasicBlock(ifOp->getTrueBlockInvocation().getBlock());
 		}
 	} else { // ReturnOp todo changed #3234
 		return nullptr;
 	}
 }
 
-void NESIRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
+void NESIRDumpHandler::dumpHelper(Operation* terminatorOp) {
 	switch (terminatorOp->getOperationType()) {
 	case Operation::OperationType::BranchOp: {
 		auto branchOp = static_cast<BranchOperation*>(terminatorOp);
@@ -47,8 +43,7 @@ void NESIRDumpHandler::dumpHelper(Operation* terminatorOp, int32_t) {
 	}
 	case Operation::OperationType::IfOp: {
 		auto ifOp = static_cast<IfOperation*>(terminatorOp);
-		auto lastTerminatorOp = getNextLowerOrEqualLevelBasicBlock(ifOp->getTrueBlockInvocation().getBlock(),
-		                                                           ifOp->getTrueBlockInvocation().getBlock()->getScopeLevel() - 1); // todo can lead to error #3234
+		auto lastTerminatorOp = getNextLowerOrEqualLevelBasicBlock(ifOp->getTrueBlockInvocation().getBlock());
 		dumpHelper(ifOp->getTrueBlockInvocation().getBlock());
 		dumpHelper(ifOp->getFalseBlockInvocation().getBlock());
 		if (lastTerminatorOp) {
@@ -79,7 +74,7 @@ void NESIRDumpHandler::dumpHelper(const BasicBlock* basicBlock) {
 			out << std::string(4, ' ') << operation->toString() << " :" << toString(operation->getStamp()) << std::endl;
 		}
 		auto& terminatorOp = basicBlock->getOperations().back();
-		dumpHelper(terminatorOp.get(), basicBlock->getScopeLevel());
+		dumpHelper(terminatorOp.get());
 	}
 }
 

@@ -36,10 +36,8 @@ private:
 	 * function.
 	 * @param basicBlock: Initially the block that we want to find the next BB for. Replaced while recursively
 	 * traversing NESIR.
-	 * @param blockScopeLevel: The scopeLevel of the initial BB that we are searching the next same/higher level BB for.
-	 * @return IR::BasicBlockPtr: SharedPtr to the next block that resides on the same or on a higher level.
 	 */
-	const BasicBlock* getNextLowerOrEqualLevelBasicBlock(const BasicBlock* basicBlock, int blockScopeLevel);
+	const BasicBlock* getNextLowerOrEqualLevelBasicBlock(const BasicBlock* basicBlock);
 
 	/**
 	 * @brief Handle dumping terminator operations(LoopOp, BranchOp, IfOp, ReturnOp) to the 'out' stringstream.
@@ -47,7 +45,7 @@ private:
 	 * @param terminatorOp: Terminator operation that we append to the 'out' stringstream.
 	 * @param scopeLevel: scopeLevel of the BasicBlock that is terminated by the terminator operation.
 	 */
-	void dumpHelper(Operation* terminatorOp, int32_t scopeLevel);
+	void dumpHelper(Operation* terminatorOp);
 
 	/**
 	 * @brief Handle dumping BasicBlocks to the 'out' stringstream. Print all operations, then handle the terminatorOp.

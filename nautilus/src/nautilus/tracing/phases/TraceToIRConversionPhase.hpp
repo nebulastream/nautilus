@@ -45,63 +45,45 @@ private:
 	 */
 	class IRConversionContext {
 	public:
-		IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {}
+		IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {
+		}
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
 
 	private:
-		compiler::ir::BasicBlock* processBlock(int32_t scope, Block& block);
+		compiler::ir::BasicBlock* processBlock(Block& block);
 
-		void processOperation(int32_t scope, ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock*& currentIRBlock, TraceOperation& operation);
+		void processOperation(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock*& currentIRBlock, TraceOperation& operation);
 
-		void processJMP(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* block, TraceOperation& operation);
+		void processJMP(ValueFrame& frame, compiler::ir::BasicBlock* block, TraceOperation& operation);
 
-		void processCMP(int32_t scope, ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock* currentIRBlock, TraceOperation& operation);
+		void processCMP(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock* currentIRBlock, TraceOperation& operation);
 
-		void processAdd(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processLogicalComperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::CompareOperation::Comparator comp);
 
-		void processSub(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processNegate(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processNot(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processMul(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processShift(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::ShiftOperation::ShiftType type);
 
-		void processDiv(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processBinaryComp(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::BinaryCompOperation::Type type);
 
-		void processMod(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processEquals(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::CompareOperation::Comparator comp);
+		void processStore(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processLessThan(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processGreaterThan(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processConst(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processNegate(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-		void processNot(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processAnd(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processShift(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::ShiftOperation::ShiftType type);
-
-		void processBinaryComp(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::BinaryCompOperation::Type type);
-
-		void processOr(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processLoad(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processStore(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processCall(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processConst(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		void processCast(int32_t scope, ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
-
-		bool isBlockInLoop(uint32_t parentBlock, uint32_t currentBlock);
-
-		std::vector<compiler::ir::OperationIdentifier> createBlockArguments(BlockRef val);
+		void processCast(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation, BlockRef val);
 
-		compiler::ir::OperationIdentifier createValueIdentifier(InputVariant val);
+		template <typename OpType>
+		void processBinaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		template <typename OpType>
+		void processUnaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
