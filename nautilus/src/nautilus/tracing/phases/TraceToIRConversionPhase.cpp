@@ -10,14 +10,11 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
-#include <cstdint>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -41,10 +38,7 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<Executi
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(trace->getBlocks().front());
-
-	auto returnStamp = returnType;
-	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {}, std::vector<std::string> {}, returnStamp);
-
+	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {}, std::vector<std::string> {}, returnType);
 	ir->addRootOperation(std::move(functionOperation));
 	return ir;
 }
