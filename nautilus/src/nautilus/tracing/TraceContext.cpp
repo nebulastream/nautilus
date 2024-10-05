@@ -3,7 +3,16 @@
 #include "nautilus/logging.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
+#include <fmt/format.h>
 #include <cassert>
+
+namespace fmt {
+template <>
+struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+};
+}
+
 
 namespace nautilus::tracing {
 
@@ -38,17 +47,7 @@ value_ref TraceContext::registerFunctionArgument(Type type, size_t index) {
 }
 
 void TraceContext::traceValueDestruction(nautilus::tracing::value_ref) {
-	/*if (symbolicExecutionContext->getCurrentMode() ==
-	SymbolicExecutionContext::MODE::FOLLOW) { auto currentOperation =
-	executionTrace->getCurrentOperation(); executionTrace->nextOperation();
-	    assert(currentOperation.op == FREE);
-	    return;
-	}*/
-	// auto op = Op::FREE;
-	// auto valueType = Type::v;
-	// auto tag = tagRecorder.createTag();
-	// executionTrace->addOperation(tag, varRefMap, op, valueType, 0, target);
-	return;
+	// currently yed not implemented
 }
 
 value_ref TraceContext::traceLoad(const value_ref& src, Type resultType) {
@@ -138,7 +137,6 @@ value_ref TraceContext::traceCall(const std::string& functionName, const std::st
 		auto currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == CALL);
-		//   executionTrace->variableBitset[currentOperation.resultRef] = true;
 		return currentOperation.resultRef;
 	}
 
@@ -165,16 +163,6 @@ void TraceContext::traceAssignment(const value_ref& targetRef, const value_ref& 
 		return;
 	}
 	auto tag = recordSnapshot();
-	/*
-	auto found = executionTrace->globalTagMap.find(tag);
-	if (found != executionTrace->globalTagMap.end()) {
-	    auto currentOp =
-	executionTrace->getBlock(found->second.blockIndex).operations[found->second.operationIndex];
-	    if(std::get<value_ref>(currentOp.input[0]) != sourceRef){
-	        executionTrace->addAssignmentOperation(tag, targetRef, sourceRef,
-	resultType); return;
-	    };
-	}*/
 	if (executionTrace->checkTag(tag)) {
 		executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
 		return;
@@ -292,7 +280,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 		try {
 			traceIteration = traceIteration + 1;
 			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", tc->executionTrace->toString());
+			log::trace("{}", *tc->executionTrace);
 			tc->symbolicExecutionContext->next();
 			tc->executionTrace->resetExecution();
 			TraceContext::get()->resume();
@@ -303,7 +291,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	auto trace = std::move(tc->executionTrace);
 	terminate();
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", trace->toString());
+	log::trace("Final trace: {}", *trace);
 	return trace;
 }
 
@@ -353,3 +341,4 @@ Snapshot TraceContext::recordSnapshot() {
 }
 
 } // namespace nautilus::tracing
+

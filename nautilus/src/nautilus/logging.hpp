@@ -1,25 +1,36 @@
 #pragma once
 
+#include <nautilus/config.hpp>
+#ifdef ENABLE_LOGGING
 #include <spdlog/spdlog.h>
+#endif
 
 namespace nautilus::log {
 template <typename... Args>
-void info(spdlog::format_string_t<Args...> fmt, Args&&... args) {
-	spdlog::info(fmt, std::forward<Args>(args)...);
+void info([[maybe_unused]] const char* fmt, [[maybe_unused]]Args&&... args) {
+#ifdef ENABLE_LOGGING
+	spdlog::info("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+#endif
 }
 
 template <typename... Args>
-void debug(spdlog::format_string_t<Args...> fmt, Args&&... args) {
-	spdlog::debug(fmt, std::forward<Args>(args)...);
+void debug([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
+#ifdef ENABLE_LOGGING
+	spdlog::debug("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+#endif
 }
 
 template <typename... Args>
-void trace(spdlog::format_string_t<Args...> fmt, Args&&... args) {
-	spdlog::trace(fmt, std::forward<Args>(args)...);
+void trace([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
+#ifdef ENABLE_LOGGING
+	spdlog::trace("{}",fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+#endif
 }
 
 template <typename... Args>
-void error(spdlog::format_string_t<Args...> fmt, Args&&... args) {
-	spdlog::debug(fmt, std::forward<Args>(args)...);
+void error([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
+#ifdef ENABLE_LOGGING
+	spdlog::error("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+#endif
 }
 } // namespace nautilus::log

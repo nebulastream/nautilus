@@ -127,10 +127,7 @@ public:
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
-
 	operation_identifier getNextOperationIdentifier();
 };
 
 } // namespace nautilus::tracing
-
-
