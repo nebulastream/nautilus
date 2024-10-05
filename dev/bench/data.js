@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1728141583864,
+  "lastUpdate": 1728148911778,
   "repoUrl": "https://github.com/nebulastream/nautilus",
   "entries": {
     "Tracing Benchmark": [
@@ -7372,6 +7372,58 @@ window.BENCHMARK_DATA = {
             "range": "± 143.362",
             "unit": "us",
             "extra": "100 samples\n13 iterations"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "philippgrulich@hotmail.de",
+            "name": "Philipp Grulich",
+            "username": "PhilippGrulich"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2191088107b9b98ca7ba9fbc426680e239a53c1e",
+          "message": "Refactor trace context (#55)",
+          "timestamp": "2024-10-05T19:20:46+02:00",
+          "tree_id": "32c57c56b1404bc20fded5121b7174d0b687e35d",
+          "url": "https://github.com/nebulastream/nautilus/commit/2191088107b9b98ca7ba9fbc426680e239a53c1e"
+        },
+        "date": 1728148911318,
+        "tool": "catch2",
+        "benches": [
+          {
+            "name": "trace_deeplyNestedIfElse",
+            "value": 31.2898,
+            "range": "± 5.04427",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "ssa_deeplyNestedIfElse",
+            "value": 979.719,
+            "range": "± 47.1935",
+            "unit": "ns",
+            "extra": "100 samples\n32 iterations"
+          },
+          {
+            "name": "ir_deeplyNestedIfElse",
+            "value": 5.84769,
+            "range": "± 314.033",
+            "unit": "us",
+            "extra": "100 samples\n6 iterations"
+          },
+          {
+            "name": "comp_mlir_deeplyNestedIfElse",
+            "value": 8.10667,
+            "range": "± 854.87",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
           }
         ]
       }
