@@ -1,6 +1,6 @@
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/common/File.hpp"
-#include "spdlog/fmt/fmt.h"
+#include "fmt/core.h"
 #include <filesystem>
 
 namespace nautilus::compiler {

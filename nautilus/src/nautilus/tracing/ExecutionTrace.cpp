@@ -78,7 +78,7 @@ value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operati
 	return to.resultRef;
 }
 
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, nautilus::tracing::value_ref inputs) {
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, value_ref inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
