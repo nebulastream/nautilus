@@ -10,6 +10,27 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 	createBlock();
 }
 
+Block& ExecutionTrace::getBlock(uint16_t blockIndex) {
+	return blocks[blockIndex];
+}
+
+uint16_t ExecutionTrace::getCurrentBlockIndex() const {
+	return currentBlockIndex;
+}
+
+Block& ExecutionTrace::getCurrentBlock() {
+	return blocks[currentBlockIndex];
+}
+
+void ExecutionTrace::setCurrentBlock(uint16_t index) {
+	currentOperationIndex = 0;
+	currentBlockIndex = index;
+}
+
+std::vector<Block>& ExecutionTrace::getBlocks() {
+	return blocks;
+}
+
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
@@ -20,11 +41,10 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 		return false;
 	}
 
+	// check if we visited the same operation in this execution -> loop
 	auto localTagIter = localTagMap.find(snapshot);
 	if (localTagIter != localTagMap.end()) {
-		// TODO #3500 Fix handling of repeated operations
 		auto& ref = localTagIter->second;
-		// add loop iteration to tag
 		processControlFlowMerge(ref);
 		return false;
 	}
@@ -41,7 +61,6 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, value_ref ref) {
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 
-	// returnRefs
 	returnRefs.emplace_back(operationIdentifier);
 }
 
@@ -88,11 +107,8 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, value_ref inputs) {
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
-
-	auto operationInputs = std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)};
-
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, CMP, Type::v, value_ref(getNextValueRef(), Type::v), std::forward<std::vector<InputVariant>>(operationInputs));
+	operations.emplace_back(snapshot, CMP, Type::v, value_ref(getNextValueRef(), Type::v), std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -107,25 +123,18 @@ void ExecutionTrace::nextOperation() {
 }
 
 TraceOperation& ExecutionTrace::getCurrentOperation() {
-	auto currentOp = getCurrentBlock().operations[currentOperationIndex];
+	auto& currentOp = getCurrentBlock().operations[currentOperationIndex];
 	while (currentOp.op == JMP) {
 		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
 		setCurrentBlock(nextBlock.block);
 		currentOp = getCurrentBlock().operations[currentOperationIndex];
 	}
-	return getCurrentBlock().operations[currentOperationIndex];
+	return currentOp;
 }
 
 uint16_t ExecutionTrace::createBlock() {
-	// add first block
-	if (blocks.empty()) {
-		// add arguments to first block
-		blocks.emplace_back(blocks.size());
-		// blocks[0].arguments = arguments;
-		return blocks.size() - 1;
-	}
-	blocks.emplace_back(blocks.size());
-	return blocks.size() - 1;
+	auto& block = blocks.emplace_back(blocks.size());
+	return block.blockId;
 }
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
@@ -168,10 +177,10 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 	// add jump from referenced block to merge block
 	auto mergeBlockRef = BlockRef(mergedBlockId);
-	referenceBlock.addOperation({Op::JMP, std::vector<InputVariant> {mergeBlockRef}});
+	referenceBlock.addOperation({Op::JMP, {mergeBlockRef}});
 
 	// add jump from current block to merge block
-	currentBlock.addOperation({Op::JMP, std::vector<InputVariant> {mergeBlockRef}});
+	currentBlock.addOperation({Op::JMP, {mergeBlockRef}});
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
@@ -203,17 +212,12 @@ value_ref ExecutionTrace::setArgument(Type type, size_t index) {
 	return arguments[index];
 }
 
-void ExecutionTrace::destruct(nautilus::tracing::value_ref) {
-	// variableBitset[inputs] = false;
-}
-
 std::vector<operation_identifier> ExecutionTrace::getReturn() {
 	return returnRefs;
 }
 
 uint16_t ExecutionTrace::getNextValueRef() {
-	auto ref = ++lastValueRef;
-	return ref;
+	return ++lastValueRef;
 }
 
 operation_identifier ExecutionTrace::getNextOperationIdentifier() {
@@ -222,7 +226,6 @@ operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 }
 
 void ExecutionTrace::resetExecution() {
-	// variableBitset.reset();
 	currentBlockIndex = 0;
 	currentOperationIndex = 0;
 	globalTagMap.merge(localTagMap);

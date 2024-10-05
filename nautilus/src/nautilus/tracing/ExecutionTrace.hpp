@@ -22,8 +22,6 @@ public:
 
 	void addCmpOperation(Snapshot& snapshot, value_ref inputs);
 
-	void destruct(value_ref inputs);
-
 	void addAssignmentOperation(Snapshot&, value_ref targetRef, value_ref srcRef, Type resultType);
 
 	void addReturn(Snapshot&, Type type, value_ref ref);
@@ -57,35 +55,27 @@ public:
 	 * @param blockIndex
 	 * @return Block&
 	 */
-	Block& getBlock(uint16_t blockIndex) {
-		return blocks[blockIndex];
-	}
+	Block& getBlock(uint16_t blockIndex);
 
 	/**
 	 * @brief Returns a reference to all blocks
 	 * @return std::vector<Block>&
 	 */
-	std::vector<Block>& getBlocks() {
-		return blocks;
-	}
+	std::vector<Block>& getBlocks();
 
 	/**
 	 * @brief Returns the index to the current block.
 	 * @return uint32_t
 	 */
-	uint16_t getCurrentBlockIndex() const {
-		return currentBlockIndex;
-	}
+	uint16_t getCurrentBlockIndex() const;
 
-	void addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef);
+	void addOperation(Snapshot& snapshot, Op& operation, Type& resultType, value_ref targetRef, value_ref srcRef);
 
 	/**
 	 * @brief Returns the current block
 	 * @return Block&
 	 */
-	Block& getCurrentBlock() {
-		return blocks[currentBlockIndex];
-	}
+	Block& getCurrentBlock();
 
 	TraceOperation& getCurrentOperation();
 
@@ -93,10 +83,7 @@ public:
 	 * @brief Sets the current block
 	 * @param index
 	 */
-	void setCurrentBlock(uint16_t index) {
-		currentOperationIndex = 0;
-		currentBlockIndex = index;
-	}
+	void setCurrentBlock(uint16_t index);
 
 	/**
 	 * @brief Processes a control flow merge

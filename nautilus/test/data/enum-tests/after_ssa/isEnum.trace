@@ -1,0 +1,19 @@
+B0($1:ui32)
+	CONST	$2	0	:ui32
+	EQ	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2($1)	:void
+B1()
+	CONST	$5	1	:i32
+	JMP	$0	B5($5)	:void
+B2($1:ui32)
+	CONST	$7	1	:ui32
+	EQ	$8	$1	$7	:bool
+	CMP	$9	$8	B3()	B4()	:void
+B3()
+	CONST	$10	2	:i32
+	JMP	$0	B5($10)	:void
+B4()
+	CONST	$12	42	:i32
+	JMP	$0	B5($12)	:void
+B5($5:i32)
+	RETURN	$5	:i32

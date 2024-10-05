@@ -1,9 +1,9 @@
 
+#include "fmt/core.h"
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <unordered_map>
-#include "fmt/core.h"
 
 namespace nautilus::tracing {
 

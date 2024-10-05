@@ -3,16 +3,15 @@
 #include "nautilus/logging.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
-#include <fmt/format.h>
 #include <cassert>
+#include <fmt/format.h>
 
 namespace fmt {
 template <>
 struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
 };
-}
-
+} // namespace fmt
 
 namespace nautilus::tracing {
 
@@ -52,16 +51,15 @@ void TraceContext::traceValueDestruction(nautilus::tracing::value_ref) {
 
 value_ref TraceContext::traceLoad(const value_ref& src, Type resultType) {
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == LOAD);
 		return currentOperation.resultRef;
 	}
-	auto input = InputVariant(src);
 	auto op = Op::LOAD;
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {input});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, {src});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -69,7 +67,7 @@ value_ref TraceContext::traceLoad(const value_ref& src, Type resultType) {
 
 void TraceContext::traceStore(const value_ref& target, const value_ref& src, Type valueType) {
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == STORE);
 		return;
@@ -89,36 +87,31 @@ bool TraceContext::isFollowing() {
 
 value_ref TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
+	auto op = Op::CONST;
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
-		assert(currentOperation.op == CONST);
+		assert(currentOperation.op == op);
 		return currentOperation.resultRef;
 	}
-	auto input = InputVariant(constValue);
-	auto op = Op::CONST;
 	auto tag = recordSnapshot();
 	auto globalTabIter = executionTrace->globalTagMap.find(tag);
 	if (globalTabIter != executionTrace->globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto originalRef = executionTrace->getBlocks()[ref.blockIndex].operations[ref.operationIndex];
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, type, std::vector<InputVariant> {input});
+		auto& originalRef = executionTrace->getBlocks()[ref.blockIndex].operations[ref.operationIndex];
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, type, {constValue});
 		executionTrace->addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
 		return originalRef.resultRef;
 	} else {
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, type, std::vector<InputVariant> {input});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, type, {constValue});
 		return resultRef;
 	}
-}
-
-Tag* TraceContext::getTag() {
-	return tagRecorder.createTag();
 }
 
 value_ref TraceContext::traceCopy(const value_ref& ref) {
 	log::debug("Trace Copy");
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == ASSIGN);
 		return currentOperation.resultRef;
@@ -133,23 +126,24 @@ value_ref TraceContext::traceCopy(const value_ref& ref) {
 }
 
 value_ref TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+
+	auto op = Op::CALL;
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
-		assert(currentOperation.op == CALL);
+		assert(currentOperation.op == op);
 		return currentOperation.resultRef;
 	}
 
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
-		auto functionArguments = InputVariant(FunctionCall {
+		auto functionArguments = FunctionCall {
 		    .functionName = functionName,
 		    .mangledName = mangledName,
 		    .ptr = fptn,
 		    .arguments = arguments,
-		});
-		auto op = Op::CALL;
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {functionArguments});
+		};
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, {functionArguments});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -157,7 +151,7 @@ value_ref TraceContext::traceCall(const std::string& functionName, const std::st
 
 void TraceContext::traceAssignment(const value_ref& targetRef, const value_ref& sourceRef, Type resultType) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == ASSIGN);
 		return;
@@ -172,10 +166,9 @@ void TraceContext::traceAssignment(const value_ref& targetRef, const value_ref& 
 
 value_ref TraceContext::traceCast(const value_ref& state, Type resultType) {
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == CAST);
-		//   executionTrace->variableBitset[currentOperation.resultRef] = true;
 		return currentOperation.resultRef;
 	}
 	// TODO is expected? check if we repeat a known trace or if this is a new
@@ -183,10 +176,8 @@ value_ref TraceContext::traceCast(const value_ref& state, Type resultType) {
 	// block[currentOperationCounter] is equal to the received operation.
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
-		auto leftIV = InputVariant(state);
 		auto op = Op::CAST;
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV});
-		//  executionTrace->variableBitset[resultRef] = true;
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, {state});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -194,7 +185,7 @@ value_ref TraceContext::traceCast(const value_ref& state, Type resultType) {
 
 void TraceContext::traceReturnOperation(Type type, const value_ref& ref) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == RETURN);
 		return;
@@ -205,7 +196,7 @@ void TraceContext::traceReturnOperation(Type type, const value_ref& ref) {
 
 value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType, const value_ref& inputRef) {
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == op);
 		return currentOperation.resultRef;
@@ -213,8 +204,7 @@ value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resul
 
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
-		auto inputVariant = InputVariant(inputRef);
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {inputVariant});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, {inputRef});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -222,18 +212,15 @@ value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resul
 
 value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, const value_ref& leftRef, const value_ref& rightRef) {
 	if (isFollowing()) {
-		auto currentOperation = executionTrace->getCurrentOperation();
+		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
 		assert(currentOperation.op == op);
-		//   executionTrace->variableBitset[currentOperation.resultRef] = true;
 		return currentOperation.resultRef;
 	}
 
 	auto tag = recordSnapshot();
 	if (executionTrace->checkTag(tag)) {
-		auto leftIV = InputVariant(leftRef);
-		auto rightIV = InputVariant(rightRef);
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, std::vector<InputVariant> {leftIV, rightIV});
+		auto resultRef = executionTrace->addOperationWithResult(tag, op, resultType, {leftRef, rightRef});
 		return resultRef;
 	}
 	throw TraceTerminationException();
@@ -341,4 +328,3 @@ Snapshot TraceContext::recordSnapshot() {
 }
 
 } // namespace nautilus::tracing
-
