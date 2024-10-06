@@ -35,7 +35,7 @@ B1()
 	ADD	$37	$31	$36	:ptr
 	ASSIGN	$38	$37	:ptr
 	ASSIGN	$39	$38	:ptr
-	STORE	$39	$29	:i8
+	STORE	$0	$39	$29	:void
 	CONST	$40	1	:i32
 	CAST	$41	$4	:i32
 	ADD	$42	$41	$40	:i32

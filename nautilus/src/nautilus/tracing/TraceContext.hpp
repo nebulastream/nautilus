@@ -40,7 +40,7 @@ public:
 
 	static bool shouldTrace();
 
-	TypedValueRef registerFunctionArgument(Type type, size_t index);
+	TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 	void traceValueDestruction(TypedValueRef target);
 
@@ -49,9 +49,9 @@ public:
 	 * @param valueReference reference to the const value.
 	 * @param constValue constant value.
 	 */
-	TypedValueRef traceConstValue(Type type, const ConstantLiteral& constValue);
+	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue);
 
-	TypedValueRef traceCopy(const TypedValueRef& ref);
+	TypedValueRef& traceCopy(const TypedValueRef& ref);
 
 	Tag* getTag();
 
@@ -61,7 +61,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef traceUnaryOperation(Op op, Type resultType, const TypedValueRef& inputRef);
+	TypedValueRef& traceUnaryOperation(Op op, Type resultType, const TypedValueRef& inputRef);
 
 	/**
 	 * @brief Trace a binary operation, e.g., add, sub, div.
@@ -70,7 +70,7 @@ public:
 	 * @param rightRef reference to the right input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef traceBinaryOperation(Op op, Type resultType, const TypedValueRef& leftRef, const TypedValueRef& rightRef);
+	TypedValueRef& traceBinaryOperation(Op op, Type resultType, const TypedValueRef& leftRef, const TypedValueRef& rightRef);
 
 	/**
 	 * @brief Trace the return function.
@@ -85,13 +85,13 @@ public:
 	 */
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
+	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
 
 	bool traceCmp(const TypedValueRef& targetRef);
 
-	TypedValueRef traceLoad(const TypedValueRef& src, Type resultType);
+	TypedValueRef& traceLoad(const TypedValueRef& src, Type resultType);
 
-	TypedValueRef traceCast(const TypedValueRef& state, Type resultType);
+	TypedValueRef& traceCast(const TypedValueRef& state, Type resultType);
 
 	void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType);
 

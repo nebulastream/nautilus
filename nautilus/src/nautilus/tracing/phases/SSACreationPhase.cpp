@@ -102,10 +102,6 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 				}
 			}
 		}
-
-		if (operation.op == STORE) {
-			processValueRef(block, operation.resultRef, operation.resultType, i);
-		}
 	}
 	processedBlocks.emplace(block.blockId);
 	// Recursively process the predecessors of this block
@@ -167,59 +163,34 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
-		for (uint64_t i = 0; i < block.operations.size(); i++) {
-			auto& operation = block.operations[i];
-			if (operation.op == Op::CMP) {
-				if (auto valueRef = &operation.resultRef) {
-					auto foundAssignment = assignmentMap.find(valueRef->ref);
-					if (foundAssignment != assignmentMap.end()) {
-						// todo check assignment
-						valueRef->ref = foundAssignment->second;
-					}
-				}
-			}
+		for (auto& operation : block.operations) {
 			if (operation.op == Op::ASSIGN) {
-				auto valueRef = get<TypedValueRef>(operation.input[0]);
+				auto& valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
 				if (foundAssignment != assignmentMap.end()) {
-					assignmentMap[operation.resultRef.ref] = assignmentMap[valueRef.ref];
+					assignmentMap[operation.resultRef.ref] = foundAssignment->second;
 				} else {
 					assignmentMap[operation.resultRef.ref] = get<TypedValueRef>(operation.input[0]).ref;
 				}
 			} else {
-				if (operation.op == Op::STORE) {
-					auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
-					if (foundAssignment != assignmentMap.end()) {
-						operation.resultRef.ref = foundAssignment->second;
-					}
-				}
 				for (auto& input : operation.input) {
 					if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 						auto foundAssignment = assignmentMap.find(valueRef->ref);
 						if (foundAssignment != assignmentMap.end()) {
-							// todo check assignment
 							valueRef->ref = foundAssignment->second;
-							// valueRef->blockId = foundAssignment->second.blockId;
-							// valueRef->operationId = foundAssignment->second.operationId;
 						}
 					} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
 						for (auto& blockArgument : blockRef->arguments) {
 							auto foundAssignment = assignmentMap.find(blockArgument.ref);
 							if (foundAssignment != assignmentMap.end()) {
-								// valueRef = &foundAssignment->second;
 								blockArgument.ref = foundAssignment->second;
-								// blockArgument.operationId =
-								// foundAssignment->second.operationId;
 							}
 						}
 					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
 						for (auto& funcArg : fcallRef->arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
-								// valueRef = &foundAssignment->second;
 								funcArg.ref = foundAssignment->second;
-								// blockArgument.operationId =
-								// foundAssignment->second.operationId;
 							}
 						}
 					}

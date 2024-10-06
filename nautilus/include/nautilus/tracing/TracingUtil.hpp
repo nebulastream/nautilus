@@ -15,11 +15,11 @@ namespace nautilus::tracing {
 
 bool inTracer();
 
-TypedValueRef traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState);
-TypedValueRef traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
+TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState);
+TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
 
 bool traceBool(const TypedValueRef& state);
-TypedValueRef traceConstant(Type type, const ConstantLiteral& value);
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
 	if (inTracer()) {
@@ -28,16 +28,16 @@ TypedValueRef traceConstant(T&& value) {
 	return {0, to_type<T>()};
 }
 
-TypedValueRef traceLoad(const TypedValueRef& src, Type resultType);
+TypedValueRef& traceLoad(const TypedValueRef& src, Type resultType);
 void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType);
 
-TypedValueRef traceCast(const TypedValueRef& state, Type resultType);
+TypedValueRef& traceCast(const TypedValueRef& state, Type resultType);
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& state);
 
-TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
+TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
 
-TypedValueRef registerFunctionArgument(Type type, size_t index);
+TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
 void traceValueDestruction(TypedValueRef ref);

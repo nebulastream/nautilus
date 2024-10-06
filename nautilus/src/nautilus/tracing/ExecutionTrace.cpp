@@ -51,7 +51,7 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, TypedValueRef ref) {
+void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -68,27 +68,27 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, TypedValueRe
 	returnRefs.emplace_back(operationIdentifier);
 }
 
-void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::TypedValueRef targetRef, nautilus::tracing::TypedValueRef srcRef, Type resultType) {
+TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef, const TypedValueRef& srcRef, Type resultType) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = ASSIGN;
-
-	operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
+	return operation.resultRef;
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::TypedValueRef targetRef, nautilus::tracing::TypedValueRef srcRef) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant>&& inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::vector<InputVariant> {inputs});
 }
 
-TypedValueRef ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -101,7 +101,7 @@ TypedValueRef ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& ope
 	return to.resultRef;
 }
 
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, TypedValueRef inputs) {
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -165,9 +165,9 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 		// update in global and local tag map
 
 		if (sourceOperation.op == RETURN) {
-			for (size_t i = 0; i < returnRefs.size(); i++) {
-				if (returnRefs[i].blockIndex == referenceBlock.blockId && returnRefs[i].operationIndex == opIndex) {
-					returnRefs[i] = operationReference;
+			for (auto& returnRef : returnRefs) {
+				if (returnRef.blockIndex == referenceBlock.blockId && returnRef.operationIndex == opIndex) {
+					returnRef = operationReference;
 				}
 			}
 		} else {
@@ -204,7 +204,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	return mergeBlock;
 }
 
-TypedValueRef ExecutionTrace::setArgument(Type type, size_t index) {
+TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	uint16_t argRef = index + 1;
 	auto& arguments = blocks[0].arguments;

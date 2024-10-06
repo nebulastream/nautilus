@@ -9,11 +9,11 @@ B1()
 	ASSIGN	$8	$1	:ptr
 	ASSIGN	$9	$8	:ptr
 	CONST	$10	1	:i32
-	STORE	$1	$10	:i32
+	STORE	$0	$1	$10	:void
 	RETURN	$0	:void
 B2()
 	ASSIGN	$12	$1	:ptr
 	ASSIGN	$13	$12	:ptr
 	CONST	$14	42	:i32
-	STORE	$1	$14	:i32
+	STORE	$0	$1	$14	:void
 	RETURN	$0	:void

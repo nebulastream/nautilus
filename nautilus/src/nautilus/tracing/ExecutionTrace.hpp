@@ -18,13 +18,13 @@ public:
 
 	~ExecutionTrace() = default;
 
-	TypedValueRef addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs);
 
-	void addCmpOperation(Snapshot& snapshot, TypedValueRef inputs);
+	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs);
 
-	void addAssignmentOperation(Snapshot&, TypedValueRef targetRef, TypedValueRef srcRef, Type resultType);
+	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef, Type resultType);
 
-	void addReturn(Snapshot&, Type type, TypedValueRef ref);
+	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
 
 	bool checkTag(Snapshot& snapshot);
 
@@ -36,7 +36,7 @@ public:
 	 * @brief Adds arguments that are passed to the traced function
 	 * @param argument
 	 */
-	TypedValueRef setArgument(Type type, size_t index);
+	TypedValueRef& setArgument(Type type, size_t index);
 
 	/**
 	 * @brief Returns all arguments of this trace.
@@ -69,7 +69,7 @@ public:
 	 */
 	uint16_t getCurrentBlockIndex() const;
 
-	void addOperation(Snapshot& snapshot, Op& operation, Type& resultType, TypedValueRef targetRef, TypedValueRef srcRef);
+	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant>&& inputs);
 
 	/**
 	 * @brief Returns the current block

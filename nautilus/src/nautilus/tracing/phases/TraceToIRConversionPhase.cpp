@@ -278,8 +278,8 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& frame, BasicBlock* currentBlock, TraceOperation& operation) {
-	auto address = frame.getValue(createValueIdentifier(operation.resultRef));
-	auto value = frame.getValue(createValueIdentifier(operation.input[0]));
+	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
+	auto value = frame.getValue(createValueIdentifier(operation.input[1]));
 	currentBlock->addOperation<StoreOperation>(value, address);
 }
 
