@@ -128,7 +128,8 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, short blockIndex,
+                                                   RegisterFrame& frame) {
 	auto leftInput = frame.getValue(cmpOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(cmpOp->getRightInput()->getIdentifier());
 	auto resultVar = getVariable(cmpOp->getIdentifier());
@@ -138,7 +139,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, 
 	// we have to handle the special case that we want to do a null check.
 	// Currently, Nautilus IR just contains a x == 0, thus we check if x is a ptr
 	// type.
-	if (cmpOp->isEquals() && cmpOp->getLeftInput()->getStamp() == Type::ptr && isInteger(cmpOp->getRightInput()->getStamp())) {
+	if (cmpOp->isEquals() && cmpOp->getLeftInput()->getStamp() == Type::ptr &&
+	    isInteger(cmpOp->getRightInput()->getStamp())) {
 		blocks[blockIndex] << resultVar << " = " << leftInput << " == nullptr;\n";
 		return;
 	}
@@ -172,21 +174,24 @@ void CPPLoweringProvider::LoweringContext::process(ir::LoadOperation* loadOp, sh
 	blocks[blockIndex] << resultVar << " = *reinterpret_cast<" << type << "*>(" << address << ");\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, short blockIndex,
+                                                   RegisterFrame& frame) {
 	auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
 	auto value = frame.getValue(storeOp->getValue()->getIdentifier());
 	auto type = getType(storeOp->getValue()->getStamp());
 	blocks[blockIndex] << "*reinterpret_cast<" << type << "*>(" << address << ") = " << value << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short blockIndex, RegisterFrame& parentFrame) {
+void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short blockIndex,
+                                                   RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	blocks[blockIndex] << "// prepare block arguments\n";
 	blocks[blockIndex] << "{\n";
 	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
 		auto blockArgument = blockInputArguments[i]->getIdentifier();
-		blocks[blockIndex] << getType(blockTargetArguments[i]->getStamp()) << " temp_" << i << " = " << parentFrame.getValue(blockArgument) << ";\n";
+		blocks[blockIndex] << getType(blockTargetArguments[i]->getStamp()) << " temp_" << i << " = "
+		                   << parentFrame.getValue(blockArgument) << ";\n";
 	}
 	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
 		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
@@ -215,13 +220,15 @@ void CPPLoweringProvider::LoweringContext::process(ir::IfOperation* ifOpt, short
 	blocks[blockIndex] << "goto " << falseBlock << ";}\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::BranchOperation* branchOp, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::BranchOperation* branchOp, short blockIndex,
+                                                   RegisterFrame& frame) {
 	process(branchOp->getNextBlockInvocation(), blockIndex, frame);
 	auto nextBlock = process(branchOp->getNextBlockInvocation().getBlock(), frame);
 	blocks[blockIndex] << "goto " << nextBlock << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short blockIndex,
+                                                   RegisterFrame& frame) {
 	switch (opt->getOperationType()) {
 	case ir::Operation::OperationType::ConstBooleanOp: {
 		processConst<ir::ConstBooleanOperation>(opt, blockIndex, frame);
@@ -356,7 +363,8 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, short blockIndex,
+                                                   RegisterFrame& frame) {
 
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
@@ -385,7 +393,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 	blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short blockIndex,
+                                                   RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(negateOperation->getIdentifier());
 	blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
@@ -393,7 +402,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOp
 	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperation, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperation, short blockIndex,
+                                                   RegisterFrame& frame) {
 	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(notOperation->getIdentifier());
 	blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";

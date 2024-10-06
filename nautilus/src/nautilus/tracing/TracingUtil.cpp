@@ -46,24 +46,12 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-TypedValueRef& traceLoad(const TypedValueRef& src, Type resultType) {
-	return TraceContext::get()->traceLoad(src, resultType);
-}
-
-void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType) {
-	TraceContext::get()->traceStore(target, src, valueType);
-}
-
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
 bool traceBool(const TypedValueRef& state) {
 	return TraceContext::get()->traceCmp(state);
-}
-
-TypedValueRef& traceCast(const TypedValueRef& state, Type resultType) {
-	return TraceContext::get()->traceCast(state, resultType);
 }
 
 void allocateValRef(ValueRef ref) {
@@ -90,12 +78,12 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
 }
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState) {
-	return TraceContext::get()->traceBinaryOperation(operation, resultType, leftState, rightState);
+TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
+	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
 }
 
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState) {
-	return TraceContext::get()->traceUnaryOperation(operation, resultType, inputState);
+TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
+	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
@@ -131,7 +119,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

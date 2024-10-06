@@ -25,7 +25,8 @@ namespace nautilus::compiler {
 JITCompiler::JITCompiler() : options(), backends(std::make_unique<CompilationBackendRegistry>()) {
 }
 
-JITCompiler::JITCompiler(engine::Options options) : options(std::move(options)), backends(std::make_unique<CompilationBackendRegistry>()) {
+JITCompiler::JITCompiler(engine::Options options)
+    : options(std::move(options)), backends(std::make_unique<CompilationBackendRegistry>()) {
 }
 
 JITCompiler::~JITCompiler() = default;

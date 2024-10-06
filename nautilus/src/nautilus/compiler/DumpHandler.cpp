@@ -13,10 +13,12 @@ std::filesystem::path getRootPath(const engine::Options&, const nautilus::compil
 	return path;
 }
 
-DumpHandler::DumpHandler(const engine::Options& options, const nautilus::compiler::CompilationUnitID& id) : options(options), id(id), rootPath(getRootPath(options, id)) {
+DumpHandler::DumpHandler(const engine::Options& options, const nautilus::compiler::CompilationUnitID& id)
+    : options(options), id(id), rootPath(getRootPath(options, id)) {
 }
 
-void DumpHandler::dump(std::string_view dumpName, std::string_view extension, const std::function<std::string()>& dumpFunction) const {
+void DumpHandler::dump(std::string_view dumpName, std::string_view extension,
+                       const std::function<std::string()>& dumpFunction) const {
 	if (shouldDump(dumpName)) {
 		auto content = dumpFunction();
 		if (dumpToConsole()) {
@@ -32,7 +34,8 @@ void DumpHandler::dump(std::string_view dumpName, std::string_view extension, co
 }
 
 bool DumpHandler::shouldDump(std::string_view dumpName) const {
-	return options.getOptionOrDefault("dump.all", false) || options.getOptionOrDefault("dump." + std::string(dumpName), false);
+	return options.getOptionOrDefault("dump.all", false) ||
+	       options.getOptionOrDefault("dump." + std::string(dumpName), false);
 }
 
 bool DumpHandler::dumpToConsole() const {

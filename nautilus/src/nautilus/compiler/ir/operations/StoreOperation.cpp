@@ -4,7 +4,8 @@
 
 namespace nautilus::compiler::ir {
 
-StoreOperation::StoreOperation(Operation* value, Operation* address) : Operation(OperationType::StoreOp, Type::v, {value, address}) {
+StoreOperation::StoreOperation(Operation* value, Operation* address)
+    : Operation(OperationType::StoreOp, Type::v, {value, address}) {
 }
 
 Operation* StoreOperation::getValue() const {

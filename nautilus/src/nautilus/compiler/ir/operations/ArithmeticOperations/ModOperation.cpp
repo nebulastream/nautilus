@@ -4,7 +4,8 @@
 #include <string>
 
 namespace nautilus::compiler::ir {
-ModOperation::ModOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::ModOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
+ModOperation::ModOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
+    : BinaryOperation(OperationType::ModOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
 }
 
 bool ModOperation::classof(const Operation* Op) {

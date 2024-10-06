@@ -6,7 +6,8 @@
 #include <iostream>
 namespace nautilus::compiler::cpp {
 
-std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options&) {
+std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
+                                                           const DumpHandler& dumpHandler, const engine::Options&) {
 	auto code = CPPLoweringProvider::lower(ir);
 	dumpHandler.dump("after_c_generation", ".c", [&]() { return code; });
 

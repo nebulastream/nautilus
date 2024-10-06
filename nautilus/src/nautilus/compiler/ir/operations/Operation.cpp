@@ -2,10 +2,13 @@
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 
 namespace nautilus::compiler::ir {
-Operation::Operation(OperationType opType, const OperationIdentifier& identifier, Type stamp, const std::vector<Operation*>& inputs) : opType(opType), identifier(identifier), stamp(stamp), inputs(inputs) {
+Operation::Operation(OperationType opType, const OperationIdentifier& identifier, Type stamp,
+                     const std::vector<Operation*>& inputs)
+    : opType(opType), identifier(identifier), stamp(stamp), inputs(inputs) {
 }
 
-Operation::Operation(OperationType opType, Type stamp, const std::vector<Operation*>& inputs) : opType(opType), identifier(0), stamp(stamp), inputs(inputs) {
+Operation::Operation(OperationType opType, Type stamp, const std::vector<Operation*>& inputs)
+    : opType(opType), identifier(0), stamp(stamp), inputs(inputs) {
 }
 
 Operation::~Operation() noexcept = default;
@@ -60,10 +63,13 @@ bool OperationIdentifier::operator>=(const OperationIdentifier& rhs) const {
 }
 
 bool Operation::isConstOperation() const {
-	return opType == OperationType::ConstBooleanOp || opType == OperationType::ConstFloatOp || opType == OperationType::ConstIntOp;
+	return opType == OperationType::ConstBooleanOp || opType == OperationType::ConstFloatOp ||
+	       opType == OperationType::ConstIntOp;
 }
 
-BinaryOperation::BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left, Operation* right) : Operation(opType, identifier, type, {left, right}) {
+BinaryOperation::BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type,
+                                 Operation* left, Operation* right)
+    : Operation(opType, identifier, type, {left, right}) {
 }
 
 Operation* BinaryOperation::getLeftInput() const {

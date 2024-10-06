@@ -3,7 +3,8 @@
 #include <string>
 
 namespace nautilus::compiler::ir {
-SubOperation::SubOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::SubOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
+SubOperation::SubOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
+    : BinaryOperation(OperationType::SubOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
 }
 
 bool SubOperation::classof(const Operation* Op) {

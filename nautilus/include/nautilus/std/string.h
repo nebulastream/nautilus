@@ -115,7 +115,8 @@ public:
 	}
 
 	/**
-	 * Informs a std::basic_string object of a planned change in size, so that it can manage the storage allocation appropriately.
+	 * Informs a std::basic_string object of a planned change in size, so that it can manage the storage allocation
+	 * appropriately.
 	 * @param new_cap
 	 */
 	void reserve(val<size_type> new_cap) const {
@@ -147,7 +148,8 @@ public:
 	 */
 	auto& insert(val<size_type> index, val<size_type> count, val<CharT> ch) const {
 		invoke(
-		    +[](base_type* ptr, size_type index, size_type count, CharT ch) -> void { ptr->insert(index, count, ch); }, data_ptr, index, count, ch);
+		    +[](base_type* ptr, size_type index, size_type count, CharT ch) -> void { ptr->insert(index, count, ch); },
+		    data_ptr, index, count, ch);
 		return *this;
 	}
 
@@ -156,7 +158,8 @@ public:
 	 */
 	auto& insert(val<size_type> index, val<const CharT*> s) const {
 		invoke(
-		    +[](base_type* ptr, size_type index, const CharT* s) -> void { ptr->insert(index, s); }, data_ptr, index, s);
+		    +[](base_type* ptr, size_type index, const CharT* s) -> void { ptr->insert(index, s); }, data_ptr, index,
+		    s);
 		return *this;
 	}
 
@@ -181,9 +184,13 @@ public:
 	/**
 	 * Appends additional characters to the string.
 	 */
-	auto& append(const val<std::basic_string<CharT, Traits>>& str, const val<size_type>& pos, const val<size_type>& count) {
+	auto& append(const val<std::basic_string<CharT, Traits>>& str, const val<size_type>& pos,
+	             const val<size_type>& count) {
 		invoke(
-		    +[](base_type* ptr, base_type* other, size_type pos, size_type count) -> void { ptr->append(*other, pos, count); }, data_ptr, str.data_ptr, pos, count);
+		    +[](base_type* ptr, base_type* other, size_type pos, size_type count) -> void {
+			    ptr->append(*other, pos, count);
+		    },
+		    data_ptr, str.data_ptr, pos, count);
 		return *this;
 	}
 
@@ -192,7 +199,8 @@ public:
 	 */
 	auto& append(const val<std::basic_string<CharT, Traits>>& str, const val<size_type>& count) {
 		invoke(
-		    +[](base_type* ptr, base_type* other, size_type count) -> void { ptr->append(*other, count); }, data_ptr, str.data_ptr, count);
+		    +[](base_type* ptr, base_type* other, size_type count) -> void { ptr->append(*other, count); }, data_ptr,
+		    str.data_ptr, count);
 		return *this;
 	}
 
@@ -243,11 +251,15 @@ public:
 	}
 
 	/**
-	 * Copies a substring [pos, pos + count) to character string pointed to by dest. If the requested substring lasts past the end of the string, or if count == npos, the copied substring is [pos, size()).
+	 * Copies a substring [pos, pos + count) to character string pointed to by dest. If the requested substring lasts
+	 * past the end of the string, or if count == npos, the copied substring is [pos, size()).
 	 */
 	val<size_type> copy(const val<CharT*>& dest, const val<size_type>& count, const val<size_type>& pos = 0) {
 		return invoke(
-		    +[](base_type* ptr, CharT* dest, size_type count, size_type pos) -> size_type { return ptr->copy(dest, count, pos); }, data_ptr, dest, count, pos);
+		    +[](base_type* ptr, CharT* dest, size_type count, size_type pos) -> size_type {
+			    return ptr->copy(dest, count, pos);
+		    },
+		    data_ptr, dest, count, pos);
 	}
 
 	~val() {

@@ -3,7 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-OrOperation::OrOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::OrOp, identifier, Type::b, leftInput, rightInput) {
+OrOperation::OrOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
+    : BinaryOperation(OperationType::OrOp, identifier, Type::b, leftInput, rightInput) {
 }
 
 bool OrOperation::classof(const Operation* Op) {

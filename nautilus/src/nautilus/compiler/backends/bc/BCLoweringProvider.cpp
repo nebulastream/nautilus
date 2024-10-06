@@ -724,7 +724,8 @@ void BCLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, s
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::BinaryCompOperation* binaryCompOperation, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::process(ir::BinaryCompOperation* binaryCompOperation, short block,
+                                                  RegisterFrame& frame) {
 	auto leftReg = frame.getValue(binaryCompOperation->getLeftInput()->getIdentifier());
 	auto rightReg = frame.getValue(binaryCompOperation->getRightInput()->getIdentifier());
 	auto resultReg = getResultRegister(binaryCompOperation, frame);
@@ -846,7 +847,8 @@ void BCLoweringProvider::LoweringContext::process(ir::BinaryCompOperation* binar
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOperation, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOperation, short block,
+                                                  RegisterFrame& frame) {
 	auto leftReg = frame.getValue(shiftOperation->getLeftInput()->getIdentifier());
 	auto rightReg = frame.getValue(shiftOperation->getRightInput()->getIdentifier());
 	auto resultReg = getResultRegister(shiftOperation, frame);
@@ -944,7 +946,8 @@ void BCLoweringProvider::LoweringContext::process(ir::ShiftOperation* shiftOpera
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short block, RegisterFrame& parentFrame) {
+void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short block,
+                                                  RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	std::vector<short> tempArgs;
@@ -990,7 +993,8 @@ void BCLoweringProvider::LoweringContext::process(ir::BranchOperation* branchOp,
 	program.blocks[block].terminatorOp = BranchOp {blockIndex};
 }
 
-void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short block,
+                                                  RegisterFrame& frame) {
 	switch (opt->getOperationType()) {
 	case ir::Operation::OperationType::ConstPtrOp: {
 		auto constPtr = as<ir::ConstPtrOperation>(opt);
@@ -1161,7 +1165,8 @@ void BCLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, s
 	processDynamicCall(opt, block, frame);
 }
 
-void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
+                                                             RegisterFrame& frame) {
 	auto& code = program.blocks[block].code;
 	// NES_DEBUG("CREATE " << opt->toString() << " : " <<
 	// opt->getStamp()->toString())
@@ -1278,7 +1283,8 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::NotOperation* negateOperation, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::process(ir::NotOperation* negateOperation, short block,
+                                                  RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
@@ -1287,7 +1293,8 @@ void BCLoweringProvider::LoweringContext::process(ir::NotOperation* negateOperat
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short block, RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short block,
+                                                  RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);

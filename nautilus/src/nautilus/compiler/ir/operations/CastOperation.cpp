@@ -3,7 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-CastOperation::CastOperation(OperationIdentifier identifier, Operation* input, Type targetStamp) : Operation(OperationType::CastOp, identifier, targetStamp, {input}) {
+CastOperation::CastOperation(OperationIdentifier identifier, Operation* input, Type targetStamp)
+    : Operation(OperationType::CastOp, identifier, targetStamp, {input}) {
 }
 
 Operation* CastOperation::getInput() const {

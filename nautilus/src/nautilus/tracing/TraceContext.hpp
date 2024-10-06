@@ -53,24 +53,13 @@ public:
 
 	TypedValueRef& traceCopy(const TypedValueRef& ref);
 
-	Tag* getTag();
-
 	/**
 	 * @brief Trace a unary operation, e.g., negate.
 	 * @param op operation code.
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef& traceUnaryOperation(Op op, Type resultType, const TypedValueRef& inputRef);
-
-	/**
-	 * @brief Trace a binary operation, e.g., add, sub, div.
-	 * @param op operation code-
-	 * @param leftRef reference to the left input.
-	 * @param rightRef reference to the right input.
-	 * @param resultRef reference to the result.
-	 */
-	TypedValueRef& traceBinaryOperation(Op op, Type resultType, const TypedValueRef& leftRef, const TypedValueRef& rightRef);
+	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant>&& inputRef);
 
 	/**
 	 * @brief Trace the return function.
@@ -88,12 +77,6 @@ public:
 	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
 
 	bool traceCmp(const TypedValueRef& targetRef);
-
-	TypedValueRef& traceLoad(const TypedValueRef& src, Type resultType);
-
-	TypedValueRef& traceCast(const TypedValueRef& state, Type resultType);
-
-	void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType);
 
 	~TraceContext() = default;
 
@@ -113,7 +96,8 @@ private:
 	static void terminate();
 
 	bool isFollowing();
-
+	TypedValueRef& follow(Op op);
+	TypedValueRef& traceOperation(Op op, std::function<TypedValueRef&(Snapshot& snapshot)> onCreation);
 	Snapshot recordSnapshot();
 
 	TagRecorder& tagRecorder;

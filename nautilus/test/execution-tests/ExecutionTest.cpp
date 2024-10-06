@@ -927,7 +927,8 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 	SECTION("functionBindMember2") {
 		auto clazz = Clazz();
 		clazz.state = 100;
-		std::function<val<int32_t>(val<int32_t>)> bound = std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
+		std::function<val<int32_t>(val<int32_t>)> bound =
+		    std::bind(&Clazz::functionWithStateAccess, &clazz, std::placeholders::_1);
 		auto f = engine.registerFunction(bound);
 		REQUIRE(f(42) == 142);
 		REQUIRE(f(1) == 101);

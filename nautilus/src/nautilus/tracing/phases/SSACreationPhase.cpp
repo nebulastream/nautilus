@@ -13,7 +13,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	return phaseContext.process();
 }
 
-SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace) : trace(std::move(trace)) {
+SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace)
+    : trace(std::move(trace)) {
 }
 
 Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
@@ -36,7 +37,9 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			returnOpBlock.operations[returnOp.operationIndex] =
+			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
+			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -63,7 +66,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
-		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
+		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n",
+		                                   rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
 	}
 	// sort arguments
 	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
@@ -71,7 +75,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type, uint32_t operationIndex) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
+                                                                uint32_t operationIndex) {
 	// A value ref is defined in the local scope, if it is the result of an
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
@@ -116,7 +121,8 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type, uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
+                                                                uint32_t operationIndex) {
 	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
@@ -151,7 +157,8 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef,
+                                                                uint32_t operationIndex) {
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
 	for (auto& input : blockRef.arguments) {

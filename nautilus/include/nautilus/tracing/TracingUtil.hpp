@@ -28,10 +28,6 @@ TypedValueRef traceConstant(T&& value) {
 	return {0, to_type<T>()};
 }
 
-TypedValueRef& traceLoad(const TypedValueRef& src, Type resultType);
-void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType);
-
-TypedValueRef& traceCast(const TypedValueRef& state, Type resultType);
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& state);
 

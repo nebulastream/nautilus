@@ -15,7 +15,8 @@ int getOptimizationLevel(const engine::Options& options) {
 	return options.getOptionOrDefault("mlir.optimizationLevel", 3);
 }
 
-std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options, const DumpHandler& handler) {
+std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options,
+                                                                                    const DumpHandler& handler) {
 	// Return LLVM optimizer pipeline.
 	return [options, handler](llvm::Module* llvmIRModule) {
 		// Currently, we do not increase the sizeLevel requirement of the
@@ -30,9 +31,13 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
 
 		// Add target-specific attributes to the 'execute' function.
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features", targetMachinePtr->getTargetFeatureString()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
+		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
+		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features",
+		                             targetMachinePtr->getTargetFeatureString()));
+		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
+		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
 		llvm::SMDiagnostic Err;
 
 		// Load LLVM IR module from proxy inlining input path (We assert that it
@@ -46,7 +51,8 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		//     llvm::Linker::Flags::OverrideFromSrc);
 		// }
 
-		auto optPipeline = ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
+		auto optPipeline =
+		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
 		auto optimizedModule = optPipeline(llvmIRModule);
 
 		handler.dump("after_llvm_generation", "ll", [&]() {

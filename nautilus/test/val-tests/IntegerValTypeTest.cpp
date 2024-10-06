@@ -5,7 +5,8 @@
 
 namespace nautilus {
 
-TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t) {
+TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, int16_t, int32_t, int64_t, uint8_t,
+                   uint16_t, uint32_t, uint64_t) {
 	SECTION("comparison operators") {
 		SECTION("==") {
 			auto f1 = val<TestType>(static_cast<TestType>(42));

@@ -119,7 +119,8 @@ struct formatter<nautilus::compiler::ir::IRGraph> : formatter<std::string_view> 
 
 template <>
 struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", op.getId());
 		return out;
@@ -128,7 +129,8 @@ struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::s
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlockInvocation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op, format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "Block_{}(", op.getBlock()->getIdentifier());
 		const auto& args = op.getArguments();
@@ -147,14 +149,16 @@ template <>
 struct formatter<nautilus::compiler::ir::IfOperation> : formatter<std::string_view> {
 	static auto format(const nautilus::compiler::ir::IfOperation& op, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
-		fmt::format_to(out, "if {} ? {} : {}", op.getValue()->getIdentifier(), op.getTrueBlockInvocation(), op.getFalseBlockInvocation());
+		fmt::format_to(out, "if {} ? {} : {}", op.getValue()->getIdentifier(), op.getTrueBlockInvocation(),
+		               op.getFalseBlockInvocation());
 		return out;
 	}
 };
 
 template <>
 struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op, format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 
 		if (op.getStamp() != nautilus::Type::v) {
@@ -178,13 +182,17 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 	static auto format(const nautilus::compiler::ir::Operation& op, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		if (auto shiftOp = op.dynCast<ShiftOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), shiftOp->getLeftInput()->getIdentifier(), shiftOpToString(shiftOp->getType()), shiftOp->getRightInput()->getIdentifier());
+			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), shiftOp->getLeftInput()->getIdentifier(),
+			               shiftOpToString(shiftOp->getType()), shiftOp->getRightInput()->getIdentifier());
 		} else if (auto compOp = op.dynCast<CompareOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), compOp->getLeftInput()->getIdentifier(), compOpToString(compOp->getComparator()), compOp->getRightInput()->getIdentifier());
+			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), compOp->getLeftInput()->getIdentifier(),
+			               compOpToString(compOp->getComparator()), compOp->getRightInput()->getIdentifier());
 		} else if (auto bcompOp = op.dynCast<BinaryCompOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), bcompOp->getLeftInput()->getIdentifier(), shiftOpToString(bcompOp->getType()), bcompOp->getRightInput()->getIdentifier());
+			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), bcompOp->getLeftInput()->getIdentifier(),
+			               shiftOpToString(bcompOp->getType()), bcompOp->getRightInput()->getIdentifier());
 		} else if (auto res = op.dynCast<BinaryOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), res->getLeftInput()->getIdentifier(), binaryOpToString(op.getOperationType()), res->getRightInput()->getIdentifier());
+			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), res->getLeftInput()->getIdentifier(),
+			               binaryOpToString(op.getOperationType()), res->getRightInput()->getIdentifier());
 		} else if (auto ifOp = op.dynCast<IfOperation>()) {
 			fmt::format_to(out, "{}", *ifOp);
 		} else if (auto brOp = op.dynCast<BranchOperation>()) {
@@ -205,11 +213,13 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 		} else if (auto callOp = op.dynCast<ProxyCallOperation>()) {
 			fmt::format_to(out, "{}", *callOp);
 		} else if (auto castOp = op.dynCast<CastOperation>()) {
-			fmt::format_to(out, "{} = {} cast_to {}", castOp->getIdentifier(), castOp->getInput()->getIdentifier(), toString(castOp->getStamp()));
+			fmt::format_to(out, "{} = {} cast_to {}", castOp->getIdentifier(), castOp->getInput()->getIdentifier(),
+			               toString(castOp->getStamp()));
 		} else if (auto loadOp = op.dynCast<LoadOperation>()) {
 			fmt::format_to(out, "{} = load({})", loadOp->getIdentifier(), loadOp->getAddress()->getIdentifier());
 		} else if (auto storeOp = op.dynCast<StoreOperation>()) {
-			fmt::format_to(out, "store({}, {})", storeOp->getValue()->getIdentifier(), storeOp->getAddress()->getIdentifier());
+			fmt::format_to(out, "store({}, {})", storeOp->getValue()->getIdentifier(),
+			               storeOp->getAddress()->getIdentifier());
 		} else if (auto notOp = op.dynCast<NotOperation>()) {
 			fmt::format_to(out, "{} = !{}", notOp->getIdentifier(), notOp->getInput()->getIdentifier());
 		} else if (auto negateOp = op.dynCast<NegateOperation>()) {
@@ -224,14 +234,16 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "\nBlock_{}(", block.getIdentifier());
 		const auto& args = block.getArguments();
 		if (!args.empty()) {
 			fmt::format_to(out, "{}:{}", args.at(0)->getIdentifier().toString(), toString(args.at(0)->getStamp()));
 			for (size_t i = 1; i < args.size(); ++i) {
-				fmt::format_to(out, ", {}:{}", args.at(i)->getIdentifier().toString(), toString(args.at(i)->getStamp()));
+				fmt::format_to(out, ", {}:{}", args.at(i)->getIdentifier().toString(),
+				               toString(args.at(i)->getStamp()));
 			}
 		}
 		fmt::format_to(out, "):\n");
@@ -244,7 +256,8 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 
 template <>
 struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}(", func.getName());
 		for (const auto& arg : func.getInputArgNames()) {
@@ -260,7 +273,8 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph, format_context& ctx) -> format_context::iterator {
+auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph,
+                                                             format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "NautilusIr {{\n");
 	auto& rootOp = graph.getRootOperation();

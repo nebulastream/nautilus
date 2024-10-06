@@ -88,7 +88,8 @@ SharedLibraryPtr CPPCompiler::compile(const std::string& identifier, const std::
 	return sharedLibrary;
 }
 
-void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile, std::string) const {
+void CPPCompiler::compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile,
+                                   std::string) const {
 	// lock file, such that no one can operate on the file at the same time
 	const std::lock_guard<std::mutex> fileLock(sourceFile->getFileMutex());
 

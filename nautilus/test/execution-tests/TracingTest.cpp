@@ -192,39 +192,40 @@ TEST_CASE("Expression Trace Test") {
 	runTraceTests("expression-tests", tests);
 }
 TEST_CASE("Control-flow Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
-	                                                                          {"multipleVoidReturnsFunction", details::createFunctionWrapper(multipleVoidReturnsFunction)},
-	                                                                          //{"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},
-	                                                                          //{"multipleReturns", details::createFunctionWrapper(multipleReturns)},
-	                                                                          {"ifThenElseCondition", details::createFunctionWrapper(ifThenElseCondition)},
-	                                                                          {"nestedIfThenElseCondition", details::createFunctionWrapper(nestedIfThenElseCondition)},
-	                                                                          {"nestedIfNoElseCondition", details::createFunctionWrapper(nestedIfNoElseCondition)},
-	                                                                          {"doubleIfCondition", details::createFunctionWrapper(doubleIfCondition)},
-	                                                                          {"ifElseIfCondition", details::createFunctionWrapper(ifElseIfCondition)},
-	                                                                          {"orCondition", details::createFunctionWrapper(orCondition)},
-	                                                                          {"andCondition", details::createFunctionWrapper(andCondition)},
-	                                                                          {"deeplyNestedIfElseCondition", details::createFunctionWrapper(deeplyNestedIfElseCondition)},
-	                                                                          {"deeplyNestedIfElseIfCondition", details::createFunctionWrapper(deeplyNestedIfElseIfCondition)},
-	                                                                          {"andFunction", details::createFunctionWrapper(andFunction)},
-	                                                                          {"nestedIf", details::createFunctionWrapper(nestedIf)},
-	                                                                          {"ifElseIfElse", details::createFunctionWrapper(ifElseIfElse)},
-	                                                                          {"logicalAnd", details::createFunctionWrapper(logicalAnd)},
-	                                                                          {"logicalOr", details::createFunctionWrapper(logicalOr)},
-	                                                                          {"ifNotEqual", details::createFunctionWrapper(ifNotEqual)},
-	                                                                          {"multipleConditions", details::createFunctionWrapper(multipleConditions)},
-	                                                                          {"ifElseIfOnly", details::createFunctionWrapper(ifElseIfOnly)},
-	                                                                          {"compoundAssignment", details::createFunctionWrapper(compoundAssignment)},
-	                                                                          {"multipleElse", details::createFunctionWrapper(multipleElse)},
-	                                                                          {"ifWithTernary", details::createFunctionWrapper(ifWithTernary)},
-	                                                                          {"complexLogicalExpressions", details::createFunctionWrapper(complexLogicalExpressions)},
-	                                                                          {"shortCircuitEvaluation", details::createFunctionWrapper(shortCircuitEvaluation)},
-	                                                                          {"ifWithFunctionCall", details::createFunctionWrapper(ifWithFunctionCall)},
-	                                                                          {"compoundStatements", details::createFunctionWrapper(compoundStatements)},
-	                                                                          {"varyingComplexity", details::createFunctionWrapper(varyingComplexity)},
-	                                                                          {"logicalXOR", details::createFunctionWrapper(logicalXOR)},
-	                                                                          {"nestedIfElseDifferentLevels", details::createFunctionWrapper(nestedIfElseDifferentLevels)},
-	                                                                          {"constructComplexReturnObject", details::createFunctionWrapper(constructComplexReturnObject)},
-	                                                                          {"constructComplexReturnObject2", details::createFunctionWrapper(constructComplexReturnObject2)}
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
+	    {"multipleVoidReturnsFunction", details::createFunctionWrapper(multipleVoidReturnsFunction)},
+	    //{"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},
+	    //{"multipleReturns", details::createFunctionWrapper(multipleReturns)},
+	    {"ifThenElseCondition", details::createFunctionWrapper(ifThenElseCondition)},
+	    {"nestedIfThenElseCondition", details::createFunctionWrapper(nestedIfThenElseCondition)},
+	    {"nestedIfNoElseCondition", details::createFunctionWrapper(nestedIfNoElseCondition)},
+	    {"doubleIfCondition", details::createFunctionWrapper(doubleIfCondition)},
+	    {"ifElseIfCondition", details::createFunctionWrapper(ifElseIfCondition)},
+	    {"orCondition", details::createFunctionWrapper(orCondition)},
+	    {"andCondition", details::createFunctionWrapper(andCondition)},
+	    {"deeplyNestedIfElseCondition", details::createFunctionWrapper(deeplyNestedIfElseCondition)},
+	    {"deeplyNestedIfElseIfCondition", details::createFunctionWrapper(deeplyNestedIfElseIfCondition)},
+	    {"andFunction", details::createFunctionWrapper(andFunction)},
+	    {"nestedIf", details::createFunctionWrapper(nestedIf)},
+	    {"ifElseIfElse", details::createFunctionWrapper(ifElseIfElse)},
+	    {"logicalAnd", details::createFunctionWrapper(logicalAnd)},
+	    {"logicalOr", details::createFunctionWrapper(logicalOr)},
+	    {"ifNotEqual", details::createFunctionWrapper(ifNotEqual)},
+	    {"multipleConditions", details::createFunctionWrapper(multipleConditions)},
+	    {"ifElseIfOnly", details::createFunctionWrapper(ifElseIfOnly)},
+	    {"compoundAssignment", details::createFunctionWrapper(compoundAssignment)},
+	    {"multipleElse", details::createFunctionWrapper(multipleElse)},
+	    {"ifWithTernary", details::createFunctionWrapper(ifWithTernary)},
+	    {"complexLogicalExpressions", details::createFunctionWrapper(complexLogicalExpressions)},
+	    {"shortCircuitEvaluation", details::createFunctionWrapper(shortCircuitEvaluation)},
+	    {"ifWithFunctionCall", details::createFunctionWrapper(ifWithFunctionCall)},
+	    {"compoundStatements", details::createFunctionWrapper(compoundStatements)},
+	    {"varyingComplexity", details::createFunctionWrapper(varyingComplexity)},
+	    {"logicalXOR", details::createFunctionWrapper(logicalXOR)},
+	    {"nestedIfElseDifferentLevels", details::createFunctionWrapper(nestedIfElseDifferentLevels)},
+	    {"constructComplexReturnObject", details::createFunctionWrapper(constructComplexReturnObject)},
+	    {"constructComplexReturnObject2", details::createFunctionWrapper(constructComplexReturnObject2)}
 
 	};
 	runTraceTests("control-flow-tests", tests);
@@ -257,16 +258,17 @@ TEST_CASE("Loop Trace Test") {
 }
 
 TEST_CASE("Runtime Call Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
-	                                                                          {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
-	                                                                          {"useFirstArg", details::createFunctionWrapper(useFirstArg)},
-	                                                                          {"useSecondArg", details::createFunctionWrapper(useSecondArg)},
-	                                                                          {"useNoArg", details::createFunctionWrapper(useNoArg)},
-	                                                                          {"lambdaRuntimeFunction", details::createFunctionWrapper(lambdaRuntimeFunction)},
-	                                                                          {"nestedLambdaRuntimeFunction", details::createFunctionWrapper(nestedLambdaRuntimeFunction)},
-	                                                                          {"callSameFunction", details::createFunctionWrapper(callSameFunction)},
-	                                                                          {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)},
-	                                                                          {"callTwoFunctions", details::createFunctionWrapper(callTwoFunctions)}};
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
+	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+	    {"useFirstArg", details::createFunctionWrapper(useFirstArg)},
+	    {"useSecondArg", details::createFunctionWrapper(useSecondArg)},
+	    {"useNoArg", details::createFunctionWrapper(useNoArg)},
+	    {"lambdaRuntimeFunction", details::createFunctionWrapper(lambdaRuntimeFunction)},
+	    {"nestedLambdaRuntimeFunction", details::createFunctionWrapper(nestedLambdaRuntimeFunction)},
+	    {"callSameFunction", details::createFunctionWrapper(callSameFunction)},
+	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)},
+	    {"callTwoFunctions", details::createFunctionWrapper(callTwoFunctions)}};
 	runTraceTests("runtime-call-tests", tests);
 }
 
@@ -299,15 +301,16 @@ TEST_CASE("Bool Trace Test") {
 }
 
 TEST_CASE("Static Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {{"staticLoop", details::createFunctionWrapper(staticLoop)},
-	                                                                          // this test is sensitive to compiler options
-	                                                                          //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
-	                                                                          //{"staticLoopWithDynamicLoop",
-	                                                                          // details::createFunctionWrapper(staticLoopWithDynamicLoop)},
-	                                                                          {"staticIterator", details::createFunctionWrapper(staticIterator)},
-	                                                                          {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
-	                                                                          {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
-	                                                                          {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
+	    // this test is sensitive to compiler options
+	    //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
+	    //{"staticLoopWithDynamicLoop",
+	    // details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
+	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
+	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
+	    {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
 	runTraceTests("static-loop-tests", tests);
 }
 
