@@ -42,11 +42,11 @@ void traceReturnOperation(Type type, const TypedValueRef& ref) {
 	TraceContext::get()->traceReturnOperation(type, ref);
 }
 
-value_ref registerFunctionArgument(Type type, size_t index) {
+TypedValueRef registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-value_ref traceLoad(const TypedValueRef& src, Type resultType) {
+TypedValueRef traceLoad(const TypedValueRef& src, Type resultType) {
 	return TraceContext::get()->traceLoad(src, resultType);
 }
 
@@ -54,7 +54,7 @@ void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valu
 	TraceContext::get()->traceStore(target, src, valueType);
 }
 
-value_ref traceConstant(Type type, const ConstantLiteral& value) {
+TypedValueRef traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
@@ -62,7 +62,7 @@ bool traceBool(const TypedValueRef& state) {
 	return TraceContext::get()->traceCmp(state);
 }
 
-value_ref traceCast(const TypedValueRef& state, Type resultType) {
+TypedValueRef traceCast(const TypedValueRef& state, Type resultType) {
 	return TraceContext::get()->traceCast(state, resultType);
 }
 
@@ -73,7 +73,7 @@ void freeValRef(ValueRef ref) {
 	TraceContext::get()->freeValRef(ref);
 }
 
-value_ref traceCopy(const value_ref& state) {
+TypedValueRef traceCopy(const TypedValueRef& state) {
 	if (inTracer()) {
 		return TraceContext::get()->traceCopy(state);
 	}
@@ -84,17 +84,17 @@ bool inTracer() {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(mangledName);
 	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
 }
 
-value_ref traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState) {
+TypedValueRef traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState) {
 	return TraceContext::get()->traceBinaryOperation(operation, resultType, leftState, rightState);
 }
 
-value_ref traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState) {
+TypedValueRef traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState) {
 	return TraceContext::get()->traceUnaryOperation(operation, resultType, inputState);
 }
 

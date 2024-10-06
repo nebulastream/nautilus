@@ -51,7 +51,7 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, value_ref ref) {
+void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, TypedValueRef ref) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -68,7 +68,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, value_ref re
 	returnRefs.emplace_back(operationIdentifier);
 }
 
-void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef, Type resultType) {
+void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracing::TypedValueRef targetRef, nautilus::tracing::TypedValueRef srcRef, Type resultType) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -80,7 +80,7 @@ void ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, nautilus::tracin
 	addTag(snapshot, operationIdentifier);
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::value_ref targetRef, nautilus::tracing::value_ref srcRef) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resultType, nautilus::tracing::TypedValueRef targetRef, nautilus::tracing::TypedValueRef srcRef) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -88,20 +88,20 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, Type& resul
 	operations.emplace_back(snapshot, operation, resultType, targetRef, std::vector<InputVariant> {srcRef});
 }
 
-value_ref ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
+TypedValueRef ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 
 	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, value_ref(getNextValueRef(), resultType), std::forward<std::vector<InputVariant>>(inputs));
+	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), std::forward<std::vector<InputVariant>>(inputs));
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return to.resultRef;
 }
 
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, value_ref inputs) {
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, TypedValueRef inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -112,7 +112,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, value_ref inputs) {
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, CMP, Type::v, value_ref(getNextValueRef(), Type::v), std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)});
+	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -204,7 +204,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	return mergeBlock;
 }
 
-value_ref ExecutionTrace::setArgument(Type type, size_t index) {
+TypedValueRef ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	uint16_t argRef = index + 1;
 	auto& arguments = blocks[0].arguments;
@@ -212,7 +212,7 @@ value_ref ExecutionTrace::setArgument(Type type, size_t index) {
 		arguments.resize(argRef);
 	}
 	// arguments[index] = {argRef, type};
-	arguments[index] = value_ref(argRef, type);
+	arguments[index] = TypedValueRef(argRef, type);
 	return arguments[index];
 }
 
@@ -346,7 +346,7 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 	fmt::format_to(out, "\t{}\t", toString(operation.op));
 	fmt::format_to(out, "{}\t", operation.resultRef);
 	for (const auto& opInput : operation.input) {
-		if (auto inputRef = std::get_if<nautilus::tracing::value_ref>(&opInput)) {
+		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
 			fmt::format_to(out, "{}\t", *inputRef);
 		} else if (auto blockRef = std::get_if<nautilus::tracing::BlockRef>(&opInput)) {
 			fmt::format_to(out, "{}\t", *blockRef);

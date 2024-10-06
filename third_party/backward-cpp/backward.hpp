@@ -2925,7 +2925,7 @@ private:
       case DW_TAG_restrict_type:
         context.text.insert(0, "restrict ");
         break;
-      case DW_TAG_rvalue_reference_type:
+      case DW_TAG_rTypedValueReference_type:
         context.text.insert(0, "&&");
         break;
       case DW_TAG_volatile_type:

@@ -22,7 +22,7 @@ LHS getRawValue(const val<LHS>& val);
 #define DEDUCT_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
 
 template <typename T>
-tracing::value_ref getState(T&& value) {
+tracing::TypedValueRef getState(T&& value) {
 	return value.state;
 }
 
@@ -48,7 +48,7 @@ public:
 	// move constructor
 	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {
 	}
-	val(tracing::value_ref& tc) : state(tc), value() {
+	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
 #else
 	val() {
@@ -145,7 +145,7 @@ public:
 	// move constructor
 	val(const val<bool>&& other) : state(other.state), value(other.value) {
 	}
-	val(tracing::value_ref& tc) : state(tc) {
+	val(tracing::TypedValueRef& tc) : state(tc) {
 	}
 
 #else

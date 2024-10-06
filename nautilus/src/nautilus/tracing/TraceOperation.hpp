@@ -18,7 +18,7 @@ struct FunctionCall {
 	std::string functionName;
 	std::string mangledName;
 	void* ptr;
-	std::vector<value_ref> arguments;
+	std::vector<TypedValueRef> arguments;
 };
 
 struct BlockRef {
@@ -27,19 +27,19 @@ struct BlockRef {
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<value_ref, None, ConstantLiteral, BlockRef, FunctionCall>;
+using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall>;
 
 /**
  * @brief Represents an individual operation in a trace.
  */
 class TraceOperation {
 public:
-	TraceOperation(Snapshot& tag, Op op, Type resultType, value_ref ref, std::vector<InputVariant>&& input);
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, std::vector<InputVariant>&& input);
 	TraceOperation(Op op, std::vector<InputVariant>&& input);
 	Snapshot tag;
 	Op op;
 	Type resultType;
-	value_ref resultRef;
+	TypedValueRef resultRef;
 	std::vector<InputVariant> input;
 };
 

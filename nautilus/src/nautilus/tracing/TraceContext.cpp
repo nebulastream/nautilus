@@ -41,15 +41,15 @@ void TraceContext::terminate() {
 TraceContext::TraceContext(TagRecorder& tagRecorder) : tagRecorder(tagRecorder), executionTrace(std::make_unique<ExecutionTrace>()), symbolicExecutionContext(std::make_unique<SymbolicExecutionContext>()) {
 }
 
-value_ref TraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef TraceContext::registerFunctionArgument(Type type, size_t index) {
 	return executionTrace->setArgument(type, index);
 }
 
-void TraceContext::traceValueDestruction(nautilus::tracing::value_ref) {
+void TraceContext::traceValueDestruction(nautilus::tracing::TypedValueRef) {
 	// currently yed not implemented
 }
 
-value_ref TraceContext::traceLoad(const value_ref& src, Type resultType) {
+TypedValueRef TraceContext::traceLoad(const TypedValueRef& src, Type resultType) {
 	if (isFollowing()) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -65,7 +65,7 @@ value_ref TraceContext::traceLoad(const value_ref& src, Type resultType) {
 	throw TraceTerminationException();
 }
 
-void TraceContext::traceStore(const value_ref& target, const value_ref& src, Type valueType) {
+void TraceContext::traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType) {
 	if (isFollowing()) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -85,7 +85,7 @@ bool TraceContext::isFollowing() {
 	return symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-value_ref TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
+TypedValueRef TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
@@ -108,7 +108,7 @@ value_ref TraceContext::traceConstValue(Type type, const ConstantLiteral& constV
 	}
 }
 
-value_ref TraceContext::traceCopy(const value_ref& ref) {
+TypedValueRef TraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
@@ -125,7 +125,7 @@ value_ref TraceContext::traceCopy(const value_ref& ref) {
 	throw TraceTerminationException();
 }
 
-value_ref TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+TypedValueRef TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments) {
 
 	auto op = Op::CALL;
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
@@ -149,7 +149,7 @@ value_ref TraceContext::traceCall(const std::string& functionName, const std::st
 	throw TraceTerminationException();
 }
 
-void TraceContext::traceAssignment(const value_ref& targetRef, const value_ref& sourceRef, Type resultType) {
+void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -164,7 +164,7 @@ void TraceContext::traceAssignment(const value_ref& targetRef, const value_ref& 
 	throw TraceTerminationException();
 }
 
-value_ref TraceContext::traceCast(const value_ref& state, Type resultType) {
+TypedValueRef TraceContext::traceCast(const TypedValueRef& state, Type resultType) {
 	if (isFollowing()) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -183,7 +183,7 @@ value_ref TraceContext::traceCast(const value_ref& state, Type resultType) {
 	throw TraceTerminationException();
 }
 
-void TraceContext::traceReturnOperation(Type type, const value_ref& ref) {
+void TraceContext::traceReturnOperation(Type type, const TypedValueRef& ref) {
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -194,7 +194,7 @@ void TraceContext::traceReturnOperation(Type type, const value_ref& ref) {
 	executionTrace->addReturn(tag, type, ref);
 }
 
-value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType, const value_ref& inputRef) {
+TypedValueRef TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resultType, const TypedValueRef& inputRef) {
 	if (isFollowing()) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -210,7 +210,7 @@ value_ref TraceContext::traceUnaryOperation(nautilus::tracing::Op op, Type resul
 	throw TraceTerminationException();
 }
 
-value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, const value_ref& leftRef, const value_ref& rightRef) {
+TypedValueRef TraceContext::traceBinaryOperation(Op op, Type resultType, const TypedValueRef& leftRef, const TypedValueRef& rightRef) {
 	if (isFollowing()) {
 		auto& currentOperation = executionTrace->getCurrentOperation();
 		executionTrace->nextOperation();
@@ -226,7 +226,7 @@ value_ref TraceContext::traceBinaryOperation(Op op, Type resultType, const value
 	throw TraceTerminationException();
 }
 
-bool TraceContext::traceCmp(const value_ref& targetRef) {
+bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 	bool result;
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step

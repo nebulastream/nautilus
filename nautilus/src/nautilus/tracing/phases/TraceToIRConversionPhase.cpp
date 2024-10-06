@@ -20,12 +20,12 @@
 namespace nautilus::tracing {
 using namespace compiler::ir;
 
-OperationIdentifier createValueIdentifier(value_ref& val) {
+OperationIdentifier createValueIdentifier(TypedValueRef& val) {
 	return {val.ref};
 }
 
 OperationIdentifier createValueIdentifier(InputVariant& val) {
-	if (auto* valRef = std::get_if<value_ref>(&val)) {
+	if (auto* valRef = std::get_if<TypedValueRef>(&val)) {
 		return {valRef->ref};
 	}
 	throw NotImplementedException("wrong input variant");
@@ -220,7 +220,7 @@ void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame, Block&, BasicBlock* currentIrBlock, TraceOperation& operation) {
-	auto valueRef = get<value_ref>(operation.input[0]);
+	auto valueRef = get<TypedValueRef>(operation.input[0]);
 	auto trueCaseBlockRef = get<BlockRef>(operation.input[1]);
 	auto falseCaseBlockRef = get<BlockRef>(operation.input[2]);
 

@@ -17,11 +17,11 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 #ifdef ENABLE_TRACING
-	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {
+	val(ValueType ref) : state(tracing::TypedValueRef()), ptr(&ref) {
 	}
-	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
 	}
 #else
 	val(ValueType ref) : ptr(&ref) {
@@ -90,12 +90,12 @@ public:
 #ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
 	}
-	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : state(tc), value(ptr) {
 	}
 	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {
 	}
 
-	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
+	base_ptr_val(tracing::TypedValueRef ref) : state(ref), value(nullptr) {
 	}
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {
@@ -356,11 +356,11 @@ public:
 
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
-	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {
+	val(bool ref) : state(tracing::TypedValueRef()), ptr(&ref) {
 	}
-	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	val(bool& ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
 	}
 #else
 	val(bool ref) : ptr(&ref) {

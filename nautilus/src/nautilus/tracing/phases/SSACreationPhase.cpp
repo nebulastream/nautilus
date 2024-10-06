@@ -36,7 +36,7 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, std::get<value_ref>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -71,7 +71,7 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, value_ref& ref, Type, uint32_t operationIndex) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type, uint32_t operationIndex) {
 	// A value ref is defined in the local scope, if it is the result of an
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
@@ -91,7 +91,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 		auto& operation = block.operations[i];
 		// process input for each variable
 		for (auto& input : operation.input) {
-			if (auto* valueRef = std::get_if<value_ref>(&input)) {
+			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 				// set op type
 				processValueRef(block, *valueRef, operation.resultType, i);
 			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
@@ -120,7 +120,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, value_ref& ref, Type ref_type, uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type, uint32_t operationIndex) {
 	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
@@ -179,12 +179,12 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				}
 			}
 			if (operation.op == Op::ASSIGN) {
-				auto valueRef = get<value_ref>(operation.input[0]);
+				auto valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
 				if (foundAssignment != assignmentMap.end()) {
 					assignmentMap[operation.resultRef.ref] = assignmentMap[valueRef.ref];
 				} else {
-					assignmentMap[operation.resultRef.ref] = get<value_ref>(operation.input[0]).ref;
+					assignmentMap[operation.resultRef.ref] = get<TypedValueRef>(operation.input[0]).ref;
 				}
 			} else {
 				if (operation.op == Op::STORE) {
@@ -194,7 +194,7 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 					}
 				}
 				for (auto& input : operation.input) {
-					if (auto* valueRef = std::get_if<value_ref>(&input)) {
+					if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 						auto foundAssignment = assignmentMap.find(valueRef->ref);
 						if (foundAssignment != assignmentMap.end()) {
 							// todo check assignment
@@ -238,7 +238,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
 			auto& operation = block.operations[i];
 			for (auto& input : operation.input) {
-				if (auto* valueRef = std::get_if<value_ref>(&input)) {
+				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
 					if (foundAssignment != blockArgumentMap.end()) {
 						// todo check assignment
