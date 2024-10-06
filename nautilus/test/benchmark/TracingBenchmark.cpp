@@ -22,16 +22,16 @@
 namespace nautilus::engine {
 
 static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-    //{"add", details::createFunctionWrapper(int8AddExpression)},
-    // {"ifThenElse", details::createFunctionWrapper(ifThenCondition)},
+    {"add", details::createFunctionWrapper(int8AddExpression)},
+    {"ifThenElse", details::createFunctionWrapper(ifThenCondition)},
     {"deeplyNestedIfElse", details::createFunctionWrapper(deeplyNestedIfElseIfCondition)},
-    //{"loop", details::createFunctionWrapper(sumLoop)},
-    //{"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
-    //{"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
-    //{"pointerLoop", details::createFunctionWrapper(sumArray)},
-    //{"staticLoop", details::createFunctionWrapper(staticLoop)},
-    //{"fibonacci", details::createFunctionWrapper(fibonacci)},
-    //{"gcd", details::createFunctionWrapper(gcd)},
+    {"loop", details::createFunctionWrapper(sumLoop)},
+    {"ifInsideLoop", details::createFunctionWrapper(ifInsideLoop)},
+    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+    {"pointerLoop", details::createFunctionWrapper(sumArray)},
+    {"staticLoop", details::createFunctionWrapper(staticLoop)},
+    {"fibonacci", details::createFunctionWrapper(fibonacci)},
+    {"gcd", details::createFunctionWrapper(gcd)},
 };
 
 TEST_CASE("Tracing Benchmark") {
