@@ -2,4 +2,4 @@ B0($1:bool,$2:bool)
 	ASSIGN	$3	$1	:bool
 	ASSIGN	$4	$2	:bool
 	OR	$5	$3	$4	:bool
-	RETURN	$5	:bool
+	RETURN	$0	$5	:bool

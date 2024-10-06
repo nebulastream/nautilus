@@ -51,13 +51,17 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, value_ref ref) {
+void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, value_ref ref) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = Op::RETURN;
-	operations.emplace_back(snapshot, op, type, ref, std::vector<InputVariant> {});
+	if (ref.type == Type::v) {
+		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
+	} else {
+		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
+	}
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 

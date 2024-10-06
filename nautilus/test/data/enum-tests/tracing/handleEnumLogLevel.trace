@@ -4,4 +4,4 @@ B0($1:ui8)
 	CONST	$4	5	:ui8
 	EQ	$5	$1	$4	:bool
 	OR	$6	$3	$5	:bool
-	RETURN	$6	:bool
+	RETURN	$0	$6	:bool

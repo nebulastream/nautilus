@@ -28,4 +28,4 @@ B5($2:i32)
 B6($2:i32)
 	JMP	$0	B7($2)	:void
 B7($2:i32)
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

@@ -18,4 +18,4 @@ B0($1:i32)
 	EQ	$16	$15	$14	:bool
 	AND	$17	$13	$16	:bool
 	ASSIGN	$2	$17	:bool
-	RETURN	$2	:bool
+	RETURN	$0	$2	:bool

@@ -7,7 +7,7 @@ B1()
 	ASSIGN	$3	$13	:i32
 	JMP	$0	B3()	:void
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B3() ControlFlowMerge
 	MUL	$4	$2	$3	:i32
 	CONST	$5	10	:i32

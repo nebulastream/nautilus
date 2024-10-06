@@ -1,4 +1,4 @@
 B0($1:i8)
 	ASSIGN	$2	$1	:i8
 	NEGATE	$3	$2	:i8
-	RETURN	$3	:i8
+	RETURN	$0	$3	:i8

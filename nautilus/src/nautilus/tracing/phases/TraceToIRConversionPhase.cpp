@@ -36,6 +36,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<Executi
 	return phaseContext.process();
 }
 
+TraceToIRConversionPhase::IRConversionContext::IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id) : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {
+}
+
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(trace->getBlocks().front());
 	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {}, std::vector<std::string> {}, returnType);
@@ -139,11 +142,10 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 		return;
 	}
 	case Op::RETURN: {
-		returnType = operation.resultType;
-		if (returnType == Type::v) {
+		if (operation.input.empty()) {
 			currentIrBlock->addOperation<ReturnOperation>();
 		} else {
-			auto returnValue = frame.getValue(createValueIdentifier(operation.resultRef));
+			auto returnValue = frame.getValue(createValueIdentifier(operation.input[0]));
 			currentIrBlock->addOperation<ReturnOperation>(returnValue);
 		}
 		return;

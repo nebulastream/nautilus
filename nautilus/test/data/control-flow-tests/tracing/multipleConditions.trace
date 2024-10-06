@@ -12,6 +12,6 @@ B0($1:i32)
 B1()
 	CONST	$12	1	:i32
 	ASSIGN	$2	$12	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

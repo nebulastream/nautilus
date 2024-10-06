@@ -8,7 +8,7 @@ B1($1:i32,$2:i32)
 	LT	$7	$1	$6	:bool
 	CMP	$8	$7	B3($1,$2)	B4($2,$1)	:void
 B2($1:i32)
-	RETURN	$1	:i32
+	RETURN	$0	$1	:i32
 B3($1:i32,$2:i32)
 	CONST	$9	40	:i32
 	LT	$10	$1	$9	:bool

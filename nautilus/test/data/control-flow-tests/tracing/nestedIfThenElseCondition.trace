@@ -26,4 +26,4 @@ B6() ControlFlowMerge
 	ADD	$7	$2	$6	:i32
 	ASSIGN	$2	$7	:i32
 	ASSIGN	$8	$2	:i32
-	RETURN	$8	:i32
+	RETURN	$0	$8	:i32

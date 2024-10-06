@@ -22,4 +22,4 @@ B0()
 	ADD	$21	$19	$20	:i32
 	CONST	$22	0	:i32
 	ADD	$23	$21	$22	:i32
-	RETURN	$23	:i32
+	RETURN	$0	$23	:i32

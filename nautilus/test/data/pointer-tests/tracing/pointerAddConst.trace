@@ -8,4 +8,4 @@ B0($1:ptr)
 	ASSIGN	$8	$7	:ptr
 	ASSIGN	$9	$8	:ptr
 	LOAD	$10	$9	:i32
-	RETURN	$10	:i32
+	RETURN	$0	$10	:i32

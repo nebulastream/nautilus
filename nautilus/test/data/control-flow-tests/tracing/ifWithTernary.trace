@@ -15,9 +15,9 @@ B2()
 B3()
 	CONST	$9	-1	:i32
 	ASSIGN	$5	$9	:i32
-	RETURN	$5	:i32
+	RETURN	$0	$5	:i32
 B4()
-	RETURN	$5	:i32
+	RETURN	$0	$5	:i32
 B5() ControlFlowMerge
 	EQ	$7	$1	$6	:bool
 	CMP	$8	$7	B3()	B4()	:void

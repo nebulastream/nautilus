@@ -31,11 +31,12 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
 		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
-		if (returnValue.resultType == Type::v) {
+		// check if we have return values
+		if (returnValue.input.empty()) {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
+			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, std::get<value_ref>(defaultReturnOp.input[0]), {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -89,9 +90,6 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
 		auto& operation = block.operations[i];
 		// process input for each variable
-		if (operation.op == RETURN && operation.resultType != Type::v) {
-			processValueRef(block, operation.resultRef, operation.resultType, i);
-		}
 		for (auto& input : operation.input) {
 			if (auto* valueRef = std::get_if<value_ref>(&input)) {
 				// set op type
@@ -187,11 +185,6 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 					assignmentMap[operation.resultRef.ref] = assignmentMap[valueRef.ref];
 				} else {
 					assignmentMap[operation.resultRef.ref] = get<value_ref>(operation.input[0]).ref;
-				}
-			} else if (operation.op == Op::RETURN) {
-				auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
-				if (foundAssignment != assignmentMap.end()) {
-					operation.resultRef.ref = foundAssignment->second;
 				}
 			} else {
 				if (operation.op == Op::STORE) {

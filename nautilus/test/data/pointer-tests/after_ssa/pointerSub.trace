@@ -6,4 +6,4 @@ B0($1:ptr,$2:i32)
 	MUL	$9	$8	$7	:ui64
 	ADD	$10	$1	$9	:ptr
 	LOAD	$13	$10	:i32
-	RETURN	$13	:i32
+	RETURN	$0	$13	:i32

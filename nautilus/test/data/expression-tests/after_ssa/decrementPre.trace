@@ -2,4 +2,4 @@ B0($1:i32)
 	CONST	$2	1	:i32
 	SUB	$3	$1	$2	:i32
 	ADD	$5	$3	$3	:i32
-	RETURN	$5	:i32
+	RETURN	$0	$5	:i32

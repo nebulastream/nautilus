@@ -1,4 +1,4 @@
 B0($1:i32)
-	CALL	$2	nautilus::engine::nestedLambdaRuntimeFunction(nautilus::val<int>)::$_4::__invoke(int)($1)	:i32
-	CALL	$3	nautilus::engine::nestedLambdaRuntimeFunction(nautilus::val<int>)::$_3::__invoke(int)($2)	:i32
-	RETURN	$3	:i32
+	CALL	$2	nautilus::engine::nestedLambdaRuntimeFunction(nautilus::val<int>)::$_1::__invoke(int)($1)	:i32
+	CALL	$3	nautilus::engine::nestedLambdaRuntimeFunction(nautilus::val<int>)::$_0::__invoke(int)($2)	:i32
+	RETURN	$0	$3	:i32

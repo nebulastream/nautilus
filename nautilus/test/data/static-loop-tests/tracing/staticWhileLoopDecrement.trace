@@ -33,4 +33,4 @@ B0()
 	CONST	$22	0	:i32
 	ADD	$23	$1	$22	:i32
 	ASSIGN	$1	$23	:i32
-	RETURN	$1	:i32
+	RETURN	$0	$1	:i32

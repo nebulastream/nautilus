@@ -14,7 +14,7 @@ B1()
 	ASSIGN	$5	$10	:i32
 	JMP	$0	B3()	:void
 B2()
-	RETURN	$3	:i32
+	RETURN	$0	$3	:i32
 B3() ControlFlowMerge
 	LTE	$6	$5	$1	:bool
 	CMP	$7	$6	B1()	B2()	:void

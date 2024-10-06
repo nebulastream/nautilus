@@ -5,7 +5,7 @@ B0($1:i32)
 	LTE	$5	$1	$4	:bool
 	CMP	$6	$5	B1()	B2()	:void
 B1()
-	RETURN	$2	:bool
+	RETURN	$0	$2	:bool
 B2()
 	CONST	$8	2	:i32
 	JMP	$0	B7()	:void
@@ -15,9 +15,9 @@ B3()
 	EQ	$14	$12	$13	:bool
 	CMP	$15	$14	B5()	B6()	:void
 B4()
-	RETURN	$3	:bool
+	RETURN	$0	$3	:bool
 B5()
-	RETURN	$2	:bool
+	RETURN	$0	$2	:bool
 B6()
 	CONST	$18	1	:i32
 	ADD	$19	$8	$18	:i32
