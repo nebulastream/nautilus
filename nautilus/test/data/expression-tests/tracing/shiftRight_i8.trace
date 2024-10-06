@@ -1,4 +1,4 @@
 B0($1:i8,$2:i8)
 	RSH	$3	$1	$2	:i32
 	CAST	$4	$3	:i8
-	RETURN	$4	:i8
+	RETURN	$0	$4	:i8

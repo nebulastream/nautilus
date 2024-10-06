@@ -12,4 +12,4 @@ B0($1:i32)
 	CAST	$15	$1	:i64
 	EQ	$16	$15	$14	:bool
 	AND	$17	$12	$16	:bool
-	RETURN	$17	:bool
+	RETURN	$0	$17	:bool

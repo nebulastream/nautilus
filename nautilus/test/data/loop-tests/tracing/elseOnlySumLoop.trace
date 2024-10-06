@@ -8,7 +8,7 @@ B1()
 	LT	$7	$1	$6	:bool
 	CMP	$8	$7	B3()	B4()	:void
 B2()
-	RETURN	$1	:i32
+	RETURN	$0	$1	:i32
 B3()
 	CONST	$9	1	:i32
 	JMP	$0	B6()	:void

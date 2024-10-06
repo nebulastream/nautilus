@@ -8,12 +8,12 @@ B1()
 	GT	$7	$1	$6	:bool
 	CMP	$8	$7	B3()	B4()	:void
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B3()
 	CONST	$9	2	:i32
 	ASSIGN	$2	$9	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B4()
 	CONST	$12	3	:i32
 	ASSIGN	$2	$12	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

@@ -25,4 +25,4 @@ B5($2:i32,$8:i32) ControlFlowMerge
 	JMP	$0	B6($2,$8)	:void
 B6($2:i32,$8:i32) ControlFlowMerge
 	ADD	$9	$2	$8	:i32
-	RETURN	$9	:i32
+	RETURN	$0	$9	:i32

@@ -3,7 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-AndOperation::AndOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput) : BinaryOperation(OperationType::AndOp, identifier, Type::b, leftInput, rightInput) {
+AndOperation::AndOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
+    : BinaryOperation(OperationType::AndOp, identifier, Type::b, leftInput, rightInput) {
 }
 
 bool AndOperation::classof(const Operation* Op) {

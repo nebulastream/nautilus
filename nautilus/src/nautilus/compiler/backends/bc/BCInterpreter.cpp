@@ -428,7 +428,8 @@ static Operation* OpTable[] = {
 
 };
 
-FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> arguments, void* functionPtr) : arguments(std::move(arguments)), functionPtr(functionPtr) {
+FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> arguments, void* functionPtr)
+    : arguments(std::move(arguments)), functionPtr(functionPtr) {
 }
 
 BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile) : code(std::move(code)), registerFile(registerFile) {

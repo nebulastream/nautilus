@@ -16,7 +16,9 @@
 
 namespace nautilus::compiler::mlir {
 
-std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) {
+std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
+                                                            const DumpHandler& dumpHandler,
+                                                            const engine::Options& options) {
 
 	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
 	// MLIR module.
@@ -54,7 +56,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	// 4. JIT compile LLVM IR module and return engine that provides access
 	// compiled execute function.
-	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(), loweringProvider->getJitProxyTargetAddresses());
+	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                            loweringProvider->getJitProxyTargetAddresses());
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

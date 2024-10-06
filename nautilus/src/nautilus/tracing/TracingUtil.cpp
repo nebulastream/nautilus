@@ -20,13 +20,13 @@ std::string getMangledName(void* fnptr) {
 }
 
 std::string getFunctionName(const std::string& mangledName) {
-	std::size_t sz = 25;
-	char* buffer = static_cast<char*>(std::malloc(sz));
-	int status;
-	char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
-	if (realname) {
-		return realname;
-	}
+	//std::size_t sz = 25;
+	//char* buffer = static_cast<char*>(std::malloc(sz));
+	//int status;
+	//char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
+	//if (realname) {
+	//	return realname;
+	//}
 	return mangledName;
 }
 
@@ -42,28 +42,16 @@ void traceReturnOperation(Type type, const TypedValueRef& ref) {
 	TraceContext::get()->traceReturnOperation(type, ref);
 }
 
-value_ref registerFunctionArgument(Type type, size_t index) {
+TypedValueRef& registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-value_ref traceLoad(const TypedValueRef& src, Type resultType) {
-	return TraceContext::get()->traceLoad(src, resultType);
-}
-
-void traceStore(const TypedValueRef& target, const TypedValueRef& src, Type valueType) {
-	TraceContext::get()->traceStore(target, src, valueType);
-}
-
-value_ref traceConstant(Type type, const ConstantLiteral& value) {
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
 bool traceBool(const TypedValueRef& state) {
 	return TraceContext::get()->traceCmp(state);
-}
-
-value_ref traceCast(const TypedValueRef& state, Type resultType) {
-	return TraceContext::get()->traceCast(state, resultType);
 }
 
 void allocateValRef(ValueRef ref) {
@@ -73,7 +61,7 @@ void freeValRef(ValueRef ref) {
 	TraceContext::get()->freeValRef(ref);
 }
 
-value_ref traceCopy(const value_ref& state) {
+TypedValueRef traceCopy(const TypedValueRef& state) {
 	if (inTracer()) {
 		return TraceContext::get()->traceCopy(state);
 	}
@@ -84,18 +72,18 @@ bool inTracer() {
 	return TraceContext::get() != nullptr;
 }
 
-value_ref traceCall(void* fptn, Type resultType, const std::vector<tracing::value_ref>& arguments) {
+TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(mangledName);
 	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
 }
 
-value_ref traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState) {
-	return TraceContext::get()->traceBinaryOperation(operation, resultType, leftState, rightState);
+TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
+	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
 }
 
-value_ref traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState) {
-	return TraceContext::get()->traceUnaryOperation(operation, resultType, inputState);
+TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
+	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
@@ -131,7 +119,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

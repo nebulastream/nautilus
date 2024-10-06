@@ -13,4 +13,4 @@ B1($3:i32)
 B2($3:i32)
 	JMP	$0	B3($3)	:void
 B3($3:i32)
-	RETURN	$3	:i32
+	RETURN	$0	$3	:i32

@@ -32,7 +32,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std
 	auto traceFunc = [=]() {
 		if constexpr (std::is_void_v<R>) {
 			func(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			tracing::traceReturnOperation(Type::v, tracing::value_ref());
+			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
 		} else {
 			auto returnValue = func(details::createTraceableArgument<FunctionArguments, Indices>()...);
 			auto type = tracing::to_type<typename decltype(returnValue)::raw_type>();

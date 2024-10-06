@@ -22,7 +22,8 @@ TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRef valueR
 #endif
 }
 
-TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder& other) : valueRef(other.valueRef) {
+TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder& other)
+    : valueRef(other.valueRef) {
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;
@@ -30,7 +31,8 @@ TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefH
 #endif
 }
 
-TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder&& other) : valueRef(other.valueRef) {
+TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder&& other)
+    : valueRef(other.valueRef) {
 #ifdef ENABLE_TRACING
 	if (!inTracer())
 		return;

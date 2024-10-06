@@ -49,5 +49,4 @@ public:
 	TypedValueRef valueRef;
 };
 
-using value_ref = TypedValueRef;
 } // namespace nautilus::tracing

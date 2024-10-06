@@ -1,3 +1,3 @@
 B0($1:ptr)
-	CALL	$2	nautilus::castCustomClass(nautilus::val<nautilus::BaseClass*>)::$_1::__invoke(nautilus::CustomClass*)($1)	:i32
-	RETURN	$2	:i32
+	CALL	$2	_ZZN8nautilus15castCustomClassENS_3valIPNS_9BaseClassEEEEN3$_18__invokeEPNS_11CustomClassE($1)	:i32
+	RETURN	$0	$2	:i32

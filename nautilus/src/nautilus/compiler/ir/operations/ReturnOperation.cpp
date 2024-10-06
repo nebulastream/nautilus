@@ -7,7 +7,8 @@ namespace nautilus::compiler::ir {
 ReturnOperation::ReturnOperation() : Operation(Operation::OperationType::ReturnOp, Type::v) {
 }
 
-ReturnOperation::ReturnOperation(Operation* returnValue) : Operation(Operation::OperationType::ReturnOp, returnValue->getStamp(), {returnValue}) {
+ReturnOperation::ReturnOperation(Operation* returnValue)
+    : Operation(Operation::OperationType::ReturnOp, returnValue->getStamp(), {returnValue}) {
 }
 
 Operation* ReturnOperation::getReturnValue() const {

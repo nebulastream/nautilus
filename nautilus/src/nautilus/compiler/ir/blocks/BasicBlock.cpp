@@ -7,7 +7,8 @@
 #include <utility>
 
 namespace nautilus::compiler::ir {
-BasicBlock::BasicBlock(uint16_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments) : identifier(identifier), operations(), arguments(std::move(arguments)) {
+BasicBlock::BasicBlock(uint16_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments)
+    : identifier(identifier), operations(), arguments(std::move(arguments)) {
 }
 
 void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation*>& ops) {

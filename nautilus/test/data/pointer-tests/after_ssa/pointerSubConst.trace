@@ -4,4 +4,4 @@ B0($1:ptr)
 	MUL	$6	$3	$5	:ui64
 	ADD	$7	$1	$6	:ptr
 	LOAD	$10	$7	:i32
-	RETURN	$10	:i32
+	RETURN	$0	$10	:i32

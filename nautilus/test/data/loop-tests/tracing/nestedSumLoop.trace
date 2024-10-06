@@ -6,7 +6,7 @@ B1()
 	CONST	$6	0	:i32
 	JMP	$0	B5()	:void
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B3()
 	CONST	$9	10	:i32
 	ADD	$10	$2	$9	:i32

@@ -9,7 +9,7 @@ B1()
 	EQ	$9	$7	$8	:bool
 	CMP	$10	$9	B3()	B4()	:void
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B3()
 	CONST	$11	1	:i32
 	ADD	$12	$2	$11	:i32

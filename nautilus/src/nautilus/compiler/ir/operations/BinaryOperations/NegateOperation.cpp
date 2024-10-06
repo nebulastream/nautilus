@@ -3,7 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-NegateOperation::NegateOperation(OperationIdentifier identifier, Operation* input) : Operation(OperationType::NegateOp, identifier, input->getStamp(), {input}) {
+NegateOperation::NegateOperation(OperationIdentifier identifier, Operation* input)
+    : Operation(OperationType::NegateOp, identifier, input->getStamp(), {input}) {
 }
 
 bool NegateOperation::classof(const Operation* Op) {

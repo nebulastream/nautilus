@@ -1,2 +1,2 @@
 B0($1:i16)
-	RETURN	$1	:i16
+	RETURN	$0	$1	:i16

@@ -17,11 +17,11 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 #ifdef ENABLE_TRACING
-	val(ValueType ref) : state(tracing::value_ref()), ptr(&ref) {
+	val(ValueType ref) : state(tracing::TypedValueRef()), ptr(&ref) {
 	}
-	val(ValueType ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
 	}
 #else
 	val(ValueType ref) : ptr(&ref) {
@@ -38,7 +38,7 @@ public:
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceStore(state, value.state, tracing::to_type<ValueType>());
+			tracing::traceBinaryOp(tracing::STORE, Type::v, state, value.state);
 			return;
 		}
 #endif
@@ -52,7 +52,7 @@ public:
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceStore(ptr.state, other.state, tracing::to_type<ValueType>());
+			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, other.state);
 			return;
 		}
 #endif
@@ -64,7 +64,7 @@ public:
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto ref = tracing::traceLoad(ptr.state, tracing::to_type<ValueType>());
+			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::to_type<ValueType>(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif
@@ -90,12 +90,12 @@ public:
 #ifdef ENABLE_TRACING
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
 	}
-	base_ptr_val(ValuePtrType ptr, tracing::value_ref tc) : state(tc), value(ptr) {
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : state(tc), value(ptr) {
 	}
 	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {
 	}
 
-	base_ptr_val(tracing::value_ref ref) : state(ref), value(nullptr) {
+	base_ptr_val(tracing::TypedValueRef ref) : state(ref), value(nullptr) {
 	}
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {
@@ -115,7 +115,8 @@ public:
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
 
 #ifdef ENABLE_TRACING
-	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	val(const val<ValuePtrType>& otherValue)
+	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
@@ -191,7 +192,8 @@ public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 
 #ifdef ENABLE_TRACING
-	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
+	val(const val<ValuePtrType>& otherValue)
+	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
@@ -356,11 +358,11 @@ public:
 
 #ifdef ENABLE_TRACING
 	tracing::TypedValueRefHolder state;
-	val(bool ref) : state(tracing::value_ref()), ptr(&ref) {
+	val(bool ref) : state(tracing::TypedValueRef()), ptr(&ref) {
 	}
-	val(bool& ref, tracing::value_ref value_ref) : state(value_ref), ptr(&ref) {
+	val(bool& ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
 	}
-	val(val<ptrType> ptr, tracing::value_ref ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
 	}
 #else
 	val(bool ref) : ptr(&ref) {
@@ -377,7 +379,7 @@ public:
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceStore(state, value.state, tracing::to_type<bool&>());
+			tracing::traceBinaryOp(tracing::STORE, Type::v, state, value.state);
 			return;
 		}
 #endif
@@ -391,7 +393,7 @@ public:
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceStore(ptr.state, other.state, tracing::to_type<bool&>());
+			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, other.state);
 			return;
 		}
 #endif
@@ -403,7 +405,7 @@ public:
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto ref = tracing::traceLoad(ptr.state, tracing::to_type<bool&>());
+			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::to_type<baseType>(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif

@@ -13,7 +13,7 @@ B1()
 	ASSIGN	$3	$10	:i32
 	JMP	$0	B3()	:void
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B3() ControlFlowMerge
 	NEQ	$4	$1	$3	:bool
 	CMP	$5	$4	B1()	B2()	:void

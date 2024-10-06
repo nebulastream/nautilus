@@ -17,4 +17,4 @@ B4()
 	CONST	$13	30	:i32
 	JMP	$0	B5($13)	:void
 B5($2:i32)
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

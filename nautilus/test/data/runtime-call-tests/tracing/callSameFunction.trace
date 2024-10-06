@@ -1,6 +1,6 @@
 B0($1:i32)
-	CALL	$2	nautilus::engine::add(int, int)($1,$1)	:i32
+	CALL	$2	_ZN8nautilus6engine3addEii($1,$1)	:i32
 	ASSIGN	$1	$2	:i32
-	CALL	$3	nautilus::engine::add(int, int)($1,$1)	:i32
+	CALL	$3	_ZN8nautilus6engine3addEii($1,$1)	:i32
 	ASSIGN	$1	$3	:i32
-	RETURN	$1	:i32
+	RETURN	$0	$1	:i32

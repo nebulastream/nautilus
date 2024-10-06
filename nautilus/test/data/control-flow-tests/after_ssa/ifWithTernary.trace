@@ -19,4 +19,4 @@ B5($1:i32,$6:i32,$5:i32) ControlFlowMerge
 	EQ	$7	$1	$6	:bool
 	CMP	$8	$7	B3()	B4($5)	:void
 B6($5:i32)
-	RETURN	$5	:i32
+	RETURN	$0	$5	:i32

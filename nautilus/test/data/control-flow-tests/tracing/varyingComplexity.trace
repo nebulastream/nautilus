@@ -6,7 +6,7 @@ B0($1:i32)
 B1()
 	CONST	$6	1	:i32
 	ASSIGN	$2	$6	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B2()
 	CONST	$8	5	:i32
 	GTE	$9	$1	$8	:bool
@@ -23,11 +23,11 @@ B3()
 B4()
 	CONST	$21	3	:i32
 	ASSIGN	$2	$21	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B5()
 	CONST	$18	1	:i32
 	ADD	$19	$2	$18	:i32
 	ASSIGN	$2	$19	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B6()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

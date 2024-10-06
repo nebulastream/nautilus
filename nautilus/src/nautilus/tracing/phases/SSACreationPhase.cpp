@@ -13,7 +13,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	return phaseContext.process();
 }
 
-SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace) : trace(std::move(trace)) {
+SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace)
+    : trace(std::move(trace)) {
 }
 
 Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
@@ -31,11 +32,14 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
 		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
-		if (returnValue.resultType == Type::v) {
+		// check if we have return values
+		if (returnValue.input.empty()) {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] = TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, defaultReturnOp.resultRef, {returnValue.resultRef});
+			returnOpBlock.operations[returnOp.operationIndex] =
+			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
+			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -62,7 +66,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
-		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n", rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
+		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n",
+		                                   rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
 	}
 	// sort arguments
 	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
@@ -70,7 +75,8 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, value_ref& ref, Type, uint32_t operationIndex) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
+                                                                uint32_t operationIndex) {
 	// A value ref is defined in the local scope, if it is the result of an
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
@@ -89,11 +95,8 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
 		auto& operation = block.operations[i];
 		// process input for each variable
-		if (operation.op == RETURN && operation.resultType != Type::v) {
-			processValueRef(block, operation.resultRef, operation.resultType, i);
-		}
 		for (auto& input : operation.input) {
-			if (auto* valueRef = std::get_if<value_ref>(&input)) {
+			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 				// set op type
 				processValueRef(block, *valueRef, operation.resultType, i);
 			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
@@ -103,10 +106,6 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 					processValueRef(block, valueRef, valueRef.type, i);
 				}
 			}
-		}
-
-		if (operation.op == STORE) {
-			processValueRef(block, operation.resultRef, operation.resultType, i);
 		}
 	}
 	processedBlocks.emplace(block.blockId);
@@ -122,7 +121,8 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, value_ref& ref, Type ref_type, uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
+                                                                uint32_t operationIndex) {
 	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
@@ -157,7 +157,8 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, va
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef,
+                                                                uint32_t operationIndex) {
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
 	for (auto& input : blockRef.arguments) {
@@ -169,64 +170,34 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
-		for (uint64_t i = 0; i < block.operations.size(); i++) {
-			auto& operation = block.operations[i];
-			if (operation.op == Op::CMP) {
-				if (auto valueRef = &operation.resultRef) {
-					auto foundAssignment = assignmentMap.find(valueRef->ref);
-					if (foundAssignment != assignmentMap.end()) {
-						// todo check assignment
-						valueRef->ref = foundAssignment->second;
-					}
-				}
-			}
+		for (auto& operation : block.operations) {
 			if (operation.op == Op::ASSIGN) {
-				auto valueRef = get<value_ref>(operation.input[0]);
+				auto& valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
 				if (foundAssignment != assignmentMap.end()) {
-					assignmentMap[operation.resultRef.ref] = assignmentMap[valueRef.ref];
+					assignmentMap[operation.resultRef.ref] = foundAssignment->second;
 				} else {
-					assignmentMap[operation.resultRef.ref] = get<value_ref>(operation.input[0]).ref;
-				}
-			} else if (operation.op == Op::RETURN) {
-				auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
-				if (foundAssignment != assignmentMap.end()) {
-					operation.resultRef.ref = foundAssignment->second;
+					assignmentMap[operation.resultRef.ref] = get<TypedValueRef>(operation.input[0]).ref;
 				}
 			} else {
-				if (operation.op == Op::STORE) {
-					auto foundAssignment = assignmentMap.find(operation.resultRef.ref);
-					if (foundAssignment != assignmentMap.end()) {
-						operation.resultRef.ref = foundAssignment->second;
-					}
-				}
 				for (auto& input : operation.input) {
-					if (auto* valueRef = std::get_if<value_ref>(&input)) {
+					if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 						auto foundAssignment = assignmentMap.find(valueRef->ref);
 						if (foundAssignment != assignmentMap.end()) {
-							// todo check assignment
 							valueRef->ref = foundAssignment->second;
-							// valueRef->blockId = foundAssignment->second.blockId;
-							// valueRef->operationId = foundAssignment->second.operationId;
 						}
 					} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
 						for (auto& blockArgument : blockRef->arguments) {
 							auto foundAssignment = assignmentMap.find(blockArgument.ref);
 							if (foundAssignment != assignmentMap.end()) {
-								// valueRef = &foundAssignment->second;
 								blockArgument.ref = foundAssignment->second;
-								// blockArgument.operationId =
-								// foundAssignment->second.operationId;
 							}
 						}
 					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
 						for (auto& funcArg : fcallRef->arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
-								// valueRef = &foundAssignment->second;
 								funcArg.ref = foundAssignment->second;
-								// blockArgument.operationId =
-								// foundAssignment->second.operationId;
 							}
 						}
 					}
@@ -245,7 +216,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
 			auto& operation = block.operations[i];
 			for (auto& input : operation.input) {
-				if (auto* valueRef = std::get_if<value_ref>(&input)) {
+				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
 					if (foundAssignment != blockArgumentMap.end()) {
 						// todo check assignment

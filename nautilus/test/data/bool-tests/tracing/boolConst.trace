@@ -2,4 +2,4 @@ B0($1:bool)
 	ASSIGN	$2	$1	:bool
 	CONST	$3	true	:bool
 	AND	$4	$2	$3	:bool
-	RETURN	$4	:bool
+	RETURN	$0	$4	:bool

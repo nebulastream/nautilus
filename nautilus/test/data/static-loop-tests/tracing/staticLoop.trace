@@ -30,4 +30,4 @@ B0()
 	CONST	$20	10	:i32
 	ADD	$21	$1	$20	:i32
 	ASSIGN	$1	$21	:i32
-	RETURN	$1	:i32
+	RETURN	$0	$1	:i32

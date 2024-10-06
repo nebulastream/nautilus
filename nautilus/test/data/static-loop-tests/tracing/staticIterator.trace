@@ -47,9 +47,9 @@ B9()
 	CONST	$26	1	:i32
 	ADD	$27	$2	$26	:i32
 	ASSIGN	$2	$27	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B10()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B11() ControlFlowMerge
 	GT	$9	$1	$8	:bool
 	CMP	$10	$9	B3()	B4()	:void

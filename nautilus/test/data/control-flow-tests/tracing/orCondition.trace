@@ -10,6 +10,6 @@ B1()
 	CONST	$9	14	:i32
 	ADD	$10	$2	$9	:i32
 	ASSIGN	$2	$10	:i32
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32
 B2()
-	RETURN	$2	:i32
+	RETURN	$0	$2	:i32

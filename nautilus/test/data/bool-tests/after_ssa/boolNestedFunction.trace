@@ -8,4 +8,4 @@ B2()
 	CONST	$10	false	:bool
 	JMP	$0	B3($10)	:void
 B3($7:bool)
-	RETURN	$7	:bool
+	RETURN	$0	$7	:bool

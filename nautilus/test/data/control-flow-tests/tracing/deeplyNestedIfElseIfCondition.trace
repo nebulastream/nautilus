@@ -43,4 +43,4 @@ B9() ControlFlowMerge
 	ADD	$8	$1	$7	:i32
 	ASSIGN	$1	$8	:i32
 	ASSIGN	$9	$1	:i32
-	RETURN	$9	:i32
+	RETURN	$0	$9	:i32
