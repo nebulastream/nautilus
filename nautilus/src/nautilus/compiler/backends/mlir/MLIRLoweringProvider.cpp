@@ -363,7 +363,6 @@ void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp,
 		inputTypes.emplace_back(getMLIRType(inputArg->getStamp()));
 	}
 	llvm::SmallVector<mlir::Type> outputTypes(1, getMLIRType(functionOp.getOutputArg()));
-	;
 	auto functionInOutTypes = builder->getFunctionType(inputTypes, outputTypes);
 	auto loc = getNameLoc("EntryPoint");
 	auto mlirFunction = builder->create<mlir::func::FuncOp>(loc, functionOp.getName(), functionInOutTypes);

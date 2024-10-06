@@ -144,9 +144,11 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	case Op::RETURN: {
 		if (operation.input.empty()) {
 			currentIrBlock->addOperation<ReturnOperation>();
+			returnType = Type::v;
 		} else {
 			auto returnValue = frame.getValue(createValueIdentifier(operation.input[0]));
 			currentIrBlock->addOperation<ReturnOperation>(returnValue);
+			returnType = returnValue->getStamp();
 		}
 		return;
 	}
