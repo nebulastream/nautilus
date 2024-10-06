@@ -1,7 +1,7 @@
 NautilusIr {
 execute() {
 Block_0($1:i32):
-	$2 = nautilus::engine::lambdaRuntimeFunction(nautilus::val<int>)::$_1::__invoke(int)($1) :i32
+	$2 = _ZZN8nautilus6engine21lambdaRuntimeFunctionENS_3valIiEEEN3$_08__invokeEi($1) :i32
 	return ($2) :i32
 }
 } //NESIR

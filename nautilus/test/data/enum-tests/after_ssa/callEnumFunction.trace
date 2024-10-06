@@ -1,3 +1,3 @@
 B0($1:ui32)
-	CALL	$2	nautilus::enumFunction(nautilus::Color)($1)	:i32
+	CALL	$2	_ZN8nautilus12enumFunctionENS_5ColorE($1)	:i32
 	RETURN	$0	$2	:i32
