@@ -182,9 +182,9 @@ mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::
 	}
 }
 
-mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr, mlir::Type resultType, std::vector<mlir::Type> argTypes, bool varArgs) {
+mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr, mlir::Type resultType, std::vector<mlir::Type> argTypes) {
 	// Create function arg & result types (currently only int for result).
-	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes, varArgs);
+	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes);
 
 	// The InsertionGuard saves the current insertion point (IP) and restores it
 	// after scope is left.
@@ -554,7 +554,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(proxyCallOp->getFunctionSymbol())) {
 		functionRef = mlir::SymbolRefAttr::get(context, proxyCallOp->getFunctionSymbol());
 	} else {
-		functionRef = insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()), getMLIRType(proxyCallOp->getInputArguments()), true);
+		functionRef = insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()), getMLIRType(proxyCallOp->getInputArguments()));
 	}
 
 	std::vector<mlir::Value> functionArgs;
