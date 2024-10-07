@@ -30,11 +30,6 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	LLVMInitializeNativeTarget();
 	LLVMInitializeNativeAsmPrinter();
 
-	//(void) dumpHelper;
-	// if (compilerOptions.isDumpToConsole() || compilerOptions.isDumpToFile()) {
-	//     dumpLLVMIR(mlirModule.get(), compilerOptions, dumpHelper);
-	// }
-
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
 	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
@@ -46,7 +41,6 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	// We register all external functions (symbols) that we do not inline.
 	const auto runtimeSymbolMap = [&](llvm::orc::MangleAndInterner interner) {
 		auto symbolMap = llvm::orc::SymbolMap();
-
 		for (int i = 0; i < (int) jitProxyFunctionSymbols.size(); ++i) {
 			auto address = jitProxyFunctionTargetAddresses.at(i);
 			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address),

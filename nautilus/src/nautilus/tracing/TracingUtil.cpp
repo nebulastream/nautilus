@@ -20,13 +20,13 @@ std::string getMangledName(void* fnptr) {
 }
 
 std::string getFunctionName(const std::string& mangledName) {
-	//std::size_t sz = 25;
-	//char* buffer = static_cast<char*>(std::malloc(sz));
-	//int status;
-	//char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
-	//if (realname) {
+	// std::size_t sz = 25;
+	// char* buffer = static_cast<char*>(std::malloc(sz));
+	// int status;
+	// char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
+	// if (realname) {
 	//	return realname;
-	//}
+	// }
 	return mangledName;
 }
 

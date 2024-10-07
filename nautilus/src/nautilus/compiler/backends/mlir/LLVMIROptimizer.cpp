@@ -15,6 +15,9 @@ int getOptimizationLevel(const engine::Options& options) {
 	return options.getOptionOrDefault("mlir.optimizationLevel", 3);
 }
 
+LLVMIROptimizer::LLVMIROptimizer() = default;
+LLVMIROptimizer::~LLVMIROptimizer() = default;
+
 std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options,
                                                                                     const DumpHandler& handler) {
 	// Return LLVM optimizer pipeline.
@@ -24,8 +27,6 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		constexpr int SIZE_LEVEL = 0;
 		// Create A target-specific target machine for the host
 		auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
-		// NES_ASSERT2_FMT(tmBuilderOrError, "Failed to create a
-		// JITTargetMachineBuilder for the host");
 		auto targetMachine = tmBuilderOrError->createTargetMachine();
 		llvm::TargetMachine* targetMachinePtr = targetMachine->get();
 		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
@@ -39,17 +40,6 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
 		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
 		llvm::SMDiagnostic Err;
-
-		// Load LLVM IR module from proxy inlining input path (We assert that it
-		// exists in CompilationOptions). if (options.isProxyInlining()) {
-		//     auto proxyFunctionsIR =
-		//     llvm::parseIRFile(options.getProxyInliningInputPath(), Err,
-		//     llvmIRModule->getContext());
-		// Link the module with our generated LLVM IR module and optimize the linked
-		// LLVM IR module (inlining happens during optimization).
-		//     llvm::Linker::linkModules(*llvmIRModule, std::move(proxyFunctionsIR),
-		//     llvm::Linker::Flags::OverrideFromSrc);
-		// }
 
 		auto optPipeline =
 		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
