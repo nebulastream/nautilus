@@ -164,7 +164,11 @@ struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::st
 		if (op.getStamp() != nautilus::Type::v) {
 			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
 		}
-		fmt::format_to(out, "{}(", op.getFunctionName());
+#ifdef LOGGING_HIDE_ADDRESSES
+			fmt::format_to(out, "func_*(");
+#else
+			fmt::format_to(out, "{}(", op.getFunctionName());
+#endif
 		const auto& args = op.getInputArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
