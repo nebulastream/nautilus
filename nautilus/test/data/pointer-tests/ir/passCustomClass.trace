@@ -1,7 +1,7 @@
 NautilusIr {
 execute() {
 Block_0($1:ptr):
-	$2 = _ZZN8nautilus15passCustomClassENS_3valIPNS_11CustomClassEEEEN3$_08__invokeES2_($1) :i32
+	$2 = func_*($1) :i32
 	return ($2) :i32
 }
 } //NESIR
