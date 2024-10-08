@@ -18,10 +18,10 @@ template <typename LHS>
 LHS getRawValue(const val<LHS>& val);
 
 #define COMMON_RETURN_TYPE                                                                                             \
-	val<typename std::common_type<typename std::remove_cvref_t<LHS>::basic_type,                                       \
-	                              typename std::remove_cvref_t<RHS>::basic_type>::type>
+	typename std::common_type_t<typename std::remove_cvref_t<LHS>::basic_type,                                         \
+	                            typename std::remove_cvref_t<RHS>::basic_type>
 
-#define DEDUCT_RETURN_TYPE(OP) val<decltype(getRawValue(left) OP getRawValue(right))>
+#define DEDUCT_RETURN_TYPE(OP) decltype(getRawValue(left) OP getRawValue(right))
 
 template <typename T>
 tracing::TypedValueRef getState(T&& value) {
@@ -245,17 +245,17 @@ namespace details {
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
-		typedef typename std::common_type<typename std::remove_reference_t<LHS>::basic_type,                           \
-		                                  typename std::remove_reference_t<RHS>::basic_type>::type commonType;         \
+		typedef std::common_type_t<typename std::remove_reference_t<LHS>::basic_type,                                  \
+		                           typename std::remove_reference_t<RHS>::basic_type>                                  \
+		    commonType;                                                                                                \
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
-		using resultType = decltype(getRawValue(lValue) OP getRawValue(rValue));                                       \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::to_type<resultType>(),                        \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::to_type<RES_TYPE>(),                          \
 			                                 details::getState(lValue), details::getState(rValue));                    \
-			return RES_TYPE(tc);                                                                                       \
+			return val<RES_TYPE>(tc);                                                                                  \
 		}                                                                                                              \
-		return RES_TYPE(getRawValue(lValue) OP getRawValue(rValue));                                                   \
+		return val<RES_TYPE>(getRawValue(lValue) OP getRawValue(rValue));                                              \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
@@ -268,17 +268,17 @@ DEFINE_BINARY_OPERATOR_HELPER(/, div, DIV, COMMON_RETURN_TYPE)
 
 DEFINE_BINARY_OPERATOR_HELPER(%, mod, MOD, COMMON_RETURN_TYPE)
 
-DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, bool)
 
-DEFINE_BINARY_OPERATOR_HELPER(!=, neq, NEQ, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(!=, neq, NEQ, bool)
 
-DEFINE_BINARY_OPERATOR_HELPER(<, lt, LT, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(<, lt, LT, bool)
 
-DEFINE_BINARY_OPERATOR_HELPER(<=, lte, LTE, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(<=, lte, LTE, bool)
 
-DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, bool)
 
-DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, val<bool>)
+DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, bool)
 
 DEFINE_BINARY_OPERATOR_HELPER(>>, shr, RSH, DEDUCT_RETURN_TYPE(>>))
 

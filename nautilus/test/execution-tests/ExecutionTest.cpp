@@ -251,6 +251,22 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((double) -7) == 0);
 		REQUIRE(f((double) -14) == -7);
 	}
+
+	SECTION("subInt8AndInt8") {
+		auto f = engine.registerFunction(subInt8AndInt8);
+		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);
+		REQUIRE(f((int8_t) 123, (int8_t) 123) == 0);
+		REQUIRE(f((int8_t) 78, (int8_t) 70) == 8);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == 127);
+	}
+
+	SECTION("addInt8AndInt32") {
+		auto f = engine.registerFunction(addInt8AndInt32);
+		REQUIRE(f((int8_t) 1, (int32_t) 2) == 3);
+		REQUIRE(f((int8_t) 123, (int32_t) 123) == 246);
+		REQUIRE(f((int8_t) 78, (int32_t) 70) == 148);
+		REQUIRE(f((int8_t) -128, (int32_t) -1) == -129);
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {
