@@ -144,10 +144,9 @@ private:
 	 * @param name: Function name.
 	 * @param numResultBits: Number of bits of returned Integer.
 	 * @param argTypes: Argument types of function.
-	 * @param varArgs: Include variable arguments.
 	 * @return FlatSymbolRefAttr: Reference to function used in CallOps.
 	 */
-	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, const ::mlir::Type& resultType, const std::vector<::mlir::Type>& argTypes, bool varArgs);
+	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, const ::mlir::Type& resultType, const std::vector<::mlir::Type>& argTypes);
 
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.

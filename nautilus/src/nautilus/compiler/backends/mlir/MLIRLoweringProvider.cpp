@@ -183,10 +183,9 @@ mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::
 
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
                                                                      const mlir::Type& resultType,
-                                                                     const std::vector<mlir::Type>& argTypes,
-                                                                     bool varArgs) {
+                                                                     const std::vector<mlir::Type>& argTypes) {
 	// Create function arg & result types (currently only int for result).
-	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes, varArgs);
+	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes);
 
 	// The InsertionGuard saves the current insertion point (IP) and restores it
 	// after scope is left.
@@ -543,7 +542,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 	} else {
 		functionRef = insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(),
 		                                     getMLIRType(proxyCallOp->getStamp()),
-		                                     getMLIRType(proxyCallOp->getInputArguments()), true);
+		                                     getMLIRType(proxyCallOp->getInputArguments()));
 	}
 
 	std::vector<mlir::Value> functionArgs;
