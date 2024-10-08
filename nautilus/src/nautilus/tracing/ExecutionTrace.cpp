@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
+#include <nautilus/logging.hpp>
 
 namespace nautilus::tracing {
 
@@ -283,8 +284,8 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
-    -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
+                                                 format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -306,8 +307,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;
@@ -334,11 +335,12 @@ template <>
 struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
-#ifdef LOGGING_HIDE_ADDRESSES
-		fmt::format_to(out, "func_*(");
-#else
-		fmt::format_to(out, "{}(", call.functionName);
-#endif
+		if (nautilus::log::options::getLogAddresses()) {
+			fmt::format_to(out, "{}(", call.functionName);
+		} else {
+			fmt::format_to(out, "func_*(");
+		}
+
 		for (size_t i = 0; i < call.arguments.size(); i++) {
 			if (i != 0) {
 				fmt::format_to(out, ",");

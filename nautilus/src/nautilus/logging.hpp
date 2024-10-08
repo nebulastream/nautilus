@@ -7,7 +7,7 @@
 
 namespace nautilus::log {
 template <typename... Args>
-void info([[maybe_unused]] const char* fmt, [[maybe_unused]]Args&&... args) {
+void info([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 #ifdef ENABLE_LOGGING
 	spdlog::info("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 #endif
@@ -23,7 +23,7 @@ void debug([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 template <typename... Args>
 void trace([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 #ifdef ENABLE_LOGGING
-	spdlog::trace("{}",fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+	spdlog::trace("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 #endif
 }
 
@@ -33,4 +33,11 @@ void error([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 	spdlog::error("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
 #endif
 }
+
+namespace options {
+
+bool getLogAddresses();
+void setLogAddresses(bool);
+
+} // namespace options
 } // namespace nautilus::log
