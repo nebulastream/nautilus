@@ -20,6 +20,12 @@
 #include <iostream>
 #include <sstream>
 
+namespace nautilus::log::options {
+
+bool getLogAddresses();
+void setLogAddresses(bool);
+
+} // namespace nautilus::log::options
 namespace nautilus::engine {
 
 namespace details {
@@ -132,6 +138,8 @@ bool checkTestFile(T* trace, const std::string category, const std::string group
 }
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
+	// disable logging of addresses such that the trace is deterministic
+	nautilus::log::options::setLogAddresses(false);
 	for (auto& test : tests) {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);

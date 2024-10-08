@@ -11,4 +11,3 @@
 
 // Backends
 #cmakedefine NAUTILUS_ACTIVATE_MLIR_BACKEND
-#cmakedefine LOGGING_HIDE_ADDRESSES
