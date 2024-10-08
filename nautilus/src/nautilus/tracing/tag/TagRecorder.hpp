@@ -11,7 +11,7 @@ namespace nautilus::tracing {
  */
 class TagRecorder final {
 public:
-	static constexpr size_t MAX_TAG_SIZE = 128;
+	static constexpr size_t MAX_TAG_SIZE = 264;
 
 	/**
 	 * @brief Factory to create a new tag recorder.
