@@ -14,7 +14,7 @@ list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
 catch_discover_tests(nautilus-execution-tests EXTRA_ARGS --allow-running-no-tests)
 
-if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
+if (ENABLE_TRACING AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     # using Clang
     add_executable(nautilus-tracing-tests
             TracingTest.cpp
