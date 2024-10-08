@@ -63,7 +63,15 @@ val<double> doubleAddExpression(val<double> x) {
 	return x + y;
 }
 
+auto subInt8AndInt8(val<int8_t> x, val<int8_t> y) {
+	const auto result = x - y;
+	return result;
+}
 
+auto addInt8AndInt32(val<int8_t> x, val<int32_t> y) {
+	const auto result = x + y;
+	return result;
+}
 
 val<double> castFloatToDoubleAddExpression(val<float> x) {
 	val<double> y = 7.0;
