@@ -147,7 +147,7 @@ private:
 	 * @param varArgs: Include variable arguments.
 	 * @return FlatSymbolRefAttr: Reference to function used in CallOps.
 	 */
-	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, ::mlir::Type resultType, std::vector<::mlir::Type> argTypes, bool varArgs);
+	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, const ::mlir::Type& resultType, const std::vector<::mlir::Type>& argTypes, bool varArgs);
 
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.
@@ -167,7 +167,7 @@ private:
 	 * @param types: Vector of basic  types.
 	 * @return mlir::Type: Vector of MLIR types.
 	 */
-	std::vector<::mlir::Type> getMLIRType(std::vector<ir::Operation*> types);
+	std::vector<::mlir::Type> getMLIRType(const std::vector<ir::Operation*>& types);
 
 	/**
 	 * @brief Get a constant MLIR Integer.

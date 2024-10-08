@@ -10,10 +10,6 @@ namespace nautilus::compiler::mlir {
 class MLIRPassManager {
 public:
 	enum class OptimizationPass : uint8_t { Inline };
-
-	MLIRPassManager();  // Disable default constructor
-	~MLIRPassManager(); // Disable default destructor
-
 	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module, const std::vector<OptimizationPass>& optimizationPasses);
 };
 } // namespace nautilus::compiler::mlir
