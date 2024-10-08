@@ -3,6 +3,7 @@
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
 #include <fmt/format.h>
+#include <nautilus/config.hpp>
 
 namespace nautilus::tracing {
 
@@ -333,7 +334,11 @@ template <>
 struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
+#ifdef LOGGING_HIDE_ADDRESSES
+		fmt::format_to(out, "func_*(");
+#else
 		fmt::format_to(out, "{}(", call.functionName);
+#endif
 		for (size_t i = 0; i < call.arguments.size(); i++) {
 			if (i != 0) {
 				fmt::format_to(out, ",");

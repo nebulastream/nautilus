@@ -1,4 +1,4 @@
 B0($1:i32)
-	CALL	$2	_ZZN8nautilus6engine27nestedLambdaRuntimeFunctionENS_3valIiEEEN3$_48__invokeEi($1)	:i32
-	CALL	$3	_ZZN8nautilus6engine27nestedLambdaRuntimeFunctionENS_3valIiEEEN3$_38__invokeEi($2)	:i32
+	CALL	$2	func_*($1)	:i32
+	CALL	$3	func_*($2)	:i32
 	RETURN	$0	$3	:i32
