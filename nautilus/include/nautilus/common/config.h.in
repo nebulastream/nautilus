@@ -1,3 +1,4 @@
+#pragma once
 
 #cmakedefine ENABLE_TRACING
 #cmakedefine ENABLE_LOGGING
