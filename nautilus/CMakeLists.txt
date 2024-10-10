@@ -13,6 +13,8 @@ add_subdirectory(src)
 get_source(nautilus NAUTILUS_SOURCE_FILES)
 
 # Add Library
+# nautilus tracing requires frame-pointers
+target_compile_options(nautilus INTERFACE -fno-omit-frame-pointer)
 target_sources(nautilus PRIVATE ${NAUTILUS_SOURCE_FILES})
 target_include_directories(nautilus PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
