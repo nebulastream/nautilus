@@ -83,24 +83,23 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	return operation.resultRef;
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant>&& inputs) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v),
-	                        std::vector<InputVariant> {inputs});
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), inputs);
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::vector<InputVariant>&& inputs) {
+                                                      std::initializer_list<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 
 	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   std::forward<std::vector<InputVariant>>(inputs));
+	auto& to =
+	    operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);

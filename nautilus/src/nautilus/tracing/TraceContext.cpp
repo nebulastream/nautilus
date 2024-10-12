@@ -81,7 +81,8 @@ TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& c
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, std::function<TypedValueRef&(Snapshot&)> onCreation) {
+template <typename OnCreation>
+TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	if (isFollowing()) {
 		return follow(op);
 	} else {
@@ -132,10 +133,9 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant>&& inputs) {
+TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputs) {
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return executionTrace->addOperationWithResult(tag, op, resultType,
-		                                              std::forward<std::vector<InputVariant>>(inputs));
+		return executionTrace->addOperationWithResult(tag, op, resultType, inputs);
 	});
 }
 

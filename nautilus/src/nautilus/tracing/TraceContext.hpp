@@ -59,7 +59,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant>&& inputRef);
+	TypedValueRef& traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputRef);
 
 	/**
 	 * @brief Trace the return function.
@@ -74,7 +74,8 @@ public:
 	 */
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
+	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn,
+	                         Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
 
 	bool traceCmp(const TypedValueRef& targetRef);
 
@@ -97,7 +98,8 @@ private:
 
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
-	TypedValueRef& traceOperation(Op op, std::function<TypedValueRef&(Snapshot& snapshot)> onCreation);
+	template <typename OnCreation>
+	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 
 	TagRecorder& tagRecorder;
