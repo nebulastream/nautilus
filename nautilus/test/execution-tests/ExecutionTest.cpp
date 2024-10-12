@@ -850,6 +850,19 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		x.x = 42;
 		REQUIRE(f(&x) == 42);
 	}
+	SECTION("customClassInLambda") {
+		constexpr auto someMagicNumber = 1234;
+		val<int32_t> i32 = someMagicNumber;
+		const std::function compiledFunction = [&](const val<CustomClass*>& customClass) -> void
+		{
+			CustomClassRef classRef(customClass);
+			classRef.setX(i32);
+		};
+		auto f = engine.registerFunction(compiledFunction);
+		const CustomClass x(1, 2, 3);
+		f(&x);
+		REQUIRE(x.x == someMagicNumber);
+	}
 	SECTION("specializeType") {
 		auto f = engine.registerFunction(specializeType);
 		CustomStruct2 x = {.x = 42};

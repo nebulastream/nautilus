@@ -122,9 +122,25 @@ class BaseClass {};
 
 class CustomClass : public BaseClass {
 public:
+	CustomClass() : x(0), y(0), z(0) { }
+	CustomClass(const int x, const int y, const int z) : x(x), y(y), z(z) { }
 	int x;
 	int y;
 	int z;
+};
+
+void setXProxy(CustomClass* customClass, const int x) {
+	customClass->x = x;
+}
+
+class CustomClassRef  {
+public:
+	explicit CustomClassRef(const val<CustomClass*>& customClass) : customClass(customClass) {}
+	void setX(val<int> x) {
+		invoke(setXProxy, customClass, x);
+	}
+private:
+	val<CustomClass*> customClass;
 };
 
 val<CustomClass*> customPointerAdd(val<CustomClass*> customClassPtr, val<int32_t> offset) {
