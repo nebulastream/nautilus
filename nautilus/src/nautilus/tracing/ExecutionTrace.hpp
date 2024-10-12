@@ -18,7 +18,7 @@ public:
 
 	~ExecutionTrace() = default;
 
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::vector<InputVariant>&& inputs);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, std::initializer_list<InputVariant> inputs);
 
 	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs);
 
@@ -69,7 +69,7 @@ public:
 	 */
 	uint16_t getCurrentBlockIndex() const;
 
-	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant>&& inputs);
+	void addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs);
 
 	/**
 	 * @brief Returns the current block
