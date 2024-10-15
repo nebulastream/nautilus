@@ -25,7 +25,7 @@ template <>
 struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view> {
 	static auto format(const nautilus::compiler::ir::Operation& c, format_context& ctx) -> format_context::iterator;
 };
-}
+} // namespace fmt
 
 namespace nautilus::compiler::ir {
 /*
@@ -59,24 +59,27 @@ digraph G {
 */
 
 const std::string WHITE_ICE = "#d7ede7";
-//const std::string CRUISE = "#b8ddd1";
+// const std::string CRUISE = "#b8ddd1";
 const std::string KEPPEL = "#3cb4a4";
 const std::string CARISSMA = "#e98693";
 const std::string AMARANTH = "#da2d4f";
 const std::string BLACK = "#1a1919";
-//const std::string WHITE = "#ffffff";
+// const std::string WHITE = "#ffffff";
 const std::string DUST = "#f9f9f9";
 const std::string BIG_STONE = "#343d46";
-//const std::string ICE_STONE = "#b3bbc3";
+// const std::string ICE_STONE = "#b3bbc3";
 const std::string ORANGE = "#ffa500";
-//const std::string LIGHT_BLUE = "#ccccff";
+// const std::string LIGHT_BLUE = "#ccccff";
 const std::string LIGHT_PURPLE = "#c39bd3";
 const std::string LIGHT_YELLOW = "#ffffde";
 const std::string DARK_YELLOW = "#aaaa33";
-const std::map<std::string, std::string> EDGE_COLORS = {{"info", BIG_STONE}, {"control", AMARANTH}, {"loop", AMARANTH}, {"data", KEPPEL}, {"other", BLACK}};
-const std::map<std::string, std::pair<std::string, std::string>> NODE_COLORS = {{"info", {DUST, BLACK}},       {"input", {WHITE_ICE, BLACK}},  {"control", {CARISSMA, BLACK}}, {"memory", {LIGHT_PURPLE, BLACK}},
-                                                                                {"call", {AMARANTH, "white"}}, {"alloc", {AMARANTH, "white"}}, {"sync", {AMARANTH, "white"}},  {"virtual", {BIG_STONE, "white"}},
-                                                                                {"guard", {ORANGE, BLACK}},    {"calc", {KEPPEL, BLACK}},      {"other", {DUST, BLACK}}};
+const std::map<std::string, std::string> EDGE_COLORS = {
+    {"info", BIG_STONE}, {"control", AMARANTH}, {"loop", AMARANTH}, {"data", KEPPEL}, {"other", BLACK}};
+const std::map<std::string, std::pair<std::string, std::string>> NODE_COLORS = {
+    {"info", {DUST, BLACK}},           {"input", {WHITE_ICE, BLACK}},     {"control", {CARISSMA, BLACK}},
+    {"memory", {LIGHT_PURPLE, BLACK}}, {"call", {AMARANTH, "white"}},     {"alloc", {AMARANTH, "white"}},
+    {"sync", {AMARANTH, "white"}},     {"virtual", {BIG_STONE, "white"}}, {"guard", {ORANGE, BLACK}},
+    {"calc", {KEPPEL, BLACK}},         {"other", {DUST, BLACK}}};
 
 std::string urlEncode(const std::string& value) {
 	std::ostringstream encoded;
@@ -112,7 +115,8 @@ std::string write_attrs(const std::map<std::string, std::string>& attrs) {
 
 class GraphvizWriter {
 public:
-	GraphvizWriter(std::ostream& stream) : stream(stream) {}
+	GraphvizWriter(std::ostream& stream) : stream(stream) {
+	}
 	void end_graph() {
 		stream << "}" << std::endl;
 	}
@@ -121,7 +125,9 @@ public:
 		stream << "  graph " << write_attrs(attrs) << ";" << std::endl;
 	}
 
-	void write_block_argument_edges([[maybe_unused]] const std::shared_ptr<IRGraph>& graph, const BasicBlockInvocation& bi, [[maybe_unused]] bool hideIntermediateBlockArguments) {
+	void write_block_argument_edges([[maybe_unused]] const std::shared_ptr<IRGraph>& graph,
+	                                const BasicBlockInvocation& bi,
+	                                [[maybe_unused]] bool hideIntermediateBlockArguments) {
 		auto targetBlock = bi.getBlock();
 		auto preBlocks = getPredecessorBlocks(graph, targetBlock);
 		// if (hideIntermediateBlockArguments && preBlocks.size() == 1){
@@ -135,24 +141,28 @@ public:
 		}
 	}
 
-	std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> getPredecessorBlocks(const std::shared_ptr<IRGraph>& graph, const BasicBlock* targetBlock) {
+	std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>>
+	getPredecessorBlocks(const std::shared_ptr<IRGraph>& graph, const BasicBlock* targetBlock) {
 		std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> predeccessor;
 		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 			auto& op = block->getOperations().back();
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
 				if (ifOp->getFalseBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(), &ifOp->getFalseBlockInvocation());
+					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
+					                                                               &ifOp->getFalseBlockInvocation());
 					predeccessor.emplace_back(tup);
 				}
 				if (ifOp->getTrueBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(), &ifOp->getTrueBlockInvocation());
+					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
+					                                                               &ifOp->getTrueBlockInvocation());
 					predeccessor.emplace_back(tup);
 				}
 			} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 				auto branchOp = as<BranchOperation>(op);
 				if (branchOp->getNextBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(), &branchOp->getNextBlockInvocation());
+					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
+					                                                               &branchOp->getNextBlockInvocation());
 					predeccessor.emplace_back(tup);
 				}
 			}
@@ -160,9 +170,12 @@ public:
 		return predeccessor;
 	}
 
-	std::string getFromInput([[maybe_unused]] const std::shared_ptr<IRGraph>& graph, [[maybe_unused]] const BasicBlock* block, Operation* input, bool hideIntermediateBlockArguments) {
+	std::string getFromInput([[maybe_unused]] const std::shared_ptr<IRGraph>& graph,
+	                         [[maybe_unused]] const BasicBlock* block, Operation* input,
+	                         bool hideIntermediateBlockArguments) {
 
-		if (hideIntermediateBlockArguments && input->getOperationType() == Operation::OperationType::BasicBlockArgument) {
+		if (hideIntermediateBlockArguments &&
+		    input->getOperationType() == Operation::OperationType::BasicBlockArgument) {
 			[[maybe_unused]] const auto* arg = as<const BasicBlockArgument>(input);
 			size_t index = 0;
 			for (size_t i = 0; i < block->getArguments().size(); i++) {
@@ -208,7 +221,8 @@ public:
 		}
 	}
 
-	void getBlockArgumentMap(const BasicBlock* block, std::set<const BasicBlock*>& visitedBlocks, std::map<Operation*, std::vector<Operation*>>& map) {
+	void getBlockArgumentMap(const BasicBlock* block, std::set<const BasicBlock*>& visitedBlocks,
+	                         std::map<Operation*, std::vector<Operation*>>& map) {
 		if (visitedBlocks.contains(block)) {
 			return;
 		}
@@ -251,7 +265,8 @@ public:
 					write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(), hideIntermediateBlockArguments);
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
-					write_block_argument_edges(graph, branchOp->getNextBlockInvocation(), hideIntermediateBlockArguments);
+					write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
+					                           hideIntermediateBlockArguments);
 				}
 			}
 		}
@@ -294,7 +309,8 @@ public:
 		}
 	}
 
-	void write_edge(const std::string& from, const std::string& to, const std::string type, const std::string& label = "") {
+	void write_edge(const std::string& from, const std::string& to, const std::string type,
+	                const std::string& label = "") {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label; // Example label
 		attrs["fontname"] = "arial";
@@ -318,7 +334,8 @@ public:
 		write_edges(graph, true);
 		end_graph();
 	}
-	void write_node(const std::string& indent, const std::string& label, const std::string& id, const std::string type) {
+	void write_node(const std::string& indent, const std::string& label, const std::string& id,
+	                const std::string type) {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label;
 		attrs["shape"] = "rectangle"; // Example shape
@@ -334,8 +351,8 @@ public:
 		stream << indent << "node" << id << " " << write_attrs(attrs) << ";" << std::endl;
 	}
 
-	void write_node_for_op(const std::string& indent, const std::string& block,  Operation* node) {
-		std::string id = block +"_" +std::to_string(nodeIdMap.size());
+	void write_node_for_op(const std::string& indent, const std::string& block, Operation* node) {
+		std::string id = block + "_" + std::to_string(nodeIdMap.size());
 		nodeIdMap[node] = id;
 
 		write_node(indent, getNodeLabelForOp(node), id, getNodeTypeForOp(node->getOperationType()));
