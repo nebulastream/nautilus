@@ -19,6 +19,14 @@
 #include <string>
 #include <unordered_map>
 
+namespace fmt {
+using namespace nautilus::compiler::ir;
+template <>
+struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view> {
+	static auto format(const nautilus::compiler::ir::Operation& c, format_context& ctx) -> format_context::iterator;
+};
+}
+
 namespace nautilus::compiler::ir {
 /*
 digraph G {
@@ -51,17 +59,17 @@ digraph G {
 */
 
 const std::string WHITE_ICE = "#d7ede7";
-const std::string CRUISE = "#b8ddd1";
+//const std::string CRUISE = "#b8ddd1";
 const std::string KEPPEL = "#3cb4a4";
 const std::string CARISSMA = "#e98693";
 const std::string AMARANTH = "#da2d4f";
 const std::string BLACK = "#1a1919";
-const std::string WHITE = "#ffffff";
+//const std::string WHITE = "#ffffff";
 const std::string DUST = "#f9f9f9";
 const std::string BIG_STONE = "#343d46";
-const std::string ICE_STONE = "#b3bbc3";
+//const std::string ICE_STONE = "#b3bbc3";
 const std::string ORANGE = "#ffa500";
-const std::string LIGHT_BLUE = "#ccccff";
+//const std::string LIGHT_BLUE = "#ccccff";
 const std::string LIGHT_PURPLE = "#c39bd3";
 const std::string LIGHT_YELLOW = "#ffffde";
 const std::string DARK_YELLOW = "#aaaa33";
@@ -104,7 +112,7 @@ std::string write_attrs(const std::map<std::string, std::string>& attrs) {
 
 class GraphvizWriter {
 public:
-	GraphvizWriter(std::ostream& stream) : stream(stream) {};
+	GraphvizWriter(std::ostream& stream) : stream(stream) {}
 	void end_graph() {
 		stream << "}" << std::endl;
 	}
@@ -129,7 +137,7 @@ public:
 
 	std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> getPredecessorBlocks(const std::shared_ptr<IRGraph>& graph, const BasicBlock* targetBlock) {
 		std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> predeccessor;
-		for (const auto& block : graph->getRootOperation()->getBasicBlocks()) {
+		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 			auto& op = block->getOperations().back();
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
@@ -222,11 +230,11 @@ public:
 	void write_edges(const std::shared_ptr<IRGraph>& graph, [[maybe_unused]] bool hideIntermediateBlockArguments) {
 
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
-		auto& rootBlock = graph->getRootOperation()->getBasicBlocks()[0];
+		auto& rootBlock = graph->getRootOperation().getBasicBlocks()[0];
 		std::set<const BasicBlock*> vistedBlocks;
 		getBlockArgumentMap(rootBlock.get(), vistedBlocks, operatorDataflowMapping);
 		// crate dataflow edges
-		for (const auto& block : graph->getRootOperation()->getBasicBlocks()) {
+		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 			for (const auto& op : block->getOperations()) {
 
 				const auto& to = nodeIdMap[op.get()];
@@ -249,7 +257,7 @@ public:
 		}
 
 		// create control-flow edges
-		for (const auto& blocks : graph->getRootOperation()->getBasicBlocks()) {
+		for (const auto& blocks : graph->getRootOperation().getBasicBlocks()) {
 			std::string from = "start_" + blocks->getIdentifier();
 			for (const auto& op : blocks->getOperations()) {
 				if (isControlFlowOp(op.get())) {
@@ -299,7 +307,7 @@ public:
 		}
 		stream << "  node" << from << " -> node" << to << " " << write_attrs(attrs) << ";" << std::endl;
 	}
-	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = false) {
+	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true) {
 		auto attrs = std::map<std::string, std::string>();
 		attrs["bgcolor"] = "white";
 		if (hidpi) {
@@ -326,9 +334,10 @@ public:
 		stream << indent << "node" << id << " " << write_attrs(attrs) << ";" << std::endl;
 	}
 
-	void write_node_for_op(const std::string& indent, Operation* node) {
-		std::string id = std::to_string(nodeIdMap.size());
+	void write_node_for_op(const std::string& indent, const std::string& block,  Operation* node) {
+		std::string id = block +"_" +std::to_string(nodeIdMap.size());
 		nodeIdMap[node] = id;
+
 		write_node(indent, getNodeLabelForOp(node), id, getNodeTypeForOp(node->getOperationType()));
 	}
 	void end_subgraph() {
@@ -347,25 +356,25 @@ public:
 		write_node("  ", "Start", "start_" + block->getIdentifier(), "control");
 		for (const auto& op : block->getArguments()) {
 			std::string indent = "  ";
-			write_node_for_op(indent, op.get());
+			write_node_for_op(indent, block->getIdentifier(), op.get());
 		}
 
 		for (const auto& op : block->getOperations()) {
 			std::string indent = "  ";
-			write_node_for_op(indent, op.get());
+			write_node_for_op(indent, block->getIdentifier(), op.get());
 		}
 	}
 	void write_nodes(const std::shared_ptr<IRGraph>& graph, [[maybe_unused]] bool draw_blocks) {
 
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
-			for (const auto& block : graph->getRootOperation()->getBasicBlocks()) {
+			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 				start_subgraph(block->getIdentifier());
 				write_nodes_for_block(block);
 				end_subgraph();
 			}
 		} else {
-			for (const auto& block : graph->getRootOperation()->getBasicBlocks()) {
+			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 				write_nodes_for_block(block);
 			}
 		}
@@ -414,7 +423,7 @@ public:
 		default:
 			break;
 		}
-		return op->toString();
+		return fmt::to_string(*op);
 	}
 	std::string getNodeTypeForOp(Operation::OperationType type) {
 		switch (type) {
@@ -463,7 +472,7 @@ public:
 std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph) {
 	std::stringstream ss;
 	auto writer = GraphvizWriter(ss);
-	writer.write_graph(graph, false, false);
+	writer.write_graph(graph, false, true);
 	auto content = ss.str();
 	std::cout << content << std::endl;
 	return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);
