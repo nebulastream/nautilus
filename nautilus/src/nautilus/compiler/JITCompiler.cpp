@@ -5,6 +5,7 @@
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/logging.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -76,8 +77,10 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
-	auto url = ir::createGraphVizFromIr(ir);
-	std::cout << url << std::endl;
+	if (options.getOptionOrDefault("dump.graph", false)) {
+		auto url = ir::createGraphVizFromIr(ir);
+		log::error("{}", url);
+	}
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);
