@@ -1000,6 +1000,7 @@ TEST_CASE("Engine Compiler Test") {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
 			options.setOption("dump.all", backend);
+			options.setOption("dump.graph", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}

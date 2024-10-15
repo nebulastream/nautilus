@@ -241,7 +241,7 @@ public:
 			getBlockArgumentMap(branchOp->getNextBlockInvocation().getBlock(), visitedBlocks, map);
 		}
 	}
-	void write_edges(const std::shared_ptr<IRGraph>& graph, [[maybe_unused]] bool hideIntermediateBlockArguments) {
+	void write_edges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
 
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
 		auto& rootBlock = graph->getRootOperation().getBasicBlocks()[0];
@@ -249,48 +249,67 @@ public:
 		getBlockArgumentMap(rootBlock.get(), vistedBlocks, operatorDataflowMapping);
 		// crate dataflow edges
 		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
-			for (const auto& op : block->getOperations()) {
-
-				const auto& to = nodeIdMap[op.get()];
-				// process inputs of node
-				for (auto input : op->getInputs()) {
-					const auto& from = nodeIdMap[input];
-					write_edge(from, to, "data", input->getIdentifier().toString());
-				}
-
-				// handle control-flow arguments
+			if (writeBlocksOnly) {
+				auto& op = block->getOperations().back();
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
-					[[maybe_unused]] auto ifOp = as<IfOperation>(op);
-					write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(), hideIntermediateBlockArguments);
-					write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(), hideIntermediateBlockArguments);
+					auto ifOp = as<IfOperation>(op);
+					auto trueBlock = ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
+					write_edge(block->getIdentifier(), trueBlock, "control");
+					auto falseBlock = ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
+					write_edge(block->getIdentifier(), falseBlock, "control");
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
-					[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
-					write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
-					                           hideIntermediateBlockArguments);
+					auto branchOp = as<BranchOperation>(op);
+					auto falseBlock = branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
+					write_edge(block->getIdentifier(), falseBlock, "control");
+				}
+			} else {
+				for (const auto& op : block->getOperations()) {
+					const auto& to = nodeIdMap[op.get()];
+					// process inputs of node
+					for (auto input : op->getInputs()) {
+						const auto& from = nodeIdMap[input];
+						write_edge(from, to, "data", input->getIdentifier().toString());
+					}
+
+					// handle control-flow arguments
+					if (op->getOperationType() == Operation::OperationType::IfOp) {
+						[[maybe_unused]] auto ifOp = as<IfOperation>(op);
+						write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(),
+						                           hideIntermediateBlockArguments);
+						write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(),
+						                           hideIntermediateBlockArguments);
+					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
+						[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
+						write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
+						                           hideIntermediateBlockArguments);
+					}
 				}
 			}
 		}
 
-		// create control-flow edges
-		for (const auto& blocks : graph->getRootOperation().getBasicBlocks()) {
-			std::string from = "start_" + blocks->getIdentifier();
-			for (const auto& op : blocks->getOperations()) {
-				if (isControlFlowOp(op.get())) {
-					const auto& to = nodeIdMap[op.get()];
-					write_edge(from, to, "control");
-					from = to;
-				}
+		if (!writeBlocksOnly) {
 
-				if (op->getOperationType() == Operation::OperationType::IfOp) {
-					auto ifOp = as<IfOperation>(op);
-					std::string toTrue = "start_" + ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
-					write_edge(from, toTrue, "control", "true");
-					std::string toFalse = "start_" + ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
-					write_edge(from, toFalse, "control", "false");
-				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
-					auto branchOp = as<BranchOperation>(op);
-					std::string to = "start_" + branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
-					write_edge(from, to, "control");
+			// create control-flow edges
+			for (const auto& blocks : graph->getRootOperation().getBasicBlocks()) {
+				std::string from = "start_" + blocks->getIdentifier();
+				for (const auto& op : blocks->getOperations()) {
+					if (isControlFlowOp(op.get())) {
+						const auto& to = nodeIdMap[op.get()];
+						write_edge(from, to, "control");
+						from = to;
+					}
+
+					if (op->getOperationType() == Operation::OperationType::IfOp) {
+						auto ifOp = as<IfOperation>(op);
+						std::string toTrue = "start_" + ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
+						write_edge(from, toTrue, "control", "true");
+						std::string toFalse = "start_" + ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
+						write_edge(from, toFalse, "control", "false");
+					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
+						auto branchOp = as<BranchOperation>(op);
+						std::string to = "start_" + branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
+						write_edge(from, to, "control");
+					}
 				}
 			}
 		}
@@ -323,15 +342,16 @@ public:
 		}
 		stream << "  node" << from << " -> node" << to << " " << write_attrs(attrs) << ";" << std::endl;
 	}
-	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true) {
+	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true,
+	                 bool drawBlocksOnly = true) {
 		auto attrs = std::map<std::string, std::string>();
 		attrs["bgcolor"] = "white";
 		if (hidpi) {
 			attrs["dpi"] = "200";
 		}
 		start_graph(attrs);
-		write_nodes(graph, draw_blocks);
-		write_edges(graph, true);
+		write_nodes(graph, draw_blocks, drawBlocksOnly);
+		write_edges(graph, true, drawBlocksOnly);
 		end_graph();
 	}
 	void write_node(const std::string& indent, const std::string& label, const std::string& id,
@@ -381,14 +401,18 @@ public:
 			write_node_for_op(indent, block->getIdentifier(), op.get());
 		}
 	}
-	void write_nodes(const std::shared_ptr<IRGraph>& graph, [[maybe_unused]] bool draw_blocks) {
+	void write_nodes(const std::shared_ptr<IRGraph>& graph, bool draw_blocks, bool drawBlocksOnly) {
 
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
 			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
-				start_subgraph(block->getIdentifier());
-				write_nodes_for_block(block);
-				end_subgraph();
+				if (!drawBlocksOnly) {
+					start_subgraph(block->getIdentifier());
+					write_nodes_for_block(block);
+					end_subgraph();
+				} else {
+					write_node("  ", "Block" + block->getIdentifier(), block->getIdentifier(), "control");
+				}
 			}
 		} else {
 			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
