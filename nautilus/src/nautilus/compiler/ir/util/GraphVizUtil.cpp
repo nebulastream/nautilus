@@ -504,10 +504,12 @@ public:
 		case Operation::OperationType::MLIR_YIELD:
 			return "other";
 		}
+		return "other";
 	}
 
 	std::ostream& stream;
 	std::map<const Operation*, std::string> nodeIdMap;
+
 };
 
 std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph) {
