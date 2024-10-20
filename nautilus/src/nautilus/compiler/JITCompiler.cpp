@@ -2,7 +2,6 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
-#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
@@ -20,7 +19,7 @@
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-
+#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #endif
 
 namespace nautilus::compiler {
