@@ -125,19 +125,16 @@ public:
 		stream << "  graph " << write_attrs(attrs) << ";" << std::endl;
 	}
 
-	void write_block_argument_edges([[maybe_unused]] const std::shared_ptr<IRGraph>& graph,
-	                                const BasicBlockInvocation& bi,
-	                                [[maybe_unused]] bool hideIntermediateBlockArguments) {
-		auto targetBlock = bi.getBlock();
-		auto preBlocks = getPredecessorBlocks(graph, targetBlock);
-		// if (hideIntermediateBlockArguments && preBlocks.size() == 1){
-		//	return;
-		// }
+	void write_block_argument_edges(const std::shared_ptr<IRGraph>&, const BasicBlockInvocation& bi,
+	                                [[maybe_unused]] bool hideIntermediateBlockArguments, std::string label) {
+
+
 		//  crate an edge from the src block op to the argument in the target block.
 		for (size_t i = 0; i < bi.getArguments().size(); i++) {
 			const auto& from = nodeIdMap[bi.getArguments()[i]];
-			const auto& to = nodeIdMap[targetBlock->getArguments()[i].get()];
-			write_edge(from, to, "data");
+			auto to = nodeIdMap[&bi];
+			auto node = to + "_" + std::to_string(i);
+			write_edge(from, node, "data", label);
 		}
 	}
 
@@ -275,13 +272,13 @@ public:
 					if (op->getOperationType() == Operation::OperationType::IfOp) {
 						[[maybe_unused]] auto ifOp = as<IfOperation>(op);
 						write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(),
-						                           hideIntermediateBlockArguments);
+						                           hideIntermediateBlockArguments, "false");
 						write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(),
-						                           hideIntermediateBlockArguments);
+						                           hideIntermediateBlockArguments, "true");
 					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 						[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
 						write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
-						                           hideIntermediateBlockArguments);
+						                           hideIntermediateBlockArguments, "");
 					}
 				}
 			}
@@ -343,7 +340,7 @@ public:
 		stream << "  node" << from << " -> node" << to << " " << write_attrs(attrs) << ";" << std::endl;
 	}
 	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true,
-	                 bool drawBlocksOnly = true) {
+	                 bool drawBlocksOnly = false) {
 		auto attrs = std::map<std::string, std::string>();
 		attrs["bgcolor"] = "white";
 		if (hidpi) {
@@ -351,7 +348,7 @@ public:
 		}
 		start_graph(attrs);
 		write_nodes(graph, draw_blocks, drawBlocksOnly);
-		write_edges(graph, true, drawBlocksOnly);
+		write_edges(graph, false, drawBlocksOnly);
 		end_graph();
 	}
 	void write_node(const std::string& indent, const std::string& label, const std::string& id,
@@ -374,8 +371,17 @@ public:
 	void write_node_for_op(const std::string& indent, const std::string& block, Operation* node) {
 		std::string id = block + "_" + std::to_string(nodeIdMap.size());
 		nodeIdMap[node] = id;
-
 		write_node(indent, getNodeLabelForOp(node), id, getNodeTypeForOp(node->getOperationType()));
+	}
+
+	void write_node_for_output_op(const std::string& indent, const std::string& block, BasicBlockInvocation* bi) {
+		std::string id = block + "_o" + std::to_string(nodeIdMap.size());
+		nodeIdMap[bi] = id;
+		for (size_t i = 0; i < bi->getArguments().size(); i++) {
+			auto& targetArg = bi->getBlock()->getArguments()[i];
+			auto lable = "Output(" + targetArg->getIdentifier().toString() + ")";
+			write_node(indent, lable, id + "_" + std::to_string(i), "input");
+		}
 	}
 	void end_subgraph() {
 		stream << "  }" << std::endl;
@@ -399,6 +405,15 @@ public:
 		for (const auto& op : block->getOperations()) {
 			std::string indent = "  ";
 			write_node_for_op(indent, block->getIdentifier(), op.get());
+
+			if (op->getOperationType() == Operation::OperationType::IfOp) {
+				auto ifOp = as<IfOperation>(op);
+				write_node_for_output_op(indent, block->getIdentifier(), &ifOp->getTrueBlockInvocation());
+				write_node_for_output_op(indent, block->getIdentifier(), &ifOp->getFalseBlockInvocation());
+			} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
+				auto branchOp = as<BranchOperation>(op);
+				write_node_for_output_op(indent, block->getIdentifier(), &branchOp->getNextBlockInvocation());
+			}
 		}
 	}
 	void write_nodes(const std::shared_ptr<IRGraph>& graph, bool draw_blocks, bool drawBlocksOnly) {
@@ -509,13 +524,12 @@ public:
 
 	std::ostream& stream;
 	std::map<const Operation*, std::string> nodeIdMap;
-
 };
 
 std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph) {
 	std::stringstream ss;
 	auto writer = GraphvizWriter(ss);
-	writer.write_graph(graph, false, true);
+	writer.write_graph(graph, true, true);
 	auto content = ss.str();
 	std::cout << content << std::endl;
 	return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);
