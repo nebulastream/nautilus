@@ -26,10 +26,6 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 		llvm::errs() << "Failed to emit LLVM IR\n";
 	}
 
-	// Initialize information about the local machine in LLVM.
-	LLVMInitializeNativeTarget();
-	LLVMInitializeNativeAsmPrinter();
-
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
 	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;

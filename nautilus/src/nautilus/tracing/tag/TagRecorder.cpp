@@ -18,7 +18,7 @@ TagRecorder::TagRecorder(TagAddress startAddress) : startAddress(startAddress) {
 // check if gnu backtrace is available.
 #if defined(BACKWARD_HAS_BACKTRACE) & !defined(HOST_IS_MUSL)
 TagVector TagRecorder::createBaseTag() {
-        void* tagBuffer[MAX_TAG_SIZE];
+	void* tagBuffer[MAX_TAG_SIZE];
 	int size = backtrace(tagBuffer, MAX_TAG_SIZE);
 	std::vector<TagAddress> addresses;
 	for (int i = 0; i < size; i++) {
@@ -106,16 +106,18 @@ Tag* TagRecorder::createReferenceTag() {
 
 template <size_t StackSize>
 __attribute__((noinline)) void* get_addr(size_t index) {
-    return [&]<std::size_t... ints>(std::index_sequence<ints...>) __attribute__((noinline)) {
-        void* addr = nullptr;
-        (void)((index == ints && (void(addr = __builtin_extract_return_addr(__builtin_return_address(ints + 2))), true)) || ...);
-        return addr;
-    }(std::make_index_sequence<StackSize>{});
+	return [&]<std::size_t... ints>(std::index_sequence<ints...>) __attribute__((noinline)) {
+		void* addr = nullptr;
+		(void) ((index == ints &&
+		         (void(addr = __builtin_extract_return_addr(__builtin_return_address(ints + 2))), true)) ||
+		        ...);
+		return addr;
+	}
+	(std::make_index_sequence<StackSize> {});
 }
 
 static void* getReturnAddress(uint32_t offset) {
 	return get_addr<TagRecorder::MAX_TAG_SIZE>(offset);
 }
-
 
 } // namespace nautilus::tracing

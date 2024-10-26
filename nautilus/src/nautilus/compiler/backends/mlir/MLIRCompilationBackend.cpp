@@ -16,9 +16,15 @@
 
 namespace nautilus::compiler::mlir {
 
+MLIRCompilationBackend::MLIRCompilationBackend() {
+	// Initialize information about the local machine in LLVM.
+	LLVMInitializeNativeTarget();
+	LLVMInitializeNativeAsmPrinter();
+}
+
 std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                             const DumpHandler& dumpHandler,
-                                                            const engine::Options& options) {
+                                                            const engine::Options& options) const {
 
 	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
 	// MLIR module.

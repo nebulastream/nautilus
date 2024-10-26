@@ -540,9 +540,9 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(proxyCallOp->getFunctionSymbol())) {
 		functionRef = mlir::SymbolRefAttr::get(context, proxyCallOp->getFunctionSymbol());
 	} else {
-		functionRef = insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(),
-		                                     getMLIRType(proxyCallOp->getStamp()),
-		                                     getMLIRType(proxyCallOp->getInputArguments()));
+		functionRef =
+		    insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(),
+		                           getMLIRType(proxyCallOp->getStamp()), getMLIRType(proxyCallOp->getInputArguments()));
 	}
 
 	std::vector<mlir::Value> functionArgs;

@@ -25,7 +25,7 @@ public:
 
 private:
 	const engine::Options options;
-	std::unique_ptr<CompilationBackendRegistry> backends;
+	const CompilationBackendRegistry* backends;
 };
 
 } // namespace nautilus::compiler

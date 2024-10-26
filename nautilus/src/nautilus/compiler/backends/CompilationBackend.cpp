@@ -36,11 +36,16 @@ CompilationBackendRegistry::CompilationBackendRegistry() {
 }
 #endif
 
-CompilationBackend* CompilationBackendRegistry::getBackend(const std::string& name) {
+const CompilationBackendRegistry* CompilationBackendRegistry::getInstance() {
+	static auto registry = std::make_unique<CompilationBackendRegistry>(CompilationBackendRegistry());
+	return registry.get();
+}
+
+const CompilationBackend* CompilationBackendRegistry::getBackend(const std::string& name) const {
 	if (!items.contains(name)) {
 		throw RuntimeException("Backend not available");
 	}
-	return items[name].get();
+	return items.at(name).get();
 }
 
 } // namespace nautilus::compiler

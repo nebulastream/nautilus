@@ -7,7 +7,8 @@
 namespace nautilus::compiler::cpp {
 
 std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                           const DumpHandler& dumpHandler, const engine::Options&) {
+                                                           const DumpHandler& dumpHandler,
+                                                           const engine::Options&) const {
 	auto code = CPPLoweringProvider::lower(ir);
 	dumpHandler.dump("after_c_generation", ".c", [&]() { return code; });
 

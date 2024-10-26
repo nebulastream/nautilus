@@ -10,7 +10,8 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <utility>
+#include <fmt/core.h>
+#include <fmt/chrono.h>
 
 #ifdef ENABLE_COMPILER
 
@@ -22,11 +23,11 @@
 
 namespace nautilus::compiler {
 
-JITCompiler::JITCompiler() : options(), backends(std::make_unique<CompilationBackendRegistry>()) {
+JITCompiler::JITCompiler() : options(), backends(CompilationBackendRegistry::getInstance()) {
 }
 
 JITCompiler::JITCompiler(engine::Options options)
-    : options(std::move(options)), backends(std::make_unique<CompilationBackendRegistry>()) {
+    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()) {
 }
 
 JITCompiler::~JITCompiler() = default;
@@ -35,13 +36,10 @@ JITCompiler::~JITCompiler() = default;
 
 std::string createCompilationUnitID() {
 	// Get the current time point
-	auto now = std::chrono::system_clock::now();
-	auto time = std::chrono::system_clock::to_time_t(now);
-	auto local_time = *std::localtime(&time);
-
 	// Create a timestamp string from the current time
-	std::ostringstream timestamp;
-	timestamp << std::put_time(&local_time, "%Y-%m-%d_%H-%M-%S");
+	
+	auto now = std::chrono::system_clock::now();
+	std::string timestamp = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), now);
 
 	// Create a random device and generator
 	std::random_device rd;
@@ -59,7 +57,7 @@ std::string createCompilationUnitID() {
 	}
 
 	// Concatenate timestamp and UUID
-	return timestamp.str() + "_#" + uuid;
+	return timestamp + "_#" + uuid;
 }
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {

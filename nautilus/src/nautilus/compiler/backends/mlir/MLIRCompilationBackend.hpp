@@ -9,7 +9,8 @@ namespace nautilus::compiler::mlir {
  */
 class MLIRCompilationBackend : public CompilationBackend {
 public:
-	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) override;
+	MLIRCompilationBackend();
+	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) const override;
 };
 
 } // namespace nautilus::compiler::mlir
