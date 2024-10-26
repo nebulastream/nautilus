@@ -128,7 +128,6 @@ public:
 	void write_block_argument_edges(const std::shared_ptr<IRGraph>&, const BasicBlockInvocation& bi,
 	                                [[maybe_unused]] bool hideIntermediateBlockArguments, std::string label) {
 
-
 		//  crate an edge from the src block op to the argument in the target block.
 		for (size_t i = 0; i < bi.getArguments().size(); i++) {
 			const auto& from = nodeIdMap[bi.getArguments()[i]];

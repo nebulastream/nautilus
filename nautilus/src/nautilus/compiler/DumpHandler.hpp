@@ -15,7 +15,7 @@ private:
 	[[nodiscard]] bool dumpToConsole() const;
 	[[nodiscard]] bool dumpToFile() const;
 	const engine::Options& options;
-	[[maybe_unused]] const CompilationUnitID& id;
+	const CompilationUnitID& id;
 	const std::filesystem::path rootPath;
 };
 

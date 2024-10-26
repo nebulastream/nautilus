@@ -16,10 +16,10 @@
 
 #ifdef ENABLE_COMPILER
 
+#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #endif
 
 namespace nautilus::compiler {
