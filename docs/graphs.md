@@ -12,7 +12,7 @@ Nautilus support the vizualization of its intermediate representation using Grap
       C-->D;
 ```
 ```mairmaid
-flowchart TD
+graph TD
   subgraph cluster_0 
    nodestart_0[Start]
   style nodestart_0 fill:#e98693,color:#1a1919
