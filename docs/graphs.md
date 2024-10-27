@@ -11,7 +11,7 @@ Nautilus support the vizualization of its intermediate representation using Grap
       B-->D;
       C-->D;
 ```
-```mairmaid
+```mermaid
 graph TD;
   subgraph cluster_0;
    nodestart_0[Start];
