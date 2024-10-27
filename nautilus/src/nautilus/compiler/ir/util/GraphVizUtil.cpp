@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/logging.hpp"
 #include "spdlog/fmt/fmt.h"
 #include <iomanip>
 #include <iostream>
@@ -249,9 +250,9 @@ public:
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
 					auto ifOp = as<IfOperation>(op);
 					auto trueBlock = ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
-					write_edge(block->getIdentifier(), trueBlock, "control");
+					write_edge(block->getIdentifier(), trueBlock, "control", "true");
 					auto falseBlock = ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
-					write_edge(block->getIdentifier(), falseBlock, "control");
+					write_edge(block->getIdentifier(), falseBlock, "control", "false");
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					auto branchOp = as<BranchOperation>(op);
 					auto falseBlock = branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
@@ -434,7 +435,7 @@ public:
 		}
 	}
 
-	std::string getNodeLabelForOp(Operation* op) {
+	virtual std::string getNodeLabelForOp(Operation* op) {
 		switch (op->getOperationType()) {
 		case Operation::OperationType::AddOp:
 			return "+";
@@ -544,12 +545,11 @@ public:
 		stream << "  subgraph cluster_" << id << " " << std::endl;
 	}
 
-
 	void write_node(const std::string& indent, const std::string& label, const std::string& id,
 	                const std::string type) override {
 		auto localLabel = label;
-		std::replace( localLabel.begin(), localLabel.end(), '(', ' ');
-		std::replace( localLabel.begin(), localLabel.end(), ')', ' ');
+		std::replace(localLabel.begin(), localLabel.end(), '(', ' ');
+		std::replace(localLabel.begin(), localLabel.end(), ')', ' ');
 		stream << indent << " node" << id << "[" << localLabel << "]" << std::endl;
 		auto& color = NODE_COLORS.at(type);
 		stream << indent << "style node" << id << " fill:" << color.first << ",color:" << color.second << std::endl;
@@ -557,7 +557,11 @@ public:
 
 	void write_edge(const std::string& from, const std::string& to, const std::string type,
 	                const std::string& label = "") override {
-		stream << "  node" << from << " --> node" << to << std::endl;
+		if (!label.empty()) {
+			stream << "  node" << from << "--" << label << " --> node" << to << std::endl;
+		} else {
+			stream << "  node" << from << " --> node" << to << std::endl;
+		}
 
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label;
@@ -572,24 +576,78 @@ public:
 			attrs["penwidth"] = "1";
 		}
 
-		stream << "  linkStyle " << counter++ << " stroke:" << attrs["color"]
-		       << ",stroke-width:" << attrs["penwidth"] << "px" << std::endl;
+		stream << "  linkStyle " << counter++ << " stroke:" << attrs["color"] << ",stroke-width:" << attrs["penwidth"]
+		       << "px" << std::endl;
 	}
 
 	void end_subgraph() override {
 		stream << "  end" << std::endl;
 	}
+
+	virtual std::string getNodeLabelForOp(Operation* op) {
+		switch (op->getOperationType()) {
+		case Operation::OperationType::AddOp:
+			return "#plus;";
+		case Operation::OperationType::AndOp:
+			return "&&";
+		case Operation::OperationType::NotOp:
+			return "!";
+		case Operation::OperationType::BasicBlockArgument:
+			return "Arg(" + op->getIdentifier().toString() + ")";
+		case Operation::OperationType::BranchOp:
+			return "End";
+		case Operation::OperationType::ConstIntOp:
+			return std::to_string(static_cast<ConstIntOperation*>(op)->getValue());
+		case Operation::OperationType::ConstBooleanOp:
+			return std::to_string(static_cast<ConstBooleanOperation*>(op)->getValue());
+		case Operation::OperationType::ConstPtrOp:
+			return "#";
+		case Operation::OperationType::ConstFloatOp:
+			return std::to_string(static_cast<ConstFloatOperation*>(op)->getValue());
+		case Operation::OperationType::DivOp:
+			return "/";
+		case Operation::OperationType::ModOp:
+			return "%";
+		case Operation::OperationType::IfOp:
+			return "If";
+		case Operation::OperationType::LoadOp:
+			return "Load";
+		case Operation::OperationType::MulOp:
+			return "*";
+		case Operation::OperationType::NegateOp:
+			return "neg";
+		case Operation::OperationType::OrOp:
+			return "||";
+		case Operation::OperationType::ProxyCallOp:
+			return static_cast<ProxyCallOperation*>(op)->getFunctionName();
+		case Operation::OperationType::StoreOp:
+			return "store";
+		case Operation::OperationType::SubOp:
+			return "-";
+		default:
+			break;
+		}
+		return fmt::to_string(*op);
+	}
 };
 
-std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph, const engine::Options&) {
+void createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph, const engine::Options& options,
+                          const DumpHandler& dumpHandler) {
 
+	auto type = options.getOptionOrDefault("dump.graph.type", std::string("graphviz"));
+	auto fullGraph = options.getOptionOrDefault("dump.graph.full", true);
 	std::stringstream ss;
-	// auto writer = GraphvizWriter(ss);
-	auto writer = MermaidWriter(ss);
-	writer.write_graph(graph, true, true);
-	auto content = ss.str();
-	std::cout << content << std::endl;
-	return "";
-	// return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);
+	if (type == "mermaid") {
+		auto writer = MermaidWriter(ss);
+		writer.write_graph(graph, true, true, !fullGraph);
+		auto content = ss.str();
+		dumpHandler.forceDump("mermaid", "mermaid", content);
+	} else if (type == "graphviz") {
+		auto writer = GraphvizWriter(ss);
+		writer.write_graph(graph, true, true, !fullGraph);
+		auto content = ss.str();
+		log::info("https://dreampuf.github.io/GraphvizOnline/#{}", urlEncode(content));
+		dumpHandler.forceDump("graphviz", "dot", content);
+	}
 }
 } // namespace nautilus::compiler::ir

@@ -6,6 +6,10 @@
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
+#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+
 #include <catch2/catch_all.hpp>
 namespace nautilus::engine {
 
@@ -610,6 +614,7 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(pointerAdd);
 		REQUIRE(f(values, (int32_t) 0) == 1);
 		REQUIRE(f(values, (int32_t) 1) == 2);
+		FAIL();
 	}
 
 	SECTION("customPointerAdd") {
@@ -1151,8 +1156,10 @@ TEST_CASE("Engine Compiler Test") {
 		DYNAMIC_SECTION(backend) {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
-			options.setOption("dump.all", backend);
+			options.setOption("dump.all", true);
 			options.setOption("dump.graph", true);
+			options.setOption("dump.graph.type", "mermaid");
+			options.setOption("dump.graph.full", false);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}
