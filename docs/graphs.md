@@ -12,23 +12,23 @@ Nautilus support the vizualization of its intermediate representation using Grap
       C-->D;
 ```
 ```mairmaid
-graph TD
-  subgraph cluster_0 
-   nodestart_0[Start]
-  style nodestart_0 fill:#e98693,color:#1a1919
-   node0_0[Arg $1 ]
-  style node0_0 fill:#d7ede7,color:#1a1919
-   node0_1[neg]
-  style node0_1 fill:#3cb4a4,color:#1a1919
-   node0_2[return  $3  :i32]
-  style node0_2 fill:#e98693,color:#1a1919
-  end
-  node0_0 --> node0_1
-  linkStyle 0 stroke:#3cb4a4,stroke-width:1px
-  node0_1 --> node0_2
-  linkStyle 1 stroke:#3cb4a4,stroke-width:1px
-  nodestart_0 --> node0_1
-  linkStyle 2 stroke:#da2d4f,stroke-width:2px
-  node0_1 --> node0_2
-  linkStyle 3 stroke:#da2d4f,stroke-width:2px
+graph TD;
+  subgraph cluster_0;
+   nodestart_0[Start];
+  style nodestart_0 fill:#e98693,color:#1a1919;
+   node0_0[Arg $1 ];
+  style node0_0 fill:#d7ede7,color:#1a1919;
+   node0_1[neg];
+  style node0_1 fill:#3cb4a4,color:#1a1919;
+   node0_2[return  $3  :i32];
+  style node0_2 fill:#e98693,color:#1a1919;
+  end;
+  node0_0 --> node0_1;
+  linkStyle 0 stroke:#3cb4a4,stroke-width:1px;
+  node0_1 --> node0_2;
+  linkStyle 1 stroke:#3cb4a4,stroke-width:1px;
+  nodestart_0 --> node0_1;
+  linkStyle 2 stroke:#da2d4f,stroke-width:2px;
+  node0_1 --> node0_2;
+  linkStyle 3 stroke:#da2d4f,stroke-width:2px;
 ```
