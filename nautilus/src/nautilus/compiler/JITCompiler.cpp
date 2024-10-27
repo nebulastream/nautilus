@@ -77,8 +77,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
-		auto url = ir::createGraphVizFromIr(ir);
-		log::error("{}", url);
+		ir::createGraphVizFromIr(ir, options);
 	}
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");

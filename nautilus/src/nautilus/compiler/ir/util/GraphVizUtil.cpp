@@ -117,10 +117,10 @@ class GraphvizWriter {
 public:
 	GraphvizWriter(std::ostream& stream) : stream(stream) {
 	}
-	void end_graph() {
+	virtual void end_graph() {
 		stream << "}" << std::endl;
 	}
-	void start_graph(const std::map<std::string, std::string>& attrs) {
+	virtual void start_graph(const std::map<std::string, std::string>& attrs) {
 		stream << "digraph G {" << std::endl;
 		stream << "  graph " << write_attrs(attrs) << ";" << std::endl;
 	}
@@ -238,7 +238,6 @@ public:
 		}
 	}
 	void write_edges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
-
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
 		auto& rootBlock = graph->getRootOperation().getBasicBlocks()[0];
 		std::set<const BasicBlock*> vistedBlocks;
@@ -324,8 +323,8 @@ public:
 		}
 	}
 
-	void write_edge(const std::string& from, const std::string& to, const std::string type,
-	                const std::string& label = "") {
+	virtual void write_edge(const std::string& from, const std::string& to, const std::string type,
+	                        const std::string& label = "") {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label; // Example label
 		attrs["fontname"] = "arial";
@@ -350,8 +349,8 @@ public:
 		write_edges(graph, false, drawBlocksOnly);
 		end_graph();
 	}
-	void write_node(const std::string& indent, const std::string& label, const std::string& id,
-	                const std::string type) {
+	virtual void write_node(const std::string& indent, const std::string& label, const std::string& id,
+	                        const std::string type) {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label;
 		attrs["shape"] = "rectangle"; // Example shape
@@ -382,11 +381,11 @@ public:
 			write_node(indent, lable, id + "_" + std::to_string(i), "input");
 		}
 	}
-	void end_subgraph() {
+	virtual void end_subgraph() {
 		stream << "  }" << std::endl;
 	}
 
-	void start_subgraph(const std::string& id) {
+	virtual void start_subgraph(const std::string& id) {
 		stream << "  subgraph cluster_" << id << " {" << std::endl;
 		stream << "    label=\"Block_" << id << " \";" << std::endl;
 		stream << "    style=filled;" << std::endl;
@@ -525,12 +524,72 @@ public:
 	std::map<const Operation*, std::string> nodeIdMap;
 };
 
-std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph) {
+class MermaidWriter : public GraphvizWriter {
+public:
+	int counter = 0;
+	MermaidWriter(std::ostream& stream) : GraphvizWriter(stream) {
+	}
+
+	void start_graph(const std::map<std::string, std::string>&) override {
+		// Ignore bgcolor, as I can't figure out how to do it in Mermaid
+		stream << "flowchart TD" << std::endl;
+	}
+
+	void end_graph() override {
+		// do nothing
+	}
+
+	void start_subgraph(const std::string& id) override {
+
+		stream << "  subgraph cluster_" << id << " " << std::endl;
+	}
+
+
+	void write_node(const std::string& indent, const std::string& label, const std::string& id,
+	                const std::string type) override {
+		auto localLabel = label;
+		std::replace( localLabel.begin(), localLabel.end(), '(', ' ');
+		std::replace( localLabel.begin(), localLabel.end(), ')', ' ');
+		stream << indent << " node" << id << "[" << localLabel << "]" << std::endl;
+		auto& color = NODE_COLORS.at(type);
+		stream << indent << "style node" << id << " fill:" << color.first << ",color:" << color.second << std::endl;
+	}
+
+	void write_edge(const std::string& from, const std::string& to, const std::string type,
+	                const std::string& label = "") override {
+		stream << "  node" << from << " --> node" << to << std::endl;
+
+		std::map<std::string, std::string> attrs;
+		attrs["label"] = label;
+		attrs["fontname"] = "arial";
+		attrs["color"] = EDGE_COLORS.at(type);
+		attrs["fontcolor"] = EDGE_COLORS.at(type);
+
+		// Properties depending on the kind of edge.
+		if (type == "control") {
+			attrs["penwidth"] = "2";
+		} else {
+			attrs["penwidth"] = "1";
+		}
+
+		stream << "  linkStyle " << counter++ << " stroke:" << attrs["color"]
+		       << ",stroke-width:" << attrs["penwidth"] << "px" << std::endl;
+	}
+
+	void end_subgraph() override {
+		stream << "  end" << std::endl;
+	}
+};
+
+std::string createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph, const engine::Options&) {
+
 	std::stringstream ss;
-	auto writer = GraphvizWriter(ss);
+	// auto writer = GraphvizWriter(ss);
+	auto writer = MermaidWriter(ss);
 	writer.write_graph(graph, true, true);
 	auto content = ss.str();
 	std::cout << content << std::endl;
-	return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);
+	return "";
+	// return "https://dreampuf.github.io/GraphvizOnline/#" + urlEncode(content);
 }
 } // namespace nautilus::compiler::ir
