@@ -337,7 +337,7 @@ DEFINE_BINARY_OPERATOR(*, mul, is_fundamental_val, convertible_to_fundamental)
 
 DEFINE_BINARY_OPERATOR(/, div, is_fundamental_val, convertible_to_fundamental)
 
-DEFINE_BINARY_OPERATOR(%, mod, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(%, mod, is_integral_val, is_integral)
 
 DEFINE_BINARY_OPERATOR(==, eq, is_fundamental_val, convertible_to_fundamental)
 
