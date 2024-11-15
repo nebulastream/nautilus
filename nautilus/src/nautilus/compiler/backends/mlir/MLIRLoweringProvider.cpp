@@ -486,13 +486,13 @@ void MLIRLoweringProvider::generateMLIR(ir::DivOperation* divIntOp, ValueFrame& 
 		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
 		frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
 	} else {
-		if (resultType.isSignedInteger()) {
+		if (isSignedInteger(divIntOp->getStamp())) {
 			auto mlirDivOp =
-			    builder->create<mlir::LLVM::UDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			    builder->create<mlir::LLVM::SDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
 			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
 		} else {
 			auto mlirDivOp =
-			    builder->create<mlir::LLVM::SDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			    builder->create<mlir::LLVM::UDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
 			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
 		}
 	}
