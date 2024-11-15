@@ -76,6 +76,26 @@ val<B> castPtrAndGetValue(val<A*> array) {
 	return intPtr[0];
 }
 
+template <typename A, typename B, typename C>
+val<C> divAWithB(val<A> a, val<B> b) {
+	return a / b;
+}
+
+template <typename A, typename B, typename C>
+val<C> mulAWithB(val<A> a, val<B> b) {
+	return a * b;
+}
+
+template <typename A, typename B, typename C>
+val<C> subAWithB(val<A> a, val<B> b) {
+	return a - b;
+}
+
+template <typename A, typename B, typename C>
+val<C> addAWithB(val<A> a, val<B> b) {
+	return a + b;
+}
+
 val<int32_t> pointerAdd(val<int32_t*> ptr, val<int32_t> offset) {
 	auto result = ptr + offset;
 	return *result;

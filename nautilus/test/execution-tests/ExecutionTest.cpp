@@ -971,6 +971,158 @@ void runAllTests(engine::NautilusEngine& engine) {
 	SECTION("pointerExecutionTest") {
 		pointerExecutionTest(engine);
 	}
+
+	SECTION("Division Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(divAWithB<uint64_t, uint8_t, uint64_t>);
+		auto fi16_i8 = engine.registerFunction(divAWithB<int16_t, int8_t, decltype(i16 / i8)>);
+		auto fu64_i8 = engine.registerFunction(divAWithB<uint64_t, int8_t, decltype(u64 / i8)>);
+		auto fi16_u8 = engine.registerFunction(divAWithB<int16_t, uint8_t, decltype(i16 / u8)>);
+		auto fi32_f32 = engine.registerFunction(divAWithB<float, float, decltype(f32 / f32)>);
+		auto fi64_f64 = engine.registerFunction(divAWithB<int64_t, double, decltype(i64 / f64)>);
+		auto fu16_u8 = engine.registerFunction(divAWithB<uint16_t, uint8_t, decltype(u16 / u8)>);
+		auto fu32_u8 = engine.registerFunction(divAWithB<uint32_t, uint8_t, decltype(u32 / u8)>);
+		auto ff32_u8 = engine.registerFunction(divAWithB<float, uint8_t, decltype(f32 / u8)>);
+		auto ff64_u8 = engine.registerFunction(divAWithB<double, uint8_t, decltype(f64 / u8)>);
+		auto fi16_i32 = engine.registerFunction(divAWithB<int16_t, int32_t, decltype(i16 / i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 / u8)>(u64 / u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 / i8)>(i16 / i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 / i8)>(u64 / i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 / u8)>(i16 / u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 / f32)>(i32 / f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 / f64)>(i64 / f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 / u8)>(u16 / u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 / u8)>(u32 / u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 / u8)>(f32 / u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 / i32)>(i16 / i32));
+	}
+
+	SECTION("Multiplication Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(mulAWithB<uint64_t, uint8_t, decltype(u64 * u8)>);
+		auto fi16_i8 = engine.registerFunction(mulAWithB<int16_t, int8_t, decltype(i16 * i8)>);
+		auto fu64_i8 = engine.registerFunction(mulAWithB<uint64_t, int8_t, decltype(u64 * i8)>);
+		auto fi16_u8 = engine.registerFunction(mulAWithB<int16_t, uint8_t, decltype(i16 * u8)>);
+		auto fi32_f32 = engine.registerFunction(mulAWithB<float, float, decltype(f32 * f32)>);
+		auto fi64_f64 = engine.registerFunction(mulAWithB<int64_t, double, decltype(i64 * f64)>);
+		auto fu16_u8 = engine.registerFunction(mulAWithB<uint16_t, uint8_t, decltype(u16 * u8)>);
+		auto fu32_u8 = engine.registerFunction(mulAWithB<uint32_t, uint8_t, decltype(u32 * u8)>);
+		auto ff32_u8 = engine.registerFunction(mulAWithB<float, uint8_t, decltype(f32 * u8)>);
+		auto ff64_u8 = engine.registerFunction(mulAWithB<double, uint8_t, decltype(f64 * u8)>);
+		auto fi16_i32 = engine.registerFunction(mulAWithB<int16_t, int32_t, decltype(i16 * i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 * u8)>(u64 * u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 * i8)>(i16 * i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 * i8)>(u64 * i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 * u8)>(i16 * u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 * f32)>(i32 * f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 * f64)>(i64 * f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 * u8)>(u16 * u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 * u8)>(u32 * u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 * u8)>(f32 * u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 * i32)>(i16 * i32));
+	}
+
+	SECTION("Addition Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(addAWithB<uint64_t, uint8_t, decltype(u64 + u8)>);
+		auto fi16_i8 = engine.registerFunction(addAWithB<int16_t, int8_t, decltype(i16 + i8)>);
+		auto fu64_i8 = engine.registerFunction(addAWithB<uint64_t, int8_t, decltype(u64 + i8)>);
+		auto fi16_u8 = engine.registerFunction(addAWithB<int16_t, uint8_t, decltype(i16 + u8)>);
+		auto fi32_f32 = engine.registerFunction(addAWithB<float, float, decltype(f32 + f32)>);
+		auto fi64_f64 = engine.registerFunction(addAWithB<int64_t, double, decltype(i64 + f64)>);
+		auto fu16_u8 = engine.registerFunction(addAWithB<uint16_t, uint8_t, decltype(u16 + u8)>);
+		auto fu32_u8 = engine.registerFunction(addAWithB<uint32_t, uint8_t, decltype(u32 + u8)>);
+		auto ff32_u8 = engine.registerFunction(addAWithB<float, uint8_t, decltype(f32 + u8)>);
+		auto ff64_u8 = engine.registerFunction(addAWithB<double, uint8_t, decltype(f64 + u8)>);
+		auto fi16_i32 = engine.registerFunction(addAWithB<int16_t, int32_t, decltype(i16 + i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 + u8)>(u64 + u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 + i8)>(i16 + i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 + i8)>(u64 + i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 + u8)>(i16 + u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 + f32)>(i32 + f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 + f64)>(i64 + f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 + u8)>(u16 + u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 + u8)>(u32 + u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 + u8)>(f32 + u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 + i32)>(i16 + i32));
+	}
+
+	SECTION("Subtraction Testcases") {
+		int8_t i8 = -42;
+		int16_t i16 = -129;
+		int32_t i32 = -32769;
+		int64_t i64 = -2147483649;
+		uint8_t u8 = 42;
+		uint16_t u16 = 256;
+		uint32_t u32 = 65536;
+		uint64_t u64 = 4294967296;
+		float f32 = 23.0;
+		double f64 = 23.0;
+
+		/// Division nautilus functions
+		auto fu64_u8 = engine.registerFunction(subAWithB<uint64_t, uint8_t, decltype(u64 - u8)>);
+		auto fi16_i8 = engine.registerFunction(subAWithB<int16_t, int8_t, decltype(i16 - i8)>);
+		auto fu64_i8 = engine.registerFunction(subAWithB<uint64_t, int8_t, decltype(u64 - i8)>);
+		auto fi16_u8 = engine.registerFunction(subAWithB<int16_t, uint8_t, decltype(i16 - u8)>);
+		auto fi32_f32 = engine.registerFunction(subAWithB<float, float, decltype(f32 - f32)>);
+		auto fi64_f64 = engine.registerFunction(subAWithB<int64_t, double, decltype(i64 - f64)>);
+		auto fu16_u8 = engine.registerFunction(subAWithB<uint16_t, uint8_t, decltype(u16 - u8)>);
+		auto fu32_u8 = engine.registerFunction(subAWithB<uint32_t, uint8_t, decltype(u32 - u8)>);
+		auto ff32_u8 = engine.registerFunction(subAWithB<float, uint8_t, decltype(f32 - u8)>);
+		auto ff64_u8 = engine.registerFunction(subAWithB<double, uint8_t, decltype(f64 - u8)>);
+		auto fi16_i32 = engine.registerFunction(subAWithB<int16_t, int32_t, decltype(i16 - i32)>);
+
+		/// Division testcases
+		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 - u8)>(u64 - u8));
+		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 - i8)>(i16 - i8));
+		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 - i8)>(u64 - i8));
+		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 - u8)>(i16 - u8));
+		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 - f32)>(i32 - f32));
+		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 - f64)>(i64 - f64));
+		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 - u8)>(u16 - u8));
+		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 - u8)>(u32 - u8));
+		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 - u8)>(f32 - u8));
+		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 - i32)>(i16 - i32));
+	}
 }
 
 TEST_CASE("Engine Interpreter Test") {
