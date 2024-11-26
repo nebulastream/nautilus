@@ -24,14 +24,19 @@ public:
 #ifdef ENABLE_TRACING
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
-	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	val(T val)
+	    : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
+	      value(static_cast<std::underlying_type_t<T>>(val)) {
 	}
 
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
-	val(val<T>& val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(static_cast<std::underlying_type_t<T>>(val)) {
+	val(val<T>& val)
+	    : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
+	      value(static_cast<std::underlying_type_t<T>>(val)) {
 	}
-	val(val<underlying_type_t> t) : state(t.state), value((T) details::getRawValue(t)) {
+	val(val<underlying_type_t> t)
+	    : state(t.state), value((T) details::RawValueResolver<underlying_type_t>::getRawValue(t)) {
 	}
 	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {
 	}
@@ -50,14 +55,13 @@ public:
 	val(val<T>& val) : value(static_cast<std::underlying_type_t<T>>(val)) {
 	}
 
-	val(val<underlying_type_t> t) : value((T) details::getRawValue(t)) {
+	val(val<underlying_type_t> t) : value((T) details::RawValueResolver<underlying_type_t>::getRawValue(t)) {
 	}
 	val(val<T>& t) : value(t.value) {
 	}
 	val(T val) : value(val) {
 	}
 #endif
-
 
 	val<bool> operator==(val<T>& other) const {
 #ifdef ENABLE_TRACING
@@ -100,7 +104,7 @@ public:
 	val<T>& operator=(const val<T>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(state, other.state, tracing::to_type<underlying_type_t>());
+			tracing::traceAssignment(state, other.state, tracing::TypeResolver<underlying_type_t>::to_type());
 		}
 #endif
 		this->value = other.value;
@@ -112,12 +116,12 @@ public:
 #endif
 
 private:
-	friend T details::getRawValue<T>(const val<T>& left);
+	friend details::RawValueResolver<T>;
 	const T value;
 };
 
 template <typename Type>
-requires std::is_enum_v<Type>
+    requires std::is_enum_v<Type>
 auto inline make_value(const Type& value) {
 	return val<Type>(value);
 }

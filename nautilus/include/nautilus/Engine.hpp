@@ -19,7 +19,7 @@ namespace details {
  */
 template <typename ArgValueType, size_t I>
 auto createTraceableArgument() {
-	auto type = tracing::to_type<typename ArgValueType::raw_type>();
+	auto type = tracing::TypeResolver<typename ArgValueType::raw_type>::to_type();
 	auto valueRef = tracing::registerFunctionArgument(type, I);
 	return val<typename ArgValueType::raw_type>(valueRef);
 }
@@ -35,7 +35,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, std
 			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
 		} else {
 			auto returnValue = func(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			auto type = tracing::to_type<typename decltype(returnValue)::raw_type>();
+			auto type = tracing::TypeResolver<typename decltype(returnValue)::raw_type>::to_type();
 			tracing::traceReturnOperation(type, returnValue.state);
 		}
 	};
@@ -78,7 +78,7 @@ public:
 		// no executable is defined, call the underling function directly and convert all arguments to val objects
 		if (executable == nullptr) {
 			auto result = func(make_value((args))...);
-			return nautilus::details::getRawValue(result);
+			return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(result);
 		}
 		auto callable = this->executable->template getInvocableMember<typename R::raw_type, FunctionArguments...>("execute");
 		return callable(args...);

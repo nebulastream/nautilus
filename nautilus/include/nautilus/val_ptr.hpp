@@ -42,8 +42,8 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
-		*rawPtr = details::getRawValue(value);
+		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
+		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	template <class T>
@@ -56,19 +56,19 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
-		*rawPtr = details::getRawValue(other);
+		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
+		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
 	}
 
 	operator val<baseType>() {
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::to_type<ValueType>(), ptr.state);
+			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
+		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
 		return val<baseType>(*rawPtr);
 	}
 
@@ -126,7 +126,7 @@ public:
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+			tracing::traceAssignment(this->state, other.state, tracing::TypeResolver<ValuePtrType>::to_type());
 		}
 #endif
 		this->value = other.value;
@@ -203,7 +203,7 @@ public:
 	val<ValuePtrType>& operator=(const val<ValuePtrType>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(this->state, other.state, tracing::to_type<ValuePtrType>());
+			tracing::traceAssignment(this->state, other.state, tracing::TypeResolver<ValuePtrType>::to_type());
 		}
 #endif
 		this->value = other.value;
@@ -229,11 +229,11 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::to_type<ValueType>(), left.state, offsetBytes.state);
+		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state, offsetBytes.state);
 		return val<ValueType>(tc);
 	}
 #endif
-	auto newPtr = (ValueType) (((uint8_t*) left.value) + details::getRawValue(offsetBytes));
+	auto newPtr = (ValueType) (((uint8_t*) left.value) + details::RawValueResolver<typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(offsetBytes));
 	return val<ValueType>(newPtr);
 }
 
@@ -254,7 +254,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::EQ, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::EQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -280,7 +280,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LTE, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -292,7 +292,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LT, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -304,7 +304,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GT, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -316,7 +316,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GTE, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -328,7 +328,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::NEQ, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::NEQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -383,8 +383,8 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
-		*rawPtr = details::getRawValue(value);
+		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
+		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	template <class T>
@@ -397,19 +397,19 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
-		*rawPtr = details::getRawValue(other);
+		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
+		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
 	}
 
 	operator val<baseType>() {
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::to_type<baseType>(), ptr.state);
+			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<baseType>::to_type(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif
-		auto rawPtr = details::getRawValue(ptr);
+		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
 		return val<baseType>(*rawPtr);
 	}
 

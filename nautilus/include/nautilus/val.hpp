@@ -15,19 +15,26 @@ namespace nautilus {
 
 namespace details {
 template <typename LHS>
-LHS getRawValue(const val<LHS>& val);
+struct RawValueResolver {
+	static LHS inline getRawValue(const val<LHS>& val) {
+		return val.value;
+	}
+};
+
 
 #define COMMON_RETURN_TYPE                                                                                             \
 	typename std::common_type_t<typename std::remove_cvref_t<LHS>::basic_type,                                         \
 	                            typename std::remove_cvref_t<RHS>::basic_type>
 
-#define DEDUCT_RETURN_TYPE(OP) decltype(getRawValue(left) OP getRawValue(right))
+#define DEDUCT_RETURN_TYPE(OP) decltype(RawValueResolver<typename std::remove_cvref_t<decltype(left)>::raw_type>::getRawValue(left) OP RawValueResolver<typename std::remove_cvref_t<decltype(right)>::raw_type>::getRawValue(right))
 
 template <typename T>
-tracing::TypedValueRef getState(T&& value) {
-	return value.state;
-}
-
+struct StateResolver {
+	template<typename U=T>
+	static tracing::TypedValueRef getState(U&& value) {
+		return value.state;
+	}
+};
 } // namespace details
 
 // val substitution for all arithmetic value type, integer, float, bool
@@ -68,7 +75,7 @@ public:
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceAssignment(state, other.state, tracing::to_type<ValueType>());
+			tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 		}
 #endif
 		this->value = other.value;
@@ -81,7 +88,7 @@ public:
 		// cast
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::to_type<OtherType>(), state);
+			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
 			return val<OtherType>(resultRef);
 #endif
 		}
@@ -121,7 +128,7 @@ public:
 	const tracing::TypedValueRefHolder state;
 #endif
 private:
-	friend ValueType details::getRawValue<ValueType>(const val<ValueType>& left);
+	friend details::RawValueResolver<ValueType>;
 	ValueType value;
 };
 
@@ -166,7 +173,7 @@ public:
 	val<bool>& operator=(const val<bool>& other) {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			tracing::traceAssignment(state, other.state, tracing::to_type<bool>());
+			tracing::traceAssignment(state, other.state, tracing::TypeResolver<bool>::to_type());
 #endif
 		}
 
@@ -185,7 +192,7 @@ public:
 	}
 
 private:
-	friend bool details::getRawValue<bool>(const val<bool>& left);
+	friend details::RawValueResolver<bool>;
 	bool value;
 };
 
@@ -251,11 +258,11 @@ namespace details {
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::to_type<RES_TYPE>(),                          \
-			                                 details::getState(lValue), details::getState(rValue));                    \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),                          \
+			                                 details::StateResolver<decltype(lValue)>::getState(lValue), details::StateResolver<decltype(rValue)>::getState(rValue));                    \
 			return val<RES_TYPE>(tc);                                                                                  \
 		}                                                                                                              \
-		return val<RES_TYPE>(getRawValue(lValue) OP getRawValue(rValue));                                              \
+		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(lValue) OP RawValueResolver<commonType>::getRawValue(rValue));                                              \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
@@ -294,18 +301,12 @@ template <is_integral LHS>
 val<LHS> neg(val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::to_type<LHS>(), val.state);
+		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::TypeResolver<LHS>::to_type(), val.state);
 		return tc;
 	}
 #endif
-	return ~getRawValue(val);
+	return ~RawValueResolver<LHS>::getRawValue(val);
 }
-
-template <typename LHS>
-LHS inline getRawValue(const val<LHS>& val) {
-	return val.value;
-}
-
 } // namespace details
 
 #define DEFINE_BINARY_OPERATOR(OP, FUNC, CON_VAL, CON_VALUE)                                                           \
@@ -435,21 +436,21 @@ namespace details {
 val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::OR, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::OR, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
-	return getRawValue(left) || getRawValue(right);
+	return RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right);
 }
 
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::AND, tracing::to_type<bool>(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::AND, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
-	return getRawValue(left) && getRawValue(right);
+	return RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right);
 }
 
 val<bool> inline lNot(val<bool>& arg) {
@@ -459,7 +460,7 @@ val<bool> inline lNot(val<bool>& arg) {
 		return val<bool> {tc};
 	}
 #endif
-	return !getRawValue(arg);
+	return !RawValueResolver<bool>::getRawValue(arg);
 }
 } // namespace details
 
