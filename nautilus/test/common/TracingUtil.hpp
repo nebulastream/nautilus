@@ -17,7 +17,7 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (
 			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
 		} else {
 			auto returnValue = fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			auto type = tracing::to_type<typename decltype(returnValue)::basic_type>();
+			auto type = tracing::TypeResolver<typename decltype(returnValue)::basic_type>::to_type();
 			tracing::traceReturnOperation(type, returnValue.state);
 		}
 	};

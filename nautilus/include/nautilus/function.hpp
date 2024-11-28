@@ -13,7 +13,7 @@ auto getArgumentReferences(const ValueArguments&... arguments) {
 	std::vector<tracing::TypedValueRef> functionArgumentReferences;
 	if constexpr (sizeof...(ValueArguments) > 0) {
 		functionArgumentReferences.reserve(sizeof...(ValueArguments));
-		for (const tracing::TypedValueRef& p : {details::getState(arguments)...}) {
+		for (const tracing::TypedValueRef& p : {details::StateResolver<const ValueArguments&>::getState(arguments)...}) {
 			functionArgumentReferences.emplace_back(p);
 		}
 	}
@@ -32,11 +32,11 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::to_type<R>(), functionArgumentReferences);
+			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(), functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
-		return val<R>(fnptr(details::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
+		return val<R>(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
 	}
 
 	template <typename... FunctionArgumentsRaw>
@@ -49,7 +49,7 @@ public:
 			return;
 		}
 #endif
-		fnptr(details::getRawValue(std::forward<FunctionArgumentsRaw>(args))...);
+		(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
 	}
 
 	template <is_integral... FunctionArgumentsRaw>

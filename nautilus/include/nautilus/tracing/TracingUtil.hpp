@@ -23,9 +23,9 @@ TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
 	if (inTracer()) {
-		return traceConstant(to_type<T>(), createConstLiteral(value));
+		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value));
 	}
-	return {0, to_type<T>()};
+	return {0, TypeResolver<T>::to_type()};
 }
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
