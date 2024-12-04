@@ -82,7 +82,7 @@ TEST_CASE("IR Creation Benchmark") {
 
 TEST_CASE("Backend Compilation Benchmark") {
 
-	auto registry = compiler::CompilationBackendRegistry();
+	auto registry = compiler::CompilationBackendRegistry::getInstance();
 
 	std::vector<std::string> backends = {};
 #ifdef ENABLE_MLIR_BACKEND
@@ -108,7 +108,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
 				    trace = ssaCreationPhase.apply(trace);
-				    auto backendBackend = registry.getBackend(backend);
+				    auto backendBackend = registry->getBackend(backend);
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				    auto ir = irConversionPhase.apply(trace);
 				    auto op = engine::Options();
