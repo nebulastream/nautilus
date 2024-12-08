@@ -614,7 +614,6 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(pointerAdd);
 		REQUIRE(f(values, (int32_t) 0) == 1);
 		REQUIRE(f(values, (int32_t) 1) == 2);
-		FAIL();
 	}
 
 	SECTION("customPointerAdd") {
