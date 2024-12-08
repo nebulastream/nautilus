@@ -4,6 +4,7 @@
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#include "nautilus/logging.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -15,10 +16,10 @@
 
 #ifdef ENABLE_COMPILER
 
+#include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-
 #endif
 
 namespace nautilus::compiler {
@@ -75,6 +76,9 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+	if (options.getOptionOrDefault("dump.graph", false)) {
+		ir::createGraphVizFromIr(ir, options, dumpHandler);
+	}
 	// lower to backend
 	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
 	auto backend = backends->getBackend(backendName);

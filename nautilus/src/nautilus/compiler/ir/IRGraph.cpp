@@ -119,6 +119,11 @@ struct formatter<nautilus::compiler::ir::IRGraph> : formatter<std::string_view> 
 };
 
 template <>
+struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view> {
+	static auto format(const nautilus::compiler::ir::Operation& c, format_context& ctx) -> format_context::iterator;
+};
+
+template <>
 struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::string_view> {
 	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx)
 	    -> format_context::iterator {
@@ -182,60 +187,58 @@ struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::st
 	}
 };
 
-template <>
-struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::Operation& op, format_context& ctx) -> format_context::iterator {
-		auto out = ctx.out();
-		if (auto shiftOp = op.dynCast<ShiftOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), shiftOp->getLeftInput()->getIdentifier(),
-			               shiftOpToString(shiftOp->getType()), shiftOp->getRightInput()->getIdentifier());
-		} else if (auto compOp = op.dynCast<CompareOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), compOp->getLeftInput()->getIdentifier(),
-			               compOpToString(compOp->getComparator()), compOp->getRightInput()->getIdentifier());
-		} else if (auto bcompOp = op.dynCast<BinaryCompOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), bcompOp->getLeftInput()->getIdentifier(),
-			               shiftOpToString(bcompOp->getType()), bcompOp->getRightInput()->getIdentifier());
-		} else if (auto res = op.dynCast<BinaryOperation>()) {
-			fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), res->getLeftInput()->getIdentifier(),
-			               binaryOpToString(op.getOperationType()), res->getRightInput()->getIdentifier());
-		} else if (auto ifOp = op.dynCast<IfOperation>()) {
-			fmt::format_to(out, "{}", *ifOp);
-		} else if (auto brOp = op.dynCast<BranchOperation>()) {
-			fmt::format_to(out, "br {}", brOp->getNextBlockInvocation());
-		} else if (auto constBool = op.dynCast<ConstBooleanOperation>()) {
-			fmt::format_to(out, "{} = {}", op.getIdentifier(), constBool->getValue());
-		} else if (auto constInt = op.dynCast<ConstIntOperation>()) {
-			fmt::format_to(out, "{} = {}", op.getIdentifier(), constInt->getValue());
-		} else if (auto constFloat = op.dynCast<ConstFloatOperation>()) {
-			fmt::format_to(out, "{} = {}", op.getIdentifier(), constFloat->getValue());
-		} else if (auto returnOp = op.dynCast<ReturnOperation>()) {
-			fmt::format_to(out, "return");
-			if (returnOp->hasReturnValue()) {
-				fmt::format_to(out, " ({})", returnOp->getReturnValue()->getIdentifier());
-			}
-		} else if (auto constPtr = op.dynCast<ConstPtrOperation>()) {
-			fmt::format_to(out, "{} = *", constPtr->getIdentifier());
-		} else if (auto callOp = op.dynCast<ProxyCallOperation>()) {
-			fmt::format_to(out, "{}", *callOp);
-		} else if (auto castOp = op.dynCast<CastOperation>()) {
-			fmt::format_to(out, "{} = {} cast_to {}", castOp->getIdentifier(), castOp->getInput()->getIdentifier(),
-			               toString(castOp->getStamp()));
-		} else if (auto loadOp = op.dynCast<LoadOperation>()) {
-			fmt::format_to(out, "{} = load({})", loadOp->getIdentifier(), loadOp->getAddress()->getIdentifier());
-		} else if (auto storeOp = op.dynCast<StoreOperation>()) {
-			fmt::format_to(out, "store({}, {})", storeOp->getValue()->getIdentifier(),
-			               storeOp->getAddress()->getIdentifier());
-		} else if (auto notOp = op.dynCast<NotOperation>()) {
-			fmt::format_to(out, "{} = !{}", notOp->getIdentifier(), notOp->getInput()->getIdentifier());
-		} else if (auto negateOp = op.dynCast<NegateOperation>()) {
-			fmt::format_to(out, "{} = ~{}", negateOp->getIdentifier(), negateOp->getInput()->getIdentifier());
-		} else {
-			fmt::format_to(out, "{}", op.getIdentifier().toString());
+auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::compiler::ir::Operation& op,
+                                                               format_context& ctx) -> format_context::iterator {
+	auto out = ctx.out();
+	if (auto shiftOp = op.dynCast<ShiftOperation>()) {
+		fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), shiftOp->getLeftInput()->getIdentifier(),
+		               shiftOpToString(shiftOp->getType()), shiftOp->getRightInput()->getIdentifier());
+	} else if (auto compOp = op.dynCast<CompareOperation>()) {
+		fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), compOp->getLeftInput()->getIdentifier(),
+		               compOpToString(compOp->getComparator()), compOp->getRightInput()->getIdentifier());
+	} else if (auto bcompOp = op.dynCast<BinaryCompOperation>()) {
+		fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), bcompOp->getLeftInput()->getIdentifier(),
+		               shiftOpToString(bcompOp->getType()), bcompOp->getRightInput()->getIdentifier());
+	} else if (auto res = op.dynCast<BinaryOperation>()) {
+		fmt::format_to(out, "{} = {} {} {}", op.getIdentifier(), res->getLeftInput()->getIdentifier(),
+		               binaryOpToString(op.getOperationType()), res->getRightInput()->getIdentifier());
+	} else if (auto ifOp = op.dynCast<IfOperation>()) {
+		fmt::format_to(out, "{}", *ifOp);
+	} else if (auto brOp = op.dynCast<BranchOperation>()) {
+		fmt::format_to(out, "br {}", brOp->getNextBlockInvocation());
+	} else if (auto constBool = op.dynCast<ConstBooleanOperation>()) {
+		fmt::format_to(out, "{} = {}", op.getIdentifier(), constBool->getValue());
+	} else if (auto constInt = op.dynCast<ConstIntOperation>()) {
+		fmt::format_to(out, "{} = {}", op.getIdentifier(), constInt->getValue());
+	} else if (auto constFloat = op.dynCast<ConstFloatOperation>()) {
+		fmt::format_to(out, "{} = {}", op.getIdentifier(), constFloat->getValue());
+	} else if (auto returnOp = op.dynCast<ReturnOperation>()) {
+		fmt::format_to(out, "return");
+		if (returnOp->hasReturnValue()) {
+			fmt::format_to(out, " ({})", returnOp->getReturnValue()->getIdentifier());
 		}
-		fmt::format_to(out, " :{}", toString(op.getStamp()));
-		return out;
+	} else if (auto constPtr = op.dynCast<ConstPtrOperation>()) {
+		fmt::format_to(out, "{} = *", constPtr->getIdentifier());
+	} else if (auto callOp = op.dynCast<ProxyCallOperation>()) {
+		fmt::format_to(out, "{}", *callOp);
+	} else if (auto castOp = op.dynCast<CastOperation>()) {
+		fmt::format_to(out, "{} = {} cast_to {}", castOp->getIdentifier(), castOp->getInput()->getIdentifier(),
+		               toString(castOp->getStamp()));
+	} else if (auto loadOp = op.dynCast<LoadOperation>()) {
+		fmt::format_to(out, "{} = load({})", loadOp->getIdentifier(), loadOp->getAddress()->getIdentifier());
+	} else if (auto storeOp = op.dynCast<StoreOperation>()) {
+		fmt::format_to(out, "store({}, {})", storeOp->getValue()->getIdentifier(),
+		               storeOp->getAddress()->getIdentifier());
+	} else if (auto notOp = op.dynCast<NotOperation>()) {
+		fmt::format_to(out, "{} = !{}", notOp->getIdentifier(), notOp->getInput()->getIdentifier());
+	} else if (auto negateOp = op.dynCast<NegateOperation>()) {
+		fmt::format_to(out, "{} = ~{}", negateOp->getIdentifier(), negateOp->getInput()->getIdentifier());
+	} else {
+		fmt::format_to(out, "{}", op.getIdentifier().toString());
 	}
-};
+	fmt::format_to(out, " :{}", toString(op.getStamp()));
+	return out;
+}
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {

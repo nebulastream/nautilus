@@ -21,15 +21,19 @@ void DumpHandler::dump(std::string_view dumpName, std::string_view extension,
                        const std::function<std::string()>& dumpFunction) const {
 	if (shouldDump(dumpName)) {
 		auto content = dumpFunction();
-		if (dumpToConsole()) {
-			fmt::println("{} -- {}", dumpName, id);
-			fmt::println("{}", content);
-		}
-		if (dumpToFile()) {
-			auto filePath = rootPath / fmt::format("{}.{}", dumpName, extension);
-			common::File::createFile(filePath.string(), content);
-			fmt::println("{} -- {} -- file://{}", dumpName, id, filePath.native());
-		}
+		forceDump(dumpName, extension, content);
+	}
+}
+
+void DumpHandler::forceDump(std::string_view dumpName, std::string_view extension, const std::string& content) const {
+	if (dumpToConsole()) {
+		fmt::println("{} -- {}", dumpName, id);
+		fmt::println("{}", content);
+	}
+	if (dumpToFile()) {
+		auto filePath = rootPath / fmt::format("{}.{}", dumpName, extension);
+		common::File::createFile(filePath.string(), content);
+		fmt::println("{} -- {} -- file://{}", dumpName, id, filePath.native());
 	}
 }
 

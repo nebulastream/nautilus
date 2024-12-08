@@ -1,4 +1,5 @@
-
+include(CTest)
+include(Catch)
 add_executable(nautilus-execution-tests
         ExecutionTest.cpp
         BoolExecutionTest.cpp
@@ -6,6 +7,9 @@ add_executable(nautilus-execution-tests
 )
 
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain)
+if (ENABLE_LOGGING)
+    target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
+endif ()
 target_include_directories(nautilus-execution-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
         $<INSTALL_INTERFACE:src/nautilus/>)
