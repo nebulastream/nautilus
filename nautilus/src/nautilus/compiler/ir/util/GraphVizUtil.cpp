@@ -126,8 +126,7 @@ public:
 		stream << "  graph " << write_attrs(attrs) << ";" << std::endl;
 	}
 
-	void write_block_argument_edges(const std::shared_ptr<IRGraph>&,
-	                                const BasicBlockInvocation& bi,
+	void write_block_argument_edges(const std::shared_ptr<IRGraph>&, const BasicBlockInvocation& bi,
 	                                [[maybe_unused]] bool hideIntermediateBlockArguments, std::string label) {
 		//  crate an edge from the src block op to the argument in the target block.
 		for (size_t i = 0; i < bi.getArguments().size(); i++) {
@@ -274,10 +273,10 @@ public:
 						                           hideIntermediateBlockArguments, "false");
 						write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(),
 						                           hideIntermediateBlockArguments, "true");
-				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
-					[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
-					write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
-					                           hideIntermediateBlockArguments, "");
+					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
+						[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
+						write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
+						                           hideIntermediateBlockArguments, "");
 					}
 				}
 			}
@@ -324,8 +323,8 @@ public:
 		}
 	}
 
-	virtualvoid write_edge(const std::string& from, const std::string& to, const std::string type,
-	                const std::string& label = "") {
+	virtual void write_edge(const std::string& from, const std::string& to, const std::string type,
+	                        const std::string& label = "") {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label; // Example label
 		attrs["fontname"] = "arial";
@@ -350,8 +349,8 @@ public:
 		write_edges(graph, false, drawBlocksOnly);
 		end_graph();
 	}
-	virtualvoid write_node(const std::string& indent, const std::string& label, const std::string& id,
-	                const std::string type) {
+	virtual void write_node(const std::string& indent, const std::string& label, const std::string& id,
+	                        const std::string type) {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label;
 		attrs["shape"] = "rectangle"; // Example shape
@@ -584,7 +583,7 @@ public:
 		stream << "  end" << std::endl;
 	}
 
-	virtual std::string getNodeLabelForOp(Operation* op) {
+	virtual std::string getNodeLabelForOp(Operation* op) override {
 		switch (op->getOperationType()) {
 		case Operation::OperationType::AddOp:
 			return "#plus;";

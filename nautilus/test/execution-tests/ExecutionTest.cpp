@@ -1159,7 +1159,7 @@ TEST_CASE("Engine Compiler Test") {
 			options.setOption("dump.all", true);
 			options.setOption("dump.graph", true);
 			options.setOption("dump.graph.type", "mermaid");
-			options.setOption("dump.graph.full", false);
+			options.setOption("dump.graph.full", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}
