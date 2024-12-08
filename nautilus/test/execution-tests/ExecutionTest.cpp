@@ -6,10 +6,6 @@
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
-#include <spdlog/spdlog.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-
 #include <catch2/catch_all.hpp>
 namespace nautilus::engine {
 
