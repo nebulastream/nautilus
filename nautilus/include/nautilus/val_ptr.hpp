@@ -85,9 +85,9 @@ public:
 	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
-	base_ptr_val() : value() {
-	}
 #ifdef ENABLE_TRACING
+	base_ptr_val() : state(tracing::traceConstant(nullptr)), value() {
+	}
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
 	}
 	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : state(tc), value(ptr) {
@@ -99,6 +99,8 @@ public:
 	}
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {
+	}
+	base_ptr_val() : value() {
 	}
 #endif
 
@@ -240,6 +242,11 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 template <is_ptr ValueType, is_integral IndexType>
 val<ValueType> inline operator+(val<ValueType>& left, IndexType offset) {
 	return left + val<size_t>(offset);
+}
+
+template <is_ptr ValueType, is_integral IndexType>
+val<ValueType> inline operator+(val<ValueType>& left, static_val<IndexType> offset) {
+	return left + static_cast<IndexType>(offset);
 }
 
 template <is_ptr ValueType, typename IndexType>
