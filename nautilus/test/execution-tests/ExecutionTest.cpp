@@ -613,6 +613,22 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(1, 1) == 1);
 		REQUIRE(f(0, 1) == 0);
 	}
+	SECTION("loopDependingOnFunctionCallResult") {
+		auto f = engine.registerFunction(loopDependingOnFunctionCallResult);
+		Clazz c1(1);
+		Clazz c2(2);
+		Clazz c5(5);
+		Clazz c10(10);
+		int y1, y2, y5, y10;
+		f(&c1, &y1);
+		f(&c2, &y2);
+		f(&c5, &y5);
+		f(&c10, &y10);
+		REQUIRE(y1 == 1);
+		REQUIRE(y2 == 3);
+		REQUIRE(y5 == 15);
+		REQUIRE(y10 == 55);
+	}
 	SECTION("voidCall") {
 		auto f = engine.registerFunction(voidFuncCall);
 		REQUIRE_NOTHROW(f(10, 10));

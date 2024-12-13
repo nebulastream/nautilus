@@ -274,6 +274,7 @@ TEST_CASE("Runtime Call Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"simpleDirectCall", details::createFunctionWrapper(simpleDirectCall)},
 	    {"loopDirectCall", details::createFunctionWrapper(loopDirectCall)},
+	    {"loopDependingOnFunctionCallResult", details::createFunctionWrapper(loopDependingOnFunctionCallResult)},
 	    {"useFirstArg", details::createFunctionWrapper(useFirstArg)},
 	    {"useSecondArg", details::createFunctionWrapper(useSecondArg)},
 	    {"useNoArg", details::createFunctionWrapper(useNoArg)},
