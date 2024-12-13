@@ -12,6 +12,9 @@ public:
 
 class Clazz : public ClazzBase {
 public:
+	Clazz(int i) : i(i) {}
+	Clazz() = default;
+
 	int32_t get() {
 		return i;
 	}
@@ -60,6 +63,10 @@ int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
 
+int32_t getClazzI(Clazz* clazz) {
+	return clazz->i;
+}
+
 int32_t sub(int32_t x, int32_t y) {
 	return x - y;
 }
@@ -78,6 +85,14 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 		sum = invoke<>(add, sum, x);
 	}
 	return sum;
+}
+
+void loopDependingOnFunctionCallResult(val<Clazz*> x, val<int32_t*> y) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < invoke<>(getClazzI, x); i = i + 1) {
+		sum = invoke<>(add, sum, i + 1);
+	}
+	*y = sum;
 }
 
 val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {

@@ -1,8 +1,11 @@
 
-#include "fmt/core.h"
+#include <fmt/core.h>
+#include <fmt/chrono.h>
+#include <nautilus/compiler/DumpHandler.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
+#include <random>
 #include <unordered_map>
 
 namespace nautilus::tracing {
@@ -64,13 +67,49 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// As a result two blocks, can't use the same value references.
 	makeBlockArgumentsUnique();
 
+
+	auto createCompilationUnitID = []() -> compiler::CompilationUnitID {
+		// Get the current time point
+		// Create a timestamp string from the current time
+
+		auto now = std::chrono::system_clock::now();
+		std::string timestamp = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), now);
+
+		// Create a random device and generator
+		std::random_device rd;
+		std::mt19937 generator(rd());
+		std::uniform_int_distribution<> distribution(0, 15);
+
+		// Generate a 7-character UUID
+		std::string uuid;
+		for (int i = 0; i < 7; ++i) {
+			int random_number = distribution(generator);
+			if (random_number < 10)
+				uuid += std::to_string(random_number);
+			else
+				uuid += char('A' + random_number - 10);
+		}
+
+		// Concatenate timestamp and UUID
+		return timestamp + "_#" + uuid;
+	};
+
+	compiler::CompilationUnitID compilationId = createCompilationUnitID();
+	nautilus::engine::Options options;
+	options.setOption("dump.file", true);
+	options.setOption("dump.all", true);
+	auto dumpHandler = compiler::DumpHandler(options, compilationId);
+	// derive trace from function
+	dumpHandler.dump("in_ssa_creation", "trace", [&]() { return trace->toString(); });
+
+
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
 		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n",
 		                                   rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
 	}
 	// sort arguments
-	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
+	std::ranges::sort(trace->getBlocks().front().arguments);
 
 	return std::move(trace);
 }
