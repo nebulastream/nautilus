@@ -1,11 +1,12 @@
 
-#include <fmt/core.h>
 #include <fmt/chrono.h>
+#include <fmt/core.h>
 #include <nautilus/compiler/DumpHandler.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <random>
+#include <ranges>
 #include <unordered_map>
 
 namespace nautilus::tracing {
@@ -205,8 +206,35 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	}
 }
 
+std::unordered_map<uint16_t, uint16_t> SSACreationPhase::SSACreationPhaseContext::creatingNewBlockIds(const std::set<uint16_t>& emptyBlocksToRemove) const {
+	std::unordered_map<uint16_t, uint16_t> oldBlockIdsToNewBlockIds;
+	uint16_t newBlockId = 0;
+	// We have to iterate over all blocks and access a block via the block id, as a vector does not guarantee that the
+	// block id is sorted
+	std::vector<uint16_t> allBlockIds;
+	for (const auto& block : trace->getBlocks()) {
+		allBlockIds.push_back(block.blockId);
+	}
+	std::ranges::sort(allBlockIds);
+	for (const auto blockId : allBlockIds) {
+		const auto& block = trace->getBlock(blockId);
+		if (not emptyBlocksToRemove.contains(block.blockId)) {
+			oldBlockIdsToNewBlockIds[block.blockId] = newBlockId;
+			++newBlockId;
+		}
+	}
+
+	// For the empty blocks we have to set their new block id to the new block id of the next block
+	for (const auto blockid : emptyBlocksToRemove) {
+		oldBlockIdsToNewBlockIds[blockid] = oldBlockIdsToNewBlockIds[blockid + 1];
+	}
+
+	return oldBlockIdsToNewBlockIds;
+}
+
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
+	std::set<uint16_t> emptyBlocksToRemove;
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
 		for (auto& operation : block.operations) {
@@ -244,6 +272,37 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 			}
 		}
 		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+
+		// If now a block has no more operations, we store it so that we can remove all empty blocks later
+		if (block.operations.empty()) {
+			emptyBlocksToRemove.insert(block.blockId);
+		}
+	}
+
+	// Get the mapping of old block ids to new block ids. We need this to update the block references in the operations.
+	auto oldBlockIdsToNewBlockIds = creatingNewBlockIds(emptyBlocksToRemove);
+
+	// Remove all empty blocks
+	std::erase_if(trace->getBlocks(), [&](const auto& item) { return emptyBlocksToRemove.contains(item.blockId); });
+
+	// Now update all block references in the operations with its new block id
+	for (Block& block : trace->getBlocks()) {
+		block.blockId = oldBlockIdsToNewBlockIds[block.blockId];
+		for (auto& operation : block.operations) {
+			if (operation.op == Op::JMP || operation.op == Op::CMP) {
+				for (auto& input : operation.input) {
+					if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+						blockRef->block = oldBlockIdsToNewBlockIds[blockRef->block];
+
+						blockRef->arguments.clear();
+						const auto newBlockRefArgs = trace->getBlock(blockRef->block).arguments;
+						for (const auto blockArgument : newBlockRefArgs) {
+							blockRef->arguments.emplace_back(blockArgument);
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
