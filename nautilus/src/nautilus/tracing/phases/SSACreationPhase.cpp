@@ -68,42 +68,6 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// As a result two blocks, can't use the same value references.
 	makeBlockArgumentsUnique();
 
-
-	auto createCompilationUnitID = []() -> compiler::CompilationUnitID {
-		// Get the current time point
-		// Create a timestamp string from the current time
-
-		auto now = std::chrono::system_clock::now();
-		std::string timestamp = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), now);
-
-		// Create a random device and generator
-		std::random_device rd;
-		std::mt19937 generator(rd());
-		std::uniform_int_distribution<> distribution(0, 15);
-
-		// Generate a 7-character UUID
-		std::string uuid;
-		for (int i = 0; i < 7; ++i) {
-			int random_number = distribution(generator);
-			if (random_number < 10)
-				uuid += std::to_string(random_number);
-			else
-				uuid += char('A' + random_number - 10);
-		}
-
-		// Concatenate timestamp and UUID
-		return timestamp + "_#" + uuid;
-	};
-
-	compiler::CompilationUnitID compilationId = createCompilationUnitID();
-	nautilus::engine::Options options;
-	options.setOption("dump.file", true);
-	options.setOption("dump.all", true);
-	auto dumpHandler = compiler::DumpHandler(options, compilationId);
-	// derive trace from function
-	dumpHandler.dump("in_ssa_creation", "trace", [&]() { return trace->toString(); });
-
-
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
 		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n",
@@ -206,35 +170,9 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	}
 }
 
-std::unordered_map<uint16_t, uint16_t> SSACreationPhase::SSACreationPhaseContext::creatingNewBlockIds(const std::set<uint16_t>& emptyBlocksToRemove) const {
-	std::unordered_map<uint16_t, uint16_t> oldBlockIdsToNewBlockIds;
-	uint16_t newBlockId = 0;
-	// We have to iterate over all blocks and access a block via the block id, as a vector does not guarantee that the
-	// block id is sorted
-	std::vector<uint16_t> allBlockIds;
-	for (const auto& block : trace->getBlocks()) {
-		allBlockIds.push_back(block.blockId);
-	}
-	std::ranges::sort(allBlockIds);
-	for (const auto blockId : allBlockIds) {
-		const auto& block = trace->getBlock(blockId);
-		if (not emptyBlocksToRemove.contains(block.blockId)) {
-			oldBlockIdsToNewBlockIds[block.blockId] = newBlockId;
-			++newBlockId;
-		}
-	}
-
-	// For the empty blocks we have to set their new block id to the new block id of the next block
-	for (const auto blockid : emptyBlocksToRemove) {
-		oldBlockIdsToNewBlockIds[blockid] = oldBlockIdsToNewBlockIds[blockid + 1];
-	}
-
-	return oldBlockIdsToNewBlockIds;
-}
-
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
-	std::set<uint16_t> emptyBlocksToRemove;
+	std::set<uint16_t> emptyBlocks;
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
 		for (auto& operation : block.operations) {
@@ -273,32 +211,31 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 		}
 		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
 
-		// If now a block has no more operations, we store it so that we can remove all empty blocks later
+		// If now a block is empty, we simply perform a jump to the next block.
+		// This might not be the most efficient way, but we assume that any backend will
+		// optimize this jump out
 		if (block.operations.empty()) {
-			emptyBlocksToRemove.insert(block.blockId);
+			emptyBlocks.insert(block.blockId);
 		}
 	}
 
-	// Get the mapping of old block ids to new block ids. We need this to update the block references in the operations.
-	auto oldBlockIdsToNewBlockIds = creatingNewBlockIds(emptyBlocksToRemove);
+	// Add jumps to all empty blocks
+	for (const auto blockId : emptyBlocks) {
+		const uint16_t nextBlockId = blockId + 1;
+		BlockRef blockRef{nextBlockId};
+		blockRef.arguments = trace->getBlock(nextBlockId).arguments;
+		trace->getBlock(blockId).arguments = trace->getBlock(nextBlockId).arguments;
+		trace->getBlock(blockId).addOperation({Op::JMP, {blockRef}});
+	}
 
-	// Remove all empty blocks
-	std::erase_if(trace->getBlocks(), [&](const auto& item) { return emptyBlocksToRemove.contains(item.blockId); });
-
-	// Now update all block references in the operations with its new block id
+	// Add the new block arguments whenever an operation has a block reference
+	// that is in the empty block set.
 	for (Block& block : trace->getBlocks()) {
-		block.blockId = oldBlockIdsToNewBlockIds[block.blockId];
 		for (auto& operation : block.operations) {
-			if (operation.op == Op::JMP || operation.op == Op::CMP) {
-				for (auto& input : operation.input) {
-					if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-						blockRef->block = oldBlockIdsToNewBlockIds[blockRef->block];
-
-						blockRef->arguments.clear();
-						const auto newBlockRefArgs = trace->getBlock(blockRef->block).arguments;
-						for (const auto blockArgument : newBlockRefArgs) {
-							blockRef->arguments.emplace_back(blockArgument);
-						}
+			for (auto& input : operation.input) {
+				if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+					if (emptyBlocks.contains(blockRef->block)) {
+						blockRef->arguments = trace->getBlock(blockRef->block).arguments;
 					}
 				}
 			}
