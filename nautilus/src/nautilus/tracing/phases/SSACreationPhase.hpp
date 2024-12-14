@@ -61,6 +61,13 @@ private:
 		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
 
 		/**
+		 * @brief Creates a mapping of old block ids to new block ids, taking the empty blocks to remove into account
+		 * @param emptyBlocksToRemove the empty block ids to remove
+		 * @return a map from old block ids to new block ids.
+		 */
+		std::unordered_map<uint16_t, uint16_t> creatingNewBlockIds(const std::set<uint16_t>& emptyBlocksToRemove) const;
+
+		/**
 		 * @brief Removes the assignment operations from all blocks.
 		 * Assignment operations are only required to infer SSA form.
 		 */
