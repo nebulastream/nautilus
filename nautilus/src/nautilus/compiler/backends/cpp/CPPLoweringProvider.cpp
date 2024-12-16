@@ -59,6 +59,7 @@ std::string CPPLoweringProvider::LoweringContext::getType(const Type& stamp) {
 		return "uint8_t*";
 	}
 	assert(false);
+	return "unknown";
 }
 
 std::stringstream CPPLoweringProvider::LoweringContext::process() {
