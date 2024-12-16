@@ -6,13 +6,13 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include <chrono>
+#include <fmt/chrono.h>
+#include <fmt/core.h>
 #include <iomanip>
 #include <iostream>
 #include <random>
 #include <sstream>
 #include <string>
-#include <fmt/core.h>
-#include <fmt/chrono.h>
 
 #ifdef ENABLE_COMPILER
 
@@ -38,7 +38,7 @@ JITCompiler::~JITCompiler() = default;
 std::string createCompilationUnitID() {
 	// Get the current time point
 	// Create a timestamp string from the current time
-	
+
 	auto now = std::chrono::system_clock::now();
 	std::string timestamp = fmt::format(fmt::runtime("{:%Y-%m-%d_%H-%M-%S}"), now);
 

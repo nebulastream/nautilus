@@ -1,19 +1,18 @@
 
 #include "GraphVizUtil.hpp"
+#include <sstream>
+#ifdef ENABLE_LOGGING
+#include "fmt/core.h"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/logging.hpp"
-#include "spdlog/fmt/fmt.h"
 #include <iomanip>
-#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -29,38 +28,8 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 } // namespace fmt
 
 namespace nautilus::compiler::ir {
-/*
-digraph G {
-
-    subgraph cluster_0 {
-        style = filled;
-        color = lightgrey;
-        node[style = filled, color = white];
-        a0->a1->a2->a3;
-        label = "process #1";
-    }
-
-    subgraph cluster_1 {
-        node[style = filled];
-        b0->b1->b2->b3;
-        label = "process #2";
-        color = blue
-    }
-    start->a0;
-    start->b0;
-    a1->b3;
-    b2->a3;
-    a3->a0;
-    a3->end;
-    b3->end;
-
-    start[shape = Mdiamond];
-    end[shape = Msquare];
-}
-*/
 
 const std::string WHITE_ICE = "#d7ede7";
-// const std::string CRUISE = "#b8ddd1";
 const std::string KEPPEL = "#3cb4a4";
 const std::string CARISSMA = "#e98693";
 const std::string AMARANTH = "#da2d4f";
@@ -68,9 +37,7 @@ const std::string BLACK = "#1a1919";
 // const std::string WHITE = "#ffffff";
 const std::string DUST = "#f9f9f9";
 const std::string BIG_STONE = "#343d46";
-// const std::string ICE_STONE = "#b3bbc3";
 const std::string ORANGE = "#ffa500";
-// const std::string LIGHT_BLUE = "#ccccff";
 const std::string LIGHT_PURPLE = "#c39bd3";
 const std::string LIGHT_YELLOW = "#ffffde";
 const std::string DARK_YELLOW = "#aaaa33";
@@ -100,7 +67,7 @@ std::string urlEncode(const std::string& value) {
 	return encoded.str();
 }
 
-std::string write_attrs(const std::map<std::string, std::string>& attrs) {
+std::string writeAttrs(const std::map<std::string, std::string>& attrs) {
 	std::string result = "[";
 	bool first = true;
 	for (const auto& [key, value] : attrs) {
@@ -118,22 +85,37 @@ class GraphvizWriter {
 public:
 	GraphvizWriter(std::ostream& stream) : stream(stream) {
 	}
-	virtual void end_graph() {
-		stream << "}" << std::endl;
-	}
-	virtual void start_graph(const std::map<std::string, std::string>& attrs) {
-		stream << "digraph G {" << std::endl;
-		stream << "  graph " << write_attrs(attrs) << ";" << std::endl;
+
+	void writeGraph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true,
+	                bool drawBlocksOnly = false) {
+		auto attrs = std::map<std::string, std::string>();
+		attrs["bgcolor"] = "white";
+		if (hidpi) {
+			attrs["dpi"] = "200";
+		}
+		startGraph(attrs);
+		writeNodes(graph, draw_blocks, drawBlocksOnly);
+		writeEdges(graph, false, drawBlocksOnly);
+		endGraph();
 	}
 
-	void write_block_argument_edges(const std::shared_ptr<IRGraph>&, const BasicBlockInvocation& bi,
-	                                [[maybe_unused]] bool hideIntermediateBlockArguments, std::string label) {
+protected:
+	virtual void endGraph() {
+		stream << "}" << std::endl;
+	}
+	virtual void startGraph(const std::map<std::string, std::string>& attrs) {
+		stream << "digraph G {" << std::endl;
+		stream << "  graph " << writeAttrs(attrs) << ";" << std::endl;
+	}
+
+	void writeBlockArgumentEdges(const std::shared_ptr<IRGraph>&, const BasicBlockInvocation& bi,
+	                             [[maybe_unused]] bool hideIntermediateBlockArguments, const std::string& label) {
 		//  crate an edge from the src block op to the argument in the target block.
 		for (size_t i = 0; i < bi.getArguments().size(); i++) {
 			const auto& from = nodeIdMap[bi.getArguments()[i]];
 			auto to = nodeIdMap[&bi];
 			auto node = to + "_" + std::to_string(i);
-			write_edge(from, node, "data", label);
+			writeEdge(from, node, "data", label);
 		}
 	}
 
@@ -237,7 +219,7 @@ public:
 			getBlockArgumentMap(branchOp->getNextBlockInvocation().getBlock(), visitedBlocks, map);
 		}
 	}
-	void write_edges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
+	void writeEdges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
 		auto& rootBlock = graph->getRootOperation().getBasicBlocks()[0];
 		std::set<const BasicBlock*> vistedBlocks;
@@ -249,13 +231,13 @@ public:
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
 					auto ifOp = as<IfOperation>(op);
 					auto trueBlock = ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
-					write_edge(block->getIdentifier(), trueBlock, "control", "true");
+					writeEdge(block->getIdentifier(), trueBlock, "control", "true");
 					auto falseBlock = ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
-					write_edge(block->getIdentifier(), falseBlock, "control", "false");
+					writeEdge(block->getIdentifier(), falseBlock, "control", "false");
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					auto branchOp = as<BranchOperation>(op);
 					auto falseBlock = branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
-					write_edge(block->getIdentifier(), falseBlock, "control");
+					writeEdge(block->getIdentifier(), falseBlock, "control", "");
 				}
 			} else {
 				for (const auto& op : block->getOperations()) {
@@ -263,20 +245,20 @@ public:
 					// process inputs of node
 					for (auto input : op->getInputs()) {
 						const auto& from = nodeIdMap[input];
-						write_edge(from, to, "data", input->getIdentifier().toString());
+						writeEdge(from, to, "data", input->getIdentifier().toString());
 					}
 
 					// handle control-flow arguments
 					if (op->getOperationType() == Operation::OperationType::IfOp) {
-						[[maybe_unused]] auto ifOp = as<IfOperation>(op);
-						write_block_argument_edges(graph, ifOp->getTrueBlockInvocation(),
-						                           hideIntermediateBlockArguments, "false");
-						write_block_argument_edges(graph, ifOp->getFalseBlockInvocation(),
-						                           hideIntermediateBlockArguments, "true");
+						auto ifOp = as<IfOperation>(op);
+						writeBlockArgumentEdges(graph, ifOp->getTrueBlockInvocation(), hideIntermediateBlockArguments,
+						                        "false");
+						writeBlockArgumentEdges(graph, ifOp->getFalseBlockInvocation(), hideIntermediateBlockArguments,
+						                        "true");
 					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
-						[[maybe_unused]] auto branchOp = as<BranchOperation>(op);
-						write_block_argument_edges(graph, branchOp->getNextBlockInvocation(),
-						                           hideIntermediateBlockArguments, "");
+						auto branchOp = as<BranchOperation>(op);
+						writeBlockArgumentEdges(graph, branchOp->getNextBlockInvocation(),
+						                        hideIntermediateBlockArguments, "");
 					}
 				}
 			}
@@ -290,27 +272,27 @@ public:
 				for (const auto& op : blocks->getOperations()) {
 					if (isControlFlowOp(op.get())) {
 						const auto& to = nodeIdMap[op.get()];
-						write_edge(from, to, "control");
+						writeEdge(from, to, "control", "");
 						from = to;
 					}
 
 					if (op->getOperationType() == Operation::OperationType::IfOp) {
 						auto ifOp = as<IfOperation>(op);
 						std::string toTrue = "start_" + ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
-						write_edge(from, toTrue, "control", "true");
+						writeEdge(from, toTrue, "control", "true");
 						std::string toFalse = "start_" + ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
-						write_edge(from, toFalse, "control", "false");
+						writeEdge(from, toFalse, "control", "false");
 					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 						auto branchOp = as<BranchOperation>(op);
 						std::string to = "start_" + branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
-						write_edge(from, to, "control");
+						writeEdge(from, to, "control", "");
 					}
 				}
 			}
 		}
 	}
 
-	bool isControlFlowOp(Operation* op) {
+	static bool isControlFlowOp(Operation* op) {
 		switch (op->getOperationType()) {
 		case Operation::OperationType::BasicBlockArgument:
 		case Operation::OperationType::ConstIntOp:
@@ -323,8 +305,8 @@ public:
 		}
 	}
 
-	virtual void write_edge(const std::string& from, const std::string& to, const std::string type,
-	                        const std::string& label = "") {
+	virtual void writeEdge(const std::string& from, const std::string& to, const std::string type,
+	                       const std::string& label) {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label; // Example label
 		attrs["fontname"] = "arial";
@@ -335,22 +317,11 @@ public:
 		if (type == "control") {
 			attrs["penwidth"] = "2";
 		}
-		stream << "  node" << from << " -> node" << to << " " << write_attrs(attrs) << ";" << std::endl;
+		stream << "  node" << from << " -> node" << to << " " << writeAttrs(attrs) << ";" << std::endl;
 	}
-	void write_graph(const std::shared_ptr<IRGraph>& graph, bool hidpi = false, bool draw_blocks = true,
-	                 bool drawBlocksOnly = false) {
-		auto attrs = std::map<std::string, std::string>();
-		attrs["bgcolor"] = "white";
-		if (hidpi) {
-			attrs["dpi"] = "200";
-		}
-		start_graph(attrs);
-		write_nodes(graph, draw_blocks, drawBlocksOnly);
-		write_edges(graph, false, drawBlocksOnly);
-		end_graph();
-	}
-	virtual void write_node(const std::string& indent, const std::string& label, const std::string& id,
-	                        const std::string type) {
+
+	virtual void writeNode(const std::string& indent, const std::string& label, const std::string& id,
+	                       const std::string& type) {
 		std::map<std::string, std::string> attrs;
 		attrs["label"] = label;
 		attrs["shape"] = "rectangle"; // Example shape
@@ -363,29 +334,29 @@ public:
 		attrs["fillcolor"] = color.first;
 		attrs["fontcolor"] = color.second;
 
-		stream << indent << "node" << id << " " << write_attrs(attrs) << ";" << std::endl;
+		stream << indent << "node" << id << " " << writeAttrs(attrs) << ";" << std::endl;
 	}
 
-	void write_node_for_op(const std::string& indent, const std::string& block, Operation* node) {
+	void writeNodeForOp(const std::string& indent, const std::string& block, Operation* node) {
 		std::string id = block + "_" + std::to_string(nodeIdMap.size());
 		nodeIdMap[node] = id;
-		write_node(indent, getNodeLabelForOp(node), id, getNodeTypeForOp(node->getOperationType()));
+		writeNode(indent, getNodeLabelForOp(node), id, getNodeTypeForOp(node->getOperationType()));
 	}
 
-	void write_node_for_output_op(const std::string& indent, const std::string& block, BasicBlockInvocation* bi) {
+	void writeNodeForOutputOp(const std::string& indent, const std::string& block, BasicBlockInvocation* bi) {
 		std::string id = block + "_o" + std::to_string(nodeIdMap.size());
 		nodeIdMap[bi] = id;
 		for (size_t i = 0; i < bi->getArguments().size(); i++) {
 			auto& targetArg = bi->getBlock()->getArguments()[i];
 			auto lable = "Output(" + targetArg->getIdentifier().toString() + ")";
-			write_node(indent, lable, id + "_" + std::to_string(i), "input");
+			writeNode(indent, lable, id + "_" + std::to_string(i), "input");
 		}
 	}
-	virtual void end_subgraph() {
+	virtual void endSubgraph() {
 		stream << "  }" << std::endl;
 	}
 
-	virtual void start_subgraph(const std::string& id) {
+	virtual void startSubgraph(const std::string& id) {
 		stream << "  subgraph cluster_" << id << " {" << std::endl;
 		stream << "    label=\"Block_" << id << " \";" << std::endl;
 		stream << "    style=filled;" << std::endl;
@@ -393,43 +364,43 @@ public:
 		stream << "    fillcolor=\"" << LIGHT_YELLOW << "\";" << std::endl;
 	}
 
-	void write_nodes_for_block(const std::unique_ptr<BasicBlock>& block) {
-		write_node("  ", "Start", "start_" + block->getIdentifier(), "control");
+	void writeNodesForBlock(const std::unique_ptr<BasicBlock>& block) {
+		writeNode("  ", "Start", "start_" + block->getIdentifier(), "control");
 		for (const auto& op : block->getArguments()) {
 			std::string indent = "  ";
-			write_node_for_op(indent, block->getIdentifier(), op.get());
+			writeNodeForOp(indent, block->getIdentifier(), op.get());
 		}
 
 		for (const auto& op : block->getOperations()) {
 			std::string indent = "  ";
-			write_node_for_op(indent, block->getIdentifier(), op.get());
+			writeNodeForOp(indent, block->getIdentifier(), op.get());
 
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
-				write_node_for_output_op(indent, block->getIdentifier(), &ifOp->getTrueBlockInvocation());
-				write_node_for_output_op(indent, block->getIdentifier(), &ifOp->getFalseBlockInvocation());
+				writeNodeForOutputOp(indent, block->getIdentifier(), &ifOp->getTrueBlockInvocation());
+				writeNodeForOutputOp(indent, block->getIdentifier(), &ifOp->getFalseBlockInvocation());
 			} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 				auto branchOp = as<BranchOperation>(op);
-				write_node_for_output_op(indent, block->getIdentifier(), &branchOp->getNextBlockInvocation());
+				writeNodeForOutputOp(indent, block->getIdentifier(), &branchOp->getNextBlockInvocation());
 			}
 		}
 	}
-	void write_nodes(const std::shared_ptr<IRGraph>& graph, bool draw_blocks, bool drawBlocksOnly) {
+	void writeNodes(const std::shared_ptr<IRGraph>& graph, bool draw_blocks, bool drawBlocksOnly) {
 
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
 			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
 				if (!drawBlocksOnly) {
-					start_subgraph(block->getIdentifier());
-					write_nodes_for_block(block);
-					end_subgraph();
+					startSubgraph(block->getIdentifier());
+					writeNodesForBlock(block);
+					endSubgraph();
 				} else {
-					write_node("  ", "Block" + block->getIdentifier(), block->getIdentifier(), "control");
+					writeNode("  ", "Block" + block->getIdentifier(), block->getIdentifier(), "control");
 				}
 			}
 		} else {
 			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
-				write_nodes_for_block(block);
+				writeNodesForBlock(block);
 			}
 		}
 	}
@@ -526,26 +497,26 @@ public:
 
 class MermaidWriter : public GraphvizWriter {
 public:
-	int counter = 0;
 	MermaidWriter(std::ostream& stream) : GraphvizWriter(stream) {
 	}
 
-	void start_graph(const std::map<std::string, std::string>&) override {
+protected:
+	int counter = 0;
+	void startGraph(const std::map<std::string, std::string>&) override {
 		// Ignore bgcolor, as I can't figure out how to do it in Mermaid
 		stream << "flowchart TD" << std::endl;
 	}
 
-	void end_graph() override {
+	void endGraph() override {
 		// do nothing
 	}
 
-	void start_subgraph(const std::string& id) override {
-
-		stream << "  subgraph cluster_" << id << " " << std::endl;
+	void startSubgraph(const std::string& id) override {
+		stream << "  subgraph cluster_" << id << "[Block " << id << "]" << std::endl;
 	}
 
-	void write_node(const std::string& indent, const std::string& label, const std::string& id,
-	                const std::string type) override {
+	void writeNode(const std::string& indent, const std::string& label, const std::string& id,
+	               const std::string& type) override {
 		auto localLabel = label;
 		std::replace(localLabel.begin(), localLabel.end(), '(', ' ');
 		std::replace(localLabel.begin(), localLabel.end(), ')', ' ');
@@ -554,8 +525,8 @@ public:
 		stream << indent << "style node" << id << " fill:" << color.first << ",color:" << color.second << std::endl;
 	}
 
-	void write_edge(const std::string& from, const std::string& to, const std::string type,
-	                const std::string& label = "") override {
+	void writeEdge(const std::string& from, const std::string& to, const std::string type,
+	               const std::string& label = "") override {
 		if (!label.empty()) {
 			stream << "  node" << from << "--" << label << " --> node" << to << std::endl;
 		} else {
@@ -579,11 +550,11 @@ public:
 		       << "px" << std::endl;
 	}
 
-	void end_subgraph() override {
+	void endSubgraph() override {
 		stream << "  end" << std::endl;
 	}
 
-	virtual std::string getNodeLabelForOp(Operation* op) override {
+	std::string getNodeLabelForOp(Operation* op) override {
 		switch (op->getOperationType()) {
 		case Operation::OperationType::AddOp:
 			return "#plus;";
@@ -638,15 +609,23 @@ void createGraphVizFromIr(const std::shared_ptr<IRGraph>& graph, const engine::O
 	std::stringstream ss;
 	if (type == "mermaid") {
 		auto writer = MermaidWriter(ss);
-		writer.write_graph(graph, true, true, !fullGraph);
+		writer.writeGraph(graph, true, true, !fullGraph);
 		auto content = ss.str();
 		dumpHandler.forceDump("mermaid", "mermaid", content);
 	} else if (type == "graphviz") {
 		auto writer = GraphvizWriter(ss);
-		writer.write_graph(graph, true, true, !fullGraph);
+		writer.writeGraph(graph, true, true, !fullGraph);
 		auto content = ss.str();
 		log::info("https://dreampuf.github.io/GraphvizOnline/#{}", urlEncode(content));
 		dumpHandler.forceDump("graphviz", "dot", content);
 	}
 }
 } // namespace nautilus::compiler::ir
+#else
+
+namespace nautilus::compiler::ir {
+void createGraphVizFromIr(const std::shared_ptr<IRGraph>&, const engine::Options&, const DumpHandler&) {
+	std::cerr << "Logging needs to be enabled to dump graphs!" << std::endl;
+}
+} // namespace nautilus::compiler::ir
+#endif
