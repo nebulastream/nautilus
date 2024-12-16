@@ -49,43 +49,68 @@ std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...
 #endif
 } // namespace details
 
+template <class... Ts>
+struct overloaded : Ts... {
+	using Ts::operator()...;
+};
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 template <typename R, typename... FunctionArguments>
 class CallableFunction {
 public:
 	explicit CallableFunction(std::function<R(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable) : func(), executable(std::move(executable)) {
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	    : func(executable->getInvocableMember<typename R::raw_type, FunctionArguments...>("execute")),
+	      executable(std::move(executable)) {
 	}
 
-	auto operator()(FunctionArguments... args)
-	    requires std::is_void_v<R>
-	{
-		// function is called from an external context.
-		// no executable is defined, call the underling function directly and convert all arguments to val objects
-		if (executable == nullptr) {
-			func(make_value((args))...);
-			return;
-		}
-		auto callable = this->executable->template getInvocableMember<void, FunctionArguments...>("execute");
-		callable(args...);
-	}
-
-	auto operator()(FunctionArguments... args)
-	    requires(!std::is_void_v<R>)
-	{
-		// function is called from an external context.
-		// no executable is defined, call the underling function directly and convert all arguments to val objects
-		if (executable == nullptr) {
-			auto result = func(make_value((args))...);
-			return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(result);
-		}
-		auto callable = this->executable->template getInvocableMember<typename R::raw_type, FunctionArguments...>("execute");
-		return callable(args...);
+	typename R::raw_type operator()(FunctionArguments... args) {
+		return std::visit(
+		    overloaded {[&](std::function<R(val<FunctionArguments>...)>& fn) -> typename R::raw_type {
+			                return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(
+			                    fn(make_value(args)...));
+		                },
+		                [&](compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>& fn) ->
+		                typename R::raw_type {
+			                return fn(args...);
+		                }},
+		    func);
 	}
 
 private:
-	std::function<R(val<FunctionArguments>...)> func;
+	std::variant<std::function<R(val<FunctionArguments>...)>,
+	             compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>>
+	    func;
+	std::unique_ptr<compiler::Executable> executable;
+};
+
+/// Specialization for void return type
+template <typename... FunctionArguments>
+class CallableFunction<void, FunctionArguments...> {
+public:
+	explicit CallableFunction(std::function<void(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
+	}
+
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	    : func(executable->getInvocableMember<void, FunctionArguments...>("execute")),
+	      executable(std::move(executable)) {
+	}
+
+	auto operator()(FunctionArguments... args) {
+		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
+		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
+			                       fn(args...);
+		                       }},
+		           func);
+	}
+
+private:
+	std::variant<std::function<void(val<FunctionArguments>...)>,
+	             compiler::Executable::Invocable<void, FunctionArguments...>>
+	    func;
 	std::unique_ptr<compiler::Executable> executable;
 };
 
