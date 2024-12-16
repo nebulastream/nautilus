@@ -101,6 +101,9 @@ if (ENABLE_BC_BACKEND)
     list(APPEND EXPORT_TARGETS dyncall_s)
 endif ()
 
+set(BENCHMARK_ENABLE_TESTING OFF)
+add_subdirectory(${THIRD_PARTY_DIR}/benchmark)
+
 if (ENABLE_ASMJIT_BACKEND)
     set(ASMJIT_STATIC ON)
     set(ASMJIT_BUILD_RELEASE ON)
