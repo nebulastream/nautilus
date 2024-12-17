@@ -212,6 +212,20 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> blockArgumentMap;
 
+		// iterate over all arguments of this block and create new ValRefs if the
+		// argument ref is not local. for (uint64_t argIndex = 0; argIndex <
+		// block.arguments.size(); argIndex++) {
+		//    auto argRef = block.arguments[argIndex];
+		//    if (argRef.blockId != block.blockId) {
+		//        auto newLocalRef =
+		//                ValueRef(block.blockId, block.operations.size() +
+		//                blockArgumentMap.size() + 100,
+		//                         argRef.type);
+		//        blockArgumentMap[argRef] = newLocalRef;
+		//        block.arguments[argIndex] = newLocalRef;
+		//    }
+		//}
+
 		// set the new ValRefs to all depending on operations.
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
 			auto& operation = block.operations[i];

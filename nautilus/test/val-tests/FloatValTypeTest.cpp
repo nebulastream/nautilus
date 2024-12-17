@@ -46,21 +46,24 @@ TEMPLATE_TEST_CASE("Float Val Operation Test", "[value][template]", float, doubl
 			auto f1 = val<TestType>(static_cast<TestType>(42.5));
 			auto f2 = val<TestType>(static_cast<TestType>(42.2));
 			auto res = f1 - f2;
-			auto x = details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
+			auto x =
+			    details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
 			REQUIRE(x == Catch::Approx(0.3));
 		}
 		SECTION("*") {
 			auto f1 = val<TestType>(static_cast<TestType>(5.5));
 			auto f2 = val<TestType>(static_cast<TestType>(5.5));
 			auto res = f1 * f2;
-			auto x = details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
+			auto x =
+			    details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
 			REQUIRE(x == Catch::Approx(30.25));
 		}
 		SECTION("/") {
 			auto f1 = val<TestType>(static_cast<TestType>(21.1));
 			auto f2 = val<TestType>(static_cast<TestType>(7));
 			auto res = f1 / f2;
-			auto x = details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
+			auto x =
+			    details::RawValueResolver<typename std::remove_cvref_t<decltype((res))>::raw_type>::getRawValue(res);
 			REQUIRE(x == Catch::Approx(3.0142857143));
 		}
 	}

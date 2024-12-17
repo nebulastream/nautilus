@@ -1151,6 +1151,7 @@ TEST_CASE("Engine Compiler Test") {
 		DYNAMIC_SECTION(backend) {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
+			options.setOption("dump.all", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}

@@ -7,7 +7,7 @@ It offers:
 
 1. A high-level code generation API that accommodates C++ control flows.
 2. A tracing JIT compiler that produces a lightweight intermediate representation (IR) from imperative code fragments.
-3. Multiple code-generation backends, allowing users to balance compilation latency and code quality at runtime.
+3. Multiple code-generation backends, allowing users to balance compilation latency and code quality at runtime (see [benchmarks](https://nebulastream.github.io/nautilus/dev/bench/)).
 
 Nautilus is used for the query compiler of NebulaStream, a data management system from the DIMA group at TU Berlin.
 Learn more about Nebula Stream at https://www.nebula.stream

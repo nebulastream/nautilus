@@ -33,8 +33,9 @@ public:
 
 	val(val<const CharT*> s) : data_ptr(nullptr) {
 		// call new on val<base_type *>
-		// auto raw_s = details::RawValueResolver<typename std::remove_cvref_t<decltype((s))>::raw_type>::getRawValue(s);
-		// auto string_vew = new std::basic_string_view<CharT, Traits>(raw_s);
+		// auto raw_s = details::RawValueResolver<typename
+		// std::remove_cvref_t<decltype((s))>::raw_type>::getRawValue(s); auto string_vew = new
+		// std::basic_string_view<CharT, Traits>(raw_s);
 		auto ptr = invoke(
 		    +[](const CharT* s) -> auto { return new std::basic_string_view<CharT, Traits>(s); }, s);
 		data_ptr = val<base_type*>(ptr);
