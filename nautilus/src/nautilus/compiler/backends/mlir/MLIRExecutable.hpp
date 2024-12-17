@@ -11,6 +11,11 @@ namespace nautilus::compiler::mlir {
 class MLIRExecutable : public Executable {
 public:
 	MLIRExecutable(std::unique_ptr<::mlir::ExecutionEngine> engine);
+	~MLIRExecutable() override;
+	MLIRExecutable(const MLIRExecutable& other) = delete;
+	MLIRExecutable(MLIRExecutable&& other) noexcept;
+	MLIRExecutable& operator=(const MLIRExecutable& other) = delete;
+	MLIRExecutable& operator=(MLIRExecutable&& other) noexcept;
 
 protected:
 	void* getInvocableFunctionPtr(const std::string& member) override;
