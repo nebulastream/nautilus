@@ -458,6 +458,27 @@ void loopExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(10) == 101);
 		REQUIRE(f(0) == 1);
 	}
+	SECTION("forBreak") {
+		auto f = engine.registerFunction(forBreak);
+		REQUIRE(f(10) == 100);
+		REQUIRE(f(1) == 10);
+		REQUIRE(f(2) == 20);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("whileBreak") {
+		auto f = engine.registerFunction(whileBreak);
+		REQUIRE(f(42) == 100);
+		REQUIRE(f(40) == 40);
+		REQUIRE(f(20) == 20);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("whileContinue") {
+		auto f = engine.registerFunction(whileContinue);
+		REQUIRE(f(20) == 30);
+		REQUIRE(f(22) == 30);
+		REQUIRE(f(50) == 60);
+		REQUIRE(f(1000) == 100);
+	}
 	SECTION("nestedSumLoop") {
 		auto f = engine.registerFunction(nestedSumLoop);
 		REQUIRE(f(10) == 1001);

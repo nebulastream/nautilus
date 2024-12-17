@@ -4,6 +4,41 @@
 
 namespace nautilus::engine {
 
+val<int32_t> forBreak(val<int32_t> condition) {
+	val<int32_t> result = 0;
+	for (val<int32_t> i = 0; i < 10; i = i + 1) {
+		if (i == condition) {
+			break;
+		}
+		result = result + 10;
+	}
+	return result;
+}
+
+val<int32_t> whileBreak(val<int32_t> condition) {
+	val<int32_t> result = 0;
+	while (result < 100) {
+		if (result == condition) {
+			break;
+		}
+		result = result + 10;
+	}
+	return result;
+}
+
+val<int32_t> whileContinue(val<int32_t> condition) {
+	val<int32_t> i = 0;
+	val<int32_t> result = 0;
+	while (i < 10) {
+		i++;
+		if (result > condition) {
+			continue;
+		}
+		result = result + 10;
+	}
+	return result;
+}
+
 val<int32_t> ifInsideLoop(val<int32_t> value) {
 	val<int32_t> result = 0;
 	for (val<int32_t> i = 0; i < value; i = i + 1) {
