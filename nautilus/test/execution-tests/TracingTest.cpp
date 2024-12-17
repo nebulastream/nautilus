@@ -263,6 +263,9 @@ TEST_CASE("Loop Trace Test") {
 	    {"digitSum", details::createFunctionWrapper(digitSum)},
 	    {"sumOfSquares", details::createFunctionWrapper(sumOfSquares)},
 	    {"countDigits", details::createFunctionWrapper(countDigits)},
+	    {"forBreak", details::createFunctionWrapper(forBreak)},
+	    {"whileBreak", details::createFunctionWrapper(whileBreak)},
+	    {"whileContinue", details::createFunctionWrapper(whileContinue)},
 	};
 	runTraceTests("loop-tests", tests);
 }
