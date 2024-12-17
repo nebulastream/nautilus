@@ -13,3 +13,7 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     catch_discover_tests(nautilus-tracing-benchmarks EXTRA_ARGS --allow-running-no-tests)
 endif ()
+
+add_executable(invocation-benchmark InvocationBenchmark.cpp)
+target_link_libraries(invocation-benchmark PRIVATE benchmark benchmark_main nautilus)
+target_include_directories(invocation-benchmark PRIVATE ../../../third_party/benchmark/include)

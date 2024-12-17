@@ -157,6 +157,7 @@ mlir::LLVM::ICmpPredicate convertToLLVMComparison(ir::CompareOperation::Comparat
 		return mlir::LLVM::ICmpPredicate::ne;
 	default:
 		assert(false);
+		return mlir::LLVM::ICmpPredicate::ult;
 	}
 }
 
@@ -178,6 +179,7 @@ mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::
 		return mlir::arith::CmpIPredicate::sge;
 	default:
 		assert(false);
+		return mlir::arith::CmpIPredicate::sge;
 	}
 }
 
