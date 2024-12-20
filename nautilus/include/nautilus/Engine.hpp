@@ -55,7 +55,21 @@ public:
 	explicit CallableFunction(std::function<R(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable) : func(), executable(std::move(executable)) {
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	    : func(), executable(std::move(executable)) {
+	}
+
+	CallableFunction(const CallableFunction& other) = delete;
+	CallableFunction(CallableFunction&& other) noexcept
+	    : func(std::move(other.func)), executable(std::move(other.executable)) {
+	}
+	CallableFunction& operator=(const CallableFunction& other) = delete;
+	CallableFunction& operator=(CallableFunction&& other) noexcept {
+		if (this == &other)
+			return *this;
+		func = std::move(other.func);
+		executable = std::move(other.executable);
+		return *this;
 	}
 
 	auto operator()(FunctionArguments... args)
