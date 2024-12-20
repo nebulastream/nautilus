@@ -32,6 +32,7 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"staticLoop", details::createFunctionWrapper(staticLoop)},
     {"fibonacci", details::createFunctionWrapper(fibonacci)},
     {"gcd", details::createFunctionWrapper(gcd)},
+    {"forBreak", details::createFunctionWrapper(forBreak)},
 };
 
 TEST_CASE("Tracing Benchmark") {
