@@ -536,6 +536,7 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 		;
 	}
 	assert(false);
+	return nullptr;
 }
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
