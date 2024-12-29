@@ -24,7 +24,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.13
         with:
-          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}
+          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-benchmark
       - name: cmake
         shell: bash
         run: |
@@ -36,7 +36,7 @@ jobs:
       - name: test
         shell: bash
         run: |
-          ./nautilus/test/benchmark/nautilus-tracing-benchmarks | tee benchmark_result.txt
+          ./nautilus/test/benchmark/nautilus-benchmarks | tee benchmark_result.txt
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
