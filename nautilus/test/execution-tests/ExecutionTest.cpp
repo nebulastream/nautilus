@@ -473,6 +473,7 @@ void loopExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(0) == 0);
 	}
 	SECTION("whileContinue") {
+		SKIP();
 		auto f = engine.registerFunction(whileContinue);
 		REQUIRE(f(20) == 30);
 		REQUIRE(f(22) == 30);

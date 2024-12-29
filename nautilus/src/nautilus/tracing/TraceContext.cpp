@@ -55,7 +55,7 @@ bool TraceContext::isFollowing() {
 	return symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& TraceContext::follow(Op op) {
+TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = executionTrace->getCurrentOperation();
 	executionTrace->nextOperation();
 	assert(currentOperation.op == op);
