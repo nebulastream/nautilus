@@ -34,6 +34,7 @@
 #include <llvm/ADT/StringSet.h>
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
+#include <nautilus/compiler/DumpHandler.hpp>
 #include <unordered_set>
 
 namespace nautilus::compiler::mlir {
@@ -59,7 +60,7 @@ public:
 	 * @return mlir::mlir::OwningOpRef<mlir::ModuleOp> that is equivalent to the  module, and can be lowered to LLVM IR
 	 * in one step.
 	 */
-	::mlir::OwningOpRef<::mlir::ModuleOp> generateModuleFromIR(std::shared_ptr<ir::IRGraph>);
+	::mlir::OwningOpRef<::mlir::ModuleOp> generateModuleFromIR(std::shared_ptr<ir::IRGraph>, const DumpHandler& dumpHandler);
 
 	/**
 	 * @return std::vector<std::string>: All proxy function symbols used in the module.

@@ -19,6 +19,7 @@
 #include <mlir/IR/TypeRange.h>
 #include <mlir/IR/Value.h>
 #include <mlir/IR/Verifier.h>
+#include <nautilus/compiler/DumpHandler.hpp>
 
 namespace nautilus::compiler::mlir {
 using namespace ::mlir;
@@ -223,9 +224,18 @@ MLIRLoweringProvider::~MLIRLoweringProvider() {
 	delete globalInsertPoint;
 }
 
-mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir) {
+mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir, const DumpHandler& dumpHandler) {
 	ValueFrame firstFrame;
 	this->generateMLIR(ir->getRootOperation(), firstFrame);
+
+	dumpHandler.dump("after_mlir_generation", "mlir", [&]() {
+		::mlir::OpPrintingFlags flags;
+		std::string result;
+		auto output = llvm::raw_string_ostream(result);
+		theModule->print(output, flags);
+		return result;
+	});
+
 	// If MLIR module creation is incorrect, gracefully emit error message, return
 	// nullptr, and continue.
 	if (failed(mlir::verify(theModule))) {

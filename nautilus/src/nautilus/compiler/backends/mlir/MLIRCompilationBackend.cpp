@@ -37,7 +37,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	context.allowsUnregisteredDialects();
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context);
-	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
+	auto mlirModule = loweringProvider->generateModuleFromIR(ir, dumpHandler);
 	if (*mlirModule == nullptr) {
 		throw RuntimeException("verification of MLIR module failed!");
 	};
