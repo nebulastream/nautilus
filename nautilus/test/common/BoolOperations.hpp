@@ -59,4 +59,13 @@ val<bool> boolNestedFunction(val<bool> x, val<bool> z) {
 	}
 }
 
+template<typename T>
+val<bool> operatorBool(val<T> x) {
+	if (x) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 } // namespace nautilus::engine

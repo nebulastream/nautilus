@@ -30,7 +30,7 @@ public:
 
 	/**
 	 * @brief Check if we should continue the symbolic execution or if we evaluated all possible execution passes.
-	 * @return false if all execution passes trough a function have been evaluated.
+	 * @return false if all execution passes through a function have been evaluated.
 	 */
 	bool shouldContinue();
 

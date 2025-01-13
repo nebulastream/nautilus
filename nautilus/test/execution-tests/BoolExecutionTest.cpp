@@ -1,6 +1,8 @@
 #include "BoolOperations.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
+#include "nautilus/val_ptr.hpp"
+#include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
@@ -79,6 +81,21 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(false, false) == true);
 		REQUIRE(f(false, true) == false);
 		REQUIRE(f(true, false) == false);
+	}
+
+	SECTION("operatorBool") {
+		auto f = engine.registerFunction(operatorBool<bool>);
+		REQUIRE(f(true) == true);
+		REQUIRE(f(false) == false);
+	}
+
+	SECTION("operatorBoolPtr") {
+		auto f = engine.registerFunction(operatorBool<int*>);
+		int* x = nullptr;
+		int tmp = 1234;
+		int* y = &tmp;
+		REQUIRE(f(x) == false);
+		REQUIRE(f(y) == true);
 	}
 }
 

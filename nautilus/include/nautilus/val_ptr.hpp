@@ -104,6 +104,10 @@ public:
 	}
 #endif
 
+	operator bool() const {
+		return *this != static_cast<val<ValuePtrType>>(nullptr);
+	}
+
 #ifdef ENABLE_TRACING
 	const tracing::TypedValueRefHolder state;
 #endif
@@ -180,6 +184,10 @@ public:
 #endif
 	}
 
+	operator bool() const {
+		return *this != static_cast<val<ValuePtrType>>(nullptr);
+	}
+
 	const val<ValuePtrType>& operator++() {
 		// increment
 		++this->value;
@@ -221,6 +229,11 @@ public:
 #else
 		return val<OtherType>((OtherType) this->value);
 #endif
+	}
+
+
+	operator bool() const {
+		return *this != static_cast<val<ValuePtrType>>(nullptr);
 	}
 };
 

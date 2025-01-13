@@ -154,7 +154,7 @@ public:
 	// move constructor
 	val(const val<bool>&& other) : state(other.state), value(other.value) {
 	}
-	val(tracing::TypedValueRef& tc) : state(tc) {
+	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
 
 #else
