@@ -133,13 +133,11 @@ void ExecutionTrace::nextOperation() {
 }
 
 TraceOperation& ExecutionTrace::getCurrentOperation() {
-	auto& currentOp = getCurrentBlock().operations[currentOperationIndex];
-	while (currentOp.op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
+	while (getCurrentBlock().operations[currentOperationIndex].op == JMP) {
+		auto& nextBlock = std::get<BlockRef>(getCurrentBlock().operations[currentOperationIndex].input[0]);
 		setCurrentBlock(nextBlock.block);
-		currentOp = getCurrentBlock().operations[currentOperationIndex];
 	}
-	return currentOp;
+	return getCurrentBlock().operations[currentOperationIndex];
 }
 
 uint16_t ExecutionTrace::createBlock() {
