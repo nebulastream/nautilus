@@ -500,23 +500,23 @@ void MLIRLoweringProvider::generateMLIR(ir::DivOperation* divIntOp, ValueFrame& 
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ModOperation* divIntOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(divIntOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(divIntOp->getRightInput()->getIdentifier());
+void MLIRLoweringProvider::generateMLIR(ir::ModOperation* modIntOp, ValueFrame& frame) {
+	auto leftInput = frame.getValue(modIntOp->getLeftInput()->getIdentifier());
+	auto rightInput = frame.getValue(modIntOp->getRightInput()->getIdentifier());
 	auto resultType = leftInput.getType();
-	if (isFloat(divIntOp->getStamp())) {
+	if (isFloat(modIntOp->getStamp())) {
 		auto mlirDivOp = builder->create<mlir::LLVM::FRemOp>(getNameLoc("binOpResult"), resultType, leftInput,
 		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
-		frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+		frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 	} else {
-		if (resultType.isSignedInteger()) {
+		if (isSignedInteger(modIntOp->getStamp())) {
 			auto mlirDivOp =
-			    builder->create<mlir::arith::RemSIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+			builder->create<mlir::arith::RemSIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 		} else {
 			auto mlirDivOp =
-			    builder->create<mlir::arith::RemUIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+			builder->create<mlir::arith::RemUIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 		}
 	}
 }
