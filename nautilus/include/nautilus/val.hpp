@@ -47,7 +47,7 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)) {
+	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
 	}
 	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
 	}
@@ -60,7 +60,7 @@ public:
 	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
 #else
-	val() {
+	val() : value(0) {
 	}
 	val(ValueType value) : value(value) {
 	}
