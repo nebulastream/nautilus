@@ -8,7 +8,7 @@ on:
     branches:
       - main
 jobs:
-  build-test:
+  sanitizer-test:
     runs-on: ${{matrix.os}}
     name: Build on ${{ matrix.os }} with ${{ matrix.cc }} ${{ matrix.flags }}
     timeout-minutes: 10
