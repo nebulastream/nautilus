@@ -252,6 +252,14 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((double) -14) == -7);
 	}
 
+	SECTION("mulInt64AndNotDefinedI64") {
+		auto f = engine.registerFunction(mulInt64AndNotDefinedI64);
+		REQUIRE(f((int64_t) 1) == 0);
+		REQUIRE(f((int64_t) -1) == 0);
+		REQUIRE(f((int64_t) 0) == 0);
+		REQUIRE(f((int64_t) 0) == 0);
+	}
+
 	SECTION("subInt8AndInt8") {
 		auto f = engine.registerFunction(subInt8AndInt8);
 		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);

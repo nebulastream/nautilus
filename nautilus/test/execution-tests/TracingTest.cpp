@@ -196,6 +196,7 @@ TEST_CASE("Expression Trace Test") {
 	    {"shiftRight_i8", details::createFunctionWrapper(shiftRight<int8_t>)},
 	    {"negate_i8", details::createFunctionWrapper(negate<int8_t>)},
 	    {"logicalNot_bool", details::createFunctionWrapper(logicalNot<bool>)},
+	    {"mulInt64AndNotDefinedI64", details::createFunctionWrapper(mulInt64AndNotDefinedI64)},
 	    {"subInt8AndInt8", details::createFunctionWrapper(subInt8AndInt8)},
 	    {"addInt8AndInt32", details::createFunctionWrapper(addInt8AndInt32)},
 	};

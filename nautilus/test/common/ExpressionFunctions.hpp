@@ -68,6 +68,13 @@ auto subInt8AndInt8(val<int8_t> x, val<int8_t> y) {
 	return result;
 }
 
+auto mulInt64AndNotDefinedI64(val<int64_t> x) {
+	// We want to test, if the default initialization is correct
+	val<int64_t> y;
+	const auto result = x * y;
+	return result;
+}
+
 auto addInt8AndInt32(val<int8_t> x, val<int32_t> y) {
 	const auto result = x + y;
 	return result;
