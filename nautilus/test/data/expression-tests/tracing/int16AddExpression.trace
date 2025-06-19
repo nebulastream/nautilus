@@ -1,4 +1,6 @@
 B0($1:i16)
 	CONST	$2	5	:i16
-	ADD	$3	$1	$2	:i16
-	RETURN	$0	$3	:i16
+	ASSIGN	$3	$1	:i16
+	ASSIGN	$4	$2	:i16
+	ADD	$5	$3	$4	:i16
+	RETURN	$0	$5	:i16

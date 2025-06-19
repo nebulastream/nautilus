@@ -2,8 +2,8 @@ NautilusIr {
 execute() {
 Block_0($1:i32):
 	$2 = 1 :i32
-	$3 = $1 - $2 :i32
-	$5 = $3 + $3 :i32
-	return ($5) :i32
+	$5 = $1 - $2 :i32
+	$9 = $5 + $5 :i32
+	return ($9) :i32
 }
 } //NESIR

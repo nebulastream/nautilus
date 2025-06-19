@@ -219,22 +219,22 @@ auto inline make_value(const Type& value) {
 template <typename LeftType, is_fundamental RightType>
 auto inline cast_value(LeftType&& value) {
 	typedef typename std::remove_reference_t<LeftType>::basic_type basic_type;
-	typedef typename std::common_type<basic_type, RightType>::type commonType;
+	typedef std::common_type_t<basic_type, RightType> commonType;
 	if constexpr (std::is_same_v<basic_type, RightType>) {
-		return std::forward<LeftType>(value);
+		return static_cast<val<basic_type>>(value);
 	} else {
 		return static_cast<val<commonType>>(value);
 	}
 }
 
 template <typename LeftType, is_bool RightType>
-auto&& cast_value(LeftType&& value) {
-	return std::forward<LeftType>(value);
+auto cast_value(LeftType&& value) {
+	return value;
 }
 
 template <typename LeftType, is_enum RightType>
-auto&& cast_value(LeftType&& value) {
-	return std::forward<LeftType>(value);
+auto cast_value(LeftType value) {
+	return static_cast<LeftType>(value);
 }
 
 namespace details {

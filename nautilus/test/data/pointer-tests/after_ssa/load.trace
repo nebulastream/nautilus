@@ -1,7 +1,7 @@
 B0($1:ptr,$2:i32)
 	CONST	$7	4	:ui64
 	CAST	$8	$2	:ui64
-	MUL	$9	$8	$7	:ui64
-	ADD	$10	$1	$9	:ptr
-	LOAD	$13	$10	:i32
-	RETURN	$0	$13	:i32
+	MUL	$10	$8	$7	:ui64
+	ADD	$11	$1	$10	:ptr
+	LOAD	$14	$11	:i32
+	RETURN	$0	$14	:i32

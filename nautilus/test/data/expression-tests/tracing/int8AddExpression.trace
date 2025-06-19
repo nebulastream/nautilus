@@ -1,4 +1,6 @@
 B0($1:i8)
 	CONST	$2	2	:i8
-	ADD	$3	$2	$1	:i8
-	RETURN	$0	$3	:i8
+	ASSIGN	$3	$2	:i8
+	ASSIGN	$4	$1	:i8
+	ADD	$5	$3	$4	:i8
+	RETURN	$0	$5	:i8

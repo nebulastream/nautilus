@@ -3,15 +3,21 @@ B0($1:i32)
 	CONST	$3	1	:i32
 	JMP	$0	B3()	:void
 B1()
-	ASSIGN	$6	$3	:i32
-	ADD	$7	$2	$6	:i32
-	ASSIGN	$2	$7	:i32
-	CONST	$8	1	:i32
-	ADD	$9	$3	$8	:i32
-	ASSIGN	$3	$9	:i32
+	ASSIGN	$8	$3	:i32
+	ASSIGN	$9	$2	:i32
+	ASSIGN	$10	$8	:i32
+	ADD	$11	$9	$10	:i32
+	ASSIGN	$2	$11	:i32
+	CONST	$12	1	:i32
+	ASSIGN	$13	$3	:i32
+	ASSIGN	$14	$12	:i32
+	ADD	$15	$13	$14	:i32
+	ASSIGN	$3	$15	:i32
 	JMP	$0	B3()	:void
 B2()
 	RETURN	$0	$2	:i32
 B3() ControlFlowMerge
-	LTE	$4	$3	$1	:bool
-	CMP	$5	$4	B1()	B2()	:void
+	ASSIGN	$4	$3	:i32
+	ASSIGN	$5	$1	:i32
+	LTE	$6	$4	$5	:bool
+	CMP	$7	$6	B1()	B2()	:void

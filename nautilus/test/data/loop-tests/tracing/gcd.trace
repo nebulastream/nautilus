@@ -2,15 +2,19 @@ B0($1:i32,$2:i32)
 	CONST	$3	0	:i32
 	JMP	$0	B3()	:void
 B1()
-	ASSIGN	$6	$2	:i32
-	MOD	$7	$1	$2	:i32
-	ASSIGN	$2	$7	:i32
-	ASSIGN	$1	$6	:i32
-	CONST	$8	0	:i32
-	ASSIGN	$3	$8	:i32
+	ASSIGN	$8	$2	:i32
+	ASSIGN	$9	$1	:i32
+	ASSIGN	$10	$2	:i32
+	MOD	$11	$9	$10	:i32
+	ASSIGN	$2	$11	:i32
+	ASSIGN	$1	$8	:i32
+	CONST	$12	0	:i32
+	ASSIGN	$3	$12	:i32
 	JMP	$0	B3()	:void
 B2()
 	RETURN	$0	$1	:i32
 B3() ControlFlowMerge
-	NEQ	$4	$2	$3	:bool
-	CMP	$5	$4	B1()	B2()	:void
+	ASSIGN	$4	$2	:i32
+	ASSIGN	$5	$3	:i32
+	NEQ	$6	$4	$5	:bool
+	CMP	$7	$6	B1()	B2()	:void

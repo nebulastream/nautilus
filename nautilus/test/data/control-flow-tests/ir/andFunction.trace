@@ -4,16 +4,16 @@ Block_0($1:i32):
 	$2 = true :bool
 	$4 = 42 :i64
 	$5 = $1 cast_to i64 :i64
-	$6 = $5 == $4 :bool
-	$7 = $2 and $6 :bool
-	$9 = 42 :i64
-	$10 = $1 cast_to i64 :i64
-	$11 = $10 == $9 :bool
-	$12 = $7 and $11 :bool
-	$14 = 42 :i64
-	$15 = $1 cast_to i64 :i64
-	$16 = $15 == $14 :bool
-	$17 = $12 and $16 :bool
-	return ($17) :bool
+	$7 = $5 == $4 :bool
+	$8 = $2 and $7 :bool
+	$10 = 42 :i64
+	$11 = $1 cast_to i64 :i64
+	$13 = $11 == $10 :bool
+	$14 = $8 and $13 :bool
+	$16 = 42 :i64
+	$17 = $1 cast_to i64 :i64
+	$19 = $17 == $16 :bool
+	$20 = $14 and $19 :bool
+	return ($20) :bool
 }
 } //NESIR

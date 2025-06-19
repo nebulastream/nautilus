@@ -37,6 +37,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	::mlir::LLVM::registerInlinerInterface(registry);
 
 	::mlir::MLIRContext context(registry);
+	if (context.allowsUnregisteredDialects()) {
+		throw RuntimeException("context does not allow unregistered dialects, but we require it!");
+	}
 	if (not options.getOptionOrDefault("mlir.enableMultithreading", true)) {
 		context.disableMultithreading();
 	}

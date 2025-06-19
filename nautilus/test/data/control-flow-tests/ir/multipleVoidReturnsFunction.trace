@@ -3,20 +3,20 @@ execute() {
 Block_0($1:ptr):
 	$4 = load($1) :i32
 	$5 = 10 :i32
-	$6 = $4 > $5 :bool
-	if $6 ? Block_1($1) : Block_2($1) :void
+	$8 = $4 > $5 :bool
+	if $8 ? Block_1($1) : Block_2($1) :void
 
 Block_1($1:ptr):
-	$10 = 1 :i32
-	store($10, $1) :void
+	$12 = 1 :i32
+	store($12, $1) :void
 	br Block_3() :void
 
 Block_3():
 	return :void
 
 Block_2($1:ptr):
-	$15 = 42 :i32
-	store($15, $1) :void
+	$17 = 42 :i32
+	store($17, $1) :void
 	br Block_3() :void
 }
 } //NESIR

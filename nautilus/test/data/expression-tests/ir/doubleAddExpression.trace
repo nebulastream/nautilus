@@ -2,7 +2,7 @@ NautilusIr {
 execute() {
 Block_0($1:f64):
 	$2 = 7 :f64
-	$3 = $1 + $2 :f64
-	return ($3) :f64
+	$5 = $1 + $2 :f64
+	return ($5) :f64
 }
 } //NESIR

@@ -1,13 +1,16 @@
 B0($1:ptr,$2:i32)
 	ASSIGN	$3	$1	:ptr
 	CONST	$4	0	:i32
-	SUB	$5	$4	$2	:i32
-	ASSIGN	$6	$5	:i32
-	CONST	$7	4	:ui64
-	CAST	$8	$6	:ui64
-	MUL	$9	$8	$7	:ui64
-	ADD	$10	$3	$9	:ptr
-	ASSIGN	$11	$10	:ptr
-	ASSIGN	$12	$11	:ptr
-	LOAD	$13	$12	:i32
-	RETURN	$0	$13	:i32
+	ASSIGN	$5	$4	:i32
+	ASSIGN	$6	$2	:i32
+	SUB	$7	$5	$6	:i32
+	ASSIGN	$8	$7	:i32
+	CONST	$9	4	:ui64
+	CAST	$10	$8	:ui64
+	ASSIGN	$11	$9	:ui64
+	MUL	$12	$10	$11	:ui64
+	ADD	$13	$3	$12	:ptr
+	ASSIGN	$14	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	LOAD	$16	$15	:i32
+	RETURN	$0	$16	:i32

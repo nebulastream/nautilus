@@ -1,12 +1,12 @@
 B0($1:i32)
 	CONST	$2	10	:i32
 	CONST	$3	5	:i32
-	EQ	$4	$1	$3	:bool
-	CMP	$5	$4	B1($2)	B2($2)	:void
+	EQ	$6	$1	$3	:bool
+	CMP	$7	$6	B1($2)	B2($2)	:void
 B1($2:i32)
-	CONST	$6	5	:i32
-	ADD	$7	$2	$6	:i32
-	JMP	$0	B3($7)	:void
+	CONST	$8	5	:i32
+	ADD	$11	$2	$8	:i32
+	JMP	$0	B3($11)	:void
 B2($2:i32)
 	JMP	$0	B3($2)	:void
 B3($2:i32)
