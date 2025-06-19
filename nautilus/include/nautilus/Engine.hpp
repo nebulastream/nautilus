@@ -30,7 +30,7 @@ template <size_t... Indices, typename R, typename... FunctionArguments>
 std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>,
                                             std::function<R(FunctionArguments...)> func) {
 	[[maybe_unused]] std::size_t args = sizeof...(FunctionArguments);
-	auto traceFunc = [=]() {
+	return [=]() {
 		if constexpr (std::is_void_v<R>) {
 			func(details::createTraceableArgument<FunctionArguments, Indices>()...);
 			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
@@ -40,7 +40,6 @@ std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>,
 			tracing::traceReturnOperation(type, returnValue.state);
 		}
 	};
-	return traceFunc;
 }
 
 template <typename R, typename... FunctionArguments>
