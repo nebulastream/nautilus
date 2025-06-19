@@ -21,3 +21,4 @@ engine.:
 | dump.graph.type=[mermaid,graphviz]      | graphviz | Sets the type of the graph.                                                                                                                           |
 | dump.graph.full=[true,false]            | false    | Represents both data and control-flow (full=true) or only the control-flow (full=false).                                                              |
 | mlir.optimizationLevel=[0,1,2,3]        | 3        | Sets the optimization level for the code-generation if the MLIR backend is used.                                                                      |
+| mlir.enableMultithreading=[true,false]  | true     | Allows MLIR Backend to use multiple threads.                                                                                                          |
