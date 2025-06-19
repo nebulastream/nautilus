@@ -35,6 +35,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	::mlir::MLIRContext context(registry);
 	context.allowsUnregisteredDialects();
+	if (not options.getOptionOrDefault("mlir.enableMultithreading", true)) {
+		context.disableMultithreading();
+	}
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context);
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);

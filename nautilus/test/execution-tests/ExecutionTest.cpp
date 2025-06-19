@@ -1185,6 +1185,13 @@ TEST_CASE("Engine Compiler Test") {
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}
+
+		if (backend == "mlir") {
+			engine::Options options;
+			options.setOption("engine.compilation", true);
+			options.setOption("mlir.enableMultithreading", false);
+			auto engine = engine::NautilusEngine(options);
+		}
 	}
 }
 #endif
