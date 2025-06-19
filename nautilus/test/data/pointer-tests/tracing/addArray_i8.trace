@@ -2,48 +2,56 @@ B0($1:ptr,$2:ptr,$3:i8)
 	CONST	$4	0	:i8
 	JMP	$0	B3()	:void
 B1()
-	CAST	$7	$4	:i32
-	ASSIGN	$8	$1	:ptr
-	ASSIGN	$9	$7	:i32
-	ASSIGN	$10	$9	:i32
-	CONST	$11	1	:ui64
-	CAST	$12	$10	:ui64
-	MUL	$13	$12	$11	:ui64
-	ADD	$14	$8	$13	:ptr
-	ASSIGN	$15	$14	:ptr
-	ASSIGN	$16	$15	:ptr
-	LOAD	$17	$16	:i8
-	CAST	$18	$4	:i32
-	ASSIGN	$19	$2	:ptr
-	ASSIGN	$20	$18	:i32
-	ASSIGN	$21	$20	:i32
-	CONST	$22	1	:ui64
-	CAST	$23	$21	:ui64
-	MUL	$24	$23	$22	:ui64
-	ADD	$25	$19	$24	:ptr
-	ASSIGN	$26	$25	:ptr
-	ASSIGN	$27	$26	:ptr
-	LOAD	$28	$27	:i8
-	ADD	$29	$17	$28	:i8
-	CAST	$30	$4	:i32
-	ASSIGN	$31	$1	:ptr
-	ASSIGN	$32	$30	:i32
-	ASSIGN	$33	$32	:i32
-	CONST	$34	1	:ui64
-	CAST	$35	$33	:ui64
-	MUL	$36	$35	$34	:ui64
-	ADD	$37	$31	$36	:ptr
-	ASSIGN	$38	$37	:ptr
-	ASSIGN	$39	$38	:ptr
-	STORE	$40	$39	$29	:void
-	CONST	$41	1	:i32
-	CAST	$42	$4	:i32
-	ADD	$43	$42	$41	:i32
-	CAST	$44	$43	:i8
-	ASSIGN	$4	$44	:i8
+	CAST	$9	$4	:i32
+	ASSIGN	$10	$1	:ptr
+	ASSIGN	$11	$9	:i32
+	ASSIGN	$12	$11	:i32
+	CONST	$13	1	:ui64
+	CAST	$14	$12	:ui64
+	ASSIGN	$15	$13	:ui64
+	MUL	$16	$14	$15	:ui64
+	ADD	$17	$10	$16	:ptr
+	ASSIGN	$18	$17	:ptr
+	ASSIGN	$19	$18	:ptr
+	LOAD	$20	$19	:i8
+	CAST	$21	$4	:i32
+	ASSIGN	$22	$2	:ptr
+	ASSIGN	$23	$21	:i32
+	ASSIGN	$24	$23	:i32
+	CONST	$25	1	:ui64
+	CAST	$26	$24	:ui64
+	ASSIGN	$27	$25	:ui64
+	MUL	$28	$26	$27	:ui64
+	ADD	$29	$22	$28	:ptr
+	ASSIGN	$30	$29	:ptr
+	ASSIGN	$31	$30	:ptr
+	LOAD	$32	$31	:i8
+	ASSIGN	$33	$20	:i8
+	ASSIGN	$34	$32	:i8
+	ADD	$35	$33	$34	:i8
+	CAST	$36	$4	:i32
+	ASSIGN	$37	$1	:ptr
+	ASSIGN	$38	$36	:i32
+	ASSIGN	$39	$38	:i32
+	CONST	$40	1	:ui64
+	CAST	$41	$39	:ui64
+	ASSIGN	$42	$40	:ui64
+	MUL	$43	$41	$42	:ui64
+	ADD	$44	$37	$43	:ptr
+	ASSIGN	$45	$44	:ptr
+	ASSIGN	$46	$45	:ptr
+	STORE	$47	$46	$35	:void
+	CONST	$48	1	:i32
+	CAST	$49	$4	:i32
+	ASSIGN	$50	$48	:i32
+	ADD	$51	$49	$50	:i32
+	CAST	$52	$51	:i8
+	ASSIGN	$4	$52	:i8
 	JMP	$0	B3()	:void
 B2()
 	RETURN	$0	:void
 B3() ControlFlowMerge
-	LT	$5	$4	$3	:bool
-	CMP	$6	$5	B1()	B2()	:void
+	ASSIGN	$5	$4	:i8
+	ASSIGN	$6	$3	:i8
+	LT	$7	$5	$6	:bool
+	CMP	$8	$7	B1()	B2()	:void

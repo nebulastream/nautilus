@@ -2,37 +2,37 @@ NautilusIr {
 execute() {
 Block_0($1:i32, $2:i32):
 	$3 = 42 :i32
-	$4 = $1 == $3 :bool
-	if $4 ? Block_1($2) : Block_2($2) :void
+	$6 = $1 == $3 :bool
+	if $6 ? Block_1($2) : Block_2($2) :void
 
 Block_1($2:i32):
-	$6 = 4 :i32
-	$7 = $2 + $6 :i32
-	$8 = 2 :i32
-	br Block_5($7, $8) :void
+	$8 = 4 :i32
+	$11 = $2 + $8 :i32
+	$12 = 2 :i32
+	br Block_5($12, $11) :void
 
-Block_5($2:i32, $8:i32):
-	br Block_6($2, $8) :void
+Block_5($12:i32, $2:i32):
+	br Block_6($12, $2) :void
 
-Block_6($2:i32, $8:i32):
-	$9 = $2 + $8 :i32
-	return ($9) :i32
+Block_6($12:i32, $2:i32):
+	$15 = $2 + $12 :i32
+	return ($15) :i32
 
 Block_2($2:i32):
-	$13 = 9 :i32
-	$14 = $2 + $13 :i32
-	$15 = 8 :i32
-	$16 = $14 == $15 :bool
-	if $16 ? Block_3($14) : Block_4($14) :void
+	$19 = 9 :i32
+	$22 = $2 + $19 :i32
+	$23 = 8 :i32
+	$26 = $22 == $23 :bool
+	if $26 ? Block_3($22) : Block_4($22) :void
 
 Block_3($2:i32):
-	$18 = 14 :i32
-	$19 = $2 + $18 :i32
-	$20 = 2 :i32
-	br Block_5($2, $20) :void
+	$28 = 14 :i32
+	$31 = $2 + $28 :i32
+	$32 = 2 :i32
+	br Block_5($32, $2) :void
 
 Block_4($2:i32):
-	$23 = 2 :i32
-	br Block_6($2, $23) :void
+	$35 = 2 :i32
+	br Block_6($35, $2) :void
 }
 } //NESIR

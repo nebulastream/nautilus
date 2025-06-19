@@ -3,19 +3,22 @@ B0($1:i32)
 	ASSIGN	$3	$2	:bool
 	CONST	$4	42	:i64
 	CAST	$5	$1	:i64
-	EQ	$6	$5	$4	:bool
-	AND	$7	$3	$6	:bool
-	ASSIGN	$2	$7	:bool
-	ASSIGN	$8	$2	:bool
-	CONST	$9	42	:i64
-	CAST	$10	$1	:i64
-	EQ	$11	$10	$9	:bool
-	AND	$12	$8	$11	:bool
-	ASSIGN	$2	$12	:bool
-	ASSIGN	$13	$2	:bool
-	CONST	$14	42	:i64
-	CAST	$15	$1	:i64
-	EQ	$16	$15	$14	:bool
-	AND	$17	$13	$16	:bool
-	ASSIGN	$2	$17	:bool
+	ASSIGN	$6	$4	:i64
+	EQ	$7	$5	$6	:bool
+	AND	$8	$3	$7	:bool
+	ASSIGN	$2	$8	:bool
+	ASSIGN	$9	$2	:bool
+	CONST	$10	42	:i64
+	CAST	$11	$1	:i64
+	ASSIGN	$12	$10	:i64
+	EQ	$13	$11	$12	:bool
+	AND	$14	$9	$13	:bool
+	ASSIGN	$2	$14	:bool
+	ASSIGN	$15	$2	:bool
+	CONST	$16	42	:i64
+	CAST	$17	$1	:i64
+	ASSIGN	$18	$16	:i64
+	EQ	$19	$17	$18	:bool
+	AND	$20	$15	$19	:bool
+	ASSIGN	$2	$20	:bool
 	RETURN	$0	$2	:bool
