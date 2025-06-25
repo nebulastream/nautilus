@@ -13,7 +13,9 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
-
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h>
+#include <mlir/Transforms/Inliner.h>
 namespace nautilus::compiler::mlir {
 
 MLIRCompilationBackend::MLIRCompilationBackend() {
@@ -32,9 +34,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	::mlir::func::registerAllExtensions(registry);
 	registerBuiltinDialectTranslation(registry);
 	registerLLVMDialectTranslation(registry);
+	::mlir::LLVM::registerInlinerInterface(registry);
 
 	::mlir::MLIRContext context(registry);
-	context.allowsUnregisteredDialects();
 	if (not options.getOptionOrDefault("mlir.enableMultithreading", true)) {
 		context.disableMultithreading();
 	}

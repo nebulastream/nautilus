@@ -4,13 +4,13 @@ include(cmake/macros.cmake)
 if (NAUTILUS_DOWNLOAD_MLIR)
     execute_process(COMMAND uname -m OUTPUT_VARIABLE NES_HOST_PROCESSOR)
 
-    set(MLIR_VERSION 18.1.5)
+    set(MLIR_VERSION 20.1.7)
     if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         # Linux-specific stuff
         get_linux_lsb_release_information()
         message(STATUS "Linux ${LSB_RELEASE_ID_SHORT} ${LSB_RELEASE_VERSION_SHORT} ${LSB_RELEASE_CODENAME_SHORT}")
         message(STATUS "CPU ${NES_HOST_PROCESSOR}")
-        set(NES_SUPPORTED_UBUNTU_VERSIONS 20.04 22.04 24.04)
+        set(NES_SUPPORTED_UBUNTU_VERSIONS 22.04 24.04)
         if ((NOT${LSB_RELEASE_ID_SHORT} STREQUAL "Ubuntu") OR (NOT ${LSB_RELEASE_VERSION_SHORT} IN_LIST NES_SUPPORTED_UBUNTU_VERSIONS))
             message(FATAL_ERROR "Currently we only provide pre-build dependencies for Ubuntu: ${NES_SUPPORTED_UBUNTU_VERSIONS}. If you use a different linux please provide an own clang installation.")
         endif ()
@@ -32,7 +32,8 @@ if (NAUTILUS_DOWNLOAD_MLIR)
     set(MLIR_COMPRESSED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${CLANG_COMPRESSED_BINARY_NAME}.7z)
     IF (NOT EXISTS ${MLIR_COMPRESSED_FILE})
         message(STATUS "MLIR binaries at ${MLIR_COMPRESSED_FILE} do not exist!")
-        download_file(https://github.com/nebulastream/mlir-binaries/releases/download/v18_1_5/${CLANG_COMPRESSED_BINARY_NAME}.7z
+
+        download_file(https://github.com/nebulastream/mlir-binaries/releases/download/v${MLIR_VERSION}/${CLANG_COMPRESSED_BINARY_NAME}.tar.gz
                 ${MLIR_COMPRESSED_FILE}_tmp)
         file(RENAME ${MLIR_COMPRESSED_FILE}_tmp ${MLIR_COMPRESSED_FILE})
     endif ()
