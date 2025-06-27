@@ -947,6 +947,16 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&val) == 42);
 	}
 
+	SECTION("pureFunctionWithPtr") {
+		auto f = engine.registerFunction(std::function([](val<int8_t**> arg) -> val<int8_t> {
+			return *(*arg);
+		}));
+		int8_t val = 42;
+		int8_t* valPtr = &val;
+		int8_t** valPtrToPtr = &valPtr;
+		REQUIRE(f(valPtrToPtr) == 42);
+	}
+
 	SECTION("pureVoidFunctionWithPtr") {
 		auto f = engine.registerFunction(std::function([](val<int8_t*> arg) -> void { *arg = 42; }));
 		int8_t val = 1;
