@@ -2,12 +2,12 @@ NautilusIr {
 execute() {
 Block_0($1:ptr, $2:i32):
 	$4 = 0 :i32
-	$5 = $4 - $2 :i32
-	$7 = 4 :ui64
-	$8 = $5 cast_to ui64 :ui64
-	$9 = $8 * $7 :ui64
-	$10 = $1 + $9 :ptr
-	$13 = load($10) :i32
-	return ($13) :i32
+	$7 = $4 - $2 :i32
+	$9 = 4 :ui64
+	$10 = $7 cast_to ui64 :ui64
+	$12 = $10 * $9 :ui64
+	$13 = $1 + $12 :ptr
+	$16 = load($13) :i32
+	return ($16) :i32
 }
 } //NESIR
