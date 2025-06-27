@@ -621,6 +621,12 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(1, 1) == 1);
 		REQUIRE(f(0, 1) == 0);
 	}
+	SECTION("loopDirectCall2") {
+		auto f = engine.registerFunction(loopDirectCall2);
+		REQUIRE(f(10) == 420);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(0) == 0);
+	}
 	SECTION("voidCall") {
 		auto f = engine.registerFunction(voidFuncCall);
 		REQUIRE_NOTHROW(f(10, 10));
