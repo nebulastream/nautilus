@@ -140,17 +140,7 @@ public:
 	}
 
 	val<ValType&> operator*()
-	    requires is_arithmetic<ValType>
-	{
-#ifdef ENABLE_TRACING
-		return val<ValType&>(*this, this->state);
-#else
-		return val<ValType&>(*this);
-#endif
-	}
-
-	val<ValType&> operator*()
-	    requires is_ptr<ValType>
+	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 #ifdef ENABLE_TRACING
 		return val<ValType&>(*this, this->state);
