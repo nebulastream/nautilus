@@ -48,18 +48,11 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
-	}
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
-	}
-	// copy constructor
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
-	}
-	// move constructor
-	val(const val<ValueType>&& other) noexcept : state(std::move(other.state)), value(other.value) {
-	}
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
-	}
+	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {}
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {}
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {}
+	val(val<ValueType>&& other) noexcept : state(other.state), value(std::move(other.value)) {}
+	val(tracing::TypedValueRef& tc) : state(tc), value() {}
 #else
 	val() : value(0) {
 	}
@@ -82,6 +75,8 @@ public:
 		this->value = other.value;
 		return *this;
 	}
+
+
 
 	template <typename OtherType>
 	    requires std::is_convertible_v<ValueType, OtherType>
@@ -198,12 +193,12 @@ private:
 };
 
 template <is_fundamental_val Type>
-auto inline&& make_value(Type&& value) {
+decltype(auto) inline make_value(Type&& value) {
 	return std::forward<Type>(value);
 }
 
 template <convertible_to_fundamental Type>
-auto inline make_value(const Type& value) {
+decltype(auto) inline make_value(const Type& value) {
 	if constexpr (std::is_fundamental_v<Type>) {
 		return val<Type>(value);
 	} else if constexpr (is_ptr<Type>) {
@@ -218,15 +213,18 @@ auto inline make_value(const Type& value) {
 }
 
 template <typename LeftType, is_fundamental RightType>
-auto inline cast_value(LeftType&& value) {
-	typedef typename std::remove_reference_t<LeftType>::basic_type basic_type;
-	typedef typename std::common_type<basic_type, RightType>::type commonType;
+decltype(auto) inline cast_value(LeftType&& value) {
+	using basic_type = typename std::remove_reference_t<LeftType>::basic_type;
+	using commonType = std::common_type_t<basic_type, RightType>;
+
 	if constexpr (std::is_same_v<basic_type, RightType>) {
+		// Perfectly forward — no copy, no move
 		return std::forward<LeftType>(value);
 	} else {
 		return static_cast<val<commonType>>(value);
 	}
 }
+
 
 template <typename LeftType, is_bool RightType>
 auto&& cast_value(LeftType&& value) {
@@ -250,22 +248,31 @@ namespace details {
 #define TRAC_LOGICAL_BINARY_OP(OP)
 #endif
 
-#define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
-	template <typename LHS, typename RHS>                                                                              \
-	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
-		typedef std::common_type_t<typename std::remove_reference_t<LHS>::basic_type,                                  \
-		                           typename std::remove_reference_t<RHS>::basic_type>                                  \
-		    commonType;                                                                                                \
-		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
+#define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                  \
+	template <typename LHS, typename RHS>                                                                               \
+	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                      \
+		using LHSVal = std::remove_cvref_t<LHS>;                                                                        \
+		using RHSVal = std::remove_cvref_t<RHS>;                                                                        \
+		using LBase = typename LHSVal::basic_type;                                                                      \
+		using RBase = typename RHSVal::basic_type;                                                                      \
+		using commonType = std::common_type_t<LBase, RBase>;                                                            \
+                                                                                                                        \
+		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                           \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
-		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),            \
-			                                 details::StateResolver<decltype(lValue)>::getState(lValue),               \
-			                                 details::StateResolver<decltype(rValue)>::getState(rValue));              \
-			return val<RES_TYPE>(tc);                                                                                  \
-		}                                                                                                              \
-		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(lValue)                                         \
-		                         OP RawValueResolver<commonType>::getRawValue(rValue));                                \
+                                                                                                                        \
+		if SHOULD_TRACE() {                                                                                            \
+			auto tc = tracing::traceBinaryOp(                                                                          \
+			    tracing::OP_TRACE,                                                                                      \
+			    tracing::TypeResolver<RES_TYPE>::to_type(),                                                             \
+			    details::StateResolver<decltype(lValue)>::getState(lValue),                                             \
+			    details::StateResolver<decltype(rValue)>::getState(rValue));                                            \
+			return val<RES_TYPE>(tc);                                                                                   \
+		}                                                                                                               \
+                                                                                                                        \
+		return val<RES_TYPE>(                                                                                           \
+		    RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(lValue))                          \
+		    OP                                                                                                          \
+		    RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));                         \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
@@ -312,26 +319,27 @@ val<LHS> neg(val<LHS>& val) {
 }
 } // namespace details
 
-#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON_VAL, CON_VALUE)                                                           \
-	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                         \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
-		return details::FUNC(std::move(left), std::move(right));                                                       \
-	}                                                                                                                  \
-                                                                                                                       \
-	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                       \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
-		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
-		return details::FUNC(std::move(left), std::move(rhsV));                                                        \
-	}                                                                                                                  \
-                                                                                                                       \
-	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                       \
-	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
-		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
-		return details::FUNC(std::move(lhsV), std::move(right));                                                       \
+#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON_VAL, CON_VALUE)                                                            \
+	template <typename LHS, typename RHS>                                                                               \
+	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                          \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                  \
+		return details::FUNC(std::forward<LHS>(left), std::forward<RHS>(right));                                       \
+	}                                                                                                                   \
+                                                                                                                        \
+	template <typename LHS, typename RHS>                                                                               \
+	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                        \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                  \
+		auto&& rhsV = make_value(std::forward<RHS>(right));                                                             \
+		return details::FUNC(std::forward<LHS>(left), std::forward<decltype(rhsV)>(rhsV));                              \
+	}                                                                                                                   \
+                                                                                                                        \
+	template <typename LHS, typename RHS>                                                                               \
+	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                        \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                  \
+		auto&& lhsV = make_value(std::forward<LHS>(left));                                                              \
+		return details::FUNC(std::forward<decltype(lhsV)>(lhsV), std::forward<RHS>(right));                             \
 	}
+
 
 DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
 
