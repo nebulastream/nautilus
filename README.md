@@ -14,7 +14,7 @@ Learn more about Nebula Stream at https://www.nebula.stream
 
 ### Example
 
-The example below demonstrates Nautilus with a simplified aggregation operator,
+[The example below](nautilus/examples/ConditionalSum.cpp) demonstrates Nautilus with a simplified aggregation operator,
 `ConditionalSum`. This function aggregates integer values based on a boolean mask.
 Nautilus introduce `val<>` objects to capture all executed operations in an intermediate representation during tracing.
 Depending on the execution context, it can utilize a bytecode interpreter or generate efficient MLIR or C++ code.

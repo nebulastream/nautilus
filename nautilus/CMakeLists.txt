@@ -8,6 +8,7 @@ endif ()
 # create config file with all compile time options
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/nautilus/common/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/nautilus/config.hpp)
 
+add_subdirectory(examples)
 add_subdirectory(src)
 
 get_source(nautilus NAUTILUS_SOURCE_FILES)
