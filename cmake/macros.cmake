@@ -32,15 +32,10 @@ macro(add_source_files)
 endmacro()
 
 macro(add_make_format)
-    file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
-            ${CMAKE_SOURCE_DIR}/nautilus/*.cpp
-            ${CMAKE_SOURCE_DIR}/nautilus/*.h)
     add_custom_target(
             format
-            COMMAND clang-format
-            -i
-            -style=file
-            ${ALL_CXX_SOURCE_FILES}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMAND ./format.sh -i
     )
 endmacro()
 
