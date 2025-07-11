@@ -10,6 +10,7 @@ namespace nautilus::compiler::mlir {
 class MLIRPassManager {
 public:
 	enum class OptimizationPass : uint8_t { Inline };
-	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module, const std::vector<OptimizationPass>& optimizationPasses);
+	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
+	                                      const std::vector<OptimizationPass>& optimizationPasses);
 };
 } // namespace nautilus::compiler::mlir

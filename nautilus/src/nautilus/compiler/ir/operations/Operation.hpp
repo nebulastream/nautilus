@@ -68,7 +68,8 @@ public:
 		ShiftOp,
 	};
 
-	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type, const std::vector<Operation*>& inputs = {});
+	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,
+	                   const std::vector<Operation*>& inputs = {});
 
 	explicit Operation(OperationType opType, Type type, const std::vector<Operation*>& inputs = {});
 
@@ -111,7 +112,8 @@ T* as(const std::unique_ptr<Operation>& op) {
 
 class BinaryOperation : public Operation {
 public:
-	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left, Operation* right);
+	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left,
+	                Operation* right);
 
 	Operation* getLeftInput() const;
 

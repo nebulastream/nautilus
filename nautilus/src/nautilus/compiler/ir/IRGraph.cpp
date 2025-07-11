@@ -125,8 +125,8 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 
 template <>
 struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::OperationIdentifier& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", op.getId());
 		return out;
@@ -135,8 +135,8 @@ struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::s
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlockInvocation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "Block_{}(", op.getBlock()->getIdentifier());
 		const auto& args = op.getArguments();
@@ -163,8 +163,8 @@ struct formatter<nautilus::compiler::ir::IfOperation> : formatter<std::string_vi
 
 template <>
 struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 
 		if (op.getStamp() != nautilus::Type::v) {
@@ -242,8 +242,8 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlock& block,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "\nBlock_{}(", block.getIdentifier());
 		const auto& args = block.getArguments();
@@ -264,8 +264,8 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 
 template <>
 struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::FunctionOperation& func,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}(", func.getName());
 		for (const auto& arg : func.getInputArgNames()) {

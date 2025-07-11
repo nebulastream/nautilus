@@ -1,6 +1,6 @@
+#include "DumpHandler.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/val.hpp"
-#include "DumpHandler.hpp"
 #include <catch2/catch_all.hpp>
 #include <filesystem>
 #include <iostream>
@@ -24,7 +24,6 @@ TEST_CASE("DumpHelperFolderCreationNoDumpToFile") {
 	dumpHandler.dump("after_llvm_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
-
 
 	/// Check that there does not exist any folder test123 under temp_dir/dump
 	const auto dumpFolderExists = std::filesystem::exists(path);

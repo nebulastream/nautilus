@@ -6,8 +6,15 @@
 namespace nautilus {
 
 enum Color { BLUE, GREEN };
-enum class LogLevel : uint8_t { LOG_NONE = 1, LOG_FATAL_ERROR = 2, LOG_ERROR = 3, LOG_WARNING = 4, LOG_INFO = 5, LOG_DEBUG = 6, LOG_TRACE = 7 };
-
+enum class LogLevel : uint8_t {
+	LOG_NONE = 1,
+	LOG_FATAL_ERROR = 2,
+	LOG_ERROR = 3,
+	LOG_WARNING = 4,
+	LOG_INFO = 5,
+	LOG_DEBUG = 6,
+	LOG_TRACE = 7
+};
 
 val<bool> handleEnum(val<Color> enumVal) {
 	return enumVal == Color::BLUE;

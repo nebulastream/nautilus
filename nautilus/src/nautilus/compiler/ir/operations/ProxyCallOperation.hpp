@@ -1,14 +1,15 @@
 
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace nautilus::compiler::ir {
 class ProxyCallOperation : public Operation {
 public:
 	ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments, Type resultType);
 
-	ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr, OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType);
+	ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr,
+	                   OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType);
 
 	~ProxyCallOperation() override = default;
 

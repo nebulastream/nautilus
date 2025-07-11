@@ -17,6 +17,5 @@ public:
 	void setValue(Operation* newValue);
 
 	void setAddress(Operation* newAddress);
-
 };
 } // namespace nautilus::compiler::ir

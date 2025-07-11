@@ -44,7 +44,8 @@ private:
 	 * @param sourceFile the source code file
 	 * @param libraryFileName the target lib name
 	 */
-	void compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile, std::string libraryFileName) const;
+	void compileSharedLib(CPPCompilerFlags flags, std::shared_ptr<common::File> sourceFile,
+	                      std::string libraryFileName) const;
 
 	ExecutablePath::RuntimePathConfig runtimePathConfig;
 };

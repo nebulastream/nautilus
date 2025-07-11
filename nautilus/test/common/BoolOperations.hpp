@@ -59,7 +59,7 @@ val<bool> boolNestedFunction(val<bool> x, val<bool> z) {
 	}
 }
 
-template<typename T>
+template <typename T>
 val<bool> operatorBool(val<T> x) {
 	if (x) {
 		return true;

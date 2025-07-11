@@ -102,12 +102,14 @@ private:
 			if (ss.str() == "(nil)") {
 				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")(nullptr);\n";
 			} else {
-				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue() << ";\n";
+				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue()
+				                   << ";\n";
 			}
 		}
 
 		template <class Type>
-		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex, RegisterFrame& frame) {
+		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex,
+		                   RegisterFrame& frame) {
 			auto op = static_cast<Type*>(o.get());
 			auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 			auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());

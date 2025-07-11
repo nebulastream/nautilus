@@ -16,8 +16,7 @@ MLIRExecutable::~MLIRExecutable() {
 		engine.reset();
 	}
 }
-MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept
-    : engine(std::move(other.engine)) {
+MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept : engine(std::move(other.engine)) {
 }
 MLIRExecutable& MLIRExecutable::operator=(MLIRExecutable&& other) noexcept {
 	if (this == &other)

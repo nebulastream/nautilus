@@ -2,13 +2,12 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
-#include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
-#include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 
 namespace nautilus::compiler::mlir {
 
@@ -45,7 +44,7 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// Apply lowering passes.
 	passManager.addPass(mlir::createConvertFuncToLLVMPass());
 	passManager.addPass(mlir::createConvertControlFlowToLLVMPass());
-    passManager.addPass(mlir::createArithToLLVMConversionPass());
+	passManager.addPass(mlir::createArithToLLVMConversionPass());
 	// Run passes.
 	if (mlir::failed(passManager.run(*module))) {
 		llvm::errs() << "MLIRPassManager::lowerAndOptimizeMLIRModule: Failed to "

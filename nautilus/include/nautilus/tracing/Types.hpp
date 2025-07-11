@@ -9,12 +9,14 @@ namespace nautilus {
 
 enum class Type : uint8_t { v, b, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f32, f64, ptr };
 
-using ConstantLiteral = std::variant<bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, double, void*>;
+using ConstantLiteral =
+    std::variant<bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, float, double, void*>;
 
 namespace tracing {
 
 template <typename T>
-concept is_compatible_val_type = is_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
+concept is_compatible_val_type =
+    is_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
 
 template <typename T>
     requires is_ptr<std::remove_cvref_t<T>>
@@ -38,7 +40,7 @@ struct TypeResolver {};
 
 template <is_compatible_val_type T>
 struct TypeResolver<T> {
-    [[nodiscard]] static constexpr Type to_type() {
+	[[nodiscard]] static constexpr Type to_type() {
 		using type = std::remove_cvref_t<T>;
 		if constexpr (std::is_same_v<type, bool>) {
 			return Type::b;

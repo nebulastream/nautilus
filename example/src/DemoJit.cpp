@@ -18,13 +18,13 @@ val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> ar
 	return sum;
 }
 
-int main(int, char* []) {
+int main(int, char*[]) {
 	engine::Options options;
 	options.setOption("engine.backend", "cpp");
-	//options.setOption("engine.Compilation", false);
+	// options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
 	auto function = engine.registerFunction(conditionalSum);
-	auto mask = new bool[4]{true, true, false, true};
+	auto mask = new bool[4] {true, true, false, true};
 	auto array = new int32_t[4] {1, 2, 3, 4};
 	auto result = function(4, mask, array);
 	std::cout << "Result: " << result << std::endl;

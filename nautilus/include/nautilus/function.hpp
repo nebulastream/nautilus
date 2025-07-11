@@ -13,7 +13,8 @@ auto getArgumentReferences(const ValueArguments&... arguments) {
 	std::vector<tracing::TypedValueRef> functionArgumentReferences;
 	if constexpr (sizeof...(ValueArguments) > 0) {
 		functionArgumentReferences.reserve(sizeof...(ValueArguments));
-		for (const tracing::TypedValueRef& p : {details::StateResolver<const ValueArguments&>::getState(arguments)...}) {
+		for (const tracing::TypedValueRef& p :
+		     {details::StateResolver<const ValueArguments&>::getState(arguments)...}) {
 			functionArgumentReferences.emplace_back(p);
 		}
 	}
@@ -32,11 +33,13 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(), functionArgumentReferences);
+			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+			                                    functionArgumentReferences);
 			return val<R>(resultRef);
 		}
 #endif
-		return val<R>(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
+		return val<R>(fnptr(
+		    details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
 	}
 
 	template <typename... FunctionArgumentsRaw>
@@ -93,7 +96,8 @@ public:
 		      auto p = static_cast<MemberFuncWrapperImpl<T, Rp, Tp>*>(ptr);
 		      Rp (Tp::*func)() = p->func;
 		      return (*clazzPtr.*func)();
-	      })) {}
+	      })) {
+	}
 
 	template <typename... FunctionArgumentsRaw>
 	auto operator()(FunctionArgumentsRaw... args) {
@@ -119,7 +123,7 @@ auto& memberFunc(T func) {
 	using traits = member_function_traits<T>;
 	using ClassType = typename traits::class_type;
 	using ReturnType = typename traits::return_type;
-	//using ArgTypes = typename traits::arg_types;
+	// using ArgTypes = typename traits::arg_types;
 	auto ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
 	return *ptr;
 }

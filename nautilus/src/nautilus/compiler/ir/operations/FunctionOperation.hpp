@@ -7,7 +7,8 @@
 namespace nautilus::compiler::ir {
 class FunctionOperation : public Operation {
 public:
-	explicit FunctionOperation(std::string name, std::vector<std::unique_ptr<BasicBlock>>& functionBasicBlocks, std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
+	explicit FunctionOperation(std::string name, std::vector<std::unique_ptr<BasicBlock>>& functionBasicBlocks,
+	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
 
 	~FunctionOperation() override = default;
 

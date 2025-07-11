@@ -1,8 +1,8 @@
 #include "BoolOperations.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_ptr.hpp"
-#include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {

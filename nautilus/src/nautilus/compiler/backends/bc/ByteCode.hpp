@@ -1,7 +1,7 @@
 #pragma once
 
-#include "nautilus/tracing/Types.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include <any>
 #include <array>
 #include <cstdint>
@@ -352,7 +352,8 @@ public:
  * @brief The general definition of opcode, that contains a bytecode, at max two input registers and a result register.
  */
 struct OpCode {
-	OpCode(ByteCode op, short reg1, short reg2, short output) : op(op), reg1(reg1), reg2(reg2), output(output) {}
+	OpCode(ByteCode op, short reg1, short reg2, short output) : op(op), reg1(reg1), reg2(reg2), output(output) {
+	}
 	ByteCode op;
 	short reg1;
 	short reg2;

@@ -15,7 +15,8 @@ namespace nautilus::tracing {
 
 bool inTracer();
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState, const TypedValueRef& rightState);
+TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
+                             const TypedValueRef& rightState);
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
 
 bool traceBool(const TypedValueRef& state);

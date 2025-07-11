@@ -10,7 +10,7 @@ public:
 
 	~ConstIntOperation() override = default;
 
-	int64_t getValue() const ;
+	int64_t getValue() const;
 
 	template <class T>
 	T getIntegerViaType();

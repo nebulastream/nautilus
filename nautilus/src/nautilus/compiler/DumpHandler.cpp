@@ -5,7 +5,8 @@
 
 namespace nautilus::compiler {
 
-std::filesystem::path getRootPath(const engine::Options&, const nautilus::compiler::CompilationUnitID& id, const bool shallCreateFolder) {
+std::filesystem::path getRootPath(const engine::Options&, const nautilus::compiler::CompilationUnitID& id,
+                                  const bool shallCreateFolder) {
 	auto path = std::filesystem::temp_directory_path() / "dump" / id;
 	if (shallCreateFolder and not std::filesystem::exists(path)) {
 		std::filesystem::create_directories(path);

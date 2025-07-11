@@ -9,7 +9,6 @@ namespace nautilus::compiler {
 class Executable;
 class CompilationBackendRegistry;
 
-
 using CompilationUnitID = std::string;
 
 class JITCompiler {

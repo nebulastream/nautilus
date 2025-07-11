@@ -511,11 +511,11 @@ void MLIRLoweringProvider::generateMLIR(ir::ModOperation* modIntOp, ValueFrame& 
 	} else {
 		if (isSignedInteger(modIntOp->getStamp())) {
 			auto mlirDivOp =
-			builder->create<mlir::arith::RemSIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			    builder->create<mlir::arith::RemSIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
 			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 		} else {
 			auto mlirDivOp =
-			builder->create<mlir::arith::RemUIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
+			    builder->create<mlir::arith::RemUIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
 			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 		}
 	}

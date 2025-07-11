@@ -577,24 +577,18 @@ std::ostream& operator<<(std::ostream& os, const CodeBlock& block) {
 
 	// handle terminator
 	if (const auto* res = std::get_if<BranchOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "BR " << res->nextBlock << "\n";
+		os << "\t" << "BR " << res->nextBlock << "\n";
 	} else if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "CMP "
-		   << "r" << res->conditionalReg << " " << res->trueBlock << " " << res->falseBlock << "\n";
+		os << "\t" << "CMP " << "r" << res->conditionalReg << " " << res->trueBlock << " " << res->falseBlock << "\n";
 	} else if (const auto* res = std::get_if<ReturnOp>(&block.terminatorOp)) {
-		os << "\t"
-		   << "Return "
-		   << "r" << res->resultReg << "\n";
+		os << "\t" << "Return " << "r" << res->resultReg << "\n";
 	}
 	return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const OpCode& code) {
 	// auto str = std::string(code.op);
-	os << "str"
-	   << " r" << code.reg1;
+	os << "str" << " r" << code.reg1;
 	if (code.reg2 != -1) {
 		os << " r" << code.reg2;
 	}

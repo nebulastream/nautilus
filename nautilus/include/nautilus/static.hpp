@@ -151,6 +151,7 @@ public:
 	friend bool operator!=(const static_iterator& lhs, const static_iterator& rhs) {
 		return lhs.m_iterator != rhs.m_iterator;
 	}
+
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
