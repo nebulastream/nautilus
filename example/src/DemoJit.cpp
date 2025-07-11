@@ -1,6 +1,7 @@
+#include <cstdint>
+#include <iostream>
 #include <nautilus/Engine.hpp>
 #include <nautilus/core.hpp>
-#include <sstream>
 
 using namespace nautilus;
 
