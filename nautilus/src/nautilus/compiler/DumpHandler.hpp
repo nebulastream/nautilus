@@ -13,6 +13,7 @@ public:
 
 private:
 	[[nodiscard]] bool shouldDump(std::string_view dumpName) const;
+	[[nodiscard]] bool shallCreateFolder() const;
 	[[nodiscard]] bool dumpToConsole() const;
 	[[nodiscard]] bool dumpToFile() const;
 	const engine::Options& options;
