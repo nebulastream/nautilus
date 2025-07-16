@@ -30,6 +30,40 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_WARNINGS "-Wall -Wextra -pedantic-errors -Werror=extra-semi -Werror=extra -Werror=all -Werror=delete-non-virtual-dtor -Werror=deprecated -Werror=array-bounds -Werror=ignored-qualifiers -Werror=sign-compare")
 
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <typeinfo>
+#include <type_traits>
+
+template <typename T>
+concept is_compatible = std::is_same_v<T, int> || std::is_same_v<T, bool>;
+
+template <typename T>
+struct TypeResolver {};
+
+template <is_compatible T>
+struct TypeResolver<T> {
+	static constexpr int to_type() {
+		using type = std::remove_cvref_t<T>;
+		if constexpr (std::is_same_v<type, bool>) {
+			return 0;
+		} else {
+			static_assert(false);
+		}
+	}
+};
+
+
+int main() {
+	TypeResolver<bool>::to_type();
+}
+  " COMPILER_IS_SMART_WITH_CONSTEXPR)
+if (COMPILER_IS_SMART_WITH_CONSTEXPR)
+  add_compile_definitions(COMPILER_IS_SMART_WITH_CONSTEXPR)
+else()
+  message(WARNING "Compiler does not support compile-time checking of nautilus supported types. Checking at runtime.")
+endif()
+
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_WARNINGS "${CMAKE_CXX_WARNINGS} -Wpedantic-macros -Werror=integer-overflow -Werror=return-type -Werror=return-stack-address  -Werror=writable-strings")
 else ()

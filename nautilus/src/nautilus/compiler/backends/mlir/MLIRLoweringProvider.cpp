@@ -1,7 +1,9 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "fmt/format.h"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -755,7 +757,8 @@ void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLo
 		return;
 	}
 
-	throw NotImplementedException("Cast is not supported.");
+	throw NotImplementedException(
+	    fmt::format("Cast from {} to {} is not supported.", toString(inputStamp), toString(outputStamp)));
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::BinaryCompOperation* binaryCompOperation,
