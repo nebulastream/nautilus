@@ -336,6 +336,14 @@ val<LHS> neg(val<LHS>& val) {
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
 		return details::FUNC(std::forward<decltype(lhsV)>(lhsV), std::forward<RHS>(right));                            \
+	}                                                                                                                  \
+                                                                                                                       \
+	template <typename LHS, typename RHS>                                                                              \
+	    requires(is_##CATEGORY##_val<LHS> && !is_##CATEGORY##_val<RHS> &&                                              \
+	             !std::is_##CATEGORY##_v<std::remove_cvref_t<RHS>> && convertible_to_##CATEGORY##_val<RHS, LHS>)       \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
+		auto rV = static_cast<std::remove_cvref_t<LHS>>(right);                                                        \
+		return left OP rV;                                                                                             \
 	}
 
 DEFINE_BINARY_OPERATOR(+, add, fundamental)
