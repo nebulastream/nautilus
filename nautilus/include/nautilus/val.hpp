@@ -1,9 +1,9 @@
 #pragma once
 
-#include "nautilus/static.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_concepts.hpp"
-#include <iostream>
-#include <memory>
+#include <type_traits>
+#include <utility>
 
 #ifdef ENABLE_TRACING
 
