@@ -28,11 +28,11 @@ Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
 	$36 = $35 * $34 :ui64
 	$37 = $1 + $36 :ptr
 	store($29, $37) :void
-	$41 = 1 :i32
-	$42 = $4 cast_to i32 :i32
-	$43 = $42 + $41 :i32
-	$44 = $43 cast_to i8 :i8
-	br Block_3($44, $3, $1, $2) :void
+	$42 = 1 :i32
+	$43 = $4 cast_to i32 :i32
+	$44 = $43 + $42 :i32
+	$45 = $44 cast_to i8 :i8
+	br Block_3($45, $3, $1, $2) :void
 
 Block_2():
 	return :void
