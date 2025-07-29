@@ -1,7 +1,12 @@
 
 #pragma once
 
+#include "nautilus/static.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_concepts.hpp"
+#include <cstdint>
 #include <utility>
 
 namespace nautilus {
