@@ -38,7 +38,7 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) noexcept {
-		auto value = make_value<baseType>(other);
+		val<baseType> value {val<T> {other}};
 
 		// store value
 #ifdef ENABLE_TRACING
@@ -407,7 +407,7 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) noexcept {
-		auto value = make_value<baseType>(other);
+		val<baseType> value {other};
 
 		// store value
 #ifdef ENABLE_TRACING
