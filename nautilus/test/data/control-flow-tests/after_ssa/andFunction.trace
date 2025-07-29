@@ -2,14 +2,14 @@ B0($1:i32)
 	CONST	$2	true	:bool
 	CONST	$4	42	:i64
 	CAST	$5	$1	:i64
-	EQ	$6	$5	$4	:bool
-	AND	$7	$2	$6	:bool
-	CONST	$9	42	:i64
-	CAST	$10	$1	:i64
-	EQ	$11	$10	$9	:bool
-	AND	$12	$7	$11	:bool
-	CONST	$14	42	:i64
-	CAST	$15	$1	:i64
-	EQ	$16	$15	$14	:bool
-	AND	$17	$12	$16	:bool
-	RETURN	$0	$17	:bool
+	EQ	$7	$5	$4	:bool
+	AND	$8	$2	$7	:bool
+	CONST	$10	42	:i64
+	CAST	$11	$1	:i64
+	EQ	$13	$11	$10	:bool
+	AND	$14	$8	$13	:bool
+	CONST	$16	42	:i64
+	CAST	$17	$1	:i64
+	EQ	$19	$17	$16	:bool
+	AND	$20	$14	$19	:bool
+	RETURN	$0	$20	:bool

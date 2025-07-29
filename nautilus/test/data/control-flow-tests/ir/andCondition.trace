@@ -3,16 +3,16 @@ execute() {
 Block_0($1:i32, $2:i32):
 	$3 = 1 :i32
 	$4 = 8 :i32
-	$5 = $1 == $4 :bool
-	$6 = 1 :i32
-	$7 = $2 == $6 :bool
-	$8 = $5 and $7 :bool
-	if $8 ? Block_1($3) : Block_2($3) :void
+	$7 = $1 == $4 :bool
+	$8 = 1 :i32
+	$11 = $2 == $8 :bool
+	$12 = $7 and $11 :bool
+	if $12 ? Block_1($3) : Block_2($3) :void
 
 Block_1($3:i32):
-	$10 = 14 :i32
-	$11 = $3 + $10 :i32
-	br Block_3($11) :void
+	$14 = 14 :i32
+	$17 = $3 + $14 :i32
+	br Block_3($17) :void
 
 Block_3($3:i32):
 	return ($3) :i32

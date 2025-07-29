@@ -2,31 +2,31 @@ NautilusIr {
 execute() {
 Block_0($1:i32):
 	$2 = 5 :i32
-	$3 = $1 > $2 :bool
-	if $3 ? Block_1($1) : Block_2($1) :void
+	$5 = $1 > $2 :bool
+	if $5 ? Block_1($1) : Block_2($1) :void
 
 Block_1($1:i32):
-	$5 = 10 :i32
-	$6 = 0 :i32
-	br Block_5($1, $6, $5) :void
+	$7 = 10 :i32
+	$8 = 0 :i32
+	br Block_5($8, $1, $7) :void
 
-Block_5($1:i32, $6:i32, $5:i32):
-	$7 = $1 == $6 :bool
-	if $7 ? Block_3() : Block_4($5) :void
+Block_5($8:i32, $1:i32, $7:i32):
+	$11 = $1 == $8 :bool
+	if $11 ? Block_3() : Block_4($7) :void
 
 Block_3():
-	$9 = -1 :i32
-	br Block_6($9) :void
+	$13 = -1 :i32
+	br Block_6($13) :void
 
-Block_6($5:i32):
-	return ($5) :i32
+Block_6($7:i32):
+	return ($7) :i32
 
-Block_4($5:i32):
-	br Block_6($5) :void
+Block_4($7:i32):
+	br Block_6($7) :void
 
 Block_2($1:i32):
-	$11 = 5 :i32
-	$12 = 0 :i32
-	br Block_5($1, $12, $11) :void
+	$15 = 5 :i32
+	$16 = 0 :i32
+	br Block_5($16, $1, $15) :void
 }
 } //NESIR

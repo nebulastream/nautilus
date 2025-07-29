@@ -3,19 +3,19 @@ B0($1:i32)
 	CONST	$3	100	:i32
 	JMP	$0	B5($2,$1,$3)	:void
 B1($2:i32,$1:i32)
-	EQ	$6	$2	$1	:bool
-	CMP	$7	$6	B3($2)	B4($1,$2)	:void
+	EQ	$10	$2	$1	:bool
+	CMP	$11	$10	B3($2)	B4($1,$2)	:void
 B2($2:i32)
 	JMP	$0	B6($2)	:void
 B3($2:i32)
 	JMP	$0	B6($2)	:void
 B4($1:i32,$2:i32)
-	CONST	$10	10	:i32
-	ADD	$11	$2	$10	:i32
-	CONST	$12	100	:i32
-	JMP	$0	B5($11,$1,$12)	:void
+	CONST	$14	10	:i32
+	ADD	$17	$2	$14	:i32
+	CONST	$18	100	:i32
+	JMP	$0	B5($17,$1,$18)	:void
 B5($2:i32,$1:i32,$3:i32) ControlFlowMerge
-	LT	$4	$2	$3	:bool
-	CMP	$5	$4	B1($2,$1)	B2($2)	:void
+	LT	$6	$2	$3	:bool
+	CMP	$7	$6	B1($2,$1)	B2($2)	:void
 B6($2:i32)
 	RETURN	$0	$2	:i32
