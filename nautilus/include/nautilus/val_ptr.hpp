@@ -34,23 +34,17 @@ public:
 	val(val<ptrType> ptr) : ptr(ptr) {
 	}
 #endif
-
-	template <class T>
-	    requires std::is_convertible_v<T, baseType>
-	void operator=(T other) noexcept {
-		val<baseType> value {val<T> {other}};
-
-		// store value
+	operator val<baseType>() {
+		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceBinaryOp(tracing::STORE, Type::v, state, value.state);
-			return;
+			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
+			return val<baseType>(ref);
 		}
 #endif
 		auto rawPtr =
 		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
-		*rawPtr =
-		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
+		return val<baseType>(*rawPtr);
 	}
 
 	template <class T>
@@ -71,17 +65,11 @@ public:
 		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
-	operator val<baseType>() {
-		// load
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
-			return val<baseType>(ref);
-		}
-#endif
-		auto rawPtr =
-		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
-		return val<baseType>(*rawPtr);
+	template <class T>
+	    requires std::is_convertible_v<T, baseType>
+	void operator=(T other) noexcept {
+		val<baseType> value {val<T> {other}};
+		*this = value;
 	}
 
 private:
