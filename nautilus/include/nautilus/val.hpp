@@ -172,7 +172,7 @@ public:
 	val<bool>& operator=(const val<bool>& other) {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			tracing::traceAssignment(state, other.state, tracing::TypeResolver<bool>::to_type());
+			tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		}
 
@@ -444,7 +444,7 @@ namespace details {
 val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::OR, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
@@ -454,7 +454,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::AND, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
