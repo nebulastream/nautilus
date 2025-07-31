@@ -287,7 +287,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::EQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -313,7 +313,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -325,7 +325,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -337,7 +337,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -349,7 +349,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -361,7 +361,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::NEQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
