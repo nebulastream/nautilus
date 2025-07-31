@@ -15,8 +15,8 @@ Block_3():
 	return :void
 
 Block_2($1:ptr):
-	$15 = 42 :i32
-	store($15, $1) :void
+	$17 = 42 :i32
+	store($17, $1) :void
 	br Block_3() :void
 }
 } //NESIR
