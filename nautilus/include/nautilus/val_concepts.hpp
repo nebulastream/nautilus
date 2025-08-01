@@ -48,8 +48,16 @@ concept is_ptr = std::is_pointer_v<T>;
 template <typename T>
 concept is_arithmetic_ptr = is_ptr<T> && std::is_arithmetic_v<std::remove_pointer_t<T>>;
 
+
+template <typename T>
+concept is_ptr_ref = is_ptr<std::remove_reference_t<T>> && std::is_reference_v<T>;
+
+
 template <typename T>
 concept is_arithmetic_ref = std::is_arithmetic_v<std::remove_reference_t<T>> && std::is_reference_v<T>;
+
+template <typename T>
+concept is_nautilus_ref = is_ptr_ref<T> || is_arithmetic_ref<T>;
 
 template <typename T>
 concept is_void_ptr = is_ptr<T> && std::is_void_v<std::remove_pointer_t<T>>;

@@ -6,7 +6,7 @@
 
 namespace nautilus {
 
-template <is_arithmetic_ref ValueType>
+template <is_nautilus_ref ValueType>
 class val<ValueType> {
 public:
 	using baseType = std::remove_cvref_t<ValueType>;
@@ -140,7 +140,7 @@ public:
 	}
 
 	val<ValType&> operator*()
-	    requires is_arithmetic<ValType>
+	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 #ifdef ENABLE_TRACING
 		return val<ValType&>(*this, this->state);
@@ -151,7 +151,7 @@ public:
 
 	template <class T>
 	val<ValType&> operator[](T&& io)
-	    requires is_arithmetic<ValType>
+	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 		auto indexOffset = static_cast<val<int32_t>>(io);
 		auto valuePtr = (*this) + indexOffset;
