@@ -4,6 +4,7 @@ add_executable(nautilus-execution-tests
         ExecutionTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
+        DumpHelperTest.cpp
 )
 
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain)
@@ -13,6 +14,9 @@ endif ()
 target_include_directories(nautilus-execution-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
         $<INSTALL_INTERFACE:src/nautilus/>)
+target_include_directories(nautilus-execution-tests PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src/nautilus/compiler/>
+)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 

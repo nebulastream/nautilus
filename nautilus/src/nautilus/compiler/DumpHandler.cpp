@@ -5,22 +5,35 @@
 
 namespace nautilus::compiler {
 
-std::filesystem::path getRootPath(const engine::Options&, const nautilus::compiler::CompilationUnitID& id) {
+std::filesystem::path getRootPath(const engine::Options&, const nautilus::compiler::CompilationUnitID& id, const bool shallCreateFolder) {
 	auto path = std::filesystem::temp_directory_path() / "dump" / id;
-	if (!std::filesystem::exists(path)) {
+	if (shallCreateFolder and not std::filesystem::exists(path)) {
 		std::filesystem::create_directories(path);
 	}
 	return path;
 }
 
 DumpHandler::DumpHandler(const engine::Options& options, const nautilus::compiler::CompilationUnitID& id)
-    : options(options), id(id), rootPath(getRootPath(options, id)) {
+    : options(options), id(id), rootPath(getRootPath(options, id, shallCreateFolder())) {
+}
+
+bool DumpHandler::shallCreateFolder() const {
+	// We should only create a folder, if we dump to a file later on.
+	// This means that we must check if we generally dump something and dump something to a file
+	bool generallyDump = shouldDump("after_tracing");
+	generallyDump = generallyDump or shouldDump("after_ssa");
+	generallyDump = generallyDump or shouldDump("after_ir_creation");
+	generallyDump = generallyDump or shouldDump("after_mlir_generation");
+	generallyDump = generallyDump or shouldDump("after_llvm_generation");
+	generallyDump = generallyDump or shouldDump("after_cpp_generation");
+	generallyDump = generallyDump or shouldDump("after_bc_generation");
+	return generallyDump and dumpToFile();
 }
 
 void DumpHandler::dump(std::string_view dumpName, std::string_view extension,
                        const std::function<std::string()>& dumpFunction) const {
 	if (shouldDump(dumpName)) {
-		auto content = dumpFunction();
+		const auto content = dumpFunction();
 		forceDump(dumpName, extension, content);
 	}
 }
