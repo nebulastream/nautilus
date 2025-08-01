@@ -151,7 +151,7 @@ public:
 
 	template <class T>
 	val<ValType&> operator[](T&& io)
-	    requires is_arithmetic<ValType>
+	    requires is_arithmetic<ValType> || is_ptr<ValType>
 	{
 		auto indexOffset = static_cast<val<int32_t>>(io);
 		auto valuePtr = (*this) + indexOffset;
