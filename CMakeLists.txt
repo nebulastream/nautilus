@@ -9,6 +9,7 @@ option(ENABLE_COMPILER "Enables tracing and backend compilers" ON)
 option(USE_EXTERNAL_FMT "Use a externally provided version of fmt" OFF)
 option(USE_EXTERNAL_SPDLOG "Use a externally provided version of spdlog" OFF)
 option(USE_EXTERNAL_MLIR "Use a externally provided version of MLIR" OFF)
+option(USE_CCACHE_IF_AVAILABLE "Use ccache to speed up rebuilds" ON)
 cmake_dependent_option(ENABLE_TRACING "Enable the tracing" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "USE_PRE_BUILD_MLIR" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
@@ -25,7 +26,43 @@ project(nautilus VERSION 0.1)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_WARNINGS "-Wall -Wextra -pedantic-errors -Werror=extra-semi -Werror=extra -Werror=all -Werror=delete-non-virtual-dtor -Werror=deprecated -Werror=array-bounds -Werror=ignored-qualifiers -Werror=sign-compare")
+
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <typeinfo>
+#include <type_traits>
+
+template <typename T>
+concept is_compatible = std::is_same_v<T, int> || std::is_same_v<T, bool>;
+
+template <typename T>
+struct TypeResolver {};
+
+template <is_compatible T>
+struct TypeResolver<T> {
+	static constexpr int to_type() {
+		using type = std::remove_cvref_t<T>;
+		if constexpr (std::is_same_v<type, bool>) {
+			return 0;
+		} else {
+			static_assert(false);
+		}
+	}
+};
+
+
+int main() {
+	TypeResolver<bool>::to_type();
+}
+  " COMPILER_IS_SMART_WITH_CONSTEXPR)
+if (COMPILER_IS_SMART_WITH_CONSTEXPR)
+  add_compile_definitions(COMPILER_IS_SMART_WITH_CONSTEXPR)
+else()
+  message(WARNING "Compiler does not support compile-time checking of nautilus supported types. Checking at runtime.")
+endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_WARNINGS "${CMAKE_CXX_WARNINGS} -Wpedantic-macros -Werror=integer-overflow -Werror=return-type -Werror=return-stack-address  -Werror=writable-strings")
@@ -52,6 +89,11 @@ endif ()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_DEBUG} -O3")
 
+find_program(CCACHE_EXECUTABLE ccache)
+if (CCACHE_EXECUTABLE AND ${USE_CCACHE_IF_AVAILABLE})
+    message(STATUS "Using ccache: ${CCACHE_EXECUTABLE}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_EXECUTABLE}")
+endif ()
 
 include(cmake/macros.cmake)
 

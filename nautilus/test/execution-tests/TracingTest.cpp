@@ -8,13 +8,14 @@
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -52,29 +53,7 @@ std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
 }
 } // namespace details
 
-template <typename T>
-void writeTestFile(T* trace, std::string filePath) {
-	// Create an ofstream object for writing to a file
-	std::ofstream file(filePath);
-	// Check if the file is open
-	if (file.is_open()) {
-		// Write the string to the file
-		file << trace->toString();
-		// Close the file
-		file.close();
-	} else {
-		// Error message if the file couldn't be opened
-		std::cerr << "Unable to open file";
-	}
-}
-
-template <typename T>
-bool checkTestFile(T* trace, const std::string category, const std::string group, const std::string& name) {
-	if (trace == nullptr) {
-		std::cerr << "Trace pointer is null\n";
-		return false;
-	}
-
+bool checkTestFile(std::string actual, const std::string category, const std::string group, const std::string& name) {
 	auto groupDir = std::string(TEST_DATA_FOLDER) + category + "/" + group + "/";
 	if (!std::filesystem::exists(groupDir)) {
 		std::filesystem::create_directories(groupDir);
@@ -83,58 +62,32 @@ bool checkTestFile(T* trace, const std::string category, const std::string group
 	// Check if the file exists
 	std::string filePath = groupDir + name + ".trace";
 	if (!std::filesystem::exists(filePath)) {
-		std::cerr << "File does not exist: " << filePath << "\n";
-		writeTestFile(trace, filePath);
-		return true;
-	}
-
-	std::ifstream file(filePath);
-	std::stringstream targetString;
-	targetString << trace->toString();
-
-	if (!file.is_open()) {
-		std::cerr << "Unable to open file\n";
-		writeTestFile(trace, filePath);
+		std::cerr << "File does not exist: " << filePath << " Initializing with current trace. Please Rerun.\n";
+		std::ofstream file {filePath};
+		file << actual;
+		// fail here so that CI fails if testdata is missing.
 		return false;
 	}
 
-	std::string fileLine, stringLine;
-	bool differencesFound = false;
-	int lineNumber = 1;
-
-	while (true) {
-		auto& fileLineExists = std::getline(file, fileLine);
-		auto& stringLineExists = std::getline(targetString, stringLine);
-
-		if (!(bool) fileLineExists || !(bool) stringLineExists) {
-			// Handle case where lines are exhausted in either stream
-			if (fileLineExists) {
-				differencesFound = true;
-				std::cout << "Extra line in file at line " << lineNumber << ": " << fileLine << "\n";
-			}
-			if (stringLineExists) {
-				differencesFound = true;
-				std::cout << "Extra line in string at line " << lineNumber << ": " << stringLine << "\n";
-			}
-			break;
-		}
-
-		if (fileLine != stringLine) {
-			differencesFound = true;
-			std::cout << "Difference in line " << lineNumber << ":\n"
-			          << "File: " << fileLine << "\n"
-			          << "String: " << stringLine << "\n";
-		}
-		lineNumber++;
+	std::ifstream file(filePath);
+	if (!file.is_open()) {
+		std::cerr << "Unable to open file " << filePath << std::endl;
+		return false;
 	}
 
-	file.close();
+	std::stringstream expect;
+	expect << file.rdbuf();
 
-	if (differencesFound) {
-		std::cout << "Got Trace" << std::endl;
-		std::cout << trace->toString() << std::endl;
+	if (expect.str() == actual) {
+		return true;
 	}
-	return !differencesFound;
+
+	char tmpName[] = "/tmp/actual_trace_XXXXXX";
+	mkstemp(tmpName);
+	std::ofstream tmpfile {tmpName};
+	tmpfile << actual;
+	std::cout << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	return false;
 }
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
@@ -146,17 +99,17 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 		DYNAMIC_SECTION(name) {
 			auto executionTrace = tracing::TraceContext::trace(func);
 			DYNAMIC_SECTION("tracing") {
-				REQUIRE(checkTestFile(executionTrace.get(), category, "tracing", name));
+				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 			}
 			auto ssaCreationPhase = tracing::SSACreationPhase();
 			auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
 			DYNAMIC_SECTION("after_ssa") {
-				REQUIRE(checkTestFile<tracing::ExecutionTrace>(afterSSA.get(), category, "after_ssa", name));
+				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
 			}
 			DYNAMIC_SECTION("ir") {
 				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-				REQUIRE(checkTestFile<compiler::ir::IRGraph>(ir.get(), category, "ir", name));
+				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
 			}
 		}
 	}

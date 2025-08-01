@@ -19,7 +19,7 @@ class val<T> {
 public:
 	using underlying_type_t = std::underlying_type_t<T>;
 	using raw_type = underlying_type_t;
-	using basic_type = raw_type;
+	using basic_type = T;
 
 #ifdef ENABLE_TRACING
 	template <T>

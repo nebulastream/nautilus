@@ -1,9 +1,9 @@
 #pragma once
 
-#include "nautilus/static.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_concepts.hpp"
-#include <iostream>
-#include <memory>
+#include <type_traits>
+#include <utility>
 
 #ifdef ENABLE_TRACING
 
@@ -174,7 +174,7 @@ public:
 	val<bool>& operator=(const val<bool>& other) {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			tracing::traceAssignment(state, other.state, tracing::TypeResolver<bool>::to_type());
+			tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		}
 
@@ -312,58 +312,66 @@ val<LHS> neg(val<LHS>& val) {
 }
 } // namespace details
 
-#define DEFINE_BINARY_OPERATOR(OP, FUNC, CON_VAL, CON_VALUE)                                                           \
+#define DEFINE_BINARY_OPERATOR(OP, FUNC, CATEGORY)                                                                     \
 	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VAL<LHS> && CON_VAL<RHS>)                                                                         \
+	    requires(is_##CATEGORY##_val<LHS> && is_##CATEGORY##_val<RHS>)                                                 \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		return details::FUNC(std::move(left), std::move(right));                                                       \
 	}                                                                                                                  \
                                                                                                                        \
 	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VAL<LHS> && CON_VALUE<RHS>)                                                                       \
+	    requires(is_##CATEGORY##_val<LHS> && convertible_to_##CATEGORY<RHS>)                                           \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		auto&& rhsV = make_value(std::forward<RHS>(right));                                                            \
 		return details::FUNC(std::move(left), std::move(rhsV));                                                        \
 	}                                                                                                                  \
                                                                                                                        \
 	template <typename LHS, typename RHS>                                                                              \
-	    requires(CON_VALUE<LHS> && CON_VAL<RHS>)                                                                       \
+	    requires(convertible_to_##CATEGORY<LHS> && is_##CATEGORY##_val<RHS>)                                           \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		auto&& lhsV = make_value(std::forward<LHS>(left));                                                             \
 		return details::FUNC(std::move(lhsV), std::move(right));                                                       \
+	}                                                                                                                  \
+                                                                                                                       \
+	template <typename LHS, typename RHS>                                                                              \
+	    requires(is_##CATEGORY##_val<LHS> && !is_##CATEGORY##_val<RHS> &&                                              \
+	             !std::is_##CATEGORY##_v<std::remove_cvref_t<RHS>> && convertible_to_##CATEGORY##_val<RHS, LHS>)       \
+	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
+		auto rV = static_cast<std::remove_cvref_t<LHS>>(right);                                                        \
+		return left OP rV;                                                                                             \
 	}
 
-DEFINE_BINARY_OPERATOR(+, add, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(+, add, fundamental)
 
-DEFINE_BINARY_OPERATOR(-, sub, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(-, sub, fundamental)
 
-DEFINE_BINARY_OPERATOR(*, mul, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(*, mul, fundamental)
 
-DEFINE_BINARY_OPERATOR(/, div, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(/, div, fundamental)
 
-DEFINE_BINARY_OPERATOR(%, mod, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(%, mod, integral)
 
-DEFINE_BINARY_OPERATOR(==, eq, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(==, eq, fundamental)
 
-DEFINE_BINARY_OPERATOR(!=, neq, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(!=, neq, fundamental)
 
-DEFINE_BINARY_OPERATOR(>, gt, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(>, gt, fundamental)
 
-DEFINE_BINARY_OPERATOR(>=, gte, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(>=, gte, fundamental)
 
-DEFINE_BINARY_OPERATOR(<, lt, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(<, lt, fundamental)
 
-DEFINE_BINARY_OPERATOR(<=, lte, is_fundamental_val, convertible_to_fundamental)
+DEFINE_BINARY_OPERATOR(<=, lte, fundamental)
 
-DEFINE_BINARY_OPERATOR(>>, shr, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(>>, shr, integral)
 
-DEFINE_BINARY_OPERATOR(<<, shl, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(<<, shl, integral)
 
-DEFINE_BINARY_OPERATOR(|, bOr, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(|, bOr, integral)
 
-DEFINE_BINARY_OPERATOR(&, bAnd, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(&, bAnd, integral)
 
-DEFINE_BINARY_OPERATOR(^, bXOr, is_integral_val, is_integral)
+DEFINE_BINARY_OPERATOR(^, bXOr, integral)
 
 template <typename LHS>
 auto inline operator~(LHS left) {
@@ -439,7 +447,7 @@ namespace details {
 val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::OR, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif
@@ -449,7 +457,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
-		auto tc = tracing::traceBinaryOp(tracing::AND, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
 #endif

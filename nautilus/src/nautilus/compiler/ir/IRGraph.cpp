@@ -287,6 +287,6 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 	fmt::format_to(out, "NautilusIr {{\n");
 	auto& rootOp = graph.getRootOperation();
 	fmt::format_to(out, "{}", rootOp);
-	fmt::format_to(out, "}} //NESIR");
+	fmt::format_to(out, "}} //NESIR\n");
 	return out;
 }

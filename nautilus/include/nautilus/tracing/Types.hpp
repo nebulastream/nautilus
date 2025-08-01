@@ -2,7 +2,10 @@
 
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
+#include <cstdlib>
 #include <iosfwd>
+#include <iostream>
+#include <type_traits>
 #include <variant>
 
 namespace nautilus {
@@ -48,17 +51,21 @@ struct TypeResolver<T> {
 			return Type::i8;
 		} else if constexpr (std::is_same_v<type, int16_t>) {
 			return Type::i16;
-		} else if constexpr (std::is_same_v<type, int32_t>) {
+		} else if constexpr (std::is_same_v<type, int32_t> || std::is_same_v<type, wchar_t>) {
 			return Type::i32;
-		} else if constexpr (std::is_same_v<type, int64_t>) {
+		} else if constexpr (std::is_same_v<type, int64_t> || std::is_same_v<type, long> ||
+		                     std::is_same_v<type, long long>) {
+			static_assert(sizeof(type) == sizeof(int64_t));
 			return Type::i64;
 		} else if constexpr (std::is_same_v<type, uint8_t>) {
 			return Type::ui8;
-		} else if constexpr (std::is_same_v<type, uint16_t>) {
+		} else if constexpr (std::is_same_v<type, uint16_t> || std::is_same_v<type, char16_t>) {
 			return Type::ui16;
-		} else if constexpr (std::is_same_v<type, uint32_t>) {
+		} else if constexpr (std::is_same_v<type, uint32_t> || std::is_same_v<type, char32_t>) {
 			return Type::ui32;
-		} else if constexpr (std::is_same_v<type, uint64_t> || std::is_same_v<type, size_t>) {
+		} else if constexpr (std::is_same_v<type, uint64_t> || std::is_same_v<type, size_t> ||
+		                     std::is_same_v<type, unsigned long> || std::is_same_v<type, unsigned long long>) {
+			static_assert(sizeof(type) == sizeof(uint64_t));
 			return Type::ui64;
 		} else if constexpr (std::is_same_v<type, float>) {
 			return Type::f32;
@@ -66,8 +73,15 @@ struct TypeResolver<T> {
 			return Type::f64;
 		} else if constexpr (std::is_pointer_v<type>) {
 			return Type::ptr;
-		} else {
+		} else if constexpr (std::is_void_v<type>) {
 			return Type::v;
+		} else {
+#ifdef COMPILER_IS_SMART_WITH_CONSTEXPR
+			static_assert(false, "unhandled type!");
+#else
+			std::cout << "Error: unhandled type!" << std::endl;
+			std::abort();
+#endif
 		}
 	}
 };

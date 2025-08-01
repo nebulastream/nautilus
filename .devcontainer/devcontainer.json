@@ -4,7 +4,8 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "matepek.vscode-catch2-test-adapter"
+        "matepek.vscode-catch2-test-adapter",
+        "llvm-vs-code-extensions.vscode-clangd"
       ]
     }
   }

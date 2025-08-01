@@ -1,7 +1,12 @@
 
 #pragma once
 
+#include "nautilus/static.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_concepts.hpp"
+#include <cstdint>
 #include <utility>
 
 namespace nautilus {
@@ -33,7 +38,7 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) noexcept {
-		auto value = make_value<baseType>(other);
+		val<baseType> value {val<T> {other}};
 
 		// store value
 #ifdef ENABLE_TRACING
@@ -51,17 +56,19 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(val<T> other) noexcept {
+		val<baseType> value {other};
+
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, other.state);
+			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, value.state);
 			return;
 		}
 #endif
 		auto rawPtr =
 		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
 		*rawPtr =
-		    details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	operator val<baseType>() {
@@ -282,7 +289,7 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::EQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -308,7 +315,7 @@ template <typename ValueType>
 auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -320,7 +327,7 @@ template <typename ValueType>
 auto inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::LT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -332,7 +339,7 @@ template <typename ValueType>
 auto inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GT, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -344,7 +351,7 @@ template <typename ValueType>
 auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::GTE, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -356,7 +363,7 @@ template <typename ValueType>
 auto inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::NEQ, tracing::TypeResolver<bool>::to_type(), left.state, right.state);
+		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
 #endif
@@ -402,7 +409,7 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) noexcept {
-		auto value = make_value<baseType>(other);
+		val<baseType> value {other};
 
 		// store value
 #ifdef ENABLE_TRACING
@@ -419,16 +426,18 @@ public:
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(val<T> other) noexcept {
+		val<baseType> value {other};
+
 		// store value
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, other.state);
+			tracing::traceBinaryOp(tracing::STORE, Type::v, ptr.state, value.state);
 			return;
 		}
 #endif
 		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
 		*rawPtr =
-		    details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	operator val<baseType>() {

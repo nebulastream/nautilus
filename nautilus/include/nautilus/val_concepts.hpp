@@ -33,6 +33,10 @@ concept convertible_to_fundamental = !std::is_enum_v<T> && !is_fundamental_val<T
                                      (convertible_to_integral<T> || std::is_convertible_v<T, float> ||
                                       std::is_convertible_v<T, double> || std::is_convertible_v<T, bool>);
 
+template <typename T, typename ValT>
+concept convertible_to_fundamental_val =
+    is_fundamental_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;
+
 template <typename T>
 concept is_arithmetic = std::is_arithmetic_v<T>;
 
@@ -44,6 +48,9 @@ concept is_integral_val = requires {
 	typename std::remove_reference_t<T>::basic_type; // Ensure T has a member type 'basic_type'
 	requires std::is_integral_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is integral
 };
+
+template <typename T, typename ValT>
+concept convertible_to_integral_val = is_integral_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;
 
 template <typename T>
 concept is_ptr = std::is_pointer_v<T>;
