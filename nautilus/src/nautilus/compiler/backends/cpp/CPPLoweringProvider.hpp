@@ -97,7 +97,13 @@ private:
 			blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
 			frame.setValue(constValue->getIdentifier(), var);
 
-			blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue() << ";\n";
+			std::stringstream ss;
+			ss << constValue->getValue();
+			if (ss.str() == "(nil)") {
+				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")(nullptr);\n";
+			} else {
+				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue() << ";\n";
+			}
 		}
 
 		template <class Type>
