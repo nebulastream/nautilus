@@ -12,6 +12,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  format:
+    runs-on: ubuntu-24.04
+    name: Check format
+    steps:
+      - uses: actions/checkout@v4
+      - name: run format.sh
+        run: |
+          ./format.sh
   build-test:
     runs-on: ${{matrix.os}}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
