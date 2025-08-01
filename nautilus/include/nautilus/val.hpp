@@ -21,16 +21,17 @@ struct RawValueResolver {
 	}
 };
 
-
 #define COMMON_RETURN_TYPE                                                                                             \
 	typename std::common_type_t<typename std::remove_cvref_t<LHS>::basic_type,                                         \
 	                            typename std::remove_cvref_t<RHS>::basic_type>
 
-#define DEDUCT_RETURN_TYPE(OP) decltype(RawValueResolver<typename std::remove_cvref_t<decltype(left)>::raw_type>::getRawValue(left) OP RawValueResolver<typename std::remove_cvref_t<decltype(right)>::raw_type>::getRawValue(right))
+#define DEDUCT_RETURN_TYPE(OP)                                                                                         \
+	decltype(RawValueResolver<typename std::remove_cvref_t<decltype(left)>::raw_type>::getRawValue(left)               \
+	             OP RawValueResolver<typename std::remove_cvref_t<decltype(right)>::raw_type>::getRawValue(right))
 
 template <typename T>
 struct StateResolver {
-	template<typename U=T>
+	template <typename U = T>
 	static tracing::TypedValueRef getState(U&& value) {
 		return value.state;
 	}
@@ -258,11 +259,13 @@ namespace details {
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
 		if SHOULD_TRACE () {                                                                                           \
-			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),                          \
-			                                 details::StateResolver<decltype(lValue)>::getState(lValue), details::StateResolver<decltype(rValue)>::getState(rValue));                    \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),            \
+			                                 details::StateResolver<decltype(lValue)>::getState(lValue),               \
+			                                 details::StateResolver<decltype(rValue)>::getState(rValue));              \
 			return val<RES_TYPE>(tc);                                                                                  \
 		}                                                                                                              \
-		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(lValue) OP RawValueResolver<commonType>::getRawValue(rValue));                                              \
+		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(lValue)                                         \
+		                         OP RawValueResolver<commonType>::getRawValue(rValue));                                \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)

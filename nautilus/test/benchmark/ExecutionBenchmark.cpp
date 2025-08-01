@@ -83,8 +83,7 @@ TEST_CASE("Execution Benchmark") {
 			auto name = std::get<0>(test);
 
 			Catch::Benchmark::Benchmark("exec_" + backend + "_" + name)
-			    .
-			    operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
+			    .operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
 				    // force compilation for the MLIR backend.
 				    op.setOption("mlir.eager_compilation", true);

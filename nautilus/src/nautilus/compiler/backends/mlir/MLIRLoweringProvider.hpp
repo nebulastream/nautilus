@@ -146,7 +146,9 @@ private:
 	 * @param argTypes: Argument types of function.
 	 * @return FlatSymbolRefAttr: Reference to function used in CallOps.
 	 */
-	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr, const ::mlir::Type& resultType, const std::vector<::mlir::Type>& argTypes);
+	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr,
+	                                                 const ::mlir::Type& resultType,
+	                                                 const std::vector<::mlir::Type>& argTypes);
 
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.

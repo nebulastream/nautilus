@@ -13,7 +13,7 @@ public:
 
 	~BranchOperation() override = default;
 
-	const BasicBlockInvocation& getNextBlockInvocation()const;
+	const BasicBlockInvocation& getNextBlockInvocation() const;
 	BasicBlockInvocation& getNextBlockInvocation();
 
 	static bool classof(const Operation* Op);

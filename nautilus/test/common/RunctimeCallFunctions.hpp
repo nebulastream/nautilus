@@ -1,7 +1,7 @@
 #pragma once
 
-#include <nautilus/val_ptr.hpp>
 #include <nautilus/Engine.hpp>
+#include <nautilus/val_ptr.hpp>
 
 namespace nautilus {
 

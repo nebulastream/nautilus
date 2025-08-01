@@ -35,7 +35,8 @@ public:
 	 * @param trace
 	 * @return IR
 	 */
-	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id = "");
+	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace,
+	                                             const compiler::CompilationUnitID& id = "");
 
 private:
 	using ValueFrame = compiler::Frame<compiler::ir::OperationIdentifier, compiler::ir::Operation*>;
@@ -52,20 +53,25 @@ private:
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
 
-		void processOperation(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock*& currentIRBlock, TraceOperation& operation);
+		void processOperation(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock*& currentIRBlock,
+		                      TraceOperation& operation);
 
 		void processJMP(ValueFrame& frame, compiler::ir::BasicBlock* block, TraceOperation& operation);
 
-		void processCMP(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock* currentIRBlock, TraceOperation& operation);
+		void processCMP(ValueFrame& frame, Block& currentBlock, compiler::ir::BasicBlock* currentIRBlock,
+		                TraceOperation& operation);
 
-		void processLogicalComperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::CompareOperation::Comparator comp);
+		void processLogicalComperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
+		                              TraceOperation& operation, compiler::ir::CompareOperation::Comparator comp);
 
 		void processNegate(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 		void processNot(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void processShift(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::ShiftOperation::ShiftType type);
+		void processShift(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation,
+		                  compiler::ir::ShiftOperation::ShiftType type);
 
-		void processBinaryComp(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation, compiler::ir::BinaryCompOperation::Type type);
+		void processBinaryComp(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation,
+		                       compiler::ir::BinaryCompOperation::Type type);
 
 		void processLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
@@ -80,7 +86,8 @@ private:
 		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation, BlockRef val);
 
 		template <typename OpType>
-		void processBinaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processBinaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
+		                           TraceOperation& operation);
 		template <typename OpType>
 		void processUnaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 

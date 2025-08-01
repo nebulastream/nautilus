@@ -30,7 +30,6 @@ public:
 	 */
 	int getOperationArgIndex(Operation*);
 
-
 private:
 	BasicBlock* basicBlock;
 	std::vector<Operation*> operations;

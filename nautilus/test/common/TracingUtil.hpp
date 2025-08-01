@@ -28,4 +28,4 @@ template <typename R, typename... FunctionArguments>
 std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
 }
-}} // namespace nautilus::details
+}} // namespace nautilus::engine::details

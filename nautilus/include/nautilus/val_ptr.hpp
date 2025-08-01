@@ -42,8 +42,10 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
-		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
+		auto rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
+		*rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	template <class T>
@@ -56,8 +58,10 @@ public:
 			return;
 		}
 #endif
-		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
-		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
+		auto rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
+		*rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
 	}
 
 	operator val<baseType>() {
@@ -68,7 +72,8 @@ public:
 			return val<baseType>(ref);
 		}
 #endif
-		auto rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
+		auto rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(ptr);
 		return val<baseType>(*rawPtr);
 	}
 
@@ -231,7 +236,6 @@ public:
 #endif
 	}
 
-
 	operator bool() const {
 		return *this != static_cast<val<ValuePtrType>>(nullptr);
 	}
@@ -244,11 +248,15 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state, offsetBytes.state);
+		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state,
+		                                 offsetBytes.state);
 		return val<ValueType>(tc);
 	}
 #endif
-	auto newPtr = (ValueType) (((uint8_t*) left.value) + details::RawValueResolver<typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(offsetBytes));
+	auto newPtr =
+	    (ValueType) (((uint8_t*) left.value) +
+	                 details::RawValueResolver<
+	                     typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(offsetBytes));
 	return val<ValueType>(newPtr);
 }
 
@@ -404,7 +412,8 @@ public:
 		}
 #endif
 		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
-		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
+		*rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
 	}
 
 	template <class T>
@@ -418,7 +427,8 @@ public:
 		}
 #endif
 		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
-		*rawPtr = details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
+		*rawPtr =
+		    details::RawValueResolver<typename std::remove_cvref_t<decltype((other))>::raw_type>::getRawValue(other);
 	}
 
 	operator val<baseType>() {

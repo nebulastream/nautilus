@@ -19,7 +19,8 @@ public:
 	 * @brief Compiles ir graph to executable.
 	 * @return std::unique_ptr<Executable>
 	 */
-	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler, const engine::Options& options) const = 0;
+	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
+	                                            const engine::Options& options) const = 0;
 
 	virtual ~CompilationBackend();
 };
@@ -28,9 +29,11 @@ class CompilationBackendRegistry {
 public:
 	static const CompilationBackendRegistry* getInstance();
 	const CompilationBackend* getBackend(const std::string& name) const;
+
 private:
 	CompilationBackendRegistry();
-	std::map<std::string, std::unique_ptr<CompilationBackend>> items = std::map<std::string, std::unique_ptr<CompilationBackend>>();
+	std::map<std::string, std::unique_ptr<CompilationBackend>> items =
+	    std::map<std::string, std::unique_ptr<CompilationBackend>>();
 };
 
 } // namespace nautilus::compiler

@@ -60,7 +60,7 @@ private:
 
 		void process(ir::BasicBlockInvocation& opt, RegisterFrame& frame);
 
-		void process(const std::unique_ptr<ir::Operation>& operation,  RegisterFrame& frame);
+		void process(const std::unique_ptr<ir::Operation>& operation, RegisterFrame& frame);
 
 		void process(ir::IfOperation* opt, short block, RegisterFrame& frame);
 

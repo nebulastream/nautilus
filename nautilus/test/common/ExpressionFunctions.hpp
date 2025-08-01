@@ -95,7 +95,6 @@ val<int64_t> castInt8ToInt64AddExpression2(val<int8_t> x) {
 	return y + x;
 }
 
-
 val<int32_t> incrementPost(val<int32_t> x) {
 	auto y = x++;
 	return y + x;
@@ -207,9 +206,7 @@ val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
 
 val<int32_t> constructComplexReturnObject2(val<int32_t> a, val<int32_t> b) {
 	val<int32_t> t = 0;
-	{
-		t = constructComplexReturnObject(a, b);
-	}
+	{ t = constructComplexReturnObject(a, b); }
 	return t + 42;
 }
 

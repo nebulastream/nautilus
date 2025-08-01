@@ -24,6 +24,7 @@ public:
 	LLVMIROptimizer();  // Disable default constructor
 	~LLVMIROptimizer(); // Disable default destructor
 
-	static std::function<llvm::Error(llvm::Module*)> getLLVMOptimizerPipeline(const engine::Options& options, const DumpHandler& handler);
+	static std::function<llvm::Error(llvm::Module*)> getLLVMOptimizerPipeline(const engine::Options& options,
+	                                                                          const DumpHandler& handler);
 };
 } // namespace nautilus::compiler::mlir

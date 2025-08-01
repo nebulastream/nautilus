@@ -53,4 +53,4 @@ private:
 	mutable std::mutex fileMutex;
 };
 
-} // namespace nautilus::compiler::cpp
+} // namespace nautilus::common

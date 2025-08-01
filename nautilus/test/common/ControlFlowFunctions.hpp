@@ -295,7 +295,7 @@ val<int32_t> nestedIfElseDifferentLevels(val<int32_t> value) {
 }
 
 val<int32_t> multipleReturns(val<int32_t> value) {
-	if (value == 1){
+	if (value == 1) {
 		return 1;
 	} else if (value < 10) {
 		return 42;

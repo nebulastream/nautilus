@@ -1,10 +1,9 @@
 #pragma once
 
-#include <nautilus/val.hpp>
-#include <nautilus/val_ptr.hpp>
 #include <nautilus/Engine.hpp>
 #include <nautilus/std/cstring.h>
-
+#include <nautilus/val.hpp>
+#include <nautilus/val_ptr.hpp>
 
 namespace nautilus {
 
