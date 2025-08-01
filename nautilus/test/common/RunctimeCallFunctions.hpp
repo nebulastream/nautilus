@@ -80,6 +80,19 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 	return sum;
 }
 
+inline int32_t get42() {
+	return 42;
+}
+
+inline val<int32_t> loopDirectCall2(val<int32_t> x) {
+	val<int32_t> sum = 0;
+	val<int32_t> c = invoke(get42);
+	for (val<uint64_t> i = 0; i < c; i = i + 1) {
+		sum = invoke<>(add, sum, x);
+	}
+	return sum;
+}
+
 val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
 	invoke<>(voidFunc, x, y);
 	return x;
