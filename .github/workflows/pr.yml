@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build-test:
     runs-on: ${{matrix.os}}
-    name: Build on ${{ matrix.os }} with ${{ matrix.cc }} ${{ matrix.flags }}
+    name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -56,31 +56,27 @@ jobs:
             cc: 'clang-18'
             cxx: 'clang++-18'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
-
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
       - name: get cmake
         uses: lukka/get-cmake@latest
-      - name: ccache
+      - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.13
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}
       - name: cmake
         shell: bash
         run: |
-          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.flags }}  -G Ninja -S . -B .
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.flags }}  -G Ninja -S . -B build
       - name: build
         shell: bash
         run: |
-          cmake --build . --target all
+          cmake --build build --target all
       - name: test
         shell: bash
         run: |
-          ctest --test-dir nautilus --output-on-failure
-
-
+          ctest --test-dir build/nautilus --output-on-failure
