@@ -3,7 +3,7 @@ execute() {
 Block_0($1:f32):
 	$2 = 7 :f64
 	$3 = $1 cast_to f64 :f64
-	$4 = $3 + $2 :f64
-	return ($4) :f64
+	$5 = $3 + $2 :f64
+	return ($5) :f64
 }
 } //NESIR

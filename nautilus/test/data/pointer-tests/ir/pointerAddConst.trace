@@ -3,9 +3,9 @@ execute() {
 Block_0($1:ptr):
 	$3 = 2 :ui64
 	$5 = 4 :ui64
-	$6 = $3 * $5 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i32
-	return ($10) :i32
+	$8 = $3 * $5 :ui64
+	$9 = $1 + $8 :ptr
+	$12 = load($9) :i32
+	return ($12) :i32
 }
 } //NESIR
