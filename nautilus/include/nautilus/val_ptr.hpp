@@ -108,6 +108,28 @@ public:
 	BINARY_AND_ASSIGN_OPERATOR(&)
 	BINARY_AND_ASSIGN_OPERATOR(^)
 
+#define BINARY_COMPARISON_OPERATOR(OP)                                                                                 \
+	template <class T>                                                                                                 \
+	    requires std::is_convertible_v<T, baseType>                                                                    \
+	bool operator OP(T other) noexcept {                                                                               \
+		val<baseType> value {other};                                                                                   \
+		return *this OP value;                                                                                         \
+	}                                                                                                                  \
+                                                                                                                       \
+	template <class T>                                                                                                 \
+	    requires std::is_convertible_v<T, baseType>                                                                    \
+	bool operator OP(val<T> other) noexcept {                                                                          \
+		val<baseType> ourVal {*this};                                                                                  \
+		return ourVal OP other;                                                                                        \
+	}
+
+	BINARY_COMPARISON_OPERATOR(<)
+	BINARY_COMPARISON_OPERATOR(>)
+	BINARY_COMPARISON_OPERATOR(<=)
+	BINARY_COMPARISON_OPERATOR(>=)
+	BINARY_COMPARISON_OPERATOR(==)
+	BINARY_COMPARISON_OPERATOR(!=)
+
 private:
 	val<ptrType> ptr;
 	friend val<ptrType>;
