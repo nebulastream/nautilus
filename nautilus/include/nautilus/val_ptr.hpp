@@ -398,17 +398,7 @@ public:
 	    requires std::is_convertible_v<T, baseType>
 	void operator=(T other) noexcept {
 		val<baseType> value {other};
-
-		// store value
-#ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			tracing::traceBinaryOp(tracing::STORE, Type::v, state, value.state);
-			return;
-		}
-#endif
-		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
-		*rawPtr =
-		    details::RawValueResolver<typename std::remove_cvref_t<decltype((value))>::raw_type>::getRawValue(value);
+		*this = value;
 	}
 
 	template <class T>
