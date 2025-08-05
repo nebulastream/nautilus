@@ -30,6 +30,13 @@ if (ENABLE_MLIR_BACKEND)
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp
             JITCompiler.cpp
+            LLVMInliningUtils.cpp
     )
+
+    set_source_files_properties(
+            LLVMIROptimizer.cpp
+            PROPERTIES COMPILE_OPTIONS "-fno-rtti"
+    )
+
 endif ()
 

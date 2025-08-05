@@ -1,7 +1,10 @@
 #pragma once
 
-#include <nautilus/val_ptr.hpp>
+#include "nautilus/InlineFunctionRegistry.hpp"
+#include <cmath>
 #include <nautilus/Engine.hpp>
+#include <nautilus/val_ptr.hpp>
+#include <nautilus/inline.hpp>
 
 namespace nautilus {
 
@@ -31,7 +34,7 @@ public:
 
 namespace nautilus::engine {
 
-void voidFunc(int32_t x, int32_t y) {
+NAUT_INLINE void voidFunc(int32_t x, int32_t y) {
 	[[maybe_unused]] auto z = x + y;
 }
 
@@ -56,16 +59,51 @@ void multipleVoidReturnsFunction(val<int32_t*> x) {
 	*x = 42;
 }
 
-int32_t add(int32_t x, int32_t y) {
+NAUT_INLINE int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
 
-int32_t sub(int32_t x, int32_t y) {
+NAUT_INLINE int32_t sub(int32_t x, int32_t y) {
 	return x - y;
+}
+
+NAUT_INLINE int32_t addAndSub(int32_t x, int32_t y) {
+	return add(x,y) + sub(x,y);
+}
+
+NAUT_INLINE __attribute__((noinline)) double helper1(double val) {
+	return val * val + 3.14;
+}
+
+NAUT_INLINE __attribute__((noinline)) double helper2(double val) {
+	return std::cos(val) / (1.0 + std::abs(val));
+}
+
+NAUT_INLINE double complexCalc(int32_t a, int32_t b) {
+	double acc = 0.0;
+	std::vector<double> data;
+	data.reserve(a);
+	for (int32_t i = 0; i < a; i++) {
+		data.push_back(i);
+	}
+
+	for (auto &x : data) {
+		double temp = helper1(x) * b;
+		if (temp > 10.0)
+			acc += helper2(temp);
+		else
+			acc -= helper2(temp);
+	}
+
+	return std::exp(acc);
 }
 
 val<int32_t> simpleDirectCall(val<int32_t> x, val<int32_t> y) {
 	return invoke<>(add, x, y);
+}
+
+val<int32_t> directCallWithNestedCalls(val<int32_t> x, val<int32_t> y) {
+	return invoke<>(addAndSub, x, y);
 }
 
 val<int32_t> callTwoFunctions(val<int32_t> x, val<int32_t> y) {
@@ -78,6 +116,10 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 		sum = invoke<>(add, sum, x);
 	}
 	return sum;
+}
+
+val<int32_t> directCallComplexFunction(val<int32_t> x, val<int32_t> y) {
+	return invoke<>(complexCalc, x, y);
 }
 
 val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {

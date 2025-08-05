@@ -2,12 +2,12 @@
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
-#include <iostream>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/FileCollector.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
+#include "nautilus/compiler/backends/mlir/LLVMInliningUtils.h"
 
 namespace nautilus::compiler::mlir {
 
@@ -40,6 +40,15 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
 		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
 		llvm::SMDiagnostic Err;
+
+		// Apply function inlining
+		if (true || options.getOptionOrDefault("engine.Compilation", false)) { //TODO!!!
+			bool stopFlag = false;
+			int MAX_INLINE_RECURSION_DEPTH = 10; //TODO set this somewhere else
+			for (int i = 0; i < MAX_INLINE_RECURSION_DEPTH && !stopFlag; ++i) {
+				stopFlag = stopFlag || !inlineFunctionCalls(*llvmIRModule);
+			}
+		}
 
 		auto optPipeline =
 		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);

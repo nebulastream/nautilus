@@ -609,6 +609,19 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(0, 1) == 1);
 	}
 
+	SECTION("directCallWithNestedCalls") {
+		auto f = engine.registerFunction(directCallWithNestedCalls);
+		REQUIRE(f(10, 10) == 20);
+		REQUIRE(f(0, 1) == 0);
+	}
+
+	SECTION("directCallComplexFunction") {
+		auto f = engine.registerFunction(directCallComplexFunction);
+		REQUIRE(f(10, 10) == 0);
+		REQUIRE(f(100, 100) == 1);
+	}
+
+
 	SECTION("twoDistinctFunctionCalls") {
 		auto f = engine.registerFunction(callTwoFunctions);
 		REQUIRE(f(10, 10) == 20); // 10 + 10 + (10 - 10)
