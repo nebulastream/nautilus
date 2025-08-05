@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/JITCompiler.hpp"
+#include "nautilus/InlineFunctionRegistry.h"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
@@ -19,13 +20,6 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
 	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 
-	// Convert the module to LLVM IR in a new LLVM IR context.
-	llvm::LLVMContext llvmContext;
-	auto llvmModule = ::mlir::translateModuleToLLVMIR(mlirModule->getOperation(), llvmContext);
-	if (!llvmModule) {
-		llvm::errs() << "Failed to emit LLVM IR\n";
-	}
-
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
 	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
@@ -41,6 +35,11 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 			auto address = jitProxyFunctionTargetAddresses.at(i);
 			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address),
 			                                                      llvm::JITSymbolFlags::Exported};
+		}
+		for (const auto& [key, value] : *InlineFunctionRegistry::instance().getSymbolTable()) {
+			auto hexStr = std::format("0x{:X}", reinterpret_cast<uintptr_t>(value));
+			symbolMap[interner(hexStr)] = {llvm::orc::ExecutorAddr::fromPtr(value),
+																  llvm::JITSymbolFlags::Exported};
 		}
 		return symbolMap;
 	};
