@@ -6,6 +6,9 @@ add_executable(nautilus-execution-tests
         CastExecutionTest.cpp
 )
 
+nautilus_inline(nautilus-execution-tests)
+
+
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain)
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)

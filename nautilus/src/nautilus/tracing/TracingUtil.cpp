@@ -11,9 +11,9 @@ namespace nautilus::tracing {
 std::string getMangledName(void* fnptr) {
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
+	/*if (info.dli_sname != nullptr) {
 		return info.dli_sname;
-	}
+	} */
 	std::stringstream ss;
 	ss << fnptr;
 	return ss.str();
