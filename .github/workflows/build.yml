@@ -20,10 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: 'ubuntu-20.04'
-            cc: 'gcc-10'
-            cxx: 'g++-10'
-            flags: ''
           - os: 'ubuntu-22.04'
             cc: 'gcc-10'
             cxx: 'g++-10'
@@ -44,14 +40,18 @@ jobs:
             cc: 'gcc-12'
             cxx: 'g++-12'
             flags: ''
-          - os: 'macos-13'
-            cc: 'clang'
-            cxx: 'clang++'
-            flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'gcc-14'
+            cxx: 'g++-14'
+            flags: ''  
           - os: 'macos-14'
             cc: 'clang'
             cxx: 'clang++'
             flags: ''
+          - os: 'macos-15'
+            cc: 'clang'
+            cxx: 'clang++'
+            flags: ''  
 
     env:
       CC: ${{ matrix.cc }}
