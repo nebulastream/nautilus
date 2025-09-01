@@ -19,13 +19,6 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
 	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 
-	// Convert the module to LLVM IR in a new LLVM IR context.
-	llvm::LLVMContext llvmContext;
-	auto llvmModule = ::mlir::translateModuleToLLVMIR(mlirModule->getOperation(), llvmContext);
-	if (!llvmModule) {
-		llvm::errs() << "Failed to emit LLVM IR\n";
-	}
-
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
 	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
