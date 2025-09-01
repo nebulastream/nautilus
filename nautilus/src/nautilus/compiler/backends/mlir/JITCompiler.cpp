@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/JITCompiler.hpp"
+#include "nautilus/InlineFunctionRegistry.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
@@ -35,6 +36,11 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address),
 			                                                      llvm::JITSymbolFlags::Exported};
 		}
+		for (const auto& [key, value] : *InlineFunctionRegistry::instance().getSymbolTable()) {
+			auto hexStr = std::format("0x{:X}", reinterpret_cast<uintptr_t>(value));
+			symbolMap[interner(hexStr)] = {llvm::orc::ExecutorAddr::fromPtr(value),
+																  llvm::JITSymbolFlags::Exported};
+		} //TODO possible room for some optimization as it always adds *all* symbols from the symbol registry, regardless of whether they are used
 		return symbolMap;
 	};
 	auto& engine = maybeEngine.get();
