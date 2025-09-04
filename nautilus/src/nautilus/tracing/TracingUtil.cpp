@@ -12,7 +12,7 @@ std::string getMangledName(void* fnptr) {
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
 	/*if (info.dli_sname != nullptr) { //TODO this does not work with inlining so far
-		return info.dli_sname;
+	    return info.dli_sname;
 	} */
 	std::stringstream ss;
 	ss << fnptr;

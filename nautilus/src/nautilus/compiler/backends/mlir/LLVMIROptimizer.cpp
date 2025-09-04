@@ -2,12 +2,12 @@
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/backends/mlir/LLVMInliningUtils.h"
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/FileCollector.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
-#include "nautilus/compiler/backends/mlir/LLVMInliningUtils.h"
 
 namespace nautilus::compiler::mlir {
 
@@ -42,8 +42,8 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvm::SMDiagnostic Err;
 
 		// Apply llvm function inlining
-		if (options.getOptionOrDefault("engine.compilation", false)
-			&& options.getOptionOrDefault("engine.Inline", false)) {
+		if (options.getOptionOrDefault("engine.compilation", false) &&
+		    options.getOptionOrDefault("engine.Inline", false)) {
 			bool stopFlag = false;
 			int INLINE_MAX_RECURSION_DEPTH = options.getOptionOrDefault("engine.InlineMaxRecursionDepth", 10);
 			for (int i = 0; i < INLINE_MAX_RECURSION_DEPTH && !stopFlag; ++i) {

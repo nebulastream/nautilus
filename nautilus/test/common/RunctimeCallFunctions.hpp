@@ -3,7 +3,6 @@
 #include "nautilus/InlineFunctionRegistry.hpp"
 #include <cmath>
 #include <nautilus/Engine.hpp>
-#include <nautilus/val_ptr.hpp>
 #include <nautilus/inline.hpp>
 #include <nautilus/val_ptr.hpp>
 
@@ -69,7 +68,7 @@ NAUT_INLINE int32_t sub(int32_t x, int32_t y) {
 }
 
 NAUT_INLINE int32_t addAndSub(int32_t x, int32_t y) {
-	return add(x,y) + sub(x,y);
+	return add(x, y) + sub(x, y);
 }
 
 NAUT_INLINE __attribute__((noinline)) double helper1(double val) {
@@ -88,7 +87,7 @@ NAUT_INLINE double complexCalc(int32_t a, int32_t b) {
 		data.push_back(i);
 	}
 
-	for (auto &x : data) {
+	for (auto& x : data) {
 		double temp = helper1(x) * b;
 		if (temp > 10.0)
 			acc += helper2(temp);
