@@ -1,4 +1,4 @@
-find_package(LLVM 20.1.7 CONFIG)
+find_package(LLVM REQUIRED CONFIG)
 
 add_library(InliningPass SHARED FunctionInliningPass.cpp
         InliningUtils.cpp InliningUtils.h)
@@ -40,11 +40,22 @@ set_target_properties(InliningPass PROPERTIES
 )
 
 function(nautilus_inline target)
+    add_custom_target(InliningPassDependency
+            DEPENDS $<TARGET_FILE:InliningPass>
+    )
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        add_dependencies(${target} InliningPass)
-        target_compile_options(${target} PRIVATE
-                "-fpass-plugin=$<TARGET_FILE:InliningPass>"
-        )
+
+        # Check specifically for Clang 19/20; unfortunately the code of llvm passes seems to depend strongly on the compiler version
+        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "19.0.0" AND
+                CMAKE_CXX_COMPILER_VERSION VERSION_LESS "21")
+            add_dependencies(${target} InliningPassDependency)
+            target_compile_options(${target} PRIVATE
+                    "-fpass-plugin=$<TARGET_FILE:InliningPass>"
+            )
+        else ()
+            message(WARNING "Cannot apply inlining pass when not compiling with clang version 19/20")
+        endif ()
+
     else ()
         message(WARNING "Cannot apply inlining pass when not compiling with clang")
     endif ()

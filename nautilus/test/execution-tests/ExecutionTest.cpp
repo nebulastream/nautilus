@@ -621,7 +621,6 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(100, 100) == 1);
 	}
 
-
 	SECTION("twoDistinctFunctionCalls") {
 		auto f = engine.registerFunction(callTwoFunctions);
 		REQUIRE(f(10, 10) == 20); // 10 + 10 + (10 - 10)
