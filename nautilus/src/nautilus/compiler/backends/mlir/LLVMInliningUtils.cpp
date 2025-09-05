@@ -1,6 +1,6 @@
 #include "LLVMInliningUtils.h"
 #include "fmt/format.h"
-#include "nautilus/InlineFunctionRegistry.hpp"
+#include "nautilus/inline.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Linker/Linker.h"
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>

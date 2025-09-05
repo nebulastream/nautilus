@@ -16,8 +16,14 @@ does_clang_support_inline_pass(NAUTILUS_INLINE_SUPPORTED)
 if(NAUTILUS_INLINE_SUPPORTED)
     # Match llvm to the clang version
     find_package(LLVM ${CMAKE_CXX_COMPILER_VERSION} CONFIG REQUIRED)
-    add_library(InliningPass SHARED FunctionInliningPass.cpp
-            InliningUtils.cpp InliningUtils.h)
+    add_library(InliningPass SHARED FunctionInliningPass.cpp)
+
+    get_filename_component(ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
+    get_filename_component(ROOT_DIR "${ROOT_DIR}" DIRECTORY)
+
+    target_include_directories(InliningPass PUBLIC
+            $<BUILD_INTERFACE:${ROOT_DIR}/include>
+            $<INSTALL_INTERFACE:include/nautilus/>)
 
     target_include_directories(InliningPass PRIVATE ${LLVM_INCLUDE_DIRS})
     target_compile_definitions(InliningPass PRIVATE ${LLVM_DEFINITIONS})
@@ -25,16 +31,6 @@ if(NAUTILUS_INLINE_SUPPORTED)
             COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable;-Wno-extra-semi;-Wno-deprecated-copy-with-dtor"
             LINK_OPTIONS ""
     ) #override global compile and link flags for the pass
-
-    target_include_directories(InliningPass PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include/nautilus/>)
-    target_include_directories(InliningPass PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
-            $<INSTALL_INTERFACE:include/>)
-    target_include_directories(InliningPass PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-            $<INSTALL_INTERFACE:src/nautilus/>)
 
     target_link_libraries(InliningPass
             "$<$<PLATFORM_ID:Darwin>:-undefined dynamic_lookup>")
