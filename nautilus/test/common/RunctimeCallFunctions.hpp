@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nautilus/InlineFunctionRegistry.hpp"
+#include "nautilus/inline.hpp"
 #include <cmath>
 #include <nautilus/Engine.hpp>
 #include <nautilus/inline.hpp>

@@ -1,8 +1,8 @@
 
 #include "nautilus/compiler/backends/mlir/JITCompiler.hpp"
 #include "fmt/format.h"
-#include "nautilus/InlineFunctionRegistry.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/inline.hpp"
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>

@@ -1,13 +1,37 @@
+#pragma once
+
 #include "InliningUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include <memory>
+#include <string>
+#include <tuple>
+#include <vector>
 
-void cloneDependencyDeclarations(Function& inlineFunction, Module& wrapperModule, ValueToValueMapTy& v2vMap,
-                                 std::vector<SymbolInfo>& symbols) {
+using namespace llvm;
+
+struct SymbolInfo {
+	std::string name;
+	llvm::GlobalValue* ptr;
+};
+
+static std::tuple<std::string, std::vector<SymbolInfo>>
+serializeFunctionWithDependencySymbols(Function& inlineFunction);
+
+static void insertBitcodeRegistryCall(std::shared_ptr<IRBuilder<>> builder, Function* bitcodeRegistrationFunction,
+                                      Function& targetFunction, std::string& bitcodeStr);
+
+static void insertSymbolRegistryCalls(std::shared_ptr<IRBuilder<>> builder, Function* symbolRegistrationFunction,
+                                      std::vector<SymbolInfo>& symbols);
+
+static void cloneDependencyDeclarations(Function& inlineFunction, Module& wrapperModule, ValueToValueMapTy& v2vMap,
+                                        std::vector<SymbolInfo>& symbols) {
 	// iterate over all global variables used by the inline function
 	for (auto& BB : inlineFunction) {
 		for (auto& I : BB) {

@@ -1,4 +1,4 @@
-#include "nautilus/InlineFunctionRegistry.hpp"
+#include "nautilus/inline.hpp"
 
 InlineFunctionRegistry& InlineFunctionRegistry::instance() {
 	static InlineFunctionRegistry

@@ -1,4 +1,5 @@
-#include "InliningUtils.h"
+#pragma once
+#include "nautilus/llvm-passes/InliningUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Function.h"
@@ -7,23 +8,21 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
-#include <iostream>
 
 using namespace llvm;
 
-class NautilusInlineRegistrationPass : public llvm::PassInfoMixin<NautilusInlineRegistrationPass> {
+class NautilusInlineRegistrationPass : public PassInfoMixin<NautilusInlineRegistrationPass> {
 public:
-	llvm::PreservedAnalyses run(llvm::Module& M, llvm::ModuleAnalysisManager& MAM);
+	static inline PreservedAnalyses run(Module& M, ModuleAnalysisManager& MAM);
 };
 
-void annotationsToAttributes(Module& M);
-Function* findBitcodeRegistrationFunction(Module& M);
-Function* findSymbolRegistrationFunction(Module& M);
+static void annotationsToAttributes(Module& M);
+static Function* findBitcodeRegistrationFunction(Module& M);
+static Function* findSymbolRegistrationFunction(Module& M);
 
-PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAnalysisManager& MAM) {
+inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAnalysisManager& MAM) {
 	auto& ctx = M.getContext();
 
 	// Find registration functions
@@ -77,7 +76,7 @@ PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAnalysisM
 
 // Helper functions
 
-void annotationsToAttributes(Module& M) {
+inline void annotationsToAttributes(Module& M) {
 	auto global_annos = M.getNamedGlobal("llvm.global.annotations");
 	if (global_annos) {
 		if (auto* ca = dyn_cast<ConstantArray>(global_annos->getOperand(0))) {
@@ -113,11 +112,4 @@ Function* findSymbolRegistrationFunction(Module& M) {
 		}
 	}
 	return nullptr;
-}
-
-extern "C" LLVM_ATTRIBUTE_WEAK LLVM_ATTRIBUTE_VISIBILITY_DEFAULT PassPluginLibraryInfo llvmGetPassPluginInfo() {
-	return {LLVM_PLUGIN_API_VERSION, "NautilusInlineRegistrationPass", "0.0.1", [](PassBuilder& PB) {
-		        PB.registerPipelineStartEPCallback(
-		            [](ModulePassManager& MPM, auto) { MPM.addPass(NautilusInlineRegistrationPass {}); });
-	        }};
 }
