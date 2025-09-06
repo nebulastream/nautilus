@@ -9,7 +9,7 @@ namespace nautilus {
 
 // Tests if we only create a folder, if we need to
 TEST_CASE("DumpHelperFolderCreationNoDumpToFile") {
-	static const std::string folderName = "test123";
+	static const std::string folderName = "test_NoDumpToFile";
 	const auto path = std::filesystem::temp_directory_path() / "dump" / folderName;
 	if (std::filesystem::exists(path)) {
 		std::filesystem::remove_all(path);
@@ -25,14 +25,13 @@ TEST_CASE("DumpHelperFolderCreationNoDumpToFile") {
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
 
-	/// Check that there does not exist any folder test123 under temp_dir/dump
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == false);
 }
 
 // Tests if we only create a folder, if we need to
 TEST_CASE("DumpHelperFolderCreationNoDumpAll") {
-	static const std::string folderName = "test123";
+	static const std::string folderName = "test_NoDumpAll";
 	const auto path = std::filesystem::temp_directory_path() / "dump" / folderName;
 	if (std::filesystem::exists(path)) {
 		std::filesystem::remove_all(path);
@@ -48,14 +47,13 @@ TEST_CASE("DumpHelperFolderCreationNoDumpAll") {
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
 
-	/// Check that there does not exist any folder test123 under temp_dir/dump
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == false);
 }
 
 // Tests if we only create a folder, if we need to
 TEST_CASE("DumpHelperFolderCreationDumpAll") {
-	static const std::string folderName = "test123";
+	static const std::string folderName = "test_DumpAll";
 	const auto path = std::filesystem::temp_directory_path() / "dump" / folderName;
 	if (std::filesystem::exists(path)) {
 		std::filesystem::remove_all(path);
@@ -72,9 +70,9 @@ TEST_CASE("DumpHelperFolderCreationDumpAll") {
 	dumpHandler.dump("after_cpp_generation", "trace", []() { return "Some fancy text"; });
 	dumpHandler.dump("after_bc_generation", "trace", []() { return "Some fancy text"; });
 
-	/// Check that there does not exist any folder test123 under temp_dir/dump
 	const auto dumpFolderExists = std::filesystem::exists(path);
 	REQUIRE(dumpFolderExists == true);
+	std::filesystem::remove_all(path);
 }
 
 } // namespace nautilus
