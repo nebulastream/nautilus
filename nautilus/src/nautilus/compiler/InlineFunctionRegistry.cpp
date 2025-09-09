@@ -24,6 +24,11 @@ std::string InlineFunctionRegistry::getBitcode(void* fn) const {
 	return it != bitcodeRegistry_.end() ? it->second : std::string();
 }
 
+bool InlineFunctionRegistry::containsFunction(void* fn) const {
+	std::lock_guard<std::mutex> lock(mutex_);
+	return bitcodeRegistry_.contains(fn);
+}
+
 void* InlineFunctionRegistry::getSymbolAddress(std::string& symbolName) const {
 	std::lock_guard<std::mutex> lock(mutex_);
 	auto it = symbolRegistry_.find(symbolName);

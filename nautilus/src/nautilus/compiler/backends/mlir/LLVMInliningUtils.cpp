@@ -16,47 +16,50 @@ namespace nautilus::compiler::mlir {
 std::optional<std::unique_ptr<llvm::Module>> loadBitcodeIfAvailable(const llvm::Function& callee,
                                                                     llvm::LLVMContext& ctx) {
 	auto name = callee.getName();
+	void* fnPtr = nullptr;
 	if (name.starts_with("0x")) {
-		uint64_t addr;
+		uintptr_t addr;
 		if (!name.getAsInteger(0, addr)) {
-			// parse name of invoked function to ptr and look up
-			void* fnPtr = reinterpret_cast<void*>(addr);
-			auto bitcodeStr = InlineFunctionRegistry::instance().getBitcode(fnPtr);
-			if (bitcodeStr.size() == 0) {
-				return std::nullopt; // not found, cant inline
-			}
-
-			// deserialize bitcode module
-			auto buffer =
-			    llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcodeStr.data(), bitcodeStr.size()), "", false);
-			llvm::Expected<std::unique_ptr<llvm::Module>> moduleOrErr =
-			    llvm::parseBitcodeFile(buffer->getMemBufferRef(), ctx);
-			if (!moduleOrErr) {
-				logAllUnhandledErrors(moduleOrErr.takeError(), llvm::errs(), "Bitcode parse error: ");
-				return std::nullopt; // if deserialization fails, fall back to regular invocation
-			}
-
-			// rewrite names of function dependencies to runtime addresses for possible recursive inlining
-			for (auto& F : *moduleOrErr.get()) {
-				if (F.isDeclaration() && !F.isIntrinsic()) {
-					auto it = InlineFunctionRegistry::instance().getSymbolTable()->find(F.getName().str());
-					if (it != InlineFunctionRegistry::instance().getSymbolTable()->end()) {
-						// build string from ptr
-						auto hexStr = fmt::format("0x{:X}", reinterpret_cast<uintptr_t>(it->second));
-
-						auto* funcInModule = moduleOrErr.get()->getFunction(hexStr);
-						if (!funcInModule) {
-							F.setName(hexStr);
-						} else {
-							F.replaceAllUsesWith(funcInModule);
-						}
-					}
-				}
-			}
-			return std::optional(std::move(*moduleOrErr));
+			fnPtr = reinterpret_cast<void*>(addr);
 		}
 	}
-	return std::nullopt;
+
+	if (fnPtr == nullptr) { // not a valid address
+		return std::nullopt;
+	}
+
+	// parse name of invoked function to ptr and look up
+	auto bitcodeStr = InlineFunctionRegistry::instance().getBitcode(fnPtr);
+	if (bitcodeStr.empty()) {
+		return std::nullopt; // not found, cant inline
+	}
+
+	// deserialize bitcode module
+	auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcodeStr.data(), bitcodeStr.size()), "", false);
+	llvm::Expected<std::unique_ptr<llvm::Module>> moduleOrErr = llvm::parseBitcodeFile(buffer->getMemBufferRef(), ctx);
+	if (!moduleOrErr) {
+		logAllUnhandledErrors(moduleOrErr.takeError(), llvm::errs(), "Bitcode parse error: ");
+		return std::nullopt; // if deserialization fails, fall back to regular invocation
+	}
+
+	// rewrite names of function dependencies to runtime addresses for possible recursive inlining
+	for (auto& F : *moduleOrErr.get()) {
+		if (F.isDeclaration() && !F.isIntrinsic()) {
+			auto it = InlineFunctionRegistry::instance().getSymbolTable()->find(F.getName().str());
+			if (it != InlineFunctionRegistry::instance().getSymbolTable()->end()) {
+				// build string from ptr
+				auto hexStr = fmt::format("0x{:X}", reinterpret_cast<uintptr_t>(it->second));
+
+				auto* funcInModule = moduleOrErr.get()->getFunction(hexStr);
+				if (!funcInModule) {
+					F.setName(hexStr);
+				} else {
+					F.replaceAllUsesWith(funcInModule);
+				}
+			}
+		}
+	}
+	return std::optional(std::move(*moduleOrErr));
 }
 
 bool inlineFunctionCalls(llvm::Module& M) {
