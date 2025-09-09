@@ -15,6 +15,7 @@ public:
 	int addSymbol(std::string& symbolName, void* ptr);
 
 	std::string getBitcode(void* fn) const;
+	bool containsFunction(void* fn) const;
 	void* getSymbolAddress(std::string& symbolName) const;
 
 	std::unordered_map<std::string, void*>* getSymbolTable();
