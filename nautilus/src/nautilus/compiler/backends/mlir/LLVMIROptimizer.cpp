@@ -42,7 +42,8 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvm::SMDiagnostic Err;
 
 		// Apply llvm function inlining
-		if (options.getOptionOrDefault("engine.compilation", false) &&
+		if ((options.getOptionOrDefault("engine.compilation", false) ||
+		     options.getOptionOrDefault("engine.Compilation", false)) &&
 		    options.getOptionOrDefault("engine.Inline", false)) {
 			bool stopFlag = false;
 			int INLINE_MAX_RECURSION_DEPTH = options.getOptionOrDefault("engine.InlineMaxRecursionDepth", 10);
