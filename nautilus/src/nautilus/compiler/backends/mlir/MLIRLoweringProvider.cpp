@@ -2,6 +2,7 @@
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/inline.hpp"
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -194,20 +195,29 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 	builder->restoreInsertionPoint(*globalInsertPoint);
 	// Create function in global scope. Return reference.
-	builder->create<mlir::LLVM::LLVMFuncOp>(theModule.getLoc(), name, llvmFnType, mlir::LLVM::Linkage::External, false);
+	std::string functionName = name;
+	if (options->getOptionOrDefault("engine.Inline", false) &&
+	    InlineFunctionRegistry::instance().containsFunction(functionPtr)) {
+		std::stringstream ss;
+		ss << functionPtr;
+		functionName = ss.str();
+	}
+	builder->create<mlir::LLVM::LLVMFuncOp>(theModule.getLoc(), functionName, llvmFnType, mlir::LLVM::Linkage::External,
+	                                        false);
 
-	jitProxyFunctionSymbols.push_back(name);
+	jitProxyFunctionSymbols.push_back(functionName);
 	if (functionPtr == nullptr) {
-		functionPtr = ProxyFunctions.getProxyFunctionAddress(name);
+		functionPtr = ProxyFunctions.getProxyFunctionAddress(functionName);
 	}
 	jitProxyFunctionTargetAddresses.push_back(functionPtr);
-	return mlir::SymbolRefAttr::get(context, name);
+	return mlir::SymbolRefAttr::get(context, functionName);
 }
 
 //==---------------------------------==//
 //==-- MAIN WORK - Generating MLIR --==//
 //==---------------------------------==//
-MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context(&context) {
+MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const engine::Options& options)
+    : context(&context), options(&options) {
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
@@ -539,12 +549,23 @@ void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFram
 
 void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
 	mlir::FlatSymbolRefAttr functionRef;
-	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(proxyCallOp->getFunctionSymbol())) {
-		functionRef = mlir::SymbolRefAttr::get(context, proxyCallOp->getFunctionSymbol());
+
+	// to pass function pointers down to the inlining phase while preserving clear names in the IR output, the final
+	// function name is decided here
+	std::string functionName = proxyCallOp->getFunctionSymbol();
+	if (options->getOptionOrDefault("engine.Inline", false) &&
+	    InlineFunctionRegistry::instance().containsFunction(proxyCallOp->getFunctionPtr())) {
+		std::stringstream ss;
+		ss << proxyCallOp->getFunctionPtr();
+		functionName = ss.str();
+	}
+
+	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(functionName)) {
+		functionRef = mlir::SymbolRefAttr::get(context, functionName);
 	} else {
 		functionRef =
-		    insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(),
-		                           getMLIRType(proxyCallOp->getStamp()), getMLIRType(proxyCallOp->getInputArguments()));
+		    insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
+		                           getMLIRType(proxyCallOp->getInputArguments()));
 	}
 
 	std::vector<mlir::Value> functionArgs;
