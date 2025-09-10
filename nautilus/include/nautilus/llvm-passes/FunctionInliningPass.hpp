@@ -8,6 +8,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
@@ -48,21 +49,36 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 				}
 			}
 			if (toInline) {
-				// Create initializer function with single basic block
-				// This will be executed when the program starts
-				if (!ctor) {
-					ctor = Function::Create(FunctionType::get(Type::getVoidTy(ctx), false),
-					                        GlobalValue::InternalLinkage, M.getName() + ".ir_ctor", &M);
-					auto* BB = BasicBlock::Create(ctx, "entry", ctor);
-					ctorBuilder = std::make_shared<IRBuilder<>>(BB);
+
+				// catch errors so that non-inlinable functions dont completely break compilation
+				CrashRecoveryContext CRC;
+				bool success = CRC.RunSafely([&] {
+					// Serialize function to LLVM IR bitcode
+					auto result = serializeFunctionWithDependencySymbols(F);
+					if (!result.has_value()) {
+						return;
+					}
+
+					// Create initializer function with single basic block
+					// This will be executed when the program starts
+					if (!ctor) {
+						ctor = Function::Create(FunctionType::get(Type::getVoidTy(ctx), false),
+						                        GlobalValue::InternalLinkage, M.getName() + ".ir_ctor", &M);
+						auto* BB = BasicBlock::Create(ctx, "entry", ctor);
+						ctorBuilder = std::make_shared<IRBuilder<>>(BB);
+					}
+
+					// Insert registry calls into the initializer function to populate them at runtime
+					insertBitcodeRegistryCall(ctorBuilder, bitcodeRegistrationFunction, F, std::get<0>(*result));
+					insertSymbolRegistryCalls(ctorBuilder, symbolRegistrationFunction, std::get<1>(*result));
+
+					success = true;
+				});
+				if (!success) {
+					errs() << "Failed to serialize inline function. To get rid of this warning, remove the NAUT_INLINE "
+					          "tag from this function: "
+					       << F.getName() << "\n";
 				}
-
-				// Serialize function to LLVM IR bitcode
-				auto result = serializeFunctionWithDependencySymbols(F);
-
-				// Insert registry calls into the initializer function to populate them at runtime
-				insertBitcodeRegistryCall(ctorBuilder, bitcodeRegistrationFunction, F, std::get<0>(result));
-				insertSymbolRegistryCalls(ctorBuilder, symbolRegistrationFunction, std::get<1>(result));
 			}
 		}
 	}

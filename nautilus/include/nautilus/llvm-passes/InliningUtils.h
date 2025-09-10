@@ -21,7 +21,7 @@ struct SymbolInfo {
 	llvm::GlobalValue* ptr;
 };
 
-static std::tuple<std::string, std::vector<SymbolInfo>>
+static std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
 serializeFunctionWithDependencySymbols(Function& inlineFunction);
 
 static void insertBitcodeRegistryCall(std::shared_ptr<IRBuilder<>> builder, Function* bitcodeRegistrationFunction,
@@ -85,7 +85,8 @@ static void cloneDependencyDeclarations(Function& inlineFunction, Module& wrappe
 	}
 }
 
-std::tuple<std::string, std::vector<SymbolInfo>> serializeFunctionWithDependencySymbols(Function& inlineFunction) {
+std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
+serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 	std::vector<SymbolInfo> symbols;
 
 	// Create module holding the extracted function and its dependencies
@@ -134,10 +135,10 @@ std::tuple<std::string, std::vector<SymbolInfo>> serializeFunctionWithDependency
 	// will automatically print the precise reasons if the verification fails, which is key for debugging functions that
 	// cant be inlined yet)
 	if (verifyModule(wrapperModule, &errs())) {
-		errs() << "LLVM module verification failed.\n";
-		report_fatal_error("Verification of cloned inline function failed. Possibly due to use of global variables, "
-		                   "aliases, inline asm, etc. Tried to inline function: " +
-		                   inlineFunction.getName());
+		errs() << "\n Failed to serialize inline function (IR verification failed; possibly due to use of global "
+		          "variables). To get rid of this warning, remove the NAUT_INLINE tag from this function: "
+		       << inlineFunction.getName() << "\n";
+		return std::nullopt;
 	}
 
 	// serialize wrapperModule to bitcode string
@@ -145,7 +146,7 @@ std::tuple<std::string, std::vector<SymbolInfo>> serializeFunctionWithDependency
 	raw_svector_ostream OS(buffer);
 	WriteBitcodeToFile(wrapperModule, OS);
 	std::string bitcodeStr(buffer.begin(), buffer.end());
-	return std::make_tuple(std::move(bitcodeStr), std::move(symbols));
+	return std::make_optional(std::make_tuple(std::move(bitcodeStr), std::move(symbols)));
 }
 
 void insertBitcodeRegistryCall(std::shared_ptr<IRBuilder<>> builder, Function* bitcodeRegistrationFunction,
