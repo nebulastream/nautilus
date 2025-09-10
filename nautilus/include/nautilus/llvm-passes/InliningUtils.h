@@ -1,12 +1,17 @@
 #pragma once
 
-#include "InliningUtils.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <memory>
@@ -30,56 +35,111 @@ static void insertBitcodeRegistryCall(std::shared_ptr<IRBuilder<>> builder, Func
 static void insertSymbolRegistryCalls(std::shared_ptr<IRBuilder<>> builder, Function* symbolRegistrationFunction,
                                       std::vector<SymbolInfo>& symbols);
 
-static void cloneDependencyDeclarations(Function& inlineFunction, Module& wrapperModule, ValueToValueMapTy& v2vMap,
+static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
+                         ValueToValueMapTy& v2vMap, std::vector<SymbolInfo>& symbols, Function& inlineFunction) {
+	if (!V || clonedSet.contains(V))
+		return;
+
+	clonedSet.insert(V);
+
+	// handle global values (functions, variables, ...)
+	if (auto* GV = dyn_cast<GlobalValue>(V)) {
+		if (GV == &inlineFunction)
+			return;
+
+		if (auto* F = dyn_cast<Function>(GV)) {
+			// Clone function declarations
+			if (!F->isIntrinsic()) {
+				auto* decl = Function::Create(F->getFunctionType(), GlobalValue::ExternalLinkage, F->getAddressSpace(),
+				                              inlineFunction.getName() + "." + F->getName(), &wrapperModule);
+				decl->copyAttributesFrom(F);
+				if (decl->hasPersonalityFn())
+					decl->setPersonalityFn(nullptr);
+				v2vMap[F] = decl;
+
+				symbols.push_back({decl->getName().str(), const_cast<GlobalValue*>(GV)});
+			} else {
+				// intrinsics require special care
+				auto* existing = wrapperModule.getFunction(F->getName());
+				if (!existing) {
+					auto* decl = Function::Create(F->getFunctionType(), F->getLinkage(), F->getAddressSpace(),
+					                              F->getName(), &wrapperModule);
+					decl->copyAttributesFrom(F);
+					v2vMap[F] = decl;
+				} else {
+					v2vMap[F] = existing;
+				}
+			}
+		} else if (auto* GVVar = dyn_cast<GlobalVariable>(GV)) {
+			// only works for constant variables so far; other variables would have to be linked at runtime
+			if (GVVar->hasInitializer() && GVVar->isConstant()) {
+				for (unsigned i = 0; i < GVVar->getInitializer()->getNumOperands(); ++i) {
+					cloneOperand(GVVar->getInitializer()->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols,
+					             inlineFunction);
+				}
+
+				auto* init = cast<Constant>(MapValue(GVVar->getInitializer(), v2vMap));
+
+				auto* newGV = new GlobalVariable(wrapperModule, GVVar->getValueType(), true, GVVar->getLinkage(), init,
+				                                 GVVar->getName(), nullptr, GVVar->getThreadLocalMode(),
+				                                 GVVar->getAddressSpace());
+				newGV->setUnnamedAddr(GVVar->getUnnamedAddr());
+				newGV->setAlignment(GVVar->getAlign());
+				v2vMap[GVVar] = newGV;
+			}
+		}
+	} else if (auto* C = dyn_cast<Constant>(V)) {
+		// process operands
+		for (unsigned i = 0; i < C->getNumOperands(); ++i) {
+			cloneOperand(C->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols, inlineFunction);
+		}
+
+		SmallVector<Constant*, 4> newOperands;
+		for (unsigned i = 0; i < C->getNumOperands(); ++i) {
+			auto* oldOp = C->getOperand(i);
+			auto* newOp = dyn_cast<Constant>(v2vMap.lookup(oldOp));
+			newOperands.push_back(newOp);
+		}
+
+		// build new constant
+		Constant* newC = nullptr;
+		if (auto* CS = dyn_cast<ConstantStruct>(C)) {
+			newC = ConstantStruct::get(CS->getType(), ArrayRef<Constant*>(newOperands));
+		} else if (auto* CA = dyn_cast<ConstantArray>(C)) {
+			newC = ConstantArray::get(CA->getType(), ArrayRef<Constant*>(newOperands));
+		} else if (dyn_cast<ConstantVector>(C)) {
+			newC = ConstantVector::get(ArrayRef<Constant*>(newOperands));
+		} else if (auto* CDA = dyn_cast<ConstantDataArray>(C)) {
+			newC = ConstantArray::get(cast<ArrayType>(CDA->getType()), ArrayRef<Constant*>(newOperands));
+		} else if (auto* CI = dyn_cast<ConstantInt>(C)) {
+			newC = ConstantInt::get(CI->getContext(), CI->getValue());
+		} else if (auto* CFP = dyn_cast<ConstantFP>(C)) {
+			newC = ConstantFP::get(CFP->getType(), CFP->getValueAPF());
+		} else if (auto* CPN = dyn_cast<ConstantPointerNull>(C)) {
+			newC = ConstantPointerNull::get(CPN->getType());
+		} else if (auto* CU = dyn_cast<UndefValue>(C)) {
+			newC = UndefValue::get(CU->getType());
+		} else {
+			// tough luck
+			//llvm::errs() << C << "\n";
+			errs() << "Unknown constant case found during function inlining. This may or may not be a problem. If in "
+			          "doubt, remove the NAUT_INLINE tag from function: "
+			       << inlineFunction.getName() << "\n";
+		}
+		if (newC != nullptr) {
+			v2vMap[V] = newC;
+		}
+	}
+}
+
+static void cloneValuesAndCollectDependencySymbols(Function& inlineFunction, Module& wrapperModule, ValueToValueMapTy& v2vMap,
                                         std::vector<SymbolInfo>& symbols) {
-	// iterate over all global variables used by the inline function
+	std::unordered_set<Value*> clonedSet;
+
 	for (auto& BB : inlineFunction) {
 		for (auto& I : BB) {
 			for (Value* V : I.operands()) {
-				if (auto* GV = dyn_cast<GlobalValue>(V)) {
-					if (GV == &inlineFunction)
-						continue;
-					if (v2vMap.find(GV) != v2vMap.end()) { // if not yet seen
-						if (auto* dependencyFunction = dyn_cast<Function>(GV)) {
-							if (!dependencyFunction->isIntrinsic()) {
-								// clone function declaration to the wrapper module
-								auto* decl = Function::Create(
-								    dependencyFunction->getFunctionType(), GlobalValue::ExternalLinkage,
-								    dependencyFunction->getAddressSpace(),
-								    inlineFunction.getName() + "." + dependencyFunction->getName(), &wrapperModule);
-								v2vMap[dependencyFunction] = decl;
-								symbols.push_back({decl->getName().str(), const_cast<GlobalValue*>(GV)});
-							} else { // intrinsics require special handling to avoid some LLVM errors
-								auto* existingIntrinsic = wrapperModule.getFunction(dependencyFunction->getName());
-								if (!existingIntrinsic) {
-									auto* decl = Function::Create(dependencyFunction->getFunctionType(),
-									                              dependencyFunction->getLinkage(),
-									                              dependencyFunction->getAddressSpace(),
-									                              dependencyFunction->getName(), &wrapperModule);
-									decl->copyAttributesFrom(dependencyFunction);
-									v2vMap[dependencyFunction] = decl;
-								} else {
-									v2vMap[dependencyFunction] = existingIntrinsic;
-								}
-							}
-						} else if (const auto* dependencyVariable = dyn_cast<GlobalVariable>(GV)) {
-							// also clone global constants, which is required for e.g. some exception handling
-							if (dependencyVariable->hasInitializer() && dependencyVariable->isConstant()) {
-								auto* init = const_cast<Constant*>(dependencyVariable->getInitializer());
-
-								auto* newGV = new GlobalVariable(
-								    wrapperModule, dependencyVariable->getValueType(), true,
-								    dependencyVariable->getLinkage(), init, dependencyVariable->getName(), nullptr,
-								    dependencyVariable->getThreadLocalMode(), dependencyVariable->getAddressSpace());
-								newGV->setUnnamedAddr(dependencyVariable->getUnnamedAddr());
-								newGV->setAlignment(dependencyVariable->getAlign());
-								v2vMap[dependencyVariable] = newGV;
-							}
-						} else {
-							// TODO: may add handling for other global value types, e.g. non const global variables
-						}
-					}
-				}
+				cloneOperand(V, clonedSet, wrapperModule, v2vMap, symbols, inlineFunction);
 			}
 		}
 	}
@@ -88,7 +148,6 @@ static void cloneDependencyDeclarations(Function& inlineFunction, Module& wrappe
 std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
 serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 	std::vector<SymbolInfo> symbols;
-
 	// Create module holding the extracted function and its dependencies
 	Module wrapperModule = Module("func_module", inlineFunction.getContext());
 
@@ -102,20 +161,19 @@ serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 	SmallVector<ReturnInst*, 8> returnInst;
 	CloneFunctionInto(clonedFunc, &inlineFunction, v2vMap, CloneFunctionChangeType::DifferentModule, returnInst);
 	clonedFunc->addFnAttr("is_target");
-	clonedFunc->setLinkage(GlobalValue::ExternalLinkage),
+	clonedFunc->setLinkage(GlobalValue::ExternalLinkage);
 
-	    // Clone declarations of all dependencies and store in symbol vector
-	    cloneDependencyDeclarations(inlineFunction, wrapperModule, v2vMap, symbols);
+	// Clone declarations of all dependencies and store in symbol vector
+	cloneValuesAndCollectDependencySymbols(inlineFunction, wrapperModule, v2vMap, symbols);
 
 	// clone personality function of the inline function if it exists (otherwise some functions cant be properly
 	// inlined)
 	if (inlineFunction.hasPersonalityFn()) {
 		Constant* srcPersonalityConst = inlineFunction.getPersonalityFn();
 		if (auto* srcPersonality = dyn_cast<Function>(srcPersonalityConst)) {
-
 			auto* clonedPersonality = Function::Create(srcPersonality->getFunctionType(), srcPersonality->getLinkage(),
 			                                           srcPersonality->getName(), &wrapperModule);
-			for (auto originalIt = srcPersonality->arg_begin(), cloneIt = clonedFunc->arg_begin();
+			for (auto originalIt = srcPersonality->arg_begin(), cloneIt = clonedPersonality->arg_begin();
 			     originalIt != srcPersonality->arg_end(); ++originalIt, ++cloneIt)
 				v2vMap[&*originalIt] = &*cloneIt;
 
@@ -127,7 +185,7 @@ serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 			v2vMap[srcPersonality] = clonedPersonality;
 		}
 	}
-	RemapFunction(*clonedFunc, v2vMap, RF_NoModuleLevelChanges);
+	RemapFunction(*clonedFunc, v2vMap, RF_None);
 
 	StripDebugInfo(wrapperModule); // to suppress some llvm warning messages for invalid debug info
 
