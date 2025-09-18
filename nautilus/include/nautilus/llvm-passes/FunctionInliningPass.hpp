@@ -36,6 +36,9 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 	// Convert clang annotations to function attributes that are directly connected to a function
 	annotationsToAttributes(M);
 
+	// create a copy of the original module to not break compilation in edge cases that cant be handled yet
+	std::unique_ptr<Module> clonedM;
+
 	Function* ctor = nullptr;
 	std::shared_ptr<IRBuilder<>> ctorBuilder;
 	for (auto& F : M) {
@@ -49,6 +52,9 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 				}
 			}
 			if (toInline) {
+				if (!clonedM) {
+					clonedM = CloneModule(M);
+				}
 
 				// catch errors so that non-inlinable functions dont completely break compilation
 				CrashRecoveryContext CRC;
@@ -66,6 +72,11 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 						                        GlobalValue::InternalLinkage, M.getName() + ".ir_ctor", &M);
 						auto* BB = BasicBlock::Create(ctx, "entry", ctor);
 						ctorBuilder = std::make_shared<IRBuilder<>>(BB);
+					}
+
+					// map back symbol pointers from cloned module to original module
+					for (auto [name, ptr] : std::get<1>(*result)) {
+						ptr = M.getFunction(ptr->getName());
 					}
 
 					// Insert registry calls into the initializer function to populate them at runtime
@@ -87,6 +98,17 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 		ctorBuilder->CreateRetVoid();
 		appendToGlobalCtors(M, ctor, 65535);
 	}
+
+	// Safely call destructor of the cloned module
+	CrashRecoveryContext CRC;
+	bool success = CRC.RunSafely([&] { clonedM = std::make_unique<Module>("", M.getContext()); });
+	if (!success) {
+		errs() << "Unknown error in inlining llvm pass. There is likely a problematic function in source file "
+		       << M.getName()
+		       << ". Look for error messages above, or consider removing the NAUT_INLINE tag from functions that look "
+		          "suspicious. When in doubt, one can safely remove the tag from all functions in this source file.\n";
+	}
+
 	return PreservedAnalyses::all();
 }
 

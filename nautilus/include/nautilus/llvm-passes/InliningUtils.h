@@ -23,7 +23,7 @@ using namespace llvm;
 
 struct SymbolInfo {
 	std::string name;
-	llvm::GlobalValue* ptr;
+	llvm::Function* ptr;
 };
 
 static std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
@@ -35,17 +35,17 @@ static void insertBitcodeRegistryCall(std::shared_ptr<IRBuilder<>> builder, Func
 static void insertSymbolRegistryCalls(std::shared_ptr<IRBuilder<>> builder, Function* symbolRegistrationFunction,
                                       std::vector<SymbolInfo>& symbols);
 
-static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
+static bool cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
                          ValueToValueMapTy& v2vMap, std::vector<SymbolInfo>& symbols, Function& inlineFunction) {
 	if (!V || clonedSet.contains(V))
-		return;
+		return true;
 
 	clonedSet.insert(V);
 
 	// handle global values (functions, variables, ...)
 	if (auto* GV = dyn_cast<GlobalValue>(V)) {
 		if (GV == &inlineFunction)
-			return;
+			return true;
 
 		if (auto* F = dyn_cast<Function>(GV)) {
 			// Clone function declarations
@@ -57,7 +57,7 @@ static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module
 					decl->setPersonalityFn(nullptr);
 				v2vMap[F] = decl;
 
-				symbols.push_back({decl->getName().str(), const_cast<GlobalValue*>(GV)});
+				symbols.push_back({decl->getName().str(), F});
 			} else {
 				// intrinsics require special care
 				auto* existing = wrapperModule.getFunction(F->getName());
@@ -73,9 +73,12 @@ static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module
 		} else if (auto* GVVar = dyn_cast<GlobalVariable>(GV)) {
 			// only works for constant variables so far; other variables would have to be linked at runtime
 			if (GVVar->hasInitializer() && GVVar->isConstant()) {
+				// clone initializer operands
 				for (unsigned i = 0; i < GVVar->getInitializer()->getNumOperands(); ++i) {
-					cloneOperand(GVVar->getInitializer()->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols,
-					             inlineFunction);
+					if (!cloneOperand(GVVar->getInitializer()->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols,
+					                  inlineFunction)) {
+						return false;
+					}
 				}
 
 				auto* init = cast<Constant>(MapValue(GVVar->getInitializer(), v2vMap));
@@ -86,12 +89,20 @@ static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module
 				newGV->setUnnamedAddr(GVVar->getUnnamedAddr());
 				newGV->setAlignment(GVVar->getAlign());
 				v2vMap[GVVar] = newGV;
+			} else {
+				errs() << "Non-constant/external global variable detected in nautilus inlining pass. Please remove the "
+				          "NAUT_INLINE tag from "
+				          "function: "
+				       << inlineFunction.getName() << "\n";
+				return false;
 			}
 		}
 	} else if (auto* C = dyn_cast<Constant>(V)) {
 		// process operands
 		for (unsigned i = 0; i < C->getNumOperands(); ++i) {
-			cloneOperand(C->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols, inlineFunction);
+			if (!cloneOperand(C->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols, inlineFunction)) {
+				return false;
+			}
 		}
 
 		SmallVector<Constant*, 4> newOperands;
@@ -121,28 +132,35 @@ static void cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module
 			newC = UndefValue::get(CU->getType());
 		} else {
 			// tough luck
-			//llvm::errs() << C << "\n";
-			errs() << "Unknown constant case found during function inlining. This may or may not be a problem. If in "
-			          "doubt, remove the NAUT_INLINE tag from function: "
+			llvm::errs() << C << "\n";
+			errs() << "Unknown LLVM::Constant case found in nautilus inlining pass. Please remove the NAUT_INLINE tag "
+			          "from "
+			          "function: "
 			       << inlineFunction.getName() << "\n";
+			return false;
 		}
 		if (newC != nullptr) {
 			v2vMap[V] = newC;
 		}
 	}
+	return true;
 }
 
-static void cloneValuesAndCollectDependencySymbols(Function& inlineFunction, Module& wrapperModule, ValueToValueMapTy& v2vMap,
-                                        std::vector<SymbolInfo>& symbols) {
+// return false if we encountered an illegal LLVM::Constant case
+static bool cloneValuesAndCollectDependencySymbols(Function& inlineFunction, Module& wrapperModule,
+                                                   ValueToValueMapTy& v2vMap, std::vector<SymbolInfo>& symbols) {
 	std::unordered_set<Value*> clonedSet;
 
 	for (auto& BB : inlineFunction) {
 		for (auto& I : BB) {
 			for (Value* V : I.operands()) {
-				cloneOperand(V, clonedSet, wrapperModule, v2vMap, symbols, inlineFunction);
+				if (!cloneOperand(V, clonedSet, wrapperModule, v2vMap, symbols, inlineFunction)) {
+					return false;
+				}
 			}
 		}
 	}
+	return true;
 }
 
 std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
@@ -164,7 +182,11 @@ serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 	clonedFunc->setLinkage(GlobalValue::ExternalLinkage);
 
 	// Clone declarations of all dependencies and store in symbol vector
-	cloneValuesAndCollectDependencySymbols(inlineFunction, wrapperModule, v2vMap, symbols);
+	if (!cloneValuesAndCollectDependencySymbols(inlineFunction, wrapperModule, v2vMap, symbols)) {
+		clonedFunc->dropAllReferences();
+		clonedFunc->deleteBody();
+		return std::nullopt;
+	}
 
 	// clone personality function of the inline function if it exists (otherwise some functions cant be properly
 	// inlined)
