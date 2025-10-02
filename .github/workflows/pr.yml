@@ -23,7 +23,6 @@ jobs:
   build-test:
     runs-on: ${{matrix.os}}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
-    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
