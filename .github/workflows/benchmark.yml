@@ -13,7 +13,6 @@ jobs:
   benchmark:
     name: Run tracing benchmark
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     env:
       CC: clang
       CXX: clang++
