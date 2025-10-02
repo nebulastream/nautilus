@@ -110,6 +110,10 @@ public:
 		return temp;
 	}
 
+	val<ValueType> operator-() {
+		return (ValueType) 0 - *this;
+	}
+
 	const val<ValueType>& operator--() {
 		// decrement
 		*this = *this - (ValueType) 1;
