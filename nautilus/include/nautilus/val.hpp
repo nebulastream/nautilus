@@ -2,6 +2,7 @@
 
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_concepts.hpp"
+#include <concepts>
 #include <type_traits>
 #include <utility>
 
@@ -108,6 +109,13 @@ public:
 		*this = *this + (ValueType) 1;
 		// ++value;
 		return temp;
+	}
+
+	auto operator+() {
+		if constexpr (std::integral<ValueType> && sizeof(ValueType) < sizeof(int)) {
+			return static_cast<val<int>>(*this);
+		}
+		return *this;
 	}
 
 	val<ValueType> operator-() {
