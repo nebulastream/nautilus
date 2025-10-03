@@ -20,12 +20,12 @@ B1($3:i8,$4:i8,$1:ptr,$2:ptr)
 	CAST	$35	$30	:ui64
 	MUL	$36	$35	$34	:ui64
 	ADD	$37	$1	$36	:ptr
-	STORE	$40	$37	$29	:void
-	CONST	$41	1	:i32
-	CAST	$42	$4	:i32
-	ADD	$43	$42	$41	:i32
-	CAST	$44	$43	:i8
-	JMP	$0	B3($44,$3,$1,$2)	:void
+	STORE	$41	$37	$29	:void
+	CONST	$42	1	:i32
+	CAST	$43	$4	:i32
+	ADD	$44	$43	$42	:i32
+	CAST	$45	$44	:i8
+	JMP	$0	B3($45,$3,$1,$2)	:void
 B2()
 	RETURN	$0	:void
 B3($4:i8,$3:i8,$1:ptr,$2:ptr) ControlFlowMerge
