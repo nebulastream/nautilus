@@ -495,4 +495,14 @@ TEST_CASE("Cast Trace Test") {
 	};
 	runTraceTests("cast-tests", tests);
 }
+
+void store_missing_downcast(val<unsigned int*> v) {
+	*v = (val<long>) -1;
+}
+
+TEST_CASE("Regressions") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)}};
+	runTraceTests("regressions", tests);
+}
 } // namespace nautilus::engine
