@@ -47,7 +47,7 @@ Try {fmt} in [Compiler Explorer](https://godbolt.org/z/8Mx1EW73v).
   hundred million integers to strings per
   second](http://www.zverovich.net/2020/06/13/fast-int-to-string-revisited.html)
 - Small code size both in terms of source code with the minimum
-  configuration consisting of just three files, `core.h`, `format.h`
+  configuration consisting of just three files, `base.h`, `format.h`
   and `format-inl.h`, and compiled code; see [Compile time and code
   bloat](#compile-time-and-code-bloat)
 - Reliability: the library has an extensive set of
@@ -74,7 +74,7 @@ See the [documentation](https://fmt.dev) for more details.
 **Print to stdout** ([run](https://godbolt.org/z/Tevcjh))
 
 ``` c++
-#include <fmt/core.h>
+#include <fmt/base.h>
 
 int main() {
   fmt::print("Hello, world!\n");
@@ -291,6 +291,7 @@ converts to `std::print`.)
 - [ccache](https://ccache.dev/): a compiler cache
 - [ClickHouse](https://github.com/ClickHouse/ClickHouse): an
   analytical database management system
+- [ContextVision](https://www.contextvision.com/): medical imaging software
 - [Contour](https://github.com/contour-terminal/contour/): a modern
   terminal emulator
 - [CUAUV](https://cuauv.org/): Cornell University\'s autonomous
