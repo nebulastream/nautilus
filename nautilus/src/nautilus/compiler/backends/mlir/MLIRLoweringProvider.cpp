@@ -403,8 +403,9 @@ void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* constPtr, ValueFr
 	auto val = (int64_t) constPtr->getValue();
 	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), builder->getI64Type(),
 	                                                         builder->getIntegerAttr(builder->getI64Type(), val));
-	auto elementAddress = builder->create<mlir::LLVM::IntToPtrOp>(getNameLoc("fieldAccess"),
-	                                                              mlir::LLVM::LLVMPointerType::get(context), constInt);
+
+	auto elementAddress = builder->create<mlir::LLVM::IntToPtrOp>(
+	    getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), mlir::ValueRange(constInt));
 	frame.setValue(constPtr->getIdentifier(), elementAddress);
 }
 
