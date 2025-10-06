@@ -74,6 +74,13 @@ TEST_CASE("Ptr Val Test") {
 		val<int> v3 = f1[2];
 		REQUIRE(v3 == 3);
 	}
+
+	SECTION("Uninit") {
+		auto f1 = val<int*>(nullptr);
+		REQUIRE(f1 == nullptr);
+		val<int8_t*> f2;
+		REQUIRE(f2 == nullptr);
+	}
 }
 
 /*

@@ -81,12 +81,13 @@ template <is_ptr ValuePtrType>
 class base_ptr_val {
 public:
 	using ValType = std::remove_pointer_t<ValuePtrType>;
+	using raw_no_qualifiers = std::remove_cv_t<ValType>;
 	using raw_type = ValuePtrType;
 	using basic_type = std::remove_pointer_t<ValuePtrType>;
 	using pointer_type = ValuePtrType;
 
 #ifdef ENABLE_TRACING
-	base_ptr_val() : state(tracing::traceConstant(nullptr)), value() {
+	base_ptr_val() : state(tracing::traceConstant<void*>(nullptr)), value() {
 	}
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
 	}
