@@ -3,6 +3,7 @@
 #include <any>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -35,13 +36,14 @@ public:
 	 */
 	template <typename R, typename... Args>
 	class Invocable {
-	public:
 		using FunctionType = R(Args...);
+		std::variant<FunctionType*, std::unique_ptr<GenericInvocable>> func;
 
-		explicit Invocable(void* fptr) : function(reinterpret_cast<FunctionType*>(fptr)) {
+	public:
+		explicit Invocable(void* fptr) : func(reinterpret_cast<FunctionType*>(fptr)) {
 		}
 
-		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : function(std::move(generic)) {
+		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : func(std::move(generic)) {
 		}
 
 		template <typename T>
@@ -67,15 +69,15 @@ public:
 		 * @return returns the result of the function if any
 		 */
 		R operator()(Args... arguments) {
-			if (std::holds_alternative<FunctionType*>(function)) {
-				auto fptr = std::get<FunctionType*>(function);
+			if (std::holds_alternative<FunctionType*>(func)) {
+				auto fptr = std::get<FunctionType*>(func);
 				if constexpr (!std::is_void_v<R>) {
 					return fptr(std::forward<Args>(arguments)...);
 				} else {
 					fptr(std::forward<Args>(arguments)...);
 				}
 			} else {
-				auto& genericFunction = std::get<std::unique_ptr<GenericInvocable>>(function);
+				auto& genericFunction = std::get<std::unique_ptr<GenericInvocable>>(func);
 				if constexpr (!std::is_void_v<R>) {
 					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
 					auto res = genericFunction->invokeGeneric(inputs_);
@@ -92,9 +94,6 @@ public:
 				}
 			}
 		}
-
-	private:
-		std::variant<FunctionType*, std::unique_ptr<GenericInvocable>> function;
 	};
 
 	/**
