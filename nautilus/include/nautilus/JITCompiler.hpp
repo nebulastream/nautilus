@@ -5,7 +5,9 @@
 #include <memory>
 
 namespace nautilus::compiler {
-
+namespace ir {
+class IRGraph;
+}
 class Executable;
 class CompilationBackendRegistry;
 
@@ -19,6 +21,7 @@ public:
 	JITCompiler(engine::Options options);
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const;
+	[[nodiscard]] std::unique_ptr<Executable> compile(std::shared_ptr<ir::IRGraph>& irGraph) const;
 
 	virtual ~JITCompiler();
 

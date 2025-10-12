@@ -86,9 +86,28 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	return executable;
 }
 
+
+std::unique_ptr<Executable> JITCompiler::compile(std::shared_ptr<ir::IRGraph>& ir) const {
+	CompilationUnitID compilationId = createCompilationUnitID();
+	auto dumpHandler = DumpHandler(options, compilationId);
+	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString();});
+	if (options.getOptionOrDefault("dump.graph", false)) {
+		ir::createGraphVizFromIr(ir, options, dumpHandler);
+	}
+	// lower to backend
+	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
+	auto backend = backends->getBackend(backendName);
+	auto executable = backend->compile(ir, dumpHandler, options);
+	return executable;
+}
+
+
 #else
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function) const {
+	throw RuntimeException("Jit not initialised");
+}
+std::unique_ptr<Executable> JITCompiler::compile(std::shared_ptr<ir::IRGraph>& ir) const {
 	throw RuntimeException("Jit not initialised");
 }
 

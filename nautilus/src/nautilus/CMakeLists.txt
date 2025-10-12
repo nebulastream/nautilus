@@ -1,4 +1,5 @@
 
+add_subdirectory(c_api)
 add_subdirectory(common)
 add_subdirectory(exceptions)
 add_subdirectory(tracing)
