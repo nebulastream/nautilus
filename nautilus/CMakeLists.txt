@@ -54,10 +54,16 @@ endif ()
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)
 
+if (TARGET InliningPass)
+    list(APPEND EXPORT_TARGETS InliningPass)
+endif ()
+
 install(
         TARGETS nautilus ${EXPORT_TARGETS}
         EXPORT ${PROJECT_NAME}-config
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/
 )
 
