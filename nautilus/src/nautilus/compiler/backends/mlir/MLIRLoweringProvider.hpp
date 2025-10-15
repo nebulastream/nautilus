@@ -49,7 +49,7 @@ public:
 	 * @brief Allows to lower Nautilus IR to MLIR.
 	 * @param MLIRContext: Used by MLIR to manage MLIR module creation.
 	 */
-	explicit MLIRLoweringProvider(::mlir::MLIRContext& context);
+	explicit MLIRLoweringProvider(::mlir::MLIRContext& context, const engine::Options& options);
 
 	~MLIRLoweringProvider();
 
@@ -86,6 +86,7 @@ private:
 	::mlir::FlatSymbolRefAttr printfReference;
 	llvm::StringMap<::mlir::Value> printfStrings;
 	std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
+	const engine::Options* options;
 
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
