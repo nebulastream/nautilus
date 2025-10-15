@@ -602,11 +602,29 @@ void loopExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+Derived d;
 void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	SECTION("simpleDirectCall") {
 		auto f = engine.registerFunction(simpleDirectCall);
 		REQUIRE(f(10, 10) == 20);
 		REQUIRE(f(0, 1) == 1);
+	}
+
+	SECTION("dynCastCall") {
+		auto f = engine.registerFunction(dynCastCall);
+		REQUIRE(f(&d) == 0);
+	}
+
+	SECTION("directCallWithNestedCalls") {
+		auto f = engine.registerFunction(directCallWithNestedCalls);
+		REQUIRE(f(10, 10) == 20);
+		REQUIRE(f(0, 1) == 0);
+	}
+
+	SECTION("directCallComplexFunction") {
+		auto f = engine.registerFunction(directCallComplexFunction);
+		REQUIRE(f(10, 10) == 0);
+		REQUIRE(f(100, 100) == 1);
 	}
 
 	SECTION("twoDistinctFunctionCalls") {
@@ -1223,15 +1241,13 @@ TEST_CASE("Engine Compiler Test") {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
 			options.setOption("dump.all", true);
+			if (backend == "mlir") {
+				options.setOption("engine.Compilation", true);
+				options.setOption("mlir.enableMultithreading", false);
+				options.setOption("mlir.inline_invoke_calls", true);
+			}
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
-		}
-
-		if (backend == "mlir") {
-			engine::Options options;
-			options.setOption("engine.compilation", true);
-			options.setOption("mlir.enableMultithreading", false);
-			auto engine = engine::NautilusEngine(options);
 		}
 	}
 }
