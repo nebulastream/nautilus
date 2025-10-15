@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <nautilus/Engine.hpp>
+#include <nautilus/inline.hpp>
 #include <nautilus/val_ptr.hpp>
 
 namespace nautilus {
@@ -31,7 +33,7 @@ public:
 
 namespace nautilus::engine {
 
-void voidFunc(int32_t x, int32_t y) {
+NAUTILUS_INLINE void voidFunc(int32_t x, int32_t y) {
 	[[maybe_unused]] auto z = x + y;
 }
 
@@ -56,16 +58,67 @@ void multipleVoidReturnsFunction(val<int32_t*> x) {
 	*x = 42;
 }
 
-int32_t add(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
 
-int32_t sub(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t sub(int32_t x, int32_t y) {
 	return x - y;
+}
+
+NAUTILUS_INLINE int32_t addAndSub(int32_t x, int32_t y) {
+	return add(x, y) + sub(x, y);
+}
+
+NAUTILUS_INLINE __attribute__((noinline)) double helper1(double val) {
+	return val * val + 3.14;
+}
+
+NAUTILUS_INLINE __attribute__((noinline)) double helper2(double val) {
+	return std::cos(val) / (1.0 + std::abs(val));
+}
+
+NAUTILUS_INLINE double complexCalc(int32_t a, int32_t b) {
+	double acc = 0.0;
+	std::vector<double> data;
+	data.reserve(a);
+	for (int32_t i = 0; i < a; i++) {
+		data.push_back(i);
+	}
+
+	for (auto& x : data) {
+		double temp = helper1(x) * b;
+		if (temp > 10.0)
+			acc += helper2(temp);
+		else
+			acc -= helper2(temp);
+	}
+	return std::exp(acc);
+}
+
+struct Base {
+	virtual ~Base() = default;
+};
+
+struct Derived : Base {
+	void greet() {
+		std::cout << "Hello World!\n";
+	}
+};
+
+NAUTILUS_INLINE int32_t testDynamicCast(Base* b) {
+	if (dynamic_cast<Derived*>(b)) {
+		return 0;
+	}
+	return 1;
 }
 
 val<int32_t> simpleDirectCall(val<int32_t> x, val<int32_t> y) {
 	return invoke(add, x, y);
+}
+
+val<int32_t> directCallWithNestedCalls(val<int32_t> x, val<int32_t> y) {
+	return invoke<>(addAndSub, x, y);
 }
 
 val<int32_t> callTwoFunctions(val<int32_t> x, val<int32_t> y) {
@@ -91,6 +144,14 @@ inline val<int32_t> loopDirectCall2(val<int32_t> x) {
 		sum = invoke<>(add, sum, x);
 	}
 	return sum;
+}
+
+val<int32_t> directCallComplexFunction(val<int32_t> x, val<int32_t> y) {
+	return invoke<>(complexCalc, x, y);
+}
+
+val<int32_t> dynCastCall(val<Base*> x) {
+	return invoke<>(testDynamicCast, x);
 }
 
 val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
