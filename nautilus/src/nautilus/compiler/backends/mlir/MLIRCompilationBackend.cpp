@@ -41,7 +41,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		context.disableMultithreading();
 	}
 
-	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context);
+	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options);
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
 	if (*mlirModule == nullptr) {
 		throw RuntimeException("verification of MLIR module failed!");
@@ -68,7 +68,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 4. JIT compile LLVM IR module and return engine that provides access
 	// compiled execute function.
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses());
+	                                            loweringProvider->getJitProxyTargetAddresses(), options);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
