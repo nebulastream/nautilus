@@ -30,6 +30,7 @@ if (ENABLE_MLIR_BACKEND)
             MLIRPassManager.cpp
             LLVMIROptimizer.cpp
             JITCompiler.cpp
+            LLVMInliningUtils.cpp
     )
 endif ()
 

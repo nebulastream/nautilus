@@ -2,7 +2,7 @@
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
-#include <iostream>
+#include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IRReader/IRReader.h>
@@ -40,6 +40,11 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
 		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
 		llvm::SMDiagnostic Err;
+
+		// Apply llvm function inlining
+		if (options.getOptionOrDefault("mlir.inline_invoke_calls", false)) {
+			inlineFunctions(*llvmIRModule);
+		}
 
 		auto optPipeline =
 		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
