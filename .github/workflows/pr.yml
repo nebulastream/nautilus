@@ -54,7 +54,7 @@ jobs:
           - os: 'ubuntu-24.04'
             cc: 'gcc-14'
             cxx: 'g++-14'
-            flags: ''  
+            flags: ''
           - os: 'macos-15'
             cc: 'clang'
             cxx: 'clang++'
@@ -67,6 +67,14 @@ jobs:
             cc: 'clang-18'
             cxx: 'clang++-18'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-19'
+            cxx: 'clang++-19'
+            flags: ''
+          - os: 'ubuntu-22.04-arm64'
+            cc: 'clang-19'
+            cxx: 'clang++-19'
+            flags: ''
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -79,6 +87,16 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.13
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}
+      - name: Install clang 19
+        if: startsWith(matrix.cc, 'clang-19') && startsWith(matrix.os, 'ubuntu')
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
+          sudo apt-get update
+          sudo apt-get install -y clang-19 clang++-19
       - name: cmake
         shell: bash
         run: |
