@@ -75,7 +75,11 @@ inline PreservedAnalyses NautilusInlineRegistrationPass::run(Module& M, ModuleAn
 
 					// map back symbol pointers from cloned module to original module
 					for (auto [name, ptr] : std::get<1>(*result)) {
-						ptr = M.getFunction(ptr->getName());
+						GlobalValue* newPtr = M.getFunction(ptr->getName());
+						if (!newPtr) {
+							newPtr = M.getGlobalVariable(ptr->getName());
+						}
+						ptr = newPtr;
 					}
 
 					// Insert registry calls into the initializer function to populate them at runtime

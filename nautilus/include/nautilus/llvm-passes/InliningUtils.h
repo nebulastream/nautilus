@@ -80,8 +80,8 @@ serializeFunctionWithDependencySymbols(Function& inlineFunction) {
 	// will automatically print the precise reasons if the verification fails, which is key for debugging functions that
 	// cant be inlined yet)
 	if (verifyModule(wrapperModule, &errs())) {
-		errs() << "\n Failed to serialize inline function (IR verification failed; possibly due to use of global "
-		          "variables). To get rid of this warning, remove the NAUT_INLINE tag from this function: "
+		errs() << "\n Failed to serialize inline function (IR verification failed). To get rid of this warning, remove "
+		          "the NAUT_INLINE tag from this function: "
 		       << inlineFunction.getName() << "\n";
 		return std::nullopt;
 	}

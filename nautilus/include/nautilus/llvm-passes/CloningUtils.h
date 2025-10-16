@@ -17,7 +17,7 @@ using namespace llvm;
 
 struct SymbolInfo {
 	std::string name;
-	Function* ptr;
+	GlobalValue* ptr;
 };
 
 static bool cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
@@ -40,9 +40,6 @@ static bool cloneValuesAndCollectDependencySymbols(Function& inlineFunction, Mod
 	return true;
 }
 
-// Global values arent copied by LLVM automatically
-// They need to be recreated in the target module and added to the symbol table to link against NES during query
-// compilation
 static bool cloneGlobalValue(GlobalValue* GV, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
                              ValueToValueMapTy& v2vMap, std::vector<SymbolInfo>& symbols, Function& inlineFunction) {
 	if (GV == &inlineFunction) // skip the target function
@@ -73,33 +70,17 @@ static bool cloneGlobalValue(GlobalValue* GV, std::unordered_set<Value*>& cloned
 		}
 		return true;
 	} else if (auto* GVVar = dyn_cast<GlobalVariable>(GV)) {
-		// only works for constant variables so far; other variables would have to be linked at runtime which is not
-		// yet supported
-		if (GVVar->hasInitializer() && GVVar->isConstant()) {
-			// recursively clone initializer operands
-			for (unsigned i = 0; i < GVVar->getInitializer()->getNumOperands(); ++i) {
-				if (!cloneOperand(GVVar->getInitializer()->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols,
-				                  inlineFunction)) {
-					return false;
-				}
-			}
+		// create counterpart with external linkage, which will be linked later by nautilus
+		auto* newGV = new GlobalVariable(wrapperModule, GVVar->getValueType(), GVVar->isConstant(),
+		                                 GlobalValue::ExternalLinkage, nullptr,
+		                                 inlineFunction.getName() + "." + GVVar->getName(), nullptr,
+		                                 GVVar->getThreadLocalMode(), GVVar->getAddressSpace());
+		newGV->setUnnamedAddr(GVVar->getUnnamedAddr());
+		newGV->setAlignment(GVVar->getAlign());
+		v2vMap[GVVar] = newGV;
+		symbols.push_back({newGV->getName().str(), GVVar});
 
-			auto* init = cast<Constant>(MapValue(GVVar->getInitializer(), v2vMap));
-
-			auto* newGV =
-			    new GlobalVariable(wrapperModule, GVVar->getValueType(), true, GVVar->getLinkage(), init,
-			                       GVVar->getName(), nullptr, GVVar->getThreadLocalMode(), GVVar->getAddressSpace());
-			newGV->setUnnamedAddr(GVVar->getUnnamedAddr());
-			newGV->setAlignment(GVVar->getAlign());
-			v2vMap[GVVar] = newGV;
-			return true;
-		} else {
-			errs() << "Non-constant/external global variable detected in nautilus inlining pass. Please remove the "
-			          "NAUT_INLINE tag from "
-			          "function: "
-			       << inlineFunction.getName() << "\n";
-			return false;
-		}
+		return true;
 	}
 
 	errs() << "Unknown LLVM::GlobalValue case detected in nautilus inlining pass. Please remove the "
@@ -109,8 +90,6 @@ static bool cloneGlobalValue(GlobalValue* GV, std::unordered_set<Value*>& cloned
 	return false;
 }
 
-// Constants need to be cloned as LLVM unfortunately does not recreate them when copying functions to a new module
-// This sometimes causes clang to crash later in the execution because of unexpected references
 static bool cloneConstant(Constant* C, std::unordered_set<Value*>& clonedSet, Module& wrapperModule,
                           ValueToValueMapTy& v2vMap, std::vector<SymbolInfo>& symbols, Function& inlineFunction) {
 	// clone operands recursively
@@ -167,11 +146,10 @@ static bool cloneOperand(Value* V, std::unordered_set<Value*>& clonedSet, Module
 	}
 	clonedSet.insert(V);
 
-	if (dyn_cast<Argument>(V) || dyn_cast<BasicBlock>(V) ||
-	    dyn_cast<InlineAsm>(V)) // No cloning required (already taken care of by LLVM)
+	if (dyn_cast<Argument>(V) || dyn_cast<BasicBlock>(V) || dyn_cast<InlineAsm>(V)) // No special handling required
 	{
 		return true;
-	} else if (auto* OP = dyn_cast<Operator>(V)) // Recursively clone operands if required (e.g. for ConstExpr)
+	} else if (auto* OP = dyn_cast<Instruction>(V)) // Recursively clone operands if required (e.g. for ConstExpr)
 	{
 		for (unsigned i = 0; i < OP->getNumOperands(); ++i) {
 			if (!cloneOperand(OP->getOperand(i), clonedSet, wrapperModule, v2vMap, symbols, inlineFunction)) {

@@ -60,6 +60,25 @@ std::optional<std::unique_ptr<llvm::Module>> loadBitcodeIfAvailable(const llvm::
 			}
 		}
 	}
+
+	// same for external global variables
+	for (auto& GV : moduleOrErr.get()->globals()) {
+		if (GV.isDeclaration()) {
+			auto it = InlineFunctionRegistry::instance().getSymbolTable()->find(GV.getName().str());
+			if (it != InlineFunctionRegistry::instance().getSymbolTable()->end()) {
+				// build string from ptr
+				auto hexStr = fmt::format("0x{:X}", reinterpret_cast<uintptr_t>(it->second));
+
+				auto* gvInModule = moduleOrErr.get()->getGlobalVariable(hexStr);
+				if (!gvInModule) {
+					GV.setName(hexStr);
+				} else {
+					GV.replaceAllUsesWith(gvInModule);
+				}
+			}
+		}
+	}
+
 	return std::optional(std::move(*moduleOrErr));
 }
 
