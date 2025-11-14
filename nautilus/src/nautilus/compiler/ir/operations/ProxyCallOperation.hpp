@@ -1,4 +1,5 @@
 
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include <string>
 #include <vector>
@@ -9,7 +10,8 @@ public:
 	ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments, Type resultType);
 
 	ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr,
-	                   OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType);
+	                   OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType,
+	                   FunctionAttributes fnAttrs);
 
 	~ProxyCallOperation() override = default;
 
@@ -21,9 +23,12 @@ public:
 	const std::string& getFunctionName() const;
 	void* getFunctionPtr();
 
+	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
+
 private:
 	const std::string mangedFunctionSymbol;
 	const std::string functionName;
 	void* functionPtr;
+	FunctionAttributes fnAttrs;
 };
 } // namespace nautilus::compiler::ir

@@ -3,6 +3,7 @@
 
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
 #include <cstdint>
@@ -75,7 +76,8 @@ public:
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
 	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn,
-	                         Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
+	                         Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                         FunctionAttributes fnAttrs);
 
 	bool traceCmp(const TypedValueRef& targetRef);
 

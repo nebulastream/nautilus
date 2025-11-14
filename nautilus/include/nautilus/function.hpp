@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
 #include <functional>
@@ -27,6 +28,10 @@ public:
 	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...)) : fnptr(fnptr) {
 	}
 
+	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...), const FunctionAttributes fnAttrs)
+	    : fnAttrs(fnAttrs), fnptr(fnptr) {
+	}
+
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
@@ -34,7 +39,7 @@ public:
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
 			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			                                    functionArgumentReferences);
+			                                    functionArgumentReferences, fnAttrs);
 			return val<R>(resultRef);
 		}
 #endif
@@ -48,7 +53,7 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences);
+			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
 			return;
 		}
 #endif
@@ -61,9 +66,11 @@ public:
 	}
 
 private:
+	FunctionAttributes fnAttrs;
 	R (*fnptr)(FunctionArguments...);
 };
 
+/// Invoke calls without attributes
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
@@ -78,6 +85,24 @@ auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments&&... arg
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr);
+	func(std::forward<ValueArguments>(args)...);
+}
+
+/// Invoke calls with attributes
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+}
+
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invoke(const FunctionAttributes fnAttrs, std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
+	auto fnptr = func.template target<R(FunctionArguments...)>();
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+}
+
+template <is_fundamental... FunctionArguments, typename... ValueArguments>
+void invoke(const FunctionAttributes fnAttrs, void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
+	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr, fnAttrs);
 	func(std::forward<ValueArguments>(args)...);
 }
 

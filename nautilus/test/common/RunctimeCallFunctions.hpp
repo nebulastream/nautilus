@@ -65,7 +65,7 @@ int32_t sub(int32_t x, int32_t y) {
 }
 
 val<int32_t> simpleDirectCall(val<int32_t> x, val<int32_t> y) {
-	return invoke<>(add, x, y);
+	return invoke(add, x, y);
 }
 
 val<int32_t> callTwoFunctions(val<int32_t> x, val<int32_t> y) {
@@ -117,6 +117,34 @@ val<int32_t> callMemberFunction(val<Clazz*> x) {
 	auto& func = memberFunc(&Clazz::get);
 	auto res = func(x);
 	return res;
+}
+
+inline int32_t countFuncCall(const bool isFirstCall) {
+	thread_local int32_t funcCallCount {0};
+	funcCallCount = isFirstCall ? 1 : (funcCallCount + 1);
+	return funcCallCount;
+}
+
+val<int32_t> callCountFuncCall(val<bool> isFirstCall) {
+	return invoke(countFuncCall, isFirstCall);
+}
+
+val<int32_t> incrementFuncCallFiveTimesWithModRef(val<bool> isFirstCall) {
+	constexpr FunctionAttributes funcAttr {ModRefInfo::ModRef};
+	invoke(funcAttr, countFuncCall, isFirstCall);
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+}
+
+val<int32_t> incrementFuncCallFiveTimesWithRef(val<bool> isFirstCall) {
+	constexpr FunctionAttributes funcAttr {ModRefInfo::Ref};
+	invoke(funcAttr, countFuncCall, isFirstCall);
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 }
 
 } // namespace nautilus::engine

@@ -185,9 +185,38 @@ mlir::arith::CmpIPredicate convertToBooleanMLIRComparison(ir::CompareOperation::
 	}
 }
 
+mlir::LLVM::MemoryEffectsAttr getMemoryEffectsAttr(const FunctionAttributes& fnAttrs, mlir::MLIRContext* context) {
+	switch (fnAttrs.modRefInfo) {
+	case nautilus::ModRefInfo::NoModRef: {
+		return mlir::LLVM::MemoryEffectsAttr::get(context, LLVM::ModRefInfo::NoModRef, LLVM::ModRefInfo::NoModRef,
+		                                          LLVM::ModRefInfo::NoModRef);
+	}
+	case nautilus::ModRefInfo::Ref: {
+		return mlir::LLVM::MemoryEffectsAttr::get(context, LLVM::ModRefInfo::Ref, LLVM::ModRefInfo::Ref,
+		                                          LLVM::ModRefInfo::Ref);
+	}
+	case nautilus::ModRefInfo::ModRef: {
+		return mlir::LLVM::MemoryEffectsAttr::get(context, LLVM::ModRefInfo::ModRef, LLVM::ModRefInfo::ModRef,
+		                                          LLVM::ModRefInfo::ModRef);
+	}
+	case nautilus::ModRefInfo::Mod: {
+		return mlir::LLVM::MemoryEffectsAttr::get(context, LLVM::ModRefInfo::Mod, LLVM::ModRefInfo::Mod,
+		                                          LLVM::ModRefInfo::Mod);
+	}
+	default: {
+		throw NotImplementedException("Unsupported ModRefInfo");
+	}
+	}
+}
+
+void setAttributes(mlir::LLVM::LLVMFuncOp& funcOp, const FunctionAttributes& fnAttrs, ::mlir::MLIRContext* context) {
+	funcOp.setMemoryEffectsAttr(getMemoryEffectsAttr(fnAttrs, context));
+}
+
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
                                                                      const mlir::Type& resultType,
-                                                                     const std::vector<mlir::Type>& argTypes) {
+                                                                     const std::vector<mlir::Type>& argTypes,
+                                                                     const FunctionAttributes& fnAttrs) {
 	// Create function arg & result types (currently only int for result).
 	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes);
 
@@ -195,8 +224,10 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	// after scope is left.
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 	builder->restoreInsertionPoint(*globalInsertPoint);
-	// Create function in global scope. Return reference.
-	builder->create<mlir::LLVM::LLVMFuncOp>(theModule.getLoc(), name, llvmFnType, mlir::LLVM::Linkage::External, false);
+	// Create function in global scope. Set attributes. Return reference.
+	auto funcOp = builder->create<mlir::LLVM::LLVMFuncOp>(theModule.getLoc(), name, llvmFnType,
+	                                                      mlir::LLVM::Linkage::External, false);
+	setAttributes(funcOp, fnAttrs, context);
 
 	jitProxyFunctionSymbols.push_back(name);
 	if (functionPtr == nullptr) {
@@ -545,9 +576,9 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(proxyCallOp->getFunctionSymbol())) {
 		functionRef = mlir::SymbolRefAttr::get(context, proxyCallOp->getFunctionSymbol());
 	} else {
-		functionRef =
-		    insertExternalFunction(proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(),
-		                           getMLIRType(proxyCallOp->getStamp()), getMLIRType(proxyCallOp->getInputArguments()));
+		functionRef = insertExternalFunction(
+		    proxyCallOp->getFunctionSymbol(), proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
+		    getMLIRType(proxyCallOp->getInputArguments()), proxyCallOp->getFunctionAttributes());
 	}
 
 	std::vector<mlir::Value> functionArgs;

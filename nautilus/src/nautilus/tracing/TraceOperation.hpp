@@ -5,6 +5,7 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
+#include <nautilus/common/FunctionAttributes.hpp>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -19,6 +20,7 @@ struct FunctionCall {
 	std::string mangledName;
 	void* ptr;
 	std::vector<TypedValueRef> arguments;
+	FunctionAttributes fnAttrs;
 };
 
 struct BlockRef {

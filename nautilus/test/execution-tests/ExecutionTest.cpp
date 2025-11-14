@@ -637,6 +637,30 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		auto res = f(&c);
 		REQUIRE(res == 42);
 	}
+	SECTION("countFuncCall") {
+		auto f = engine.registerFunction(callCountFuncCall);
+		REQUIRE(f(true) == 1);
+		REQUIRE(f(false) == 2);
+	}
+	SECTION("checkModRefAttribute") {
+		/// Checks that backends do not remove proxy function calls if the function has the ModRef attribute, which
+		/// tells the backend that the function modifies state and therefore may have side effects
+		auto f = engine.registerFunction(incrementFuncCallFiveTimesWithModRef);
+		REQUIRE(f(true) == 5);
+	}
+	SECTION("checkRefAttribute") {
+		/// Checks if backends can handle the 'Ref' attribute, which tells the backend that a proxy function does not
+		/// modify memory, allowing the backend to remove duplicate function calls that it otherwise could not remove
+		/// because of side effects
+		auto f = engine.registerFunction(incrementFuncCallFiveTimesWithRef);
+		/// Backends that optimize 'Ref' functions should reduce the number of function calls to 'countFuncCall' to 2,
+		/// one function call with 'true' and one with 'false' as input argument
+		if (engine.getNameOfBackend() == "mlir" and engine.isCompiled()) {
+			REQUIRE(f(true) == 2);
+		} else {
+			REQUIRE(f(true) == 5);
+		}
+	}
 }
 
 void pointerExecutionTest(engine::NautilusEngine& engine) {

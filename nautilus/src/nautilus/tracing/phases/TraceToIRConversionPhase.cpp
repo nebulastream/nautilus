@@ -1,5 +1,6 @@
 
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
@@ -323,7 +324,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
 	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier,
-	    inputArguments, resultType);
+	    inputArguments, resultType, functionCallTarget.fnAttrs);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
