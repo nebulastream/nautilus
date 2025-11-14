@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -32,7 +33,8 @@ TypedValueRef traceConstant(T&& value) {
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& state);
 
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments);
+TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                         FunctionAttributes fnAttrs);
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 

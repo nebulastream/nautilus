@@ -10,9 +10,10 @@ ProxyCallOperation::ProxyCallOperation(OperationIdentifier identifier, const std
 
 ProxyCallOperation::ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName,
                                        void* functionPtr, OperationIdentifier identifier,
-                                       std::vector<Operation*> inputArguments, Type resultType)
+                                       std::vector<Operation*> inputArguments, Type resultType,
+                                       const FunctionAttributes fnAttrs)
     : Operation(Operation::OperationType::ProxyCallOp, identifier, resultType, std::move(inputArguments)),
-      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr) {
+      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs) {
 }
 
 const std::vector<Operation*>& ProxyCallOperation::getInputArguments() const {
@@ -33,6 +34,10 @@ const std::string& ProxyCallOperation::getFunctionSymbol() const {
 
 void* ProxyCallOperation::getFunctionPtr() {
 	return functionPtr;
+}
+
+const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
+	return fnAttrs;
 }
 
 } // namespace nautilus::compiler::ir

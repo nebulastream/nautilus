@@ -1,6 +1,7 @@
 
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "TraceContext.hpp"
+#include "nautilus/common/FunctionAttributes.hpp"
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <fmt/format.h>
@@ -72,14 +73,15 @@ bool inTracer() {
 	return TraceContext::get() != nullptr;
 }
 
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(mangledName);
-	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments);
-}
-
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
 	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
+}
+
+TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                         const FunctionAttributes fnAttrs) {
+	auto mangledName = getMangledName(fptn);
+	auto functionName = getFunctionName(mangledName);
+	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {

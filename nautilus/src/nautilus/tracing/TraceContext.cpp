@@ -1,5 +1,6 @@
 
 #include "TraceContext.hpp"
+#include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
@@ -105,15 +106,15 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 }
 
 TypedValueRef& TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn,
-                                       Type resultType, const std::vector<tracing::TypedValueRef>& arguments) {
+                                       Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                       const FunctionAttributes fnAttrs) {
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {
-		    .functionName = functionName,
-		    .mangledName = mangledName,
-		    .ptr = fptn,
-		    .arguments = arguments,
-		};
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = mangledName,
+		                                       .ptr = fptn,
+		                                       .arguments = arguments,
+		                                       .fnAttrs = fnAttrs};
 		return executionTrace->addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
