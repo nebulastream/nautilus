@@ -62,8 +62,8 @@ std::string createCompilationUnitID() {
 }
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
-	CompilationUnitID compilationId = createCompilationUnitID();
-	auto dumpHandler = DumpHandler(options, compilationId);
+	const CompilationUnitID compilationId = createCompilationUnitID();
+	const auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
 	auto executionTrace = tracing::TraceContext::trace(function);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
@@ -74,14 +74,14 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
+	const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 	// lower to backend
-	auto backendName = options.getOptionOrDefault<std::string>("engine.backend", "mlir");
-	auto backend = backends->getBackend(backendName);
+	const auto backendName = getName();
+	const auto backend = backends->getBackend(backendName);
 	auto executable = backend->compile(ir, dumpHandler, options);
 	return executable;
 }
