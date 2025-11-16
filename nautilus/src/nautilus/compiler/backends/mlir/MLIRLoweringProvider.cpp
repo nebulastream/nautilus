@@ -212,6 +212,7 @@ mlir::LLVM::MemoryEffectsAttr getMemoryEffectsAttr(const FunctionAttributes& fnA
 void setAttributes(mlir::LLVM::LLVMFuncOp& funcOp, const FunctionAttributes& fnAttrs, ::mlir::MLIRContext* context) {
 	funcOp.setMemoryEffectsAttr(getMemoryEffectsAttr(fnAttrs, context));
 	funcOp.setWillReturn(fnAttrs.willReturn);
+	funcOp.setNoUnwind(fnAttrs.noUnwind);
 }
 
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
