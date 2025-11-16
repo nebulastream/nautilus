@@ -13,9 +13,13 @@ enum class ModRefInfo : uint8_t {
 };
 
 /// Closely modeled after the LLVM function attributes, but may be used for any backend
-/// (LLVM attributes: https://llvm.org/doxygen/classllvm_1_1Attribute.html)
+/// (LLVM attributes: https://llvm.org/docs/LangRef.html and https://llvm.org/doxygen/classllvm_1_1Attribute.html)
 struct FunctionAttributes {
 	/// Indicates whether a function reads(ref)/writes(mod) memory
 	ModRefInfo modRefInfo = ModRefInfo::ModRef;
+	/// Indicates that a call of this function will either exhibit undefined behavior or comes back and continues
+	/// execution at a point in the existing call stack that includes the current invocation
+	/// May still raise an exception, i.a., nounwind is not implied
+	bool willReturn = false;
 };
 } // namespace nautilus
