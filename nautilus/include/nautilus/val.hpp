@@ -355,7 +355,7 @@ val<LHS> neg(val<LHS>& val) {
 	             !std::is_##CATEGORY##_v<std::remove_cvref_t<RHS>> && convertible_to_##CATEGORY##_val<RHS, LHS>)       \
 	auto inline operator OP(LHS&& left, RHS&& right) {                                                                 \
 		auto rV = static_cast<std::remove_cvref_t<LHS>>(right);                                                        \
-		return left OP rV;                                                                                             \
+		return details::FUNC(std::forward<LHS>(left), std::forward<decltype(rV)>(rV));                                 \
 	}
 
 DEFINE_BINARY_OPERATOR(+, add, fundamental)
