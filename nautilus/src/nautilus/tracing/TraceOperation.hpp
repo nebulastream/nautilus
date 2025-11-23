@@ -14,6 +14,7 @@
 namespace nautilus::tracing {
 
 class None {};
+using BranchProbability = double;
 
 struct FunctionCall {
 	std::string functionName;
@@ -29,7 +30,7 @@ struct BlockRef {
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall>;
+using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability>;
 
 /**
  * @brief Represents an individual operation in a trace.

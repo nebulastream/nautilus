@@ -475,6 +475,12 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(6) == 3);
 		REQUIRE(f(7) == 2);
 	}
+
+	SECTION("withBranchProbability") {
+		auto f = engine.registerFunction(withBranchProbability);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(-42) == 42);
+	}
 }
 
 void loopExecutionTest(engine::NautilusEngine& engine) {
@@ -1240,6 +1246,7 @@ TEST_CASE("Engine Compiler Test") {
 			engine::Options options;
 			options.setOption("engine.backend", backend);
 			options.setOption("dump.all", true);
+			options.setOption("dump.console", true);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}

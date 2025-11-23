@@ -3,7 +3,8 @@
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 
 namespace nautilus::compiler::ir {
-IfOperation::IfOperation(Operation* booleanValue) : Operation(Operation::OperationType::IfOp, Type::v, {booleanValue}) {
+IfOperation::IfOperation(Operation* booleanValue, double probability)
+    : Operation(Operation::OperationType::IfOp, Type::v, {booleanValue}), probability(probability) {
 }
 
 Operation* IfOperation::getValue() const {
@@ -52,5 +53,9 @@ void IfOperation::setMergeBlock(BasicBlockPtr mergeBlock) {
 
 bool IfOperation::hasFalseCase() {
 	return this->falseBlockInvocation.getBlock() != nullptr;
+}
+
+double IfOperation::getProbability() const {
+	return this->probability;
 }
 } // namespace nautilus::compiler::ir
