@@ -191,15 +191,20 @@ public:
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
 			auto ref = state;
-			return tracing::traceBool(ref);
+			return tracing::traceBool(ref, this->probability);
 #endif
 		}
 		return value;
 	}
 
+	void setProbability(double prob) {
+		this->probability = prob;
+	}
+
 private:
 	friend details::RawValueResolver<bool>;
 	bool value;
+	double probability = 0.5;
 };
 
 template <is_fundamental_val Type>

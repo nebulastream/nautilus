@@ -28,8 +28,8 @@ TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
-bool traceBool(const TypedValueRef& state) {
-	return TraceContext::get()->traceCmp(state);
+bool traceBool(const TypedValueRef& state, double probability) {
+	return TraceContext::get()->traceCmp(state, probability);
 }
 
 void allocateValRef(ValueRef ref) {

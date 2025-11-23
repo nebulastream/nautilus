@@ -29,7 +29,7 @@ public:
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
 
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs);
+	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, double probability);
 
 	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
 	                                      Type resultType);

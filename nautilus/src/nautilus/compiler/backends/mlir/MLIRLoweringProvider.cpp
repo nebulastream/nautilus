@@ -6,6 +6,8 @@
 #include "nautilus/inline.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <fmt/format.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -688,8 +690,14 @@ void MLIRLoweringProvider::generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame
 	}
 
 	builder->restoreInsertionPoint(parentBlockInsertionPoint);
-	builder->create<mlir::cf::CondBranchOp>(getNameLoc("branch"), frame.getValue(ifOp->getValue()->getIdentifier()),
-	                                        trueBlock, trueBlockArgs, elseBlock, elseBlockArgs);
+	auto mlirOp =
+	    builder->create<mlir::cf::CondBranchOp>(getNameLoc("branch"), frame.getValue(ifOp->getValue()->getIdentifier()),
+	                                            trueBlock, trueBlockArgs, elseBlock, elseBlockArgs);
+	// calculate weights for branches by using the branch probabilities
+	::llvm::SmallVector<int32_t, 2> weights;
+	weights.push_back(static_cast<int32_t>(ifOp->getProbability() * 1000));
+	weights.push_back(static_cast<int32_t>((1.0 - ifOp->getProbability()) * 1000));
+	mlirOp.setWeights(weights);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame) {

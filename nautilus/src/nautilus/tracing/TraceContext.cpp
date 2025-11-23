@@ -148,7 +148,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initial
 	});
 }
 
-bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
+bool TraceContext::traceCmp(const TypedValueRef& targetRef, double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step
@@ -158,7 +158,7 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 		// record
 		auto tag = recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
-			state->executionTrace.addCmpOperation(tag, targetRef);
+			state->executionTrace.addCmpOperation(tag, targetRef, probability);
 			result = state->symbolicExecutionContext.record(tag);
 		} else {
 			// this is actually the same tag -> throw up
