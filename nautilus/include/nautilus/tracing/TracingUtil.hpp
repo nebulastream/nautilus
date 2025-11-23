@@ -27,7 +27,8 @@ TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef&
                              const TypedValueRef& rightState);
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
 
-bool traceBool(const TypedValueRef& state);
+// Traces a boolean value with an associated probability
+bool traceBool(const TypedValueRef& state, double probability);
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {

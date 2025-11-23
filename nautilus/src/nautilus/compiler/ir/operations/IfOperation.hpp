@@ -7,7 +7,7 @@
 namespace nautilus::compiler::ir {
 class IfOperation : public Operation {
 public:
-	IfOperation(Operation* booleanValue);
+	IfOperation(Operation* booleanValue, double probability);
 
 	~IfOperation() override = default;
 
@@ -32,9 +32,12 @@ public:
 
 	bool hasFalseCase();
 
+	double getProbability() const;
+
 private:
 	BasicBlockInvocation trueBlockInvocation;
 	BasicBlockInvocation falseBlockInvocation;
 	std::weak_ptr<BasicBlock> mergeBlock;
+	double probability;
 };
 } // namespace nautilus::compiler::ir

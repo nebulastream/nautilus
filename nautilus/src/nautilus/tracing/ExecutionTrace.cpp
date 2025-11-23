@@ -106,7 +106,9 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	return to.resultRef;
 }
 
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs) {
+// Adds a comparison operation to the execution trace
+// This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, double probability) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -117,8 +119,9 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& in
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
-	                        std::vector<InputVariant> {inputs, BlockRef(trueBlock), BlockRef(falseBlock)});
+	operations.emplace_back(
+	    snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
+	    std::vector<InputVariant> {condition, BlockRef(trueBlock), BlockRef(falseBlock), probability});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
