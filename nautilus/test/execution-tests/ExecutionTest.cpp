@@ -477,6 +477,12 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(6) == 3);
 		REQUIRE(f(7) == 2);
 	}
+
+	SECTION("withBranchProbability") {
+		auto f = engine.registerFunction(withBranchProbability);
+		REQUIRE(f(1) == 1);
+		REQUIRE(f(-42) == 42);
+	}
 }
 
 void loopExecutionTest(engine::NautilusEngine& engine) {

@@ -303,4 +303,14 @@ val<int32_t> multipleReturns(val<int32_t> value) {
 	return value + value + 1;
 }
 
+val<int32_t> withBranchProbability(val<int32_t> value) {
+	auto condition = value == 1;
+	condition.setProbability(0.9);
+	if (condition) {
+		return 1;
+	} else {
+		return 42;
+	}
+}
+
 } // namespace nautilus::engine
