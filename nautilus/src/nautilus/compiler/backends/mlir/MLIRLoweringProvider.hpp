@@ -30,14 +30,13 @@
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
-#include <llvm/ADT/StringMap.h>
-#include <llvm/ADT/StringSet.h>
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
 #include <unordered_set>
 
 namespace nautilus::compiler::mlir {
 
+class MLIRIntrinsicManager;
 class MLIRLoweringProvider {
 public:
 	// A ValueFrame is hashmap that binds operation names to MLIR values.
@@ -49,7 +48,8 @@ public:
 	 * @brief Allows to lower Nautilus IR to MLIR.
 	 * @param MLIRContext: Used by MLIR to manage MLIR module creation.
 	 */
-	explicit MLIRLoweringProvider(::mlir::MLIRContext& context, const engine::Options& options);
+	explicit MLIRLoweringProvider(::mlir::MLIRContext& context, const engine::Options& options,
+	                              MLIRIntrinsicManager& intrinsicManager);
 
 	~MLIRLoweringProvider();
 
@@ -72,6 +72,7 @@ public:
 	std::vector<void*> getJitProxyTargetAddresses();
 
 private:
+	MLIRIntrinsicManager& intrinsicManager;
 	// MLIR variables
 	::mlir::MLIRContext* context;
 	::mlir::ModuleOp theModule;

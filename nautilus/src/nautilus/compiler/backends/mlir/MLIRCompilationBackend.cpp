@@ -6,13 +6,15 @@
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRAssumeIntrinsics.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
-#include <iostream>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h>
 #include <mlir/IR/MLIRContext.h>
+#include <mlir/Target/LLVMIR/Dialect/All.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <mlir/Transforms/Inliner.h>
@@ -22,6 +24,9 @@ MLIRCompilationBackend::MLIRCompilationBackend() {
 	// Initialize information about the local machine in LLVM.
 	LLVMInitializeNativeTarget();
 	LLVMInitializeNativeAsmPrinter();
+
+	// Register default MLIR intrinsics
+	RegisterMLIRAssumeIntrinsicPlugin();
 }
 
 std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
@@ -34,6 +39,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	::mlir::func::registerAllExtensions(registry);
 	registerBuiltinDialectTranslation(registry);
 	registerLLVMDialectTranslation(registry);
+
 	::mlir::LLVM::registerInlinerInterface(registry);
 
 	::mlir::MLIRContext context(registry);
@@ -41,7 +47,13 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		context.disableMultithreading();
 	}
 
-	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options);
+	// Register all intrinsics in the intrinsic manager
+	MLIRIntrinsicManager intrinsicManager;
+	if (options.getOptionOrDefault("mlir.enableIntrinsics", true)) {
+		MLIRIntrinsicPluginRegistry::instance().registerAllIntrinsics(intrinsicManager);
+	}
+
+	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
 	if (*mlirModule == nullptr) {
 		throw RuntimeException("verification of MLIR module failed!");

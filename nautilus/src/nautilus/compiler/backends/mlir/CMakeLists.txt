@@ -22,7 +22,8 @@ if (ENABLE_MLIR_BACKEND)
             # Dialects
             MLIRFuncToLLVM
     )
-
+    
+    add_subdirectory(intrinsics)    
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
