@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/inline.hpp"
@@ -252,8 +253,9 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 //==---------------------------------==//
 //==-- MAIN WORK - Generating MLIR --==//
 //==---------------------------------==//
-MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const engine::Options& options)
-    : context(&context), options(&options) {
+MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const engine::Options& options,
+                                           MLIRIntrinsicManager& intrinsicManager)
+    : intrinsicManager(intrinsicManager), context(&context), options(&options) {
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
@@ -585,6 +587,13 @@ void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFram
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
+	if (auto intrinsic = intrinsicManager.getIntrinsic(proxyCallOp->getFunctionPtr())) {
+		const auto& intrinsicFunction = *intrinsic;
+		if (intrinsicFunction(builder, proxyCallOp, frame)) {
+			return;
+		}
+	}
+
 	mlir::FlatSymbolRefAttr functionRef;
 
 	// to pass function pointers down to the inlining phase while preserving clear names in the IR output, the final
