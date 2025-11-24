@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/compiler/backends/mlir/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -242,7 +243,8 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 //==---------------------------------==//
 //==-- MAIN WORK - Generating MLIR --==//
 //==---------------------------------==//
-MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context) : context(&context) {
+MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, MLIRIntrinsicManager& intrinsicManager)
+    : intrinsicManager(intrinsicManager), context(&context) {
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
@@ -574,6 +576,13 @@ void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFram
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
+	if (auto intrinsic = intrinsicManager.getIntrinsic(proxyCallOp->getFunctionPtr())) {
+		const auto& intrinsicFunction = *intrinsic;
+		if (intrinsicFunction(builder, proxyCallOp, frame)) {
+			return;
+		}
+	}
+
 	mlir::FlatSymbolRefAttr functionRef;
 	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(proxyCallOp->getFunctionSymbol())) {
 		functionRef = mlir::SymbolRefAttr::get(context, proxyCallOp->getFunctionSymbol());

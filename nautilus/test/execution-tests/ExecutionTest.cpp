@@ -5,6 +5,7 @@
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/profile/assume.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 namespace nautilus::engine {
@@ -1022,8 +1023,35 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+val<int> cfWithAssume(val<int32_t> a) {
+	nautilus_assume(a > 10);
+	if (a > 10) {
+		return a + 10;
+	} else {
+		return a - 10;
+	}
+}
+val<int> cfWithAssumeAlignment(val<int32_t*> a) {
+	nautilus_assume_aligned(a, 256);
+	return *a + 10;
+}
+
+void intrinsicFunctionTest(engine::NautilusEngine& engine) {
+	SECTION("cfWithAssume") {
+		if (engine.getNameOfBackend() != "mlir" || !engine.isCompiled()) {
+			SKIP();
+		}
+		auto f = engine.registerFunction(cfWithAssume);
+		REQUIRE(f(42) == 52);
+		REQUIRE(f(0) == 10);
+	}
+}
+
 void runAllTests(engine::NautilusEngine& engine) {
 
+	SECTION("intrinsicFunctionTest") {
+		intrinsicFunctionTest(engine);
+	}
 	SECTION("registerFunctionTest") {
 		registerFunctionTest(engine);
 	}
