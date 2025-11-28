@@ -14,23 +14,50 @@
 #include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include <memory>
+#include <random>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
 
 namespace nautilus::passes {
 
-void insertBitcodeRegistryCall(std::shared_ptr<llvm::IRBuilder<>> builder, llvm::Function* bitcodeRegistrationFunction,
-                               llvm::Function& targetFunction, std::string& bitcodeStr);
+std::string getUUIDString() {
+	static std::random_device rd;
+	static std::mt19937 gen(rd());
+	static std::uniform_int_distribution<uint64_t> dis;
 
-void insertSymbolRegistryCalls(std::shared_ptr<llvm::IRBuilder<>> builder, llvm::Function* symbolRegistrationFunction,
-                               std::vector<SymbolInfo>& symbols);
+	uint64_t part1 = dis(gen);
+	uint64_t part2 = dis(gen);
 
-std::optional<std::tuple<std::string, std::vector<SymbolInfo>>>
-serializeFunctionWithDependencySymbols(llvm::Function& inlineFunction) {
-	std::vector<SymbolInfo> symbols;
-	auto wrapperModule = llvm::CloneModule(*inlineFunction.getParent());
+	std::ostringstream oss;
+	oss << std::hex << part1 << part2;
+	return oss.str();
+}
+
+std::string getUniqueName(llvm::GlobalValue* gv, SymbolMap& symbolMap, const llvm::Module* originalModule) {
+	if (auto it = symbolMap.find(gv); it != symbolMap.end())
+		return it->second;
+#ifdef NDEBUG
+	auto name = getUUIDString();
+#else
+	auto name = (originalModule->getName() + gv->getName()).str();
+#endif
+	symbolMap.insert({gv, name});
+	return name;
+}
+
+std::optional<std::string> serializeFunctionWithDependencySymbols(llvm::Function& inlineFunction,
+                                                                  SymbolMap& symbolMap) {
+	auto originalModule = inlineFunction.getParent();
+	llvm::ValueToValueMapTy v2v {};
+	auto wrapperModule = llvm::CloneModule(*originalModule, v2v);
 	auto clonedTarget = wrapperModule->getFunction(inlineFunction.getName());
+
+	llvm::DenseMap<llvm::Value*, llvm::Value*> v2vInverted;
+	for (const auto& entry : v2v) {
+		v2vInverted[entry.second] = const_cast<llvm::Value*>(entry.first);
+	}
 
 	std::vector<llvm::GlobalValue*> targetFunction {};
 	targetFunction.push_back(clonedTarget);
@@ -52,17 +79,17 @@ serializeFunctionWithDependencySymbols(llvm::Function& inlineFunction) {
 	MPM.addPass(llvm::GlobalDCEPass());
 	MPM.run(*wrapperModule, MAM);
 
-	wrapperModule->setDataLayout(inlineFunction.getParent()->getDataLayout());
-	wrapperModule->setTargetTriple(inlineFunction.getParent()->getTargetTriple());
+	wrapperModule->setDataLayout(originalModule->getDataLayout());
+	wrapperModule->setTargetTriple(originalModule->getTargetTriple());
 	clonedTarget->addFnAttr("is_target");
 	clonedTarget->setLinkage(llvm::GlobalValue::ExternalLinkage);
 
 	StripDebugInfo(*wrapperModule); // to suppress some llvm warning messages for invalid debug info
 
 	for (auto& globalVariable : wrapperModule->globals()) {
-		auto uniqueName = inlineFunction.getParent()->getName() + globalVariable.getName();
-		symbols.push_back({uniqueName.str(), inlineFunction.getParent()->getGlobalVariable(globalVariable.getName())});
-		globalVariable.setName(uniqueName.str());
+		auto originalGV = dyn_cast<llvm::GlobalValue>(v2vInverted[&globalVariable]);
+		auto uniqueName = getUniqueName(originalGV, symbolMap, originalModule);
+		globalVariable.setName(uniqueName);
 		globalVariable.setInitializer(nullptr);
 		globalVariable.setLinkage(llvm::GlobalValue::ExternalLinkage);
 		// note: even constant variables need to be converted to external linkage because the user code may check
@@ -70,13 +97,13 @@ serializeFunctionWithDependencySymbols(llvm::Function& inlineFunction) {
 	}
 
 	for (auto& function : wrapperModule->functions()) {
-		if (&function != clonedTarget && !function.isIntrinsic()) {
-			auto uniqueName = inlineFunction.getParent()->getName() + function.getName();
-			symbols.push_back({uniqueName.str(), inlineFunction.getParent()->getFunction(function.getName())});
-			function.setName(uniqueName.str());
-			function.deleteBody();
+		if (!function.isIntrinsic() && function.isDeclaration()) {
+			auto originalFunction = dyn_cast<llvm::GlobalValue>(v2vInverted[&function]);
+			auto uniqueName = getUniqueName(originalFunction, symbolMap, originalModule);
+			function.setName(uniqueName);
 			function.setLinkage(llvm::GlobalValue::ExternalLinkage);
 			function.removeFnAttr(llvm::Attribute::NoInline);
+			function.removeFnAttr(llvm::Attribute::OptimizeNone);
 		}
 	}
 
@@ -85,7 +112,7 @@ serializeFunctionWithDependencySymbols(llvm::Function& inlineFunction) {
 	llvm::raw_svector_ostream OS(buffer);
 	WriteBitcodeToFile(*wrapperModule, OS);
 	std::string bitcodeStr(buffer.begin(), buffer.end());
-	return std::make_optional(std::make_tuple(std::move(bitcodeStr), std::move(symbols)));
+	return std::make_optional(std::move(bitcodeStr));
 }
 
 // inserts call to the bitcode registry to associate the IR bitstring with the target function
@@ -115,7 +142,7 @@ void insertBitcodeRegistryCall(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 
 // inserts calls to the symbol registry to associate symbol names with function pointers
 void insertSymbolRegistryCalls(std::shared_ptr<llvm::IRBuilder<>> builder, llvm::Function* symbolRegistrationFunction,
-                               std::vector<SymbolInfo>& symbols) {
+                               SymbolMap& symbols) {
 	llvm::LLVMContext& ctx = builder->getContext();
 
 	// Create types
@@ -123,20 +150,22 @@ void insertSymbolRegistryCalls(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 	auto* int8PtrTy = llvm::PointerType::get(int8Ty, 0);
 
 	for (auto& symbol : symbols) {
-		llvm::ArrayRef<uint8_t> symbolName((const uint8_t*) symbol.name.data(), symbol.name.size());
+		auto val = symbol.first;
+		auto& name = symbol.second;
+		llvm::ArrayRef<uint8_t> symbolName((const uint8_t*) name.data(), name.size());
 
 		// Create LLVM values holding the symbol names and pointers
 		auto* symbolNameConstant = llvm::ConstantDataArray::get(ctx, symbolName);
 		auto* symbolNameGV =
 		    new llvm::GlobalVariable(*symbolRegistrationFunction->getParent(), symbolNameConstant->getType(), true,
-		                             llvm::GlobalValue::PrivateLinkage, symbolNameConstant, symbol.name);
+		                             llvm::GlobalValue::PrivateLinkage, symbolNameConstant, name);
 		symbolNameGV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 		auto* symbolNamePtr = builder->CreateBitCast(
 		    builder->CreateConstGEP2_32(symbolNameConstant->getType(), symbolNameGV, 0, 0), int8PtrTy);
-		auto* symbolNameLen = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), symbol.name.size());
+		auto* symbolNameLen = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), name.size());
 
 		// Insert call to registration function
-		auto* symbolPtr = builder->CreateBitCast(symbol.ptr, int8PtrTy);
+		auto* symbolPtr = builder->CreateBitCast(val, int8PtrTy);
 		builder->CreateCall(symbolRegistrationFunction, {symbolNamePtr, symbolNameLen, symbolPtr});
 	}
 }

@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
 #include "fmt/format.h"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/inline.hpp"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRBuilder.h"
@@ -57,6 +58,10 @@ std::optional<std::unique_ptr<llvm::Module>> loadBitcodeIfAvailable(void* fnPtr,
 					func.replaceAllUsesWith(existingFunc);
 					func.removeFromParent();
 				}
+			} else {
+				llvm::errs() << "Symbol registry error. Undefined function " << func.getName()
+				             << " not contained in symbol registry.\n";
+				return std::nullopt;
 			}
 		}
 	}
@@ -75,6 +80,10 @@ std::optional<std::unique_ptr<llvm::Module>> loadBitcodeIfAvailable(void* fnPtr,
 					globalVar.replaceAllUsesWith(existingGV);
 					globalVar.removeFromParent();
 				}
+			} else {
+				llvm::errs() << "Symbol registry error. Global variable " << globalVar.getName()
+				             << " not contained in symbol registry.\n";
+				return std::nullopt;
 			}
 		}
 	}
@@ -86,9 +95,9 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 	// repeat until module wasnt modified during an iteration
 	// this is key for recursive inlining, where inlinable candidates may appear later during processing
 	std::unordered_map<void*, llvm::Function*> inlinedFunctions {};
-	bool modified = true;
-	while (modified) {
-		modified = false;
+	bool doAnotherIteration; // true if there could still be inlinable functions
+	do {
+		doAnotherIteration = false;
 		std::vector<llvm::Function*> functionListView;
 		for (auto& F : moduleToOptimize) {
 			functionListView.push_back(&F);
@@ -111,7 +120,7 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 			if (auto it = inlinedFunctions.find(fnPtr); it != inlinedFunctions.end()) {
 				originalFunction->replaceAllUsesWith(it->second);
 				originalFunction->removeFromParent();
-				modified = true;
+				continue;
 			}
 
 			// try to load bitcode for the current function
@@ -133,6 +142,11 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 			// suppress some warnings
 			inlineModule->setTargetTriple(moduleToOptimize.getTargetTriple());
 			inlineModule->setDataLayout(moduleToOptimize.getDataLayout().getStringRepresentation());
+
+			if (moduleToOptimize.getFunction(inlinableFunctionFName) != nullptr) {
+				// this should never happen if the deduplication logic works correctly
+				throw RuntimeException("Inlining error: symbol '" + inlinableFunctionFName + "' doubly defined");
+			}
 
 			// link original module with the inline function module (merges two llvm modules)
 			if (llvm::Linker::linkModules(moduleToOptimize, std::move(inlineModule))) {
@@ -158,14 +172,16 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 			inlinableFunction->addFnAttr(
 			    llvm::Attribute::AlwaysInline); // TODO maybe use inline hint + tuned threshold instead
 			inlinableFunction->removeFnAttr(llvm::Attribute::NoInline);
+			inlinableFunction->removeFnAttr(llvm::Attribute::OptimizeNone);
 			inlinedFunctions.insert({fnPtr, inlinableFunction});
 
 			// replace uses of original function with inlinable version and give inlining instruction to optimizer
 			originalFunction->replaceAllUsesWith(inlinableFunction);
 			originalFunction->removeFromParent();
-			modified = true;
+			doAnotherIteration = true;
 		}
-	}
+	} while (doAnotherIteration);
+
 	StripDebugInfo(moduleToOptimize); // suppress more warnings from function cloning
 }
 } // namespace nautilus::compiler::mlir

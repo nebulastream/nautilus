@@ -28,6 +28,8 @@ public:
 		// Convert clang annotations to function attributes that are directly connected to a function
 		annotationsToAttributes(M);
 
+		SymbolMap symbolMap;
+		std::unordered_map<llvm::Function*, std::string> bitcodes;
 		llvm::Function* ctor = nullptr;
 		std::shared_ptr<llvm::IRBuilder<>> ctorBuilder;
 		for (auto& F : M) {
@@ -36,7 +38,7 @@ public:
 				// Check whether a function has the inline tag
 				bool toInline = false;
 				for (auto& attr : F.getAttributes().getFnAttrs()) {
-					if (attr.getKindAsString().starts_with("naut_inline")) {
+					if (attr.getKindAsString().starts_with("nautilus_inline")) {
 						toInline = true;
 					}
 				}
@@ -45,34 +47,40 @@ public:
 					llvm::CrashRecoveryContext CRC;
 					bool success = CRC.RunSafely([&] {
 						// Serialize function to LLVM IR bitcode
-						auto result = serializeFunctionWithDependencySymbols(F);
+						auto result = serializeFunctionWithDependencySymbols(F, symbolMap);
 						if (!result.has_value()) {
 							CRC.HandleExit(1);
 						}
-
-						// Create initializer function with single basic block
-						// This will be executed when the program starts
-						if (!ctor) {
-							ctor = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(ctx), false),
-							                              llvm::GlobalValue::InternalLinkage, M.getName() + ".ir_ctor",
-							                              &M);
-							auto* BB = llvm::BasicBlock::Create(ctx, "entry", ctor);
-							ctorBuilder = std::make_shared<llvm::IRBuilder<>>(BB);
-							ctorBuilder->CreateRetVoid();
-							ctorBuilder->SetInsertPoint(&BB->front());
-							appendToGlobalCtors(M, ctor, 65535);
-						}
-
-						// Insert registry calls into the initializer function to populate them at runtime
-						insertBitcodeRegistryCall(ctorBuilder, bitcodeRegistrationFunction, F, std::get<0>(*result));
-						insertSymbolRegistryCalls(ctorBuilder, symbolRegistrationFunction, std::get<1>(*result));
-
+						bitcodes.insert({&F, *result});
 						success = true;
 					});
+					if (!success) {
+						llvm::errs() << "Failed to serialize inline function. To get rid of this warning, remove the "
+						                "NAUT_INLINE "
+						                "tag from this function: "
+						             << F.getName() << "\n";
+					}
 				}
 			}
 		}
 
+		if (!bitcodes.empty()) {
+			// Create initializer function with single basic block
+			// This will be executed when the program starts
+			ctor = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(ctx), false),
+			                              llvm::GlobalValue::InternalLinkage, M.getName() + ".ir_ctor", &M);
+			auto* BB = llvm::BasicBlock::Create(ctx, "entry", ctor);
+			ctorBuilder = std::make_shared<llvm::IRBuilder<>>(BB);
+
+			// Insert registry calls into the initializer function to populate them at runtime
+			for (auto bitcode : bitcodes) {
+				insertBitcodeRegistryCall(ctorBuilder, bitcodeRegistrationFunction, *bitcode.first, bitcode.second);
+			}
+			insertSymbolRegistryCalls(ctorBuilder, symbolRegistrationFunction, symbolMap);
+
+			ctorBuilder->CreateRetVoid();
+			appendToGlobalCtors(M, ctor, 65535);
+		}
 		return llvm::PreservedAnalyses::all();
 	}
 

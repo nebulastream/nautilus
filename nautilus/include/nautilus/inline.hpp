@@ -8,7 +8,7 @@
 // e.g. NAUTILUS_INLINE int foo(int bar) {...}
 // this marker is used by an LLVM pass to detect those functions and extract LLVM IR code for them
 // increment version counter whenever the pass is updated to force re-compilation
-#define NAUTILUS_INLINE __attribute__((annotate("naut_inline_v0001")))
+#define NAUTILUS_INLINE __attribute__((annotate("nautilus_inline_v00013")))
 
 // !!! everything below is for nautilus internals and not relevant for projects that use nautilus
 
