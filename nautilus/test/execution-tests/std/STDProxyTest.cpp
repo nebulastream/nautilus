@@ -77,7 +77,7 @@ void runAllTests(engine::NautilusEngine& engine) {
 	SECTION("cstdlib") {
 		cstdlib(engine);
 	}
-	SECTION("cmatch") {
+	SECTION("cmath") {
 		cmath(engine);
 	}
 }
@@ -107,6 +107,7 @@ TEST_CASE("STD Proxy Test - Compiler") {
 	for (auto& backend : backends) {
 		DYNAMIC_SECTION(backend) {
 			engine::Options options;
+			options.setOption("dump.all", true);
 			options.setOption("engine.backend", backend);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
