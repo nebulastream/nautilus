@@ -140,7 +140,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initial
 	});
 }
 
-bool TraceContext::traceCmp(const TypedValueRef& targetRef, double probability) {
+bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probability) {
 	bool result;
 	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step

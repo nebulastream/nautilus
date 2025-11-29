@@ -305,7 +305,7 @@ val<int32_t> multipleReturns(val<int32_t> value) {
 
 val<int32_t> withBranchProbability(val<int32_t> value) {
 	auto condition = value == 1;
-	condition.setProbability(0.9);
+	condition.setIsTrueProbability(0.9);
 	if (condition) {
 		return 1;
 	} else {
