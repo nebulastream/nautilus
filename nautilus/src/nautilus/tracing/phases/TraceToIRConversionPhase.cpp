@@ -17,6 +17,7 @@
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include <cassert>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -236,6 +237,7 @@ void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame
 
 void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame, Block&, BasicBlock* currentIrBlock,
                                                                TraceOperation& operation) {
+	assert(operation.input.size() == 4);
 	auto valueRef = get<TypedValueRef>(operation.input[0]);
 	auto trueCaseBlockRef = get<BlockRef>(operation.input[1]);
 	auto falseCaseBlockRef = get<BlockRef>(operation.input[2]);

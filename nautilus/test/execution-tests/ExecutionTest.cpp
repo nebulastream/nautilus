@@ -480,8 +480,8 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 
 	SECTION("withBranchProbability") {
 		auto f = engine.registerFunction(withBranchProbability);
-		REQUIRE(f(1) == 1);
-		REQUIRE(f(-42) == 42);
+		REQUIRE(f(1) == 42);
+		REQUIRE(f(4) == 4);
 	}
 }
 

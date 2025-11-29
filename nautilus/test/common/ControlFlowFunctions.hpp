@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/function.hpp"
 #include <nautilus/Engine.hpp>
 
 namespace nautilus::engine {
@@ -303,13 +304,17 @@ val<int32_t> multipleReturns(val<int32_t> value) {
 	return value + value + 1;
 }
 
+int32_t returnValue(int32_t value) {
+	return value;
+}
+
 val<int32_t> withBranchProbability(val<int32_t> value) {
 	auto condition = value == 1;
-	condition.setProbability(0.9);
+	condition.setIsTrueProbability(0.9);
 	if (condition) {
-		return 1;
-	} else {
 		return 42;
+	} else {
+		return invoke(returnValue, value);
 	}
 }
 

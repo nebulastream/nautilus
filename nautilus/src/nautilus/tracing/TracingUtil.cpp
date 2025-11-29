@@ -28,7 +28,7 @@ TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
-bool traceBool(const TypedValueRef& state, double probability) {
+bool traceBool(const TypedValueRef& state, const double probability) {
 	return TraceContext::get()->traceCmp(state, probability);
 }
 
