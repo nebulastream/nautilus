@@ -14,6 +14,9 @@ namespace nautilus::tracing {
  */
 class ExecutionTrace {
 public:
+	/**
+	 * @brief Constructs a new execution trace
+	 */
 	ExecutionTrace();
 
 	~ExecutionTrace() = default;
@@ -26,20 +29,59 @@ public:
 	ExecutionTrace(ExecutionTrace&&) = default;
 	ExecutionTrace& operator=(ExecutionTrace&&) = default;
 
+	/**
+	 * @brief Adds an operation with a result to the trace
+	 * @param snapshot The current execution snapshot
+	 * @param operation The operation to add
+	 * @param resultType The type of the result value
+	 * @param inputs The input operands for the operation
+	 * @return TypedValueRef& Reference to the resulting value
+	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
 
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, double probability);
+	/**
+	 * @brief Adds a comparison operation to the trace with branch probability
+	 * @param snapshot The current execution snapshot
+	 * @param inputs The input value to compare
+	 * @param probability The branch probability for this comparison
+	 */
+	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability);
 
+	/**
+	 * @brief Adds an assignment operation to the trace
+	 * @param snapshot The current execution snapshot
+	 * @param targetRef The target value reference
+	 * @param srcRef The source value reference
+	 * @param resultType The type of the result
+	 * @return TypedValueRef& Reference to the resulting value
+	 */
 	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
 	                                      Type resultType);
 
+	/**
+	 * @brief Adds a return operation to the trace
+	 * @param snapshot The current execution snapshot
+	 * @param type The type of the return value
+	 * @param ref The value reference being returned
+	 */
 	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
 
+	/**
+	 * @brief Checks if a tag exists for the given snapshot
+	 * @param snapshot The snapshot to check
+	 * @return bool True if the tag exists, false otherwise
+	 */
 	bool checkTag(Snapshot& snapshot);
 
+	/**
+	 * @brief Resets the execution state of the trace
+	 */
 	void resetExecution();
 
+	/**
+	 * @brief Advances to the next operation in the trace
+	 */
 	void nextOperation();
 
 	/**
@@ -79,6 +121,12 @@ public:
 	 */
 	uint16_t getCurrentBlockIndex() const;
 
+	/**
+	 * @brief Adds an operation without a result to the trace
+	 * @param snapshot The current execution snapshot
+	 * @param operation The operation to add
+	 * @param inputs The input operands for the operation
+	 */
 	void addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs);
 
 	/**
@@ -87,6 +135,10 @@ public:
 	 */
 	Block& getCurrentBlock();
 
+	/**
+	 * @brief Returns the current operation being traced
+	 * @return TraceOperation& Reference to the current operation
+	 */
 	TraceOperation& getCurrentOperation();
 
 	/**
@@ -109,11 +161,24 @@ public:
 	 */
 	std::vector<operation_identifier> getReturn();
 
+	/**
+	 * @brief Converts the execution trace to a string representation
+	 * @return std::string String representation of the trace
+	 */
 	std::string toString() const;
 
+	/**
+	 * @brief Gets the next available value reference identifier
+	 * @return uint16_t The next value reference ID
+	 */
 	uint16_t getNextValueRef();
 
 private:
+	/**
+	 * @brief Adds a tag for the given snapshot
+	 * @param snapshot The snapshot to tag
+	 * @param identifier The operation identifier to associate with the tag
+	 */
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
 
 public:
@@ -124,6 +189,11 @@ public:
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+
+	/**
+	 * @brief Gets the next available operation identifier
+	 * @return operation_identifier The next operation identifier
+	 */
 	operation_identifier getNextOperationIdentifier();
 };
 

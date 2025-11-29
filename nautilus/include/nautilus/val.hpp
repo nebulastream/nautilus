@@ -143,6 +143,8 @@ private:
 	ValueType value;
 };
 
+using TrueProbability = double;
+
 template <>
 class val<bool> {
 public:
@@ -202,14 +204,17 @@ public:
 		return value;
 	}
 
-	void setProbability(double prob) {
+	// set the probability of this boolean value being true
+	// the probability is a value between 0.0 and 1.0
+	void setIsTrueProbability(TrueProbability prob) {
 		this->probability = prob;
 	}
 
 private:
 	friend details::RawValueResolver<bool>;
 	bool value;
-	double probability = 0.5;
+	// probability of being true, default is 0.5 as the value is unknown
+	TrueProbability probability = 0.5;
 };
 
 template <is_fundamental_val Type>
