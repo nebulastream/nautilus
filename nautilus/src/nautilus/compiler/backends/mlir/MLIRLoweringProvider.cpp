@@ -677,12 +677,14 @@ void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFr
 void MLIRLoweringProvider::generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame) {
 	auto parentBlockInsertionPoint = builder->saveInsertionPoint();
 
+	// create true block and set block arguments
 	std::vector<mlir::Value> trueBlockArgs;
 	mlir::Block* trueBlock = generateBasicBlock(ifOp->getTrueBlockInvocation(), frame);
 	for (auto blockArg : ifOp->getTrueBlockInvocation().getArguments()) {
 		trueBlockArgs.push_back(frame.getValue(blockArg->getIdentifier()));
 	}
 
+	// create false block and set block arguments
 	std::vector<mlir::Value> elseBlockArgs;
 	mlir::Block* elseBlock = generateBasicBlock(ifOp->getFalseBlockInvocation(), frame);
 	for (auto blockArg : ifOp->getFalseBlockInvocation().getArguments()) {
@@ -690,14 +692,21 @@ void MLIRLoweringProvider::generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame
 	}
 
 	builder->restoreInsertionPoint(parentBlockInsertionPoint);
+	// create cond branch operation, which evaluates the condition and branches to the true or false block
 	auto mlirOp =
 	    builder->create<mlir::cf::CondBranchOp>(getNameLoc("branch"), frame.getValue(ifOp->getValue()->getIdentifier()),
 	                                            trueBlock, trueBlockArgs, elseBlock, elseBlockArgs);
-	// calculate weights for branches by using the branch probabilities
-	::llvm::SmallVector<int32_t, 2> weights;
-	weights.push_back(static_cast<int32_t>(ifOp->getProbability() * 1000));
-	weights.push_back(static_cast<int32_t>((1.0 - ifOp->getProbability()) * 1000));
-	mlirOp.setWeights(weights);
+
+	// set the branch weights for branches by using the branch probabilities
+	// The if probability indicates how likely the true branch is taken and is derived from the val<bool> condition
+	// during tracing.
+	// We only set weights if the probability is not neutral (0.5)
+	if (ifOp->getProbability() < 0.4 || ifOp->getProbability() > 0.6) {
+		::llvm::SmallVector<int32_t, 2> weights;
+		weights.push_back(static_cast<int32_t>(ifOp->getProbability() * 1000));
+		weights.push_back(static_cast<int32_t>((1.0 - ifOp->getProbability()) * 1000));
+		mlirOp.setWeights(weights);
+	}
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame) {

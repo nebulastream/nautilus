@@ -324,8 +324,8 @@ TEST_CASE("LLVM IR Test: compoundStatements", "[control-flow][complex]") {
 	testLLVMIR("compoundStatements", compoundStatements);
 }
 
-TEST_CASE("LLVM IR Test: varyingComplexity", "[control-flow][complex]") {
-	testLLVMIR("varyingComplexity", varyingComplexity);
+TEST_CASE("LLVM IR Test: withBranchProbability", "[control-flow][complex]") {
+	testLLVMIR("withBranchProbability", withBranchProbability);
 }
 
 // ============================================================================
