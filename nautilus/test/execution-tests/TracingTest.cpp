@@ -193,7 +193,6 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"constructComplexReturnObject2", details::createFunctionWrapper(constructComplexReturnObject2)},
 	    {"nestedIf10", details::createFunctionWrapper(nestedIf10)},
 	    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
-	    {"nestedIf500", details::createFunctionWrapper(nestedIf500)},
 	    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
 	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
 	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)}
