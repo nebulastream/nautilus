@@ -4,6 +4,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <any>
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <ostream>
 #include <variant>
@@ -13,9 +14,9 @@ namespace nautilus::compiler::bc {
 
 /**
  * @brief This defines the central register file for the byte-code interpreter.
- * In the current version we only support 1024 registers at max.
+ * In the current version we only support SHRT_MAX registers at max.
  */
-constexpr short REGISTERS = 1024;
+constexpr short REGISTERS = SHRT_MAX;
 using RegisterFile = std::array<int64_t, REGISTERS>;
 
 /**

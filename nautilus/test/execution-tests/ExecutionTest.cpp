@@ -2,6 +2,7 @@
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
@@ -278,6 +279,22 @@ void expressionTests(engine::NautilusEngine& engine) {
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {
+
+	SECTION("chainedIf100") {
+		auto f = engine.registerFunction(chainedIf100);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(200) == 100);
+	}
+	SECTION("chainedIf500") {
+		auto f = engine.registerFunction(chainedIf500);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(200) == 200);
+		REQUIRE(f(600) == 500);
+	}
+	SECTION("nestedIf100") {
+		auto f = engine.registerFunction(nestedIf100);
+		REQUIRE(f(42) == 42);
+	}
 	SECTION("ifConditionTest") {
 		auto f = engine.registerFunction(ifThenCondition);
 		REQUIRE(f(42) == 44);

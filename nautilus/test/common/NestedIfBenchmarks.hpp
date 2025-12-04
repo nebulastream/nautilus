@@ -4,8 +4,8 @@
 
 namespace nautilus::engine {
 
-val<int8_t> nestedIf10(val<int8_t> x) {
-	val<int8_t> result = 0;
+val<int32_t> nestedIf10(val<int32_t> x) {
+	val<int32_t> result = 0;
 	if (x > 0) {
 		result = result + 1;
 		if (x > 1) {
@@ -39,8 +39,8 @@ val<int8_t> nestedIf10(val<int8_t> x) {
 	return result;
 }
 
-val<int8_t> nestedIf100(val<int8_t> x) {
-	val<int8_t> result = 0;
+val<int32_t> nestedIf100(val<int32_t> x) {
+	val<int32_t> result = 0;
 	if (x > 0) {
 		result = result + 1;
 		if (x > 1) {
@@ -569,8 +569,8 @@ val<int8_t> nestedIf100(val<int8_t> x) {
 	return result;
 }
 
-val<int8_t> chainedIf10(val<int8_t> x) {
-	val<int8_t> result = 0;
+val<int32_t> chainedIf10(val<int32_t> x) {
+	val<int32_t> result = 0;
 	if (x > 0) {
 		result = result + 1;
 	}
@@ -604,8 +604,8 @@ val<int8_t> chainedIf10(val<int8_t> x) {
 	return result;
 }
 
-val<int8_t> chainedIf100(val<int8_t> x) {
-	val<int8_t> result = 0;
+val<int32_t> chainedIf100(val<int32_t> x) {
+	val<int32_t> result = 0;
 	if (x > 0) {
 		result = result + 1;
 	}
@@ -909,8 +909,8 @@ val<int8_t> chainedIf100(val<int8_t> x) {
 	return result;
 }
 
-val<int8_t> chainedIf500(val<int8_t> x) {
-	val<int8_t> result = 0;
+val<int32_t> chainedIf500(val<int32_t> x) {
+	val<int32_t> result = 0;
 	if (x > 0) {
 		result = result + 1;
 	}

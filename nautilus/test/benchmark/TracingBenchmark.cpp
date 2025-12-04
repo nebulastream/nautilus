@@ -37,7 +37,6 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
     {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
-    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
 };
 
 TEST_CASE("Tracing Benchmark") {
@@ -56,6 +55,11 @@ TEST_CASE("SSA Creation Benchmark") {
 	for (auto& test : tests) {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
+
+		// skip this test
+		if (name == "nestedIf10" || name == "nestedIf100" || name == "chainedIf10" || name == "chainedIf100") {
+			continue;
+		}
 
 		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
 			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
