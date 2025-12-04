@@ -6,6 +6,7 @@
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
+#include <csetjmp>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -92,6 +93,9 @@ public:
 	std::vector<StaticVarHolder>& getStaticVars();
 	void allocateValRef(ValueRef ref);
 	void freeValRef(ValueRef ref);
+
+	// Jump buffer for fast trace termination (public for SymbolicExecutionContext access)
+	std::jmp_buf traceTerminationJmpBuf;
 
 private:
 	explicit TraceContext(TagRecorder& tagRecorder);

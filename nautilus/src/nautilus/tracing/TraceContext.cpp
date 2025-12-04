@@ -3,8 +3,8 @@
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
-#include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
+#include <csetjmp>
 #include <fmt/format.h>
 
 namespace fmt {
@@ -91,8 +91,8 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 		if (executionTrace->checkTag(tag)) {
 			return onCreation(tag);
 		} else {
-			// TODO find a way to handle this more graceful.
-			throw TraceTerminationException();
+			// Terminate trace iteration via longjmp (faster than exception)
+			std::longjmp(traceTerminationJmpBuf, 1);
 		}
 	}
 }
@@ -153,8 +153,8 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 			executionTrace->addCmpOperation(tag, targetRef);
 			result = symbolicExecutionContext->record(tag);
 		} else {
-			// this is actually the same tag -> throw up
-			throw TraceTerminationException();
+			// Terminate trace iteration via longjmp (faster than exception)
+			std::longjmp(traceTerminationJmpBuf, 1);
 		}
 	}
 
@@ -176,9 +176,11 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 	auto tc = initialize(tr);
-	auto traceIteration = 0;
+	volatile int traceIteration = 0;
 	while (tc->symbolicExecutionContext->shouldContinue()) {
-		try {
+		// Set up non-local jump target for trace termination
+		if (setjmp(tc->traceTerminationJmpBuf) == 0) {
+			// Normal execution path
 			traceIteration = traceIteration + 1;
 			log::trace("Trace Iteration {}", traceIteration);
 			log::trace("{}", *tc->executionTrace);
@@ -186,8 +188,9 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 			tc->executionTrace->resetExecution();
 			TraceContext::get()->resume();
 			traceFunction();
-		} catch (const TraceTerminationException& ex) {
 		}
+		// If we reach here via longjmp, the iteration terminated early
+		// Simply continue to next iteration
 	}
 	auto trace = std::move(tc->executionTrace);
 	terminate();

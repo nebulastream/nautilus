@@ -1,7 +1,9 @@
 
 #include "SymbolicExecutionContext.hpp"
 #include "TraceTerminationException.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include <cassert>
+#include <csetjmp>
 
 namespace nautilus::tracing {
 
@@ -34,12 +36,14 @@ bool SymbolicExecutionContext::record(const Snapshot& tag) {
 	};
 	case SymbolicExecutionContext::TagState::SecondVisit: {
 		// The tag is in SecondVisit state -> terminate execution.
-		// NES_DEBUG("Trace: early terminate via exception.");
-		// TraceContext::get()->pause();
-		throw TraceTerminationException();
+		// Terminate trace iteration via longjmp (faster than exception)
+		auto* tc = TraceContext::get();
+		std::longjmp(tc->traceTerminationJmpBuf, 1);
 	};
 	}
-	throw TraceTerminationException();
+	// Should never reach here, but terminate if we do
+	auto* tc = TraceContext::get();
+	std::longjmp(tc->traceTerminationJmpBuf, 1);
 }
 
 SymbolicExecutionContext::MODE SymbolicExecutionContext::getCurrentMode() const {
