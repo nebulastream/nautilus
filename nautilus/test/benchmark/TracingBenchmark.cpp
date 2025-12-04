@@ -5,6 +5,7 @@
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -32,6 +33,11 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"staticLoop", details::createFunctionWrapper(staticLoop)},
     {"fibonacci", details::createFunctionWrapper(fibonacci)},
     {"gcd", details::createFunctionWrapper(gcd)},
+    {"nestedIf10", details::createFunctionWrapper(nestedIf10)},
+    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
+    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
+    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
+    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
 };
 
 TEST_CASE("Tracing Benchmark") {

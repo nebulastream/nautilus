@@ -4,6 +4,7 @@
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -189,7 +190,12 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"logicalXOR", details::createFunctionWrapper(logicalXOR)},
 	    {"nestedIfElseDifferentLevels", details::createFunctionWrapper(nestedIfElseDifferentLevels)},
 	    {"constructComplexReturnObject", details::createFunctionWrapper(constructComplexReturnObject)},
-	    {"constructComplexReturnObject2", details::createFunctionWrapper(constructComplexReturnObject2)}
+	    {"constructComplexReturnObject2", details::createFunctionWrapper(constructComplexReturnObject2)},
+	    {"nestedIf10", details::createFunctionWrapper(nestedIf10)},
+	    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
+	    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
+	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
+	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)}
 
 	};
 	runTraceTests("control-flow-tests", tests);
