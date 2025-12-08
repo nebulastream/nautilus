@@ -11,15 +11,7 @@ namespace nautilus {
 
 template <typename... ValueArguments>
 auto getArgumentReferences(const ValueArguments&... arguments) {
-	std::vector<tracing::TypedValueRef> functionArgumentReferences;
-	if constexpr (sizeof...(ValueArguments) > 0) {
-		functionArgumentReferences.reserve(sizeof...(ValueArguments));
-		for (const tracing::TypedValueRef& p :
-		     {details::StateResolver<const ValueArguments&>::getState(arguments)...}) {
-			functionArgumentReferences.emplace_back(p);
-		}
-	}
-	return functionArgumentReferences;
+	return std::vector<tracing::TypedValueRef> {details::StateResolver<const ValueArguments&>::getState(arguments)...};
 }
 
 template <typename R, typename... FunctionArguments>
