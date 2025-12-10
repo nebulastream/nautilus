@@ -6,6 +6,7 @@
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -22,7 +23,82 @@ private:
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
 };
 
-using DynamicValueMap = std::vector<uint8_t>;
+/**
+ * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.
+ *
+ * This class maintains reference counts for up to 65536 variables and computes a hash that reflects
+ * both which variables are alive and their reference counts. The hash is updated incrementally in O(1)
+ * time on each increment/decrement operation, avoiding the need to recompute the entire hash.
+ *
+ * Implementation details:
+ * - Uses XOR-based hashing for O(1) incremental updates
+ * - Each variable ID is mixed with a constant multiplier for better hash distribution
+ * - The hash incorporates both variable identity (ID) and reference count
+ * - Memory footprint: 256KB (only counts array, no precomputed hash table)
+ *
+ * Performance characteristics:
+ * - increment(): O(1) - two XOR operations, two multiplications
+ * - decrement(): O(1) - two XOR operations, two multiplications
+ * - hash(): O(1) - returns cached value
+ *
+ * @note This replaces the previous vector-based approach which required O(n) hashing on snapshot.
+ */
+class AliveVariableHash {
+	static constexpr size_t N = 1u << 16;
+	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
+
+	std::array<uint32_t, N> counts {};
+	uint64_t alive_hash = 0;
+
+public:
+	/**
+	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
+	 */
+	AliveVariableHash() = default;
+
+	/**
+	 * @brief Increments the reference count for a variable and updates the hash.
+	 *
+	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
+	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
+	 *
+	 * @param id Variable identifier (16-bit value)
+	 */
+	inline void increment(uint16_t id) noexcept {
+		uint32_t& c = counts[id];
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		++c;
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+	}
+
+	/**
+	 * @brief Decrements the reference count for a variable and updates the hash.
+	 *
+	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
+	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
+	 *
+	 * @param id Variable identifier (16-bit value)
+	 */
+	inline void decrement(uint16_t id) noexcept {
+		uint32_t& c = counts[id];
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		--c;
+		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+	}
+
+	/**
+	 * @brief Returns the current hash value representing the state of alive variables.
+	 *
+	 * The hash reflects both which variables have non-zero reference counts and the
+	 * magnitude of those counts. This value is maintained incrementally and can be
+	 * retrieved in O(1) time.
+	 *
+	 * @return 64-bit hash value representing current variable state
+	 */
+	inline uint64_t hash() const noexcept {
+		return alive_hash;
+	}
+};
 
 /**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
@@ -108,7 +184,7 @@ private:
 	std::unique_ptr<ExecutionTrace> executionTrace;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
 	std::vector<StaticVarHolder> staticVars;
-	DynamicValueMap dynamicVars;
+	AliveVariableHash aliveVars;
 };
 
 } // namespace nautilus::tracing
