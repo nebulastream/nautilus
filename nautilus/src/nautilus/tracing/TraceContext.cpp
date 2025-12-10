@@ -24,14 +24,12 @@ TraceContext* TraceContext::get() {
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder) {
 	traceContext = new TraceContext(tagRecorder);
-	traceContext->dynamicVars.reserve(128);
 	return traceContext;
 }
 
 void TraceContext::resume() {
 	staticVars.clear();
 	dynamicVars.clear();
-	traceContext->dynamicVars.reserve(128);
 }
 
 void TraceContext::terminate() {
@@ -201,19 +199,10 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 }
 
 void TraceContext::allocateValRef(ValueRef ref) {
-	while (dynamicVars.size() <= ref) {
-		dynamicVars.emplace_back(0);
-	}
-	dynamicVars.at(ref)++;
+	dynamicVars.increment(ref);
 }
 void TraceContext::freeValRef(ValueRef ref) {
-	auto& refCounter = dynamicVars.at(ref);
-	// the ref counter should always be greater than zero.
-	assert(refCounter > 0);
-	refCounter--;
-	while (!dynamicVars.empty() && dynamicVars.back() == 0) {
-		dynamicVars.pop_back();
-	}
+	dynamicVars.decrement(ref);
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;
@@ -228,17 +217,8 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	return hash;
 }
 
-uint64_t hashDynamicVector(const DynamicValueMap& data) {
-	size_t hash = offset_basis;
-	for (auto value : data) {
-		hash ^= value;
-		hash *= fnv_prime;
-	}
-	return hash;
-}
-
 Snapshot TraceContext::recordSnapshot() {
-	return {tagRecorder.createTag(), hashStaticVector(staticVars) ^ hashDynamicVector(dynamicVars)};
+	return {tagRecorder.createTag(), hashStaticVector(staticVars) ^ dynamicVars.hash()};
 }
 
 } // namespace nautilus::tracing

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "AliveVariableHash.hpp"
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -21,8 +22,6 @@ private:
 	const size_t* ptr;
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
 };
-
-using DynamicValueMap = std::vector<uint8_t>;
 
 /**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
@@ -108,7 +107,7 @@ private:
 	std::unique_ptr<ExecutionTrace> executionTrace;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
 	std::vector<StaticVarHolder> staticVars;
-	DynamicValueMap dynamicVars;
+	AliveVariableHash dynamicVars;
 };
 
 } // namespace nautilus::tracing
