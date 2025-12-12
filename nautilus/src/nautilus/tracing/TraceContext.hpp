@@ -124,6 +124,8 @@ struct TraceState {
 	ExecutionTrace& executionTrace;
 	SymbolicExecutionContext& symbolicExecutionContext;
 	const engine::Options& options;
+	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
+	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 
 	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };
@@ -253,8 +255,6 @@ private:
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 	std::unordered_map<void*, std::string> mangledNameCache;
-	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
-	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 };
 
 } // namespace nautilus::tracing

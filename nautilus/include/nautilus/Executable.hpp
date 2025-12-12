@@ -1,8 +1,10 @@
 #pragma once
 
 #include <any>
+#include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -26,7 +28,12 @@ public:
 		 */
 		virtual std::any invokeGeneric(const std::vector<std::any>& args) = 0;
 
+		void setGeneratedFiles(const std::map<std::string, std::string>& generatedFiles);
+
 		virtual ~GenericInvocable() = default;
+
+	private:
+		std::map<std::string, std::string> generatedFiles;
 	};
 
 	/**
@@ -134,6 +141,13 @@ public:
 	virtual std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string&) {
 		return nullptr;
 	}
+
+	void setGeneratedFiles(const std::map<std::string, std::string>& generatedFiles);
+
+	const std::string_view getGeneratedFile(std::string_view key) const;
+
+private:
+	std::map<std::string, std::string> generatedFiles;
 };
 
 } // namespace nautilus::compiler
