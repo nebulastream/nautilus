@@ -122,7 +122,16 @@ private:
 	template <class T>
 	static void pipe(std::basic_ostream<CharT, Traits>* ptr, T value) {
 		auto& s = *ptr;
-		s << value;
+		if constexpr (
+    		std::is_pointer_v<T> &&
+    		!std::is_same_v<std::remove_cv_t<T>, char*> &&
+    		!std::is_same_v<std::remove_cv_t<T>, const char*>
+		) {
+    		s << std::showbase << std::hex
+      		<< reinterpret_cast<const void*>(value);
+		} else {
+    		s << value;
+		}
 	}
 
 	static void flash(std::basic_ostream<CharT, Traits>* ptr) {
