@@ -9,28 +9,6 @@
 #include <sstream>
 namespace nautilus::tracing {
 
-std::string getMangledName(void* fnptr) {
-	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
-		return info.dli_sname;
-	}
-	std::stringstream ss;
-	ss << fnptr;
-	return ss.str();
-}
-
-std::string getFunctionName(const std::string& mangledName) {
-	// std::size_t sz = 25;
-	// char* buffer = static_cast<char*>(std::malloc(sz));
-	// int status;
-	// char* realname = abi::__cxa_demangle(mangledName.c_str(), buffer, &sz, &status);
-	// if (realname) {
-	//	return realname;
-	// }
-	return mangledName;
-}
-
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	TraceContext::get()->traceAssignment(target, source, resultType);
 }
@@ -79,9 +57,10 @@ TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef&
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          const FunctionAttributes fnAttrs) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(mangledName);
-	return TraceContext::get()->traceCall(functionName, mangledName, fptn, resultType, arguments, fnAttrs);
+	auto traceContext = TraceContext::get();
+	auto mangledName = traceContext->getMangledName(fptn);
+	auto functionName = traceContext->getFunctionName(mangledName);
+	return traceContext->traceCall(functionName, mangledName, fptn, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {

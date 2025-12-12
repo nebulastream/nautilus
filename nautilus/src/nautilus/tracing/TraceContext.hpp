@@ -93,6 +93,10 @@ public:
 	void allocateValRef(ValueRef ref);
 	void freeValRef(ValueRef ref);
 
+	std::string getMangledName(void* fnptr);
+	static std::string getFunctionName(const std::string& mangledNamed);
+
+
 private:
 	explicit TraceContext(TagRecorder& tagRecorder);
 
@@ -109,6 +113,7 @@ private:
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
 	std::vector<StaticVarHolder> staticVars;
 	DynamicValueMap dynamicVars;
+	std::unordered_map<void*, std::string> mangledNameCache;
 };
 
 } // namespace nautilus::tracing

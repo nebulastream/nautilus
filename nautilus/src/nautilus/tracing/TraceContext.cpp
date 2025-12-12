@@ -5,6 +5,8 @@
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
+#include <cxxabi.h>
+#include <dlfcn.h>
 #include <fmt/format.h>
 
 namespace fmt {
@@ -201,8 +203,8 @@ std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
 }
 
 void TraceContext::allocateValRef(ValueRef ref) {
-	while (dynamicVars.size() <= ref) {
-		dynamicVars.emplace_back(0);
+	if (dynamicVars.size() <= ref) {
+		dynamicVars.resize(ref + 1, 0);
 	}
 	dynamicVars.at(ref)++;
 }
@@ -214,6 +216,27 @@ void TraceContext::freeValRef(ValueRef ref) {
 	while (!dynamicVars.empty() && dynamicVars.back() == 0) {
 		dynamicVars.pop_back();
 	}
+}
+
+std::string TraceContext::getMangledName(void* fnptr) {
+	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
+		return it->second;
+	}
+
+	Dl_info info;
+	dladdr(reinterpret_cast<void*>(fnptr), &info);
+	if (info.dli_sname != nullptr) {
+		mangledNameCache.insert({fnptr, info.dli_sname});
+		return info.dli_sname;
+	}
+	std::stringstream ss;
+	ss << fnptr;
+	mangledNameCache.insert({fnptr, ss.str()});
+	return ss.str();
+}
+
+std::string TraceContext::getFunctionName(const std::string& mangledNamed) {
+	return mangledNamed;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;
@@ -228,9 +251,9 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	return hash;
 }
 
-uint64_t hashDynamicVector(const DynamicValueMap& data) {
+uint64_t hashDynamicVector(DynamicValueMap& data) {
 	size_t hash = offset_basis;
-	for (auto value : data) {
+	for (const auto value : data) {
 		hash ^= value;
 		hash *= fnv_prime;
 	}
