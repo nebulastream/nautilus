@@ -170,6 +170,36 @@ public:
 #ifdef ENABLE_TRACING
 	const tracing::TypedValueRefHolder state;
 #endif
+
+protected:
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator==(val<ValueType> left, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator==(val<ValueType> left, std::nullptr_t);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator==(std::nullptr_t, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator<=(val<ValueType> left, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator<(val<ValueType> left, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator>(val<ValueType> left, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator>=(val<ValueType> left, val<ValueType> right);
+	template <typename ValueType>
+	    requires std::is_pointer_v<ValueType>
+	friend auto inline operator!=(val<ValueType> left, val<ValueType> right);
+	template <is_ptr ValueType, is_fundamental_val IndexType>
+	friend val<ValueType> inline operator+(val<ValueType> left, IndexType offset);
+
+	friend details::RawValueResolver<ValuePtrType>;
 	ValuePtrType value;
 };
 
