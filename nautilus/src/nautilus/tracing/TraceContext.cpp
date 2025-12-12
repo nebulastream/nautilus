@@ -114,8 +114,8 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
                                        const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
+	const auto mangledName = getMangledName(fptn);
+	const auto functionName = getFunctionName(mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto functionArguments = FunctionCall {.functionName = functionName,
@@ -291,6 +291,27 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 
 	// Demangling failed, return the mangled name
 	return mangledName;
+}
+
+std::string TraceContext::getMangledName(void* fnptr) {
+	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
+		return it->second;
+	}
+
+	Dl_info info;
+	dladdr(reinterpret_cast<void*>(fnptr), &info);
+	if (info.dli_sname != nullptr) {
+		mangledNameCache.insert({fnptr, info.dli_sname});
+		return info.dli_sname;
+	}
+	std::stringstream ss;
+	ss << fnptr;
+	mangledNameCache.insert({fnptr, ss.str()});
+	return ss.str();
+}
+
+std::string TraceContext::getFunctionName(const std::string& mangledNamed) {
+	return mangledNamed;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;
