@@ -3,6 +3,8 @@
 #include "nautilus/options.hpp"
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <string_view>
 namespace nautilus::compiler {
 
 class DumpHandler {
@@ -11,6 +13,7 @@ public:
 	void dump(std::string_view dumpName, std::string_view extension,
 	          const std::function<std::string()>& dumpFunction) const;
 	void forceDump(std::string_view dumpName, std::string_view extension, const std::string& content) const;
+	[[nodiscard]] const std::map<std::string, std::string>& getGeneratedFiles() const;
 
 private:
 	[[nodiscard]] bool shouldDump(std::string_view dumpName) const;
@@ -20,6 +23,7 @@ private:
 	const engine::Options& options;
 	const CompilationUnitID& id;
 	const std::filesystem::path rootPath;
+	mutable std::map<std::string, std::string> generatedFilesByType;
 };
 
 } // namespace nautilus::compiler

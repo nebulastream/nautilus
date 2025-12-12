@@ -9,7 +9,6 @@
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <iomanip>
-#include <iostream>
 #include <random>
 #include <sstream>
 #include <string>
@@ -63,7 +62,7 @@ std::string createCompilationUnitID() {
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
-	const auto dumpHandler = DumpHandler(options, compilationId);
+	auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
 	auto executionTrace = tracing::TraceContext::trace(function, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
@@ -83,6 +82,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	const auto backendName = getName();
 	const auto backend = backends->getBackend(backendName);
 	auto executable = backend->compile(ir, dumpHandler, options);
+	executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	return executable;
 }
 

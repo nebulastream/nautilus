@@ -92,6 +92,10 @@ public:
 		    func);
 	}
 
+	const compiler::Executable* getExecutable() {
+		return executable.get();
+	}
+
 private:
 	std::variant<std::function<R(val<FunctionArguments>...)>,
 	             compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>>

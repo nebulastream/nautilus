@@ -21,6 +21,7 @@ option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer." OFF)
 option(ENABLE_THREAD_SANITIZER "Enable thread sanitizer." OFF)
 option(ENABLE_UB_SANITIZER "Enable undefined behavior sanitizer." OFF)
+option(ENABLE_LLVM_IR_TEST "Enable LLVM IR comparison tests (requires llvm-diff-19 or later)" OFF)
 project(nautilus VERSION 0.1)
 
 set(CMAKE_CXX_STANDARD 20)

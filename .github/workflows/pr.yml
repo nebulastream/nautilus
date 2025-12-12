@@ -124,3 +124,41 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/nautilus --output-on-failure
+  llvm-ir-test:
+    runs-on: ubuntu-24.04
+    name: LLVM IR Test (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-llvm-ir-test
+      - name: Install clang 21 and llvm-diff-21
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 clang++-21 llvm-21
+          # Create symlinks for llvm-diff
+          sudo ln -sf /usr/bin/llvm-diff-21 /usr/local/bin/llvm-diff-19
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_LLVM_IR_TEST=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-llvm-ir-test
+      - name: test
+        shell: bash
+        run: |
+          ctest --test-dir build/nautilus/test/llvm-ir-test --output-on-failure

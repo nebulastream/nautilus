@@ -260,14 +260,14 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 	if (normalizeFunctionNames) {
 		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
 		// Check if we already have a normalized name for this function
-		auto it = normalizedFunctionNameCache.find(fnptr);
-		if (it != normalizedFunctionNameCache.end()) {
+		auto it = state->normalizedFunctionNameCache.find(fnptr);
+		if (it != state->normalizedFunctionNameCache.end()) {
 			return "runtimeFunc" + std::to_string(it->second);
 		}
 
 		// Assign a new normalized function index
-		uint32_t index = nextNormalizedFunctionIndex++;
-		normalizedFunctionNameCache[fnptr] = index;
+		uint32_t index = state->nextNormalizedFunctionIndex++;
+		state->normalizedFunctionNameCache[fnptr] = index;
 		return "runtimeFunc" + std::to_string(index);
 	}
 

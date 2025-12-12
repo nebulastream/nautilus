@@ -48,6 +48,7 @@ void DumpHandler::forceDump(std::string_view dumpName, std::string_view extensio
 		auto filePath = rootPath / fmt::format("{}.{}", dumpName, extension);
 		common::File::createFile(filePath.string(), content);
 		fmt::println("{} -- {} -- file://{}", dumpName, id, filePath.native());
+		generatedFilesByType[std::string(dumpName)] = filePath.string();
 	}
 }
 
@@ -62,6 +63,10 @@ bool DumpHandler::dumpToConsole() const {
 
 bool DumpHandler::dumpToFile() const {
 	return options.getOptionOrDefault("dump.file", true);
+}
+
+const std::map<std::string, std::string>& DumpHandler::getGeneratedFiles() const {
+	return generatedFilesByType;
 }
 
 } // namespace nautilus::compiler

@@ -21,7 +21,7 @@ LLVMIROptimizer::~LLVMIROptimizer() = default;
 std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipeline(const engine::Options& options,
                                                                                     const DumpHandler& handler) {
 	// Return LLVM optimizer pipeline.
-	return [options, handler](llvm::Module* llvmIRModule) {
+	return [options, &handler](llvm::Module* llvmIRModule) {
 		// Currently, we do not increase the sizeLevel requirement of the
 		// optimizingTransformer beyond 0.
 		constexpr int SIZE_LEVEL = 0;
