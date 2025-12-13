@@ -49,7 +49,7 @@ private:
 	public:
 		short allocRegister();
 
-		void freeRegister();
+		void freeRegister(short reg);
 
 		short getRegisterCount() const {
 			return currentRegister;
@@ -57,6 +57,7 @@ private:
 
 	private:
 		short currentRegister = 0;
+		std::vector<short> freeList;
 	};
 
 	class LoweringContext {
@@ -75,6 +76,8 @@ private:
 		std::shared_ptr<ir::IRGraph> ir;
 		RegisterProvider registerProvider;
 		std::unordered_map<std::string, short> activeBlocks;
+		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
+		std::unordered_set<ir::OperationIdentifier> functionArgs;
 
 		void process(ir::AddOperation* opt, short block, RegisterFrame& frame);
 
@@ -120,6 +123,9 @@ private:
 				defaultRegisterFile.resize(registerIndex + 1, 0);
 			}
 		}
+
+		void countUsages(const ir::BasicBlock* block);
+		void useValue(const ir::OperationIdentifier& identifier, RegisterFrame& frame);
 	};
 };
 } // namespace nautilus::compiler::bc
