@@ -20,9 +20,9 @@ jobs:
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2.13
+        uses: hendrikmuhs/ccache-action@v1.2.20
         with:
-          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-benchmark
+          key: ${{ github.job }}-ubuntu-24.04-clang-benchmark
       - name: cmake
         shell: bash
         run: |
