@@ -107,9 +107,10 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(const std::string& functionName, const std::string& mangledName, void* fptn,
-                                       Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
+	auto mangledName = getMangledName(fptn);
+	auto functionName = getFunctionName(mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto functionArguments = FunctionCall {.functionName = functionName,
