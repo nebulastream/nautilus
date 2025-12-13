@@ -65,7 +65,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	const auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
-	auto executionTrace = tracing::TraceContext::trace(function);
+	auto executionTrace = tracing::TraceContext::trace(function, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
 	// create ssa

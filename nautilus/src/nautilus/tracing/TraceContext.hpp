@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/options.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
 #include <array>
@@ -122,8 +123,9 @@ struct TraceState {
 	TagRecorder& tagRecorder;
 	ExecutionTrace& executionTrace;
 	SymbolicExecutionContext& symbolicExecutionContext;
+	const engine::Options& options;
 
-	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec);
+	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };
 
 /**
@@ -208,21 +210,27 @@ public:
 	 * @param tagRecorder Reference to TagRecorder for creating unique tags
 	 * @param executionTrace Reference to stack-allocated ExecutionTrace
 	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
+	 * @param options Reference to engine options for configuration
 	 * @return Pointer to initialized thread_local TraceContext
 	 */
 	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-	                                SymbolicExecutionContext& symbolicExecutionContext);
+	                                SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
 
 	/**
 	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
 	 * @param traceFunction The function to trace
+	 * @param options Engine options for configuration
 	 * @return unique_ptr to ExecutionTrace containing the complete trace
 	 */
-	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction);
+	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
+	                                             const engine::Options& options = engine::Options());
 
 	std::vector<StaticVarHolder>& getStaticVars();
 	void allocateValRef(ValueRef ref);
 	void freeValRef(ValueRef ref);
+
+	std::string getMangledName(void* fnptr);
+	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
 
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.
@@ -244,6 +252,9 @@ private:
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	std::unordered_map<void*, std::string> mangledNameCache;
+	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
+	uint32_t nextNormalizedFunctionIndex = 0;                         // Counter for normalized function names
 };
 
 } // namespace nautilus::tracing

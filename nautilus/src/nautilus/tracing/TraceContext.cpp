@@ -20,8 +20,8 @@ namespace nautilus::tracing {
 // This is allocated in thread-local storage - zero heap allocation overhead
 static thread_local TraceContext traceContext;
 
-TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec) {
+TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
+    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
@@ -30,8 +30,8 @@ TraceContext* TraceContext::get() {
 }
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                       SymbolicExecutionContext& symbolicExecutionContext) {
-	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext);
+                                       SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options) {
+	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	return &traceContext;
 }
 
@@ -110,7 +110,7 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(mangledName);
+	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto functionArguments = FunctionCall {.functionName = functionName,
@@ -174,7 +174,7 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 	return result;
 }
 
-std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction) {
+std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction, const engine::Options& options) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
@@ -185,7 +185,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	SymbolicExecutionContext symbolicExecutionContext;
 
 	// Initialize TraceContext with references to our stack objects
-	auto tc = initialize(tr, executionTrace, symbolicExecutionContext);
+	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
 	auto traceIteration = 0;
 
 	// Symbolic execution loop: explore all execution paths
@@ -227,6 +227,63 @@ void TraceContext::allocateValRef(ValueRef ref) {
 }
 void TraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
+}
+
+std::string TraceContext::getMangledName(void* fnptr) {
+	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
+		return it->second;
+	}
+
+	Dl_info info;
+	dladdr(reinterpret_cast<void*>(fnptr), &info);
+	if (info.dli_sname != nullptr) {
+		mangledNameCache.insert({fnptr, info.dli_sname});
+		return info.dli_sname;
+	}
+	std::stringstream ss;
+	ss << fnptr;
+	mangledNameCache.insert({fnptr, ss.str()});
+	return ss.str();
+}
+
+std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
+	// Check if function name normalization is enabled
+	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
+
+	if (normalizeFunctionNames) {
+		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
+		// Check if we already have a normalized name for this function
+		auto it = normalizedFunctionNameCache.find(fnptr);
+		if (it != normalizedFunctionNameCache.end()) {
+			return "runtimeFunc" + std::to_string(it->second);
+		}
+
+		// Assign a new normalized function index
+		uint32_t index = nextNormalizedFunctionIndex++;
+		normalizedFunctionNameCache[fnptr] = index;
+		return "runtimeFunc" + std::to_string(index);
+	}
+
+	// Check if demangling is enabled
+	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
+
+	if (!demangleFunctionNames) {
+		// Return the mangled name as-is
+		return mangledName;
+	}
+
+	// Try to demangle the function name for human-readable output
+	int status;
+	char* demangled = abi::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
+	if (status == 0 && demangled != nullptr) {
+		// Demangling succeeded
+		std::string result(demangled);
+		std::free(demangled);
+		return result;
+	}
+
+	// Demangling failed, return the mangled name
+	return mangledName;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;

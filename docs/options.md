@@ -7,6 +7,7 @@ engine.:
 |---------------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | engine.compilation=[true,false]             | true     | Activates the compilation of nautilus functions. If the flag is false, all nautilus functions will be directly invoked, which is handy for debugging. |
 | engine.backend=[mlir,bc,cpp]                | mlir     | Sets the specific compilation backend for nautilus functions.                                                                                         |
+| engine.normalizeFunctionNames=[true,false]  | false    | Generates normalized function names (runtimeFunc0, runtimeFunc1, etc.) during tracing instead of using actual function names. Useful for deterministic output and testing. |
 | dump.all=[true,false]                       | false    | Dumbs intermediate representations all compilation steps.                                                                                             |
 | dump.after_tracing=[true,false]             | false    | Dumbs traces directly after trace generation.                                                                                                         |
 | dump.after_ssa=[true,false]                 | false    | Dumbs traces after SSA generation.                                                                                                                    |
