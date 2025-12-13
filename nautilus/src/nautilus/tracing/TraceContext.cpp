@@ -5,7 +5,10 @@
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
+#include <cxxabi.h>
+#include <dlfcn.h>
 #include <fmt/format.h>
+#include <sstream>
 
 namespace fmt {
 template <>
@@ -30,7 +33,8 @@ TraceContext* TraceContext::get() {
 }
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                       SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options) {
+                                       SymbolicExecutionContext& symbolicExecutionContext,
+                                       const engine::Options& options) {
 	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	return &traceContext;
 }
@@ -107,7 +111,8 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
+                                       const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
@@ -174,7 +179,8 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 	return result;
 }
 
-std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction, const engine::Options& options) {
+std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
+                                                    const engine::Options& options) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
@@ -237,13 +243,14 @@ std::string TraceContext::getMangledName(void* fnptr) {
 	Dl_info info;
 	dladdr(reinterpret_cast<void*>(fnptr), &info);
 	if (info.dli_sname != nullptr) {
-		mangledNameCache.insert({fnptr, info.dli_sname});
+		mangledNameCache[fnptr] = info.dli_sname;
 		return info.dli_sname;
 	}
 	std::stringstream ss;
 	ss << fnptr;
-	mangledNameCache.insert({fnptr, ss.str()});
-	return ss.str();
+	std::string ptrStr = ss.str();
+	mangledNameCache[fnptr] = ptrStr;
+	return ptrStr;
 }
 
 std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
@@ -274,7 +281,7 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 
 	// Try to demangle the function name for human-readable output
 	int status;
-	char* demangled = abi::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
+	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
 	if (status == 0 && demangled != nullptr) {
 		// Demangling succeeded
 		std::string result(demangled);
