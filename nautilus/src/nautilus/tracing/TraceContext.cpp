@@ -16,34 +16,38 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 
 namespace nautilus::tracing {
 
-static thread_local TraceContext* traceContext;
+// Thread-local TraceContext object (not a pointer)
+// This is allocated in thread-local storage - zero heap allocation overhead
+static thread_local TraceContext traceContext;
 
-TraceContext* TraceContext::get() {
-	return traceContext;
+TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec)
+    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec) {
+	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
-TraceContext* TraceContext::initialize(TagRecorder& tagRecorder) {
-	traceContext = new TraceContext(tagRecorder);
-	return traceContext;
+TraceContext* TraceContext::get() {
+	return traceContext.state ? &traceContext : nullptr;
+}
+
+TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+                                       SymbolicExecutionContext& symbolicExecutionContext) {
+	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext);
+	return &traceContext;
 }
 
 void TraceContext::resume() {
+	// Clear dynamic containers
 	staticVars.clear();
-	aliveVars = AliveVariableHash();
-}
 
-void TraceContext::terminate() {
-	delete traceContext;
-	traceContext = nullptr;
-}
+	// Reset aliveVars to initial state (all counts to 0, hash to 0)
+	aliveVars.reset();
 
-TraceContext::TraceContext(TagRecorder& tagRecorder)
-    : tagRecorder(tagRecorder), executionTrace(std::make_unique<ExecutionTrace>()),
-      symbolicExecutionContext(std::make_unique<SymbolicExecutionContext>()) {
+	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
+	// as it needs to persist across trace iterations
 }
 
 TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
-	return executionTrace->setArgument(type, index);
+	return state->executionTrace.setArgument(type, index);
 }
 
 void TraceContext::traceValueDestruction(nautilus::tracing::TypedValueRef) {
@@ -51,12 +55,12 @@ void TraceContext::traceValueDestruction(nautilus::tracing::TypedValueRef) {
 }
 
 bool TraceContext::isFollowing() {
-	return symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
+	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
 TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
-	auto& currentOperation = executionTrace->getCurrentOperation();
-	executionTrace->nextOperation();
+	auto& currentOperation = state->executionTrace.getCurrentOperation();
+	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
 	return currentOperation.resultRef;
 }
@@ -68,15 +72,15 @@ TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& c
 		return follow(op);
 	}
 	auto tag = recordSnapshot();
-	auto globalTabIter = executionTrace->globalTagMap.find(tag);
-	if (globalTabIter != executionTrace->globalTagMap.end()) {
+	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
+	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto& originalRef = executionTrace->getBlocks()[ref.blockIndex].operations[ref.operationIndex];
-		auto resultRef = executionTrace->addOperationWithResult(tag, op, type, {constValue});
-		executionTrace->addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
+		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
 		return originalRef.resultRef;
 	} else {
-		return executionTrace->addOperationWithResult(tag, op, type, {constValue});
+		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
 }
 
@@ -86,7 +90,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 		return follow(op);
 	} else {
 		auto tag = recordSnapshot();
-		if (executionTrace->checkTag(tag)) {
+		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
 			// TODO find a way to handle this more graceful.
@@ -98,8 +102,8 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
 	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = executionTrace->getNextValueRef();
-		return executionTrace->addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+		auto resultRef = state->executionTrace.getNextValueRef();
+		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 	});
 }
 
@@ -113,13 +117,13 @@ TypedValueRef& TraceContext::traceCall(const std::string& functionName, const st
 		                                       .ptr = fptn,
 		                                       .arguments = arguments,
 		                                       .fnAttrs = fnAttrs};
-		return executionTrace->addOperationWithResult(tag, op, resultType, {functionArguments});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
 void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return executionTrace->addAssignmentOperation(tag, targetRef, sourceRef, resultType);
+		return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef, resultType);
 	});
 }
 
@@ -128,35 +132,35 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 		follow(RETURN);
 	} else {
 		auto tag = recordSnapshot();
-		executionTrace->addReturn(tag, resultType, ref);
+		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
 
 TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputs) {
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return executionTrace->addOperationWithResult(tag, op, resultType, inputs);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs);
 	});
 }
 
 bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 	bool result;
-	if (symbolicExecutionContext->getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
+	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step
 		// we repeat the operation
-		result = symbolicExecutionContext->follow();
+		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
 		auto tag = recordSnapshot();
-		if (executionTrace->checkTag(tag)) {
-			executionTrace->addCmpOperation(tag, targetRef);
-			result = symbolicExecutionContext->record(tag);
+		if (state->executionTrace.checkTag(tag)) {
+			state->executionTrace.addCmpOperation(tag, targetRef);
+			result = state->symbolicExecutionContext.record(tag);
 		} else {
 			// this is actually the same tag -> throw up
 			throw TraceTerminationException();
 		}
 	}
 
-	auto& currentOperation = executionTrace->getCurrentOperation();
+	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	assert(currentOperation.op == CMP);
 
 	uint16_t nextBlock;
@@ -165,7 +169,7 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef) {
 	} else {
 		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
 	}
-	executionTrace->setCurrentBlock(nextBlock);
+	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;
 }
 
@@ -173,25 +177,44 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
-	auto tc = initialize(tr);
+
+	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
+	// This is the key optimization: no heap allocations for these large objects
+	ExecutionTrace executionTrace;
+	SymbolicExecutionContext symbolicExecutionContext;
+
+	// Initialize TraceContext with references to our stack objects
+	auto tc = initialize(tr, executionTrace, symbolicExecutionContext);
 	auto traceIteration = 0;
-	while (tc->symbolicExecutionContext->shouldContinue()) {
+
+	// Symbolic execution loop: explore all execution paths
+	while (symbolicExecutionContext.shouldContinue()) {
 		try {
 			traceIteration = traceIteration + 1;
 			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", *tc->executionTrace);
-			tc->symbolicExecutionContext->next();
-			tc->executionTrace->resetExecution();
-			TraceContext::get()->resume();
+			log::trace("{}", executionTrace);
+
+			// Prepare for next iteration
+			symbolicExecutionContext.next();
+			executionTrace.resetExecution();
+			TraceContext::get()->resume(); // Reset persistent state (staticVars, aliveVars)
+
+			// Execute the traced function
 			traceFunction();
 		} catch (const TraceTerminationException& ex) {
+			// Normal termination when we hit a known control flow merge or loop
 		}
 	}
-	auto trace = std::move(tc->executionTrace);
-	terminate();
+
+	// Clean up: reset state pointer (TraceContext is no longer initialized)
+	tc->state.reset();
+
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", *trace);
-	return trace;
+	log::trace("Final trace: {}", executionTrace);
+
+	// Move stack-allocated executionTrace into a unique_ptr for return
+	// The caller gets ownership of the trace
+	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
 std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
@@ -218,7 +241,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot TraceContext::recordSnapshot() {
-	return {tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
 
 } // namespace nautilus::tracing
