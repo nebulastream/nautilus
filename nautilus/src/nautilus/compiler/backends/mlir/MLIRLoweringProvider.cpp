@@ -605,7 +605,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 			ss << proxyCallOp->getFunctionPtr();
 			return ss.str();
 		}
-		return proxyCallOp->getFunctionSymbol();
+		return proxyCallOp->getFunctionName();
 	}();
 
 	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(functionName)) {
