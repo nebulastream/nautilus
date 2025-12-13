@@ -29,7 +29,6 @@ void BCLoweringProvider::RegisterProvider::freeRegister() {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
-	defaultRegisterFile.fill(0);
 	const auto& functionOperation = ir->getRootOperation();
 	RegisterFrame rootFrame;
 	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
@@ -40,8 +39,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		program.arguments.emplace_back(argumentRegister);
 	}
 	this->process(&functionBasicBlock, rootFrame);
-	// NES_INFO("Allocated Registers: " <<
-	// this->registerProvider.allocRegister());
+	// Resize register file to actual number of registers used
+	defaultRegisterFile.resize(registerProvider.getRegisterCount(), 0);
 	return std::make_tuple(program, defaultRegisterFile);
 }
 

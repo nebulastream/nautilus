@@ -14,10 +14,9 @@ namespace nautilus::compiler::bc {
 
 /**
  * @brief This defines the central register file for the byte-code interpreter.
- * In the current version we only support SHRT_MAX registers at max.
+ * Uses a dynamic vector sized based on actual register usage.
  */
-constexpr short REGISTERS = SHRT_MAX;
-using RegisterFile = std::array<int64_t, REGISTERS>;
+using RegisterFile = std::vector<int64_t>;
 
 /**
  * @brief Defines an enum of all byte codes.

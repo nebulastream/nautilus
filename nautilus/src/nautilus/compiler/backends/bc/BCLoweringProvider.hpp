@@ -51,6 +51,10 @@ private:
 
 		void freeRegister();
 
+		short getRegisterCount() const {
+			return currentRegister;
+		}
+
 	private:
 		short currentRegister = 0;
 	};
