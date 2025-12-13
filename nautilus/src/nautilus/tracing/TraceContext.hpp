@@ -254,7 +254,7 @@ private:
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 	std::unordered_map<void*, std::string> mangledNameCache;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
-	uint32_t nextNormalizedFunctionIndex = 0;                         // Counter for normalized function names
+	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 };
 
 } // namespace nautilus::tracing
