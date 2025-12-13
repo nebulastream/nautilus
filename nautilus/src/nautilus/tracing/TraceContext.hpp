@@ -98,18 +98,56 @@ public:
 	inline uint64_t hash() const noexcept {
 		return alive_hash;
 	}
+
+	/**
+	 * @brief Resets all reference counts and hash to initial state.
+	 *
+	 * This efficiently clears all counts without creating a temporary object.
+	 * Optimized: if hash is already 0, we assume counts are already 0 and skip the fill.
+	 */
+	inline void reset() noexcept {
+		if (alive_hash != 0) {
+			counts.fill(0);
+			alive_hash = 0;
+		}
+	}
+};
+
+/**
+ * @brief State that requires initialization for tracing operations.
+ * This is allocated when tracing begins and freed when it ends.
+ * Holds references to stack-allocated objects.
+ */
+struct TraceState {
+	TagRecorder& tagRecorder;
+	ExecutionTrace& executionTrace;
+	SymbolicExecutionContext& symbolicExecutionContext;
+
+	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec);
 };
 
 /**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
- * function. Tracing will be initialized with ether traceFunction or traceFunctionWithReturn.
+ * function.
+ *
+ * Design Philosophy:
+ * - TraceContext is a simple thread_local object (not a pointer) - zero heap allocation
+ * - ExecutionTrace and SymbolicExecutionContext are allocated on the stack in trace()
+ * - TraceState holds references to these stack objects and is created during initialization
+ * - staticVars and aliveVars are persistent members that get reset between trace iterations
+ *
+ * Lifecycle:
+ * 1. trace() allocates ExecutionTrace and SymbolicExecutionContext on its stack
+ * 2. initialize() creates TraceState with references to these stack objects
+ * 3. Multiple trace iterations execute, calling resume() to reset persistent state
+ * 4. After tracing completes, state is reset and ExecutionTrace is moved into unique_ptr for return
  */
 class TraceContext {
 public:
 	/**
 	 * @brief Get a thread local reference to the trace context.
-	 * If the trace context is not initialized this function returns a nullptr.
-	 * @return TraceContext*
+	 * If the trace context is not initialized (state == nullptr) this function returns nullptr.
+	 * @return TraceContext* pointer to thread_local TraceContext if initialized, nullptr otherwise
 	 */
 	static TraceContext* get();
 
@@ -159,32 +197,54 @@ public:
 
 	~TraceContext() = default;
 
+	/**
+	 * @brief Resets persistent state between trace iterations.
+	 * Clears staticVars and resets aliveVars hash/counts.
+	 * Does NOT reset state (executionTrace/symbolicExecutionContext) - they persist across iterations.
+	 */
 	void resume();
 
-	static TraceContext* initialize(TagRecorder& tagRecorder);
+	/**
+	 * @brief Initialize the trace context with references to stack-allocated objects.
+	 * @param tagRecorder Reference to TagRecorder for creating unique tags
+	 * @param executionTrace Reference to stack-allocated ExecutionTrace
+	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
+	 * @return Pointer to initialized thread_local TraceContext
+	 */
+	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+	                                SymbolicExecutionContext& symbolicExecutionContext);
 
+	/**
+	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
+	 * @param traceFunction The function to trace
+	 * @return unique_ptr to ExecutionTrace containing the complete trace
+	 */
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction);
 
 	std::vector<StaticVarHolder>& getStaticVars();
 	void allocateValRef(ValueRef ref);
 	void freeValRef(ValueRef ref);
 
+	/**
+	 * @brief Default constructor - public to allow thread_local storage.
+	 * Initializes with empty state (state == nullptr means not initialized).
+	 */
+	TraceContext() = default;
+
 private:
-	explicit TraceContext(TagRecorder& tagRecorder);
-
-	static void terminate();
-
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 
-	TagRecorder& tagRecorder;
-	std::unique_ptr<ExecutionTrace> executionTrace;
-	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext;
-	std::vector<StaticVarHolder> staticVars;
-	AliveVariableHash aliveVars;
+	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
+	// nullptr when not tracing, set during initialize()
+	std::unique_ptr<TraceState> state;
+
+	// Persistent state - reset between trace iterations via resume()
+	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
+	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 };
 
 } // namespace nautilus::tracing

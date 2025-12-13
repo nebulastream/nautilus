@@ -18,6 +18,14 @@ public:
 
 	~ExecutionTrace() = default;
 
+	// Delete copy operations (ExecutionTrace is move-only)
+	ExecutionTrace(const ExecutionTrace&) = delete;
+	ExecutionTrace& operator=(const ExecutionTrace&) = delete;
+
+	// Default move operations
+	ExecutionTrace(ExecutionTrace&&) = default;
+	ExecutionTrace& operator=(ExecutionTrace&&) = default;
+
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
 
