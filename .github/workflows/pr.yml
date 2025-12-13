@@ -99,7 +99,7 @@ jobs:
             cmake-${{ matrix.os }}-${{ matrix.cc }}-
             cmake-${{ matrix.os }}-
       - name: get ccache
-        uses: hendrikmuhs/ccache-action@v1.2.13
+        uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt') }}
       - name: Install clang 19
