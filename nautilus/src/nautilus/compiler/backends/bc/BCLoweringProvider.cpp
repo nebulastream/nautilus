@@ -29,7 +29,6 @@ void BCLoweringProvider::RegisterProvider::freeRegister() {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
-	defaultRegisterFile.fill(0);
 	const auto& functionOperation = ir->getRootOperation();
 	RegisterFrame rootFrame;
 	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
@@ -40,8 +39,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		program.arguments.emplace_back(argumentRegister);
 	}
 	this->process(&functionBasicBlock, rootFrame);
-	// NES_INFO("Allocated Registers: " <<
-	// this->registerProvider.allocRegister());
+	// Resize register file to actual number of registers used
+	defaultRegisterFile.resize(registerProvider.getRegisterCount(), 0);
 	return std::make_tuple(program, defaultRegisterFile);
 }
 
@@ -999,6 +998,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstPtrOp: {
 		auto constPtr = as<ir::ConstPtrOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
+		allocateRegister(defaultRegister);
 		defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
 		auto targetRegister = registerProvider.allocRegister();
@@ -1010,6 +1010,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstBooleanOp: {
 		auto constInt = as<ir::ConstBooleanOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
+		allocateRegister(defaultRegister);
 		defaultRegisterFile[defaultRegister] = constInt->getValue();
 
 		auto targetRegister = registerProvider.allocRegister();
@@ -1021,6 +1022,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstIntOp: {
 		auto constInt = as<ir::ConstIntOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
+		allocateRegister(defaultRegister);
 		defaultRegisterFile[defaultRegister] = constInt->getValue();
 		auto targetRegister = registerProvider.allocRegister();
 		frame.setValue(constInt->getIdentifier(), targetRegister);
@@ -1031,6 +1033,7 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 	case ir::Operation::OperationType::ConstFloatOp: {
 		auto constInt = as<ir::ConstFloatOperation>(opt);
 		auto defaultRegister = registerProvider.allocRegister();
+		allocateRegister(defaultRegister);
 		if (constInt->getStamp() == Type::f32) {
 			auto floatValue = (float) constInt->getValue();
 			auto floatReg = reinterpret_cast<float*>(&defaultRegisterFile[defaultRegister]);
@@ -1272,6 +1275,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 
 	auto funcInfoRegister = registerProvider.allocRegister();
+	allocateRegister(funcInfoRegister);
 	defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
 
 	if (opt->getStamp() != Type::v) {
