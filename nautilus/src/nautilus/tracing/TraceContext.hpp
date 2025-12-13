@@ -189,8 +189,7 @@ public:
 	 */
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef& traceCall(const std::string& functionName, const std::string& mangledName, void* fptn,
-	                         Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs);
 
 	bool traceCmp(const TypedValueRef& targetRef);
