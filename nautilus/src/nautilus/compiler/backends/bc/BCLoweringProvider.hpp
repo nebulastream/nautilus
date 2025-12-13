@@ -51,6 +51,10 @@ private:
 
 		void freeRegister();
 
+		short getRegisterCount() const {
+			return currentRegister;
+		}
+
 	private:
 		short currentRegister = 0;
 	};
@@ -110,6 +114,12 @@ private:
 		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
 
 		short getResultRegister(ir::Operation* opt, RegisterFrame& frame);
+
+		void allocateRegister(short registerIndex) {
+			if (registerIndex >= static_cast<short>(defaultRegisterFile.size())) {
+				defaultRegisterFile.resize(registerIndex + 1, 0);
+			}
+		}
 	};
 };
 } // namespace nautilus::compiler::bc
