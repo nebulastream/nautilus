@@ -20,12 +20,18 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::lower(std::shared_ptr<ir::IRG
 }
 
 short BCLoweringProvider::RegisterProvider::allocRegister() {
-	// NES_ASSERT(currentRegister <= REGISTERS, "allocated to many registers.");
+	// Reuse freed registers if available
+	if (!freeList.empty()) {
+		short reg = freeList.back();
+		freeList.pop_back();
+		return reg;
+	}
+	// Otherwise allocate a new register
 	return currentRegister++;
 }
 
-void BCLoweringProvider::RegisterProvider::freeRegister() {
-	// TODO
+void BCLoweringProvider::RegisterProvider::freeRegister(short reg) {
+	freeList.push_back(reg);
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
@@ -37,6 +43,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		auto argumentRegister = registerProvider.allocRegister();
 		rootFrame.setValue(argument->getIdentifier(), argumentRegister);
 		program.arguments.emplace_back(argumentRegister);
+		// Mark function arguments so they're never freed
+		functionArgs.insert(argument->getIdentifier());
 	}
 	this->process(&functionBasicBlock, rootFrame);
 	// Resize register file to actual number of registers used
@@ -50,6 +58,8 @@ short BCLoweringProvider::LoweringContext::process(const ir::BasicBlock* block, 
 	if (entry == activeBlocks.end()) {
 		short blockIndex = program.blocks.size();
 		activeBlocks.emplace(block->getIdentifier(), blockIndex);
+		// Count usages in this block for register reuse
+		countUsages(block);
 		// create bytecode block;
 		program.blocks.emplace_back();
 		for (auto& opt : block->getOperations()) {
@@ -1682,6 +1692,95 @@ short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, Reg
 	}
 	 */
 	return registerProvider.allocRegister();
+}
+
+void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* block) {
+	// Count how many times each value is used in this block
+	for (const auto& opt : block->getOperations()) {
+		// Count inputs to this operation
+		auto countInput = [this](const ir::Operation* input) {
+			if (input) {
+				usageCounts[input->getIdentifier()]++;
+			}
+		};
+
+		switch (opt->getOperationType()) {
+		case ir::Operation::OperationType::AddOp:
+		case ir::Operation::OperationType::SubOp:
+		case ir::Operation::OperationType::MulOp:
+		case ir::Operation::OperationType::DivOp:
+		case ir::Operation::OperationType::ModOp: {
+			auto binOp = dynamic_cast<ir::Operation*>(opt.get());
+			if (auto addOp = dynamic_cast<ir::AddOperation*>(binOp)) {
+				countInput(addOp->getLeftInput());
+				countInput(addOp->getRightInput());
+			} else if (auto subOp = dynamic_cast<ir::SubOperation*>(binOp)) {
+				countInput(subOp->getLeftInput());
+				countInput(subOp->getRightInput());
+			} else if (auto mulOp = dynamic_cast<ir::MulOperation*>(binOp)) {
+				countInput(mulOp->getLeftInput());
+				countInput(mulOp->getRightInput());
+			} else if (auto divOp = dynamic_cast<ir::DivOperation*>(binOp)) {
+				countInput(divOp->getLeftInput());
+				countInput(divOp->getRightInput());
+			} else if (auto modOp = dynamic_cast<ir::ModOperation*>(binOp)) {
+				countInput(modOp->getLeftInput());
+				countInput(modOp->getRightInput());
+			}
+			break;
+		}
+		case ir::Operation::OperationType::CompareOp: {
+			auto cmpOp = dynamic_cast<ir::CompareOperation*>(opt.get());
+			countInput(cmpOp->getLeftInput());
+			countInput(cmpOp->getRightInput());
+			break;
+		}
+		case ir::Operation::OperationType::LoadOp: {
+			auto loadOp = dynamic_cast<ir::LoadOperation*>(opt.get());
+			countInput(loadOp->getAddress());
+			break;
+		}
+		case ir::Operation::OperationType::StoreOp: {
+			auto storeOp = dynamic_cast<ir::StoreOperation*>(opt.get());
+			countInput(storeOp->getAddress());
+			countInput(storeOp->getValue());
+			break;
+		}
+		case ir::Operation::OperationType::CastOp: {
+			auto castOp = dynamic_cast<ir::CastOperation*>(opt.get());
+			countInput(castOp->getInput());
+			break;
+		}
+		case ir::Operation::OperationType::ReturnOp: {
+			auto retOp = dynamic_cast<ir::ReturnOperation*>(opt.get());
+			if (retOp->hasReturnValue()) {
+				countInput(retOp->getReturnValue());
+			}
+			break;
+		}
+		default:
+			// Other operations not critical for basic register reuse
+			break;
+		}
+	}
+}
+
+void BCLoweringProvider::LoweringContext::useValue(const ir::OperationIdentifier& identifier, RegisterFrame& frame) {
+	// Skip if this is a function argument
+	if (functionArgs.count(identifier) > 0) {
+		return;
+	}
+
+	// Decrement usage count
+	auto it = usageCounts.find(identifier);
+	if (it != usageCounts.end() && it->second > 0) {
+		it->second--;
+		// If this was the last use, free the register
+		if (it->second == 0 && frame.contains(identifier)) {
+			short reg = frame.getValue(identifier);
+			registerProvider.freeRegister(reg);
+		}
+	}
 }
 
 } // namespace nautilus::compiler::bc
