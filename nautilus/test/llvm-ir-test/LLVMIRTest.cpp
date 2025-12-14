@@ -1,5 +1,5 @@
-#include "nautilus/Engine.hpp"
 #include "LLVMIRTestUtil.hpp"
+#include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
