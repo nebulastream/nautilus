@@ -74,9 +74,7 @@ public:
 
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
-		if (tracing::inTracer()) {
-			tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
-		}
+		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif
 		this->value = other.value;
 		return *this;
@@ -182,12 +180,9 @@ public:
 #endif
 
 	val<bool>& operator=(const val<bool>& other) {
-		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			tracing::traceAssignment(state, other.state, Type::b);
+		tracing::traceAssignment(state, other.state, Type::b);
 #endif
-		}
-
 		this->value = other.value;
 		return *this;
 	}

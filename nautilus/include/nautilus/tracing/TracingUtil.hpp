@@ -14,7 +14,14 @@
 
 namespace nautilus::tracing {
 
+// Forward declaration
+class TraceContext;
+
 bool inTracer();
+
+// Get the current tracer context pointer (returns nullptr if not tracing)
+// This can be cached locally to avoid repeated thread-local access
+TraceContext* getTracerIfActive();
 
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
                              const TypedValueRef& rightState);
@@ -24,7 +31,7 @@ bool traceBool(const TypedValueRef& state);
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
-	if (inTracer()) {
+	if (auto* ctx = getTracerIfActive()) {
 		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value));
 	}
 	return {0, TypeResolver<T>::to_type()};
