@@ -1,11 +1,11 @@
 B0($1:bool,$2:bool)
-	AND	$5	$1	$2	:bool
-	CMP	$6	$5	B1()	B2()	:void
+	AND	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
 B1()
-	CONST	$7	true	:bool
-	JMP	$0	B3($7)	:void
+	CONST	$5	true	:bool
+	JMP	$0	B3($5)	:void
 B2()
-	CONST	$10	false	:bool
-	JMP	$0	B3($10)	:void
-B3($7:bool)
-	RETURN	$0	$7	:bool
+	CONST	$8	false	:bool
+	JMP	$0	B3($8)	:void
+B3($5:bool)
+	RETURN	$0	$5	:bool

@@ -497,31 +497,31 @@ val<bool> inline lNot(const val<bool>& arg) {
 }
 } // namespace details
 
-auto inline operator||(bool left, val<bool> right) {
+auto inline operator||(bool left, const val<bool>& right) {
 	auto leftVal = make_value(left);
 	return details::lOr(leftVal, right);
 }
-auto inline operator||(val<bool> left, bool right) {
+auto inline operator||(const val<bool>& left, bool right) {
 	auto rightVal = make_value(right);
 	return details::lOr(left, rightVal);
 }
-auto inline operator||(val<bool> left, val<bool> right) {
+auto inline operator||(const val<bool>& left, const val<bool>& right) {
 	return details::lOr(left, right);
 }
 
-auto inline operator&&(bool left, val<bool> right) {
+auto inline operator&&(bool left, const val<bool>& right) {
 	auto leftVal = make_value(left);
 	return details::lAnd(leftVal, right);
 }
-auto inline operator&&(val<bool> left, bool right) {
+auto inline operator&&(const val<bool>& left, bool right) {
 	auto rightVal = make_value(right);
 	return details::lAnd(left, rightVal);
 }
-auto inline operator&&(val<bool> left, val<bool> right) {
+auto inline operator&&(const val<bool>& left, const val<bool>& right) {
 	return details::lAnd(left, right);
 }
 
-auto inline operator!(val<bool> left) {
+auto inline operator!(const val<bool>& left) {
 	return details::lNot(left);
 }
 
