@@ -1,5 +1,5 @@
-#include "nautilus/Engine.hpp"
 #include "LLVMIRTestUtil.hpp"
+#include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
@@ -31,13 +31,11 @@ TEST_CASE("LLVM IR Intrinsic Test: assumeFunction (MLIR intrinsics enabled)", "[
 	testIntrinsicLLVMIR("assumeFunction_with_intrinsics", assumeFunction, true);
 }
 
-TEST_CASE("LLVM IR Intrinsic Test: assumeComplexCondition (MLIR intrinsics enabled)",
-          "[profile][assume][intrinsics]") {
+TEST_CASE("LLVM IR Intrinsic Test: assumeComplexCondition (MLIR intrinsics enabled)", "[profile][assume][intrinsics]") {
 	testIntrinsicLLVMIR("assumeComplexCondition_with_intrinsics", assumeComplexCondition, true);
 }
 
-TEST_CASE("LLVM IR Intrinsic Test: assumeAlignedFunction (MLIR intrinsics enabled)",
-          "[profile][assume][intrinsics]") {
+TEST_CASE("LLVM IR Intrinsic Test: assumeAlignedFunction (MLIR intrinsics enabled)", "[profile][assume][intrinsics]") {
 	testIntrinsicLLVMIR("assumeAlignedFunction_with_intrinsics", assumeAlignedFunction, true);
 }
 
@@ -45,8 +43,7 @@ TEST_CASE("LLVM IR Intrinsic Test: assumeAlignedFunction (MLIR intrinsics enable
 // Profile Tests - Assume Intrinsics with MLIR Intrinsics Disabled
 // ============================================================================
 
-TEST_CASE("LLVM IR Intrinsic Test: assumeFunction (MLIR intrinsics disabled)",
-          "[profile][assume][no-intrinsics]") {
+TEST_CASE("LLVM IR Intrinsic Test: assumeFunction (MLIR intrinsics disabled)", "[profile][assume][no-intrinsics]") {
 	testIntrinsicLLVMIR("assumeFunction_without_intrinsics", assumeFunction, false);
 }
 
