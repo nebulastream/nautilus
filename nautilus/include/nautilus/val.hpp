@@ -466,7 +466,7 @@ auto& operator>>=(val<LHS>& left, RHS right) {
 }
 
 namespace details {
-val<bool> inline lOr(val<bool>& left, val<bool>& right) {
+val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
@@ -476,7 +476,7 @@ val<bool> inline lOr(val<bool>& left, val<bool>& right) {
 	return RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right);
 }
 
-val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
+val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
@@ -486,7 +486,7 @@ val<bool> inline lAnd(val<bool>& left, val<bool>& right) {
 	return RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right);
 }
 
-val<bool> inline lNot(val<bool>& arg) {
+val<bool> inline lNot(const val<bool>& arg) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceUnaryOp(tracing::NOT, Type::b, arg.state);
