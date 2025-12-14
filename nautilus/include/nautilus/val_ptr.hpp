@@ -183,8 +183,13 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+	val(val<ValuePtrType>&& otherValue) noexcept
+	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
+	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 
@@ -264,8 +269,13 @@ public:
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+	val(val<ValuePtrType>&& otherValue) noexcept
+	    : base_ptr_val<ValuePtrType>(otherValue.value, std::move(otherValue.state)) {
+	}
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
+	}
+	val(val<ValuePtrType>&& otherValue) noexcept : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
 #endif
 

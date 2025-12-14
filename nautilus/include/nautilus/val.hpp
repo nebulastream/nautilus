@@ -55,7 +55,7 @@ public:
 	}
 	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
 	}
-	val(val<ValueType>&& other) noexcept : state(other.state), value(std::move(other.value)) {
+	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
 	}
 	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
@@ -68,7 +68,7 @@ public:
 	val(const val<ValueType>& other) : value(other.value) {
 	}
 	// move constructor
-	val(const val<ValueType>&& other) : value(other.value) {
+	val(val<ValueType>&& other) noexcept : value(std::move(other.value)) {
 	}
 #endif
 
@@ -163,7 +163,7 @@ public:
 	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
 	}
 	// move constructor
-	val(const val<bool>&& other) : state(other.state), value(other.value) {
+	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
 	}
 	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
@@ -177,7 +177,7 @@ public:
 	val(const val<bool>& other) : value(other.value) {
 	}
 	// move constructor
-	val(const val<bool>&& other) : value(other.value) {
+	val(val<bool>&& other) noexcept : value(std::move(other.value)) {
 	}
 #endif
 
