@@ -31,7 +31,7 @@ bool traceBool(const TypedValueRef& state);
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
-	if (auto* ctx = getTracerIfActive()) {
+	if (inTracer()) {
 		return traceConstant(TypeResolver<T>::to_type(), createConstLiteral(value));
 	}
 	return {0, TypeResolver<T>::to_type()};
