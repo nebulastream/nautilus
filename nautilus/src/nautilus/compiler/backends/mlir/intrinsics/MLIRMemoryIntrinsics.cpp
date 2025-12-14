@@ -62,11 +62,15 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 	auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
 	auto count = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
 
+	// LLVM memset intrinsic requires the value to be i8, so truncate from i32 to i8
+	auto i8Type = builder->getIntegerType(8);
+	auto truncatedValue = builder->create<::mlir::LLVM::TruncOp>(builder->getUnknownLoc(), i8Type, value);
+
 	// Create memset intrinsic: llvm.memset(dest, val, len, isVolatile)
 	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
 	                                                            builder->getBoolAttr(false));
 
-	builder->create<::mlir::LLVM::MemsetOp>(builder->getUnknownLoc(), dest, value, count, isVolatile);
+	builder->create<::mlir::LLVM::MemsetOp>(builder->getUnknownLoc(), dest, truncatedValue, count, isVolatile);
 
 	// memset returns the destination pointer
 	frame.setValue(call->getIdentifier(), dest);
