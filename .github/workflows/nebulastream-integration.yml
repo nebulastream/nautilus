@@ -31,37 +31,7 @@ jobs:
       - name: Check out Nautilus repository
         uses: actions/checkout@v4
         with:
-          path: nautilus
-
-      - name: Get CMake
-        uses: lukka/get-cmake@latest
-
-      - name: Setup ccache for Nautilus
-        uses: hendrikmuhs/ccache-action@v1.2.20
-        with:
-          key: nebulastream-integration-nautilus-${{ github.sha }}
-          restore-keys: |
-            nebulastream-integration-nautilus-
-
-      - name: Cache MLIR binaries
-        uses: actions/cache@v4
-        with:
-          path: nautilus/build/mlir-*
-          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
-
-      - name: Build and Install Nautilus
-        shell: bash
-        working-directory: nautilus
-        run: |
-          echo "Building Nautilus..."
-          cmake -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_INSTALL_PREFIX=$HOME/nautilus-install \
-                -G Ninja -S . -B build
-          cmake --build build --target nautilus
-          cmake --install build
-          echo "Nautilus installed to: $HOME/nautilus-install"
+          path: nautilus-current
 
       - name: Check out NebulaStream repository
         uses: actions/checkout@v4
@@ -69,7 +39,47 @@ jobs:
           repository: nebulastream/nebulastream
           ref: ${{ env.NEBULASTREAM_REF }}
           path: nebulastream
-          submodules: recursive
+          submodules: true
+
+      - name: Replace Nautilus submodule with current version
+        shell: bash
+        run: |
+          echo "Finding Nautilus submodule in NebulaStream..."
+          cd nebulastream
+
+          # Find the nautilus submodule path
+          NAUTILUS_SUBMODULE=$(git config --file .gitmodules --get-regexp path | grep nautilus | awk '{print $2}' || echo "")
+
+          if [ -z "$NAUTILUS_SUBMODULE" ]; then
+            echo "::error::Could not find nautilus submodule in NebulaStream"
+            echo "Searching for nautilus directory manually..."
+            NAUTILUS_DIR=$(find . -type d -name "nautilus" -not -path "*/\.*" | head -1)
+            if [ -n "$NAUTILUS_DIR" ]; then
+              echo "Found nautilus directory at: $NAUTILUS_DIR"
+              rm -rf "$NAUTILUS_DIR"
+              cp -r ../nautilus-current "$NAUTILUS_DIR"
+              echo "Replaced nautilus at $NAUTILUS_DIR with current version"
+            else
+              echo "::error::Could not find nautilus directory in NebulaStream"
+              exit 1
+            fi
+          else
+            echo "Found nautilus submodule at: $NAUTILUS_SUBMODULE"
+            rm -rf "$NAUTILUS_SUBMODULE"
+            cp -r ../nautilus-current "$NAUTILUS_SUBMODULE"
+            echo "Replaced nautilus submodule with current version"
+          fi
+
+      - name: Get CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: nebulastream-integration-${{ env.NEBULASTREAM_REF }}-${{ github.sha }}
+          restore-keys: |
+            nebulastream-integration-${{ env.NEBULASTREAM_REF }}-
+            nebulastream-integration-
 
       - name: Install NebulaStream dependencies
         run: |
@@ -84,46 +94,15 @@ jobs:
             libboost-all-dev \
             default-jdk
 
-      - name: Setup ccache for NebulaStream
-        uses: hendrikmuhs/ccache-action@v1.2.20
-        with:
-          key: nebulastream-integration-nes-${{ env.NEBULASTREAM_REF }}-${{ github.sha }}
-          restore-keys: |
-            nebulastream-integration-nes-${{ env.NEBULASTREAM_REF }}-
-            nebulastream-integration-nes-
-
-      - name: Configure NebulaStream with custom Nautilus
+      - name: Configure NebulaStream
         shell: bash
         working-directory: nebulastream
         run: |
-          echo "Configuring NebulaStream with custom Nautilus from $HOME/nautilus-install"
-          # Try to configure NebulaStream to use our custom Nautilus build
-          # This might need adjustment based on how NebulaStream integrates Nautilus
+          echo "Configuring NebulaStream with custom Nautilus..."
           cmake -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_PREFIX_PATH=$HOME/nautilus-install \
-                -G Ninja -S . -B build || {
-            echo "::warning::Initial CMake configuration failed. NebulaStream might use Nautilus as a submodule."
-            echo "Attempting to replace Nautilus submodule..."
-
-            # Find and replace the nautilus submodule/dependency
-            if [ -d "third_party/nautilus" ] || [ -d "dependencies/nautilus" ] || [ -d "external/nautilus" ]; then
-              NAUTILUS_DIR=$(find . -type d -name "nautilus" | grep -E "(third_party|dependencies|external)" | head -1)
-              if [ -n "$NAUTILUS_DIR" ]; then
-                echo "Found Nautilus at: $NAUTILUS_DIR"
-                rm -rf "$NAUTILUS_DIR"
-                cp -r ../nautilus "$NAUTILUS_DIR"
-                echo "Replaced Nautilus submodule with current version"
-              fi
-            fi
-
-            # Try configuration again
-            cmake -DCMAKE_BUILD_TYPE=Release \
-                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                  -G Ninja -S . -B build
-          }
+                -G Ninja -S . -B build
 
       - name: Build NebulaStream
         shell: bash
