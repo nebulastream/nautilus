@@ -21,7 +21,7 @@ val<int32_t> assumeComplexCondition(val<int32_t> x, val<int32_t> y) {
 
 // Test function that uses nautilus_assume_aligned
 val<int32_t> assumeAlignedFunction(val<int32_t*> ptr) {
-	nautilus_assume_aligned((val<void*>)ptr, 16);
+	nautilus_assume_aligned((val<void*>) ptr, 16);
 	return *ptr;
 }
 
