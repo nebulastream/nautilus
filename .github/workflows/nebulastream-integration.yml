@@ -10,7 +10,7 @@ on:
       nebulastream_ref:
         description: 'NebulaStream branch/tag/commit to test against'
         required: false
-        default: 'master'
+        default: 'main'
         type: string
 
 # Allow only one concurrent integration test
@@ -21,11 +21,11 @@ concurrency:
 jobs:
   test-nebulastream-integration:
     runs-on: ubuntu-24.04
-    name: Test with NebulaStream ${{ inputs.nebulastream_ref || 'master' }}
+    name: Test with NebulaStream ${{ inputs.nebulastream_ref || 'main' }}
     env:
       CC: clang-18
       CXX: clang++-18
-      NEBULASTREAM_REF: ${{ inputs.nebulastream_ref || 'master' }}
+      NEBULASTREAM_REF: ${{ inputs.nebulastream_ref || 'main' }}
 
     steps:
       - name: Check out Nautilus repository
