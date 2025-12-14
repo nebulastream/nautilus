@@ -323,7 +323,7 @@ DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 
 template <is_integral LHS>
-val<LHS> neg(val<LHS>& val) {
+val<LHS> neg(const val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::TypeResolver<LHS>::to_type(), val.state);
