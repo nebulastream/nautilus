@@ -658,6 +658,9 @@ val<float> nanf(val<const char*> tagp) {
 val<float> fmax(val<float> x, val<float> y) {
 	return invoke<>(+[](float x, float y) { return std::fmax(x, y); }, x, y);
 }
+val<double> fmax(val<double> x, val<double> y) {
+	return invoke<>(+[](double x, double y) { return std::fmax(x, y); }, x, y);
+}
 #if defined(_LIBCPP_VERSION)
 val<float> fmaxf(val<float> x, val<float> y) {
 	return invoke<>(+[](float x, float y) { return std::fmaxf(x, y); }, x, y);
