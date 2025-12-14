@@ -41,6 +41,20 @@ jobs:
           path: nebulastream
           submodules: true
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            cmake \
+            ninja-build \
+            libssl-dev \
+            libcurl4-openssl-dev \
+            libboost-all-dev \
+            default-jdk \
+            jq
+
       - name: Replace Nautilus submodule with current version
         shell: bash
         run: |
@@ -70,6 +84,14 @@ jobs:
             echo "Replaced nautilus submodule with current version"
           fi
 
+          # Remove nautilus from vcpkg.json if it exists to prevent vcpkg from trying to install it
+          if [ -f "vcpkg.json" ]; then
+            echo "Removing nautilus from vcpkg.json..."
+            jq 'del(.dependencies[] | select(. == "nautilus" or .name == "nautilus"))' vcpkg.json > vcpkg.json.tmp
+            mv vcpkg.json.tmp vcpkg.json
+            echo "Updated vcpkg.json"
+          fi
+
       - name: Get CMake
         uses: lukka/get-cmake@latest
 
@@ -80,19 +102,6 @@ jobs:
           restore-keys: |
             nebulastream-integration-${{ env.NEBULASTREAM_REF }}-
             nebulastream-integration-
-
-      - name: Install NebulaStream dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            cmake \
-            ninja-build \
-            libssl-dev \
-            libcurl4-openssl-dev \
-            libboost-all-dev \
-            default-jdk
 
       - name: Configure NebulaStream
         shell: bash
