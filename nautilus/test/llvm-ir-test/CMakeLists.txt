@@ -5,7 +5,7 @@ if(NOT ENABLE_MLIR_BACKEND)
     return()
 endif()
 
-# Create test executable
+# Create test executable for general LLVM IR tests
 add_executable(nautilus-llvm-ir-test
     LLVMIRTest.cpp
 )
@@ -37,6 +37,40 @@ catch_discover_tests(nautilus-llvm-ir-test
     TEST_PREFIX "llvm-ir:"
     PROPERTIES
         LABELS "llvm;ir;regression"
+)
+
+# Create test executable for intrinsic LLVM IR tests
+add_executable(nautilus-llvm-ir-intrinsic-test
+    LLVMIRIntrinsicTest.cpp
+)
+
+target_link_libraries(nautilus-llvm-ir-intrinsic-test
+    PRIVATE
+    nautilus
+    Catch2::Catch2WithMain
+)
+
+target_include_directories(nautilus-llvm-ir-intrinsic-test
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/nautilus/include
+)
+
+target_compile_definitions(nautilus-llvm-ir-intrinsic-test
+    PRIVATE
+    TEST_LLVMIR_FOLDER="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+# Set C++ standard
+set_target_properties(nautilus-llvm-ir-intrinsic-test PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+# Register intrinsic tests with CTest
+catch_discover_tests(nautilus-llvm-ir-intrinsic-test
+    TEST_PREFIX "llvm-ir-intrinsic:"
+    PROPERTIES
+        LABELS "llvm;ir;intrinsic;regression"
 )
 
 # Add custom test for llvm-diff comparison
