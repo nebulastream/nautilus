@@ -8,6 +8,7 @@
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRAssumeIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRBitIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
@@ -32,6 +33,7 @@ MLIRCompilationBackend::MLIRCompilationBackend() {
 
 	// Register default MLIR intrinsics
 	RegisterMLIRAssumeIntrinsicPlugin();
+	RegisterMLIRBitIntrinsicPlugin();
 	RegisterMLIRMathIntrinsicPlugin();
 	RegisterMLIRMemoryIntrinsicPlugin();
 }

@@ -8,6 +8,7 @@ endif()
 # Create test executable for LLVM IR tests
 add_executable(nautilus-llvm-ir-test
     LLVMIRTest.cpp
+    LLVMIRBitIntrinsicTest.cpp
     LLVMIRIntrinsicTest.cpp
 )
 
