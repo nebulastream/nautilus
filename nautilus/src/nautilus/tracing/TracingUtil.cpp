@@ -7,7 +7,9 @@
 namespace nautilus::tracing {
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
-	TraceContext::get()->traceAssignment(target, source, resultType);
+	if (auto* ctx = TraceContext::get()) {
+		ctx->traceAssignment(target, source, resultType);
+	}
 }
 
 void traceValueDestruction(const TypedValueRef& target) {
@@ -31,21 +33,29 @@ bool traceBool(const TypedValueRef& state) {
 }
 
 void allocateValRef(ValueRef ref) {
-	TraceContext::get()->allocateValRef(ref);
+	if (auto* ctx = TraceContext::get()) {
+		ctx->allocateValRef(ref);
+	}
 }
 void freeValRef(ValueRef ref) {
-	TraceContext::get()->freeValRef(ref);
+	if (auto* ctx = TraceContext::get()) {
+		ctx->freeValRef(ref);
+	}
 }
 
 TypedValueRef traceCopy(const TypedValueRef& state) {
-	if (inTracer()) {
-		return TraceContext::get()->traceCopy(state);
+	if (auto* ctx = TraceContext::get()) {
+		return ctx->traceCopy(state);
 	}
 	return {};
 }
 
 bool inTracer() {
 	return TraceContext::get() != nullptr;
+}
+
+TraceContext* getTracerIfActive() {
+	return TraceContext::get();
 }
 
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
@@ -67,14 +77,14 @@ std::ostream& operator<<(std::ostream& os, const Op& operation) {
 }
 
 void pushStaticVal(void* valPtr) {
-	if (inTracer()) {
-		TraceContext::get()->getStaticVars().emplace_back((size_t*) valPtr);
+	if (auto* ctx = TraceContext::get()) {
+		ctx->getStaticVars().emplace_back((size_t*) valPtr);
 	}
 }
 
 void popStaticVal() {
-	if (inTracer()) {
-		TraceContext::get()->getStaticVars().pop_back();
+	if (auto* ctx = TraceContext::get()) {
+		ctx->getStaticVars().pop_back();
 	}
 }
 
