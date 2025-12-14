@@ -1,15 +1,15 @@
 B0($1:i32)
 	CONST	$2	true	:bool
-	CONST	$4	42	:i64
-	CAST	$5	$1	:i64
-	EQ	$6	$5	$4	:bool
-	AND	$7	$2	$6	:bool
-	CONST	$9	42	:i64
-	CAST	$10	$1	:i64
-	EQ	$11	$10	$9	:bool
-	AND	$12	$7	$11	:bool
-	CONST	$14	42	:i64
-	CAST	$15	$1	:i64
-	EQ	$16	$15	$14	:bool
-	AND	$17	$12	$16	:bool
-	RETURN	$0	$17	:bool
+	CONST	$3	42	:i64
+	CAST	$4	$1	:i64
+	EQ	$5	$4	$3	:bool
+	AND	$6	$2	$5	:bool
+	CONST	$7	42	:i64
+	CAST	$8	$1	:i64
+	EQ	$9	$8	$7	:bool
+	AND	$10	$6	$9	:bool
+	CONST	$11	42	:i64
+	CAST	$12	$1	:i64
+	EQ	$13	$12	$11	:bool
+	AND	$14	$10	$13	:bool
+	RETURN	$0	$14	:bool

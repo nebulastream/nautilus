@@ -1,11 +1,9 @@
 B0($1:bool,$2:bool)
-	ASSIGN	$3	$1	:bool
-	ASSIGN	$4	$2	:bool
-	AND	$5	$3	$4	:bool
-	CMP	$6	$5	B1()	B2()	:void
+	AND	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
 B1()
-	CONST	$7	true	:bool
-	RETURN	$0	$7	:bool
+	CONST	$5	true	:bool
+	RETURN	$0	$5	:bool
 B2()
-	CONST	$10	false	:bool
-	RETURN	$0	$10	:bool
+	CONST	$8	false	:bool
+	RETURN	$0	$8	:bool
