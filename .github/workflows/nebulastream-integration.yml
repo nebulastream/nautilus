@@ -86,10 +86,22 @@ jobs:
 
           # Remove nautilus from vcpkg.json if it exists to prevent vcpkg from trying to install it
           if [ -f "vcpkg.json" ]; then
+            echo "Original vcpkg.json:"
+            cat vcpkg.json
+            echo ""
             echo "Removing nautilus from vcpkg.json..."
-            jq 'del(.dependencies[] | select(. == "nautilus" or .name == "nautilus"))' vcpkg.json > vcpkg.json.tmp
+            # Use jq to filter out nautilus from dependencies
+            # Handle both string dependencies ("nautilus") and object dependencies ({"name": "nautilus", ...})
+            jq '.dependencies = [.dependencies[] | select(
+              if type == "string" then . != "nautilus"
+              elif type == "object" then .name != "nautilus"
+              else true
+              end
+            )]' vcpkg.json > vcpkg.json.tmp
             mv vcpkg.json.tmp vcpkg.json
-            echo "Updated vcpkg.json"
+            echo ""
+            echo "Updated vcpkg.json:"
+            cat vcpkg.json
           fi
 
       - name: Get CMake
