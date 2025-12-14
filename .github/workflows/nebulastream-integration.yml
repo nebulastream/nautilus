@@ -2,12 +2,15 @@ name: NebulaStream Integration Test
 run-name: Testing Nautilus with NebulaStream
 
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       nebulastream_ref:
         description: 'NebulaStream branch/tag/commit to test against'
         required: false
-        default: 'main'
+        default: 'master'
         type: string
 
 # Allow only one concurrent integration test
@@ -18,10 +21,11 @@ concurrency:
 jobs:
   test-nebulastream-integration:
     runs-on: ubuntu-24.04
-    name: Test with NebulaStream ${{ inputs.nebulastream_ref }}
+    name: Test with NebulaStream ${{ inputs.nebulastream_ref || 'master' }}
     env:
       CC: clang-18
       CXX: clang++-18
+      NEBULASTREAM_REF: ${{ inputs.nebulastream_ref || 'master' }}
 
     steps:
       - name: Check out Nautilus repository
@@ -63,7 +67,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: nebulastream/nebulastream
-          ref: ${{ inputs.nebulastream_ref }}
+          ref: ${{ env.NEBULASTREAM_REF }}
           path: nebulastream
           submodules: recursive
 
@@ -83,9 +87,9 @@ jobs:
       - name: Setup ccache for NebulaStream
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
-          key: nebulastream-integration-nes-${{ inputs.nebulastream_ref }}-${{ github.sha }}
+          key: nebulastream-integration-nes-${{ env.NEBULASTREAM_REF }}-${{ github.sha }}
           restore-keys: |
-            nebulastream-integration-nes-${{ inputs.nebulastream_ref }}-
+            nebulastream-integration-nes-${{ env.NEBULASTREAM_REF }}-
             nebulastream-integration-nes-
 
       - name: Configure NebulaStream with custom Nautilus
@@ -141,5 +145,5 @@ jobs:
           echo "## NebulaStream Integration Test Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Nautilus commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **NebulaStream ref**: ${{ inputs.nebulastream_ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **NebulaStream ref**: ${{ env.NEBULASTREAM_REF }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Test status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
