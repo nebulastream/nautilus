@@ -26,7 +26,7 @@ public:
 			        builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
 			                                                   builder->getIntegerAttr(builder->getI1Type(), true));
 			    auto ptr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-			    auto align = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+			    auto align = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
 			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), constOp,
 			                                            ::mlir::LLVM::AssumeAlignTag {}, ptr, align);
 			    return true;
