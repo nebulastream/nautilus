@@ -8,6 +8,7 @@
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRAssumeIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -27,6 +28,7 @@ MLIRCompilationBackend::MLIRCompilationBackend() {
 
 	// Register default MLIR intrinsics
 	RegisterMLIRAssumeIntrinsicPlugin();
+	RegisterMLIRMathIntrinsicPlugin();
 }
 
 std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
