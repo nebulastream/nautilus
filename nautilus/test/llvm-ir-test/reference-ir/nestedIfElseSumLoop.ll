@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define noundef signext range(i32 -2147483638, -2147483647) i32 @execute() local_unnamed_addr #0 {
+define noundef signext i32 @execute() local_unnamed_addr #0 {
   ret i32 146
 }
 

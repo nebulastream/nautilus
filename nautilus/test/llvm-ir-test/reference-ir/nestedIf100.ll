@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 0, 101) i32 @execute(i32 %0) local_unnamed_addr #0 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp sgt i32 %0, 0
   br i1 %2, label %3, label %151
 
@@ -411,7 +411,7 @@ define signext range(i32 0, 101) i32 @execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 0, 101) i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
   %2 = tail call i32 @execute(i32 %0)
   ret i32 %2
 }
@@ -431,7 +431,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
-  %4 = tail call range(i32 0, 101) i32 @execute(i32 %3)
+  %4 = tail call i32 @execute(i32 %3)
   %5 = getelementptr i8, ptr %0, i64 8
   %6 = load ptr, ptr %5, align 8
   store i32 %4, ptr %6, align 4
