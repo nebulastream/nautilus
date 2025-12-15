@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 1, 4) i32 @execute(i32 %0) local_unnamed_addr #0 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp slt i32 %0, 20
   %3 = icmp sgt i32 %0, 10
   %spec.select = select i1 %3, i32 2, i32 3
@@ -13,7 +13,7 @@ define signext range(i32 1, 4) i32 @execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 1, 4) i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
   %2 = icmp slt i32 %0, 20
   %3 = icmp sgt i32 %0, 10
   %spec.select.i = select i1 %3, i32 2, i32 3

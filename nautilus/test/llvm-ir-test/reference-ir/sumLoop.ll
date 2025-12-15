@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 1, 0) i32 @execute(i32 %0) local_unnamed_addr #0 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 ._crit_edge:
   %1 = mul i32 %0, 10
   %2 = or disjoint i32 %1, 1
@@ -14,7 +14,7 @@ define signext range(i32 1, 0) i32 @execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i32 1, 0) i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
   %2 = mul i32 %0, 10
   %3 = or disjoint i32 %2, 1
   %.inv.i = icmp slt i32 %0, 1
