@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/Engine.hpp"
+#include <array>
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
@@ -96,15 +97,17 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	          referenceIRPath + " > " + tempRefFile;
 	std::system(normCmd.c_str());
 
-	// Run llvm-diff to compare normalized IR files
-	// Prefer a versioned binary if available, falling back to the generic name.
-	std::string llvmDiff = "llvm-diff-20";
-	if (std::system("which llvm-diff-20 > /dev/null 2>&1") != 0) {
-		llvmDiff = "llvm-diff-19";
-		if (std::system("which llvm-diff-19 > /dev/null 2>&1") != 0) {
-			llvmDiff = "llvm-diff";
-		}
-	}
+        // Run llvm-diff to compare normalized IR files
+        // Prefer a versioned binary if available, falling back to the generic name.
+        const std::array<std::string, 3> llvmDiffCandidates = {"llvm-diff-20", "llvm-diff-19", "llvm-diff"};
+        const auto llvmDiff = [&llvmDiffCandidates]() {
+                for (const auto& candidate : llvmDiffCandidates) {
+                        if (std::system(("which " + candidate + " > /dev/null 2>&1").c_str()) == 0) {
+                                return candidate;
+                        }
+                }
+                return std::string("llvm-diff");
+        }();
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
 	int result = std::system(command.c_str());
 
