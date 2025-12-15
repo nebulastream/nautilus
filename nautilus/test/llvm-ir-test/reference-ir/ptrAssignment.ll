@@ -5,16 +5,16 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
-  %3 = load i32, ptr %1, align 4
-  %4 = load i32, ptr %0, align 4
+  %3 = load i32, ptr %0, align 4
+  %4 = load i32, ptr %1, align 4
   %5 = add i32 %4, %3
   ret i32 %5
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define signext i32 @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #1 {
-  %3 = load i32, ptr %1, align 4
-  %4 = load i32, ptr %0, align 4
+  %3 = load i32, ptr %0, align 4
+  %4 = load i32, ptr %1, align 4
   %5 = add i32 %4, %3
   ret i32 %5
 }
@@ -26,8 +26,8 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load i32, ptr %6, align 4
-  %8 = load i32, ptr %3, align 4
+  %7 = load i32, ptr %3, align 4
+  %8 = load i32, ptr %6, align 4
   %9 = add i32 %8, %7
   %10 = getelementptr i8, ptr %0, i64 16
   %11 = load ptr, ptr %10, align 8
@@ -42,8 +42,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load i32, ptr %6, align 4
-  %8 = load i32, ptr %3, align 4
+  %7 = load i32, ptr %3, align 4
+  %8 = load i32, ptr %6, align 4
   %9 = add i32 %8, %7
   %10 = getelementptr i8, ptr %0, i64 16
   %11 = load ptr, ptr %10, align 8
