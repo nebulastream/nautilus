@@ -2,6 +2,7 @@
 
 #include "nautilus/Engine.hpp"
 #include <array>
+#include <cstdlib>
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
@@ -101,11 +102,21 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
         // Prefer a versioned binary if available, falling back to the generic name.
         const std::array<std::string, 3> llvmDiffCandidates = {"llvm-diff-20", "llvm-diff-19", "llvm-diff"};
         const auto llvmDiff = [&llvmDiffCandidates]() {
+                if (const char* env = std::getenv("LLVM_DIFF")) {
+                        const std::string overridePath(env);
+                        if (std::system(("which " + overridePath + " > /dev/null 2>&1").c_str()) == 0) {
+                                return overridePath;
+                        }
+                        WARN("LLVM_DIFF override provided but not found in PATH: " << overridePath);
+                }
+
                 for (const auto& candidate : llvmDiffCandidates) {
                         if (std::system(("which " + candidate + " > /dev/null 2>&1").c_str()) == 0) {
                                 return candidate;
                         }
                 }
+
+                FAIL("llvm-diff not found in PATH");
                 return std::string("llvm-diff");
         }();
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
