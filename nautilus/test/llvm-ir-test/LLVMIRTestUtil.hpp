@@ -97,10 +97,13 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	std::system(normCmd.c_str());
 
 	// Run llvm-diff to compare normalized IR files
-	// Try llvm-diff-19 first, fall back to llvm-diff if not found
-	std::string llvmDiff = "llvm-diff-19";
-	if (std::system("which llvm-diff-19 > /dev/null 2>&1") != 0) {
-		llvmDiff = "llvm-diff";
+	// Prefer a versioned binary if available, falling back to the generic name.
+	std::string llvmDiff = "llvm-diff-20";
+	if (std::system("which llvm-diff-20 > /dev/null 2>&1") != 0) {
+		llvmDiff = "llvm-diff-19";
+		if (std::system("which llvm-diff-19 > /dev/null 2>&1") != 0) {
+			llvmDiff = "llvm-diff";
+		}
 	}
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
 	int result = std::system(command.c_str());
