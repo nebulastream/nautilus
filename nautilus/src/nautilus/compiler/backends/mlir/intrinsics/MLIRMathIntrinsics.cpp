@@ -55,7 +55,7 @@ bool replaceWithTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 }
 
 /// Helper mapping Nautilus Type -> MLIR type for intrinsic results
-mlir::Type getResultType(::mlir::OpBuilder& builder, Type type) {
+::mlir::Type getResultType(::mlir::OpBuilder& builder, Type type) {
         switch (type) {
         case Type::v:
                 return builder.getNoneType();
@@ -82,24 +82,24 @@ mlir::Type getResultType(::mlir::OpBuilder& builder, Type type) {
         case Type::f64:
                 return builder.getF64Type();
         case Type::ptr:
-                return mlir::LLVM::LLVMPointerType::get(builder.getContext());
+                return ::mlir::LLVM::LLVMPointerType::get(builder.getContext());
         }
         throw std::runtime_error("Unsupported intrinsic result type");
 }
 
-mlir::Value castRoundedValue(std::unique_ptr<::mlir::OpBuilder>& builder, mlir::Value roundedValue,
+::mlir::Value castRoundedValue(std::unique_ptr<::mlir::OpBuilder>& builder, ::mlir::Value roundedValue,
                              const ir::ProxyCallOperation* call) {
         auto targetType = getResultType(*builder, call->getStamp());
-        if (!targetType.isa<mlir::IntegerType>()) {
+        if (!targetType.isa<::mlir::IntegerType>()) {
                 return roundedValue;
         }
 
-        auto integerType = targetType.cast<mlir::IntegerType>();
+        auto integerType = targetType.cast<::mlir::IntegerType>();
         if (integerType.isUnsigned()) {
-                return builder->create<mlir::arith::FPToUIOp>(builder->getUnknownLoc(), targetType, roundedValue);
+                return builder->create<::mlir::arith::FPToUIOp>(builder->getUnknownLoc(), targetType, roundedValue);
         }
 
-        return builder->create<mlir::arith::FPToSIOp>(builder->getUnknownLoc(), targetType, roundedValue);
+        return builder->create<::mlir::arith::FPToSIOp>(builder->getUnknownLoc(), targetType, roundedValue);
 }
 
 template <typename RoundOp>
