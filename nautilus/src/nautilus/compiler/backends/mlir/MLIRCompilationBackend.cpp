@@ -10,8 +10,11 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h>
 #include <mlir/IR/MLIRContext.h>
@@ -35,12 +38,14 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
                                                             const DumpHandler& dumpHandler,
                                                             const engine::Options& options) const {
 
-	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
-	// MLIR module.
-	::mlir::DialectRegistry registry;
-	::mlir::func::registerAllExtensions(registry);
-	registerBuiltinDialectTranslation(registry);
-	registerLLVMDialectTranslation(registry);
+        // 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
+        // MLIR module.
+        ::mlir::DialectRegistry registry;
+        registry.insert<::mlir::arith::ArithDialect, ::mlir::cf::ControlFlowDialect, ::mlir::math::MathDialect,
+                        ::mlir::LLVM::LLVMDialect, ::mlir::func::FuncDialect>();
+        ::mlir::func::registerAllExtensions(registry);
+        registerBuiltinDialectTranslation(registry);
+        registerLLVMDialectTranslation(registry);
 
 	::mlir::LLVM::registerInlinerInterface(registry);
 
