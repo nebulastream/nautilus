@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
-define signext range(i32 0, 110) i32 @execute(i32 %0) local_unnamed_addr #0 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br label %2
 
 2:                                                ; preds = %2, %1
@@ -20,7 +20,7 @@ define signext range(i32 0, 110) i32 @execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
-define signext range(i32 0, 110) i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
   br label %2
 
 2:                                                ; preds = %2, %1
