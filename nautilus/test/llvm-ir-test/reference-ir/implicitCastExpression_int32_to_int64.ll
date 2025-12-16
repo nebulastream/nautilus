@@ -4,13 +4,13 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i64 -2147483648, 2147483648) i64 @execute(i32 %0) local_unnamed_addr #0 {
+define signext i64 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = sext i32 %0 to i64
   ret i64 %2
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext range(i64 -2147483648, 2147483648) i64 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i64 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
   %2 = sext i32 %0 to i64
   ret i64 %2
 }

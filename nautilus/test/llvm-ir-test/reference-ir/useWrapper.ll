@@ -3,10 +3,10 @@ source_filename = "LLVMDialectModule"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-; Function Attrs: memory(readwrite, errnomem: none)
+; Function Attrs: memory(readwrite)
 declare i32 @runtimeFunc0(ptr) local_unnamed_addr #0
 
-; Function Attrs: memory(readwrite, errnomem: none)
+; Function Attrs: memory(readwrite)
 define signext i32 @execute(ptr %0, ptr %1) local_unnamed_addr #1 {
   %3 = tail call i32 @runtimeFunc0(ptr %0)
   %4 = tail call i32 @runtimeFunc0(ptr %1)
@@ -14,7 +14,7 @@ define signext i32 @execute(ptr %0, ptr %1) local_unnamed_addr #1 {
   ret i32 %5
 }
 
-; Function Attrs: memory(readwrite, errnomem: none)
+; Function Attrs: memory(readwrite)
 define signext i32 @_mlir_ciface_execute(ptr %0, ptr %1) local_unnamed_addr #0 {
   %3 = tail call i32 @runtimeFunc0(ptr %0)
   %4 = tail call i32 @runtimeFunc0(ptr %1)
@@ -52,8 +52,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr {
   ret void
 }
 
-attributes #0 = { memory(readwrite, errnomem: none) }
-attributes #1 = { memory(readwrite, errnomem: none) }
+attributes #0 = { memory(readwrite) }
+attributes #1 = { memory(readwrite) }
 
 !llvm.module.flags = !{!0}
 
