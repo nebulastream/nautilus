@@ -14,6 +14,7 @@
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -259,6 +260,8 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const eng
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
 	builder = std::make_unique<mlir::OpBuilder>(&context);
+	builder->getContext()->loadDialect<mlir::arith::ArithDialect>();
+	builder->getContext()->loadDialect<mlir::math::MathDialect>();
 	builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
 	builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
 	builder->getContext()->loadDialect<mlir::func::FuncDialect>();
