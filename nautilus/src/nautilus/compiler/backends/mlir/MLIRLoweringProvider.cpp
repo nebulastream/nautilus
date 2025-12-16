@@ -12,6 +12,7 @@
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
@@ -258,10 +259,12 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const eng
     : intrinsicManager(intrinsicManager), context(&context), options(&options) {
 	// Create builder object, which helps to generate MLIR. Create Module, which
 	// contains generated MLIR.
-	builder = std::make_unique<mlir::OpBuilder>(&context);
-	builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
-	builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
-	builder->getContext()->loadDialect<mlir::func::FuncDialect>();
+        builder = std::make_unique<mlir::OpBuilder>(&context);
+        builder->getContext()->loadDialect<mlir::arith::ArithDialect>();
+        builder->getContext()->loadDialect<mlir::math::MathDialect>();
+        builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
+        builder->getContext()->loadDialect<mlir::LLVM::LLVMDialect>();
+        builder->getContext()->loadDialect<mlir::func::FuncDialect>();
 	this->theModule = mlir::ModuleOp::create(getNameLoc("module"));
 	// Store InsertPoint for inserting globals such as Strings or TupleBuffers.
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());

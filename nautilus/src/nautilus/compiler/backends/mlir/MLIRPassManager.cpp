@@ -5,6 +5,7 @@
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
+#include <mlir/Conversion/MathToLLVM/MathToLLVM.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
@@ -38,13 +39,14 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 		for (auto optimizationPass : optimizationPasses) {
 			passManager.addPass(getMLIROptimizationPass(optimizationPass));
 		}
-	} else {
-		passManager.addPass(mlir::createInlinerPass());
-	}
-	// Apply lowering passes.
-	passManager.addPass(mlir::createConvertFuncToLLVMPass());
-	passManager.addPass(mlir::createConvertControlFlowToLLVMPass());
-	passManager.addPass(mlir::createArithToLLVMConversionPass());
+        } else {
+                passManager.addPass(mlir::createInlinerPass());
+        }
+        // Apply lowering passes.
+        passManager.addPass(mlir::createConvertMathToLLVMPass());
+        passManager.addPass(mlir::createConvertFuncToLLVMPass());
+        passManager.addPass(mlir::createConvertControlFlowToLLVMPass());
+        passManager.addPass(mlir::createArithToLLVMConversionPass());
 	// Run passes.
 	if (mlir::failed(passManager.run(*module))) {
 		llvm::errs() << "MLIRPassManager::lowerAndOptimizeMLIRModule: Failed to "

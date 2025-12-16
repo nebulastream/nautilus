@@ -20,6 +20,7 @@ if (ENABLE_MLIR_BACKEND)
             MLIRExecutionEngine
             MLIRFuncAllExtensions
             # Dialects
+            MLIRMathToLLVM
             MLIRFuncToLLVM
     )
     
