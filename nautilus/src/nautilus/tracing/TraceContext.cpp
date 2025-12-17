@@ -22,13 +22,24 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 namespace nautilus::tracing {
 
 namespace {
-backward::ResolvedTrace resolveDwarfTrace(void* fnptr) {
+
+std::optional<backward::ResolvedTrace> resolveDwarfTrace(void* fnptr) {
+#if BACKWARD_HAS_DW == 1
         static backward::TraceResolverLinuxImpl<backward::trace_resolver_tag::libdwarf> resolver;
         backward::ResolvedTrace trace;
         trace.addr = reinterpret_cast<uintptr_t>(fnptr);
         resolver.resolve(trace);
-        return trace;
+
+        const bool hasSymbolInformation = !trace.source.function.empty() || !trace.object_function.empty() ||
+                                          !trace.source.filename.empty();
+        if (hasSymbolInformation) {
+                return trace;
+        }
+#endif
+        (void) fnptr;
+        return std::nullopt;
 }
+
 } // namespace
 
 // Thread-local TraceContext object (not a pointer)
@@ -126,13 +137,28 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
                                        const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
-        auto dwarfTrace = resolveDwarfTrace(fptn);
+        const bool allowDwarfResolution = state->options.getOptionOrDefault(
+#if BACKWARD_HAS_DW == 1
+            "engine.resolveFunctionNamesWithDwarf", true
+#else
+            "engine.resolveFunctionNamesWithDwarf", false
+#endif
+        );
+
+        auto dwarfTrace = allowDwarfResolution ? resolveDwarfTrace(fptn) : std::nullopt;
         auto mangledName = getMangledName(fptn);
-        auto dwarfFunctionName = dwarfTrace.source.function.empty() ? dwarfTrace.object_function : dwarfTrace.source.function;
-        auto functionName = getFunctionName(fptn, dwarfFunctionName.empty() ? mangledName : dwarfFunctionName);
+        std::string preferredName;
+        if (dwarfTrace.has_value()) {
+                preferredName = !dwarfTrace->source.function.empty() ? dwarfTrace->source.function : dwarfTrace->object_function;
+        }
+        if (preferredName.empty()) {
+                preferredName = mangledName;
+        }
+
+        auto functionName = getFunctionName(fptn, preferredName);
         std::optional<SourceLocation> location;
-        if (!dwarfTrace.source.filename.empty()) {
-                location = SourceLocation {.file = dwarfTrace.source.filename, .line = dwarfTrace.source.line, .column = dwarfTrace.source.col};
+        if (dwarfTrace.has_value() && !dwarfTrace->source.filename.empty()) {
+                location = SourceLocation {.file = dwarfTrace->source.filename, .line = dwarfTrace->source.line, .column = dwarfTrace->source.col};
         }
         auto op = Op::CALL;
         return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
@@ -313,13 +339,25 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 }
 
 std::optional<SourceLocation> TraceContext::getFunctionLocation(void* fnptr) {
+        const bool allowDwarfResolution = state->options.getOptionOrDefault(
+#if BACKWARD_HAS_DW == 1
+            "engine.resolveFunctionNamesWithDwarf", true
+#else
+            "engine.resolveFunctionNamesWithDwarf", false
+#endif
+        );
+
+        if (!allowDwarfResolution) {
+            return std::nullopt;
+        }
+
         auto trace = resolveDwarfTrace(fnptr);
 
-        if (!trace.source.filename.empty()) {
+        if (trace.has_value() && !trace->source.filename.empty()) {
                 return SourceLocation {
-                        .file = trace.source.filename,
-                        .line = trace.source.line,
-                        .column = trace.source.col,
+                        .file = trace->source.filename,
+                        .line = trace->source.line,
+                        .column = trace->source.col,
                 };
         }
 
