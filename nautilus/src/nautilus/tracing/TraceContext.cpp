@@ -24,10 +24,10 @@ namespace nautilus::tracing {
 namespace {
 
 std::optional<backward::ResolvedTrace> resolveDwarfTrace(void* fnptr) {
-#if BACKWARD_HAS_DW == 1
-        static backward::TraceResolverLinuxImpl<backward::trace_resolver_tag::libdwarf> resolver;
+#if BACKWARD_HAS_DWARF == 1
+        static backward::TraceResolverImpl<backward::trace_resolver_tag::libdwarf> resolver;
         backward::ResolvedTrace trace;
-        trace.addr = reinterpret_cast<uintptr_t>(fnptr);
+        trace.addr = fnptr;
         resolver.resolve(trace);
 
         const bool hasSymbolInformation = !trace.source.function.empty() || !trace.object_function.empty() ||
