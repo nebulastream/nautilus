@@ -4,6 +4,7 @@
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
 #include <functional>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -70,14 +71,19 @@ auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
-	auto fnptr = func.template target<R(FunctionArguments...)>();
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
+        auto fnptr = func.template target<R (*)(FunctionArguments...)>();
+
+        if (fnptr == nullptr) {
+                throw std::invalid_argument("std::function target is not a raw function pointer");
+        }
+
+        return CallableRuntimeFunction<R, FunctionArguments...>(*fnptr)(std::forward<ValueArguments>(args)...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
-	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr);
-	func(std::forward<ValueArguments>(args)...);
+        auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr);
+        func(std::forward<ValueArguments>(args)...);
 }
 
 /// Invoke calls with attributes
@@ -88,8 +94,13 @@ auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), 
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
-	auto fnptr = func.template target<R(FunctionArguments...)>();
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+        auto fnptr = func.template target<R (*)(FunctionArguments...)>();
+
+        if (fnptr == nullptr) {
+                throw std::invalid_argument("std::function target is not a raw function pointer");
+        }
+
+        return CallableRuntimeFunction<R, FunctionArguments...>(*fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>

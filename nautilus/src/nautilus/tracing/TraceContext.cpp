@@ -5,19 +5,31 @@
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
+#include <backward.hpp>
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <fmt/format.h>
+#include <optional>
 #include <sstream>
 
 namespace fmt {
 template <>
 struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+        static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
 };
 } // namespace fmt
 
 namespace nautilus::tracing {
+
+namespace {
+backward::ResolvedTrace resolveDwarfTrace(void* fnptr) {
+        static backward::TraceResolverLinuxImpl<backward::trace_resolver_tag::libdwarf> resolver;
+        backward::ResolvedTrace trace;
+        trace.addr = reinterpret_cast<uintptr_t>(fnptr);
+        resolver.resolve(trace);
+        return trace;
+}
+} // namespace
 
 // Thread-local TraceContext object (not a pointer)
 // This is allocated in thread-local storage - zero heap allocation overhead
@@ -114,17 +126,24 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
                                        const std::vector<tracing::TypedValueRef>& arguments,
                                        const FunctionAttributes fnAttrs) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
-	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = mangledName,
-		                                       .ptr = fptn,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
-	});
+        auto dwarfTrace = resolveDwarfTrace(fptn);
+        auto mangledName = getMangledName(fptn);
+        auto dwarfFunctionName = dwarfTrace.source.function.empty() ? dwarfTrace.object_function : dwarfTrace.source.function;
+        auto functionName = getFunctionName(fptn, dwarfFunctionName.empty() ? mangledName : dwarfFunctionName);
+        std::optional<SourceLocation> location;
+        if (!dwarfTrace.source.filename.empty()) {
+                location = SourceLocation {.file = dwarfTrace.source.filename, .line = dwarfTrace.source.line, .column = dwarfTrace.source.col};
+        }
+        auto op = Op::CALL;
+        return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+                auto functionArguments = FunctionCall {.functionName = functionName,
+                                                       .mangledName = mangledName,
+                                                       .ptr = fptn,
+                                                       .arguments = arguments,
+                                                       .fnAttrs = fnAttrs,
+                                                       .location = location};
+                return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+        });
 }
 
 void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
@@ -254,8 +273,8 @@ std::string TraceContext::getMangledName(void* fnptr) {
 }
 
 std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	// Check if function name normalization is enabled
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
+        // Check if function name normalization is enabled
+        bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
 
 	if (normalizeFunctionNames) {
 		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
@@ -289,8 +308,22 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 		return result;
 	}
 
-	// Demangling failed, return the mangled name
-	return mangledName;
+        // Demangling failed, return the mangled name
+        return mangledName;
+}
+
+std::optional<SourceLocation> TraceContext::getFunctionLocation(void* fnptr) {
+        auto trace = resolveDwarfTrace(fnptr);
+
+        if (!trace.source.filename.empty()) {
+                return SourceLocation {
+                        .file = trace.source.filename,
+                        .line = trace.source.line,
+                        .column = trace.source.col,
+                };
+        }
+
+        return std::nullopt;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;

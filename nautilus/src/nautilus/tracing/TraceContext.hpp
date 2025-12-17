@@ -11,13 +11,15 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+struct SourceLocation;
 struct StaticVarHolder {
-	explicit StaticVarHolder(size_t* ptr) : ptr(ptr) {
-	}
+        explicit StaticVarHolder(size_t* ptr) : ptr(ptr) {
+        }
 
 private:
 	const size_t* ptr;
@@ -227,12 +229,13 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
 	                                             const engine::Options& options = engine::Options());
 
-	std::vector<StaticVarHolder>& getStaticVars();
-	void allocateValRef(ValueRef ref);
-	void freeValRef(ValueRef ref);
+        std::vector<StaticVarHolder>& getStaticVars();
+        void allocateValRef(ValueRef ref);
+        void freeValRef(ValueRef ref);
 
-	std::string getMangledName(void* fnptr);
-	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
+        std::string getMangledName(void* fnptr);
+        std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
+        std::optional<SourceLocation> getFunctionLocation(void* fnptr);
 
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.

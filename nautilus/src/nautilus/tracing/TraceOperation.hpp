@@ -5,7 +5,9 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
+#include <cstdint>
 #include <nautilus/common/FunctionAttributes.hpp>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -15,12 +17,19 @@ namespace nautilus::tracing {
 
 class None {};
 
+struct SourceLocation {
+        std::string file;
+        uint32_t line;
+        uint32_t column;
+};
+
 struct FunctionCall {
-	std::string functionName;
-	std::string mangledName;
-	void* ptr;
-	std::vector<TypedValueRef> arguments;
-	FunctionAttributes fnAttrs;
+        std::string functionName;
+        std::string mangledName;
+        void* ptr;
+        std::vector<TypedValueRef> arguments;
+        FunctionAttributes fnAttrs;
+        std::optional<SourceLocation> location;
 };
 
 struct BlockRef {
