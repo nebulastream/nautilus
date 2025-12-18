@@ -3,6 +3,7 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
+#include "nautilus/compiler/backends/mlir/DebugInfoBuilder.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
@@ -89,6 +90,8 @@ private:
 	llvm::StringMap<::mlir::Value> printfStrings;
 	std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
+	std::unique_ptr<DebugInfoBuilder> debugInfoBuilder;
+	bool emitDebugSymbols;
 
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.

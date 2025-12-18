@@ -36,6 +36,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	options.setOption("dump.path", dumpPath);
 	options.setOption("engine.normalizeFunctionNames", true);
 	options.setOption("mlir.enableIntrinsics", enableIntrinsics);
+	options.setOption("mlir.emit_debug_symbols", true);
 
 	auto engine = engine::NautilusEngine(options);
 	auto function = engine.registerFunction(func);

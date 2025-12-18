@@ -358,6 +358,13 @@ MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const eng
 	this->theModule = mlir::ModuleOp::create(getNameLoc("module"));
 	// Store InsertPoint for inserting globals such as Strings or TupleBuffers.
 	globalInsertPoint = new mlir::RewriterBase::InsertPoint(theModule.getBody(), theModule.begin());
+
+	// Initialize debug info builder
+	emitDebugSymbols = options.getOptionOrDefault("mlir.emit_debug_symbols", false);
+	if (emitDebugSymbols) {
+		debugInfoBuilder = std::make_unique<DebugInfoBuilder>(context, *builder);
+		debugInfoBuilder->createModuleDebugInfo(theModule, "Query_1");
+	}
 }
 
 MLIRLoweringProvider::~MLIRLoweringProvider() {

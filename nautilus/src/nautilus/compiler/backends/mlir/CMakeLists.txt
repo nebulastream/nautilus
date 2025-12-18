@@ -33,6 +33,7 @@ if (ENABLE_MLIR_BACKEND)
             LLVMIROptimizer.cpp
             JITCompiler.cpp
             LLVMInliningUtils.cpp
+            DebugInfoBuilder.cpp
     )
 endif ()
 
