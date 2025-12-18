@@ -108,6 +108,102 @@ uint64_t rotr_u64_impl(uint64_t x, uint64_t s) {
 	return std::rotr(x, static_cast<int>(s));
 }
 
+uint8_t countl_one_u8_impl(uint8_t x) {
+	return std::countl_one(x);
+}
+
+uint16_t countl_one_u16_impl(uint16_t x) {
+	return std::countl_one(x);
+}
+
+uint32_t countl_one_u32_impl(uint32_t x) {
+	return std::countl_one(x);
+}
+
+uint64_t countl_one_u64_impl(uint64_t x) {
+	return std::countl_one(x);
+}
+
+uint8_t countr_one_u8_impl(uint8_t x) {
+	return std::countr_one(x);
+}
+
+uint16_t countr_one_u16_impl(uint16_t x) {
+	return std::countr_one(x);
+}
+
+uint32_t countr_one_u32_impl(uint32_t x) {
+	return std::countr_one(x);
+}
+
+uint64_t countr_one_u64_impl(uint64_t x) {
+	return std::countr_one(x);
+}
+
+bool has_single_bit_u8_impl(uint8_t x) {
+	return std::has_single_bit(x);
+}
+
+bool has_single_bit_u16_impl(uint16_t x) {
+	return std::has_single_bit(x);
+}
+
+bool has_single_bit_u32_impl(uint32_t x) {
+	return std::has_single_bit(x);
+}
+
+bool has_single_bit_u64_impl(uint64_t x) {
+	return std::has_single_bit(x);
+}
+
+uint8_t bit_width_u8_impl(uint8_t x) {
+	return std::bit_width(x);
+}
+
+uint16_t bit_width_u16_impl(uint16_t x) {
+	return std::bit_width(x);
+}
+
+uint32_t bit_width_u32_impl(uint32_t x) {
+	return std::bit_width(x);
+}
+
+uint64_t bit_width_u64_impl(uint64_t x) {
+	return std::bit_width(x);
+}
+
+uint8_t bit_ceil_u8_impl(uint8_t x) {
+	return std::bit_ceil(x);
+}
+
+uint16_t bit_ceil_u16_impl(uint16_t x) {
+	return std::bit_ceil(x);
+}
+
+uint32_t bit_ceil_u32_impl(uint32_t x) {
+	return std::bit_ceil(x);
+}
+
+uint64_t bit_ceil_u64_impl(uint64_t x) {
+	return std::bit_ceil(x);
+}
+
+uint8_t bit_floor_u8_impl(uint8_t x) {
+	return std::bit_floor(x);
+}
+
+uint16_t bit_floor_u16_impl(uint16_t x) {
+	return std::bit_floor(x);
+}
+
+uint32_t bit_floor_u32_impl(uint32_t x) {
+	return std::bit_floor(x);
+}
+
+uint64_t bit_floor_u64_impl(uint64_t x) {
+	return std::bit_floor(x);
+}
+
 #if __cpp_lib_byteswap >= 202110L
 uint16_t byteswap_u16_impl(uint16_t x) {
 	return std::byteswap(x);
@@ -164,19 +260,19 @@ val<uint64_t> countl_zero(val<uint64_t> x) {
 // ============================================================================
 
 val<uint8_t> countl_one(val<uint8_t> x) {
-	return invoke<uint8_t, uint8_t>(std::countl_one<uint8_t>, x);
+	return invoke<uint8_t, uint8_t>(countl_one_u8_impl, x);
 }
 
 val<uint16_t> countl_one(val<uint16_t> x) {
-	return invoke<uint16_t, uint16_t>(std::countl_one<uint16_t>, x);
+	return invoke<uint16_t, uint16_t>(countl_one_u16_impl, x);
 }
 
 val<uint32_t> countl_one(val<uint32_t> x) {
-	return invoke<uint32_t, uint32_t>(std::countl_one<uint32_t>, x);
+	return invoke<uint32_t, uint32_t>(countl_one_u32_impl, x);
 }
 
 val<uint64_t> countl_one(val<uint64_t> x) {
-	return invoke<uint64_t, uint64_t>(std::countl_one<uint64_t>, x);
+	return invoke<uint64_t, uint64_t>(countl_one_u64_impl, x);
 }
 
 // ============================================================================
@@ -204,19 +300,19 @@ val<uint64_t> countr_zero(val<uint64_t> x) {
 // ============================================================================
 
 val<uint8_t> countr_one(val<uint8_t> x) {
-	return invoke<uint8_t, uint8_t>(std::countr_one<uint8_t>, x);
+	return invoke<uint8_t, uint8_t>(countr_one_u8_impl, x);
 }
 
 val<uint16_t> countr_one(val<uint16_t> x) {
-	return invoke<uint16_t, uint16_t>(std::countr_one<uint16_t>, x);
+	return invoke<uint16_t, uint16_t>(countr_one_u16_impl, x);
 }
 
 val<uint32_t> countr_one(val<uint32_t> x) {
-	return invoke<uint32_t, uint32_t>(std::countr_one<uint32_t>, x);
+	return invoke<uint32_t, uint32_t>(countr_one_u32_impl, x);
 }
 
 val<uint64_t> countr_one(val<uint64_t> x) {
-	return invoke<uint64_t, uint64_t>(std::countr_one<uint64_t>, x);
+	return invoke<uint64_t, uint64_t>(countr_one_u64_impl, x);
 }
 
 // ============================================================================
@@ -244,19 +340,19 @@ val<uint64_t> popcount(val<uint64_t> x) {
 // ============================================================================
 
 val<bool> has_single_bit(val<uint8_t> x) {
-	return invoke<bool, uint8_t>(std::has_single_bit<uint8_t>, x);
+	return invoke<bool, uint8_t>(has_single_bit_u8_impl, x);
 }
 
 val<bool> has_single_bit(val<uint16_t> x) {
-	return invoke<bool, uint16_t>(std::has_single_bit<uint16_t>, x);
+	return invoke<bool, uint16_t>(has_single_bit_u16_impl, x);
 }
 
 val<bool> has_single_bit(val<uint32_t> x) {
-	return invoke<bool, uint32_t>(std::has_single_bit<uint32_t>, x);
+	return invoke<bool, uint32_t>(has_single_bit_u32_impl, x);
 }
 
 val<bool> has_single_bit(val<uint64_t> x) {
-	return invoke<bool, uint64_t>(std::has_single_bit<uint64_t>, x);
+	return invoke<bool, uint64_t>(has_single_bit_u64_impl, x);
 }
 
 // ============================================================================
@@ -264,19 +360,19 @@ val<bool> has_single_bit(val<uint64_t> x) {
 // ============================================================================
 
 val<uint8_t> bit_width(val<uint8_t> x) {
-	return invoke<uint8_t, uint8_t>(std::bit_width<uint8_t>, x);
+	return invoke<uint8_t, uint8_t>(bit_width_u8_impl, x);
 }
 
 val<uint16_t> bit_width(val<uint16_t> x) {
-	return invoke<uint16_t, uint16_t>(std::bit_width<uint16_t>, x);
+	return invoke<uint16_t, uint16_t>(bit_width_u16_impl, x);
 }
 
 val<uint32_t> bit_width(val<uint32_t> x) {
-	return invoke<uint32_t, uint32_t>(std::bit_width<uint32_t>, x);
+	return invoke<uint32_t, uint32_t>(bit_width_u32_impl, x);
 }
 
 val<uint64_t> bit_width(val<uint64_t> x) {
-	return invoke<uint64_t, uint64_t>(std::bit_width<uint64_t>, x);
+	return invoke<uint64_t, uint64_t>(bit_width_u64_impl, x);
 }
 
 // ============================================================================
@@ -284,19 +380,19 @@ val<uint64_t> bit_width(val<uint64_t> x) {
 // ============================================================================
 
 val<uint8_t> bit_ceil(val<uint8_t> x) {
-	return invoke<uint8_t, uint8_t>(std::bit_ceil<uint8_t>, x);
+	return invoke<uint8_t, uint8_t>(bit_ceil_u8_impl, x);
 }
 
 val<uint16_t> bit_ceil(val<uint16_t> x) {
-	return invoke<uint16_t, uint16_t>(std::bit_ceil<uint16_t>, x);
+	return invoke<uint16_t, uint16_t>(bit_ceil_u16_impl, x);
 }
 
 val<uint32_t> bit_ceil(val<uint32_t> x) {
-	return invoke<uint32_t, uint32_t>(std::bit_ceil<uint32_t>, x);
+	return invoke<uint32_t, uint32_t>(bit_ceil_u32_impl, x);
 }
 
 val<uint64_t> bit_ceil(val<uint64_t> x) {
-	return invoke<uint64_t, uint64_t>(std::bit_ceil<uint64_t>, x);
+	return invoke<uint64_t, uint64_t>(bit_ceil_u64_impl, x);
 }
 
 // ============================================================================
@@ -304,19 +400,19 @@ val<uint64_t> bit_ceil(val<uint64_t> x) {
 // ============================================================================
 
 val<uint8_t> bit_floor(val<uint8_t> x) {
-	return invoke<uint8_t, uint8_t>(std::bit_floor<uint8_t>, x);
+	return invoke<uint8_t, uint8_t>(bit_floor_u8_impl, x);
 }
 
 val<uint16_t> bit_floor(val<uint16_t> x) {
-	return invoke<uint16_t, uint16_t>(std::bit_floor<uint16_t>, x);
+	return invoke<uint16_t, uint16_t>(bit_floor_u16_impl, x);
 }
 
 val<uint32_t> bit_floor(val<uint32_t> x) {
-	return invoke<uint32_t, uint32_t>(std::bit_floor<uint32_t>, x);
+	return invoke<uint32_t, uint32_t>(bit_floor_u32_impl, x);
 }
 
 val<uint64_t> bit_floor(val<uint64_t> x) {
-	return invoke<uint64_t, uint64_t>(std::bit_floor<uint64_t>, x);
+	return invoke<uint64_t, uint64_t>(bit_floor_u64_impl, x);
 }
 
 // ============================================================================
