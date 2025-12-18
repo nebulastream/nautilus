@@ -64,13 +64,11 @@ TEST_CASE("LLVM IR Bit Intrinsic Test: popcount64Function (MLIR intrinsics enabl
 	testBitIntrinsicLLVMIR("popcount64Function_with_intrinsics", popcount64Function, true);
 }
 
-TEST_CASE("LLVM IR Bit Intrinsic Test: byteswap32Function (MLIR intrinsics enabled)",
-          "[bit][byteswap][intrinsics]") {
+TEST_CASE("LLVM IR Bit Intrinsic Test: byteswap32Function (MLIR intrinsics enabled)", "[bit][byteswap][intrinsics]") {
 	testBitIntrinsicLLVMIR("byteswap32Function_with_intrinsics", byteswap32Function, true);
 }
 
-TEST_CASE("LLVM IR Bit Intrinsic Test: byteswap64Function (MLIR intrinsics enabled)",
-          "[bit][byteswap][intrinsics]") {
+TEST_CASE("LLVM IR Bit Intrinsic Test: byteswap64Function (MLIR intrinsics enabled)", "[bit][byteswap][intrinsics]") {
 	testBitIntrinsicLLVMIR("byteswap64Function_with_intrinsics", byteswap64Function, true);
 }
 
