@@ -12,7 +12,10 @@
 namespace nautilus::compiler::mlir {
 
 int getOptimizationLevel(const engine::Options& options) {
-	return options.getOptionOrDefault("mlir.optimizationLevel", 3);
+        if (options.getOptionOrDefault("mlir.enableDebugInfo", false)) {
+                return 0;
+        }
+        return options.getOptionOrDefault("mlir.optimizationLevel", 3);
 }
 
 LLVMIROptimizer::LLVMIROptimizer() = default;
@@ -24,12 +27,13 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 	return [options, &handler](llvm::Module* llvmIRModule) {
 		// Currently, we do not increase the sizeLevel requirement of the
 		// optimizingTransformer beyond 0.
-		constexpr int SIZE_LEVEL = 0;
-		// Create A target-specific target machine for the host
-		auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
-		auto targetMachine = tmBuilderOrError->createTargetMachine();
-		llvm::TargetMachine* targetMachinePtr = targetMachine->get();
-		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
+                constexpr int SIZE_LEVEL = 0;
+                // Create A target-specific target machine for the host
+                auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+                auto targetMachine = tmBuilderOrError->createTargetMachine();
+                llvm::TargetMachine* targetMachinePtr = targetMachine->get();
+                auto optLevel = static_cast<llvm::CodeGenOptLevel>(getOptimizationLevel(options));
+                targetMachinePtr->setOptLevel(optLevel);
 
 		// Add target-specific attributes to the 'execute' function.
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(

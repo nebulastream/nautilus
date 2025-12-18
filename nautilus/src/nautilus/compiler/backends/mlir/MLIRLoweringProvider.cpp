@@ -82,8 +82,17 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 // FileLineLoc name. Moreover,
 //      the provided 'name' often is not meaningful either.
 mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
-	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
-	return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+        if (enableDebugInfo) {
+                auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr(debugFileName), currentDebugLine++, 0);
+                if (!name.empty()) {
+                        return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+                }
+                return baseLocation;
+        }
+        if (name.empty()) {
+                return mlir::UnknownLoc::get(builder->getContext());
+        }
+        return mlir::NameLoc::get(builder->getStringAttr(name), mlir::UnknownLoc::get(builder->getContext()));
 }
 
 mlir::arith::CmpIPredicate convertToIntMLIRComparison(ir::CompareOperation::Comparator comparisonType, Type& stamp) {
@@ -259,9 +268,11 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 MLIRLoweringProvider::MLIRLoweringProvider(mlir::MLIRContext& context, const engine::Options& options,
                                            MLIRIntrinsicManager& intrinsicManager)
     : intrinsicManager(intrinsicManager), context(&context), options(&options) {
-	// Create builder object, which helps to generate MLIR. Create Module, which
-	// contains generated MLIR.
-	builder = std::make_unique<mlir::OpBuilder>(&context);
+        enableDebugInfo = options.getOptionOrDefault("mlir.enableDebugInfo", false);
+        debugFileName = options.getOptionOrDefault("mlir.debugFileName", std::string("nautilus_generated.mlir"));
+        // Create builder object, which helps to generate MLIR. Create Module, which
+        // contains generated MLIR.
+        builder = std::make_unique<mlir::OpBuilder>(&context);
 	builder->getContext()->loadDialect<mlir::arith::ArithDialect>();
 	builder->getContext()->loadDialect<mlir::math::MathDialect>();
 	builder->getContext()->loadDialect<mlir::cf::ControlFlowDialect>();
@@ -374,32 +385,36 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame) {
-	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
-	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
-	                                                         builder->getIntegerAttr(input.getType(), ~0));
-	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
-	frame.setValue(negateOperation->getIdentifier(), negate);
+        auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
+        auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc(negateOperation->getIdentifier().toString()),
+                                                                 builder->getIntegerAttr(input.getType(), ~0));
+        auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc(negateOperation->getIdentifier().toString()), input,
+                                                           constInt);
+        frame.setValue(negateOperation->getIdentifier(), negate);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame) {
-	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
-	auto constInt = getConstBool("loc", true);
-	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
-	frame.setValue(notOperation->getIdentifier(), negate);
+        auto input = frame.getValue(notOperation->getInput()->getIdentifier());
+        auto constInt = getConstBool(notOperation->getIdentifier().toString(), true);
+        auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc(notOperation->getIdentifier().toString()), input,
+                                                           constInt);
+        frame.setValue(notOperation->getIdentifier(), negate);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame) {
-	auto leftInput = frame.getValue(orOperation->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(orOperation->getRightInput()->getIdentifier());
-	auto mlirOrOp = builder->create<mlir::LLVM::OrOp>(getNameLoc("binOpResult"), leftInput, rightInput);
-	frame.setValue(orOperation->getIdentifier(), mlirOrOp);
+        auto leftInput = frame.getValue(orOperation->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(orOperation->getRightInput()->getIdentifier());
+        auto mlirOrOp = builder->create<mlir::LLVM::OrOp>(getNameLoc(orOperation->getIdentifier().toString()), leftInput,
+                                                          rightInput);
+        frame.setValue(orOperation->getIdentifier(), mlirOrOp);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFrame& frame) {
-	auto leftInput = frame.getValue(andOperation->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(andOperation->getRightInput()->getIdentifier());
-	auto mlirAndOp = builder->create<mlir::LLVM::AndOp>(getNameLoc("binOpResult"), leftInput, rightInput);
-	frame.setValue(andOperation->getIdentifier(), mlirAndOp);
+        auto leftInput = frame.getValue(andOperation->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(andOperation->getRightInput()->getIdentifier());
+        auto mlirAndOp = builder->create<mlir::LLVM::AndOp>(getNameLoc(andOperation->getIdentifier().toString()),
+                                                            leftInput, rightInput);
+        frame.setValue(andOperation->getIdentifier(), mlirAndOp);
 }
 
 void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp, ValueFrame& frame) {
@@ -427,10 +442,14 @@ void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp,
 	builder->setInsertionPointToStart(&mlirFunction.getBody().front());
 
 	// Store references to function args in the valueMap map.
-	auto valueMapIterator = mlirFunction.args_begin();
-	for (int i = 0; i < (int) functionOp.getFunctionBasicBlock().getArguments().size(); ++i) {
-		frame.setValue(functionOp.getFunctionBasicBlock().getArguments().at(i)->getIdentifier(), valueMapIterator[i]);
-	}
+        auto valueMapIterator = mlirFunction.args_begin();
+        for (int i = 0; i < (int) functionOp.getFunctionBasicBlock().getArguments().size(); ++i) {
+                auto argumentIdentifier = functionOp.getFunctionBasicBlock().getArguments().at(i)->getIdentifier();
+                if (enableDebugInfo) {
+                        valueMapIterator[i].setLoc(getNameLoc(argumentIdentifier.toString()));
+                }
+                frame.setValue(argumentIdentifier, valueMapIterator[i]);
+        }
 
 	// Generate MLIR for operations in function body (BasicBlock).
 	generateMLIR(&functionOp.getFunctionBasicBlock(), frame);
@@ -439,156 +458,159 @@ void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp,
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::LoadOperation* loadOp, ValueFrame& frame) {
-	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
-	auto mlirLoadOp =
-	    builder->create<mlir::LLVM::LoadOp>(getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
-	frame.setValue(loadOp->getIdentifier(), mlirLoadOp);
+        auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
+        auto mlirLoadOp = builder->create<mlir::LLVM::LoadOp>(getNameLoc(loadOp->getIdentifier().toString()),
+                                                             getMLIRType(loadOp->getStamp()), address);
+        frame.setValue(loadOp->getIdentifier(), mlirLoadOp);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame) {
-	frame.setValue(constIntOp->getIdentifier(),
-	               getConstInt("ConstantOp", constIntOp->getStamp(), constIntOp->getValue()));
+        auto locName = enableDebugInfo ? constIntOp->getIdentifier().toString() : std::string("ConstantOp");
+        frame.setValue(constIntOp->getIdentifier(), getConstInt(locName, constIntOp->getStamp(), constIntOp->getValue()));
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* constPtr, ValueFrame& frame) {
-	auto val = (int64_t) constPtr->getValue();
-	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), builder->getI64Type(),
-	                                                         builder->getIntegerAttr(builder->getI64Type(), val));
+        auto val = (int64_t) constPtr->getValue();
+        auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc(constPtr->getIdentifier().toString()),
+                                                                 builder->getI64Type(),
+                                                                 builder->getIntegerAttr(builder->getI64Type(), val));
 
-	auto elementAddress = builder->create<mlir::LLVM::IntToPtrOp>(
-	    getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), mlir::ValueRange(constInt));
-	frame.setValue(constPtr->getIdentifier(), elementAddress);
+        auto elementAddress = builder->create<mlir::LLVM::IntToPtrOp>(
+            getNameLoc(constPtr->getIdentifier().toString()), mlir::LLVM::LLVMPointerType::get(context),
+            mlir::ValueRange(constInt));
+        frame.setValue(constPtr->getIdentifier(), elementAddress);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {
-	if (isFloat(constFloatOp->getStamp())) {
-		auto floatType = (constFloatOp->getStamp() == Type::f32) ? builder->getF32Type() : builder->getF64Type();
-		frame.setValue(constFloatOp->getIdentifier(), builder->create<mlir::LLVM::ConstantOp>(
-		                                                  getNameLoc("constantFloat"), floatType,
-		                                                  builder->getFloatAttr(floatType, constFloatOp->getValue())));
-	}
+        if (isFloat(constFloatOp->getStamp())) {
+                auto floatType = (constFloatOp->getStamp() == Type::f32) ? builder->getF32Type() : builder->getF64Type();
+                auto loc = getNameLoc(enableDebugInfo ? constFloatOp->getIdentifier().toString() : "constantFloat");
+                frame.setValue(constFloatOp->getIdentifier(), builder->create<mlir::LLVM::ConstantOp>(
+                                                                  loc, floatType,
+                                                                  builder->getFloatAttr(floatType, constFloatOp->getValue())));
+        }
 }
 
 //==---------------------------==//
 //==-- ARITHMETIC OPERATIONS --==//
 //==---------------------------==//
 void MLIRLoweringProvider::generateMLIR(ir::AddOperation* addOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(addOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(addOp->getRightInput()->getIdentifier());
-	if (addOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress = builder->create<mlir::LLVM::GEPOp>(
-		    getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(), leftInput,
-		    mlir::ArrayRef<mlir::Value>({rightInput}));
-		frame.setValue(addOp->getIdentifier(), elementAddress);
-	} else if (isFloat(addOp->getStamp())) {
-		auto mlirAddOp = builder->create<mlir::LLVM::FAddOp>(getNameLoc("binOpResult"), leftInput.getType(), leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
-		frame.setValue(addOp->getIdentifier(), mlirAddOp);
-	} else {
-		if (!inductionVars.contains(addOp->getLeftInput()->getIdentifier())) {
-			if (!frame.contains(addOp->getIdentifier())) {
-				auto mlirAddOp = builder->create<mlir::LLVM::AddOp>(getNameLoc("binOpResult"), leftInput, rightInput);
-				frame.setValue(addOp->getIdentifier(), mlirAddOp);
-			} else {
-				auto mlirAddOp = builder->create<mlir::LLVM::AddOp>(getNameLoc("binOpResult"), leftInput, rightInput);
-				frame.setValue(addOp->getIdentifier(), mlirAddOp);
-			}
-		}
-	}
+        auto leftInput = frame.getValue(addOp->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(addOp->getRightInput()->getIdentifier());
+        auto location = getNameLoc(addOp->getIdentifier().toString());
+        if (addOp->getLeftInput()->getStamp() == Type::ptr) {
+                // if we add something to a ptr we have to use a llvm getelementptr
+                mlir::Value elementAddress = builder->create<mlir::LLVM::GEPOp>(location,
+                    mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(), leftInput,
+                    mlir::ArrayRef<mlir::Value>({rightInput}));
+                frame.setValue(addOp->getIdentifier(), elementAddress);
+        } else if (isFloat(addOp->getStamp())) {
+                auto mlirAddOp = builder->create<mlir::LLVM::FAddOp>(location, leftInput.getType(), leftInput, rightInput,
+                                                                     mlir::LLVM::FastmathFlags::fast);
+                frame.setValue(addOp->getIdentifier(), mlirAddOp);
+        } else {
+                if (!inductionVars.contains(addOp->getLeftInput()->getIdentifier())) {
+                        if (!frame.contains(addOp->getIdentifier())) {
+                                auto mlirAddOp = builder->create<mlir::LLVM::AddOp>(location, leftInput, rightInput);
+                                frame.setValue(addOp->getIdentifier(), mlirAddOp);
+                        } else {
+                                auto mlirAddOp = builder->create<mlir::LLVM::AddOp>(location, leftInput, rightInput);
+                                frame.setValue(addOp->getIdentifier(), mlirAddOp);
+                        }
+                }
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::SubOperation* subIntOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(subIntOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(subIntOp->getRightInput()->getIdentifier());
-	if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
-		// if we add something to a ptr we have to use a llvm getelementptr
-		mlir::Value elementAddress = builder->create<mlir::LLVM::GEPOp>(
-		    getNameLoc("fieldAccess"), mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(), leftInput,
-		    mlir::ArrayRef<mlir::Value>({rightInput}));
-		frame.setValue(subIntOp->getIdentifier(), elementAddress);
-	} else if (isFloat(subIntOp->getStamp())) {
-		auto mlirSubOp = builder->create<mlir::LLVM::FSubOp>(
-		    getNameLoc("binOpResult"), leftInput, rightInput,
-		    mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::fast));
-		frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
-	} else {
-		auto mlirSubOp = builder->create<mlir::LLVM::SubOp>(getNameLoc("binOpResult"), leftInput, rightInput);
-		frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
-	}
+        auto leftInput = frame.getValue(subIntOp->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(subIntOp->getRightInput()->getIdentifier());
+        auto location = getNameLoc(subIntOp->getIdentifier().toString());
+        if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
+                // if we add something to a ptr we have to use a llvm getelementptr
+                mlir::Value elementAddress = builder->create<mlir::LLVM::GEPOp>(location,
+                    mlir::LLVM::LLVMPointerType::get(context), builder->getI8Type(), leftInput,
+                    mlir::ArrayRef<mlir::Value>({rightInput}));
+                frame.setValue(subIntOp->getIdentifier(), elementAddress);
+        } else if (isFloat(subIntOp->getStamp())) {
+                auto mlirSubOp = builder->create<mlir::LLVM::FSubOp>(
+                    location, leftInput, rightInput,
+                    mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::fast));
+                frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
+        } else {
+                auto mlirSubOp = builder->create<mlir::LLVM::SubOp>(location, leftInput, rightInput);
+                frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::MulOperation* mulOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(mulOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(mulOp->getRightInput()->getIdentifier());
-	auto resultType = leftInput.getType();
-	if (isFloat(mulOp->getStamp())) {
-		auto mlirMulOp = builder->create<mlir::LLVM::FMulOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
-		frame.setValue(mulOp->getIdentifier(), mlirMulOp);
-	} else {
-		auto mlirMulOp =
-		    builder->create<mlir::LLVM::MulOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-		frame.setValue(mulOp->getIdentifier(), mlirMulOp);
-	}
+        auto leftInput = frame.getValue(mulOp->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(mulOp->getRightInput()->getIdentifier());
+        auto resultType = leftInput.getType();
+        auto location = getNameLoc(mulOp->getIdentifier().toString());
+        if (isFloat(mulOp->getStamp())) {
+                auto mlirMulOp = builder->create<mlir::LLVM::FMulOp>(location, resultType, leftInput, rightInput,
+                                                                     mlir::LLVM::FastmathFlags::fast);
+                frame.setValue(mulOp->getIdentifier(), mlirMulOp);
+        } else {
+                auto mlirMulOp = builder->create<mlir::LLVM::MulOp>(location, resultType, leftInput, rightInput);
+                frame.setValue(mulOp->getIdentifier(), mlirMulOp);
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::DivOperation* divIntOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(divIntOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(divIntOp->getRightInput()->getIdentifier());
-	auto resultType = leftInput.getType();
-	if (isFloat(divIntOp->getStamp())) {
-		auto mlirDivOp = builder->create<mlir::LLVM::FDivOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
-		frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
-	} else {
-		if (isSignedInteger(divIntOp->getStamp())) {
-			auto mlirDivOp =
-			    builder->create<mlir::LLVM::SDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
-		} else {
-			auto mlirDivOp =
-			    builder->create<mlir::LLVM::UDivOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
-		}
-	}
+        auto leftInput = frame.getValue(divIntOp->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(divIntOp->getRightInput()->getIdentifier());
+        auto resultType = leftInput.getType();
+        auto location = getNameLoc(divIntOp->getIdentifier().toString());
+        if (isFloat(divIntOp->getStamp())) {
+                auto mlirDivOp = builder->create<mlir::LLVM::FDivOp>(location, resultType, leftInput, rightInput,
+                                                                     mlir::LLVM::FastmathFlags::fast);
+                frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+        } else {
+                if (isSignedInteger(divIntOp->getStamp())) {
+                        auto mlirDivOp = builder->create<mlir::LLVM::SDivOp>(location, resultType, leftInput, rightInput);
+                        frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+                } else {
+                        auto mlirDivOp = builder->create<mlir::LLVM::UDivOp>(location, resultType, leftInput, rightInput);
+                        frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
+                }
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ModOperation* modIntOp, ValueFrame& frame) {
-	auto leftInput = frame.getValue(modIntOp->getLeftInput()->getIdentifier());
-	auto rightInput = frame.getValue(modIntOp->getRightInput()->getIdentifier());
-	auto resultType = leftInput.getType();
-	if (isFloat(modIntOp->getStamp())) {
-		auto mlirDivOp = builder->create<mlir::LLVM::FRemOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
-		frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
-	} else {
-		if (isSignedInteger(modIntOp->getStamp())) {
-			auto mlirDivOp =
-			    builder->create<mlir::arith::RemSIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
-		} else {
-			auto mlirDivOp =
-			    builder->create<mlir::arith::RemUIOp>(getNameLoc("binOpResult"), resultType, leftInput, rightInput);
-			frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
-		}
-	}
+        auto leftInput = frame.getValue(modIntOp->getLeftInput()->getIdentifier());
+        auto rightInput = frame.getValue(modIntOp->getRightInput()->getIdentifier());
+        auto resultType = leftInput.getType();
+        auto location = getNameLoc(modIntOp->getIdentifier().toString());
+        if (isFloat(modIntOp->getStamp())) {
+                auto mlirDivOp = builder->create<mlir::LLVM::FRemOp>(location, resultType, leftInput, rightInput,
+                                                                     mlir::LLVM::FastmathFlags::fast);
+                frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
+        } else {
+                if (isSignedInteger(modIntOp->getStamp())) {
+                        auto mlirDivOp = builder->create<mlir::arith::RemSIOp>(location, resultType, leftInput, rightInput);
+                        frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
+                } else {
+                        auto mlirDivOp = builder->create<mlir::arith::RemUIOp>(location, resultType, leftInput, rightInput);
+                        frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
+                }
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::StoreOperation* storeOp, ValueFrame& frame) {
-	auto value = frame.getValue(storeOp->getValue()->getIdentifier());
-	auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
-	builder->create<mlir::LLVM::StoreOp>(getNameLoc("outputStore"), value, address);
+        auto value = frame.getValue(storeOp->getValue()->getIdentifier());
+        auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
+        builder->create<mlir::LLVM::StoreOp>(getNameLoc(storeOp->getIdentifier().toString()), value, address);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame) {
-	// Insert return into 'execute' function block. This is the FINAL return.
-	if (!returnOp->hasReturnValue()) {
-		builder->create<mlir::LLVM::ReturnOp>(getNameLoc("return"), mlir::ValueRange());
-	} else {
-		builder->create<mlir::LLVM::ReturnOp>(getNameLoc("return"),
-		                                      frame.getValue(returnOp->getReturnValue()->getIdentifier()));
-	}
+        // Insert return into 'execute' function block. This is the FINAL return.
+        if (!returnOp->hasReturnValue()) {
+                builder->create<mlir::LLVM::ReturnOp>(getNameLoc(returnOp->getIdentifier().toString()), mlir::ValueRange());
+        } else {
+                builder->create<mlir::LLVM::ReturnOp>(getNameLoc(returnOp->getIdentifier().toString()),
+                                                      frame.getValue(returnOp->getReturnValue()->getIdentifier()));
+        }
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {

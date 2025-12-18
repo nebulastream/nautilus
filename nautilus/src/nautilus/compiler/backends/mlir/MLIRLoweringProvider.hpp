@@ -32,6 +32,7 @@
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
+#include <string>
 #include <unordered_set>
 
 namespace nautilus::compiler::mlir {
@@ -78,16 +79,19 @@ private:
 	::mlir::ModuleOp theModule;
 	std::unique_ptr<::mlir::OpBuilder> builder;
 	NES::ProxyFunctions ProxyFunctions;
-	std::vector<std::string> jitProxyFunctionSymbols;
-	std::vector<void*> jitProxyFunctionTargetAddresses;
-	std::unordered_set<ir::OperationIdentifier> inductionVars;
-	// Utility
-	::mlir::RewriterBase::InsertPoint* globalInsertPoint;
-	::mlir::Value globalString;
-	::mlir::FlatSymbolRefAttr printfReference;
-	llvm::StringMap<::mlir::Value> printfStrings;
-	std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
-	const engine::Options* options;
+        std::vector<std::string> jitProxyFunctionSymbols;
+        std::vector<void*> jitProxyFunctionTargetAddresses;
+        std::unordered_set<ir::OperationIdentifier> inductionVars;
+        // Utility
+        ::mlir::RewriterBase::InsertPoint* globalInsertPoint;
+        ::mlir::Value globalString;
+        ::mlir::FlatSymbolRefAttr printfReference;
+        llvm::StringMap<::mlir::Value> printfStrings;
+        std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
+        const engine::Options* options;
+        bool enableDebugInfo = false;
+        std::string debugFileName = "NautilusMLIR";
+        unsigned currentDebugLine = 1;
 
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
