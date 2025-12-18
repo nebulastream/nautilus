@@ -5,6 +5,7 @@
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/tracing/tag/Tag.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
@@ -159,6 +160,20 @@ private:
 	 * @param name: Name of the location. Used for debugging.
 	 */
 	::mlir::Location getNameLoc(const std::string& name);
+
+	/**
+	 * @brief Builds a fused location combining source location and call stack context.
+	 * @param operation: The IR operation with location and semantic information.
+	 * @return mlir::Location: A fused location with all available context.
+	 */
+	::mlir::Location buildFusedLocation(const std::unique_ptr<ir::Operation>& operation);
+
+	/**
+	 * @brief Extracts call stack frames from an execution tag for location context.
+	 * @param tag: The execution tag representing the call stack.
+	 * @return vector<StackFrame>: Stack frames from innermost to outermost.
+	 */
+	std::vector<ir::StackFrame> extractCallStackFromTag(const tracing::Tag* tag);
 
 	/**
 	 * @brief Get MLIR Type from a basic  type.

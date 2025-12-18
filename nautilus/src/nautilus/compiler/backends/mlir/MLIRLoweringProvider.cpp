@@ -5,6 +5,8 @@
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/inline.hpp"
 #include "nautilus/tracing/Types.hpp"
+#include "nautilus/tracing/tag/Tag.hpp"
+#include <dlfcn.h>
 #include <fmt/format.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -84,6 +86,92 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
 	return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+}
+
+std::vector<ir::StackFrame> MLIRLoweringProvider::extractCallStackFromTag(const tracing::Tag* tag) {
+	std::vector<ir::StackFrame> frames;
+
+	if (!tag) {
+		return frames;
+	}
+
+	// Note: Tag is a TrieNode<uint64_t> from TagRecorder, but the content field is private.
+	// Call stack extraction would require exposing the Tag content or walking the trie structure.
+	// For now, we return an empty frame vector and rely on semantic names for identification.
+	// Future improvement: Expose Tag::getContent() or similar public accessor.
+
+	return frames;
+}
+
+mlir::Location MLIRLoweringProvider::buildFusedLocation(const std::unique_ptr<ir::Operation>& operation) {
+	std::vector<mlir::Location> locations;
+
+	auto loc_ctx = operation->getLocationContext();
+	auto semantic_name = operation->getSemanticName();
+
+	// 1. User source location (primary)
+	if (loc_ctx && loc_ctx->source_location && loc_ctx->source_location->has_location()) {
+		auto& src = loc_ctx->source_location.value();
+		auto file_attr = builder->getStringAttr(src.file);
+		auto base_loc = mlir::FileLineColLoc::get(file_attr, src.line, src.column);
+
+		// Wrap with semantic name if available
+		mlir::Location final_loc = base_loc;
+		if (semantic_name) {
+			final_loc = mlir::NameLoc::get(builder->getStringAttr(std::string(*semantic_name)), base_loc);
+		} else {
+			// Use operation type as fallback name
+			std::string op_type_name = fmt::format("op_{}", operation->getIdentifier().getId());
+			final_loc = mlir::NameLoc::get(builder->getStringAttr(op_type_name), base_loc);
+		}
+		locations.push_back(final_loc);
+	}
+
+	// 2. Fuse with call stack (execution context)
+	if (loc_ctx && !loc_ctx->call_stack.empty()) {
+		std::vector<mlir::Location> stack_locs;
+
+		for (size_t i = 0; i < loc_ctx->call_stack.size(); ++i) {
+			const auto& frame = loc_ctx->call_stack[i];
+
+			// Create location for each stack frame
+			std::string frame_name = fmt::format("[{}] {}", i, frame.function_name);
+			mlir::Location frame_loc = mlir::UnknownLoc::get(context);
+
+			if (frame.source_file && frame.source_line) {
+				auto file_attr = builder->getStringAttr(*frame.source_file);
+				frame_loc = mlir::FileLineColLoc::get(file_attr, *frame.source_line, 0);
+			} else {
+				// Fallback: use module name if available
+				auto mod_attr = builder->getStringAttr(frame.module_name);
+				frame_loc = mlir::NameLoc::get(mod_attr);
+			}
+
+			// Annotate with frame name
+			frame_loc = mlir::NameLoc::get(builder->getStringAttr(frame_name), frame_loc);
+			stack_locs.push_back(frame_loc);
+		}
+
+		// Fuse all stack frame locations
+		if (!stack_locs.empty()) {
+			auto call_stack_loc =
+				mlir::FusedLoc::get(context, stack_locs, builder->getStringAttr("call_stack"));
+			locations.push_back(call_stack_loc);
+		}
+	}
+
+	// 3. Create final fused location
+	if (locations.size() > 1) {
+		return mlir::FusedLoc::get(context, locations, builder->getStringAttr("full_context"));
+	} else if (!locations.empty()) {
+		return locations[0];
+	} else {
+		// Fallback: create a generic location with semantic name if available
+		if (semantic_name) {
+			return getNameLoc(std::string(*semantic_name));
+		}
+		return getNameLoc(fmt::format("op_{}", operation->getIdentifier().getId()));
+	}
 }
 
 mlir::arith::CmpIPredicate convertToIntMLIRComparison(ir::CompareOperation::Comparator comparisonType, Type& stamp) {

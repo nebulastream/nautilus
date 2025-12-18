@@ -3,6 +3,8 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <concepts>
+#include <cstring>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -13,6 +15,26 @@
 #endif
 
 namespace nautilus {
+
+/**
+ * @brief Captures source code location information for variable tracking.
+ * Used to propagate user code location through the compilation pipeline.
+ */
+struct SourceLocation {
+	const char* file = "";         // __FILE__
+	uint32_t line = 0;             // __LINE__
+	uint32_t column = 0;           // 0 for now
+	const char* function = "";     // __PRETTY_FUNCTION__
+
+	SourceLocation() = default;
+
+	SourceLocation(const char* f, uint32_t l, uint32_t c, const char* fn)
+		: file(f), line(l), column(c), function(fn) {}
+
+	bool has_location() const {
+		return file != nullptr && file[0] != '\0' && line > 0;
+	}
+};
 
 namespace details {
 template <typename LHS>
@@ -49,26 +71,34 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+	val() : state(tracing::traceConstant<raw_type>(0)), value(0), source_location(SourceLocation{}) {
 	}
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value), source_location(SourceLocation{}) {
 	}
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(ValueType value, const SourceLocation& loc)
+		: state(tracing::traceConstant(value)), value(value), source_location(loc) {
 	}
-	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value),
+	                                     source_location(other.source_location) {
 	}
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)),
+	                                        source_location(std::move(other.source_location)) {
+	}
+	val(tracing::TypedValueRef& tc) : state(tc), value(), source_location(SourceLocation{}) {
 	}
 #else
-	val() : value(0) {
+	val() : value(0), source_location(SourceLocation{}) {
 	}
-	val(ValueType value) : value(value) {
+	val(ValueType value) : value(value), source_location(SourceLocation{}) {
+	}
+	val(ValueType value, const SourceLocation& loc) : value(value), source_location(loc) {
 	}
 	// copy constructor
-	val(const val<ValueType>& other) : value(other.value) {
+	val(const val<ValueType>& other) : value(other.value), source_location(other.source_location) {
 	}
 	// move constructor
-	val(val<ValueType>&& other) noexcept : value(std::move(other.value)) {
+	val(val<ValueType>&& other) noexcept : value(std::move(other.value)),
+	                                        source_location(std::move(other.source_location)) {
 	}
 #endif
 
@@ -77,7 +107,23 @@ public:
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif
 		this->value = other.value;
+		this->source_location = other.source_location;
 		return *this;
+	}
+
+	/**
+	 * @brief Set the source location for this value.
+	 */
+	val<ValueType>& set_source_location(const SourceLocation& loc) {
+		this->source_location = loc;
+		return *this;
+	}
+
+	/**
+	 * @brief Get the source location for this value.
+	 */
+	const SourceLocation& get_source_location() const {
+		return this->source_location;
 	}
 
 	template <typename OtherType>
@@ -139,6 +185,7 @@ public:
 private:
 	friend details::RawValueResolver<ValueType>;
 	ValueType value;
+	SourceLocation source_location;
 };
 
 using TrueProbability = double;
@@ -155,29 +202,37 @@ public:
 
 #ifdef ENABLE_TRACING
 
-	val() : state(tracing::traceConstant(0)), value(false) {
+	val() : state(tracing::traceConstant(0)), value(false), source_location(SourceLocation{}) {
 	}
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {
+	val(bool value) : state(tracing::traceConstant(value)), value(value), source_location(SourceLocation{}) {
+	}
+	val(bool value, const SourceLocation& loc)
+		: state(tracing::traceConstant(value)), value(value), source_location(loc) {
 	}
 	// copy constructor
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value),
+	                               source_location(other.source_location) {
 	}
 	// move constructor
-	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)),
+	                                   source_location(std::move(other.source_location)) {
 	}
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	val(tracing::TypedValueRef& tc) : state(tc), value(), source_location(SourceLocation{}) {
 	}
 
 #else
-	val() {
+	val() : source_location(SourceLocation{}) {
 	}
-	val(bool value) : value(value) {
+	val(bool value) : value(value), source_location(SourceLocation{}) {
+	}
+	val(bool value, const SourceLocation& loc) : value(value), source_location(loc) {
 	}
 	// copy constructor
-	val(const val<bool>& other) : value(other.value) {
+	val(const val<bool>& other) : value(other.value), source_location(other.source_location) {
 	}
 	// move constructor
-	val(val<bool>&& other) noexcept : value(std::move(other.value)) {
+	val(val<bool>&& other) noexcept : value(std::move(other.value)),
+	                                   source_location(std::move(other.source_location)) {
 	}
 #endif
 
@@ -186,7 +241,23 @@ public:
 		tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		this->value = other.value;
+		this->source_location = other.source_location;
 		return *this;
+	}
+
+	/**
+	 * @brief Set the source location for this value.
+	 */
+	val<bool>& set_source_location(const SourceLocation& loc) {
+		this->source_location = loc;
+		return *this;
+	}
+
+	/**
+	 * @brief Get the source location for this value.
+	 */
+	const SourceLocation& get_source_location() const {
+		return this->source_location;
 	}
 
 	operator bool() const {
@@ -208,6 +279,7 @@ public:
 private:
 	friend details::RawValueResolver<bool>;
 	bool value;
+	SourceLocation source_location;
 	// probability of being true, default is 0.5 as the value is unknown
 	TrueProbability probability = 0.5;
 };
@@ -524,5 +596,15 @@ auto inline operator&&(const val<bool>& left, const val<bool>& right) {
 auto inline operator!(const val<bool>& left) {
 	return details::lNot(left);
 }
+
+/**
+ * @brief Convenience macros for automatic source location capture
+ */
+#define VAL_NAMED(value, name)                                                                                 \
+	val<decltype(value)>((value), ::nautilus::SourceLocation(__FILE__, __LINE__, 0, __PRETTY_FUNCTION__))     \
+		.set_source_location(::nautilus::SourceLocation(__FILE__, __LINE__, 0, __PRETTY_FUNCTION__))
+
+#define VAL_LOC(value)                                                                                          \
+	val<decltype(value)>((value), ::nautilus::SourceLocation(__FILE__, __LINE__, 0, __PRETTY_FUNCTION__))
 
 } // namespace nautilus
