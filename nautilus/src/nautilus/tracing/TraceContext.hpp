@@ -196,6 +196,15 @@ public:
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs);
 
+	TypedValueRef& traceNautilusCall(
+		const NautilusFunctionDefinition* definition,
+		std::function<void()> fwrapper,
+		Type resultType,
+		const std::vector<tracing::TypedValueRef>& arguments,
+	    FunctionAttributes fnAttrs);
+
+							 
+
 	bool traceCmp(const TypedValueRef& targetRef, double probability);
 
 	~TraceContext() = default;

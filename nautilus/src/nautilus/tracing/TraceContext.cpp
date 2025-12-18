@@ -127,6 +127,15 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
+TypedValueRef& traceNautilusCall(
+		const NautilusFunctionDefinition* definition,
+		std::function<void()> fwrapper,
+		Type resultType,
+		const std::vector<tracing::TypedValueRef>& arguments,
+	    FunctionAttributes fnAttrs){
+		
+}
+
 void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef, resultType);

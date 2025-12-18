@@ -67,6 +67,17 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return TraceContext::get()->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
+static TypedValueRef dummyRef;
+TypedValueRef&  traceNautilusCall(
+	const NautilusFunctionDefinition* definition,
+	std::function<void()> fwrapper,
+	Type resultType,
+	const std::vector<tracing::TypedValueRef>& arguments,
+	FunctionAttributes fnAttrs){
+		return TraceContext::get()->
+			traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+					}
+
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
 	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }

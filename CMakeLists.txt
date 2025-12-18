@@ -96,6 +96,8 @@ find_program(CCACHE_EXECUTABLE ccache)
 if (CCACHE_EXECUTABLE AND ${USE_CCACHE_IF_AVAILABLE})
     message(STATUS "Using ccache: ${CCACHE_EXECUTABLE}")
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_EXECUTABLE}")
+else()
+    message(STATUS "Not using ccache")
 endif ()
 
 include(cmake/macros.cmake)
