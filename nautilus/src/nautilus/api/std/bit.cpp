@@ -2,6 +2,19 @@
 #include <cstdint>
 #include <nautilus/function.hpp>
 #include <nautilus/std/bit.h>
+#include <version>
+
+// Check for required C++20 <bit> header features
+// These are available in GCC 10+, Clang 12+, Apple Clang 12+, MSVC 19.27+
+#ifndef __cpp_lib_bitops
+#error                                                                                                                 \
+    "C++20 <bit> header with bit operations is required. Please use GCC 10+, Clang 12+, or Apple Clang 12+ with -std=c++20"
+#endif
+
+#ifndef __cpp_lib_int_pow2
+#error                                                                                                                 \
+    "C++20 <bit> header with power-of-2 functions is required. Please use GCC 10+, Clang 12+, or Apple Clang 12+ with -std=c++20"
+#endif
 
 namespace nautilus {
 
