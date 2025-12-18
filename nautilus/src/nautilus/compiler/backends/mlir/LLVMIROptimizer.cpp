@@ -3,10 +3,12 @@
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/FileCollector.h>
+#include <llvm/Transforms/Utils/Debugify.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 
 namespace nautilus::compiler::mlir {
@@ -34,6 +36,11 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
                 llvm::TargetMachine* targetMachinePtr = targetMachine->get();
                 auto optLevel = static_cast<llvm::CodeGenOptLevel>(getOptimizationLevel(options));
                 targetMachinePtr->setOptLevel(optLevel);
+
+                if (options.getOptionOrDefault("mlir.enableDebugInfo", false)) {
+                        llvm::applyDebugifyMetadata(*llvmIRModule, llvm::make_range(llvmIRModule->begin(), llvmIRModule->end()),
+                                                    "nautilus-mlir", nullptr);
+                }
 
 		// Add target-specific attributes to the 'execute' function.
 		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
