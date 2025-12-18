@@ -10,6 +10,7 @@ add_executable(nautilus-llvm-ir-test
     LLVMIRTest.cpp
     LLVMIRBitIntrinsicTest.cpp
     LLVMIRIntrinsicTest.cpp
+    VariableNamesTest.cpp
 )
 
 target_link_libraries(nautilus-llvm-ir-test
