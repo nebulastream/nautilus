@@ -63,7 +63,13 @@ val<double> doubleAddExpression(val<double> x) {
 	return x + y;
 }
 
+// The result of int8_t - int8_t is int32_t
 auto subInt8AndInt8(val<int8_t> x, val<int8_t> y) {
+	const auto result = x - y;
+	return result;
+}
+
+val<int8_t> subInt8AndInt8TruncateResult(val<int8_t> x, val<int8_t> y) {
 	const auto result = x - y;
 	return result;
 }
