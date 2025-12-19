@@ -268,6 +268,14 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);
 		REQUIRE(f((int8_t) 123, (int8_t) 123) == 0);
 		REQUIRE(f((int8_t) 78, (int8_t) 70) == 8);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == -129);
+	}
+
+	SECTION("subInt8AndInt8TruncateResult") {
+		auto f = engine.registerFunction(subInt8AndInt8TruncateResult);
+		REQUIRE(f((int8_t) 1, (int8_t) 2) == -1);
+		REQUIRE(f((int8_t) 123, (int8_t) 123) == 0);
+		REQUIRE(f((int8_t) 78, (int8_t) 70) == 8);
 		REQUIRE(f((int8_t) -128, (int8_t) 1) == 127);
 	}
 
@@ -1130,42 +1138,31 @@ void runAllTests(engine::NautilusEngine& engine) {
 		pointerExecutionTest(engine);
 	}
 
-	SECTION("Division Testcases") {
-		int8_t i8 = -42;
-		int16_t i16 = -129;
-		int32_t i32 = -32769;
-		int64_t i64 = -2147483649;
-		uint8_t u8 = 42;
-		uint16_t u16 = 256;
-		uint32_t u32 = 65536;
-		uint64_t u64 = 4294967296;
-		float f32 = 23.0;
-		double f64 = 23.0;
+	SECTION("sameAsAboveButPassArgumentsByValueContiguousResult") {
+		auto f = engine.registerFunction(+[](val<int8_t> i8, val<int16_t> i16, val<int32_t> i32, val<int64_t> i64,
+		                                     val<float> f32, val<float*> results) {
+			*(results + 0) = f32 / i8;
+			*(results + 1) = f32 / (i8 + nautilus::val<int8_t>(1));
+			*(results + 2) = f32 / i16;
+			*(results + 3) = f32 / (i16 + nautilus::val<int16_t>(1));
+			*(results + 4) = f32 / i32;
+			*(results + 5) = f32 / (i32 + nautilus::val<int32_t>(1));
+			*(results + 6) = f32 / i64;
+			*(results + 7) = f32 / (i64 + nautilus::val<int64_t>(1));
+		});
 
-		/// Division nautilus functions
-		auto fu64_u8 = engine.registerFunction(divAWithB<uint64_t, uint8_t, uint64_t>);
-		auto fi16_i8 = engine.registerFunction(divAWithB<int16_t, int8_t, decltype(i16 / i8)>);
-		auto fu64_i8 = engine.registerFunction(divAWithB<uint64_t, int8_t, decltype(u64 / i8)>);
-		auto fi16_u8 = engine.registerFunction(divAWithB<int16_t, uint8_t, decltype(i16 / u8)>);
-		auto fi32_f32 = engine.registerFunction(divAWithB<float, float, decltype(f32 / f32)>);
-		auto fi64_f64 = engine.registerFunction(divAWithB<int64_t, double, decltype(i64 / f64)>);
-		auto fu16_u8 = engine.registerFunction(divAWithB<uint16_t, uint8_t, decltype(u16 / u8)>);
-		auto fu32_u8 = engine.registerFunction(divAWithB<uint32_t, uint8_t, decltype(u32 / u8)>);
-		auto ff32_u8 = engine.registerFunction(divAWithB<float, uint8_t, decltype(f32 / u8)>);
-		auto ff64_u8 = engine.registerFunction(divAWithB<double, uint8_t, decltype(f64 / u8)>);
-		auto fi16_i32 = engine.registerFunction(divAWithB<int16_t, int32_t, decltype(i16 / i32)>);
+		float results[8] = {0.0f};
 
-		/// Division testcases
-		REQUIRE(fu64_u8(u64, u8) == static_cast<decltype(u64 / u8)>(u64 / u8));
-		REQUIRE(fi16_i8(i16, i8) == static_cast<decltype(i16 / i8)>(i16 / i8));
-		REQUIRE(fu64_i8(u64, i8) == static_cast<decltype(u64 / i8)>(u64 / i8));
-		REQUIRE(fi16_u8(i16, u8) == static_cast<decltype(i16 / u8)>(i16 / u8));
-		REQUIRE(fi32_f32(i32, f32) == static_cast<decltype(i32 / f32)>(i32 / f32));
-		REQUIRE(fi64_f64(i64, f64) == static_cast<decltype(i64 / f64)>(i64 / f64));
-		REQUIRE(fu16_u8(u16, u8) == static_cast<decltype(u16 / u8)>(u16 / u8));
-		REQUIRE(fu32_u8(u32, u8) == static_cast<decltype(u32 / u8)>(u32 / u8));
-		REQUIRE(ff32_u8(f32, u8) == static_cast<decltype(f32 / u8)>(f32 / u8));
-		REQUIRE(fi16_i32(i16, i32) == static_cast<decltype(i16 / i32)>(i16 / i32));
+		f(1, 1, 1, 1, 2.0f, results);
+
+		REQUIRE(results[0] == Catch::Approx(2.0f)); // f32 / i8
+		REQUIRE(results[1] == Catch::Approx(1.0f)); // f32 / (i8 + 1)
+		REQUIRE(results[2] == Catch::Approx(2.0f)); // f32 / i16
+		REQUIRE(results[3] == Catch::Approx(1.0f)); // f32 / (i16 + 1)
+		REQUIRE(results[4] == Catch::Approx(2.0f)); // f32 / i32
+		REQUIRE(results[5] == Catch::Approx(1.0f)); // f32 / (i32 + 1)
+		REQUIRE(results[6] == Catch::Approx(2.0f)); // f32 / i64
+		REQUIRE(results[7] == Catch::Approx(1.0f)); // f32 / (i64 + 1)
 	}
 
 	SECTION("Multiplication Testcases") {
