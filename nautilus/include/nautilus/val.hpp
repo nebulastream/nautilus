@@ -290,15 +290,46 @@ namespace details {
 		    lValue)) OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
 	}
 
-DEFINE_BINARY_OPERATOR_HELPER(+, add, ADD, COMMON_RETURN_TYPE)
+template <typename LHS, typename RHS>
+using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), decltype(+std::declval<RHS>())>;
 
-DEFINE_BINARY_OPERATOR_HELPER(-, sub, SUB, COMMON_RETURN_TYPE)
+#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE)                                            \
+	template <typename LHS, typename RHS>                                                                              \
+	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
+		using LHSVal = std::remove_cvref_t<LHS>;                                                                       \
+		using RHSVal = std::remove_cvref_t<RHS>;                                                                       \
+		using LBase = typename LHSVal::basic_type;                                                                     \
+		using RBase = typename RHSVal::basic_type;                                                                     \
+		using commonType = ArithmeticResultType<LBase, RBase>;                                                         \
+		using resultType = decltype(std::declval<LBase>() OP std::declval<RBase>());                                   \
+                                                                                                                       \
+		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
+		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
+                                                                                                                       \
+		if SHOULD_TRACE () {                                                                                           \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<resultType>::to_type(),          \
+			                                 details::StateResolver<decltype(lValue)>::getState(lValue),               \
+			                                 details::StateResolver<decltype(rValue)>::getState(rValue));              \
+			return val<resultType>(tc);                                                                                \
+		}                                                                                                              \
+                                                                                                                       \
+		return val<resultType>(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(               \
+		    lValue)) OP RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
+	}
 
-DEFINE_BINARY_OPERATOR_HELPER(*, mul, MUL, COMMON_RETURN_TYPE)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD)
 
-DEFINE_BINARY_OPERATOR_HELPER(/, div, DIV, COMMON_RETURN_TYPE)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(-, sub, SUB)
 
-DEFINE_BINARY_OPERATOR_HELPER(%, mod, MOD, COMMON_RETURN_TYPE)
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(*, mul, MUL)
+
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(/, div, DIV)
+
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(%, mod, MOD)
+
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH)
+
+DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
 
 DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, bool)
 
@@ -311,10 +342,6 @@ DEFINE_BINARY_OPERATOR_HELPER(<=, lte, LTE, bool)
 DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, bool)
 
 DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, bool)
-
-DEFINE_BINARY_OPERATOR_HELPER(>>, shr, RSH, DEDUCT_RETURN_TYPE(>>))
-
-DEFINE_BINARY_OPERATOR_HELPER(<<, shl, LSH, DEDUCT_RETURN_TYPE(<<))
 
 DEFINE_BINARY_OPERATOR_HELPER(&, bAnd, BAND, COMMON_RETURN_TYPE)
 
