@@ -24,24 +24,26 @@ B1()
 	ASSIGN	$26	$25	:ptr
 	ASSIGN	$27	$26	:ptr
 	LOAD	$28	$27	:i8
-	ADD	$29	$17	$28	:i8
-	CAST	$30	$4	:i32
-	ASSIGN	$31	$1	:ptr
-	ASSIGN	$32	$30	:i32
-	ASSIGN	$33	$32	:i32
-	CONST	$34	1	:ui64
-	CAST	$35	$33	:ui64
-	MUL	$36	$35	$34	:ui64
-	ADD	$37	$31	$36	:ptr
-	ASSIGN	$38	$37	:ptr
-	ASSIGN	$39	$38	:ptr
-	ASSIGN	$40	$29	:i8
-	STORE	$41	$39	$40	:void
-	CONST	$42	1	:i32
-	CAST	$43	$4	:i32
-	ADD	$44	$43	$42	:i32
-	CAST	$45	$44	:i8
-	ASSIGN	$4	$45	:i8
+	CAST	$29	$17	:i32
+	CAST	$30	$28	:i32
+	ADD	$31	$29	$30	:i32
+	CAST	$32	$4	:i32
+	ASSIGN	$33	$1	:ptr
+	ASSIGN	$34	$32	:i32
+	ASSIGN	$35	$34	:i32
+	CONST	$36	1	:ui64
+	CAST	$37	$35	:ui64
+	MUL	$38	$37	$36	:ui64
+	ADD	$39	$33	$38	:ptr
+	ASSIGN	$40	$39	:ptr
+	ASSIGN	$41	$40	:ptr
+	CAST	$42	$31	:i8
+	STORE	$43	$41	$42	:void
+	CONST	$44	1	:i32
+	CAST	$45	$4	:i32
+	ADD	$46	$45	$44	:i32
+	CAST	$47	$46	:i8
+	ASSIGN	$4	$47	:i8
 	JMP	$0	B3()	:void
 B2()
 	RETURN	$0	:void

@@ -21,18 +21,21 @@ Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
 	$24 = $23 * $22 :ui64
 	$25 = $2 + $24 :ptr
 	$28 = load($25) :i8
-	$29 = $17 + $28 :i8
-	$30 = $4 cast_to i32 :i32
-	$34 = 1 :ui64
-	$35 = $30 cast_to ui64 :ui64
-	$36 = $35 * $34 :ui64
-	$37 = $1 + $36 :ptr
-	store($29, $37) :void
-	$42 = 1 :i32
-	$43 = $4 cast_to i32 :i32
-	$44 = $43 + $42 :i32
-	$45 = $44 cast_to i8 :i8
-	br Block_3($45, $3, $1, $2) :void
+	$29 = $17 cast_to i32 :i32
+	$30 = $28 cast_to i32 :i32
+	$31 = $29 + $30 :i32
+	$32 = $4 cast_to i32 :i32
+	$36 = 1 :ui64
+	$37 = $32 cast_to ui64 :ui64
+	$38 = $37 * $36 :ui64
+	$39 = $1 + $38 :ptr
+	$42 = $31 cast_to i8 :i8
+	store($42, $39) :void
+	$44 = 1 :i32
+	$45 = $4 cast_to i32 :i32
+	$46 = $45 + $44 :i32
+	$47 = $46 cast_to i8 :i8
+	br Block_3($47, $3, $1, $2) :void
 
 Block_2():
 	return :void
