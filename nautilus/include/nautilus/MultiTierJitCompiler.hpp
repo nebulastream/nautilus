@@ -41,9 +41,9 @@ public:
 	 * @brief Construct a multi-tier JIT compiler with custom options.
 	 *
 	 * Supported options:
-	 * - "engine.tier1.backend": Backend for tier 1 (default: "bc")
-	 * - "engine.tier2.backend": Backend for tier 2 (default: "mlir")
-	 * - "engine.tier2.threshold": Number of invocations before tier 2 compilation (default: 100)
+	 * - "engine.multiTier.tier1Backend": Backend for tier 1 (default: "bc")
+	 * - "engine.multiTier.tier2Backend": Backend for tier 2 (default: "mlir")
+	 * - "engine.multiTier.tier2Threshold": Number of invocations before tier 2 compilation (default: 100)
 	 *
 	 * @param options Configuration options
 	 */
@@ -73,7 +73,7 @@ public:
 	 * @return Backend name (e.g., "bc", "cpp", "asmjit")
 	 */
 	std::string getTier1BackendName() const {
-		return options.getOptionOrDefault<std::string>("engine.tier1.backend", "bc");
+		return options.getOptionOrDefault<std::string>("engine.multiTier.tier1Backend", "bc");
 	}
 
 	/**
@@ -81,7 +81,7 @@ public:
 	 * @return Backend name (e.g., "mlir", "cpp")
 	 */
 	std::string getTier2BackendName() const {
-		return options.getOptionOrDefault<std::string>("engine.tier2.backend", "mlir");
+		return options.getOptionOrDefault<std::string>("engine.multiTier.tier2Backend", "mlir");
 	}
 
 	/**
@@ -89,7 +89,7 @@ public:
 	 * @return Number of invocations before tier 2 compilation starts
 	 */
 	uint64_t getTier2Threshold() const {
-		return static_cast<uint64_t>(options.getOptionOrDefault<int>("engine.tier2.threshold", 100));
+		return static_cast<uint64_t>(options.getOptionOrDefault<int>("engine.multiTier.tier2Threshold", 100));
 	}
 
 	/**

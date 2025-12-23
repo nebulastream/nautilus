@@ -44,9 +44,9 @@ val<int32_t> complexControlFlow(val<int32_t> x) {
 TEST_CASE("MultiTierJitCompiler Basic Functionality") {
 	// Configure multi-tier JIT with bc -> mlir
 	Options options;
-	options.setOption("engine.tier1.backend", "bc");
-	options.setOption("engine.tier2.backend", "mlir");
-	options.setOption("engine.tier2.threshold", 5);
+	options.setOption("engine.multiTier.tier1Backend", "bc");
+	options.setOption("engine.multiTier.tier2Backend", "mlir");
+	options.setOption("engine.multiTier.tier2Threshold", 5);
 
 	compiler::MultiTierJitCompiler jit(options);
 
@@ -155,8 +155,8 @@ TEST_CASE("MultiTierJitCompiler Configuration") {
 
 	SECTION("Custom tier 1 backend") {
 		Options options;
-		options.setOption("engine.tier1.backend", "bc");
-		options.setOption("engine.tier2.backend", "mlir");
+		options.setOption("engine.multiTier.tier1Backend", "bc");
+		options.setOption("engine.multiTier.tier2Backend", "mlir");
 
 		compiler::MultiTierJitCompiler jit(options);
 
@@ -166,7 +166,7 @@ TEST_CASE("MultiTierJitCompiler Configuration") {
 
 	SECTION("Custom threshold") {
 		Options options;
-		options.setOption("engine.tier2.threshold", 50);
+		options.setOption("engine.multiTier.tier2Threshold", 50);
 
 		compiler::MultiTierJitCompiler jit(options);
 
@@ -176,7 +176,7 @@ TEST_CASE("MultiTierJitCompiler Configuration") {
 
 TEST_CASE("MultiTierJitCompiler Thread Safety") {
 	Options options;
-	options.setOption("engine.tier2.threshold", 10);
+	options.setOption("engine.multiTier.tier2Threshold", 10);
 
 	compiler::MultiTierJitCompiler jit(options);
 
@@ -218,7 +218,7 @@ TEST_CASE("MultiTierJitCompiler Thread Safety") {
 
 TEST_CASE("MultiTierJitCompiler Invocation Tracking") {
 	Options options;
-	options.setOption("engine.tier2.threshold", 10);
+	options.setOption("engine.multiTier.tier2Threshold", 10);
 
 	compiler::MultiTierJitCompiler jit(options);
 
@@ -265,6 +265,328 @@ TEST_CASE("MultiTierJitCompiler Invocation Tracking") {
 		bool compilingOrSwitched =
 		    multiTierExec->isTier2Compiling() || multiTierExec->getCurrentTier() == 2;
 		REQUIRE(compilingOrSwitched);
+	}
+}
+
+TEST_CASE("MultiTierJitCompiler Backend Combinations") {
+	SECTION("Bytecode to MLIR (default)") {
+		Options options;
+		options.setOption("engine.multiTier.tier1Backend", "bc");
+		options.setOption("engine.multiTier.tier2Backend", "mlir");
+		options.setOption("engine.multiTier.tier2Threshold", 3);
+
+		compiler::MultiTierJitCompiler jit(options);
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x * 2; };
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		// Test tier 1
+		REQUIRE(invocable(5) == 10);
+		REQUIRE(invocable(10) == 20);
+		REQUIRE(invocable(15) == 30);
+
+		// Trigger tier 2
+		REQUIRE(invocable(20) == 40);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		// Test tier 2
+		REQUIRE(invocable(25) == 50);
+		REQUIRE(invocable(100) == 200);
+	}
+
+#ifdef ENABLE_CPP_BACKEND
+	SECTION("Bytecode to C++") {
+		Options options;
+		options.setOption("engine.multiTier.tier1Backend", "bc");
+		options.setOption("engine.multiTier.tier2Backend", "cpp");
+		options.setOption("engine.multiTier.tier2Threshold", 3);
+
+		compiler::MultiTierJitCompiler jit(options);
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x + 100; };
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		for (int i = 0; i < 10; i++) {
+			REQUIRE(invocable(i) == i + 100);
+		}
+	}
+#endif
+}
+
+TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
+	SECTION("Zero threshold (immediate tier 2)") {
+		Options options;
+		options.setOption("engine.multiTier.tier2Threshold", 0);
+
+		compiler::MultiTierJitCompiler jit(options);
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x * x; };
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		// First invocation should trigger tier 2 compilation
+		REQUIRE(invocable(5) == 25);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		// Should work correctly even with immediate tier 2
+		REQUIRE(invocable(10) == 100);
+		REQUIRE(invocable(7) == 49);
+	}
+
+	SECTION("Threshold of 1") {
+		Options options;
+		options.setOption("engine.multiTier.tier2Threshold", 1);
+
+		compiler::MultiTierJitCompiler jit(options);
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x + x; };
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		REQUIRE(invocable(10) == 20);
+		REQUIRE(invocable(20) == 40);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		REQUIRE(invocable(30) == 60);
+	}
+
+	SECTION("Very high threshold (stays in tier 1)") {
+		Options options;
+		options.setOption("engine.multiTier.tier2Threshold", 1000000);
+
+		compiler::MultiTierJitCompiler jit(options);
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x - 5; };
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
+		REQUIRE(multiTierExec != nullptr);
+
+		// Execute many times, should stay in tier 1
+		for (int i = 0; i < 100; i++) {
+			REQUIRE(invocable(i + 10) == i + 5);
+		}
+
+		REQUIRE(multiTierExec->getCurrentTier() == 1);
+		REQUIRE(!multiTierExec->isTier2Compiling());
+	}
+}
+
+TEST_CASE("MultiTierJitCompiler Correctness Across Transitions") {
+	SECTION("Results remain consistent across tier switch") {
+		Options options;
+		options.setOption("engine.multiTier.tier2Threshold", 5);
+
+		compiler::MultiTierJitCompiler jit(options);
+
+		// Complex function to test correctness
+		std::function<val<int32_t>(val<int32_t>, val<int32_t>)> func = [](val<int32_t> a, val<int32_t> b) {
+			val<int32_t> result = 0;
+			if (a > b) {
+				result = a * b + 10;
+			} else {
+				result = a + b * 2;
+			}
+			return result;
+		};
+
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t, int32_t>("execute");
+
+		// Test cases to validate
+		std::vector<std::tuple<int32_t, int32_t, int32_t>> testCases = {
+		    {10, 5, 60},   // a > b: 10 * 5 + 10 = 60
+		    {3, 7, 17},    // a <= b: 3 + 7 * 2 = 17
+		    {8, 8, 24},    // a == b: 8 + 8 * 2 = 24
+		    {15, 2, 40},   // a > b: 15 * 2 + 10 = 40
+		    {1, 9, 19},    // a < b: 1 + 9 * 2 = 19
+		    {20, 3, 70},   // After tier 2 trigger
+		    {5, 10, 25},   // After tier 2
+		    {100, 50, 5010}, // After tier 2
+		};
+
+		for (size_t i = 0; i < testCases.size(); i++) {
+			auto [a, b, expected] = testCases[i];
+			REQUIRE(invocable(a, b) == expected);
+
+			// Give time for tier 2 compilation after threshold
+			if (i == 5) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
+		}
+	}
+
+	SECTION("Floating point operations across tiers") {
+		Options options;
+		options.setOption("engine.multiTier.tier2Threshold", 3);
+
+		compiler::MultiTierJitCompiler jit(options);
+
+		std::function<val<double>(val<double>, val<double>)> func = [](val<double> x, val<double> y) {
+			return x * x + y * y;
+		};
+
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<double, double, double>("execute");
+
+		// Tier 1 tests
+		REQUIRE(invocable(3.0, 4.0) == Catch::Approx(25.0));
+		REQUIRE(invocable(1.0, 1.0) == Catch::Approx(2.0));
+		REQUIRE(invocable(5.0, 12.0) == Catch::Approx(169.0));
+
+		// Trigger tier 2
+		REQUIRE(invocable(2.0, 2.0) == Catch::Approx(8.0));
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		// Tier 2 tests
+		REQUIRE(invocable(6.0, 8.0) == Catch::Approx(100.0));
+		REQUIRE(invocable(0.5, 0.5) == Catch::Approx(0.5));
+	}
+}
+
+TEST_CASE("MultiTierJitCompiler State Inspection") {
+	Options options;
+	options.setOption("engine.multiTier.tier2Threshold", 5);
+
+	compiler::MultiTierJitCompiler jit(options);
+
+	std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x; };
+	auto wrapper = details::createFunctionWrapper(func);
+	auto executable = jit.compile(wrapper);
+	auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+	auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
+	REQUIRE(multiTierExec != nullptr);
+
+	SECTION("Initial state") {
+		REQUIRE(multiTierExec->getCurrentTier() == 1);
+		REQUIRE(multiTierExec->getInvocationCount() == 0);
+		REQUIRE(!multiTierExec->isTier2Compiling());
+	}
+
+	SECTION("State during tier 1 execution") {
+		invocable(1);
+		REQUIRE(multiTierExec->getCurrentTier() == 1);
+		REQUIRE(multiTierExec->getInvocationCount() == 1);
+
+		invocable(2);
+		invocable(3);
+		REQUIRE(multiTierExec->getInvocationCount() == 3);
+		REQUIRE(!multiTierExec->isTier2Compiling());
+	}
+
+	SECTION("State after crossing threshold") {
+		for (int i = 0; i < 5; i++) {
+			invocable(i);
+		}
+		REQUIRE(multiTierExec->getInvocationCount() == 5);
+
+		// Cross threshold
+		invocable(5);
+		REQUIRE(multiTierExec->getInvocationCount() == 6);
+
+		// May or may not be compiling depending on timing
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+		// Should have switched to tier 2 or still be tier 1
+		uint8_t tier = multiTierExec->getCurrentTier();
+		REQUIRE((tier == 1 || tier == 2));
+	}
+}
+
+TEST_CASE("MultiTierJitCompiler Complex Control Flow") {
+	Options options;
+	options.setOption("engine.multiTier.tier2Threshold", 4);
+
+	compiler::MultiTierJitCompiler jit(options);
+
+	SECTION("Nested loops") {
+		std::function<val<int64_t>(val<int64_t>)> func = [](val<int64_t> n) {
+			val<int64_t> sum = 0;
+			for (val<int64_t> i = 0; i < n; i = i + 1) {
+				for (val<int64_t> j = 0; j < n; j = j + 1) {
+					sum = sum + 1;
+				}
+			}
+			return sum;
+		};
+
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int64_t, int64_t>("execute");
+
+		// Tier 1 tests
+		REQUIRE(invocable(0) == 0);
+		REQUIRE(invocable(1) == 1);
+		REQUIRE(invocable(3) == 9);
+		REQUIRE(invocable(5) == 25);
+
+		// Trigger tier 2
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		// Tier 2 tests
+		REQUIRE(invocable(4) == 16);
+		REQUIRE(invocable(10) == 100);
+	}
+
+	SECTION("Multiple branches") {
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			val<int32_t> result = 0;
+			if (x < 0) {
+				result = -x;
+			} else if (x == 0) {
+				result = 0;
+			} else if (x < 10) {
+				result = x * 2;
+			} else if (x < 100) {
+				result = x / 2;
+			} else {
+				result = 100;
+			}
+			return result;
+		};
+
+		auto wrapper = details::createFunctionWrapper(func);
+		auto executable = jit.compile(wrapper);
+		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+
+		// Test all branches in tier 1
+		REQUIRE(invocable(-5) == 5);
+		REQUIRE(invocable(0) == 0);
+		REQUIRE(invocable(5) == 10);
+		REQUIRE(invocable(50) == 25);
+
+		// Trigger tier 2
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+		// Test all branches in tier 2
+		REQUIRE(invocable(-10) == 10);
+		REQUIRE(invocable(8) == 16);
+		REQUIRE(invocable(20) == 10);
+		REQUIRE(invocable(200) == 100);
+	}
+}
+
+TEST_CASE("MultiTierJitCompiler Name Generation") {
+	SECTION("Default name") {
+		compiler::MultiTierJitCompiler jit;
+		REQUIRE(jit.getName() == "multi-tier(bc->mlir)");
+	}
+
+	SECTION("Custom backends name") {
+		Options options;
+		options.setOption("engine.multiTier.tier1Backend", "bc");
+		options.setOption("engine.multiTier.tier2Backend", "cpp");
+
+		compiler::MultiTierJitCompiler jit(options);
+		REQUIRE(jit.getName() == "multi-tier(bc->cpp)");
 	}
 }
 
