@@ -5,6 +5,7 @@ add_executable(nautilus-execution-tests
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
         DumpHelperTest.cpp
+        MultiTierJitTest.cpp
 )
 
 nautilus_inline(nautilus-execution-tests)
