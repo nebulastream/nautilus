@@ -35,12 +35,13 @@ public:
 	 * @param options Configuration options
 	 * @param backends Backend registry for tier 2 compilation
 	 * @param tier2Threshold Number of invocations before tier 2 compilation
+	 * @param tier1BackendName Name of the tier 1 backend
 	 * @param tier2BackendName Name of the tier 2 backend
 	 */
 	MultiTierExecutable(std::unique_ptr<Executable> tier1Executable,
 	                    MultiTierJitCompiler::wrapper_function wrapperFunction, engine::Options options,
 	                    const CompilationBackendRegistry* backends, uint64_t tier2Threshold,
-	                    std::string tier2BackendName);
+	                    std::string tier1BackendName, std::string tier2BackendName);
 
 	~MultiTierExecutable() override;
 
@@ -93,6 +94,30 @@ public:
 		return tier2Compiling.load(std::memory_order_acquire);
 	}
 
+	/**
+	 * @brief Get the name of the tier 1 backend.
+	 * @return Backend name (e.g., "bc", "none", "cpp")
+	 */
+	std::string getTier1BackendName() const {
+		return tier1BackendName;
+	}
+
+	/**
+	 * @brief Get the name of the tier 2 backend.
+	 * @return Backend name (e.g., "mlir", "cpp")
+	 */
+	std::string getTier2BackendName() const {
+		return tier2BackendName;
+	}
+
+	/**
+	 * @brief Get the name of the currently active backend.
+	 * @return Name of the backend currently executing code
+	 */
+	std::string getCurrentBackendName() const {
+		return getCurrentTier() == 1 ? tier1BackendName : tier2BackendName;
+	}
+
 private:
 	/**
 	 * @brief Increment invocation counter and trigger tier 2 compilation if needed.
@@ -143,6 +168,9 @@ private:
 
 	// Threshold for tier 2 compilation
 	uint64_t tier2Threshold;
+
+	// Name of tier 1 backend
+	std::string tier1BackendName;
 
 	// Name of tier 2 backend
 	std::string tier2BackendName;

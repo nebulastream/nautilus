@@ -2,6 +2,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/MultiTierExecutable.hpp"
+#include "nautilus/compiler/DirectExecutable.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -42,36 +43,46 @@ std::string MultiTierJitCompiler::getName() const {
 extern std::string createCompilationUnitID();
 
 std::unique_ptr<Executable> MultiTierJitCompiler::compile(MultiTierJitCompiler::wrapper_function function) const {
-	const CompilationUnitID compilationId = createCompilationUnitID();
-	auto dumpHandler = DumpHandler(options, compilationId + "_tier1");
+	const auto tier1BackendName = getTier1BackendName();
+	std::unique_ptr<Executable> tier1Executable;
 
-	// Derive trace from function
-	auto executionTrace = tracing::TraceContext::trace(function, options);
-	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
+	// Check if tier 1 backend is "none" (direct interpretation without compilation)
+	if (tier1BackendName == "none") {
+		// Create a direct executable that executes the function without any compilation
+		tier1Executable = std::make_unique<DirectExecutable>(function);
+	} else {
+		// Compile with standard backend
+		const CompilationUnitID compilationId = createCompilationUnitID();
+		auto dumpHandler = DumpHandler(options, compilationId + "_tier1");
 
-	// Create SSA
-	auto ssaCreationPhase = tracing::SSACreationPhase();
-	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
-	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
+		// Derive trace from function
+		auto executionTrace = tracing::TraceContext::trace(function, options);
+		dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
-	// Get nautilus IR from trace
-	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
-	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+		// Create SSA
+		auto ssaCreationPhase = tracing::SSACreationPhase();
+		auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
+		dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
 
-	if (options.getOptionOrDefault("dump.graph", false)) {
-		ir::createGraphVizFromIr(ir, options, dumpHandler);
+		// Get nautilus IR from trace
+		auto irGenerationPhase = tracing::TraceToIRConversionPhase();
+		const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
+		dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+
+		if (options.getOptionOrDefault("dump.graph", false)) {
+			ir::createGraphVizFromIr(ir, options, dumpHandler);
+		}
+
+		// Compile with tier 1 backend
+		const auto tier1Backend = backends->getBackend(tier1BackendName);
+		tier1Executable = tier1Backend->compile(ir, dumpHandler, options);
+		tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	}
 
-	// Compile with tier 1 backend
-	const auto tier1BackendName = getTier1BackendName();
-	const auto tier1Backend = backends->getBackend(tier1BackendName);
-	auto tier1Executable = tier1Backend->compile(ir, dumpHandler, options);
-	tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
-
 	// Create multi-tier executable that will handle tier 2 compilation lazily
-	auto multiTierExecutable = std::make_unique<MultiTierExecutable>(
-	    std::move(tier1Executable), function, options, backends, getTier2Threshold(), getTier2BackendName());
+	auto multiTierExecutable = std::make_unique<MultiTierExecutable>(std::move(tier1Executable), function, options,
+	                                                                  backends, getTier2Threshold(), tier1BackendName,
+	                                                                  getTier2BackendName());
 
 	return multiTierExecutable;
 }

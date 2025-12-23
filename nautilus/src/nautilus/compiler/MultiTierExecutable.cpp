@@ -51,13 +51,15 @@ private:
 MultiTierExecutable::MultiTierExecutable(std::unique_ptr<Executable> tier1Executable,
                                          MultiTierJitCompiler::wrapper_function wrapperFunction,
                                          engine::Options options, const CompilationBackendRegistry* backends,
-                                         uint64_t tier2Threshold, std::string tier2BackendName)
+                                         uint64_t tier2Threshold, std::string tier1BackendName,
+                                         std::string tier2BackendName)
     : tier1Executable(std::move(tier1Executable)),
       tier2Executable(nullptr),
       wrapperFunction(std::move(wrapperFunction)),
       options(std::move(options)),
       backends(backends),
       tier2Threshold(tier2Threshold),
+      tier1BackendName(std::move(tier1BackendName)),
       tier2BackendName(std::move(tier2BackendName)),
       currentTier(1),
       invocationCount(0),
