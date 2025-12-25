@@ -120,7 +120,10 @@ Runtime Execution
 ```
 nautilus/
 ├── include/nautilus/        # Public API headers (what users import)
-│   ├── val.hpp              # Core val<T> template (generic tracing wrapper)
+│   ├── val.hpp              # Main header - includes specializations and operators
+│   ├── val_details.hpp      # Implementation utilities (RawValueResolver, StateResolver)
+│   ├── val_arith.hpp        # Generic val<T> specialization for arithmetic types
+│   ├── val_bool.hpp         # Specialized val<bool> with probability tracking
 │   ├── val_ptr.hpp          # Pointer specialization
 │   ├── val_enum.hpp         # Enumeration value type
 │   ├── Engine.hpp           # Main API - orchestrates compilation
@@ -227,12 +230,27 @@ nautilus/
 
 ### Key Files to Study First
 
-1. **`include/nautilus/val.hpp`** (Core Template)
-   - 18.5 KB file containing the main `val<T>` template
-   - Shows how operations are wrapped and traced
-   - Study this to understand the tracing mechanism
+1. **`include/nautilus/val.hpp`** (Main Value Header)
+   - Orchestrates all val<T> specializations and operator definitions
+   - Includes specializations and defines all operator overloads
+   - Start here for overview of value wrapper architecture
 
-2. **`include/nautilus/Engine.hpp`** (API Entry Point)
+2. **`include/nautilus/val_arith.hpp`** (Arithmetic Specialization)
+   - Partial specialization for arithmetic types (int, float, etc.)
+   - Shows how operations are wrapped and traced for numeric types
+   - Study for understanding the generic template structure
+
+3. **`include/nautilus/val_bool.hpp`** (Boolean Specialization)
+   - Explicit specialization for boolean values
+   - Includes probability tracking for branch prediction optimization
+   - Study for understanding type-specific optimizations
+
+4. **`include/nautilus/val_details.hpp`** (Implementation Utilities)
+   - Core utilities: RawValueResolver, StateResolver, helper macros
+   - Breaking point for circular dependencies in template design
+   - Study for understanding template decomposition patterns
+
+5. **`include/nautilus/Engine.hpp`** (API Entry Point)
    - Central orchestrator for compilation
    - Shows how users interact with Nautilus
    - Options-based configuration pattern
@@ -560,12 +578,17 @@ auto result = x + y;  // Operation is traced
 ```
 
 **Key Files:**
-- `include/nautilus/val.hpp` - Generic template
+- `include/nautilus/val.hpp` - Main header, orchestrates specializations and operators
+- `include/nautilus/val_arith.hpp` - Generic partial specialization for arithmetic types
+- `include/nautilus/val_bool.hpp` - Explicit specialization for boolean values with probability tracking
+- `include/nautilus/val_details.hpp` - Implementation utilities (RawValueResolver, StateResolver)
 - `include/nautilus/val_ptr.hpp` - Pointer specialization
 - `include/nautilus/val_enum.hpp` - Enumeration specialization
 
 **When modifying:**
-- Changes here affect all value operations
+- Changes to val_arith.hpp affect all arithmetic type operations
+- Changes to val_bool.hpp affect only boolean tracing and probability tracking
+- Changes to val_details.hpp affect all specializations (it's a critical utility header)
 - Template specialization allows type-specific behavior
 - Test changes thoroughly with value type tests
 
