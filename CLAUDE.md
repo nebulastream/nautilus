@@ -371,6 +371,11 @@ class IRGraph {
 
 ### Building the Project
 
+**Default Compiler:**
+- **Default Compiler**: Clang 21
+- All development should use Clang 21 unless explicitly building for compatibility testing
+- To set Clang 21 explicitly: `cmake -DCMAKE_CXX_COMPILER=clang++-21 ..`
+
 **Standard Build:**
 ```bash
 mkdir build
@@ -407,20 +412,35 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 
 ### Code Formatting
 
-**Check Formatting:**
+**IMPORTANT: All changes MUST be formatted using the CMake format target before committing.**
+
+**Using CMake Format Target (Preferred):**
+```bash
+cd build
+cmake --build . --target format
+```
+
+This is the authoritative formatting method and must be run for all code changes.
+
+**Check Formatting (Manual):**
 ```bash
 ./format.sh
 ```
 
-**Fix Formatting Issues:**
+**Fix Formatting Issues (Manual):**
 ```bash
 ./format.sh -i
 ```
 
-**Manual with clang-format-18:**
+**Manual with clang-format-21:**
 ```bash
-clang-format-18 -i src/file.cpp
+clang-format-21 -i src/file.cpp
 ```
+
+**Before Committing:**
+1. Run the CMake format target: `cmake --build . --target format`
+2. Verify with `./format.sh` (no errors should be reported)
+3. Commit only after formatting is complete
 
 ### Running Tests
 
@@ -978,6 +998,8 @@ engine.SetOption("profile.compilation", true);
 2. **Check patterns** - Follow existing code patterns in the codebase
 3. **Understand tradeoffs** - Consider performance and maintainability implications
 4. **Run tests** - All changes should pass existing tests
+5. **Use Clang 21** - Ensure the default compiler (Clang 21) is used for all builds
+6. **Format with CMake target** - Run `cmake --build . --target format` on all code changes before committing
 
 ### When Implementing Features
 
@@ -989,16 +1011,18 @@ engine.SetOption("profile.compilation", true);
 ### Code Review Checklist
 
 - [ ] Follows naming conventions (CamelCase, lower_case, etc.)
-- [ ] Code formatted correctly (ran `./format.sh -i`)
+- [ ] **Code formatted using CMake target** (`cmake --build . --target format`)
+- [ ] Verified with `./format.sh` (no formatting errors)
 - [ ] Respects 120-character line limit
 - [ ] Uses tabs (not spaces) for indentation
 - [ ] All tests pass locally
 - [ ] No obvious performance regressions
 - [ ] Comments for complex logic only
 - [ ] Commits have clear, imperative messages
+- [ ] Built and tested with Clang 21 (default compiler)
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-12-18
+**Document Version:** 1.1
+**Last Updated:** 2025-12-25
 **For:** AI Assistant Development Workflow in Nautilus Repository
