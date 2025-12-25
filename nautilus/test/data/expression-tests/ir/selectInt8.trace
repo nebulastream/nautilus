@@ -1,0 +1,7 @@
+NautilusIr {
+execute() {
+Block_0($1:bool, $2:i8, $3:i8):
+	$7 :i8
+	return ($7) :i8
+}
+} //NESIR

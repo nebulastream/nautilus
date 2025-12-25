@@ -41,6 +41,8 @@ enum Op : uint8_t {
 	BXOR,
 	BAND,
 	NEGATE,
+	// Ternary
+	SELECT,
 };
 
 constexpr const char* toString(Op type) {
@@ -105,6 +107,8 @@ constexpr const char* toString(Op type) {
 		return "BXOR";
 	case NEGATE:
 		return "NEGATE";
+	case SELECT:
+		return "SELECT";
 	default:
 		__builtin_unreachable();
 	}

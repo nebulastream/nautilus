@@ -62,6 +62,7 @@ public:
 		OrOp,
 		ProxyCallOp,
 		ReturnOp,
+		SelectOp,
 		StoreOp,
 		SubOp,
 		BinaryComp,

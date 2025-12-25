@@ -1,0 +1,6 @@
+B0($1:bool,$2:bool,$3:bool)
+	ASSIGN	$4	$1	:bool
+	ASSIGN	$5	$2	:bool
+	ASSIGN	$6	$3	:bool
+	SELECT	$7	$4	$5	$6	:bool
+	RETURN	$0	$7	:bool

@@ -367,6 +367,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 	case ir::Operation::OperationType::ShiftOp:
 		generateMLIR(as<ir::ShiftOperation>(operation), frame);
 		break;
+	case ir::Operation::OperationType::SelectOp:
+		generateMLIR(as<ir::SelectOperation>(operation), frame);
+		break;
 	default: {
 		throw NotImplementedException("");
 	}
@@ -386,6 +389,15 @@ void MLIRLoweringProvider::generateMLIR(ir::NotOperation* notOperation, ValueFra
 	auto constInt = getConstBool("loc", true);
 	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
 	frame.setValue(notOperation->getIdentifier(), negate);
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::SelectOperation* selectOperation, ValueFrame& frame) {
+	auto condition = frame.getValue(selectOperation->getCondition()->getIdentifier());
+	auto trueValue = frame.getValue(selectOperation->getTrueValue()->getIdentifier());
+	auto falseValue = frame.getValue(selectOperation->getFalseValue()->getIdentifier());
+	auto mlirSelectOp =
+	    builder->create<mlir::arith::SelectOp>(getNameLoc("selectResult"), condition, trueValue, falseValue);
+	frame.setValue(selectOperation->getIdentifier(), mlirSelectOp);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame) {

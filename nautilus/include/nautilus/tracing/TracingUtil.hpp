@@ -26,6 +26,8 @@ TraceContext* getTracerIfActive();
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
                              const TypedValueRef& rightState);
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
+TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& firstState,
+                              const TypedValueRef& secondState, const TypedValueRef& thirdState);
 
 // Traces a boolean value with an associated probability
 bool traceBool(const TypedValueRef& state, double probability);

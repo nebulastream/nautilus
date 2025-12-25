@@ -1,0 +1,7 @@
+NautilusIr {
+execute() {
+Block_0($1:bool, $2:ptr, $3:ptr):
+	$7 :ptr
+	return ($7) :ptr
+}
+} //NESIR

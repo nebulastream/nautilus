@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include <cassert>
 #include <nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp>
@@ -357,6 +358,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(cast, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::SelectOp: {
+		auto select = as<ir::SelectOperation>(opt);
+		process(select, blockIndex, frame);
+		return;
+	}
 	default: {
 		throw NotImplementedException("Operation is not implemented");
 	}
@@ -418,6 +424,17 @@ void CPPLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sh
 	auto targetType = getType(castOp->getStamp());
 	blockArguments << targetType << " " << var << ";\n";
 	blocks[blockIndex] << var << " = (" << targetType << ")" << input << ";\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto condition = frame.getValue(selectOp->getCondition()->getIdentifier());
+	auto trueValue = frame.getValue(selectOp->getTrueValue()->getIdentifier());
+	auto falseValue = frame.getValue(selectOp->getFalseValue()->getIdentifier());
+	auto resultVar = getVariable(selectOp->getIdentifier());
+	blockArguments << getType(selectOp->getStamp()) << " " << resultVar << ";\n";
+	frame.setValue(selectOp->getIdentifier(), resultVar);
+	blocks[blockIndex] << resultVar << " = " << condition << " ? " << trueValue << " : " << falseValue << ";\n";
 }
 
 std::string CPPLoweringProvider::LoweringContext::getVariable(const ir::OperationIdentifier& id) {

@@ -7,6 +7,7 @@
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
+#include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
@@ -510,5 +511,25 @@ TEST_CASE("Regressions") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)}};
 	runTraceTests("regressions", tests);
+}
+
+TEST_CASE("Select Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"selectInt32True", details::createFunctionWrapper(selectInt32True)},
+	    {"selectInt64True", details::createFunctionWrapper(selectInt64True)},
+	    {"selectUInt32", details::createFunctionWrapper(selectUInt32)},
+	    {"selectUInt64", details::createFunctionWrapper(selectUInt64)},
+	    {"selectFloat", details::createFunctionWrapper(selectFloat)},
+	    {"selectDouble", details::createFunctionWrapper(selectDouble)},
+	    {"selectBool", details::createFunctionWrapper(selectBool)},
+	    {"selectInt8", details::createFunctionWrapper(selectInt8)},
+	    {"selectInt16", details::createFunctionWrapper(selectInt16)},
+	    {"selectInLoop", details::createFunctionWrapper(selectInLoop)},
+	    {"selectBasedOnComparison", details::createFunctionWrapper(selectBasedOnComparison)},
+	    {"nestedSelect", details::createFunctionWrapper(nestedSelect)},
+	    {"selectPointer", details::createFunctionWrapper(selectPointer)},
+	    {"selectPointerAndDeref", details::createFunctionWrapper(selectPointerAndDeref)},
+	};
+	runTraceTests("expression-tests", tests);
 }
 } // namespace nautilus::engine

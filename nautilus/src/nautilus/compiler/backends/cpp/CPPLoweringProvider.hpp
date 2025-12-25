@@ -26,6 +26,7 @@
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <sstream>
 #include <unordered_set>
@@ -83,6 +84,7 @@ private:
 		void process(ir::NotOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
 
