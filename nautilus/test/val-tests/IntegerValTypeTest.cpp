@@ -133,5 +133,45 @@ TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, in
 			REQUIRE(f1 == static_cast<TestType>(6));
 		}
 	}
+	SECTION("C++ semantic equivalence") {
+		SECTION("chained prefix increment ++(++x)") {
+			// C++ allows ++(++x), so val<T> should too
+			auto f1 = val<TestType>(static_cast<TestType>(3));
+			++(++f1);
+			REQUIRE(f1 == static_cast<TestType>(5));
+		}
+		SECTION("chained prefix decrement --(--x)") {
+			// C++ allows --(--x), so val<T> should too
+			auto f1 = val<TestType>(static_cast<TestType>(5));
+			--(--f1);
+			REQUIRE(f1 == static_cast<TestType>(3));
+		}
+		SECTION("unary plus on const value") {
+			// C++ allows +x on const values
+			const auto f1 = val<TestType>(static_cast<TestType>(42));
+			auto res = +f1;
+			// Result should be promoted to int for small types
+			if constexpr (sizeof(TestType) < sizeof(int)) {
+				REQUIRE(res == 42);
+			} else {
+				REQUIRE(res == static_cast<TestType>(42));
+			}
+		}
+		SECTION("unary minus on const value") {
+			// C++ allows -x on const values
+			const auto f1 = val<TestType>(static_cast<TestType>(42));
+			auto res = -f1;
+			// Note: for unsigned types, this wraps around
+			TestType expected = static_cast<TestType>(0) - static_cast<TestType>(42);
+			REQUIRE(res == expected);
+		}
+		SECTION("move assignment") {
+			// C++ supports move assignment for arithmetic types
+			auto f1 = val<TestType>(static_cast<TestType>(42));
+			val<TestType> f2;
+			f2 = std::move(f1);
+			REQUIRE(f2 == static_cast<TestType>(42));
+		}
+	}
 }
 } // namespace nautilus

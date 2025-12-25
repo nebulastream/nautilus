@@ -286,6 +286,52 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f((int8_t) 78, (int32_t) 70) == 148);
 		REQUIRE(f((int8_t) -128, (int32_t) -1) == -129);
 	}
+
+	// C++ Semantic Equivalence Tests
+	SECTION("chainedPrefixIncrement") {
+		auto f = engine.registerFunction(chainedPrefixIncrement);
+		// ++(++x) should add 2 to x
+		REQUIRE(f(0) == 2);
+		REQUIRE(f(5) == 7);
+		REQUIRE(f(-3) == -1);
+	}
+	SECTION("chainedPrefixDecrement") {
+		auto f = engine.registerFunction(chainedPrefixDecrement);
+		// --(--x) should subtract 2 from x
+		REQUIRE(f(5) == 3);
+		REQUIRE(f(2) == 0);
+		REQUIRE(f(0) == -2);
+	}
+	SECTION("unaryPlus") {
+		auto f = engine.registerFunction(unaryPlus);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(-42) == -42);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("unaryMinus") {
+		auto f = engine.registerFunction(unaryMinus);
+		REQUIRE(f(42) == -42);
+		REQUIRE(f(-42) == 42);
+		REQUIRE(f(0) == 0);
+	}
+	SECTION("moveAssignment") {
+		auto f = engine.registerFunction(moveAssignment);
+		REQUIRE(f(42) == 42);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(-123) == -123);
+	}
+	SECTION("prefixIncrementReturnValue") {
+		auto f = engine.registerFunction(prefixIncrementReturnValue);
+		// (++x) + 1 = x + 2
+		REQUIRE(f(0) == 2);
+		REQUIRE(f(5) == 7);
+	}
+	SECTION("prefixDecrementReturnValue") {
+		auto f = engine.registerFunction(prefixDecrementReturnValue);
+		// (--x) + 1 = x
+		REQUIRE(f(5) == 5);
+		REQUIRE(f(0) == 0);
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {

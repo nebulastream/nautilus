@@ -216,4 +216,51 @@ val<int32_t> constructComplexReturnObject2(val<int32_t> a, val<int32_t> b) {
 	return t + 42;
 }
 
+// ============================================================================
+// C++ Semantic Equivalence Test Functions
+// ============================================================================
+
+/// Tests chained prefix increment: ++(++x)
+/// In C++, this is valid and should increment x twice
+val<int32_t> chainedPrefixIncrement(val<int32_t> x) {
+	++(++x);
+	return x;
+}
+
+/// Tests chained prefix decrement: --(--x)
+/// In C++, this is valid and should decrement x twice
+val<int32_t> chainedPrefixDecrement(val<int32_t> x) {
+	--(--x);
+	return x;
+}
+
+/// Tests unary plus on a value
+val<int32_t> unaryPlus(val<int32_t> x) {
+	return +x;
+}
+
+/// Tests unary minus (negation) on a value
+val<int32_t> unaryMinus(val<int32_t> x) {
+	return -x;
+}
+
+/// Tests move assignment semantics
+val<int32_t> moveAssignment(val<int32_t> x) {
+	val<int32_t> y = 0;
+	y = std::move(x);
+	return y;
+}
+
+/// Tests that prefix increment returns a reference that can be used
+val<int32_t> prefixIncrementReturnValue(val<int32_t> x) {
+	// ++x should return x after increment, so (++x) + 1 = x + 2
+	return (++x) + 1;
+}
+
+/// Tests that prefix decrement returns a reference that can be used
+val<int32_t> prefixDecrementReturnValue(val<int32_t> x) {
+	// --x should return x after decrement, so (--x) + 1 = x
+	return (--x) + 1;
+}
+
 } // namespace nautilus::engine
