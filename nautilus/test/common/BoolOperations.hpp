@@ -68,4 +68,32 @@ val<bool> operatorBool(val<T> x) {
 	}
 }
 
+// Comparison operators with raw bool (testing NEW operators added to val_bool.hpp)
+val<bool> boolEqualsMixed(val<bool> x, val<bool> y) {
+	// Convert y to raw bool to test mixed operations
+	bool rawY = y;
+	return x == rawY;
+}
+
+val<bool> boolNotEqualsMixed(val<bool> x, val<bool> y) {
+	// Convert x to raw bool to test mixed operations
+	bool rawX = x;
+	return rawX != y;
+}
+
+// Combined operations test using comparison and logical operators
+val<bool> boolComplexOps(val<bool> a, val<bool> b, val<bool> c) {
+	// Test: (a == b) && (b != c)
+	auto eqResult = a == b;
+	auto neqResult = b != c;
+	return eqResult && neqResult;
+}
+
+// Test probability getter/setter
+val<bool> boolProbabilityTest(val<bool> x) {
+	x.setIsTrueProbability(0.9);
+	// Just return the value to ensure probability doesn't affect logic
+	return x;
+}
+
 } // namespace nautilus::engine

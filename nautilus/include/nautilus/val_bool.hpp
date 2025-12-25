@@ -249,7 +249,7 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
 	}
 #endif
 
@@ -276,6 +276,33 @@ public:
 		tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		this->value = other.value;
+		this->probability = other.probability;
+		return *this;
+	}
+
+	/// Move assignment operator.
+	///
+	/// Moves the value and state from another val<bool> to this instance.
+	/// The assignment is recorded in the execution trace when tracing is enabled.
+	///
+	/// # Arguments
+	/// * `other` - The val<bool> to move from
+	///
+	/// # Returns
+	/// A reference to this val<bool> instance (for chaining assignments)
+	///
+	/// # Example
+	/// ```cpp
+	/// val<bool> a = true;
+	/// val<bool> b = false;
+	/// b = std::move(a);  // b now contains true
+	/// ```
+	val<bool>& operator=(val<bool>&& other) noexcept {
+#ifdef ENABLE_TRACING
+		tracing::traceAssignment(state, other.state, Type::b);
+#endif
+		this->value = std::move(other.value);
+		this->probability = std::move(other.probability);
 		return *this;
 	}
 
@@ -296,12 +323,12 @@ public:
 	/// }
 	/// ```
 	operator bool() const {
-		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
+		if SHOULD_TRACE () {
 			auto ref = state;
 			return tracing::traceBool(ref, this->probability);
-#endif
 		}
+#endif
 		return value;
 	}
 
@@ -340,8 +367,38 @@ public:
 	/// - Default 0.5 is safe if you don't have probability information
 	/// - Inaccurate probabilities can slow down code generation
 	/// - Branch-heavy code benefits most from accurate probabilities
+	///
+	/// # Preconditions
+	/// - `prob` must be in the range [0.0, 1.0] (not validated in release builds for performance)
 	void setIsTrueProbability(TrueProbability prob) {
+		// In debug builds, validate the probability range
+		// In release builds, rely on user correctness for performance
+#ifndef NDEBUG
+		if (prob < 0.0 || prob > 1.0) {
+			// For now, just clamp the value instead of throwing
+			// This is more forgiving and avoids introducing exceptions
+			prob = prob < 0.0 ? 0.0 : (prob > 1.0 ? 1.0 : prob);
+		}
+#endif
 		this->probability = prob;
+	}
+
+	/// Gets the current probability hint for branch prediction.
+	///
+	/// Returns the probability value that was set via setIsTrueProbability(),
+	/// or the default value of 0.5 if never set.
+	///
+	/// # Returns
+	/// The probability that this boolean value is true (0.0 to 1.0)
+	///
+	/// # Example
+	/// ```cpp
+	/// val<bool> condition = get_value();
+	/// condition.setIsTrueProbability(0.9);
+	/// double prob = condition.getIsTrueProbability();  // Returns 0.9
+	/// ```
+	TrueProbability getIsTrueProbability() const noexcept {
+		return this->probability;
 	}
 
 private:
@@ -349,7 +406,7 @@ private:
 	friend struct details::RawValueResolver;
 
 	/// The underlying boolean value (true or false)
-	bool value;
+	bool value = false;
 
 	/// The probability of this value being true (0.0 to 1.0).
 	/// Default is 0.5, meaning the value's truthiness is unknown.
@@ -397,7 +454,73 @@ val<bool> inline lNot(const val<bool>& arg) {
 	return !RawValueResolver<bool>::getRawValue(arg);
 }
 
+/// Equality comparison for boolean values
+val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
+#ifdef ENABLE_TRACING
+	if SHOULD_TRACE () {
+		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
+		return val<bool> {tc};
+	}
+#endif
+	return RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right);
+}
+
+/// Inequality comparison for boolean values
+val<bool> inline neq(const val<bool>& left, const val<bool>& right) {
+#ifdef ENABLE_TRACING
+	if SHOULD_TRACE () {
+		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
+		return val<bool> {tc};
+	}
+#endif
+	return RawValueResolver<bool>::getRawValue(left) != RawValueResolver<bool>::getRawValue(right);
+}
+
 } // namespace details
+
+// ============================================================================
+// Comparison Operators for val<bool>
+// ============================================================================
+// Note: Bitwise operators (&, |, ^) for val<bool> are provided by val_arith.hpp
+// since bool is an integral type and those operators work correctly for bool.
+
+/// Equality comparison: val<bool> == val<bool>
+auto inline operator==(const val<bool>& left, const val<bool>& right) {
+	return details::eq(left, right);
+}
+
+/// Equality comparison: val<bool> == bool
+auto inline operator==(const val<bool>& left, bool right) {
+	auto rightVal = make_value(right);
+	return details::eq(left, rightVal);
+}
+
+/// Equality comparison: bool == val<bool>
+auto inline operator==(bool left, const val<bool>& right) {
+	auto leftVal = make_value(left);
+	return details::eq(leftVal, right);
+}
+
+/// Inequality comparison: val<bool> != val<bool>
+auto inline operator!=(const val<bool>& left, const val<bool>& right) {
+	return details::neq(left, right);
+}
+
+/// Inequality comparison: val<bool> != bool
+auto inline operator!=(const val<bool>& left, bool right) {
+	auto rightVal = make_value(right);
+	return details::neq(left, rightVal);
+}
+
+/// Inequality comparison: bool != val<bool>
+auto inline operator!=(bool left, const val<bool>& right) {
+	auto leftVal = make_value(left);
+	return details::neq(leftVal, right);
+}
+
+// ============================================================================
+// Logical Operators for val<bool>
+// ============================================================================
 
 // Logical operator overloads for bool values
 auto inline operator||(bool left, const val<bool>& right) {
