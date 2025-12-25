@@ -178,7 +178,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef& traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputRef);
+	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
 
 	/**
 	 * @brief Trace the return function.

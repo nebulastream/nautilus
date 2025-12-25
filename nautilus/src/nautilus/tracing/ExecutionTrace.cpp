@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
+#include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
 
 namespace nautilus::tracing {
@@ -13,6 +14,9 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 }
 
 Block& ExecutionTrace::getBlock(uint16_t blockIndex) {
+	if (blockIndex >= blocks.size()) {
+		throw RuntimeException("Block index out of bounds: " + std::to_string(blockIndex));
+	}
 	return blocks[blockIndex];
 }
 
@@ -21,10 +25,16 @@ uint16_t ExecutionTrace::getCurrentBlockIndex() const {
 }
 
 Block& ExecutionTrace::getCurrentBlock() {
+	if (currentBlockIndex >= blocks.size()) {
+		throw RuntimeException("Current block index out of bounds: " + std::to_string(currentBlockIndex));
+	}
 	return blocks[currentBlockIndex];
 }
 
 void ExecutionTrace::setCurrentBlock(uint16_t index) {
+	if (index >= blocks.size()) {
+		throw RuntimeException("Cannot set current block to out of bounds index: " + std::to_string(index));
+	}
 	currentOperationIndex = 0;
 	currentBlockIndex = index;
 }
@@ -83,23 +93,23 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	return operation.resultRef;
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), inputs);
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::initializer_list<InputVariant> inputs) {
+                                                      std::vector<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 
 	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to =
-	    operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
+	                                   std::move(inputs));
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -128,7 +138,11 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 
 void ExecutionTrace::nextOperation() {
 	this->currentOperationIndex++;
-	auto& currentOp = getCurrentBlock().operations[currentOperationIndex];
+	auto& block = getCurrentBlock();
+	if (currentOperationIndex >= block.operations.size()) {
+		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
+	}
+	auto& currentOp = block.operations[currentOperationIndex];
 	if (currentOp.op == JMP) {
 		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
 		setCurrentBlock(nextBlock.block);
@@ -136,11 +150,20 @@ void ExecutionTrace::nextOperation() {
 }
 
 TraceOperation& ExecutionTrace::getCurrentOperation() {
-	while (getCurrentBlock().operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(getCurrentBlock().operations[currentOperationIndex].input[0]);
-		setCurrentBlock(nextBlock.block);
+	auto& block = getCurrentBlock();
+	if (currentOperationIndex >= block.operations.size()) {
+		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	return getCurrentBlock().operations[currentOperationIndex];
+	while (block.operations[currentOperationIndex].op == JMP) {
+		auto& nextBlock = std::get<BlockRef>(block.operations[currentOperationIndex].input[0]);
+		setCurrentBlock(nextBlock.block);
+		block = getCurrentBlock();
+		if (currentOperationIndex >= block.operations.size()) {
+			throw RuntimeException("Current operation index out of bounds after JMP: " +
+			                       std::to_string(currentOperationIndex));
+		}
+	}
+	return block.operations[currentOperationIndex];
 }
 
 uint16_t ExecutionTrace::createBlock() {
@@ -164,22 +187,24 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
 	// 1. move operation to new block
-	// copy everything from the reference block between opId and end to merge
-	// block;
+	// move everything from the reference block between opId and end to merge block
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
-		auto sourceOperation = referenceBlock.operations[opIndex];
+		auto& sourceOperation = referenceBlock.operations[opIndex];
+		// Save values needed after move
+		auto opType = sourceOperation.op;
+		auto opTag = sourceOperation.tag;
 		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));
 		// update in global and local tag map
 
-		if (sourceOperation.op == RETURN) {
+		if (opType == RETURN) {
 			for (auto& returnRef : returnRefs) {
 				if (returnRef.blockIndex == referenceBlock.blockId && returnRef.operationIndex == opIndex) {
 					returnRef = operationReference;
 				}
 			}
 		} else {
-			globalTagMap[sourceOperation.tag] = operationReference;
-			localTagMap[sourceOperation.tag] = operationReference;
+			globalTagMap[opTag] = operationReference;
+			localTagMap[opTag] = operationReference;
 		}
 	}
 
