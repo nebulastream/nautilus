@@ -142,9 +142,9 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputs) {
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs);
+TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
+	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
 	});
 }
 

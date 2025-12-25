@@ -16,9 +16,22 @@ namespace nautilus::tracing {
 class None {};
 using BranchProbability = double;
 
+/**
+ * @brief Represents a function call operation in the trace.
+ *
+ * @warning The ptr member is a non-owning raw pointer to the function being called.
+ * It must remain valid for the lifetime of the trace and any compiled executable.
+ * The caller is responsible for ensuring the pointed-to function is not unloaded
+ * or deallocated while the trace or executable is in use.
+ */
 struct FunctionCall {
 	std::string functionName;
 	std::string mangledName;
+	/**
+	 * @brief Non-owning pointer to the function being called.
+	 * @warning Must remain valid for the lifetime of the trace and compiled executable.
+	 * The caller is responsible for lifetime management.
+	 */
 	void* ptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
