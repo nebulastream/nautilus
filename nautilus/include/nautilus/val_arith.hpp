@@ -99,12 +99,21 @@ public:
 	}
 #endif
 
-	/// Assignment operator. Assigns value and traces if enabled.
+	/// Copy assignment operator. Assigns value and traces if enabled.
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif
 		this->value = other.value;
+		return *this;
+	}
+
+	/// Move assignment operator. Moves value and traces if enabled.
+	val<ValueType>& operator=(val<ValueType>&& other) noexcept {
+#ifdef ENABLE_TRACING
+		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
+#endif
+		this->value = std::move(other.value);
 		return *this;
 	}
 
@@ -122,7 +131,8 @@ public:
 	}
 
 	/// Prefix increment operator.
-	const val<ValueType>& operator++() {
+	/// Returns a non-const reference to allow chaining like ++(++x).
+	val<ValueType>& operator++() {
 		*this = *this + (ValueType) 1;
 		return *this;
 	}
@@ -135,20 +145,27 @@ public:
 	}
 
 	/// Unary plus operator. Performs integral promotion if needed.
-	auto operator+() {
+	/// Const-qualified to work on const values, matching C++ semantics.
+	/// For integral types smaller than int, promotes to val<int> (C++ integral promotion).
+	/// For other types, returns val<ValueType>.
+	auto operator+() const
+	    -> std::conditional_t<std::integral<ValueType> && (sizeof(ValueType) < sizeof(int)), val<int>, val<ValueType>> {
 		if constexpr (std::integral<ValueType> && sizeof(ValueType) < sizeof(int)) {
 			return static_cast<val<int>>(*this);
+		} else {
+			return *this;
 		}
-		return *this;
 	}
 
 	/// Unary negation operator.
-	val<ValueType> operator-() {
+	/// Const-qualified to work on const values, matching C++ semantics.
+	val<ValueType> operator-() const {
 		return (ValueType) 0 - *this;
 	}
 
 	/// Prefix decrement operator.
-	const val<ValueType>& operator--() {
+	/// Returns a non-const reference to allow chaining like --(--x).
+	val<ValueType>& operator--() {
 		*this = *this - (ValueType) 1;
 		return *this;
 	}
@@ -327,30 +344,35 @@ DEFINE_ARITHMETIC_OPERATOR(^, bXOr, integral)
 
 // Compound assignment operators for arithmetic types
 template <typename LHS, typename RHS>
+    requires(is_arithmetic<LHS>)
 auto& operator+=(val<LHS>& left, RHS right) {
 	left = left + right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_arithmetic<LHS>)
 auto& operator-=(val<LHS>& left, RHS right) {
 	left = left - right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_arithmetic<LHS>)
 auto& operator*=(val<LHS>& left, RHS right) {
 	left = left * right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_arithmetic<LHS>)
 auto& operator/=(val<LHS>& left, RHS right) {
 	left = left / right;
 	return left;
 }
 
 template <typename LHS, typename RHS>
+    requires(is_integral<LHS>)
 auto& operator%=(val<LHS>& left, RHS right) {
 	left = left % right;
 	return left;
@@ -392,7 +414,7 @@ auto& operator>>=(val<LHS>& left, RHS right) {
 }
 
 // Bitwise NOT for integral types
-template <typename LHS>
+template <is_integral_val LHS>
 auto inline operator~(LHS left) {
 	return details::neg(left);
 }
