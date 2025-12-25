@@ -55,4 +55,5 @@ void pushStaticVal(void* ptr);
 void popStaticVal();
 void allocateValRef(ValueRef ref);
 void freeValRef(ValueRef ref);
+
 } // namespace nautilus::tracing

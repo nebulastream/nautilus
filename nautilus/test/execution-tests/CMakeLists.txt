@@ -6,6 +6,7 @@ add_executable(nautilus-execution-tests
         CastExecutionTest.cpp
         DumpHelperTest.cpp
         SelectExecutionTest.cpp
+        IfThenElseExecutionTest.cpp
 )
 
 nautilus_inline(nautilus-execution-tests)
@@ -20,6 +21,7 @@ target_include_directories(nautilus-execution-tests PRIVATE
         $<INSTALL_INTERFACE:src/nautilus/>)
 target_include_directories(nautilus-execution-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src/nautilus/compiler/>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src/>
 )
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)

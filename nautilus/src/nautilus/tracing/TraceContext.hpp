@@ -198,6 +198,38 @@ public:
 
 	bool traceCmp(const TypedValueRef& targetRef, double probability);
 
+	/**
+	 * @brief Traces an if-then-else construct with direct block creation.
+	 *
+	 * Creates CMP, true block, false block, and merge block directly without
+	 * relying on symbolic execution. Both branches are traced in a single pass.
+	 *
+	 * @tparam ResultType The return type of the branches
+	 * @tparam ThenFn Callable type for the true branch
+	 * @tparam ElseFn Callable type for the false branch
+	 * @param conditionState The traced state of the boolean condition
+	 * @param probability Branch prediction probability
+	 * @param thenFn Lambda to trace for the true case
+	 * @param elseFn Lambda to trace for the false case
+	 * @return The merged result value
+	 */
+	template <typename ResultType, typename ThenFn, typename ElseFn>
+	ResultType traceIfThenElse(const TypedValueRef& conditionState, double probability, ThenFn&& thenFn,
+	                           ElseFn&& elseFn);
+
+	/**
+	 * @brief Traces an if-then-else construct with void-returning branches.
+	 *
+	 * @tparam ThenFn Callable type for the true branch
+	 * @tparam ElseFn Callable type for the false branch
+	 * @param conditionState The traced state of the boolean condition
+	 * @param probability Branch prediction probability
+	 * @param thenFn Lambda to trace for the true case
+	 * @param elseFn Lambda to trace for the false case
+	 */
+	template <typename ThenFn, typename ElseFn>
+	void traceIfThenElseVoid(const TypedValueRef& conditionState, double probability, ThenFn&& thenFn, ElseFn&& elseFn);
+
 	~TraceContext() = default;
 
 	/**
@@ -256,5 +288,105 @@ private:
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 	std::unordered_map<void*, std::string> mangledNameCache;
 };
+
+// Template implementation for traceIfThenElse
+template <typename ResultType, typename ThenFn, typename ElseFn>
+ResultType TraceContext::traceIfThenElse(const TypedValueRef& conditionState, double probability, ThenFn&& thenFn,
+                                         ElseFn&& elseFn) {
+	auto& trace = state->executionTrace;
+
+	// Save the current block (condition block)
+	auto condBlock = trace.getCurrentBlockIndex();
+
+	// Create true, false, and merge blocks
+	auto trueBlockId = trace.createBlock();
+	auto falseBlockId = trace.createBlock();
+	auto mergeBlockId = trace.createBlock();
+
+	// Set up predecessors
+	trace.getBlock(trueBlockId).predecessors.push_back(condBlock);
+	trace.getBlock(falseBlockId).predecessors.push_back(condBlock);
+	trace.getBlock(mergeBlockId).predecessors.push_back(trueBlockId);
+	trace.getBlock(mergeBlockId).predecessors.push_back(falseBlockId);
+
+	// Mark merge block as control flow merge
+	trace.getBlock(mergeBlockId).type = Block::Type::ControlFlowMerge;
+
+	// Add CMP operation to condition block
+	auto tag = recordSnapshot();
+	auto& condOps = trace.getBlock(condBlock).operations;
+	condOps.emplace_back(tag, Op::CMP, Type::v, TypedValueRef(trace.getNextValueRef(), Type::v),
+	                     std::vector<InputVariant> {conditionState, BlockRef(trueBlockId), BlockRef(falseBlockId),
+	                                                BranchProbability {probability}});
+
+	// Execute true branch - set current block to true block
+	trace.setCurrentBlock(trueBlockId);
+	auto thenResult = std::forward<ThenFn>(thenFn)();
+
+	// Add JMP from true block to merge block (no arguments)
+	trace.getCurrentBlock().operations.emplace_back(Op::JMP, std::vector<InputVariant> {BlockRef(mergeBlockId)});
+
+	// Execute false branch - set current block to false block
+	trace.setCurrentBlock(falseBlockId);
+	auto elseResult = std::forward<ElseFn>(elseFn)();
+
+	// Add JMP from false block to merge block (no arguments)
+	trace.getCurrentBlock().operations.emplace_back(Op::JMP, std::vector<InputVariant> {BlockRef(mergeBlockId)});
+
+	// Set current block to merge block
+	trace.setCurrentBlock(mergeBlockId);
+
+	// Return the result from the true branch (the SSA creation phase will handle merging)
+	// Both results should be equivalent types; the traced operations capture the actual values
+	return thenResult;
+}
+
+// Template implementation for traceIfThenElseVoid
+template <typename ThenFn, typename ElseFn>
+void TraceContext::traceIfThenElseVoid(const TypedValueRef& conditionState, double probability, ThenFn&& thenFn,
+                                       ElseFn&& elseFn) {
+	auto& trace = state->executionTrace;
+
+	// Save the current block (condition block)
+	auto condBlock = trace.getCurrentBlockIndex();
+
+	// Create true, false, and merge blocks
+	auto trueBlockId = trace.createBlock();
+	auto falseBlockId = trace.createBlock();
+	auto mergeBlockId = trace.createBlock();
+
+	// Set up predecessors
+	trace.getBlock(trueBlockId).predecessors.push_back(condBlock);
+	trace.getBlock(falseBlockId).predecessors.push_back(condBlock);
+	trace.getBlock(mergeBlockId).predecessors.push_back(trueBlockId);
+	trace.getBlock(mergeBlockId).predecessors.push_back(falseBlockId);
+
+	// Mark merge block as control flow merge
+	trace.getBlock(mergeBlockId).type = Block::Type::ControlFlowMerge;
+
+	// Add CMP operation to condition block
+	auto tag = recordSnapshot();
+	auto& condOps = trace.getBlock(condBlock).operations;
+	condOps.emplace_back(tag, Op::CMP, Type::v, TypedValueRef(trace.getNextValueRef(), Type::v),
+	                     std::vector<InputVariant> {conditionState, BlockRef(trueBlockId), BlockRef(falseBlockId),
+	                                                BranchProbability {probability}});
+
+	// Execute true branch
+	trace.setCurrentBlock(trueBlockId);
+	std::forward<ThenFn>(thenFn)();
+
+	// Add JMP from true block to merge block (no arguments for void)
+	trace.getCurrentBlock().operations.emplace_back(Op::JMP, std::vector<InputVariant> {BlockRef(mergeBlockId)});
+
+	// Execute false branch
+	trace.setCurrentBlock(falseBlockId);
+	std::forward<ElseFn>(elseFn)();
+
+	// Add JMP from false block to merge block
+	trace.getCurrentBlock().operations.emplace_back(Op::JMP, std::vector<InputVariant> {BlockRef(mergeBlockId)});
+
+	// Set current block to merge block
+	trace.setCurrentBlock(mergeBlockId);
+}
 
 } // namespace nautilus::tracing
