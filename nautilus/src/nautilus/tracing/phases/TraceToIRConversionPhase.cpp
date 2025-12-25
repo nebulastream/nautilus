@@ -13,6 +13,7 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/TraceOperation.hpp"
@@ -191,6 +192,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	case BXOR:
 		processBinaryComp(frame, currentIrBlock, operation, compiler::ir::BinaryCompOperation::XOR);
 		return;
+	case SELECT:
+		processTernaryOperator<SelectOperation>(frame, currentIrBlock, operation);
+		return;
 	default: {
 		throw NotImplementedException("Operation type is not implemented.");
 	}
@@ -215,6 +219,19 @@ void TraceToIRConversionPhase::IRConversionContext::processUnaryOperator(ValueFr
 	auto input = frame.getValue(createValueIdentifier(op.input[0]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
 	auto operation = currentBlock->addOperation<OpType>(resultIdentifier, input);
+	frame.setValue(resultIdentifier, operation);
+}
+
+template <typename OpType>
+void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(ValueFrame& frame,
+                                                                           compiler::ir::BasicBlock* currentBlock,
+                                                                           TraceOperation& op) {
+	auto firstInput = frame.getValue(createValueIdentifier(op.input[0]));
+	auto secondInput = frame.getValue(createValueIdentifier(op.input[1]));
+	auto thirdInput = frame.getValue(createValueIdentifier(op.input[2]));
+	auto resultIdentifier = createValueIdentifier(op.resultRef);
+	auto operation =
+	    currentBlock->addOperation<OpType>(resultIdentifier, firstInput, secondInput, thirdInput, op.resultRef.type);
 	frame.setValue(resultIdentifier, operation);
 }
 

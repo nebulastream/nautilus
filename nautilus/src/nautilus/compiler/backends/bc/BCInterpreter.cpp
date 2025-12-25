@@ -425,6 +425,19 @@ static Operation* OpTable[] = {
     (Operation*) bitwiseRSH<uint64_t>,
     // bnot
     (Operation*) bitwiseNot<int64_t>,
+    // select
+    (Operation*) selectOp<int8_t>,
+    (Operation*) selectOp<int16_t>,
+    (Operation*) selectOp<int32_t>,
+    (Operation*) selectOp<int64_t>,
+    (Operation*) selectOp<uint8_t>,
+    (Operation*) selectOp<uint16_t>,
+    (Operation*) selectOp<uint32_t>,
+    (Operation*) selectOp<uint64_t>,
+    (Operation*) selectOp<float>,
+    (Operation*) selectOp<double>,
+    (Operation*) selectOp<bool>,
+    (Operation*) selectOp<void*>,
 
 };
 

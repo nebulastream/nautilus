@@ -29,6 +29,7 @@
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
@@ -129,6 +130,7 @@ private:
 	void generateMLIR(ir::AndOperation* andOperation, ValueFrame& frame);
 	void generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame);
 	void generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame);
+	void generateMLIR(ir::SelectOperation* selectOperation, ValueFrame& frame);
 	void generateMLIR(ir::CastOperation* castOperation, ValueFrame& frame);
 	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
 	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);

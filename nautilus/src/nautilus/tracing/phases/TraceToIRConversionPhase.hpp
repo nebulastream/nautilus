@@ -90,6 +90,9 @@ private:
 		                           TraceOperation& operation);
 		template <typename OpType>
 		void processUnaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		template <typename OpType>
+		void processTernaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
+		                            TraceOperation& operation);
 
 	private:
 		std::shared_ptr<ExecutionTrace> trace;

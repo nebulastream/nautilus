@@ -1,0 +1,6 @@
+B0($1:i32,$2:i32)
+	GT	$3	$1	$2	:bool
+	ASSIGN	$4	$1	:i32
+	ASSIGN	$5	$2	:i32
+	SELECT	$6	$3	$4	$5	:i32
+	RETURN	$0	$6	:i32

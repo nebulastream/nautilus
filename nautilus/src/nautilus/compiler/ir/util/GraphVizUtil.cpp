@@ -466,6 +466,7 @@ protected:
 		case Operation::OperationType::NotOp:
 		case Operation::OperationType::OrOp:
 		case Operation::OperationType::NegateOp:
+		case Operation::OperationType::SelectOp:
 		case Operation::OperationType::ShiftOp:
 		case Operation::OperationType::SubOp:
 		case Operation::OperationType::MulOp:

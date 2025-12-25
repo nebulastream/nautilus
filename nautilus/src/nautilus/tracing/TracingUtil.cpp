@@ -71,6 +71,11 @@ TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& 
 	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }
 
+TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
+                              const TypedValueRef& third) {
+	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
+}
+
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
 	os << toString(operation);
 	return os;

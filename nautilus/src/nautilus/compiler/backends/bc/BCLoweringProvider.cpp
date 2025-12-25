@@ -1163,6 +1163,11 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 		process(cast, block, frame);
 		return;
 	}
+	case ir::Operation::OperationType::SelectOp: {
+		auto select = as<ir::SelectOperation>(opt);
+		process(select, block, frame);
+		return;
+	}
 	default: {
 
 		throw NotImplementedException("This type is not supported.");
@@ -1781,6 +1786,62 @@ void BCLoweringProvider::LoweringContext::useValue(const ir::OperationIdentifier
 			registerProvider.freeRegister(reg);
 		}
 	}
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp, short block, RegisterFrame& frame) {
+	auto conditionReg = frame.getValue(selectOp->getCondition()->getIdentifier());
+	auto trueValueReg = frame.getValue(selectOp->getTrueValue()->getIdentifier());
+	auto falseValueReg = frame.getValue(selectOp->getFalseValue()->getIdentifier());
+	auto resultReg = getResultRegister(selectOp, frame);
+	frame.setValue(selectOp->getIdentifier(), resultReg);
+
+	ByteCode bc;
+	switch (selectOp->getStamp()) {
+	case Type::i8:
+		bc = ByteCode::SELECT_i8;
+		break;
+	case Type::i16:
+		bc = ByteCode::SELECT_i16;
+		break;
+	case Type::i32:
+		bc = ByteCode::SELECT_i32;
+		break;
+	case Type::i64:
+		bc = ByteCode::SELECT_i64;
+		break;
+	case Type::ui8:
+		bc = ByteCode::SELECT_ui8;
+		break;
+	case Type::ui16:
+		bc = ByteCode::SELECT_ui16;
+		break;
+	case Type::ui32:
+		bc = ByteCode::SELECT_ui32;
+		break;
+	case Type::ui64:
+		bc = ByteCode::SELECT_ui64;
+		break;
+	case Type::f32:
+		bc = ByteCode::SELECT_f;
+		break;
+	case Type::f64:
+		bc = ByteCode::SELECT_d;
+		break;
+	case Type::b:
+		bc = ByteCode::SELECT_b;
+		break;
+	case Type::ptr:
+		bc = ByteCode::SELECT_ptr;
+		break;
+	default: {
+		throw NotImplementedException("This type is not supported.");
+	}
+	}
+
+	// OpCode constructor: op, reg1, reg2, output, reg3
+	// For SELECT: reg1=condition, reg2=trueValue, reg3=falseValue, output=result
+	OpCode oc = {bc, conditionReg, trueValueReg, resultReg, falseValueReg};
+	program.blocks[block].code.emplace_back(oc);
 }
 
 } // namespace nautilus::compiler::bc

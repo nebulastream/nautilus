@@ -1,0 +1,14 @@
+B0($1:i32)
+	CONST	$2	10	:i32
+	GT	$3	$1	$2	:bool
+	CONST	$4	5	:i32
+	GT	$5	$1	$4	:bool
+	ASSIGN	$6	$5	:bool
+	CONST	$7	100	:i32
+	CONST	$8	50	:i32
+	SELECT	$9	$6	$7	$8	:i32
+	ASSIGN	$10	$3	:bool
+	CONST	$11	200	:i32
+	ASSIGN	$12	$9	:i32
+	SELECT	$13	$10	$11	$12	:i32
+	RETURN	$0	$13	:i32

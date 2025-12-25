@@ -18,6 +18,7 @@
 #include "../common/NestedIfBenchmarks.hpp"
 #include "../common/PointerFunctions.hpp"
 #include "../common/RunctimeCallFunctions.hpp"
+#include "../common/SelectOperations.hpp"
 #include "../common/StaticLoopFunctions.hpp"
 
 namespace nautilus::engine {
@@ -679,6 +680,30 @@ TEST_CASE("LLVM IR Test: chainedIf10", "[benchmarks][chained]") {
 TEST_CASE("LLVM IR Test: chainedIf100", "[benchmarks][chained]") {
 	SKIP();
 	testLLVMIR("chainedIf100", chainedIf100);
+}
+
+// ============================================================================
+// Select Tests
+// ============================================================================
+
+TEST_CASE("LLVM IR Test: selectInt32True", "[select][basic]") {
+	testLLVMIR("selectInt32True", selectInt32True);
+}
+
+TEST_CASE("LLVM IR Test: selectInt64True", "[select][basic]") {
+	testLLVMIR("selectInt64True", selectInt64True);
+}
+
+TEST_CASE("LLVM IR Test: selectFloat", "[select][basic]") {
+	testLLVMIR("selectFloat", selectFloat);
+}
+
+TEST_CASE("LLVM IR Test: selectDouble", "[select][basic]") {
+	testLLVMIR("selectDouble", selectDouble);
+}
+
+TEST_CASE("LLVM IR Test: selectBasedOnComparison", "[select][complex]") {
+	testLLVMIR("selectBasedOnComparison", selectBasedOnComparison);
 }
 
 } // namespace nautilus::engine

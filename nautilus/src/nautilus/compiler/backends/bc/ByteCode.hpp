@@ -335,6 +335,19 @@ enum class ByteCode : short {
 	BRSH_ui64,
 	// negate
 	BNEGATE_I64,
+	// select
+	SELECT_i8,
+	SELECT_i16,
+	SELECT_i32,
+	SELECT_i64,
+	SELECT_ui8,
+	SELECT_ui16,
+	SELECT_ui32,
+	SELECT_ui64,
+	SELECT_f,
+	SELECT_d,
+	SELECT_b,
+	SELECT_ptr,
 };
 
 /**
@@ -349,14 +362,17 @@ public:
 };
 
 /**
- * @brief The general definition of opcode, that contains a bytecode, at max two input registers and a result register.
+ * @brief The general definition of opcode, that contains a bytecode, at max three input registers and a result
+ * register. reg3 is used for ternary operations like SELECT (condition, true_value, false_value).
  */
 struct OpCode {
-	OpCode(ByteCode op, short reg1, short reg2, short output) : op(op), reg1(reg1), reg2(reg2), output(output) {
+	OpCode(ByteCode op, short reg1, short reg2, short output, short reg3 = -1)
+	    : op(op), reg1(reg1), reg2(reg2), reg3(reg3), output(output) {
 	}
 	ByteCode op;
 	short reg1;
 	short reg2;
+	short reg3; // Third input register for ternary operations
 	short output;
 
 	friend std::ostream& operator<<(std::ostream& os, const OpCode& code);
@@ -426,6 +442,20 @@ template <class RegisterType>
 void notOp(const OpCode& c, RegisterFile& regs) {
 	auto value = readReg<RegisterType>(regs, c.reg1);
 	writeReg(regs, c.output, !value);
+}
+
+/**
+ * @brief Defines a select (ternary conditional) in the bytecode interpreter
+ * @tparam RegisterType
+ * @param c OpCode with reg1=condition, reg2=true_value, reg3=false_value
+ * @param regs
+ */
+template <class RegisterType>
+void selectOp(const OpCode& c, RegisterFile& regs) {
+	auto condition = readReg<bool>(regs, c.reg1);
+	auto trueValue = readReg<RegisterType>(regs, c.reg2);
+	auto falseValue = readReg<RegisterType>(regs, c.reg3);
+	writeReg(regs, c.output, condition ? trueValue : falseValue);
 }
 
 /**
