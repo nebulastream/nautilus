@@ -39,7 +39,7 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			auto snap = Snapshot();
 			returnOpBlock.operations[returnOp.operationIndex] =
 			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			                   get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -96,12 +96,12 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 		auto& operation = block.operations[i];
 		// process input for each variable
 		for (auto& input : operation.input) {
-			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
+			if (auto* valueRef = nautilus::tracing::get_if<TypedValueRef>(&input)) {
 				// set op type
 				processValueRef(block, *valueRef, operation.resultType, i);
-			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+			} else if (auto* blockRef = nautilus::tracing::get_if<BlockRef>(&input)) {
 				processBlockRef(block, *blockRef, i);
-			} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
+			} else if (auto* fcallRef = nautilus::tracing::get_if<FunctionCall>(&input)) {
 				for (auto valueRef : fcallRef->arguments) {
 					processValueRef(block, valueRef, valueRef.type, i);
 				}
@@ -137,7 +137,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 			auto& lastOperation = predBlock.operations.back();
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				for (auto& input : lastOperation.input) {
-					if (auto blockRef = std::get_if<BlockRef>(&input)) {
+					if (auto blockRef = nautilus::tracing::get_if<BlockRef>(&input)) {
 						if (blockRef->block == block.blockId) {
 							// TODO check if we contain the type already.
 							blockRef->arguments.emplace_back(ref);
@@ -181,19 +181,19 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				}
 			} else {
 				for (auto& input : operation.input) {
-					if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
+					if (auto* valueRef = nautilus::tracing::get_if<TypedValueRef>(&input)) {
 						auto foundAssignment = assignmentMap.find(valueRef->ref);
 						if (foundAssignment != assignmentMap.end()) {
 							valueRef->ref = foundAssignment->second;
 						}
-					} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+					} else if (auto* blockRef = nautilus::tracing::get_if<BlockRef>(&input)) {
 						for (auto& blockArgument : blockRef->arguments) {
 							auto foundAssignment = assignmentMap.find(blockArgument.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								blockArgument.ref = foundAssignment->second;
 							}
 						}
-					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
+					} else if (auto* fcallRef = nautilus::tracing::get_if<FunctionCall>(&input)) {
 						for (auto& funcArg : fcallRef->arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
@@ -230,7 +230,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
 			auto& operation = block.operations[i];
 			for (auto& input : operation.input) {
-				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
+				if (auto* valueRef = nautilus::tracing::get_if<TypedValueRef>(&input)) {
 					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
 					if (foundAssignment != blockArgumentMap.end()) {
 						// todo check assignment
@@ -238,7 +238,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 						// valueRef->blockId = foundAssignment->second.blockId;
 						// valueRef->operationId = foundAssignment->second.operationId;
 					}
-				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+				} else if (auto* blockRef = nautilus::tracing::get_if<BlockRef>(&input)) {
 					for (auto& blockArgument : blockRef->arguments) {
 						auto foundAssignment = blockArgumentMap.find(blockArgument.ref);
 						if (foundAssignment != blockArgumentMap.end()) {

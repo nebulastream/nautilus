@@ -171,9 +171,9 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probabi
 
 	uint16_t nextBlock;
 	if (result) {
-		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
+		nextBlock = tracing::get<BlockRef>(currentOperation.input[1]).block;
 	} else {
-		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
+		nextBlock = tracing::get<BlockRef>(currentOperation.input[2]).block;
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;

@@ -144,7 +144,7 @@ void ExecutionTrace::nextOperation() {
 	}
 	auto& currentOp = block.operations[currentOperationIndex];
 	if (currentOp.op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
+		auto& nextBlock = get<BlockRef>(currentOp.input[0]);
 		setCurrentBlock(nextBlock.block);
 	}
 }
@@ -155,7 +155,7 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
 	while (block.operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(block.operations[currentOperationIndex].input[0]);
+		auto& nextBlock = get<BlockRef>(block.operations[currentOperationIndex].input[0]);
 		setCurrentBlock(nextBlock.block);
 		block = getCurrentBlock();
 		if (currentOperationIndex >= block.operations.size()) {
@@ -227,7 +227,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto& lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
 	if (lastMergeOperation.op == Op::CMP || lastMergeOperation.op == Op::JMP) {
 		for (auto& input : lastMergeOperation.input) {
-			if (auto blockRef = std::get_if<BlockRef>(&input)) {
+			if (auto blockRef = nautilus::tracing::get_if<BlockRef>(&input)) {
 				auto& blockPredecessor = getBlock(blockRef->block).predecessors;
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), oi.blockIndex, mergedBlockId);
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), currentBlockIndex, mergedBlockId);
@@ -388,13 +388,13 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 	fmt::format_to(out, "\t{}\t", toString(operation.op));
 	fmt::format_to(out, "{}\t", operation.resultRef);
 	for (const auto& opInput : operation.input) {
-		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
+		if (auto inputRef = nautilus::tracing::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
 			fmt::format_to(out, "{}\t", *inputRef);
-		} else if (auto blockRef = std::get_if<nautilus::tracing::BlockRef>(&opInput)) {
+		} else if (auto blockRef = nautilus::tracing::get_if<nautilus::tracing::BlockRef>(&opInput)) {
 			fmt::format_to(out, "{}\t", *blockRef);
-		} else if (auto fCall = std::get_if<nautilus::tracing::FunctionCall>(&opInput)) {
+		} else if (auto fCall = nautilus::tracing::get_if<nautilus::tracing::FunctionCall>(&opInput)) {
 			fmt::format_to(out, "{}\t", *fCall);
-		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
+		} else if (auto constant = nautilus::tracing::get_if<nautilus::ConstantLiteral>(&opInput)) {
 			fmt::format_to(out, "{}", *constant);
 		}
 	}

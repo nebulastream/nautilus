@@ -29,7 +29,7 @@ OperationIdentifier createValueIdentifier(TypedValueRef& val) {
 }
 
 OperationIdentifier createValueIdentifier(InputVariant& val) {
-	if (auto* valRef = std::get_if<TypedValueRef>(&val)) {
+	if (auto* valRef = nautilus::tracing::get_if<TypedValueRef>(&val)) {
 		return {valRef->ref};
 	}
 	throw NotImplementedException("wrong input variant");
@@ -334,7 +334,7 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& fra
 
 void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
                                                                 TraceOperation& operation) {
-	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	auto functionCallTarget = get<FunctionCall>(operation.input[0]);
 	auto inputArguments = std::vector<Operation*> {};
 	for (auto& argument : functionCallTarget.arguments) {
 		auto input = frame.getValue(createValueIdentifier(argument));
@@ -353,7 +353,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,
                                                                  TraceOperation& operation) {
-	auto constant = std::get<ConstantLiteral>(operation.input[0]);
+	auto constant = get<ConstantLiteral>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = operation.resultType;
 	Operation* constOperation;
