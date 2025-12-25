@@ -38,8 +38,8 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		} else {
 			auto snap = Snapshot();
 			returnOpBlock.operations[returnOp.operationIndex] =
-			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType, get<TypedValueRef>(defaultReturnOp.input[0]),
+			                   {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
