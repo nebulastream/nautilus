@@ -97,6 +97,38 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(x) == false);
 		REQUIRE(f(y) == true);
 	}
+
+	SECTION("boolEqualsMixed") {
+		auto f = engine.registerFunction(boolEqualsMixed);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(false, false) == true);
+		REQUIRE(f(true, false) == false);
+		REQUIRE(f(false, true) == false);
+	}
+
+	SECTION("boolNotEqualsMixed") {
+		auto f = engine.registerFunction(boolNotEqualsMixed);
+		REQUIRE(f(true, true) == false);
+		REQUIRE(f(false, false) == false);
+		REQUIRE(f(true, false) == true);
+		REQUIRE(f(false, true) == true);
+	}
+
+	SECTION("boolComplexOps") {
+		auto f = engine.registerFunction(boolComplexOps);
+		// (a == b) && (b != c)
+		REQUIRE(f(true, true, false) == true);    // (T == T) && (T != F) = T && T = T
+		REQUIRE(f(true, true, true) == false);    // (T == T) && (T != T) = T && F = F
+		REQUIRE(f(true, false, true) == false);   // (T == F) && (F != T) = F && T = F
+		REQUIRE(f(false, false, true) == true);   // (F == F) && (F != T) = T && T = T
+		REQUIRE(f(false, false, false) == false); // (F == F) && (F != F) = T && F = F
+	}
+
+	SECTION("boolProbabilityTest") {
+		auto f = engine.registerFunction(boolProbabilityTest);
+		REQUIRE(f(true) == true);
+		REQUIRE(f(false) == false);
+	}
 }
 
 TEST_CASE("Bool Interpreter Test") {
