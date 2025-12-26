@@ -70,9 +70,9 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = Op::RETURN;
 	if (ref.type == Type::v) {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
+		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v));
 	} else {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
+		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
 	}
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -87,29 +87,97 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = ASSIGN;
-	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, srcRef);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return operation.resultRef;
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs) {
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v));
+}
+
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	auto& operations = blocks[currentBlockIndex].operations;
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0);
+}
+
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	auto& operations = blocks[currentBlockIndex].operations;
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1);
+}
+
+void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1,
+                                  InputVariant input2) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	auto& operations = blocks[currentBlockIndex].operations;
+	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1, input2);
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+
+	auto& operations = blocks[currentBlockIndex].operations;
+	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType));
+
+	auto operationIdentifier = getNextOperationIdentifier();
+	addTag(snapshot, operationIdentifier);
+	return to.resultRef;
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::vector<InputVariant> inputs) {
+                                                      InputVariant input0) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+
+	auto& operations = blocks[currentBlockIndex].operations;
+	auto& to =
+	    operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0);
+
+	auto operationIdentifier = getNextOperationIdentifier();
+	addTag(snapshot, operationIdentifier);
+	return to.resultRef;
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
+                                                      InputVariant input0, InputVariant input1) {
 	if (blocks.empty()) {
 		createBlock();
 	}
 
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   std::move(inputs));
+	                                   input0, input1);
+
+	auto operationIdentifier = getNextOperationIdentifier();
+	addTag(snapshot, operationIdentifier);
+	return to.resultRef;
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
+                                                      InputVariant input0, InputVariant input1, InputVariant input2) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+
+	auto& operations = blocks[currentBlockIndex].operations;
+	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
+	                                   input0, input1, input2);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -129,9 +197,8 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(
-	    snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
-	    std::vector<InputVariant> {condition, BlockRef(trueBlock), BlockRef(falseBlock), probability});
+	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
+	                        BlockRef(trueBlock), BlockRef(falseBlock), probability);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -387,6 +454,7 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 	auto out = ctx.out();
 	fmt::format_to(out, "\t{}\t", toString(operation.op));
 	fmt::format_to(out, "{}\t", operation.resultRef);
+	// Iterate over valid inputs using container's iterators
 	for (const auto& opInput : operation.input) {
 		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
 			fmt::format_to(out, "{}\t", *inputRef);

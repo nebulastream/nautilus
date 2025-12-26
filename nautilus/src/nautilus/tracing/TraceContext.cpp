@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <fmt/format.h>
 #include <sstream>
+#include <stdexcept>
 
 namespace fmt {
 template <>
@@ -80,11 +81,11 @@ TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& c
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, constValue);
 		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
 		return originalRef.resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		return state->executionTrace.addOperationWithResult(tag, op, type, constValue);
 	}
 }
 
@@ -123,7 +124,7 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 		                                       .ptr = fptn,
 		                                       .arguments = arguments,
 		                                       .fnAttrs = fnAttrs};
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, functionArguments);
 	});
 }
 
@@ -144,7 +145,19 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 
 TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
 	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
+		// Dispatch to appropriate addOperationWithResult overload based on input count
+		switch (inputs.size()) {
+		case 0:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType);
+		case 1:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0]);
+		case 2:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0], inputs[1]);
+		case 3:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0], inputs[1], inputs[2]);
+		default:
+			throw std::runtime_error("Unsupported number of inputs: " + std::to_string(inputs.size()));
+		}
 	});
 }
 
