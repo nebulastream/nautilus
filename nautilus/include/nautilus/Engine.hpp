@@ -7,6 +7,8 @@
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
 #include <functional>
+#include <mutex>
+#include <shared_mutex>
 
 namespace nautilus::engine {
 namespace details {
@@ -80,6 +82,7 @@ public:
 	}
 
 	typename R::raw_type operator()(FunctionArguments... args) {
+		std::shared_lock<std::shared_mutex> lock(impl_mutex_);
 		return std::visit(
 		    overloaded {[&](std::function<R(val<FunctionArguments>...)>& fn) -> typename R::raw_type {
 			                return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(
@@ -92,11 +95,29 @@ public:
 		    func);
 	}
 
-	const compiler::Executable* getExecutable() {
+	const compiler::Executable* getExecutable() const {
+		std::shared_lock<std::shared_mutex> lock(impl_mutex_);
 		return executable.get();
 	}
 
+	/// Swap implementation from interpreted/traced to compiled.
+	/// Thread-safe: blocks concurrent calls only during the swap operation.
+	void swapToCompiled(std::unique_ptr<compiler::Executable>& newExecutable) {
+		std::unique_lock<std::shared_mutex> lock(impl_mutex_);
+		func = newExecutable->getInvocableMember<typename R::raw_type, FunctionArguments...>("execute");
+		executable = std::move(newExecutable);
+	}
+
+	/// Swap implementation from compiled to interpreted/traced.
+	/// Thread-safe: blocks concurrent calls only during the swap operation.
+	void swapToTraced(std::function<R(val<FunctionArguments>...)> tracedFunc) {
+		std::unique_lock<std::shared_mutex> lock(impl_mutex_);
+		func = tracedFunc;
+		executable = nullptr;
+	}
+
 private:
+	mutable std::shared_mutex impl_mutex_;
 	std::variant<std::function<R(val<FunctionArguments>...)>,
 	             compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>>
 	    func;
@@ -115,7 +136,21 @@ public:
 	      executable(std::move(executable)) {
 	}
 
+	CallableFunction(const CallableFunction& other) = delete;
+	CallableFunction(CallableFunction&& other) noexcept
+	    : func(std::move(other.func)), executable(std::move(other.executable)) {
+	}
+	CallableFunction& operator=(const CallableFunction& other) = delete;
+	CallableFunction& operator=(CallableFunction&& other) noexcept {
+		if (this == &other)
+			return *this;
+		func = std::move(other.func);
+		executable = std::move(other.executable);
+		return *this;
+	}
+
 	auto operator()(FunctionArguments... args) {
+		std::shared_lock<std::shared_mutex> lock(impl_mutex_);
 		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
 		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
 			                       fn(args...);
@@ -123,7 +158,29 @@ public:
 		           func);
 	}
 
+	const compiler::Executable* getExecutable() const {
+		std::shared_lock<std::shared_mutex> lock(impl_mutex_);
+		return executable.get();
+	}
+
+	/// Swap implementation from interpreted/traced to compiled.
+	/// Thread-safe: blocks concurrent calls only during the swap operation.
+	void swapToCompiled(std::unique_ptr<compiler::Executable>& newExecutable) {
+		std::unique_lock<std::shared_mutex> lock(impl_mutex_);
+		func = newExecutable->getInvocableMember<void, FunctionArguments...>("execute");
+		executable = std::move(newExecutable);
+	}
+
+	/// Swap implementation from traced to interpreted.
+	/// Thread-safe: blocks concurrent calls only during the swap operation.
+	void swapToTraced(std::function<void(val<FunctionArguments>...)> tracedFunc) {
+		std::unique_lock<std::shared_mutex> lock(impl_mutex_);
+		func = tracedFunc;
+		executable = nullptr;
+	}
+
 private:
+	mutable std::shared_mutex impl_mutex_;
 	std::variant<std::function<void(val<FunctionArguments>...)>,
 	             compiler::Executable::Invocable<void, FunctionArguments...>>
 	    func;
