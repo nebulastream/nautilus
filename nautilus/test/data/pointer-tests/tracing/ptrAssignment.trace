@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:ptr)
 	ASSIGN	$3	$1	:ptr
 	ASSIGN	$1	$2	:ptr
@@ -9,3 +10,4 @@ B0($1:ptr,$2:ptr)
 	LOAD	$9	$8	:i32
 	ADD	$10	$6	$9	:i32
 	RETURN	$0	$10	:i32
+

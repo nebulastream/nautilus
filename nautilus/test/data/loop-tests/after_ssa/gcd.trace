@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	CONST	$3	0	:i32
 	JMP	$0	B3($1,$2,$3)	:void
@@ -10,3 +11,4 @@ B2($1:i32)
 B3($1:i32,$2:i32,$3:i32) ControlFlowMerge
 	NEQ	$4	$2	$3	:bool
 	CMP	$5	$4	B1($1,$2)	B2($1)	:void
+

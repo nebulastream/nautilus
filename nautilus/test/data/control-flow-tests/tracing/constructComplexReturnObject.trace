@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	ASSIGN	$3	$1	:i32
 	ASSIGN	$4	$2	:i32
@@ -21,3 +22,4 @@ B2()
 	ADD	$21	$17	$20	:i32
 	ADD	$22	$19	$21	:i32
 	RETURN	$0	$22	:i32
+

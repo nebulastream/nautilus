@@ -1,4 +1,6 @@
+EXECUTE:
 B0($1:f32)
 	CONST	$2	7	:f32
 	ADD	$3	$1	$2	:f32
 	RETURN	$0	$3	:f32
+

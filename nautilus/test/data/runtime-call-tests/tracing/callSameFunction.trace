@@ -1,6 +1,8 @@
+EXECUTE:
 B0($1:i32)
 	CALL	$2	func_*($1,$1)	:i32
 	ASSIGN	$1	$2	:i32
 	CALL	$3	func_*($1,$1)	:i32
 	ASSIGN	$1	$3	:i32
 	RETURN	$0	$1	:i32
+

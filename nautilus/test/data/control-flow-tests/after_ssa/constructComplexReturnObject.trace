@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	GT	$5	$1	$2	:bool
 	CMP	$6	$5	B1($2,$1)	B2()	:void
@@ -19,3 +20,4 @@ B2()
 	JMP	$0	B3($22)	:void
 B3($13:i32)
 	RETURN	$0	$13	:i32
+

@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	true	:bool
 	CONST	$3	42	:i64
@@ -16,3 +17,4 @@ B0($1:i32)
 	AND	$14	$2	$13	:bool
 	ASSIGN	$2	$14	:bool
 	RETURN	$0	$2	:bool
+
