@@ -15,6 +15,7 @@
 
 #ifdef ENABLE_COMPILER
 
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -63,17 +64,24 @@ std::string createCompilationUnitID() {
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
-	// derive trace from function
-	auto executionTrace = tracing::TraceContext::trace(function, options);
-	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
-	// create ssa
+	// Create a CompilableFunction for the root "execute" function
+	auto rootFunction = CompilableFunction("execute", function);
+	std::list<compiler::CompilableFunction> functionsToTrace;
+	functionsToTrace.push_back(rootFunction);
+
+	// Trace all functions (initially just "execute", but may include nested functions)
+	auto traceModule = tracing::TraceContext::get()->startTrace(functionsToTrace, options);
+	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
+
+	// Create SSA for all functions in the module
 	auto ssaCreationPhase = tracing::SSACreationPhase();
-	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
-	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
-	// get nautilus ir from trace
+	auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
+
+	// Convert the entire trace module to nautilus IR
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
+	auto ir = irGenerationPhase.apply(afterSSAModule, compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);

@@ -7,7 +7,7 @@
 namespace nautilus::tracing {
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		ctx->traceAssignment(target, source, resultType);
 	}
 }
@@ -33,29 +33,30 @@ bool traceBool(const TypedValueRef& state, const double probability) {
 }
 
 void allocateValRef(ValueRef ref) {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		ctx->allocateValRef(ref);
 	}
 }
 void freeValRef(ValueRef ref) {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		ctx->freeValRef(ref);
 	}
 }
 
 TypedValueRef traceCopy(const TypedValueRef& state) {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		return ctx->traceCopy(state);
 	}
 	return {};
 }
 
 bool inTracer() {
-	return TraceContext::get() != nullptr;
+	return TraceContext::get() != nullptr && TraceContext::get()->isActive();
 }
 
 TraceContext* getTracerIfActive() {
-	return TraceContext::get();
+	auto* ctx = TraceContext::get();
+	return ctx && ctx->isActive() ? ctx : nullptr;
 }
 
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
@@ -68,15 +69,11 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 }
 
 static TypedValueRef dummyRef;
-TypedValueRef&  traceNautilusCall(
-	const NautilusFunctionDefinition* definition,
-	std::function<void()> fwrapper,
-	Type resultType,
-	const std::vector<tracing::TypedValueRef>& arguments,
-	FunctionAttributes fnAttrs){
-		return TraceContext::get()->
-			traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
-					}
+TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                 FunctionAttributes fnAttrs) {
+	return TraceContext::get()->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+}
 
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
 	return TraceContext::get()->traceOperation(operation, resultType, {input});
@@ -93,13 +90,13 @@ std::ostream& operator<<(std::ostream& os, const Op& operation) {
 }
 
 void pushStaticVal(void* valPtr) {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		ctx->getStaticVars().emplace_back((size_t*) valPtr);
 	}
 }
 
 void popStaticVal() {
-	if (auto* ctx = TraceContext::get()) {
+	if (auto* ctx = getTracerIfActive()) {
 		ctx->getStaticVars().pop_back();
 	}
 }

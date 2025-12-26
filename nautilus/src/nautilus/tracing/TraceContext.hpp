@@ -10,7 +10,12 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
+
+namespace nautilus::compiler {
+class CompilableFunction;
+}
 
 namespace nautilus::tracing {
 class ExecutionTrace;
@@ -157,6 +162,17 @@ public:
 
 	static TraceContext* getIfActive();
 
+	/**
+	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
+	 * @param functionsToTrace List of functions to trace
+	 * @param options Engine options for configuration
+	 * @return unique_ptr to TraceModule containing all function traces
+	 */
+	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                        const engine::Options& options);
+	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                          const engine::Options& options);
+
 	static bool shouldTrace();
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index);
@@ -196,14 +212,9 @@ public:
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs);
 
-	TypedValueRef& traceNautilusCall(
-		const NautilusFunctionDefinition* definition,
-		std::function<void()> fwrapper,
-		Type resultType,
-		const std::vector<tracing::TypedValueRef>& arguments,
-	    FunctionAttributes fnAttrs);
-
-							 
+	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                                 FunctionAttributes fnAttrs);
 
 	bool traceCmp(const TypedValueRef& targetRef, double probability);
 
@@ -215,26 +226,6 @@ public:
 	 * Does NOT reset state (executionTrace/symbolicExecutionContext) - they persist across iterations.
 	 */
 	void resume();
-
-	/**
-	 * @brief Initialize the trace context with references to stack-allocated objects.
-	 * @param tagRecorder Reference to TagRecorder for creating unique tags
-	 * @param executionTrace Reference to stack-allocated ExecutionTrace
-	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
-	 * @param options Reference to engine options for configuration
-	 * @return Pointer to initialized thread_local TraceContext
-	 */
-	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-	                                SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
-
-	/**
-	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
-	 * @param traceFunction The function to trace
-	 * @param options Engine options for configuration
-	 * @return unique_ptr to ExecutionTrace containing the complete trace
-	 */
-	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
-	                                             const engine::Options& options = engine::Options());
 
 	std::vector<StaticVarHolder>& getStaticVars();
 	void allocateValRef(ValueRef ref);
@@ -249,7 +240,21 @@ public:
 	 */
 	TraceContext() = default;
 
+	bool isActive() const;
+
 private:
+	/**
+	 * @brief Initialize the trace context with references to stack-allocated objects.
+	 * @param tagRecorder Reference to TagRecorder for creating unique tags
+	 * @param executionTrace Reference to stack-allocated ExecutionTrace
+	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
+	 * @param options Reference to engine options for configuration
+	 * @param functionsToTrace Reference to list of functions that will be traced
+	 * @return Pointer to initialized thread_local TraceContext
+	 */
+	TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+	                         SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
+
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
@@ -264,6 +269,7 @@ private:
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 	std::unordered_map<void*, std::string> mangledNameCache;
+	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 };
 
 } // namespace nautilus::tracing

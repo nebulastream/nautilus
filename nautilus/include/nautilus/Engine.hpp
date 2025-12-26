@@ -46,10 +46,26 @@ std::function<void()> createFunctionWrapper(std::function<R(FunctionArguments...
 	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, func);
 }
 
-// Overload for raw function pointers
+// Optimized overload for raw function pointers - avoids std::function wrapper overhead
+template <size_t... Indices, typename R, typename... FunctionArguments>
+std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (*fnptr)(FunctionArguments...)) {
+	[[maybe_unused]] std::size_t args = sizeof...(FunctionArguments);
+	auto traceFunc = [=]() {
+		if constexpr (std::is_void_v<R>) {
+			fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
+			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
+		} else {
+			auto returnValue = fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
+			auto type = tracing::TypeResolver<typename decltype(returnValue)::raw_type>::to_type();
+			tracing::traceReturnOperation(type, returnValue.state);
+		}
+	};
+	return traceFunc;
+}
+
 template <typename R, typename... FunctionArguments>
-std::function<void()> createFunctionWrapper(R (*func)(FunctionArguments...)) {
-	return createFunctionWrapper(std::function<R(FunctionArguments...)>(func));
+std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
+	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
 }
 
 // Overload for general callables (lambdas, functors, etc.)
@@ -67,7 +83,7 @@ template <typename F>
 inline constexpr bool is_function_pointer_v = std::is_pointer_v<F> && std::is_function_v<std::remove_pointer_t<F>>;
 
 template <typename F>
-    requires (!is_std_function_v<F> && !is_function_pointer_v<F>)
+    requires(!is_std_function_v<F> && !is_function_pointer_v<F>)
 std::function<void()> createFunctionWrapper(F&& func) {
 	// Convert the callable to std::function - deduction will happen at call site
 	return createFunctionWrapper(std::function(std::forward<F>(func)));
