@@ -34,11 +34,14 @@ public:
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
 	 * @param resultType The type of the result value
-	 * @param inputs The input operands for the operation
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::vector<InputVariant> inputs);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0,
+	                                      InputVariant input1);
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0,
+	                                      InputVariant input1, InputVariant input2);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -125,9 +128,11 @@ public:
 	 * @brief Adds an operation without a result to the trace
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
-	 * @param inputs The input operands for the operation
 	 */
-	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs);
+	void addOperation(Snapshot& snapshot, Op& operation);
+	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0);
+	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1);
+	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1, InputVariant input2);
 
 	/**
 	 * @brief Returns the current block

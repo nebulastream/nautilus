@@ -39,9 +39,9 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			auto snap = Snapshot();
 			returnOpBlock.operations[returnOp.operationIndex] =
 			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), returnValue.input[0]);
 		}
-		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
+		returnOpBlock.addOperation({Op::JMP, BlockRef(returnBlock.blockId)});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
 
@@ -94,7 +94,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 	// Process the inputs of all operations in the current block
 	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
 		auto& operation = block.operations[i];
-		// process input for each variable
+		// process input for each variable using range-based for loop
 		for (auto& input : operation.input) {
 			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 				// set op type
@@ -136,6 +136,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 			auto& predBlock = trace->getBlock(predecessor);
 			auto& lastOperation = predBlock.operations.back();
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
+				// Iterate over actual inputs using range-based for loop
 				for (auto& input : lastOperation.input) {
 					if (auto blockRef = std::get_if<BlockRef>(&input)) {
 						if (blockRef->block == block.blockId) {
@@ -180,6 +181,7 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 					assignmentMap[operation.resultRef.ref] = get<TypedValueRef>(operation.input[0]).ref;
 				}
 			} else {
+				// Iterate over actual inputs using range-based for loop
 				for (auto& input : operation.input) {
 					if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 						auto foundAssignment = assignmentMap.find(valueRef->ref);
@@ -229,6 +231,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 		// set the new ValRefs to all depending on operations.
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
 			auto& operation = block.operations[i];
+			// Iterate over actual inputs using range-based for loop
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
