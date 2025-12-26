@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/options.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
@@ -12,10 +13,6 @@
 #include <functional>
 #include <list>
 #include <memory>
-
-namespace nautilus::compiler {
-class CompilableFunction;
-}
 
 namespace nautilus::tracing {
 class ExecutionTrace;
