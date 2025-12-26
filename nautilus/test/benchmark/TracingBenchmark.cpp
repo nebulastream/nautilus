@@ -11,6 +11,7 @@
 #include "StaticLoopFunctions.hpp"
 #include "TracingUtil.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
@@ -45,7 +46,18 @@ TEST_CASE("Tracing Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 		Catch::Benchmark::Benchmark("trace_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			meter.measure([&func] { return tracing::TraceContext::trace(func); });
+			meter.measure([&func] {
+				// Create a CompilableFunction for the root "execute" function
+				auto rootFunction = compiler::CompilableFunction("execute", func);
+				std::list<compiler::CompilableFunction> functionsToTrace;
+				functionsToTrace.push_back(rootFunction);
+
+				// Trace all functions (initially just "execute", but may include nested functions)
+				auto options = engine::Options();
+				auto traceModule = tracing::TraceContext::get()->startTrace(functionsToTrace, options);
+
+				return traceModule;
+			});
 		});
 	}
 }
@@ -56,17 +68,20 @@ TEST_CASE("SSA Creation Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 
-		// skip this test
-		if (name == "nestedIf10" || name == "nestedIf100" || name == "chainedIf10" || name == "chainedIf100") {
-			continue;
-		}
-
 		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
-			meter.measure([&] {
-				auto ssaCreationPhase = tracing::SSACreationPhase();
-				return ssaCreationPhase.apply(trace);
-			});
+			std::vector<std::shared_ptr<tracing::TraceModule>> traces;
+			traces.reserve(static_cast<size_t>(meter.runs()));
+			for (int i = 0; i < meter.runs(); ++i) {
+				auto rootFunction = compiler::CompilableFunction("execute", func);
+				std::list<compiler::CompilableFunction> functionsToTrace;
+				functionsToTrace.push_back(rootFunction);
+
+				auto options = engine::Options();
+				traces.emplace_back(tracing::TraceContext::get()->startTrace(functionsToTrace, options));
+			}
+
+			auto ssaCreationPhase = tracing::SSACreationPhase();
+			meter.measure([&](int i) { return ssaCreationPhase.apply(traces[static_cast<size_t>(i)]); });
 		});
 	}
 }
@@ -78,13 +93,21 @@ TEST_CASE("IR Creation Benchmark") {
 		auto name = std::get<0>(test);
 
 		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
+			// Create a CompilableFunction for the root "execute" function
+			auto rootFunction = compiler::CompilableFunction("execute", func);
+			std::list<compiler::CompilableFunction> functionsToTrace;
+			functionsToTrace.push_back(rootFunction);
+
+			// Trace all functions (initially just "execute", but may include nested functions)
+			auto options = engine::Options();
+			auto traceModule = tracing::TraceContext::get()->startTrace(functionsToTrace, options);
+
 			auto ssaCreationPhase = tracing::SSACreationPhase();
-			trace = ssaCreationPhase.apply(trace);
+			auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
 
 			meter.measure([&] {
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				return irConversionPhase.apply(trace);
+				return irConversionPhase.apply(afterSSAModule);
 			});
 		});
 	}
@@ -114,12 +137,21 @@ TEST_CASE("Backend Compilation Benchmark") {
 
 			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name)
 			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
-				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
+				    // Create a CompilableFunction for the root "execute" function
+				    auto rootFunction = compiler::CompilableFunction("execute", func);
+				    std::list<compiler::CompilableFunction> functionsToTrace;
+				    functionsToTrace.push_back(rootFunction);
+
+				    // Trace all functions (initially just "execute", but may include nested functions)
+				    auto options = engine::Options();
+				    auto traceModule = tracing::TraceContext::get()->startTrace(functionsToTrace, options);
+
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
-				    trace = ssaCreationPhase.apply(trace);
+				    auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+
 				    auto backendBackend = registry->getBackend(backend);
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				    auto ir = irConversionPhase.apply(trace);
+				    auto ir = irConversionPhase.apply(afterSSAModule);
 				    auto op = engine::Options();
 				    // force compilation for the MLIR backend.
 				    op.setOption("mlir.eager_compilation", true);
