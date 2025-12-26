@@ -4,6 +4,7 @@
 #include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/inline.hpp"
+#include <algorithm>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
@@ -18,14 +19,31 @@ std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
-	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
-	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
+        ::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
+        ::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 
-	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
-	::mlir::ExecutionEngineOptions options;
-	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
-	options.transformer = optPipeline;
-	auto maybeEngine = ::mlir::ExecutionEngine::create(*mlirModule, options);
+        // Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
+        ::mlir::ExecutionEngineOptions options;
+        auto optLevel = nautilusOptions.getOptionOrDefault("mlir.optimizationLevel",
+                                                           nautilusOptions.getOptionOrDefault("mlir.enableDebugInfo", false)
+                                                               ? 0
+                                                               : 3);
+        optLevel = std::clamp(optLevel, 0, 3);
+        switch (optLevel) {
+        case 0:
+                options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::None;
+                break;
+        case 1:
+                options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Less;
+                break;
+        case 2:
+                options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Default;
+                break;
+        default:
+                options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+        }
+        options.transformer = optPipeline;
+        auto maybeEngine = ::mlir::ExecutionEngine::create(*mlirModule, options);
 
 	assert(maybeEngine && "failed to construct an execution engine");
 
