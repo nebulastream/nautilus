@@ -33,6 +33,8 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	engine::Options options;
 	options.setOption("engine.backend", "mlir");
 	options.setOption("dump.after_llvm_generation", true);
+	options.setOption("dump.all", true);
+	options.setOption("dump.console", true);
 	options.setOption("dump.path", dumpPath);
 	options.setOption("engine.normalizeFunctionNames", true);
 	options.setOption("mlir.enableIntrinsics", enableIntrinsics);
