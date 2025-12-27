@@ -178,6 +178,33 @@ public:
 	 */
 	uint16_t getNextValueRef();
 
+	FunctionCall& getFunctionCall(FunctionCallId index) {
+		return functionCalls[index.id];
+	}
+
+	FunctionCallId addFunctionCall(FunctionCall&& functionCall) {
+		functionCalls.push_back(std::move(functionCall));
+		return FunctionCallId(static_cast<uint32_t>(functionCalls.size() - 1));
+	}
+
+	BlockRef& getBlockRef(BlockRefId index) {
+		return blockRefs[index.id];
+	}
+
+	BlockRefId addBlockRef(BlockRef&& blockRef) {
+		blockRefs.push_back(std::move(blockRef));
+		return BlockRefId(static_cast<uint32_t>(blockRefs.size() - 1));
+	}
+
+	ConstantLiteral& getConstantLiteral(ConstantLiteralId index) {
+		return constantLiterals[index.id];
+	}
+
+	ConstantLiteralId addConstantLiteral(ConstantLiteral&& constantLiteral) {
+		constantLiterals.push_back(std::move(constantLiteral));
+		return ConstantLiteralId(static_cast<uint32_t>(constantLiterals.size() - 1));
+	}
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -194,6 +221,9 @@ public:
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	std::vector<FunctionCall> functionCalls;
+	std::vector<BlockRef> blockRefs;
+	std::vector<ConstantLiteral> constantLiterals;
 
 	/**
 	 * @brief Gets the next available operation identifier

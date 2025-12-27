@@ -197,8 +197,10 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto& operations = blocks[currentBlockIndex].operations;
+	auto trueBlockRefId = addBlockRef(BlockRef(trueBlock));
+	auto falseBlockRefId = addBlockRef(BlockRef(falseBlock));
 	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
-	                        BlockRef(trueBlock), BlockRef(falseBlock), probability);
+	                        trueBlockRefId, falseBlockRefId, probability);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -211,7 +213,8 @@ void ExecutionTrace::nextOperation() {
 	}
 	auto& currentOp = block.operations[currentOperationIndex];
 	if (currentOp.op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
+		auto blockRefId = std::get<BlockRefId>(currentOp.input[0]);
+		auto& nextBlock = getBlockRef(blockRefId);
 		setCurrentBlock(nextBlock.block);
 	}
 }
@@ -222,7 +225,8 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
 	while (block.operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(block.operations[currentOperationIndex].input[0]);
+		auto blockRefId = std::get<BlockRefId>(block.operations[currentOperationIndex].input[0]);
+		auto& nextBlock = getBlockRef(blockRefId);
 		setCurrentBlock(nextBlock.block);
 		block = getCurrentBlock();
 		if (currentOperationIndex >= block.operations.size()) {
@@ -280,11 +284,12 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	                                referenceBlock.operations.end());
 
 	// add jump from referenced block to merge block
-	auto mergeBlockRef = BlockRef(mergedBlockId);
-	referenceBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	auto referenceBlockRefId = addBlockRef(BlockRef(mergedBlockId));
+	referenceBlock.addOperation({Op::JMP, {referenceBlockRefId}});
 
 	// add jump from current block to merge block
-	currentBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	auto currentBlockRefId = addBlockRef(BlockRef(mergedBlockId));
+	currentBlock.addOperation({Op::JMP, {currentBlockRefId}});
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
@@ -294,8 +299,9 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto& lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
 	if (lastMergeOperation.op == Op::CMP || lastMergeOperation.op == Op::JMP) {
 		for (auto& input : lastMergeOperation.input) {
-			if (auto blockRef = std::get_if<BlockRef>(&input)) {
-				auto& blockPredecessor = getBlock(blockRef->block).predecessors;
+			if (auto blockRefId = std::get_if<BlockRefId>(&input)) {
+
+				auto& blockPredecessor = getBlock(getBlockRef(*blockRefId).block).predecessors;
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), oi.blockIndex, mergedBlockId);
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), currentBlockIndex, mergedBlockId);
 			}
@@ -352,51 +358,8 @@ std::string nautilus::tracing::ExecutionTrace::toString() const {
 }
 
 namespace fmt {
-template <>
-struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
-};
 
-template <>
-struct formatter<nautilus::tracing::Block> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::Block& trace, format_context& ctx) -> format_context::iterator;
-};
-
-template <>
-struct formatter<nautilus::tracing::TraceOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TraceOperation& trace, format_context& ctx) -> format_context::iterator;
-};
-
-auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracing::ExecutionTrace& trace,
-                                                          fmt::format_context& ctx) -> format_context::iterator {
-	auto out = ctx.out();
-	for (size_t i = 0; i < trace.blocks.size(); i++) {
-		fmt::format_to(out, "B{}{}", i, trace.blocks[i]);
-	}
-	return out;
-}
-
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
-                                                 format_context& ctx) -> format_context::iterator {
-	auto out = ctx.out();
-	fmt::format_to(out, "(");
-	for (size_t i = 0; i < block.arguments.size(); i++) {
-		if (i != 0) {
-			fmt::format_to(out, ",");
-		}
-		fmt::format_to(out, "${}:{}", block.arguments[i].ref, toString(block.arguments[i].type));
-	}
-	fmt::format_to(out, ")");
-	if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
-		fmt::format_to(out, " ControlFlowMerge");
-	}
-	fmt::format_to(out, "\n");
-	for (const auto& operation : block.operations) {
-		fmt::format_to(out, "{}\n", operation);
-	}
-	return out;
-}
-
+// Forward declare formatters needed by ExecutionTrace formatter
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
@@ -408,65 +371,77 @@ struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view>
 };
 
 template <>
-struct formatter<nautilus::tracing::BlockRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::BlockRef& ref, format_context& ctx) -> format_context::iterator {
-		auto out = ctx.out();
-		fmt::format_to(out, "B{}(", ref.block);
-		for (size_t i = 0; i < ref.arguments.size(); i++) {
-			if (i != 0) {
-				fmt::format_to(out, ",");
-			}
-			fmt::format_to(out, "{}", ref.arguments[i]);
-		}
-		fmt::format_to(out, ")");
-		return out;
-	}
-};
-
-template <>
-struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
-		auto out = ctx.out();
-		if (nautilus::log::options::getLogAddresses()) {
-			fmt::format_to(out, "{}(", call.functionName);
-		} else {
-			fmt::format_to(out, "func_*(");
-		}
-
-		for (size_t i = 0; i < call.arguments.size(); i++) {
-			if (i != 0) {
-				fmt::format_to(out, ",");
-			}
-			fmt::format_to(out, "{}", call.arguments[i]);
-		}
-		fmt::format_to(out, ")");
-		return out;
-	}
-};
-
-template <>
 struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 	auto format(nautilus::ConstantLiteral c, format_context& ctx) const -> format_context::iterator;
 };
 
-auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracing::TraceOperation& operation,
-                                                          format_context& ctx) -> format_context::iterator {
+template <>
+struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+};
+
+auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracing::ExecutionTrace& trace,
+                                                          fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
-	fmt::format_to(out, "\t{}\t", toString(operation.op));
-	fmt::format_to(out, "{}\t", operation.resultRef);
-	// Iterate over valid inputs using container's iterators
-	for (const auto& opInput : operation.input) {
-		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
-			fmt::format_to(out, "{}\t", *inputRef);
-		} else if (auto blockRef = std::get_if<nautilus::tracing::BlockRef>(&opInput)) {
-			fmt::format_to(out, "{}\t", *blockRef);
-		} else if (auto fCall = std::get_if<nautilus::tracing::FunctionCall>(&opInput)) {
-			fmt::format_to(out, "{}\t", *fCall);
-		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
-			fmt::format_to(out, "{}", *constant);
+	for (size_t i = 0; i < trace.blocks.size(); i++) {
+		fmt::format_to(out, "B{}", i);
+		// Format block with access to trace for lookups
+		const auto& block = trace.blocks[i];
+		fmt::format_to(out, "(");
+		for (size_t j = 0; j < block.arguments.size(); j++) {
+			if (j != 0) {
+				fmt::format_to(out, ",");
+			}
+			fmt::format_to(out, "${}:{}", block.arguments[j].ref, toString(block.arguments[j].type));
+		}
+		fmt::format_to(out, ")");
+		if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
+			fmt::format_to(out, " ControlFlowMerge");
+		}
+		fmt::format_to(out, "\n");
+		for (const auto& operation : block.operations) {
+			// Format operation with access to trace
+			fmt::format_to(out, "\t{}\t", toString(operation.op));
+			fmt::format_to(out, "{}\t", operation.resultRef);
+			for (const auto& opInput : operation.input) {
+				if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
+					fmt::format_to(out, "{}\t", *inputRef);
+				} else if (auto blockRefId = std::get_if<nautilus::tracing::BlockRefId>(&opInput)) {
+					const auto& blockRef = trace.blockRefs[blockRefId->id];
+					fmt::format_to(out, "B{}(", blockRef.block);
+					for (size_t k = 0; k < blockRef.arguments.size(); k++) {
+						if (k != 0) {
+							fmt::format_to(out, ",");
+						}
+						fmt::format_to(out, "{}", blockRef.arguments[k]);
+					}
+					fmt::format_to(out, ")\t");
+				} else if (auto constantId = std::get_if<nautilus::tracing::ConstantLiteralId>(&opInput)) {
+					auto& constant = trace.constantLiterals[constantId->id];
+					fmt::format_to(out, "{}", constant);
+				} else if (auto functionCallId = std::get_if<nautilus::tracing::FunctionCallId>(&opInput)) {
+					const auto& functionCall = trace.functionCalls[functionCallId->id];
+
+					if (nautilus::log::options::getLogAddresses()) {
+						fmt::format_to(out, "{}(", functionCall.functionName);
+					} else {
+						fmt::format_to(out, "func_*(");
+					}
+					for (size_t k = 0; k < functionCall.arguments.size(); k++) {
+						if (k != 0) {
+							fmt::format_to(out, ",");
+						}
+						fmt::format_to(out, "{}", functionCall.arguments[k]);
+					}
+					fmt::format_to(out, ")\t");
+				} else if (auto probability = std::get_if<nautilus::tracing::BranchProbability>(&opInput)) {
+					// Branch probability is typically not printed in trace format
+					(void) probability; // Suppress unused warning
+				}
+			}
+			fmt::format_to(out, ":{}\n", toString(operation.resultType));
 		}
 	}
-	fmt::format_to(out, ":{}", toString(operation.resultType));
 	return out;
 }
 

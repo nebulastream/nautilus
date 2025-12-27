@@ -39,13 +39,41 @@ struct FunctionCall {
 	FunctionAttributes fnAttrs;
 };
 
+struct FunctionCallId {
+	uint32_t id;
+	explicit FunctionCallId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
 struct BlockRef {
 	explicit BlockRef(uint16_t block);
 	uint16_t block;
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability>;
+struct BlockRefId {
+	uint32_t id;
+	explicit BlockRefId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
+struct ConstantLiteralId {
+	uint32_t id;
+	explicit ConstantLiteralId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
+using InputVariant =
+    std::variant<TypedValueRef, None, ConstantLiteralId, BlockRefId, FunctionCallId, BranchProbability>;
 
 /**
  * @brief Represents an individual operation in a trace.

@@ -41,7 +41,8 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
 			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), returnValue.input[0]);
 		}
-		returnOpBlock.addOperation({Op::JMP, BlockRef(returnBlock.blockId)});
+		auto blockRefId = trace->addBlockRef(BlockRef(returnBlock.blockId));
+		returnOpBlock.addOperation({Op::JMP, blockRefId});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
 
@@ -99,10 +100,12 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 				// set op type
 				processValueRef(block, *valueRef, operation.resultType, i);
-			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-				processBlockRef(block, *blockRef, i);
-			} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-				for (auto valueRef : fcallRef->arguments) {
+			} else if (auto* blockRefId = std::get_if<BlockRefId>(&input)) {
+				auto& blockRef = trace->getBlockRef(*blockRefId);
+				processBlockRef(block, blockRef, i);
+			} else if (auto* fcallRef = std::get_if<FunctionCallId>(&input)) {
+				auto& functionCall = trace->getFunctionCall(*fcallRef);
+				for (auto valueRef : functionCall.arguments) {
 					processValueRef(block, valueRef, valueRef.type, i);
 				}
 			}
@@ -138,10 +141,11 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				// Iterate over actual inputs using range-based for loop
 				for (auto& input : lastOperation.input) {
-					if (auto blockRef = std::get_if<BlockRef>(&input)) {
-						if (blockRef->block == block.blockId) {
+					if (auto blockRefId = std::get_if<BlockRefId>(&input)) {
+						auto& blockRef = trace->getBlockRef(*blockRefId);
+						if (blockRef.block == block.blockId) {
 							// TODO check if we contain the type already.
-							blockRef->arguments.emplace_back(ref);
+							blockRef.arguments.emplace_back(ref);
 							// we changed the block an arguments, thus we have to revisit it.
 							if (processedBlocks.contains(predBlock.blockId)) {
 								processedBlocks.erase(predBlock.blockId);
@@ -188,15 +192,17 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 						if (foundAssignment != assignmentMap.end()) {
 							valueRef->ref = foundAssignment->second;
 						}
-					} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-						for (auto& blockArgument : blockRef->arguments) {
+					} else if (auto* blockRefId = std::get_if<BlockRefId>(&input)) {
+						auto& blockRef = trace->getBlockRef(*blockRefId);
+						for (auto& blockArgument : blockRef.arguments) {
 							auto foundAssignment = assignmentMap.find(blockArgument.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								blockArgument.ref = foundAssignment->second;
 							}
 						}
-					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-						for (auto& funcArg : fcallRef->arguments) {
+					} else if (auto* fcallRef = std::get_if<FunctionCallId>(&input)) {
+						auto& functionCall = trace->getFunctionCall(*fcallRef);
+						for (auto& funcArg : functionCall.arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								funcArg.ref = foundAssignment->second;
@@ -241,8 +247,9 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 						// valueRef->blockId = foundAssignment->second.blockId;
 						// valueRef->operationId = foundAssignment->second.operationId;
 					}
-				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-					for (auto& blockArgument : blockRef->arguments) {
+				} else if (auto* blockRefId = std::get_if<BlockRefId>(&input)) {
+					auto& blockRef = trace->getBlockRef(*blockRefId);
+					for (auto& blockArgument : blockRef.arguments) {
 						auto foundAssignment = blockArgumentMap.find(blockArgument.ref);
 						if (foundAssignment != blockArgumentMap.end()) {
 							// valueRef = &foundAssignment->second;
