@@ -49,7 +49,7 @@ public:
 	 * @param inputs The input value to compare
 	 * @param probability The branch probability for this comparison
 	 */
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability);
+	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const float probability);
 
 	/**
 	 * @brief Adds an assignment operation to the trace

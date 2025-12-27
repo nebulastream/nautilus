@@ -16,7 +16,7 @@
 namespace nautilus::tracing {
 
 class None {};
-using BranchProbability = double;
+using BranchProbability = float;
 
 /**
  * @brief Represents a function call operation in the trace.
