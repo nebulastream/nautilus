@@ -35,6 +35,10 @@
 #include <mlir/IR/PatternMatch.h>
 #include <unordered_set>
 
+namespace mlir { namespace func {
+class FuncOp;
+}} // namespace mlir::func
+
 namespace nautilus::compiler::mlir {
 
 class MLIRIntrinsicManager;
@@ -105,7 +109,8 @@ private:
 	 */
 	void generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame);
 
-	void generateMLIR(const ir::FunctionOperation& funcOp, ValueFrame& frame);
+	void generateFunction(::mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& funcOp, ValueFrame& frame);
+	::mlir::func::FuncOp generateFunctionDefinitions(const ir::FunctionOperation& funcOp);
 
 	void generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
 

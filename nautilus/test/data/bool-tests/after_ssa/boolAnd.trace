@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:bool,$2:bool)
 	AND	$3	$1	$2	:bool
 	RETURN	$0	$3	:bool
+

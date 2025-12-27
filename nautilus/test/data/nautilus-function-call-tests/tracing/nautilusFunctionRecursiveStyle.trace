@@ -1,0 +1,26 @@
+RECURSIVEHELPER:
+B0($1:i32,$2:i32)
+	CONST	$3	0	:i32
+	LTE	$4	$2	$3	:bool
+	CMP	$5	$4	B1()	B2()	:void
+B1()
+	RETURN	$0	$1	:i32
+B2()
+	CONST	$8	1	:i32
+	ADD	$9	$1	$8	:i32
+	RETURN	$0	$9	:i32
+
+EXECUTE:
+B0($1:i32)
+	ASSIGN	$2	$1	:i32
+	CONST	$3	3	:i32
+	CALL	$4	func_*($2,$3)	:i32
+	ASSIGN	$2	$4	:i32
+	CONST	$5	2	:i32
+	CALL	$6	func_*($2,$5)	:i32
+	ASSIGN	$2	$6	:i32
+	CONST	$7	1	:i32
+	CALL	$8	func_*($2,$7)	:i32
+	ASSIGN	$2	$8	:i32
+	RETURN	$0	$2	:i32
+

@@ -35,9 +35,27 @@ void BCLoweringProvider::RegisterProvider::freeRegister(short reg) {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
-	const auto& functionOperation = ir->getRootOperation();
+	// BC interpreter only processes a single function (the main "execute" function)
+	// Get all functions and process the first one (typically "execute")
+	const auto& functionOperations = ir->getFunctionOperations();
+	if (functionOperations.empty()) {
+		throw NotImplementedException("No functions found in IR graph");
+	}
+
+	// Find the "execute" function, or use the first function if "execute" is not found
+	const ir::FunctionOperation* targetFunction = nullptr;
+	for (const auto& funcOp : functionOperations) {
+		if (funcOp->getName() == "execute") {
+			targetFunction = funcOp.get();
+			break;
+		}
+	}
+	if (targetFunction == nullptr) {
+		targetFunction = functionOperations.front().get();
+	}
+
 	RegisterFrame rootFrame;
-	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
+	const auto& functionBasicBlock = targetFunction->getFunctionBasicBlock();
 	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
 		auto& argument = functionBasicBlock.getArguments()[i];
 		auto argumentRegister = registerProvider.allocRegister();

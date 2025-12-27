@@ -8,6 +8,7 @@
 namespace nautilus::tracing {
 
 class ExecutionTrace;
+class TraceModule;
 
 class Block;
 
@@ -24,6 +25,13 @@ public:
 	 * @return the modified execution trace.
 	 */
 	std::shared_ptr<ExecutionTrace> apply(std::shared_ptr<ExecutionTrace> trace);
+
+	/**
+	 * @brief Applies the phase on all functions in a trace module
+	 * @param traceModule
+	 * @return the modified trace module with all functions converted to SSA.
+	 */
+	std::shared_ptr<TraceModule> apply(std::shared_ptr<TraceModule> traceModule);
 
 private:
 	/**

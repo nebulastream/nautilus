@@ -1,6 +1,8 @@
+EXECUTE:
 B0($1:bool,$2:f64,$3:f64)
 	ASSIGN	$4	$1	:bool
 	ASSIGN	$5	$2	:f64
 	ASSIGN	$6	$3	:f64
 	SELECT	$7	$4	$5	$6	:f64
 	RETURN	$0	$7	:f64
+

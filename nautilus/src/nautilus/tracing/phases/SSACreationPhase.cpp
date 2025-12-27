@@ -13,6 +13,32 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::apply(std::shared_ptr<Executio
 	return phaseContext.process();
 }
 
+std::shared_ptr<TraceModule> SSACreationPhase::apply(std::shared_ptr<TraceModule> traceModule) {
+	// Get all function names in the module
+	auto functionNames = traceModule->getFunctionNames();
+
+	// Process each function's trace independently
+	for (const auto& functionName : functionNames) {
+		// Get the raw pointer to the execution trace
+		auto* tracePtr = traceModule->getFunction(functionName);
+		if (tracePtr == nullptr) {
+			continue; // Skip if function not found (shouldn't happen)
+		}
+
+		// Wrap in shared_ptr for processing (non-owning, just for the API)
+		// We use a custom deleter that does nothing since we don't own the trace
+		auto traceShared = std::shared_ptr<ExecutionTrace>(tracePtr, [](auto*) {});
+
+		// Apply SSA transformation to this function's trace
+		auto phaseContext = SSACreationPhaseContext(traceShared);
+		phaseContext.process();
+
+		// The trace is modified in place, so no need to update the module
+	}
+
+	return traceModule;
+}
+
 SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace)
     : trace(std::move(trace)) {
 }

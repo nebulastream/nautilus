@@ -31,12 +31,27 @@ std::unique_ptr<FunctionOperation>& IRGraph::addRootOperation(std::unique_ptr<Fu
 	return this->rootOperation;
 }
 
-const CompilationUnitID& IRGraph::getId() const {
-	return id;
+std::unique_ptr<FunctionOperation>&
+IRGraph::addFunctionOperation(std::unique_ptr<FunctionOperation> functionOperation) {
+	functionOperations.emplace_back(std::move(functionOperation));
+	return functionOperations.back();
 }
 
-const FunctionOperation& IRGraph::getRootOperation() const {
-	return *rootOperation;
+const std::vector<std::unique_ptr<FunctionOperation>>& IRGraph::getFunctionOperations() const {
+	return functionOperations;
+}
+
+const FunctionOperation* IRGraph::getFunctionOperation(const std::string& name) const {
+	for (const auto& func : functionOperations) {
+		if (func->getName() == name) {
+			return func.get();
+		}
+	}
+	return nullptr;
+}
+
+const CompilationUnitID& IRGraph::getId() const {
+	return id;
 }
 
 constexpr const char* binaryOpToString(Operation::OperationType type) {
@@ -285,8 +300,12 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
                                                              format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "NautilusIr {{\n");
-	auto& rootOp = graph.getRootOperation();
-	fmt::format_to(out, "{}", rootOp);
+
+	// Print all function operations
+	for (const auto& func : graph.getFunctionOperations()) {
+		fmt::format_to(out, "{}", *func);
+	}
+
 	fmt::format_to(out, "}} //NESIR\n");
 	return out;
 }

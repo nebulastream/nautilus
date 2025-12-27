@@ -9,6 +9,49 @@
 
 namespace nautilus::tracing {
 
+ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName) {
+	auto trace = std::make_unique<ExecutionTrace>();
+	auto& traceRef = *trace;
+	functions[std::string(functionName)] = std::move(trace);
+	return traceRef;
+}
+
+ExecutionTrace* TraceModule::getFunction(const std::string& functionName) {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? it->second.get() : nullptr;
+}
+
+const ExecutionTrace* TraceModule::getFunction(const std::string& functionName) const {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? it->second.get() : nullptr;
+}
+
+std::string TraceModule::toString() const {
+	std::string result;
+	for (const auto& [name, trace] : functions) {
+		std::string functionName = name;
+		std::transform(functionName.begin(), functionName.end(), functionName.begin(),
+		               [](unsigned char c) { return std::toupper(c); });
+		result += functionName + ":\n";
+		result += trace->toString();
+		result += "\n";
+	}
+	return result;
+}
+
+bool TraceModule::hasFunction(const std::string& functionName) const {
+	return functions.find(functionName) != functions.end();
+}
+
+std::vector<std::string> TraceModule::getFunctionNames() const {
+	std::vector<std::string> names;
+	names.reserve(functions.size());
+	for (const auto& [name, _] : functions) {
+		names.push_back(name);
+	}
+	return names;
+}
+
 ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0), blocks() {
 	createBlock();
 }

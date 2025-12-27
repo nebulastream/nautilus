@@ -1,2 +1,4 @@
+EXECUTE:
 B0($1:bool)
 	RETURN	$0	$1	:bool
+

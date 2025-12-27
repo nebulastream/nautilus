@@ -19,7 +19,7 @@ public:
 	// The number of iterations we want to spend maximally to explore executions.
 	static const uint64_t MAX_ITERATIONS = 100000;
 
-	enum class MODE : const uint8_t { FOLLOW, RECORD };
+	enum class MODE : uint8_t { FOLLOW, RECORD };
 
 	/**
 	 * @brief Performs a symbolic execution of a CMP operation.
@@ -70,7 +70,7 @@ private:
 	 * This indicates if we visited a specific tag one or two times.
 	 * If we already visited it two times, we can skip any further executions at this point.
 	 */
-	enum class TagState : const int8_t { FirstVisit, SecondVisit };
+	enum class TagState : int8_t { FirstVisit, SecondVisit };
 	std::unordered_map<Snapshot, TagState> tagMap;
 	std::list<SymbolicExecutionPath> inflightExecutionPaths;
 	MODE currentMode = MODE::RECORD;

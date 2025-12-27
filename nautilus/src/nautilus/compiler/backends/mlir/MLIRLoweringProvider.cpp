@@ -214,24 +214,66 @@ mlir::LLVM::MemoryEffectsAttr getMemoryEffectsAttr(const FunctionAttributes& fnA
 	}
 }
 
-void setAttributes(mlir::LLVM::LLVMFuncOp& funcOp, const FunctionAttributes& fnAttrs, ::mlir::MLIRContext* context) {
+void setLLVMAttributes(mlir::LLVM::LLVMFuncOp& funcOp, const FunctionAttributes& fnAttrs,
+                       ::mlir::MLIRContext* context) {
 	funcOp.setMemoryEffectsAttr(getMemoryEffectsAttr(fnAttrs, context));
 	funcOp.setWillReturn(fnAttrs.willReturn);
 	funcOp.setNoUnwind(fnAttrs.noUnwind);
+}
+
+static mlir::LLVM::ModRefInfo toLLVMModRef(nautilus::ModRefInfo m) {
+	using MR = mlir::LLVM::ModRefInfo;
+	switch (m) {
+	case nautilus::ModRefInfo::NoModRef:
+		return MR::NoModRef;
+	case nautilus::ModRefInfo::Ref:
+		return MR::Ref;
+	case nautilus::ModRefInfo::Mod:
+		return MR::Mod;
+	case nautilus::ModRefInfo::ModRef:
+		return MR::ModRef;
+	}
+	return MR::ModRef; // fallback
+}
+
+void setFuncAttributes(mlir::func::FuncOp funcOp, const FunctionAttributes& fnAttrs) {
+	mlir::MLIRContext* ctx = funcOp.getContext();
+
+	// (A) Prefer structured memory effects over passthrough("memory(...)").
+	// Pick a conservative mapping; tweak argMem/inaccessibleMem/errnoMem if you can.
+	auto mr = toLLVMModRef(fnAttrs.modRefInfo);
+	auto memEffects = mlir::LLVM::MemoryEffectsAttr::get(ctx,
+	                                                     /*other=*/mr,
+	                                                     /*argMem=*/mr,
+	                                                     /*inaccessibleMem=*/mr);
+
+	// MUST be discardable to survive convert-func-to-llvm.
+	funcOp->setDiscardableAttr("memory_effects", memEffects);
+
+	// (B) Forward plain LLVM IR attributes via passthrough (optional).
+	llvm::SmallVector<mlir::Attribute> passthrough;
+
+	if (fnAttrs.willReturn)
+		passthrough.push_back(mlir::StringAttr::get(ctx, "willreturn"));
+	if (fnAttrs.noUnwind)
+		passthrough.push_back(mlir::StringAttr::get(ctx, "nounwind"));
+
+	// Important: don't also add "memory(...)" here if you already set memory_effects,
+	// or you'll end up with two competing ways to describe memory behavior.
+	if (!passthrough.empty())
+		funcOp->setDiscardableAttr("passthrough", mlir::ArrayAttr::get(ctx, passthrough));
 }
 
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
                                                                      const mlir::Type& resultType,
                                                                      const std::vector<mlir::Type>& argTypes,
                                                                      const FunctionAttributes& fnAttrs) {
-	// Create function arg & result types (currently only int for result).
-	mlir::LLVM::LLVMFunctionType llvmFnType = mlir::LLVM::LLVMFunctionType::get(resultType, argTypes);
-
 	// The InsertionGuard saves the current insertion point (IP) and restores it
 	// after scope is left.
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 	builder->restoreInsertionPoint(*globalInsertPoint);
-	// Create function in global scope. Set attributes. Return reference.
+
+	// Create function name (potentially using pointer address for inline optimization)
 	std::string functionName = name;
 	if (options->getOptionOrDefault("mlir.inline_invoke_calls", false) &&
 	    InlineFunctionRegistry::instance().containsFunctionBitcode(functionPtr)) {
@@ -240,10 +282,21 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 		functionName = ss.str();
 	}
 
-	// Create function in global scope. Set attributes. Return reference.
-	auto funcOp = builder->create<mlir::LLVM::LLVMFuncOp>(theModule.getLoc(), functionName, llvmFnType,
-	                                                      mlir::LLVM::Linkage::External, false);
-	setAttributes(funcOp, fnAttrs, context);
+	// Use func dialect for external functions to enable better optimization
+	// Handle void vs non-void return types
+	llvm::SmallVector<mlir::Type> resultTypes;
+	if (!llvm::isa<mlir::LLVM::LLVMVoidType>(resultType)) {
+		resultTypes.push_back(resultType);
+	}
+
+	auto functionType = builder->getFunctionType(argTypes, resultTypes);
+	auto funcOp = builder->create<mlir::func::FuncOp>(theModule.getLoc(), functionName, functionType);
+
+	// Mark as private (will be converted to external linkage during lowering if needed)
+	funcOp.setPrivate();
+
+	// Set function attributes
+	setFuncAttributes(funcOp, fnAttrs);
 
 	jitProxyFunctionSymbols.push_back(functionName);
 	if (functionPtr == nullptr) {
@@ -277,8 +330,22 @@ MLIRLoweringProvider::~MLIRLoweringProvider() {
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir) {
-	ValueFrame firstFrame;
-	this->generateMLIR(ir->getRootOperation(), firstFrame);
+	// Generate MLIR for all function operations in the IR graph
+	const auto& functions = ir->getFunctionOperations();
+
+	// New path: multiple functions via TraceModule
+	std::unordered_map<std::string, ::mlir::func::FuncOp> functionDefinitions;
+	for (const auto& functionOp : functions) {
+		auto defintion = this->generateFunctionDefinitions(*functionOp);
+		functionDefinitions.insert({functionOp->getName(), defintion});
+	}
+
+	for (const auto& functionOp : functions) {
+		ValueFrame frame;
+		auto& funcref = functionDefinitions.at(functionOp->getName());
+		generateFunction(funcref, *functionOp, frame);
+	}
+
 	// If MLIR module creation is incorrect, gracefully emit error message, return
 	// nullptr, and continue.
 	if (failed(mlir::verify(theModule))) {
@@ -414,25 +481,46 @@ void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFra
 	frame.setValue(andOperation->getIdentifier(), mlirAndOp);
 }
 
-void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp, ValueFrame& frame) {
+::mlir::func::FuncOp MLIRLoweringProvider::generateFunctionDefinitions(const ir::FunctionOperation& functionOp) {
+	// Currently, no function definitions other than the main execute function are created.
+	// This is a placeholder for future functionality.
+
 	// Generate execute function. Set input/output types and get its entry block.
 	llvm::SmallVector<mlir::Type> inputTypes(0);
 	for (auto& inputArg : functionOp.getFunctionBasicBlock().getArguments()) {
 		inputTypes.emplace_back(getMLIRType(inputArg->getStamp()));
 	}
-	llvm::SmallVector<mlir::Type> outputTypes(1, getMLIRType(functionOp.getOutputArg()));
+
+	// Handle void vs non-void return types
+	llvm::SmallVector<mlir::Type> outputTypes;
+	if (functionOp.getOutputArg() != Type::v) {
+		outputTypes.push_back(getMLIRType(functionOp.getOutputArg()));
+	}
+
 	auto functionInOutTypes = builder->getFunctionType(inputTypes, outputTypes);
 	auto loc = getNameLoc("EntryPoint");
 	auto mlirFunction = builder->create<mlir::func::FuncOp>(loc, functionOp.getName(), functionInOutTypes);
 
 	// Avoid function name mangling.
 	mlirFunction->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(context));
-	if (isUnsignedInteger(functionOp.getStamp())) {
-		mlirFunction.setResultAttr(0, "llvm.zeroext", mlir::UnitAttr::get(context));
-	} else if (isSignedInteger(functionOp.getStamp())) {
-		mlirFunction.setResultAttr(0, "llvm.signext", mlir::UnitAttr::get(context));
+
+	// Only set result attributes if the function returns a value
+	if (functionOp.getOutputArg() != Type::v) {
+		if (isUnsignedInteger(functionOp.getStamp())) {
+			mlirFunction.setResultAttr(0, "llvm.zeroext", mlir::UnitAttr::get(context));
+		} else if (isSignedInteger(functionOp.getStamp())) {
+			mlirFunction.setResultAttr(0, "llvm.signext", mlir::UnitAttr::get(context));
+		}
 	}
 
+	theModule.push_back(mlirFunction);
+	return mlirFunction;
+}
+
+void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& functionOp,
+                                            ValueFrame& frame) {
+
+	// add entry block for the function
 	mlirFunction.addEntryBlock();
 
 	// Set InsertPoint to beginning of the execute function.
@@ -447,7 +535,7 @@ void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp,
 	// Generate MLIR for operations in function body (BasicBlock).
 	generateMLIR(&functionOp.getFunctionBasicBlock(), frame);
 
-	theModule.push_back(mlirFunction);
+	// Don't add the function again - it's already been added in generateFunctionDefinitions
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::LoadOperation* loadOp, ValueFrame& frame) {
@@ -594,16 +682,18 @@ void MLIRLoweringProvider::generateMLIR(ir::StoreOperation* storeOp, ValueFrame&
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame) {
-	// Insert return into 'execute' function block. This is the FINAL return.
+	// Insert return into function block.
+	// Use func::ReturnOp for func::FuncOp functions (not LLVM::ReturnOp)
 	if (!returnOp->hasReturnValue()) {
-		builder->create<mlir::LLVM::ReturnOp>(getNameLoc("return"), mlir::ValueRange());
+		builder->create<mlir::func::ReturnOp>(getNameLoc("return"), mlir::ValueRange());
 	} else {
-		builder->create<mlir::LLVM::ReturnOp>(getNameLoc("return"),
+		builder->create<mlir::func::ReturnOp>(getNameLoc("return"),
 		                                      frame.getValue(returnOp->getReturnValue()->getIdentifier()));
 	}
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
+	// First check if this is handled by an intrinsic
 	if (auto intrinsic = intrinsicManager.getIntrinsic(proxyCallOp->getFunctionPtr())) {
 		const auto& intrinsicFunction = *intrinsic;
 		if (intrinsicFunction(builder, proxyCallOp, frame)) {
@@ -611,10 +701,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 		}
 	}
 
-	mlir::FlatSymbolRefAttr functionRef;
-
-	// to pass function pointers down to the inlining phase while preserving clear names in the IR output, the final
-	// function name is decided here
+	// Determine the final function name (may use pointer address for inlining)
 	const std::string functionName = [&]() {
 		if (options->getOptionOrDefault("mlir.inline_invoke_calls", false) &&
 		    InlineFunctionRegistry::instance().containsFunctionBitcode(proxyCallOp->getFunctionPtr())) {
@@ -625,24 +712,35 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 		return proxyCallOp->getFunctionName();
 	}();
 
-	if (theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>(functionName)) {
-		functionRef = mlir::SymbolRefAttr::get(context, functionName);
-	} else {
-		functionRef =
-		    insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
-		                           getMLIRType(proxyCallOp->getInputArguments()), proxyCallOp->getFunctionAttributes());
-	}
-
+	// Collect function arguments
 	std::vector<mlir::Value> functionArgs;
 	for (const auto& arg : proxyCallOp->getInputArguments()) {
 		functionArgs.push_back(frame.getValue(arg->getIdentifier()));
 	}
+
+	// Try to find an existing function declaration (prefer func dialect)
+	if (auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName)) {
+		// Function already exists in func dialect - use func::CallOp
+		if (proxyCallOp->getStamp() != Type::v) {
+			auto res = builder->create<mlir::func::CallOp>(getNameLoc("funcCall"), func, functionArgs);
+			frame.setValue(proxyCallOp->getIdentifier(), res.getResult(0));
+		} else {
+			builder->create<mlir::func::CallOp>(getNameLoc("funcCall"), func, functionArgs);
+		}
+		return;
+	}
+
+	// Function doesn't exist yet - create external function declaration using func dialect
+	insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
+	                       getMLIRType(proxyCallOp->getInputArguments()), proxyCallOp->getFunctionAttributes());
+
+	// Now lookup the function we just created and call it using func::CallOp
+	auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);
 	if (proxyCallOp->getStamp() != Type::v) {
-		auto res = builder->create<mlir::LLVM::CallOp>(getNameLoc("printFunc"), getMLIRType(proxyCallOp->getStamp()),
-		                                               functionRef, functionArgs);
-		frame.setValue(proxyCallOp->getIdentifier(), res.getResult());
+		auto res = builder->create<mlir::func::CallOp>(getNameLoc("funcCall"), func, functionArgs);
+		frame.setValue(proxyCallOp->getIdentifier(), res.getResult(0));
 	} else {
-		builder->create<mlir::LLVM::CallOp>(builder->getUnknownLoc(), mlir::TypeRange(), functionRef, functionArgs);
+		builder->create<mlir::func::CallOp>(getNameLoc("funcCall"), func, functionArgs);
 	}
 }
 

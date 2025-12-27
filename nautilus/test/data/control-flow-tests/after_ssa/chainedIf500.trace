@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	0	:i32
@@ -5500,3 +5501,4 @@ B1499($2:i32,$1:i32,$2498:i32) ControlFlowMerge
 	CMP	$2500	$2499	B999($2)	B1000($2)	:void
 B1500($2:i32)
 	RETURN	$0	$2	:i32
+

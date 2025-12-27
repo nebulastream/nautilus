@@ -1,0 +1,24 @@
+LOOPHELPER:
+B0($1:i32)
+	CONST	$2	1	:i32
+	ADD	$3	$1	$2	:i32
+	RETURN	$0	$3	:i32
+
+EXECUTE:
+B0($1:i32)
+	CONST	$2	0	:i32
+	CONST	$3	0	:i32
+	JMP	$0	B3()	:void
+B1()
+	CALL	$6	func_*($2)	:i32
+	ASSIGN	$2	$6	:i32
+	CONST	$7	1	:i32
+	ADD	$8	$3	$7	:i32
+	ASSIGN	$3	$8	:i32
+	JMP	$0	B3()	:void
+B2()
+	RETURN	$0	$2	:i32
+B3() ControlFlowMerge
+	LT	$4	$3	$1	:bool
+	CMP	$5	$4	B1()	B2()	:void
+
