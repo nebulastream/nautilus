@@ -67,13 +67,19 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
 	auto op = Op::RETURN;
+	// Add operation to central storage
+	uint32_t globalOpIndex;
 	if (ref.type == Type::v) {
+		globalOpIndex = operations.size();
 		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v));
 	} else {
+		globalOpIndex = operations.size();
 		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
 	}
+	// Add index to block
+	block.addOperation(globalOpIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 
@@ -85,36 +91,44 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
 	auto op = ASSIGN;
-	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, srcRef);
+	uint32_t globalOpIndex = operations.size();
+	operations.emplace_back(snapshot, op, resultType, targetRef, srcRef);
+	block.addOperation(globalOpIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return operation.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation) {
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
 	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v));
+	block.addOperation(globalOpIndex);
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0) {
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
 	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0);
+	block.addOperation(globalOpIndex);
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1) {
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
 	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1);
+	block.addOperation(globalOpIndex);
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1,
@@ -122,8 +136,10 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVarian
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
 	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1, input2);
+	block.addOperation(globalOpIndex);
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType) {
@@ -131,12 +147,14 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 		createBlock();
 	}
 
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType));
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
+	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType));
+	block.addOperation(globalOpIndex);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
@@ -145,13 +163,14 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 		createBlock();
 	}
 
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to =
-	    operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0);
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
+	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0);
+	block.addOperation(globalOpIndex);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
@@ -160,13 +179,15 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 		createBlock();
 	}
 
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   input0, input1);
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
+	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0,
+	                        input1);
+	block.addOperation(globalOpIndex);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
@@ -175,13 +196,15 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 		createBlock();
 	}
 
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   input0, input1, input2);
+	auto& block = blocks[currentBlockIndex];
+	uint32_t globalOpIndex = operations.size();
+	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0,
+	                        input1, input2);
+	block.addOperation(globalOpIndex);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 // Adds a comparison operation to the execution trace
@@ -196,11 +219,13 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& block = blocks[currentBlockIndex];
 	auto trueBlockRefId = addBlockRef(BlockRef(trueBlock));
 	auto falseBlockRefId = addBlockRef(BlockRef(falseBlock));
+	uint32_t globalOpIndex = operations.size();
 	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
 	                        trueBlockRefId, falseBlockRefId, probability);
+	block.addOperation(globalOpIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -211,7 +236,7 @@ void ExecutionTrace::nextOperation() {
 	if (currentOperationIndex >= block.operations.size()) {
 		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	auto& currentOp = block.operations[currentOperationIndex];
+	auto& currentOp = getOperation(currentBlockIndex, currentOperationIndex);
 	if (currentOp.op == JMP) {
 		auto blockRefId = std::get<BlockRefId>(currentOp.input[0]);
 		auto& nextBlock = getBlockRef(blockRefId);
@@ -224,8 +249,9 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 	if (currentOperationIndex >= block.operations.size()) {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	while (block.operations[currentOperationIndex].op == JMP) {
-		auto blockRefId = std::get<BlockRefId>(block.operations[currentOperationIndex].input[0]);
+	while (getOperation(currentBlockIndex, currentOperationIndex).op == JMP) {
+		auto& currentOp = getOperation(currentBlockIndex, currentOperationIndex);
+		auto blockRefId = std::get<BlockRefId>(currentOp.input[0]);
 		auto& nextBlock = getBlockRef(blockRefId);
 		setCurrentBlock(nextBlock.block);
 		block = getCurrentBlock();
@@ -234,7 +260,7 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 			                       std::to_string(currentOperationIndex));
 		}
 	}
-	return block.operations[currentOperationIndex];
+	return getOperation(currentBlockIndex, currentOperationIndex);
 }
 
 uint16_t ExecutionTrace::createBlock() {
@@ -257,14 +283,15 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
-	// 1. move operation to new block
+	// 1. move operation indices to new block
 	// move everything from the reference block between opId and end to merge block
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
-		auto& sourceOperation = referenceBlock.operations[opIndex];
-		// Save values needed after move
+		auto globalOpIndex = referenceBlock.operations[opIndex];
+		auto& sourceOperation = operations[globalOpIndex];
+		// Save values needed for tag map updates
 		auto opType = sourceOperation.op;
 		auto opTag = sourceOperation.tag;
-		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));
+		auto operationReference = mergeBlock.addOperation(globalOpIndex);
 		// update in global and local tag map
 
 		if (opType == RETURN) {
@@ -285,18 +312,23 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 	// add jump from referenced block to merge block
 	auto referenceBlockRefId = addBlockRef(BlockRef(mergedBlockId));
-	referenceBlock.addOperation({Op::JMP, {referenceBlockRefId}});
+	uint32_t jmpOp1 = operations.size();
+	operations.emplace_back(Op::JMP, referenceBlockRefId);
+	referenceBlock.addOperation(jmpOp1);
 
 	// add jump from current block to merge block
 	auto currentBlockRefId = addBlockRef(BlockRef(mergedBlockId));
-	currentBlock.addOperation({Op::JMP, {currentBlockRefId}});
+	uint32_t jmpOp2 = operations.size();
+	operations.emplace_back(Op::JMP, currentBlockRefId);
+	currentBlock.addOperation(jmpOp2);
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
 	setCurrentBlock(mergedBlockId);
 
 	// update predecessors of merge merge block
-	auto& lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
+	uint32_t lastMergeOpIndex = mergeBlock.operations[mergeBlock.operations.size() - 1];
+	auto& lastMergeOperation = operations[lastMergeOpIndex];
 	if (lastMergeOperation.op == Op::CMP || lastMergeOperation.op == Op::JMP) {
 		for (auto& input : lastMergeOperation.input) {
 			if (auto blockRefId = std::get_if<BlockRefId>(&input)) {
@@ -351,6 +383,22 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	localTagMap[snapshot] = identifier;
 }
 
+TraceOperation& ExecutionTrace::getOperation(uint16_t blockIndex, uint16_t operationIndex) {
+	auto& block = getBlock(blockIndex);
+	if (operationIndex >= block.operations.size()) {
+		throw RuntimeException("Operation index out of bounds: " + std::to_string(operationIndex));
+	}
+	uint32_t globalOperationIndex = block.operations[operationIndex];
+	if (globalOperationIndex >= operations.size()) {
+		throw RuntimeException("Global operation index out of bounds: " + std::to_string(globalOperationIndex));
+	}
+	return operations[globalOperationIndex];
+}
+
+TraceOperation& ExecutionTrace::getOperation(const operation_identifier& identifier) {
+	return getOperation(identifier.blockIndex, identifier.operationIndex);
+}
+
 } // namespace nautilus::tracing
 
 std::string nautilus::tracing::ExecutionTrace::toString() const {
@@ -399,8 +447,9 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 			fmt::format_to(out, " ControlFlowMerge");
 		}
 		fmt::format_to(out, "\n");
-		for (const auto& operation : block.operations) {
-			// Format operation with access to trace
+		for (const auto& opIndex : block.operations) {
+			// Format operation with access to trace - opIndex is now uint32_t
+			const auto& operation = trace.operations[opIndex];
 			fmt::format_to(out, "\t{}\t", toString(operation.op));
 			fmt::format_to(out, "{}\t", operation.resultRef);
 			for (const auto& opInput : operation.input) {

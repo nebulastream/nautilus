@@ -141,6 +141,21 @@ public:
 	Block& getCurrentBlock();
 
 	/**
+	 * @brief Gets an operation by its block and operation index
+	 * @param blockIndex The block index
+	 * @param operationIndex The operation index within the block
+	 * @return TraceOperation& Reference to the operation
+	 */
+	TraceOperation& getOperation(uint16_t blockIndex, uint16_t operationIndex);
+
+	/**
+	 * @brief Gets an operation by its identifier
+	 * @param identifier The operation identifier
+	 * @return TraceOperation& Reference to the operation
+	 */
+	TraceOperation& getOperation(const operation_identifier& identifier);
+
+	/**
 	 * @brief Returns the current operation being traced
 	 * @return TraceOperation& Reference to the current operation
 	 */
@@ -217,6 +232,17 @@ public:
 	uint16_t currentBlockIndex;
 	uint16_t currentOperationIndex;
 	std::vector<Block> blocks;
+
+	/**
+	 * @brief Central storage for all operations across all blocks.
+	 * Blocks reference operations via indices into this vector.
+	 * This design enables:
+	 * - Efficient copy/move of blocks (only copying indices, not full operations)
+	 * - Better cache locality (all operations in contiguous memory)
+	 * - Simpler cross-block operation access
+	 */
+	std::vector<TraceOperation> operations;
+
 	std::vector<operation_identifier> returnRefs;
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;

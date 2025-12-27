@@ -106,11 +106,11 @@ public:
 	TraceOperation(TraceOperation&&) = default;
 	TraceOperation& operator=(TraceOperation&&) = default;
 
+	BoundedInputArray<InputVariant, 4> input;
 	Snapshot tag;
+	TypedValueRef resultRef;
 	Op op;
 	Type resultType;
-	TypedValueRef resultRef;
-	BoundedInputArray<InputVariant, 4> input;
 };
 
 } // namespace nautilus::tracing

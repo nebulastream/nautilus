@@ -49,12 +49,14 @@ private:
 		/**
 		 * @brief Checks if an ValueRef is defined in a specific block by an argument or an operation before the current
 		 * operationIndex
+		 * @param trace reference to the execution trace
 		 * @param block reference to the current basic block
 		 * @param valRef reference to the the value ref we are looking fore
 		 * @param operationIndex the operation index, which accesses the ValueRef
 		 * @return true if Value Ref is defined locally.
 		 */
-		static bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
+		static bool isLocalValueRef(ExecutionTrace* trace, Block& block, TypedValueRef& valRef, Type ref_type,
+		                            uint32_t operationIndex);
 
 		void processValueRef(Block& block, TypedValueRef& type, Type ref_type, uint32_t operationIndex);
 

@@ -68,7 +68,8 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 	auto irBasicBlockPtr = irBasicBlock.get();
 
 	blockMap[block.blockId] = irBasicBlockPtr;
-	for (auto& operation : block.operations) {
+	for (auto& opIndex : block.operations) {
+		auto& operation = trace->operations[opIndex];
 		processOperation(blockFrame, block, irBasicBlockPtr, operation);
 	}
 	return irBasicBlockPtr;
