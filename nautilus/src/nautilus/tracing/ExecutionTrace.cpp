@@ -186,7 +186,7 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 
 // Adds a comparison operation to the execution trace
 // This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const double probability) {
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const float probability) {
 	if (blocks.empty()) {
 		createBlock();
 	}
