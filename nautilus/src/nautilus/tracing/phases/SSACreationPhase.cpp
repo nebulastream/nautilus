@@ -24,25 +24,30 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		return trace->getBlock(firstReturnOp.blockIndex);
 	}
 
-	auto defaultReturnOp = trace->getBlock(returns.front().blockIndex).operations[firstReturnOp.operationIndex];
+	auto defaultReturnOpIndex = trace->getBlock(returns.front().blockIndex).operations[firstReturnOp.operationIndex];
+	auto& defaultReturnOp = trace->operations[defaultReturnOpIndex];
 
 	// add return block
 	auto& returnBlock = trace->getBlock(trace->createBlock());
-	returnBlock.operations.emplace_back(defaultReturnOp);
+	returnBlock.addOperation(defaultReturnOpIndex);
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
-		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
+		auto returnValueIndex = returnOpBlock.operations[returnOp.operationIndex];
+		auto& returnValue = trace->operations[returnValueIndex];
 		// check if we have return values
 		if (returnValue.input.empty()) {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] =
-			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), returnValue.input[0]);
+			uint32_t newOpIndex = trace->operations.size();
+			trace->operations.emplace_back(snap, ASSIGN, defaultReturnOp.resultType,
+			                               std::get<TypedValueRef>(defaultReturnOp.input[0]), returnValue.input[0]);
+			returnOpBlock.operations[returnOp.operationIndex] = newOpIndex;
 		}
 		auto blockRefId = trace->addBlockRef(BlockRef(returnBlock.blockId));
-		returnOpBlock.addOperation({Op::JMP, blockRefId});
+		uint32_t jmpOpIndex = trace->operations.size();
+		trace->operations.emplace_back(Op::JMP, blockRefId);
+		returnOpBlock.addOperation(jmpOpIndex);
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
 
@@ -76,12 +81,13 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
-                                                                uint32_t operationIndex) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(ExecutionTrace* trace, Block& block, TypedValueRef& ref,
+                                                                Type, uint32_t operationIndex) {
 	// A value ref is defined in the local scope, if it is the result of an
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto& resOperation = block.operations[i];
+		auto opIndex = block.operations[i];
+		auto& resOperation = trace->operations[opIndex];
 		if (resOperation.resultRef == ref) {
 			return true;
 		}
@@ -94,7 +100,8 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 
 	// Process the inputs of all operations in the current block
 	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
-		auto& operation = block.operations[i];
+		auto opIndex = block.operations[i];
+		auto& operation = trace->operations[opIndex];
 		// process input for each variable using range-based for loop
 		for (auto& input : operation.input) {
 			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
@@ -126,7 +133,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 
 void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
                                                                 uint32_t operationIndex) {
-	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
+	if (isLocalValueRef(trace.get(), block, ref, ref_type, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
 	} else {
@@ -137,7 +144,8 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 		for (auto& predecessor : block.predecessors) {
 			// add to final call
 			auto& predBlock = trace->getBlock(predecessor);
-			auto& lastOperation = predBlock.operations.back();
+			auto lastOpIndex = predBlock.operations.back();
+			auto& lastOperation = trace->operations[lastOpIndex];
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				// Iterate over actual inputs using range-based for loop
 				for (auto& input : lastOperation.input) {
@@ -175,7 +183,8 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
-		for (auto& operation : block.operations) {
+		for (auto& opIndex : block.operations) {
+			auto& operation = trace->operations[opIndex];
 			if (operation.op == Op::ASSIGN) {
 				auto& valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
@@ -212,7 +221,8 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				}
 			}
 		}
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+		std::erase_if(block.operations,
+		              [&](const auto& opIndex) { return trace->operations[opIndex].op == Op::ASSIGN; });
 	}
 }
 
@@ -236,7 +246,8 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 
 		// set the new ValRefs to all depending on operations.
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
-			auto& operation = block.operations[i];
+			auto opIndex = block.operations[i];
+			auto& operation = trace->operations[opIndex];
 			// Iterate over actual inputs using range-based for loop
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
@@ -263,7 +274,8 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 			}
 		}
 
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+		std::erase_if(block.operations,
+		              [&](const auto& opIndex) { return trace->operations[opIndex].op == Op::ASSIGN; });
 	}
 }
 

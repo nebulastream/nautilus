@@ -81,7 +81,7 @@ TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& c
 	auto constId = state->executionTrace.addConstantLiteral(ConstantLiteral(constValue));
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
+		auto& originalRef = state->executionTrace.getOperation(ref);
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, constId);
 		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
 		return originalRef.resultRef;

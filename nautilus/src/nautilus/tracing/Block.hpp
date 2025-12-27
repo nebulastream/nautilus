@@ -29,7 +29,12 @@ public:
 	 */
 	explicit Block(uint16_t blockId);
 
-	operation_identifier addOperation(TraceOperation&& operation);
+	/**
+	 * @brief Adds an operation index to this block
+	 * @param operationIndex Index into ExecutionTrace::operations vector
+	 * @return operation_identifier The identifier for the added operation
+	 */
+	operation_identifier addOperation(uint32_t operationIndex);
 
 	/**
 	 * @brief Adds a argument to the block
@@ -53,9 +58,13 @@ public:
 	std::vector<TypedValueRef> arguments;
 
 	/**
-	 * @brief Defines a list of operations this block contains.
+	 * @brief Defines a list of operation indices into ExecutionTrace::operations vector.
+	 * Changed from std::vector<TraceOperation> to std::vector<uint32_t> for:
+	 * - Simplified copy/move operations (4 bytes vs 64 bytes per operation)
+	 * - Better cache locality (operations stored contiguously in ExecutionTrace)
+	 * - Easier cross-block operation access
 	 */
-	std::vector<TraceOperation> operations;
+	std::vector<uint32_t> operations;
 
 	/**
 	 * @brief Indicates successors of this block.
