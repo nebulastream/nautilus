@@ -249,7 +249,7 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
+	val(tracing::TypedValueRef tc) : state(tc), value(false) {
 	}
 #endif
 

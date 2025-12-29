@@ -79,7 +79,7 @@ public:
 	}
 
 	/// Tracing constructor. Creates from TypedValueRef for internal use.
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	val(tracing::TypedValueRef tc) : state(tc), value() {
 	}
 #else
 	/// Default constructor. Initializes with 0.

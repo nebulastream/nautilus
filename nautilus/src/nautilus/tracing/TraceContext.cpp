@@ -51,7 +51,7 @@ void TraceContext::resume() {
 	// as it needs to persist across trace iterations
 }
 
-TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef TraceContext::registerFunctionArgument(Type type, size_t index) {
 	return state->executionTrace.setArgument(type, index);
 }
 
@@ -70,7 +70,7 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
+TypedValueRef TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
@@ -105,7 +105,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	}
 }
 
-TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef TraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
 	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		auto resultRef = state->executionTrace.getNextValueRef();
@@ -113,9 +113,8 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
-                                       const std::vector<tracing::TypedValueRef>& arguments,
-                                       const FunctionAttributes fnAttrs) {
+TypedValueRef TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                      const FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
@@ -146,7 +145,7 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
+TypedValueRef TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
 	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
 		// Dispatch to appropriate addOperationWithResult overload based on input count
 		switch (inputs.size()) {
