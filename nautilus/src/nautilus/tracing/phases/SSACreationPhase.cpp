@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
+#include <algorithm>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <unordered_map>
 

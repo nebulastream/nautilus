@@ -38,7 +38,7 @@ public:
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
+			auto ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif
@@ -511,7 +511,7 @@ public:
 		// load
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<baseType>::to_type(), ptr.state);
+			auto ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<baseType>::to_type(), ptr.state);
 			return val<baseType>(ref);
 		}
 #endif

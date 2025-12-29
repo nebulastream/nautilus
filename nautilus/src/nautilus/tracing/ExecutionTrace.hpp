@@ -3,6 +3,7 @@
 
 #include "Block.hpp"
 #include "TraceOperation.hpp"
+#include "tag/SharedHashMap.hpp"
 #include "tag/TagRecorder.hpp"
 #include <memory>
 #include <unordered_map>
@@ -28,17 +29,6 @@ public:
 	// Default move operations
 	ExecutionTrace(ExecutionTrace&&) = default;
 	ExecutionTrace& operator=(ExecutionTrace&&) = default;
-
-	/**
-	 * @brief Adds an operation with a result to the trace
-	 * @param snapshot The current execution snapshot
-	 * @param operation The operation to add
-	 * @param resultType The type of the result value
-	 * @param inputs The input operands for the operation
-	 * @return TypedValueRef& Reference to the resulting value
-	 */
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::initializer_list<InputVariant> inputs);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -122,14 +112,6 @@ public:
 	uint16_t getCurrentBlockIndex() const;
 
 	/**
-	 * @brief Adds an operation without a result to the trace
-	 * @param snapshot The current execution snapshot
-	 * @param operation The operation to add
-	 * @param inputs The input operands for the operation
-	 */
-	void addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs);
-
-	/**
 	 * @brief Returns the current block
 	 * @return Block&
 	 */
@@ -187,8 +169,7 @@ public:
 	std::vector<Block> blocks;
 	std::vector<operation_identifier> returnRefs;
 	uint16_t lastValueRef = 0;
-	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
-	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	SharedHashMap<Snapshot, operation_identifier> globalTagMap = SharedHashMap<Snapshot, operation_identifier>::create(100000);
 
 	/**
 	 * @brief Gets the next available operation identifier

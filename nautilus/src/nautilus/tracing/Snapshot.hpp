@@ -1,13 +1,14 @@
 #pragma once
 
 #include "nautilus/tracing/tag/Tag.hpp"
+#include "nautilus/tracing/tag/SharedTrie.hpp"
 #include <cinttypes>
 
 namespace nautilus::tracing {
 
 struct Snapshot {
 public:
-	Snapshot(Tag* tag, uint64_t staticValueHash);
+	Snapshot(TrieIndex tag, uint64_t staticValueHash);
 
 	Snapshot();
 
@@ -22,7 +23,7 @@ public:
 private:
 	friend std::hash<Snapshot>;
 	uint64_t staticValueHash;
-	Tag* tag;
+	TrieIndex tag;
 };
 } // namespace nautilus::tracing
 

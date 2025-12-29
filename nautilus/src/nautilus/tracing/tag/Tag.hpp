@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "Trie.hpp"
+#include "SharedTrie.hpp"
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -11,8 +11,8 @@ namespace nautilus::tracing {
 /**
  * @brief The tag address references a function on the callstack.
  */
-using TagAddress = uint64_t;
-using Tag = TrieNode<TagAddress>;
+using TagAddress = uintptr_t;
+using Tag = TrieIndex;
 
 /**
  * @brief The tag identifies a specific executed operation in the interpreter.
