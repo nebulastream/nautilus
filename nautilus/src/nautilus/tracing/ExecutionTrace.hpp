@@ -3,8 +3,6 @@
 
 #include "Block.hpp"
 #include "TraceOperation.hpp"
-#include "tag/TagRecorder.hpp"
-#include <memory>
 #include <unordered_map>
 
 namespace nautilus::tracing {
@@ -34,14 +32,19 @@ public:
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
 	 * @param resultType The type of the result value
+	 * @param inputs Optional input variants for the operation
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType);
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0);
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0,
-	                                      InputVariant input1);
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, InputVariant input0,
-	                                      InputVariant input1, InputVariant input2);
+	template <typename... Inputs>
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op operation, Type resultType, Inputs&&... inputs) {
+		uint32_t globalOpIndex =
+		    addOperationToBlock(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
+		                        std::forward<Inputs>(inputs)...);
+
+		auto operationIdentifier = getNextOperationIdentifier();
+		addTag(snapshot, operationIdentifier);
+		return operations[globalOpIndex].resultRef;
+	}
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -49,7 +52,7 @@ public:
 	 * @param inputs The input value to compare
 	 * @param probability The branch probability for this comparison
 	 */
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const float probability);
+	void addCmpOperation(Snapshot& snapshot, TypedValueRef inputs, float probability);
 
 	/**
 	 * @brief Adds an assignment operation to the trace
@@ -59,8 +62,7 @@ public:
 	 * @param resultType The type of the result
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
-	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
-	                                      Type resultType);
+	TypedValueRef& addAssignmentOperation(Snapshot&, TypedValueRef targetRef, TypedValueRef srcRef, Type resultType);
 
 	/**
 	 * @brief Adds a return operation to the trace
@@ -68,7 +70,7 @@ public:
 	 * @param type The type of the return value
 	 * @param ref The value reference being returned
 	 */
-	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+	void addReturn(Snapshot&, Type type, TypedValueRef ref);
 
 	/**
 	 * @brief Checks if a tag exists for the given snapshot
@@ -128,11 +130,12 @@ public:
 	 * @brief Adds an operation without a result to the trace
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
+	 * @param inputs Optional input variants for the operation
 	 */
-	void addOperation(Snapshot& snapshot, Op& operation);
-	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0);
-	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1);
-	void addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1, InputVariant input2);
+	template <typename... Inputs>
+	void addOperation(Snapshot& snapshot, Op operation, Inputs&&... inputs) {
+		addOperationToBlock(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::forward<Inputs>(inputs)...);
+	}
 
 	/**
 	 * @brief Returns the current block
@@ -227,6 +230,25 @@ private:
 	 * @param identifier The operation identifier to associate with the tag
 	 */
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
+
+	/**
+	 * @brief Internal helper to add an operation to the operations vector and current block
+	 * Constructs a TraceOperation in-place with perfect forwarding of arguments
+	 * @tparam Args Types of arguments to forward to TraceOperation constructor
+	 * @param args Arguments to forward to TraceOperation constructor
+	 * @return uint32_t The global operation index in the operations vector
+	 */
+	template <typename... Args>
+	uint32_t addOperationToBlock(Args&&... args) {
+		if (blocks.empty()) {
+			createBlock();
+		}
+		auto& block = getCurrentBlock();
+		uint32_t globalOpIndex = operations.size();
+		operations.emplace_back(std::forward<Args>(args)...);
+		block.addOperation(globalOpIndex);
+		return globalOpIndex;
+	}
 
 public:
 	uint16_t currentBlockIndex;

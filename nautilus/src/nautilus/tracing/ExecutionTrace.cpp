@@ -63,145 +63,23 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
+void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, TypedValueRef ref) {
 	auto op = Op::RETURN;
-	// Add operation to central storage
-	uint32_t globalOpIndex;
 	if (ref.type == Type::v) {
-		globalOpIndex = operations.size();
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v));
+		addOperationToBlock(snapshot, op, type, TypedValueRef(0, Type::v));
 	} else {
-		globalOpIndex = operations.size();
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
+		addOperationToBlock(snapshot, op, type, TypedValueRef(0, Type::v), ref);
 	}
-	// Add index to block
-	block.addOperation(globalOpIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 
 	returnRefs.emplace_back(operationIdentifier);
 }
 
-TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef,
-                                                      const TypedValueRef& srcRef, Type resultType) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
+TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, TypedValueRef targetRef, TypedValueRef srcRef,
+                                                      Type resultType) {
 	auto op = ASSIGN;
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, op, resultType, targetRef, srcRef);
-	block.addOperation(globalOpIndex);
-	auto operationIdentifier = getNextOperationIdentifier();
-	addTag(snapshot, operationIdentifier);
-	return operations[globalOpIndex].resultRef;
-}
-
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v));
-	block.addOperation(globalOpIndex);
-}
-
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0);
-	block.addOperation(globalOpIndex);
-}
-
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1);
-	block.addOperation(globalOpIndex);
-}
-
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, InputVariant input0, InputVariant input1,
-                                  InputVariant input2) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), input0, input1, input2);
-	block.addOperation(globalOpIndex);
-}
-
-TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType));
-	block.addOperation(globalOpIndex);
-
-	auto operationIdentifier = getNextOperationIdentifier();
-	addTag(snapshot, operationIdentifier);
-	return operations[globalOpIndex].resultRef;
-}
-
-TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      InputVariant input0) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0);
-	block.addOperation(globalOpIndex);
-
-	auto operationIdentifier = getNextOperationIdentifier();
-	addTag(snapshot, operationIdentifier);
-	return operations[globalOpIndex].resultRef;
-}
-
-TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      InputVariant input0, InputVariant input1) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0,
-	                        input1);
-	block.addOperation(globalOpIndex);
-
-	auto operationIdentifier = getNextOperationIdentifier();
-	addTag(snapshot, operationIdentifier);
-	return operations[globalOpIndex].resultRef;
-}
-
-TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      InputVariant input0, InputVariant input1, InputVariant input2) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
-	auto& block = blocks[currentBlockIndex];
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), input0,
-	                        input1, input2);
-	block.addOperation(globalOpIndex);
-
+	uint32_t globalOpIndex = addOperationToBlock(snapshot, op, resultType, targetRef, srcRef);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return operations[globalOpIndex].resultRef;
@@ -209,23 +87,16 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 
 // Adds a comparison operation to the execution trace
 // This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const float probability) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, TypedValueRef condition, float probability) {
 	// create if and else blocks
 	auto trueBlock = createBlock();
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
-	auto& block = blocks[currentBlockIndex];
 	auto trueBlockRefId = addBlockRef(BlockRef(trueBlock));
 	auto falseBlockRefId = addBlockRef(BlockRef(falseBlock));
-	uint32_t globalOpIndex = operations.size();
-	operations.emplace_back(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
-	                        trueBlockRefId, falseBlockRefId, probability);
-	block.addOperation(globalOpIndex);
+	addOperationToBlock(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition, trueBlockRefId,
+	                    falseBlockRefId, probability);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }

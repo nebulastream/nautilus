@@ -54,5 +54,10 @@ jobs:
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           comment-always: true
           save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Show alert with commit comment on detecting possible performance regression
+          alert-threshold: '200%'
+          comment-on-alert: false
+          summary-always: true
+          fail-on-alert: false
           gh-pages-branch: 'pages'
           max-items-in-chart: 20
