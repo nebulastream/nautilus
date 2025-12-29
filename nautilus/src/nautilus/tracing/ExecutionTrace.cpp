@@ -66,9 +66,9 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, TypedValueRef ref) {
 	auto op = Op::RETURN;
 	if (ref.type == Type::v) {
-		addOperationToBlock(snapshot, op, type, TypedValueRef(0, Type::v));
+		addOperationToBlock(snapshot, op, TypedValueRef(0, Type::v));
 	} else {
-		addOperationToBlock(snapshot, op, type, TypedValueRef(0, Type::v), ref);
+		addOperationToBlock(snapshot, op, TypedValueRef(0, type), ref);
 	}
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -79,7 +79,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, TypedValueRef ref)
 TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, TypedValueRef targetRef, TypedValueRef srcRef,
                                                       Type resultType) {
 	auto op = ASSIGN;
-	uint32_t globalOpIndex = addOperationToBlock(snapshot, op, resultType, targetRef, srcRef);
+	uint32_t globalOpIndex = addOperationToBlock(snapshot, op, TypedValueRef(targetRef.ref, resultType), srcRef);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return operations[globalOpIndex].resultRef;
@@ -95,7 +95,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, TypedValueRef condition
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto trueBlockRefId = addBlockRef(BlockRef(trueBlock));
 	auto falseBlockRefId = addBlockRef(BlockRef(falseBlock));
-	addOperationToBlock(snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition, trueBlockRefId,
+	addOperationToBlock(snapshot, CMP, TypedValueRef(getNextValueRef(), Type::v), condition, trueBlockRefId,
 	                    falseBlockRefId, probability);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -359,7 +359,7 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 					(void) probability; // Suppress unused warning
 				}
 			}
-			fmt::format_to(out, ":{}\n", toString(operation.resultType));
+			fmt::format_to(out, ":{}\n", toString(operation.getResultType()));
 		}
 	}
 	return out;

@@ -40,8 +40,8 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		} else {
 			auto snap = Snapshot();
 			uint32_t newOpIndex = trace->operations.size();
-			trace->operations.emplace_back(snap, ASSIGN, defaultReturnOp.resultType,
-			                               std::get<TypedValueRef>(defaultReturnOp.input[0]), returnValue.input[0]);
+			auto resultRef = std::get<TypedValueRef>(defaultReturnOp.input[0]);
+			trace->operations.emplace_back(snap, ASSIGN, resultRef, returnValue.input[0]);
 			returnOpBlock.operations[returnOp.operationIndex] = newOpIndex;
 		}
 		auto blockRefId = trace->addBlockRef(BlockRef(returnBlock.blockId));
@@ -106,7 +106,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
 		for (auto& input : operation.input) {
 			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 				// set op type
-				processValueRef(block, *valueRef, operation.resultType, i);
+				processValueRef(block, *valueRef, operation.getResultType(), i);
 			} else if (auto* blockRefId = std::get_if<BlockRefId>(&input)) {
 				auto& blockRef = trace->getBlockRef(*blockRefId);
 				processBlockRef(block, blockRef, i);

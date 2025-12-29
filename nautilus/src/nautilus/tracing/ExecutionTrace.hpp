@@ -37,9 +37,8 @@ public:
 	 */
 	template <typename... Inputs>
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op operation, Type resultType, Inputs&&... inputs) {
-		uint32_t globalOpIndex =
-		    addOperationToBlock(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-		                        std::forward<Inputs>(inputs)...);
+		auto resultRef = TypedValueRef(getNextValueRef(), resultType);
+		uint32_t globalOpIndex = addOperationToBlock(snapshot, operation, resultRef, std::forward<Inputs>(inputs)...);
 
 		auto operationIdentifier = getNextOperationIdentifier();
 		addTag(snapshot, operationIdentifier);
@@ -134,7 +133,7 @@ public:
 	 */
 	template <typename... Inputs>
 	void addOperation(Snapshot& snapshot, Op operation, Inputs&&... inputs) {
-		addOperationToBlock(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::forward<Inputs>(inputs)...);
+		addOperationToBlock(snapshot, operation, TypedValueRef(0, Type::v), std::forward<Inputs>(inputs)...);
 	}
 
 	/**

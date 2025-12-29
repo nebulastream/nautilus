@@ -323,7 +323,7 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType);
 	frame.setValue(resultIdentifier, loadOperation.get());
 	currentBlock->addOperation(std::move(loadOperation));
@@ -346,7 +346,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 		inputArguments.emplace_back(input);
 	}
 
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
 	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier,
@@ -361,7 +361,7 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 	auto constantId = std::get<ConstantLiteralId>(operation.input[0]);
 	auto& constant = trace->getConstantLiteral(constantId);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	Operation* constOperation;
 	std::visit(
 	    [&](auto&& value) {
@@ -387,7 +387,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.resultType);
+	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.getResultType());
 	frame.setValue(resultIdentifier, castOperation);
 }
 
