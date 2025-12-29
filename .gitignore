@@ -6,3 +6,4 @@
 .vscode/
 compile_commands.json
 Testing/
+CMakeUserPresets.json

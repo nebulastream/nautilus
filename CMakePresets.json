@@ -1,0 +1,62 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base-release",
+      "displayName": "Build Release",
+      "description": "Build Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/cmake-build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-none-local",
+        "VCPKG_HOST_TRIPLET": "x64-linux-none-local",
+        "USE_EXTERNAL_MLIR": "ON",
+        "USE_EXTERNAL_SPDLOG": "ON",
+        "USE_EXTERNAL_FMT": "ON",
+        "ENABLE_LOGGING": "OFF",
+        "ENABLE_BC_BACKEND": "OFF",
+        "ENABLE_C_BACKEND": "OFF",
+        "ENABLE_STACKTRACE": "OFF",
+        "CMAKE_LINKER_TYPE": "MOLD"
+      },
+      "environment": {
+        "LLVM_TOOLCHAIN_VERSION": "19"
+      }
+    },
+    {
+      "name": "base",
+      "displayName": "Build Debug",
+      "description": "Build Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/cmake-build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-none-local",
+        "VCPKG_HOST_TRIPLET": "x64-linux-none-local",
+        "USE_EXTERNAL_MLIR": "ON",
+        "USE_EXTERNAL_SPDLOG": "ON",
+        "USE_EXTERNAL_FMT": "ON",
+        "ENABLE_LOGGING": "ON",
+        "ENABLE_BC_BACKEND": "OFF",
+        "ENABLE_C_BACKEND": "OFF",
+        "ENABLE_STACKTRACE": "OFF",
+        "CMAKE_LINKER_TYPE": "MOLD"
+      },
+      "environment": {
+        "LLVM_TOOLCHAIN_VERSION": "19"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cmake-build-debug-general",
+      "configurePreset": "base"
+    }
+  ]
+}

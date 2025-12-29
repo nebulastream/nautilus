@@ -1,0 +1,42 @@
+{
+  "name": "nautilus",
+  "version-string": "latest",
+  "description": "nautilus",
+  "homepage": "https://github.com/nebulastream/nautilus",
+  "supports": "x64 | (arm64 & !windows)",
+  "builtin-baseline": "4334d8b4c8916018600212ab4dd4bbdc343065d1",
+  "features": {
+    "mlir": {
+      "dependencies": [
+        {
+          "name": "llvm",
+          "default-features": false,
+          "features": [
+            "mlir",
+            "target-x86",
+            "target-aarch64"
+          ]
+        }
+      ],
+      "description": "Build with mlir support"
+    }
+  },
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "spdlog"
+  ],
+  "overrides": [
+    {
+      "name": "fmt",
+      "version": "11.2.0",
+      "port-version": 0
+    }
+  ]
+}
