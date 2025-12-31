@@ -85,15 +85,16 @@ private:
 	 */
 	template <typename... Inputs>
 	static BoundedInputArray<InputVariant, 4> makeInputArray(Inputs&&... inputs) {
+		using InputArray = BoundedInputArray<InputVariant, 4>;
 		constexpr size_t count = sizeof...(Inputs);
 		static_assert(count <= 4, "TraceOperation supports at most 4 inputs");
-		std::array<InputVariant, 4> arr;
+		std::array<InputVariant, 4> arr {};
 		size_t i = 0;
 		((arr[i++] = std::forward<Inputs>(inputs)), ...);
 		while (i < 4) {
 			arr[i++] = None {};
 		}
-		return BoundedInputArray<InputVariant, 4>(std::move(arr), count);
+		return InputArray(std::move(arr), static_cast<typename InputArray::size_type>(count));
 	}
 
 public:
