@@ -63,16 +63,12 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& operations = blocks[currentBlockIndex].operations;
+void ExecutionTrace::addReturn(Snapshot& snapshot, Type type, TypedValueRef ref) {
 	auto op = Op::RETURN;
 	if (ref.type == Type::v) {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
+		addOperationToBlock(snapshot, op, TypedValueRef(0, Type::v));
 	} else {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
+		addOperationToBlock(snapshot, op, TypedValueRef(0, type), ref);
 	}
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -80,58 +76,27 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	returnRefs.emplace_back(operationIdentifier);
 }
 
-TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef,
-                                                      const TypedValueRef& srcRef, Type resultType) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& operations = blocks[currentBlockIndex].operations;
+TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, TypedValueRef targetRef, TypedValueRef srcRef,
+                                                      Type resultType) {
 	auto op = ASSIGN;
-	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	uint32_t globalOpIndex = addOperationToBlock(snapshot, op, TypedValueRef(targetRef.ref, resultType), srcRef);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return operation.resultRef;
-}
-
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
-}
-
-TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::vector<InputVariant> inputs) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   std::move(inputs));
-
-	auto operationIdentifier = getNextOperationIdentifier();
-	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return operations[globalOpIndex].resultRef;
 }
 
 // Adds a comparison operation to the execution trace
 // This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const double probability) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, TypedValueRef condition, float probability) {
 	// create if and else blocks
 	auto trueBlock = createBlock();
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
-	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(
-	    snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
-	    std::vector<InputVariant> {condition, BlockRef(trueBlock), BlockRef(falseBlock), probability});
+	auto trueBlockRefId = addBlockRef(BlockRef(trueBlock));
+	auto falseBlockRefId = addBlockRef(BlockRef(falseBlock));
+	addOperationToBlock(snapshot, CMP, TypedValueRef(getNextValueRef(), Type::v), condition, trueBlockRefId,
+	                    falseBlockRefId, probability);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -142,9 +107,10 @@ void ExecutionTrace::nextOperation() {
 	if (currentOperationIndex >= block.operations.size()) {
 		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	auto& currentOp = block.operations[currentOperationIndex];
+	auto& currentOp = getOperation(currentBlockIndex, currentOperationIndex);
 	if (currentOp.op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
+		auto blockRefId = std::get<BlockRefId>(currentOp.input[0]);
+		auto& nextBlock = getBlockRef(blockRefId);
 		setCurrentBlock(nextBlock.block);
 	}
 }
@@ -154,8 +120,10 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 	if (currentOperationIndex >= block.operations.size()) {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	while (block.operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(block.operations[currentOperationIndex].input[0]);
+	while (getOperation(currentBlockIndex, currentOperationIndex).op == JMP) {
+		auto& currentOp = getOperation(currentBlockIndex, currentOperationIndex);
+		auto blockRefId = std::get<BlockRefId>(currentOp.input[0]);
+		auto& nextBlock = getBlockRef(blockRefId);
 		setCurrentBlock(nextBlock.block);
 		block = getCurrentBlock();
 		if (currentOperationIndex >= block.operations.size()) {
@@ -163,7 +131,7 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 			                       std::to_string(currentOperationIndex));
 		}
 	}
-	return block.operations[currentOperationIndex];
+	return getOperation(currentBlockIndex, currentOperationIndex);
 }
 
 uint16_t ExecutionTrace::createBlock() {
@@ -186,14 +154,15 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
-	// 1. move operation to new block
+	// 1. move operation indices to new block
 	// move everything from the reference block between opId and end to merge block
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
-		auto& sourceOperation = referenceBlock.operations[opIndex];
-		// Save values needed after move
+		auto globalOpIndex = referenceBlock.operations[opIndex];
+		auto& sourceOperation = operations[globalOpIndex];
+		// Save values needed for tag map updates
 		auto opType = sourceOperation.op;
 		auto opTag = sourceOperation.tag;
-		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));
+		auto operationReference = mergeBlock.addOperation(globalOpIndex);
 		// update in global and local tag map
 
 		if (opType == RETURN) {
@@ -213,22 +182,29 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	                                referenceBlock.operations.end());
 
 	// add jump from referenced block to merge block
-	auto mergeBlockRef = BlockRef(mergedBlockId);
-	referenceBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	auto referenceBlockRefId = addBlockRef(BlockRef(mergedBlockId));
+	uint32_t jmpOp1 = operations.size();
+	operations.emplace_back(Op::JMP, referenceBlockRefId);
+	referenceBlock.addOperation(jmpOp1);
 
 	// add jump from current block to merge block
-	currentBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	auto currentBlockRefId = addBlockRef(BlockRef(mergedBlockId));
+	uint32_t jmpOp2 = operations.size();
+	operations.emplace_back(Op::JMP, currentBlockRefId);
+	currentBlock.addOperation(jmpOp2);
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
 	setCurrentBlock(mergedBlockId);
 
 	// update predecessors of merge merge block
-	auto& lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
+	uint32_t lastMergeOpIndex = mergeBlock.operations[mergeBlock.operations.size() - 1];
+	auto& lastMergeOperation = operations[lastMergeOpIndex];
 	if (lastMergeOperation.op == Op::CMP || lastMergeOperation.op == Op::JMP) {
 		for (auto& input : lastMergeOperation.input) {
-			if (auto blockRef = std::get_if<BlockRef>(&input)) {
-				auto& blockPredecessor = getBlock(blockRef->block).predecessors;
+			if (auto blockRefId = std::get_if<BlockRefId>(&input)) {
+
+				auto& blockPredecessor = getBlock(getBlockRef(*blockRefId).block).predecessors;
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), oi.blockIndex, mergedBlockId);
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), currentBlockIndex, mergedBlockId);
 			}
@@ -278,6 +254,22 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	localTagMap[snapshot] = identifier;
 }
 
+TraceOperation& ExecutionTrace::getOperation(uint16_t blockIndex, uint16_t operationIndex) {
+	auto& block = getBlock(blockIndex);
+	if (operationIndex >= block.operations.size()) {
+		throw RuntimeException("Operation index out of bounds: " + std::to_string(operationIndex));
+	}
+	uint32_t globalOperationIndex = block.operations[operationIndex];
+	if (globalOperationIndex >= operations.size()) {
+		throw RuntimeException("Global operation index out of bounds: " + std::to_string(globalOperationIndex));
+	}
+	return operations[globalOperationIndex];
+}
+
+TraceOperation& ExecutionTrace::getOperation(const operation_identifier& identifier) {
+	return getOperation(identifier.blockIndex, identifier.operationIndex);
+}
+
 } // namespace nautilus::tracing
 
 std::string nautilus::tracing::ExecutionTrace::toString() const {
@@ -285,51 +277,8 @@ std::string nautilus::tracing::ExecutionTrace::toString() const {
 }
 
 namespace fmt {
-template <>
-struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
-};
 
-template <>
-struct formatter<nautilus::tracing::Block> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::Block& trace, format_context& ctx) -> format_context::iterator;
-};
-
-template <>
-struct formatter<nautilus::tracing::TraceOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TraceOperation& trace, format_context& ctx) -> format_context::iterator;
-};
-
-auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracing::ExecutionTrace& trace,
-                                                          fmt::format_context& ctx) -> format_context::iterator {
-	auto out = ctx.out();
-	for (size_t i = 0; i < trace.blocks.size(); i++) {
-		fmt::format_to(out, "B{}{}", i, trace.blocks[i]);
-	}
-	return out;
-}
-
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
-                                                 format_context& ctx) -> format_context::iterator {
-	auto out = ctx.out();
-	fmt::format_to(out, "(");
-	for (size_t i = 0; i < block.arguments.size(); i++) {
-		if (i != 0) {
-			fmt::format_to(out, ",");
-		}
-		fmt::format_to(out, "${}:{}", block.arguments[i].ref, toString(block.arguments[i].type));
-	}
-	fmt::format_to(out, ")");
-	if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
-		fmt::format_to(out, " ControlFlowMerge");
-	}
-	fmt::format_to(out, "\n");
-	for (const auto& operation : block.operations) {
-		fmt::format_to(out, "{}\n", operation);
-	}
-	return out;
-}
-
+// Forward declare formatters needed by ExecutionTrace formatter
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
@@ -341,64 +290,78 @@ struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view>
 };
 
 template <>
-struct formatter<nautilus::tracing::BlockRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::BlockRef& ref, format_context& ctx) -> format_context::iterator {
-		auto out = ctx.out();
-		fmt::format_to(out, "B{}(", ref.block);
-		for (size_t i = 0; i < ref.arguments.size(); i++) {
-			if (i != 0) {
-				fmt::format_to(out, ",");
-			}
-			fmt::format_to(out, "{}", ref.arguments[i]);
-		}
-		fmt::format_to(out, ")");
-		return out;
-	}
-};
-
-template <>
-struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
-		auto out = ctx.out();
-		if (nautilus::log::options::getLogAddresses()) {
-			fmt::format_to(out, "{}(", call.functionName);
-		} else {
-			fmt::format_to(out, "func_*(");
-		}
-
-		for (size_t i = 0; i < call.arguments.size(); i++) {
-			if (i != 0) {
-				fmt::format_to(out, ",");
-			}
-			fmt::format_to(out, "{}", call.arguments[i]);
-		}
-		fmt::format_to(out, ")");
-		return out;
-	}
-};
-
-template <>
 struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 	auto format(nautilus::ConstantLiteral c, format_context& ctx) const -> format_context::iterator;
 };
 
-auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracing::TraceOperation& operation,
-                                                          format_context& ctx) -> format_context::iterator {
+template <>
+struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+};
+
+auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracing::ExecutionTrace& trace,
+                                                          fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
-	fmt::format_to(out, "\t{}\t", toString(operation.op));
-	fmt::format_to(out, "{}\t", operation.resultRef);
-	for (const auto& opInput : operation.input) {
-		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
-			fmt::format_to(out, "{}\t", *inputRef);
-		} else if (auto blockRef = std::get_if<nautilus::tracing::BlockRef>(&opInput)) {
-			fmt::format_to(out, "{}\t", *blockRef);
-		} else if (auto fCall = std::get_if<nautilus::tracing::FunctionCall>(&opInput)) {
-			fmt::format_to(out, "{}\t", *fCall);
-		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
-			fmt::format_to(out, "{}", *constant);
+	for (size_t i = 0; i < trace.blocks.size(); i++) {
+		fmt::format_to(out, "B{}", i);
+		// Format block with access to trace for lookups
+		const auto& block = trace.blocks[i];
+		fmt::format_to(out, "(");
+		for (size_t j = 0; j < block.arguments.size(); j++) {
+			if (j != 0) {
+				fmt::format_to(out, ",");
+			}
+			fmt::format_to(out, "${}:{}", block.arguments[j].ref, toString(block.arguments[j].type));
+		}
+		fmt::format_to(out, ")");
+		if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
+			fmt::format_to(out, " ControlFlowMerge");
+		}
+		fmt::format_to(out, "\n");
+		for (const auto& opIndex : block.operations) {
+			// Format operation with access to trace - opIndex is now uint32_t
+			const auto& operation = trace.operations[opIndex];
+			fmt::format_to(out, "\t{}\t", toString(operation.op));
+			fmt::format_to(out, "{}\t", operation.resultRef);
+			for (const auto& opInput : operation.input) {
+				if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
+					fmt::format_to(out, "{}\t", *inputRef);
+				} else if (auto blockRefId = std::get_if<nautilus::tracing::BlockRefId>(&opInput)) {
+					const auto& blockRef = trace.blockRefs[blockRefId->id];
+					fmt::format_to(out, "B{}(", blockRef.block);
+					for (size_t k = 0; k < blockRef.arguments.size(); k++) {
+						if (k != 0) {
+							fmt::format_to(out, ",");
+						}
+						fmt::format_to(out, "{}", blockRef.arguments[k]);
+					}
+					fmt::format_to(out, ")\t");
+				} else if (auto constantId = std::get_if<nautilus::tracing::ConstantLiteralId>(&opInput)) {
+					auto& constant = trace.constantLiterals[constantId->id];
+					fmt::format_to(out, "{}", constant);
+				} else if (auto functionCallId = std::get_if<nautilus::tracing::FunctionCallId>(&opInput)) {
+					const auto& functionCall = trace.functionCalls[functionCallId->id];
+
+					if (nautilus::log::options::getLogAddresses()) {
+						fmt::format_to(out, "{}(", functionCall.functionName);
+					} else {
+						fmt::format_to(out, "func_*(");
+					}
+					for (size_t k = 0; k < functionCall.arguments.size(); k++) {
+						if (k != 0) {
+							fmt::format_to(out, ",");
+						}
+						fmt::format_to(out, "{}", functionCall.arguments[k]);
+					}
+					fmt::format_to(out, ")\t");
+				} else if (auto probability = std::get_if<nautilus::tracing::BranchProbability>(&opInput)) {
+					// Branch probability is typically not printed in trace format
+					(void) probability; // Suppress unused warning
+				}
+			}
+			fmt::format_to(out, ":{}\n", toString(operation.getResultType()));
 		}
 	}
-	fmt::format_to(out, ":{}", toString(operation.resultType));
 	return out;
 }
 

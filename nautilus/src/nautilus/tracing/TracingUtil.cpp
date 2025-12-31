@@ -6,29 +6,29 @@
 #include <iostream>
 namespace nautilus::tracing {
 
-void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
+void traceAssignment(TypedValueRef target, TypedValueRef source, Type resultType) {
 	if (auto* ctx = TraceContext::get()) {
 		ctx->traceAssignment(target, source, resultType);
 	}
 }
 
-void traceValueDestruction(const TypedValueRef& target) {
+void traceValueDestruction(TypedValueRef target) {
 	TraceContext::get()->traceValueDestruction(target);
 }
 
-void traceReturnOperation(Type type, const TypedValueRef& ref) {
+void traceReturnOperation(Type type, TypedValueRef ref) {
 	TraceContext::get()->traceReturnOperation(type, ref);
 }
 
-TypedValueRef& registerFunctionArgument(Type type, size_t index) {
+TypedValueRef registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
+TypedValueRef traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
-bool traceBool(const TypedValueRef& state, const double probability) {
+bool traceBool(TypedValueRef state, double probability) {
 	return TraceContext::get()->traceCmp(state, probability);
 }
 
@@ -43,7 +43,7 @@ void freeValRef(ValueRef ref) {
 	}
 }
 
-TypedValueRef traceCopy(const TypedValueRef& state) {
+TypedValueRef traceCopy(TypedValueRef state) {
 	if (auto* ctx = TraceContext::get()) {
 		return ctx->traceCopy(state);
 	}
@@ -58,21 +58,21 @@ TraceContext* getTracerIfActive() {
 	return TraceContext::get();
 }
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
+TypedValueRef traceBinaryOp(Op operation, Type resultType, TypedValueRef left, TypedValueRef right) {
 	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
 }
 
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         const FunctionAttributes fnAttrs) {
+TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                        FunctionAttributes fnAttrs) {
 	return TraceContext::get()->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
+TypedValueRef traceUnaryOp(Op operation, Type resultType, TypedValueRef input) {
 	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }
 
-TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
-                              const TypedValueRef& third) {
+TypedValueRef traceTernaryOp(Op operation, Type resultType, TypedValueRef first, TypedValueRef second,
+                             TypedValueRef third) {
 	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
 }
 

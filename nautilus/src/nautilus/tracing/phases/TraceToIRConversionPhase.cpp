@@ -68,7 +68,8 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 	auto irBasicBlockPtr = irBasicBlock.get();
 
 	blockMap[block.blockId] = irBasicBlockPtr;
-	for (auto& operation : block.operations) {
+	for (auto& opIndex : block.operations) {
+		auto& operation = trace->operations[opIndex];
 		processOperation(blockFrame, block, irBasicBlockPtr, operation);
 	}
 	return irBasicBlockPtr;
@@ -237,7 +238,8 @@ void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(Value
 
 void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame, BasicBlock* block,
                                                                TraceOperation& operation) {
-	auto blockRef = get<BlockRef>(operation.input[0]);
+	auto blockRefId = get<BlockRefId>(operation.input[0]);
+	auto& blockRef = trace->getBlockRef(blockRefId);
 	BasicBlockInvocation blockInvocation;
 	createBlockArguments(frame, blockInvocation, blockRef);
 
@@ -256,8 +258,10 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
                                                                TraceOperation& operation) {
 	assert(operation.input.size() == 4);
 	auto valueRef = get<TypedValueRef>(operation.input[0]);
-	auto trueCaseBlockRef = get<BlockRef>(operation.input[1]);
-	auto falseCaseBlockRef = get<BlockRef>(operation.input[2]);
+	auto trueCaseBlockRefId = get<BlockRefId>(operation.input[1]);
+	auto& trueCaseBlockRef = trace->getBlockRef(trueCaseBlockRefId);
+	auto falseCaseBlockRefId = get<BlockRefId>(operation.input[2]);
+	auto& falseCaseBlockRef = trace->getBlockRef(falseCaseBlockRefId);
 	auto probability = get<BranchProbability>(operation.input[3]);
 
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
@@ -319,7 +323,7 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType);
 	frame.setValue(resultIdentifier, loadOperation.get());
 	currentBlock->addOperation(std::move(loadOperation));
@@ -334,14 +338,15 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& fra
 
 void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
                                                                 TraceOperation& operation) {
-	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	auto functionCallId = std::get<FunctionCallId>(operation.input[0]);
+	auto& functionCallTarget = trace->getFunctionCall(functionCallId);
 	auto inputArguments = std::vector<Operation*> {};
 	for (auto& argument : functionCallTarget.arguments) {
 		auto input = frame.getValue(createValueIdentifier(argument));
 		inputArguments.emplace_back(input);
 	}
 
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
 	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier,
@@ -353,9 +358,10 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,
                                                                  TraceOperation& operation) {
-	auto constant = std::get<ConstantLiteral>(operation.input[0]);
+	auto constantId = std::get<ConstantLiteralId>(operation.input[0]);
+	auto& constant = trace->getConstantLiteral(constantId);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto resultType = operation.resultType;
+	auto resultType = operation.getResultType();
 	Operation* constOperation;
 	std::visit(
 	    [&](auto&& value) {
@@ -381,7 +387,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.resultType);
+	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.getResultType());
 	frame.setValue(resultIdentifier, castOperation);
 }
 

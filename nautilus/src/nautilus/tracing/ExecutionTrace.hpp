@@ -3,8 +3,6 @@
 
 #include "Block.hpp"
 #include "TraceOperation.hpp"
-#include "tag/TagRecorder.hpp"
-#include <memory>
 #include <unordered_map>
 
 namespace nautilus::tracing {
@@ -34,11 +32,18 @@ public:
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
 	 * @param resultType The type of the result value
-	 * @param inputs The input operands for the operation
+	 * @param inputs Optional input variants for the operation
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
-	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::vector<InputVariant> inputs);
+	template <typename... Inputs>
+	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op operation, Type resultType, Inputs&&... inputs) {
+		auto resultRef = TypedValueRef(getNextValueRef(), resultType);
+		uint32_t globalOpIndex = addOperationToBlock(snapshot, operation, resultRef, std::forward<Inputs>(inputs)...);
+
+		auto operationIdentifier = getNextOperationIdentifier();
+		addTag(snapshot, operationIdentifier);
+		return operations[globalOpIndex].resultRef;
+	}
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -46,7 +51,7 @@ public:
 	 * @param inputs The input value to compare
 	 * @param probability The branch probability for this comparison
 	 */
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability);
+	void addCmpOperation(Snapshot& snapshot, TypedValueRef inputs, float probability);
 
 	/**
 	 * @brief Adds an assignment operation to the trace
@@ -56,8 +61,7 @@ public:
 	 * @param resultType The type of the result
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
-	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
-	                                      Type resultType);
+	TypedValueRef& addAssignmentOperation(Snapshot&, TypedValueRef targetRef, TypedValueRef srcRef, Type resultType);
 
 	/**
 	 * @brief Adds a return operation to the trace
@@ -65,7 +69,7 @@ public:
 	 * @param type The type of the return value
 	 * @param ref The value reference being returned
 	 */
-	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+	void addReturn(Snapshot&, Type type, TypedValueRef ref);
 
 	/**
 	 * @brief Checks if a tag exists for the given snapshot
@@ -125,15 +129,33 @@ public:
 	 * @brief Adds an operation without a result to the trace
 	 * @param snapshot The current execution snapshot
 	 * @param operation The operation to add
-	 * @param inputs The input operands for the operation
+	 * @param inputs Optional input variants for the operation
 	 */
-	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs);
+	template <typename... Inputs>
+	void addOperation(Snapshot& snapshot, Op operation, Inputs&&... inputs) {
+		addOperationToBlock(snapshot, operation, TypedValueRef(0, Type::v), std::forward<Inputs>(inputs)...);
+	}
 
 	/**
 	 * @brief Returns the current block
 	 * @return Block&
 	 */
 	Block& getCurrentBlock();
+
+	/**
+	 * @brief Gets an operation by its block and operation index
+	 * @param blockIndex The block index
+	 * @param operationIndex The operation index within the block
+	 * @return TraceOperation& Reference to the operation
+	 */
+	TraceOperation& getOperation(uint16_t blockIndex, uint16_t operationIndex);
+
+	/**
+	 * @brief Gets an operation by its identifier
+	 * @param identifier The operation identifier
+	 * @return TraceOperation& Reference to the operation
+	 */
+	TraceOperation& getOperation(const operation_identifier& identifier);
 
 	/**
 	 * @brief Returns the current operation being traced
@@ -173,6 +195,33 @@ public:
 	 */
 	uint16_t getNextValueRef();
 
+	FunctionCall& getFunctionCall(FunctionCallId index) {
+		return functionCalls[index.id];
+	}
+
+	FunctionCallId addFunctionCall(FunctionCall&& functionCall) {
+		functionCalls.push_back(std::move(functionCall));
+		return FunctionCallId(static_cast<uint32_t>(functionCalls.size() - 1));
+	}
+
+	BlockRef& getBlockRef(BlockRefId index) {
+		return blockRefs[index.id];
+	}
+
+	BlockRefId addBlockRef(BlockRef&& blockRef) {
+		blockRefs.push_back(std::move(blockRef));
+		return BlockRefId(static_cast<uint32_t>(blockRefs.size() - 1));
+	}
+
+	ConstantLiteral& getConstantLiteral(ConstantLiteralId index) {
+		return constantLiterals[index.id];
+	}
+
+	ConstantLiteralId addConstantLiteral(ConstantLiteral&& constantLiteral) {
+		constantLiterals.push_back(std::move(constantLiteral));
+		return ConstantLiteralId(static_cast<uint32_t>(constantLiterals.size() - 1));
+	}
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -181,14 +230,47 @@ private:
 	 */
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
 
+	/**
+	 * @brief Internal helper to add an operation to the operations vector and current block
+	 * Constructs a TraceOperation in-place with perfect forwarding of arguments
+	 * @tparam Args Types of arguments to forward to TraceOperation constructor
+	 * @param args Arguments to forward to TraceOperation constructor
+	 * @return uint32_t The global operation index in the operations vector
+	 */
+	template <typename... Args>
+	uint32_t addOperationToBlock(Args&&... args) {
+		if (blocks.empty()) {
+			createBlock();
+		}
+		auto& block = getCurrentBlock();
+		uint32_t globalOpIndex = operations.size();
+		operations.emplace_back(std::forward<Args>(args)...);
+		block.addOperation(globalOpIndex);
+		return globalOpIndex;
+	}
+
 public:
 	uint16_t currentBlockIndex;
 	uint16_t currentOperationIndex;
 	std::vector<Block> blocks;
+
+	/**
+	 * @brief Central storage for all operations across all blocks.
+	 * Blocks reference operations via indices into this vector.
+	 * This design enables:
+	 * - Efficient copy/move of blocks (only copying indices, not full operations)
+	 * - Better cache locality (all operations in contiguous memory)
+	 * - Simpler cross-block operation access
+	 */
+	std::vector<TraceOperation> operations;
+
 	std::vector<operation_identifier> returnRefs;
 	uint16_t lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	std::vector<FunctionCall> functionCalls;
+	std::vector<BlockRef> blockRefs;
+	std::vector<ConstantLiteral> constantLiterals;
 
 	/**
 	 * @brief Gets the next available operation identifier

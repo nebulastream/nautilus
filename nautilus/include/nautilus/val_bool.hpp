@@ -25,7 +25,7 @@ namespace nautilus {
 /// # Performance Impact
 /// Accurate probability hints can significantly improve code generation quality
 /// and reduce branch misprediction penalties in the generated machine code.
-using TrueProbability = double;
+using TrueProbability = float;
 
 /// Specialization of val<T> for boolean values with probability tracking.
 ///
@@ -249,7 +249,7 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
+	val(tracing::TypedValueRef tc) : state(tc), value(false) {
 	}
 #endif
 

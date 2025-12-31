@@ -159,7 +159,7 @@ public:
 
 	static bool shouldTrace();
 
-	TypedValueRef& registerFunctionArgument(Type type, size_t index);
+	TypedValueRef registerFunctionArgument(Type type, size_t index);
 
 	void traceValueDestruction(TypedValueRef target);
 
@@ -168,9 +168,9 @@ public:
 	 * @param valueReference reference to the const value.
 	 * @param constValue constant value.
 	 */
-	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue);
+	TypedValueRef traceConstValue(Type type, const ConstantLiteral& constValue);
 
-	TypedValueRef& traceCopy(const TypedValueRef& ref);
+	TypedValueRef traceCopy(const TypedValueRef& ref);
 
 	/**
 	 * @brief Trace a unary operation, e.g., negate.
@@ -178,7 +178,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
+	TypedValueRef traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
 
 	/**
 	 * @brief Trace the return function.
@@ -193,8 +193,8 @@ public:
 	 */
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs);
+	TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                        FunctionAttributes fnAttrs);
 
 	bool traceCmp(const TypedValueRef& targetRef, double probability);
 

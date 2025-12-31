@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <fmt/format.h>
 #include <sstream>
+#include <stdexcept>
 
 namespace fmt {
 template <>
@@ -50,7 +51,7 @@ void TraceContext::resume() {
 	// as it needs to persist across trace iterations
 }
 
-TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef TraceContext::registerFunctionArgument(Type type, size_t index) {
 	return state->executionTrace.setArgument(type, index);
 }
 
@@ -69,7 +70,7 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
+TypedValueRef TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
@@ -77,14 +78,15 @@ TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& c
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
+	auto constId = state->executionTrace.addConstantLiteral(ConstantLiteral(constValue));
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto& originalRef = state->executionTrace.getOperation(ref);
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, constId);
 		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
 		return originalRef.resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		return state->executionTrace.addOperationWithResult(tag, op, type, constId);
 	}
 }
 
@@ -103,7 +105,7 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	}
 }
 
-TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef TraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
 	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		auto resultRef = state->executionTrace.getNextValueRef();
@@ -111,9 +113,8 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
-                                       const std::vector<tracing::TypedValueRef>& arguments,
-                                       const FunctionAttributes fnAttrs) {
+TypedValueRef TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                      const FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
@@ -123,7 +124,9 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 		                                       .ptr = fptn,
 		                                       .arguments = arguments,
 		                                       .fnAttrs = fnAttrs};
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+
+		auto id = state->executionTrace.addFunctionCall(std::move(functionArguments));
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, id);
 	});
 }
 
@@ -142,9 +145,21 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
+TypedValueRef TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
 	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
+		// Dispatch to appropriate addOperationWithResult overload based on input count
+		switch (inputs.size()) {
+		case 0:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType);
+		case 1:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0]);
+		case 2:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0], inputs[1]);
+		case 3:
+			return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs[0], inputs[1], inputs[2]);
+		default:
+			throw std::runtime_error("Unsupported number of inputs: " + std::to_string(inputs.size()));
+		}
 	});
 }
 
@@ -171,9 +186,17 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probabi
 
 	uint16_t nextBlock;
 	if (result) {
-		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
+		if (auto* blockRefId = std::get_if<BlockRefId>(&currentOperation.input[1])) {
+			nextBlock = state->executionTrace.getBlockRef(*blockRefId).block;
+		} else {
+			throw RuntimeException("Expected BlockRefId in CMP operation input[1]");
+		}
 	} else {
-		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
+		if (auto* blockRefId = std::get_if<BlockRefId>(&currentOperation.input[2])) {
+			nextBlock = state->executionTrace.getBlockRef(*blockRefId).block;
+		} else {
+			throw RuntimeException("Expected BlockRefId in CMP operation input[2]");
+		}
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;
