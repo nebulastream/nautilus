@@ -1,10 +1,12 @@
 
 #pragma once
 
+#include "nautilus/tracing/BoundedInputArray.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
+#include <array>
 #include <nautilus/common/FunctionAttributes.hpp>
 #include <type_traits>
 #include <utility>
@@ -14,7 +16,7 @@
 namespace nautilus::tracing {
 
 class None {};
-using BranchProbability = double;
+using BranchProbability = float;
 
 /**
  * @brief Represents a function call operation in the trace.
@@ -37,26 +39,78 @@ struct FunctionCall {
 	FunctionAttributes fnAttrs;
 };
 
+struct FunctionCallId {
+	uint32_t id;
+	explicit FunctionCallId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
 struct BlockRef {
 	explicit BlockRef(uint16_t block);
 	uint16_t block;
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability>;
+struct BlockRefId {
+	uint32_t id;
+	explicit BlockRefId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
+struct ConstantLiteralId {
+	uint32_t id;
+	explicit ConstantLiteralId(uint32_t id) : id(id) {
+	}
+	operator uint32_t() const {
+		return id;
+	}
+};
+
+using InputVariant =
+    std::variant<TypedValueRef, None, ConstantLiteralId, BlockRefId, FunctionCallId, BranchProbability>;
 
 /**
  * @brief Represents an individual operation in a trace.
  */
 class TraceOperation {
 public:
-	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, std::vector<InputVariant>&& input);
-	TraceOperation(Op op, std::vector<InputVariant>&& input);
+	// Constructors with explicit input counts (0-4 inputs)
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref);
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, InputVariant input0);
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, InputVariant input0, InputVariant input1);
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, InputVariant input0, InputVariant input1,
+	               InputVariant input2);
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, InputVariant input0, InputVariant input1,
+	               InputVariant input2, InputVariant input3);
+
+	TraceOperation(Op op);
+	TraceOperation(Op op, InputVariant input0);
+	TraceOperation(Op op, InputVariant input0, InputVariant input1);
+	TraceOperation(Op op, InputVariant input0, InputVariant input1, InputVariant input2);
+	TraceOperation(Op op, InputVariant input0, InputVariant input1, InputVariant input2, InputVariant input3);
+
+	// Constructor accepting BoundedInputArray directly
+	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref,
+	               BoundedInputArray<InputVariant, 4>&& inputs);
+	TraceOperation(Op op, BoundedInputArray<InputVariant, 4>&& inputs);
+
+	// Default copy/move semantics
+	TraceOperation(const TraceOperation&) = default;
+	TraceOperation& operator=(const TraceOperation&) = default;
+	TraceOperation(TraceOperation&&) = default;
+	TraceOperation& operator=(TraceOperation&&) = default;
+
+	BoundedInputArray<InputVariant, 4> input;
 	Snapshot tag;
+	TypedValueRef resultRef;
 	Op op;
 	Type resultType;
-	TypedValueRef resultRef;
-	std::vector<InputVariant> input;
 };
 
 } // namespace nautilus::tracing
