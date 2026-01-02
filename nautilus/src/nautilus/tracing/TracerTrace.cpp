@@ -199,6 +199,7 @@ Trace::Trace() {
 	capacity = 1024 * 1024 * 1024;
 }
 Trace::~Trace() {
+	fmt::println(stderr, "Used {}/{} bytes for trace", this->view->freeMemoryOffset.offset, this->capacity);
 	[[maybe_unused]] auto result = munmap(view, capacity);
 	assert(result == 0 && "Failed to unmap memory");
 }

@@ -1,4 +1,5 @@
 #include "nautilus/tracing/Snapshot.hpp"
+#include <fmt/format.h>
 
 namespace nautilus::tracing {
 
@@ -14,6 +15,10 @@ bool Snapshot::operator==(const nautilus::tracing::Snapshot& rhs) const {
 
 bool Snapshot::operator!=(const nautilus::tracing::Snapshot& rhs) const {
 	return !(rhs == *this);
+}
+
+std::string format_as(const Snapshot& tag) {
+	return fmt::format("{}:{}", tag.tag, tag.staticValueHash);
 }
 } // namespace nautilus::tracing
 

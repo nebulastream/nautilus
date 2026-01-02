@@ -22,9 +22,12 @@ public:
 
 private:
 	friend std::hash<Snapshot>;
+	friend std::string format_as(const Snapshot&);
 	uint64_t staticValueHash = 0;
 	TrieIndex tag = 0;
 };
+
+std::string format_as(const Snapshot& tag);
 } // namespace nautilus::tracing
 
 namespace std {
