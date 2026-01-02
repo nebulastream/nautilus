@@ -4,6 +4,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
+#include <unordered_map>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -61,6 +62,7 @@ public:
 	 * @brief Indicates successors of this block.
 	 */
 	std::vector<uint16_t> predecessors;
+	std::unordered_map<ValueRef, int32_t> localValueRefPositions;
 };
 
 } // namespace nautilus::tracing

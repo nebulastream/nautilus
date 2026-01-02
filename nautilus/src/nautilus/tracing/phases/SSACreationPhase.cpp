@@ -1,5 +1,6 @@
 
 #include "fmt/core.h"
+#include <algorithm>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
@@ -40,6 +41,8 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			returnOpBlock.operations[returnOp.operationIndex] =
 			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
 			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			returnOpBlock.localValueRefPositions.try_emplace(std::get<TypedValueRef>(defaultReturnOp.input[0]).ref,
+			                                                 returnOp.operationIndex);
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
@@ -77,16 +80,11 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
                                                                 uint32_t operationIndex) {
-	// A value ref is defined in the local scope, if it is the result of an
-	// operation before the operationIndex
-	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto& resOperation = block.operations[i];
-		if (resOperation.resultRef == ref) {
-			return true;
-		}
+	if (auto it = block.localValueRefPositions.find(ref.ref); it != block.localValueRefPositions.end()) {
+		return static_cast<int64_t>(operationIndex) > it->second;
 	}
-	// check if the operation is defined in the block arguments
-	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
+	return false;
+
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
