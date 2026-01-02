@@ -13,4 +13,6 @@
 
 add_source_files(nautilus
         Tag.cpp
+        SharedHashMap.cpp
+        SharedTrie.cpp
         TagRecorder.cpp)

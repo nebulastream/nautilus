@@ -10,6 +10,10 @@
 
 namespace nautilus::tracing {
 
+// Forward declarations for allocation functions (implemented in SharedHashMap.cpp)
+void* allocateSharedHashMapMemory(size_t requiredSize);
+void releaseSharedHashMapMemory(void* memory, size_t size, pid_t creatorPid);
+
 /**
  * @brief Header for shared memory hash map.
  */
@@ -64,14 +68,15 @@ public:
 
 	/**
 	 * @brief Create a new hash map with shared memory allocation.
+	 * Uses thread-local cache to avoid repeated mmap/munmap.
 	 * @param capacity Number of slots
 	 * @return SharedHashMap instance that owns the shared memory
 	 */
 	static SharedHashMap create(size_t capacity) {
 		size_t memSize = requiredMemorySize(capacity);
 
-		void* memory = mmap(nullptr, memSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-		if (memory == MAP_FAILED) {
+		void* memory = allocateSharedHashMapMemory(memSize);
+		if (memory == MAP_FAILED || memory == nullptr) {
 			throw std::runtime_error("Failed to allocate shared memory for SharedHashMap");
 		}
 
@@ -222,8 +227,9 @@ private:
 	}
 
 	void cleanup() {
-		if (header_ != nullptr && getpid() == header_->creatorPid) {
-			munmap(header_, header_->memorySize);
+		if (header_ != nullptr) {
+			// Return memory to cache (doesn't actually free it, keeps it for reuse)
+			releaseSharedHashMapMemory(header_, header_->memorySize, header_->creatorPid);
 		}
 		header_ = nullptr;
 		entries_ = nullptr;

@@ -185,14 +185,73 @@ Trace::addOperationWithResult(Snapshot snapshot, Type resultType, Op op, std::sp
 	__builtin_unreachable();
 }
 
+// Thread-local cache for Trace allocations
+struct TraceCache {
+	void* memory = nullptr;
+	size_t size = 0;
+	pid_t creatorPid = 0;
+};
+
+static thread_local TraceCache traceCache;
+
 Trace::Trace() {
-	auto* memory = mmap(nullptr, 1024 * 1024 * 1024, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	constexpr size_t requiredSize = 1024 * 1024 * 1024;
+	void* memory = nullptr;
+
+	// Try to reuse cached memory if it's large enough
+	if (traceCache.memory != nullptr && traceCache.size >= requiredSize) {
+		memory = traceCache.memory;
+		// Mark as in-use by clearing cache
+		traceCache.memory = nullptr;
+		traceCache.size = 0;
+	} else {
+		// Free old cached memory if it exists but is too small
+		if (traceCache.memory != nullptr) {
+			munmap(traceCache.memory, traceCache.size);
+			traceCache.memory = nullptr;
+			traceCache.size = 0;
+		}
+
+		// Allocate new memory
+		memory = mmap(nullptr, requiredSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+		if (memory == MAP_FAILED) {
+			throw std::runtime_error("Failed to allocate shared memory for Trace");
+		}
+	}
+
 	view = new (memory) TraceHeader();
-	capacity = 1024 * 1024 * 1024;
+	capacity = requiredSize;
 }
+
 Trace::~Trace() {
-	[[maybe_unused]] auto result = munmap(view, capacity);
-	assert(result == 0 && "Failed to unmap memory");
+	if (view == nullptr) {
+		return;
+	}
+
+	pid_t creatorPid = getpid();
+
+	if (traceCache.creatorPid == creatorPid) {
+		// Cache this memory for reuse
+		// If we already have cached memory, free the smaller one
+		if (traceCache.memory != nullptr) {
+			if (traceCache.size >= capacity) {
+				// Keep the cached one, free this one
+				[[maybe_unused]] auto result = munmap(view, capacity);
+				assert(result == 0 && "Failed to unmap memory");
+			} else {
+				// Free the old cached one, cache this larger one
+				munmap(traceCache.memory, traceCache.size);
+				traceCache.memory = view;
+				traceCache.size = capacity;
+				traceCache.creatorPid = creatorPid;
+			}
+		} else {
+			// No cached memory, cache this one
+			traceCache.memory = view;
+			traceCache.size = capacity;
+			traceCache.creatorPid = creatorPid;
+		}
+	}
 }
 size_t getOperationSize(Op op, uint8_t argCount) {
 	size_t base = sizeof(Trace::OperationHeader);

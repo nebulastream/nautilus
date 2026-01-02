@@ -8,6 +8,10 @@
 
 namespace nautilus::tracing {
 
+// Forward declarations for allocation functions (implemented in SharedTrie.cpp)
+void* allocateSharedTrieMemory(size_t requiredSize);
+void releaseSharedTrieMemory(void* memory, size_t size, pid_t creatorPid);
+
 /**
  * @brief Exception thrown when the shared trie runs out of capacity.
  * The caller should catch this, allocate a larger shared memory region,
@@ -99,14 +103,15 @@ public:
 
 	/**
 	 * @brief Create a new trie with shared memory allocation.
+	 * Uses thread-local cache to avoid repeated mmap/munmap.
 	 * @param capacity Maximum number of nodes
 	 * @return SharedTrie instance that owns the shared memory
 	 */
 	static SharedTrie create(size_t capacity) {
 		size_t memSize = requiredMemorySize(capacity);
 
-		void* memory = mmap(nullptr, memSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-		if (memory == MAP_FAILED) {
+		void* memory = allocateSharedTrieMemory(memSize);
+		if (memory == MAP_FAILED || memory == nullptr) {
 			throw std::runtime_error("Failed to allocate shared memory for SharedTrie");
 		}
 
@@ -283,8 +288,9 @@ private:
 	}
 
 	void cleanup() {
-		if (header_ != nullptr && getpid() == header_->creatorPid) {
-			munmap(header_, header_->memorySize);
+		if (header_ != nullptr) {
+			// Return memory to cache (doesn't actually free it, keeps it for reuse)
+			releaseSharedTrieMemory(header_, header_->memorySize, header_->creatorPid);
 		}
 		header_ = nullptr;
 		nodes_ = nullptr;
