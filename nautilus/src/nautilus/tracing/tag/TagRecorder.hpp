@@ -1,7 +1,9 @@
 
 #pragma once
 
+#include "SharedTrie.hpp"
 #include "Tag.hpp"
+#include <sys/mman.h>
 
 namespace nautilus::tracing {
 
@@ -30,7 +32,7 @@ public:
 	 * instruction.
 	 * @return Tag*
 	 */
-	[[nodiscard]] inline __attribute__((always_inline)) Tag* createTag() {
+	[[nodiscard]] inline __attribute__((always_inline)) Tag createTag() {
 		return this->createReferenceTag();
 	}
 
@@ -45,14 +47,15 @@ private:
 
 	static TagVector createBaseTag();
 
-	Tag* createReferenceTag();
-	Tag* createReferenceTagBacktrace();
-	Tag* createReferenceTagBuildin();
+	TrieIndex createReferenceTag();
+	TrieIndex createReferenceTagBacktrace();
+	TrieIndex createReferenceTagBuildin();
 
 	// The start address, which is used as the start to calculate tags for sub instructions.
 	const TagAddress startAddress;
 	// The tag recorder stores the individual tags in a trie of addresses, to minimize space consumption.
-	Tag rootTagThreeNode = Tag();
+	SharedTrie<TagAddress> trie = SharedTrie<TagAddress>::create(1024 * 1024);
+	Tag rootTagThreeNode = trie.root();
 	bool useBuiltinTagCreation;
 };
 } // namespace nautilus::tracing

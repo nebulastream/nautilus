@@ -54,7 +54,7 @@ private:
 		 * @param operationIndex the operation index, which accesses the ValueRef
 		 * @return true if Value Ref is defined locally.
 		 */
-		static bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
+		bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
 
 		void processValueRef(Block& block, TypedValueRef& type, Type ref_type, uint32_t operationIndex);
 

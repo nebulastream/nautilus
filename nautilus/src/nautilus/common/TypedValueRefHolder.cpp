@@ -7,7 +7,7 @@ namespace nautilus::tracing {
 TypedValueRef::TypedValueRef() : ref(0), type(Type::v) {
 }
 
-TypedValueRef::TypedValueRef(uint16_t ref, nautilus::Type type) : ref(ref), type(type) {
+TypedValueRef::TypedValueRef(uint32_t ref, nautilus::Type type) : ref(ref), type(type) {
 }
 
 TypedValueRefHolder::operator const TypedValueRef&() const {

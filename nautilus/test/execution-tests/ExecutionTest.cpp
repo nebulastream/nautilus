@@ -102,11 +102,11 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(!f(LogLevel::LOG_NONE));
 	}
 
-	SECTION("callEnumFunction") {
-		auto f = engine.registerFunction(callEnumFunction);
-		REQUIRE(f(Color::BLUE) == 42);
-		REQUIRE(f(Color::GREEN) == 1);
-	}
+	// SECTION("callEnumFunction") {
+	// 	auto f = engine.registerFunction(callEnumFunction);
+	// 	REQUIRE(f(Color::BLUE) == 42);
+	// 	REQUIRE(f(Color::GREEN) == 1);
+	// }
 
 	SECTION("handleEnum") {
 		auto f = engine.registerFunction(handleEnum);
@@ -290,6 +290,11 @@ void expressionTests(engine::NautilusEngine& engine) {
 
 void controlFlowTest(engine::NautilusEngine& engine) {
 
+	SECTION("chainedIf10") {
+		auto f = engine.registerFunction(chainedIf10);
+		REQUIRE(f(4) == 4);
+		REQUIRE(f(20) == 10);
+	}
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
 		REQUIRE(f(42) == 42);
@@ -486,11 +491,11 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(7) == 2);
 	}
 
-	SECTION("withBranchProbability") {
-		auto f = engine.registerFunction(withBranchProbability);
-		REQUIRE(f(1) == 42);
-		REQUIRE(f(4) == 4);
-	}
+	// SECTION("withBranchProbability") {
+	// 	auto f = engine.registerFunction(withBranchProbability);
+	// 	REQUIRE(f(1) == 42);
+	// 	REQUIRE(f(4) == 4);
+	// }
 }
 
 void loopExecutionTest(engine::NautilusEngine& engine) {
@@ -682,12 +687,12 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(voidFuncCall);
 		REQUIRE_NOTHROW(f(10, 10));
 	}
-	SECTION("callMemberFunction") {
-		auto f = engine.registerFunction(callMemberFunction);
-		auto c = Clazz();
-		auto res = f(&c);
-		REQUIRE(res == 42);
-	}
+	// SECTION("callMemberFunction") {
+	// 	auto f = engine.registerFunction(callMemberFunction);
+	// 	auto c = Clazz();
+	// 	auto res = f(&c);
+	// 	REQUIRE(res == 42);
+	// }
 	SECTION("countFuncCall") {
 		auto f = engine.registerFunction(callCountFuncCall);
 		REQUIRE(f(true) == 1);

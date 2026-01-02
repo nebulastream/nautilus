@@ -23,15 +23,15 @@ bool inTracer();
 // This can be cached locally to avoid repeated thread-local access
 TraceContext* getTracerIfActive();
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
-                             const TypedValueRef& rightState);
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
-TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& firstState,
-                              const TypedValueRef& secondState, const TypedValueRef& thirdState);
+TypedValueRef traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
+                            const TypedValueRef& rightState);
+TypedValueRef traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
+TypedValueRef traceTernaryOp(Op operation, Type resultType, const TypedValueRef& firstState,
+                             const TypedValueRef& secondState, const TypedValueRef& thirdState);
 
 // Traces a boolean value with an associated probability
 bool traceBool(const TypedValueRef& state, double probability);
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
+TypedValueRef traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
 	if (inTracer()) {
@@ -43,13 +43,14 @@ TypedValueRef traceConstant(T&& value) {
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& state);
 
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs);
+TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                        FunctionAttributes fnAttrs);
 
-TypedValueRef& registerFunctionArgument(Type type, size_t index);
+TypedValueRef registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
 void traceValueDestruction(TypedValueRef ref);
+void suggestInvertedBranch();
 
 void pushStaticVal(void* ptr);
 void popStaticVal();

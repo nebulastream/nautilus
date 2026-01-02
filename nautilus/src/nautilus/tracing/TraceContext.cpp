@@ -1,14 +1,69 @@
 
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
-#include "symbolic_execution/SymbolicExecutionContext.hpp"
-#include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
 #include <cxxabi.h>
 #include <dlfcn.h>
+#include <fmt/chrono.h>
+#include <fmt/core.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
+#include <ranges>
 #include <sstream>
+#include <sys/wait.h>
+
+// #define TRACER_LOG(msg, ...) fmt::println(stderr, "[TRACER {}] " msg, getpid() __VA_OPT__(, ) __VA_ARGS__)
+#define TRACER_LOG(msg, ...)
+
+enum class ForkRole { CHILD, PARENT };
+static thread_local std::vector<std::pair<pid_t, int>> pendingForks;
+static thread_local size_t currentForkDepth = 0;
+static thread_local bool invertNextFork = false;
+
+[[noreturn]] void exitChild() {
+	for (auto [pid, pipe] : pendingForks) {
+		write(pipe, "A", 1);
+		int status;
+		waitpid(pid, &status, 0);
+		assert(status == 0);
+	}
+
+	TRACER_LOG("EXIT");
+	// Shared memory is automatically visible to parent - no need to serialize
+	_exit(0);
+}
+
+ForkRole forkExecution(nautilus::tracing::Trace& trace) {
+	int sync_pipe[2];
+	pipe(sync_pipe);
+
+	int pid = fork();
+	if (pid == 0) {
+		assert(trace.globalTagMap.header->magic == 0xDEADBEEF);
+		close(sync_pipe[1]);
+		char buf;
+		read(sync_pipe[0], &buf, 1);
+		pendingForks.clear();
+
+		// Increment fork depth in child process
+		currentForkDepth++;
+
+		// Update max fork depth in shared trace header (atomic update to handle races)
+		if (currentForkDepth > trace.view->maxForkDepth) {
+			trace.view->maxForkDepth = currentForkDepth;
+		}
+
+		TRACER_LOG("Child at depth {}", currentForkDepth);
+		return ForkRole::CHILD;
+	} else {
+		TRACER_LOG("WAITING");
+		close(sync_pipe[0]);
+		pendingForks.emplace_back(pid, sync_pipe[1]);
+		return ForkRole::PARENT;
+	}
+}
 
 namespace fmt {
 template <>
@@ -23,8 +78,8 @@ namespace nautilus::tracing {
 // This is allocated in thread-local storage - zero heap allocation overhead
 static thread_local TraceContext traceContext;
 
-TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
+TraceState::TraceState(TagRecorder& tr, Trace& tt, const engine::Options& opts)
+    : tagRecorder(tr), executionTrace(tt), options(opts) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
@@ -32,10 +87,8 @@ TraceContext* TraceContext::get() {
 	return traceContext.state ? &traceContext : nullptr;
 }
 
-TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                       SymbolicExecutionContext& symbolicExecutionContext,
-                                       const engine::Options& options) {
-	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, Trace& tracerTrace, const engine::Options& options) {
+	traceContext.state = std::make_unique<TraceState>(tagRecorder, tracerTrace, options);
 	return &traceContext;
 }
 
@@ -50,133 +103,116 @@ void TraceContext::resume() {
 	// as it needs to persist across trace iterations
 }
 
-TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
-	return state->executionTrace.setArgument(type, index);
+TypedValueRef TraceContext::registerFunctionArgument(Type type, size_t) {
+	return state->executionTrace.addArgument(type);
 }
 
 void TraceContext::traceValueDestruction(nautilus::tracing::TypedValueRef) {
 	// currently yed not implemented
 }
 
-bool TraceContext::isFollowing() {
-	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
-}
-
-TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
-	auto& currentOperation = state->executionTrace.getCurrentOperation();
-	state->executionTrace.nextOperation();
-	assert(currentOperation.op == op);
-	return currentOperation.resultRef;
-}
-
-TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
+TypedValueRef TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
-	auto op = Op::CONST;
-	if (isFollowing()) {
-		return follow(op);
-	}
 	auto tag = recordSnapshot();
-	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
-	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
-		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
-		return originalRef.resultRef;
+	if (auto ref = state->executionTrace.globalTagMap.get(tag)) {
+		auto originalOp = state->executionTrace.getOperation(*ref);
+		auto [resultRef, _] = state->executionTrace.addConstOperation(tag, type, constValue);
+		state->executionTrace.addAssignmentOperation(tag, originalOp.getResultRef(), resultRef);
+		return originalOp.getResultRef();
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto [result, oi] = state->executionTrace.addConstOperation(tag, type, constValue);
+		state->executionTrace.globalTagMap.insert(tag, oi);
+		return result;
 	}
 }
 
 template <typename OnCreation>
-TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
-	if (isFollowing()) {
-		return follow(op);
+TypedValueRef TraceContext::traceOperation([[maybe_unused]] Op op, OnCreation&& onCreation) {
+	auto tag = recordSnapshot();
+	if (state->executionTrace.checkTag(tag)) {
+		auto [result, oi] = onCreation(tag);
+		state->executionTrace.globalTagMap.insert(tag, oi);
+		return result;
 	} else {
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return onCreation(tag);
-		} else {
-			// TODO find a way to handle this more graceful.
-			throw TraceTerminationException();
-		}
+		exitChild();
 	}
 }
 
-TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef TraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = state->executionTrace.getNextValueRef();
-		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+	return traceOperation(ASSIGN,
+	                      [&](Snapshot& tag) { return state->executionTrace.addAssignmentOperation(tag, ref); });
+}
+
+TypedValueRef TraceContext::traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                      const FunctionAttributes fnAttrs) {
+	return traceOperation(CALL, [&](Snapshot& tag) {
+		return state->executionTrace.addCallOperation(tag, resultType, fptn, fnAttrs,
+		                                              std::span(arguments.begin(), arguments.end()));
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
-                                       const std::vector<tracing::TypedValueRef>& arguments,
-                                       const FunctionAttributes fnAttrs) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
-	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = mangledName,
-		                                       .ptr = fptn,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
-	});
+void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef,
+                                   [[maybe_unused]] Type resultType) {
+	assert(targetRef.type == resultType && sourceRef.type == resultType && "I hope this is true");
+	traceOperation(
+	    ASSIGN, [&](Snapshot& tag) { return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef); });
 }
 
-void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef, resultType);
-	});
+void TraceContext::traceReturnOperation([[maybe_unused]] Type resultType, const TypedValueRef& ref) {
+	assert(resultType == ref.type && "I hope this is true");
+	TRACER_LOG("RETURN");
+	auto tag = recordSnapshot();
+	state->executionTrace.addReturn(tag, ref);
+	exitChild();
 }
 
-void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
-	if (isFollowing()) {
-		follow(RETURN);
-	} else {
-		auto tag = recordSnapshot();
-		state->executionTrace.addReturn(tag, resultType, ref);
-	}
-}
-
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputs) {
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, inputs);
+TypedValueRef TraceContext::traceOperation(Op op, Type resultType, std::vector<TypedValueRef> inputs) {
+	return traceOperation(op, [&](Snapshot& tag) {
+		return state->executionTrace.addOperationWithResult(tag, resultType, op,
+		                                                    std::span(inputs.begin(), inputs.end()));
 	});
 }
 
 bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probability) {
-	bool result;
-	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		// eval execution path one step
-		// we repeat the operation
-		result = state->symbolicExecutionContext.follow();
-	} else {
-		// record
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			state->executionTrace.addCmpOperation(tag, targetRef, probability);
-			result = state->symbolicExecutionContext.record(tag);
+
+	log::debug("Trace CMP");
+	auto tag = recordSnapshot();
+	if (!state->executionTrace.checkTag(tag)) {
+		exitChild();
+	}
+	auto [_, oi] = state->executionTrace.appendCmp(tag, targetRef, probability);
+	TRACER_LOG("CMP at position: Block: {} Operation: {}", oi.blockIndex.offset, oi.operationOffset.offset);
+	state->executionTrace.globalTagMap.insert(tag, oi);
+	state->executionTrace.view->forkCount++;
+
+	bool exploreBranchFirst = !invertNextFork;
+	invertNextFork = false;
+
+	if (forkExecution(state->executionTrace) == ForkRole::PARENT) {
+		if (exploreBranchFirst) {
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().trueBlock =
+			    state->executionTrace.createNewBlock().getBlockId();
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().falseBlock =
+			    std::numeric_limits<std::uint16_t>::max();
 		} else {
-			// this is actually the same tag -> throw up
-			throw TraceTerminationException();
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().falseBlock =
+			    state->executionTrace.createNewBlock().getBlockId();
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().trueBlock =
+			    std::numeric_limits<std::uint16_t>::max();
 		}
-	}
-
-	auto& currentOperation = state->executionTrace.getCurrentOperation();
-	assert(currentOperation.op == CMP);
-
-	uint16_t nextBlock;
-	if (result) {
-		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
+		return exploreBranchFirst;
 	} else {
-		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
+		auto oi = *state->executionTrace.globalTagMap.get(tag);
+		if (exploreBranchFirst) {
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().falseBlock =
+			    state->executionTrace.createNewBlock().getBlockId();
+		} else {
+			state->executionTrace.getOperation(oi).arguments<CmpInput>().trueBlock =
+			    state->executionTrace.createNewBlock().getBlockId();
+		}
+		return !exploreBranchFirst;
 	}
-	state->executionTrace.setCurrentBlock(nextBlock);
-	return result;
 }
 
 std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
@@ -185,42 +221,42 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 
-	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
-	// This is the key optimization: no heap allocations for these large objects
-	ExecutionTrace executionTrace;
-	SymbolicExecutionContext symbolicExecutionContext;
+	// Allocate Trace (shared memory, no heap allocs) and SymbolicExecutionContext on the stack
+	Trace tracerTrace;
 
 	// Initialize TraceContext with references to our stack objects
-	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
-	auto traceIteration = 0;
+	initialize(tr, tracerTrace, options);
 
-	// Symbolic execution loop: explore all execution paths
-	while (symbolicExecutionContext.shouldContinue()) {
+	// Reset fork depth for new trace
+	currentForkDepth = 0;
+
+	auto pid = fork();
+	if (pid == 0) {
+		assert(tracerTrace.globalTagMap.header->magic == 0xDEADBEEF);
+		tracerTrace.createNewBlock();
 		try {
-			traceIteration = traceIteration + 1;
-			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", executionTrace);
-
-			// Prepare for next iteration
-			symbolicExecutionContext.next();
-			executionTrace.resetExecution();
-			TraceContext::get()->resume(); // Reset persistent state (staticVars, aliveVars)
-
-			// Execute the traced function
 			traceFunction();
-		} catch (const TraceTerminationException& ex) {
-			// Normal termination when we hit a known control flow merge or loop
+		} catch (...) {
+			fmt::println(stderr, "Trace Function threw an exception!. Terminating Trace");
+			std::cerr << std::flush;
+			_exit(1);
 		}
+		TRACER_LOG("Actually I am not sure how we got here!");
+	} else {
+		int status;
+		waitpid(pid, &status, 0);
+		if (status != 0) {
+			throw RuntimeException("Tracing failed");
+		}
+		TRACER_LOG("Tracing done");
 	}
+	traceContext.state.reset();
 
-	// Clean up: reset state pointer (TraceContext is no longer initialized)
-	tc->state.reset();
-
-	log::debug("Tracing Terminated with {} iterations", traceIteration);
+	// Convert Trace to ExecutionTrace for SSA phase and return
+	auto executionTrace = toExecutionTrace(tracerTrace);
 	log::trace("Final trace: {}", executionTrace);
+	log::info("{} Forks, Max Depth: {}", tracerTrace.view->forkCount, tracerTrace.view->maxForkDepth);
 
-	// Move stack-allocated executionTrace into a unique_ptr for return
-	// The caller gets ownership of the trace
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
@@ -234,63 +270,8 @@ void TraceContext::allocateValRef(ValueRef ref) {
 void TraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
-
-std::string TraceContext::getMangledName(void* fnptr) {
-	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
-		return it->second;
-	}
-
-	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
-		mangledNameCache[fnptr] = info.dli_sname;
-		return info.dli_sname;
-	}
-	std::stringstream ss;
-	ss << fnptr;
-	std::string ptrStr = ss.str();
-	mangledNameCache[fnptr] = ptrStr;
-	return ptrStr;
-}
-
-std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	// Check if function name normalization is enabled
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
-
-	if (normalizeFunctionNames) {
-		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
-		// Check if we already have a normalized name for this function
-		auto it = state->normalizedFunctionNameCache.find(fnptr);
-		if (it != state->normalizedFunctionNameCache.end()) {
-			return "runtimeFunc" + std::to_string(it->second);
-		}
-
-		// Assign a new normalized function index
-		uint32_t index = state->nextNormalizedFunctionIndex++;
-		state->normalizedFunctionNameCache[fnptr] = index;
-		return "runtimeFunc" + std::to_string(index);
-	}
-
-	// Check if demangling is enabled
-	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
-
-	if (!demangleFunctionNames) {
-		// Return the mangled name as-is
-		return mangledName;
-	}
-
-	// Try to demangle the function name for human-readable output
-	int status;
-	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
-	if (status == 0 && demangled != nullptr) {
-		// Demangling succeeded
-		std::string result(demangled);
-		std::free(demangled);
-		return result;
-	}
-
-	// Demangling failed, return the mangled name
-	return mangledName;
+void TraceContext::suggestInvertedBranch() {
+	invertNextFork = true;
 }
 
 constexpr size_t fnv_prime = 0x100000001b3;

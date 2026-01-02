@@ -71,24 +71,31 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 		return false;
 	}
 
-	std::ifstream file(filePath);
-	if (!file.is_open()) {
-		std::cerr << "Unable to open file " << filePath << std::endl;
+	// Write actual trace to temp file
+	char tmpName[] = "/tmp/actual_trace_XXXXXX";
+	int fd = mkstemp(tmpName);
+	if (fd == -1) {
+		std::cerr << "Failed to create temp file" << std::endl;
 		return false;
 	}
+	close(fd);
 
-	std::stringstream expect;
-	expect << file.rdbuf();
+	std::ofstream tmpfile {tmpName};
+	tmpfile << actual;
+	tmpfile.close();
 
-	if (expect.str() == actual) {
+	// Use Python comparator for name-agnostic comparison
+	std::string cmd =
+	    "python3 /home/ls/dima/trace-equalizer/trace_semantic.py --timeout 500 " + filePath + " " + tmpName;
+	int result = std::system(cmd.c_str());
+	if (result == 0) {
+		std::remove(tmpName);
 		return true;
 	}
 
-	char tmpName[] = "/tmp/actual_trace_XXXXXX";
-	mkstemp(tmpName);
-	std::ofstream tmpfile {tmpName};
-	tmpfile << actual;
+	// Mismatch - keep temp file for debugging
 	std::cout << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	std::cout << "Trace:\n" << actual << std::endl;
 	return false;
 }
 
@@ -161,8 +168,8 @@ TEST_CASE("Control-flow Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"ifThenCondition", details::createFunctionWrapper(ifThenCondition)},
 	    {"multipleVoidReturnsFunction", details::createFunctionWrapper(multipleVoidReturnsFunction)},
-	    //{"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},
-	    //{"multipleReturns", details::createFunctionWrapper(multipleReturns)},
+	    {"conditionalReturn", details::createFunctionWrapper(conditionalReturn)},
+	    {"multipleReturns", details::createFunctionWrapper(multipleReturns)},
 	    {"ifThenElseCondition", details::createFunctionWrapper(ifThenElseCondition)},
 	    {"nestedIfThenElseCondition", details::createFunctionWrapper(nestedIfThenElseCondition)},
 	    {"nestedIfNoElseCondition", details::createFunctionWrapper(nestedIfNoElseCondition)},

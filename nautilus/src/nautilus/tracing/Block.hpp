@@ -4,13 +4,14 @@
 #include "TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
+#include <unordered_map>
 #include <vector>
 
 namespace nautilus::tracing {
 
 struct operation_identifier {
 	uint16_t blockIndex;
-	uint16_t operationIndex;
+	uint32_t operationIndex;
 };
 
 /**
@@ -61,6 +62,7 @@ public:
 	 * @brief Indicates successors of this block.
 	 */
 	std::vector<uint16_t> predecessors;
+	std::unordered_map<ValueRef, int64_t> localValueRefPositions;
 };
 
 } // namespace nautilus::tracing

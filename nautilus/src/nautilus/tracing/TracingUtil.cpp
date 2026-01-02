@@ -20,11 +20,11 @@ void traceReturnOperation(Type type, const TypedValueRef& ref) {
 	TraceContext::get()->traceReturnOperation(type, ref);
 }
 
-TypedValueRef& registerFunctionArgument(Type type, size_t index) {
+TypedValueRef registerFunctionArgument(Type type, size_t index) {
 	return TraceContext::get()->registerFunctionArgument(type, index);
 }
 
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
+TypedValueRef traceConstant(Type type, const ConstantLiteral& value) {
 	return TraceContext::get()->traceConstValue(type, value);
 }
 
@@ -58,27 +58,33 @@ TraceContext* getTracerIfActive() {
 	return TraceContext::get();
 }
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
+TypedValueRef traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
 	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
 }
 
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         const FunctionAttributes fnAttrs) {
+TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                        const FunctionAttributes fnAttrs) {
 	return TraceContext::get()->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
+TypedValueRef traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
 	return TraceContext::get()->traceOperation(operation, resultType, {input});
 }
 
-TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
-                              const TypedValueRef& third) {
+TypedValueRef traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
+                             const TypedValueRef& third) {
 	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
 	os << toString(operation);
 	return os;
+}
+
+void suggestInvertedBranch() {
+	if (auto* ctx = TraceContext::get()) {
+		ctx->suggestInvertedBranch();
+	}
 }
 
 void pushStaticVal(void* valPtr) {
@@ -109,8 +115,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

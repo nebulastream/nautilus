@@ -3,6 +3,7 @@
 
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
+#include "TracerTrace.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
 #include "tag/Tag.hpp"
@@ -121,13 +122,12 @@ public:
  */
 struct TraceState {
 	TagRecorder& tagRecorder;
-	ExecutionTrace& executionTrace;
-	SymbolicExecutionContext& symbolicExecutionContext;
+	Trace& executionTrace;
 	const engine::Options& options;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
 
-	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
+	TraceState(TagRecorder& tr, Trace& tt, const engine::Options& opts);
 };
 
 /**
@@ -136,15 +136,15 @@ struct TraceState {
  *
  * Design Philosophy:
  * - TraceContext is a simple thread_local object (not a pointer) - zero heap allocation
- * - ExecutionTrace and SymbolicExecutionContext are allocated on the stack in trace()
+ * - Trace (shared memory, no heap allocs) and SymbolicExecutionContext are allocated on the stack in trace()
  * - TraceState holds references to these stack objects and is created during initialization
  * - staticVars and aliveVars are persistent members that get reset between trace iterations
  *
  * Lifecycle:
- * 1. trace() allocates ExecutionTrace and SymbolicExecutionContext on its stack
+ * 1. trace() allocates Trace and SymbolicExecutionContext on its stack
  * 2. initialize() creates TraceState with references to these stack objects
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
- * 4. After tracing completes, state is reset and ExecutionTrace is moved into unique_ptr for return
+ * 4. After tracing completes, Trace is converted to ExecutionTrace and returned
  */
 class TraceContext {
 public:
@@ -159,7 +159,7 @@ public:
 
 	static bool shouldTrace();
 
-	TypedValueRef& registerFunctionArgument(Type type, size_t index);
+	TypedValueRef registerFunctionArgument(Type type, size_t index);
 
 	void traceValueDestruction(TypedValueRef target);
 
@@ -168,9 +168,9 @@ public:
 	 * @param valueReference reference to the const value.
 	 * @param constValue constant value.
 	 */
-	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue);
+	TypedValueRef traceConstValue(Type type, const ConstantLiteral& constValue);
 
-	TypedValueRef& traceCopy(const TypedValueRef& ref);
+	TypedValueRef traceCopy(const TypedValueRef& ref);
 
 	/**
 	 * @brief Trace a unary operation, e.g., negate.
@@ -178,7 +178,7 @@ public:
 	 * @param inputRef reference to the input.
 	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef& traceOperation(Op op, Type resultType, std::initializer_list<InputVariant> inputRef);
+	TypedValueRef traceOperation(Op op, Type resultType, std::vector<TypedValueRef> inputRef);
 
 	/**
 	 * @brief Trace the return function.
@@ -193,8 +193,8 @@ public:
 	 */
 	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs);
+	TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                        FunctionAttributes fnAttrs);
 
 	bool traceCmp(const TypedValueRef& targetRef, double probability);
 
@@ -210,13 +210,11 @@ public:
 	/**
 	 * @brief Initialize the trace context with references to stack-allocated objects.
 	 * @param tagRecorder Reference to TagRecorder for creating unique tags
-	 * @param executionTrace Reference to stack-allocated ExecutionTrace
-	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
+	 * @param tracerTrace Reference to stack-allocated Trace
 	 * @param options Reference to engine options for configuration
 	 * @return Pointer to initialized thread_local TraceContext
 	 */
-	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-	                                SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
+	static TraceContext* initialize(TagRecorder& tagRecorder, Trace& tracerTrace, const engine::Options& options);
 
 	/**
 	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
@@ -234,6 +232,8 @@ public:
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
 
+	void suggestInvertedBranch();
+
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.
 	 * Initializes with empty state (state == nullptr means not initialized).
@@ -241,10 +241,8 @@ public:
 	TraceContext() = default;
 
 private:
-	bool isFollowing();
-	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
-	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	TypedValueRef traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
@@ -254,7 +252,6 @@ private:
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
-	std::unordered_map<void*, std::string> mangledNameCache;
 };
 
 } // namespace nautilus::tracing

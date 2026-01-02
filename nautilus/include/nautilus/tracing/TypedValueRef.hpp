@@ -4,12 +4,12 @@
 #include "nautilus/tracing/Types.hpp"
 namespace nautilus::tracing {
 
-using ValueRef = uint16_t;
+using ValueRef = uint32_t;
 struct TypedValueRef {
 	ValueRef ref;
 	Type type;
 
-	TypedValueRef(uint16_t ref, Type type);
+	TypedValueRef(uint32_t ref, Type type);
 	TypedValueRef();
 
 	bool operator==(const TypedValueRef& rhs) const {
