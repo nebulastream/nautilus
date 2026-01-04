@@ -12,6 +12,8 @@ add_subdirectory(src)
 
 get_source(nautilus NAUTILUS_SOURCE_FILES)
 
+find_package(cpptrace CONFIG REQUIRED)
+
 # Add Library
 # nautilus tracing requires frame-pointers
 target_compile_options(nautilus INTERFACE -fno-omit-frame-pointer)
@@ -34,7 +36,7 @@ set_target_properties(nautilus PROPERTIES
         EXPORT_NAME nautilus
 )
 
-target_link_libraries(nautilus PRIVATE fmt::fmt)
+target_link_libraries(nautilus PRIVATE fmt::fmt cpptrace::cpptrace)
 
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus PRIVATE spdlog::spdlog)
