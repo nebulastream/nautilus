@@ -45,7 +45,7 @@ TEST_CASE("Tracing Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 		Catch::Benchmark::Benchmark("trace_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			meter.measure([&func] { return tracing::TraceContext::trace(func); });
+			meter.measure([&func] { return tracing::TraceContext::trace(func, engine::Options()); });
 		});
 	}
 }
@@ -62,7 +62,8 @@ TEST_CASE("SSA Creation Benchmark") {
 		}
 
 		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
+			auto traceUnique = tracing::TraceContext::trace(func, engine::Options());
+			std::shared_ptr<tracing::ExecutionTrace> trace = std::move(traceUnique);
 			meter.measure([&] {
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				return ssaCreationPhase.apply(trace);
@@ -78,7 +79,8 @@ TEST_CASE("IR Creation Benchmark") {
 		auto name = std::get<0>(test);
 
 		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
+			auto traceUnique = tracing::TraceContext::trace(func, engine::Options());
+			std::shared_ptr<tracing::ExecutionTrace> trace = std::move(traceUnique);
 			auto ssaCreationPhase = tracing::SSACreationPhase();
 			trace = ssaCreationPhase.apply(trace);
 
@@ -114,7 +116,8 @@ TEST_CASE("Backend Compilation Benchmark") {
 
 			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name)
 			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
-				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::TraceContext::trace(func);
+				    auto traceUnique = tracing::TraceContext::trace(func, engine::Options());
+				    std::shared_ptr<tracing::ExecutionTrace> trace = std::move(traceUnique);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
 				    trace = ssaCreationPhase.apply(trace);
 				    auto backendBackend = registry->getBackend(backend);
