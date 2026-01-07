@@ -9,9 +9,13 @@
 #include <any>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <iosfwd>
 #include <vector>
 
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 namespace nautilus::tracing {
 
 // Forward declaration
@@ -45,6 +49,10 @@ TypedValueRef traceCopy(const TypedValueRef& state);
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);
+
+TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                 FunctionAttributes fnAttrs);
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 

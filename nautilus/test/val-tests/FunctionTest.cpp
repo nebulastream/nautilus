@@ -1,5 +1,5 @@
 
-#include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 #include <iostream>
@@ -7,27 +7,51 @@
 
 namespace nautilus {
 
-struct Funcs {
-	val<int> add(val<int> a, val<int> b) {
-		return a + b;
-	}
-};
-
 val<int> add(val<int> a, val<int> b) {
 	return a + b;
 }
 
-void d(val<int>, val<int>) {
+void call_void(val<int*> a, val<int> b) {
+	*a = *a + b;
 }
 
-TEMPLATE_TEST_CASE("Function Test", "[value][template]", double) {
+static auto nautilusVoid = NautilusFunction {"call_void", call_void};
+static auto nautilusAdd = NautilusFunction {"call_add", add};
 
-	// func(a, v);
+TEST_CASE("Function Test") {
+	val<int> a = 10;
+	val<int> b = 20;
 
-	// auto f1 = std::bind(func, std::placeholders::_1, v);
-	// f1(v);
-	//[[maybe_unused]]auto x = func(v, v);
-
-	// std::invoke(func, v, v);
+	auto result = nautilusAdd(a, b);
+	REQUIRE(result == 30);
 }
+
+TEST_CASE("Function Void Test") {
+	int a = 10;
+	val<int*> aPtr = &a;
+	val<int> b = 20;
+
+	nautilusVoid(aPtr, b);
+	REQUIRE(a == 30);
+}
+
+struct Calculator {
+	val<int> mul(val<int> a, val<int> b) {
+		return a * b;
+	}
+};
+
+static Calculator calc;
+
+// static wrapper for member function bound to instance `calc`
+static auto nautilusMul = NautilusFunction {"call_mul", bind_instance<&Calculator::mul>(calc)};
+
+TEST_CASE("Member Function Test") {
+	val<int> a = 5;
+	val<int> b = 7;
+
+	auto result = nautilusMul(a, b);
+	REQUIRE(result == 35);
+}
+
 } // namespace nautilus

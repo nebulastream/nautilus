@@ -15,6 +15,7 @@
 #include "../common/EnumFunction.hpp"
 #include "../common/ExpressionFunctions.hpp"
 #include "../common/LoopFunctions.hpp"
+#include "../common/NautilusFunction.hpp"
 #include "../common/NestedIfBenchmarks.hpp"
 #include "../common/PointerFunctions.hpp"
 #include "../common/RunctimeCallFunctions.hpp"
@@ -704,6 +705,50 @@ TEST_CASE("LLVM IR Test: selectDouble", "[select][basic]") {
 
 TEST_CASE("LLVM IR Test: selectBasedOnComparison", "[select][complex]") {
 	testLLVMIR("selectBasedOnComparison", selectBasedOnComparison);
+}
+
+// ============================================================================
+// Nautilus Functions Tests
+// ============================================================================
+
+TEST_CASE("LLVM IR Test: nautilus functions", "[functions][nested]") {
+	testLLVMIR("nautilusFunction", nautilusFunction);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunction2", "[functions][nested]") {
+	testLLVMIR("nautilusFunction2", nautilusFunction2);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionVoid", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionVoid", nautilusFunctionVoid);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionMultipleResults", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionMultipleResults", nautilusFunctionMultipleResults);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionNested", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionNested", nautilusFunctionNested);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionConditional", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionConditional", nautilusFunctionConditional);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionLoop", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionLoop", nautilusFunctionLoop);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionMultiple", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionMultiple", nautilusFunctionMultiple);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionRecursiveStyle", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionRecursiveStyle", nautilusFunctionRecursiveStyle);
+}
+
+TEST_CASE("LLVM IR Test: nautilusFunctionComplex", "[functions][nested]") {
+	testLLVMIR("nautilusFunctionComplex", nautilusFunctionComplex);
 }
 
 } // namespace nautilus::engine

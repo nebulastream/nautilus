@@ -1,7 +1,9 @@
 
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
@@ -29,7 +31,11 @@ TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionCon
 }
 
 TraceContext* TraceContext::get() {
-	return traceContext.state ? &traceContext : nullptr;
+	return &traceContext;
+}
+
+bool TraceContext::isActive() const {
+	return state != nullptr;
 }
 
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
@@ -127,6 +133,32 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
+TypedValueRef& TraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
+                                               std::function<void()> fwrapper, Type resultType,
+                                               const std::vector<tracing::TypedValueRef>& arguments,
+                                               FunctionAttributes fnAttrs) {
+
+	// Get function name from definition
+	auto functionName = definition->name();
+	auto mangledName = getMangledName((void*) definition);
+
+	// Add the function to the list of functions to trace for later
+	functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper));
+	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
+	           functionsToTrace.size());
+
+	// Trace this as a regular CALL operation
+	auto op = Op::CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = arguments,
+		                                       .fnAttrs = fnAttrs};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
 void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef, resultType);
@@ -179,49 +211,61 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probabi
 	return result;
 }
 
-std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
-                                                    const engine::Options& options) {
+std::unique_ptr<TraceModule> TraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
+                                                 const engine::Options& options) {
+	auto* tc = TraceContext::get();
+	return tc->startTrace(functions, options);
+}
+
+std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
+                                                      const engine::Options& options) {
 	log::debug("Initialize Tracing");
-	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+	auto traceModule = std::make_unique<TraceModule>();
+	this->functionsToTrace = std::list<compiler::CompilableFunction> {};
+	functionsToTrace = functions;
 
-	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
-	// This is the key optimization: no heap allocations for these large objects
-	ExecutionTrace executionTrace;
-	SymbolicExecutionContext symbolicExecutionContext;
-
-	// Initialize TraceContext with references to our stack objects
-	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
-	auto traceIteration = 0;
-
-	// Symbolic execution loop: explore all execution paths
-	while (symbolicExecutionContext.shouldContinue()) {
-		try {
-			traceIteration = traceIteration + 1;
-			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", executionTrace);
-
-			// Prepare for next iteration
-			symbolicExecutionContext.next();
-			executionTrace.resetExecution();
-			TraceContext::get()->resume(); // Reset persistent state (staticVars, aliveVars)
-
-			// Execute the traced function
-			traceFunction();
-		} catch (const TraceTerminationException& ex) {
-			// Normal termination when we hit a known control flow merge or loop
+	while (!functionsToTrace.empty()) {
+		auto currentFunction = functionsToTrace.front();
+		functionsToTrace.pop_front();
+		if (traceModule->hasFunction(currentFunction.getName())) {
+			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
+			continue;
 		}
+
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName());
+		auto wrapperFunc = currentFunction.getFunction();
+
+		// Use the static trace method's internal logic but with our pre-created ExecutionTrace
+		auto rootAddress = __builtin_return_address(0);
+		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		SymbolicExecutionContext symbolicExecutionContext;
+
+		// Initialize the thread-local traceContext
+		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		auto traceIteration = 0;
+
+		while (symbolicExecutionContext.shouldContinue()) {
+			try {
+				traceIteration = traceIteration + 1;
+				log::trace("Trace Iteration {}", traceIteration);
+				log::trace("{}", executionTrace);
+
+				symbolicExecutionContext.next();
+				executionTrace.resetExecution();
+				resume();
+
+				wrapperFunc();
+			} catch (const TraceTerminationException& ex) {
+				// Normal termination
+			}
+		}
+
+		state.reset();
+		log::debug("Tracing Terminated with {} iterations", traceIteration);
+		log::trace("Final trace: {}", executionTrace);
 	}
 
-	// Clean up: reset state pointer (TraceContext is no longer initialized)
-	tc->state.reset();
-
-	log::debug("Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", executionTrace);
-
-	// Move stack-allocated executionTrace into a unique_ptr for return
-	// The caller gets ownership of the trace
-	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
+	return traceModule;
 }
 
 std::vector<StaticVarHolder>& TraceContext::getStaticVars() {

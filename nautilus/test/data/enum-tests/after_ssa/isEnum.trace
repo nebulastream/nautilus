@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ui32)
 	CONST	$2	0	:ui32
 	EQ	$3	$1	$2	:bool
@@ -17,3 +18,4 @@ B4()
 	JMP	$0	B5($12)	:void
 B5($5:i32)
 	RETURN	$0	$5	:i32
+

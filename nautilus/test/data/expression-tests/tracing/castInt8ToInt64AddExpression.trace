@@ -1,5 +1,7 @@
+EXECUTE:
 B0($1:i8)
 	CONST	$2	7	:i64
 	CAST	$3	$1	:i64
 	ADD	$4	$3	$2	:i64
 	RETURN	$0	$4	:i64
+

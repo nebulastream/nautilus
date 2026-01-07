@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ui32)
 	CONST	$2	0	:ui32
 	EQ	$3	$1	$2	:bool
@@ -15,3 +16,4 @@ B3()
 B4()
 	CONST	$12	42	:i32
 	RETURN	$0	$12	:i32
+

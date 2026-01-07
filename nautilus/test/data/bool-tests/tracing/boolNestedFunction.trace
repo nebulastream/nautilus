@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:bool,$2:bool)
 	ASSIGN	$3	$1	:bool
 	ASSIGN	$4	$2	:bool
@@ -9,3 +10,4 @@ B1()
 B2()
 	CONST	$10	false	:bool
 	RETURN	$0	$10	:bool
+

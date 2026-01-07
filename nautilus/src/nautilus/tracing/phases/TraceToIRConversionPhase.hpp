@@ -25,15 +25,25 @@
 
 namespace nautilus::tracing {
 
+class TraceModule;
+
 /**
  * @brief Translates a trace into a corresponding IR fragment.
  */
 class TraceToIRConversionPhase {
 public:
 	/**
-	 * @brief Performs the conversion and returns a IR fragment for the given trace
-	 * @param trace
-	 * @return IR
+	 * @brief Performs the conversion and returns a IR fragment for the given trace module
+	 * @param traceModule Module containing all function traces
+	 * @return IR graph containing all functions
+	 */
+	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule,
+	                                             const compiler::CompilationUnitID& id = "");
+
+	/**
+	 * @brief Performs the conversion and returns a IR fragment for the given trace (legacy method)
+	 * @param trace Single execution trace
+	 * @return IR graph containing a single function
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace,
 	                                             const compiler::CompilationUnitID& id = "");
@@ -46,9 +56,16 @@ private:
 	 */
 	class IRConversionContext {
 	public:
-		IRConversionContext(std::shared_ptr<ExecutionTrace> trace, const compiler::CompilationUnitID& id);
+		IRConversionContext(ExecutionTrace* trace, const compiler::CompilationUnitID& id);
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
+
+		/**
+		 * @brief Processes a single function trace and returns a FunctionOperation
+		 * @param functionName The name of the function being processed
+		 * @return Unique pointer to the generated FunctionOperation
+		 */
+		std::unique_ptr<compiler::ir::FunctionOperation> processFunction(const std::string& functionName);
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
@@ -95,7 +112,7 @@ private:
 		                            TraceOperation& operation);
 
 	private:
-		std::shared_ptr<ExecutionTrace> trace;
+		ExecutionTrace* trace;
 		Type returnType;
 		std::shared_ptr<compiler::ir::IRGraph> ir;
 		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;

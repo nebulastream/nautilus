@@ -122,7 +122,7 @@ protected:
 	std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>>
 	getPredecessorBlocks(const std::shared_ptr<IRGraph>& graph, const BasicBlock* targetBlock) {
 		std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> predeccessor;
-		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
+		for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 			auto& op = block->getOperations().back();
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
@@ -221,11 +221,11 @@ protected:
 	}
 	void writeEdges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
-		auto& rootBlock = graph->getRootOperation().getBasicBlocks()[0];
+		auto& rootBlock = graph->getFunctionOperations()[0]->getBasicBlocks()[0];
 		std::set<const BasicBlock*> vistedBlocks;
 		getBlockArgumentMap(rootBlock.get(), vistedBlocks, operatorDataflowMapping);
 		// crate dataflow edges
-		for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
+		for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 			if (writeBlocksOnly) {
 				auto& op = block->getOperations().back();
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
@@ -267,7 +267,7 @@ protected:
 		if (!writeBlocksOnly) {
 
 			// create control-flow edges
-			for (const auto& blocks : graph->getRootOperation().getBasicBlocks()) {
+			for (const auto& blocks : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				std::string from = "start_" + blocks->getIdentifier();
 				for (const auto& op : blocks->getOperations()) {
 					if (isControlFlowOp(op.get())) {
@@ -389,7 +389,7 @@ protected:
 
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
-			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
+			for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				if (!drawBlocksOnly) {
 					startSubgraph(block->getIdentifier());
 					writeNodesForBlock(block);
@@ -399,7 +399,7 @@ protected:
 				}
 			}
 		} else {
-			for (const auto& block : graph->getRootOperation().getBasicBlocks()) {
+			for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				writeNodesForBlock(block);
 			}
 		}

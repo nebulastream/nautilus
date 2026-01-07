@@ -97,7 +97,6 @@ jobs:
           key: cmake-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
           restore-keys: |
             cmake-${{ matrix.os }}-${{ matrix.cc }}-
-            cmake-${{ matrix.os }}-
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:

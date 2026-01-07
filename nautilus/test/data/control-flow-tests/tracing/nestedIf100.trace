@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	0	:i32
@@ -901,3 +902,4 @@ B199()
 	RETURN	$0	$2	:i32
 B200()
 	RETURN	$0	$2	:i32
+

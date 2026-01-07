@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:ptr,$3:i8)
 	CONST	$4	0	:i8
 	JMP	$0	B3()	:void
@@ -50,3 +51,4 @@ B2()
 B3() ControlFlowMerge
 	LT	$5	$4	$3	:bool
 	CMP	$6	$5	B1()	B2()	:void
+

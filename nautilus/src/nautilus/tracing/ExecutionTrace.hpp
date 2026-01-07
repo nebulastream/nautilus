@@ -6,8 +6,114 @@
 #include "tag/TagRecorder.hpp"
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace nautilus::tracing {
+
+class ExecutionTrace;
+
+/**
+ * @brief Container for multiple execution traces, mapping function names to their traces.
+ *
+ * TraceModule manages a collection of execution traces, where each trace corresponds to a
+ * different function. This is used to support tracing of nested Nautilus functions, where
+ * the root "execute" function may call other Nautilus functions that need to be traced
+ * and compiled separately.
+ *
+ * The module maintains ownership of all ExecutionTrace objects through unique_ptr, ensuring
+ * proper lifetime management. It is move-only to prevent accidental copying of large trace data.
+ *
+ * @note This class is move-only (copy operations are deleted)
+ * @see ExecutionTrace
+ * @see TraceContext::startTrace
+ */
+class TraceModule {
+public:
+	TraceModule() = default;
+	~TraceModule() = default;
+
+	// Delete copy operations (TraceModule is move-only)
+	TraceModule(const TraceModule&) = delete;
+	TraceModule& operator=(const TraceModule&) = delete;
+
+	// Default move operations
+	TraceModule(TraceModule&&) = default;
+	TraceModule& operator=(TraceModule&&) = default;
+
+	/**
+	 * @brief Creates and adds a new function trace to the module.
+	 *
+	 * Creates a new ExecutionTrace for the given function name and stores it in the module.
+	 * If a function with the same name already exists, it will be replaced.
+	 *
+	 * @param functionName Name of the function to trace (e.g., "execute", "helper_function")
+	 * @return Reference to the newly created ExecutionTrace
+	 * @note The returned reference remains valid until the TraceModule is destroyed or moved
+	 */
+	ExecutionTrace& addNewFunction(std::string_view functionName);
+
+	/**
+	 * @brief Retrieves the execution trace for a specific function.
+	 *
+	 * @param functionName Name of the function to retrieve
+	 * @return Pointer to the ExecutionTrace if found, nullptr otherwise
+	 * @note The returned pointer is owned by the TraceModule and should not be deleted
+	 */
+	ExecutionTrace* getFunction(const std::string& functionName);
+
+	bool hasFunction(const std::string& functionName) const;
+	/**
+	 * @brief Retrieves the execution trace for a specific function (const version).
+	 *
+	 * @param functionName Name of the function to retrieve
+	 * @return Pointer to the ExecutionTrace if found, nullptr otherwise
+	 * @note The returned pointer is owned by the TraceModule and should not be deleted
+	 */
+	const ExecutionTrace* getFunction(const std::string& functionName) const;
+
+	/**
+	 * @brief Converts all function traces to a string representation.
+	 *
+	 * Formats all execution traces in the module with function names as headers.
+	 * Useful for debugging and dumping trace information.
+	 *
+	 * @return String containing all function traces with headers like "Function: <name>"
+	 * @note The output format is consistent with ExecutionTrace::toString()
+	 */
+	std::string toString() const;
+
+	/**
+	 * @brief Gets a list of all function names in this module.
+	 *
+	 * @return Vector of function names contained in the module
+	 * @note The order of names is not guaranteed
+	 */
+	std::vector<std::string> getFunctionNames() const;
+
+	/**
+	 * @brief Returns an iterator to the beginning of the functions map
+	 */
+	auto begin() {
+		return functions.begin();
+	}
+	auto begin() const {
+		return functions.begin();
+	}
+
+	/**
+	 * @brief Returns an iterator to the end of the functions map
+	 */
+	auto end() {
+		return functions.end();
+	}
+	auto end() const {
+		return functions.end();
+	}
+
+private:
+	/// Maps function names to their execution traces
+	std::unordered_map<std::string, std::unique_ptr<ExecutionTrace>> functions;
+};
 
 /**
  * @brief The execution trace captures the trace of a program

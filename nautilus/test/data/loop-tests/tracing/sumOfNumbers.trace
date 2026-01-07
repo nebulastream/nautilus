@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	1	:i32
@@ -15,3 +16,4 @@ B2()
 B3() ControlFlowMerge
 	LTE	$4	$3	$1	:bool
 	CMP	$5	$4	B1()	B2()	:void
+

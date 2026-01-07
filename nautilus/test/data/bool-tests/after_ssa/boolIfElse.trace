@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:bool,$2:bool)
 	AND	$3	$1	$2	:bool
 	CMP	$4	$3	B1()	B2()	:void
@@ -9,3 +10,4 @@ B2()
 	JMP	$0	B3($8)	:void
 B3($5:bool)
 	RETURN	$0	$5	:bool
+
