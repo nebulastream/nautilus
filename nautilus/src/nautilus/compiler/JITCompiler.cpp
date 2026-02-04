@@ -69,7 +69,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 
 	// derive trace from function
 	auto start_tracing = std::chrono::high_resolution_clock::now();
-	auto executionTrace = tracing::TraceContext::trace(function, options);
+	auto executionTrace = tracing::trace(function, options);
 	auto end_tracing = std::chrono::high_resolution_clock::now();
 	auto tracing_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_tracing - start_tracing);
 

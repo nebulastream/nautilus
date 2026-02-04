@@ -63,10 +63,6 @@ std::string nautilus::tracing::ExecutionTrace::toString() const {
 }
 
 namespace fmt {
-template <>
-struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
-};
 
 template <>
 struct formatter<nautilus::tracing::Block> : formatter<std::string_view> {

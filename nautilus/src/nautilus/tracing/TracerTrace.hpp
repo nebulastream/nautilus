@@ -258,6 +258,7 @@ struct Trace {
 		size_t maxForkDepth = 0;
 		size_t numberOfBlocks = 0;
 		TraceToBlockOffset currentBlockOffset {0};
+		TraceToBlockOffset tailBlockOffset {0};
 		TraceToFreeMemoryOffset freeMemoryOffset {sizeof(TraceHeader)};
 		std::array<TypedValueRef, 64> arguments;
 		size_t valueRefCounter = 1;
@@ -274,6 +275,11 @@ struct Trace {
 		return Block(view->currentBlockOffset.address(view));
 	}
 
+	Block getTailBlock() {
+		assert(view->numberOfBlocks > 0 && "Trace does not have a tail block");
+		return Block(view->tailBlockOffset.address(view));
+	}
+
 	template <typename T, typename... Args>
 	T* allocate(Args&&... args) {
 		T* ptr = new (view->freeMemoryOffset.address(view)) T(std::forward<Args>(args)...);
@@ -283,10 +289,11 @@ struct Trace {
 
 	Block createNewBlock() {
 		if (view->numberOfBlocks != 0) {
-			auto previousBlock = getCurrentBlock();
+			auto previousBlock = getTailBlock();
 			auto newBlock = Block(allocate<BlockHeader>());
 			newBlock.view->blockId = view->numberOfBlocks++;
 			view->currentBlockOffset = TraceToBlockOffset::create(view, newBlock.view);
+			view->tailBlockOffset = view->currentBlockOffset;
 			previousBlock.view->nextBlockOffset = BlockToBlockOffset::create(previousBlock.view, newBlock.view);
 			return newBlock;
 		}
@@ -294,6 +301,7 @@ struct Trace {
 		auto newBlock = Block(allocate<BlockHeader>());
 		newBlock.view->blockId = view->numberOfBlocks++;
 		view->currentBlockOffset = TraceToBlockOffset::create(view, newBlock.view);
+		view->tailBlockOffset = view->currentBlockOffset;
 		return newBlock;
 	}
 
@@ -372,6 +380,21 @@ struct Trace {
 		auto result = TypedValueRef(view->valueRefCounter++, t);
 		view->arguments[view->argumentCounter++] = result;
 		return result;
+	}
+
+	TypedValueRef setArgument(Type t, size_t index) {
+		assert(index < view->arguments.size() && "Too many arguments");
+		assert(index <= view->argumentCounter && "Arguments not initialized in order (unexpected)");
+		if (index < view->argumentCounter) {
+			auto ref = view->arguments[index];
+			assert(t == ref.type && "Argument type mismatch when between tracer iterations (should never happen)");
+			return ref;
+		} else {
+			view->argumentCounter++;
+			auto result = TypedValueRef(view->valueRefCounter++, t);
+			view->arguments[index] = result;
+			return result;
+		}
 	}
 
 	std::pair<TypedValueRef, TracerOperationIdentifier>

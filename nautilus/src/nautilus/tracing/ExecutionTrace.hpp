@@ -5,6 +5,9 @@
 #include "TraceOperation.hpp"
 #include "tag/SharedHashMap.hpp"
 #include "tag/TagRecorder.hpp"
+#include <fmt/chrono.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <memory>
 #include <unordered_map>
 
@@ -67,3 +70,10 @@ private:
 };
 
 } // namespace nautilus::tracing
+
+namespace fmt {
+template <>
+struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+};
+} // namespace fmt
