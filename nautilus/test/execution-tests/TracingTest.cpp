@@ -106,7 +106,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 		DYNAMIC_SECTION(name) {
-			auto executionTrace = tracing::TraceContext::trace(func);
+			auto executionTrace = tracing::trace(func);
 			DYNAMIC_SECTION("tracing") {
 				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 			}
