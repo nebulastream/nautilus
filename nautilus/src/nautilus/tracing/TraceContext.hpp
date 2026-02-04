@@ -14,8 +14,20 @@
 #include <memory>
 
 namespace nautilus::tracing {
+
+/**
+ * @brief External entrypoint for creating an ExecutionTrace of a function.
+ * Will select a TraceContext implementation for each invocation.
+ * The tracer can be force set in the options via "engine.force_tracer"
+ * @param traceFunction The function to trace.
+ * @param options Engine options for configuration.
+ * @return unique_ptr to ExecutionTrace containing the complete trace.
+ */
+std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
+                                      const engine::Options& options = engine::Options());
+
 class ExecutionTrace;
-class SymbolicExecutionContext;
+class SymbolicExecutionState;
 struct StaticVarHolder {
 	explicit StaticVarHolder(size_t* ptr) : ptr(ptr) {
 	}
@@ -131,17 +143,19 @@ struct TraceState {
 };
 
 /**
- * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
- * function.
+ * @brief The trace context manages a thread local instance to record a trace of a given Nautilus function.
+ *
+ * TraceContext itself is an abstract class, as there are multiple tracer implementations.
+ * Subclasses mainly need to specify the control flow handling
  *
  * Design Philosophy:
  * - TraceContext is a simple thread_local object (not a pointer) - zero heap allocation
- * - Trace (shared memory, no heap allocs) and SymbolicExecutionContext are allocated on the stack in trace()
+ * - Trace (shared memory, no heap allocs) is allocated on the stack in trace()
  * - TraceState holds references to these stack objects and is created during initialization
  * - staticVars and aliveVars are persistent members that get reset between trace iterations
  *
  * Lifecycle:
- * 1. trace() allocates Trace and SymbolicExecutionContext on its stack
+ * 1. trace() allocates Trace on its stack
  * 2. initialize() creates TraceState with references to these stack objects
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
  * 4. After tracing completes, Trace is converted to ExecutionTrace and returned
@@ -149,56 +163,83 @@ struct TraceState {
 class TraceContext {
 public:
 	/**
-	 * @brief Get a thread local reference to the trace context.
+	 * @brief Main tracing entry point - allocates all objects on stack and executes tracing.
+	 * @param traceFunction The function to trace.
+	 * @param options Engine options for configuration.
+	 * @return unique_ptr to ExecutionTrace containing the complete trace.
+	 */
+	virtual std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
+	                                              const engine::Options& options) = 0;
+
+	/**
+	 * @brief Get a thread local reference to the active trace context.
 	 * If the trace context is not initialized (state == nullptr) this function returns nullptr.
-	 * @return TraceContext* pointer to thread_local TraceContext if initialized, nullptr otherwise
+	 * @return TraceContext* pointer to thread_local TraceContext if initialized, nullptr otherwise.
 	 */
 	static TraceContext* get();
 
-	static TraceContext* getIfActive();
+	/**
+	 * @brief Register a single argument for the function to be traced.
+	 * @param type the argument type.
+	 * @param index the index in the argument list (important if the same arg is registered multiple times by re-running
+	 * the target function).
+	 */
+	virtual TypedValueRef registerFunctionArgument(Type type, size_t index) = 0;
 
-	static bool shouldTrace();
-
-	TypedValueRef registerFunctionArgument(Type type, size_t index);
-
-	void traceValueDestruction(TypedValueRef target);
+	virtual void traceValueDestruction(TypedValueRef target);
 
 	/**
 	 * @brief Trace a constant operation.
-	 * @param valueReference reference to the const value.
+	 * @param type the type of the value.
 	 * @param constValue constant value.
 	 */
-	TypedValueRef traceConstValue(Type type, const ConstantLiteral& constValue);
-
-	TypedValueRef traceCopy(const TypedValueRef& ref);
+	virtual TypedValueRef traceConstValue(Type type, const ConstantLiteral& constValue);
 
 	/**
 	 * @brief Trace a unary operation, e.g., negate.
 	 * @param op operation code.
 	 * @param inputRef reference to the input.
-	 * @param resultRef reference to the result.
 	 */
-	TypedValueRef traceOperation(Op op, Type resultType, std::vector<TypedValueRef> inputRef);
+	virtual TypedValueRef traceOperation(Op op, Type resultType, std::vector<TypedValueRef> inputRef);
+
+	/**
+	 * @brief Trace a copy of another value.
+	 * @param ref reference to the source value.
+	 */
+	virtual TypedValueRef traceCopy(const TypedValueRef& ref);
 
 	/**
 	 * @brief Trace the return function.
-	 * @param resultRef referent to the return value.
+	 * @param ref referent to the return value.
 	 */
-	void traceReturnOperation(Type type, const TypedValueRef& ref);
+	virtual void traceReturnOperation(Type type, const TypedValueRef& ref) = 0;
 
 	/**
 	 * @brief Trace a value assignment.
 	 * @param targetRef reference to the target value.
 	 * @param sourceRef reference to the source value.
 	 */
-	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
+	virtual void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
 
-	TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                        FunctionAttributes fnAttrs);
+	/**
+	 * @brief Trace a call operation.
+	 * @param fptn runtime address pointer of the called function.
+	 * @param resultType Return type of the called function.
+	 * @param arguments Argument references passed as arguments to the call.
+	 * @param fnAttrs function attributes for the compiler.
+	 */
+	virtual TypedValueRef traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                                FunctionAttributes fnAttrs);
 
-	bool traceCmp(const TypedValueRef& targetRef, double probability);
+	/**
+	 * @brief trace a compare operation (control flow).
+	 * @param targetRef the boolean value to check.
+	 * @param probability probability of the value being true (for branch prediction optimization).
+	 * @return the boolean result to evaluate to during the execution.
+	 */
+	virtual bool traceCmp(const TypedValueRef& targetRef, double probability) = 0;
 
-	~TraceContext() = default;
+	virtual ~TraceContext() = default;
 
 	/**
 	 * @brief Resets persistent state between trace iterations.
@@ -208,31 +249,25 @@ public:
 	void resume();
 
 	/**
+	 * resets the state af the active trace context
+	 * run after tracing a function (NOT after every iteration)
+	 */
+	virtual void resetState();
+
+	/**
 	 * @brief Initialize the trace context with references to stack-allocated objects.
 	 * @param tagRecorder Reference to TagRecorder for creating unique tags
 	 * @param tracerTrace Reference to stack-allocated Trace
 	 * @param options Reference to engine options for configuration
 	 * @return Pointer to initialized thread_local TraceContext
 	 */
-	static TraceContext* initialize(TagRecorder& tagRecorder, Trace& tracerTrace, const engine::Options& options);
-
-	/**
-	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
-	 * @param traceFunction The function to trace
-	 * @param options Engine options for configuration
-	 * @return unique_ptr to ExecutionTrace containing the complete trace
-	 */
-	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
-	                                             const engine::Options& options = engine::Options());
+	TraceContext* initialize(TagRecorder& tagRecorder, Trace& tracerTrace, const engine::Options& options);
 
 	std::vector<StaticVarHolder>& getStaticVars();
 	void allocateValRef(ValueRef ref);
 	void freeValRef(ValueRef ref);
 
-	std::string getMangledName(void* fnptr);
-	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
-
-	void suggestInvertedBranch();
+	virtual void suggestInvertedBranch();
 
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.
@@ -240,9 +275,16 @@ public:
 	 */
 	TraceContext() = default;
 
-private:
-	template <typename OnCreation>
-	TypedValueRef traceOperation(Op op, OnCreation&& onCreation);
+protected:
+	/**
+	 * @brief Generic operation trace function to be implemented by a concrete trace context.
+	 * @param op opcode of the operation.
+	 * @param onCreation generator function for creating the operation object.
+	 */
+	virtual TypedValueRef traceOperation(
+	    Op op,
+	    const std::function<std::pair<TypedValueRef, Trace::TracerOperationIdentifier>(Snapshot&)>& onCreation) = 0;
+
 	Snapshot recordSnapshot();
 
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
