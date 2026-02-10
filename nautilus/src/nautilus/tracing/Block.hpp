@@ -10,7 +10,7 @@ namespace nautilus::tracing {
 
 struct operation_identifier {
 	uint16_t blockIndex;
-	uint16_t operationIndex;
+	uint32_t operationIndex;
 };
 
 /**

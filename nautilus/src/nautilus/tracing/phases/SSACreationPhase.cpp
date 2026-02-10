@@ -221,7 +221,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
 	for (Block& block : trace->getBlocks()) {
-		std::unordered_map<uint16_t, uint16_t> assignmentMap;
+		std::unordered_map<ValueRef, ValueRef> assignmentMap;
 		for (auto& operation : block.operations) {
 			if (operation.op == Op::ASSIGN) {
 				auto& valueRef = get<TypedValueRef>(operation.input[0]);
@@ -262,7 +262,7 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 
 void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 	for (Block& block : trace->getBlocks()) {
-		std::unordered_map<uint16_t, uint16_t> blockArgumentMap;
+		std::unordered_map<ValueRef, ValueRef> blockArgumentMap;
 
 		// iterate over all arguments of this block and create new ValRefs if the
 		// argument ref is not local. for (uint64_t argIndex = 0; argIndex <
