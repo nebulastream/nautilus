@@ -157,7 +157,7 @@ struct TraceState {
  * Lifecycle:
  * 1. trace() allocates Trace on its stack
  * 2. initialize() creates TraceState with references to these stack objects
- * 3. Multiple trace iterations execute, calling resume() to reset persistent state
+ * 3. Target function is executed, possibly multiple times. All operations are traced via traceCopy, traceCall, etc.
  * 4. After tracing completes, Trace is converted to ExecutionTrace and returned
  */
 class TraceContext {

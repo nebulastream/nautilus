@@ -1293,7 +1293,7 @@ TEST_CASE("Engine Interpreter Test") {
 }
 
 #ifdef ENABLE_TRACING
-TEST_CASE("Engine Compiler Test") {
+TEST_CASE("Engine Compiler Test (Fork Tracer)") {
 	std::vector<std::string> backends = {};
 #ifdef ENABLE_MLIR_BACKEND
 	backends.emplace_back("mlir");

@@ -1,0 +1,5 @@
+B0($1:ptr)
+	CONST	$2	-1	:i64
+	CAST	$5	$2	:ui32
+	STORE	$6	$1	$5	:void
+	RETURN	$0	:void

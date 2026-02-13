@@ -1,0 +1,33 @@
+B0($1:i32)
+	CONST	$2	0	:i32
+	CONST	$3	5	:i32
+	LT	$4	$1	$3	:bool
+	CMP	$5	$4	B1()	B2()	:void
+B1()
+	CONST	$6	1	:i32
+	ASSIGN	$2	$6	:i32
+	RETURN	$0	$2	:i32
+B2()
+	CONST	$7	5	:i32
+	GTE	$8	$1	$7	:bool
+	CONST	$9	10	:i32
+	LTE	$10	$1	$9	:bool
+	AND	$11	$8	$10	:bool
+	CMP	$12	$11	B3()	B5()	:void
+B3()
+	CONST	$13	2	:i32
+	ASSIGN	$2	$13	:i32
+	CONST	$14	7	:i32
+	EQ	$15	$1	$14	:bool
+	CMP	$16	$15	B4()	B6()	:void
+B4()
+	CONST	$17	1	:i32
+	ADD	$18	$2	$17	:i32
+	ASSIGN	$2	$18	:i32
+	RETURN	$0	$2	:i32
+B5()
+	CONST	$19	3	:i32
+	ASSIGN	$2	$19	:i32
+	RETURN	$0	$2	:i32
+B6()
+	RETURN	$0	$2	:i32
