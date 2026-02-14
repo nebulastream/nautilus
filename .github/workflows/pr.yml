@@ -92,12 +92,6 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt') }}
-      - name: Install Ninja
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
-          which ninja
-          ninja --version
       - name: Install clang 19
         if: startsWith(matrix.cc, 'clang-19') && startsWith(matrix.os, 'ubuntu')
         run: |
