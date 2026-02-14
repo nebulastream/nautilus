@@ -133,7 +133,7 @@ struct hash<nautilus::compiler::ir::OperationIdentifier> {
 	std::size_t operator()(const nautilus::compiler::ir::OperationIdentifier& k) const {
 		using std::hash;
 		using std::size_t;
-		return hash<uint16_t>()(k.id);
+		return hash<uint32_t>()(k.id);
 	}
 };
 } // namespace std
