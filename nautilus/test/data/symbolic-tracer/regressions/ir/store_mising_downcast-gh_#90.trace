@@ -1,0 +1,9 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr):
+	$2 = -1 :i64
+	$5 = $2 cast_to ui32 :ui32
+	store($5, $1) :void
+	return :void
+}
+} //NESIR

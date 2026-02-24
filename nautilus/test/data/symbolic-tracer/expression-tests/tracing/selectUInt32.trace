@@ -1,0 +1,6 @@
+B0($1:bool,$2:ui32,$3:ui32)
+	ASSIGN	$4	$1	:bool
+	ASSIGN	$5	$2	:ui32
+	ASSIGN	$6	$3	:ui32
+	SELECT	$7	$4	$5	$6	:ui32
+	RETURN	$0	$7	:ui32

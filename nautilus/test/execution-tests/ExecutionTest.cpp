@@ -1293,7 +1293,7 @@ TEST_CASE("Engine Interpreter Test") {
 }
 
 #ifdef ENABLE_TRACING
-TEST_CASE("Engine Compiler Test") {
+void runEngineCompilerTest(const std::string& tracer) {
 	std::vector<std::string> backends = {};
 #ifdef ENABLE_MLIR_BACKEND
 	backends.emplace_back("mlir");
@@ -1317,6 +1317,7 @@ TEST_CASE("Engine Compiler Test") {
 				options.setOption("mlir.enableMultithreading", false);
 				options.setOption("mlir.inline_invoke_calls", true);
 			}
+			options.setOption("engine.tracer", tracer);
 			auto engine = engine::NautilusEngine(options);
 			runAllTests(engine);
 		}
@@ -1327,5 +1328,15 @@ TEST_CASE("Engine Compiler Test") {
 	}
 #endif
 }
+
+TEST_CASE("Engine Compiler Test (Default Tracer)") {
+	runEngineCompilerTest("symbolic");
+}
+
+TEST_CASE("Engine Compiler Test (Fork Tracer)") {
+	runEngineCompilerTest("fork");
+
+}
+
 #endif
 } // namespace nautilus::engine

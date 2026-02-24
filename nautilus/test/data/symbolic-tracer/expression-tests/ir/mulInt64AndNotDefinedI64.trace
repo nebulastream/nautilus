@@ -1,0 +1,8 @@
+NautilusIr {
+execute() {
+Block_0($1:i64):
+	$2 = 0 :i64
+	$3 = $1 * $2 :i64
+	return ($3) :i64
+}
+} //NESIR
