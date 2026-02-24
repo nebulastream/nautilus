@@ -89,34 +89,55 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
+void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
+	// Iterative worklist algorithm replacing the previous recursive traversal.
+	// Starting from the return block, we traverse predecessors backward through
+	// the CFG. When processValueRef propagates a non-local value to a predecessor
+	// and un-marks it from processedBlocks, that predecessor will be re-added to
+	// the worklist on the next predecessor scan, ensuring convergence to a fixed
+	// point where every block has all required arguments.
+	std::vector<uint16_t> worklist;
+	worklist.push_back(startBlock.blockId);
 
-	// Process the inputs of all operations in the current block
-	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
-		auto& operation = block.operations[i];
-		// process input for each variable
-		for (auto& input : operation.input) {
-			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-				// set op type
-				processValueRef(block, *valueRef, operation.resultType, i);
-			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-				processBlockRef(block, *blockRef, i);
-			} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-				for (auto valueRef : fcallRef->arguments) {
-					processValueRef(block, valueRef, valueRef.type, i);
+	while (!worklist.empty()) {
+		auto blockId = worklist.back();
+		worklist.pop_back();
+
+		if (processedBlocks.contains(blockId)) {
+			continue;
+		}
+
+		auto& block = trace->getBlock(blockId);
+
+		// Process the inputs of all operations in the current block
+		for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
+			auto& operation = block.operations[i];
+			// process input for each variable
+			for (auto& input : operation.input) {
+				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
+					// set op type
+					processValueRef(block, *valueRef, operation.resultType, i);
+				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+					processBlockRef(block, *blockRef, i);
+				} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
+					for (auto valueRef : fcallRef->arguments) {
+						processValueRef(block, valueRef, valueRef.type, i);
+					}
 				}
 			}
 		}
-	}
-	processedBlocks.emplace(block.blockId);
-	// Recursively process the predecessors of this block
-	// If the current block is a control-flow merge it may have multiple
-	// predecessors. We avoid visiting them again by checking the processedBlocks
-	// set.
-	for (auto pred : block.predecessors) {
-		auto& predBlock = trace->getBlock(pred);
-		if (!processedBlocks.contains(pred)) {
-			processBlock(predBlock);
+
+		processedBlocks.emplace(block.blockId);
+
+		// Add unprocessed predecessors to the worklist in reverse order so that
+		// the stack (LIFO) pops them in the original left-to-right order,
+		// matching the DFS traversal order of the previous recursive version.
+		// If processValueRef un-marked a predecessor during operation processing
+		// above, it will be picked up here for re-processing.
+		for (auto it = block.predecessors.rbegin(); it != block.predecessors.rend(); ++it) {
+			if (!processedBlocks.contains(*it)) {
+				worklist.push_back(*it);
+			}
 		}
 	}
 }
