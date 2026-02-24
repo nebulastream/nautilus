@@ -4,6 +4,8 @@
 #include "nautilus/tracing/TraceOperation.hpp"
 #include <memory>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace nautilus::tracing {
 
@@ -61,6 +63,15 @@ private:
 		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
 
 		/**
+		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.
+		 * Adds the value as a block argument and to predecessor branch instructions,
+		 * continuing until reaching a block where the value is locally defined.
+		 * @param block the block where the non-local value was discovered
+		 * @param ref the value reference to propagate
+		 */
+		void propagateValue(Block& block, TypedValueRef ref);
+
+		/**
 		 * @brief Removes the assignment operations from all blocks.
 		 * Assignment operations are only required to infer SSA form.
 		 */
@@ -74,7 +85,9 @@ private:
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
 		std::set<uint32_t> processedBlocks;
-		// ValueRef maxValueRef = 1024;
+		// Precomputed set of value refs defined by operations in each block.
+		// Used for O(1) locality checks during value propagation.
+		std::unordered_map<uint16_t, std::unordered_set<uint16_t>> blockDefinitions;
 	};
 };
 
