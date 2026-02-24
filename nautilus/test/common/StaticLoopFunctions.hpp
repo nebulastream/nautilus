@@ -6,14 +6,14 @@ namespace nautilus::engine {
 
 val<int32_t> staticLoop() {
 	val<int32_t> agg = val<int32_t>(1);
-	for (static_val<int> i(0); i < 10; i = i + 1) {
+	for (static_val<int> i{0}; i < 10; i = i + 1) {
 		agg = agg + 10;
 	}
 	return agg;
 }
 
 val<int32_t> staticLoopWithIf(val<int32_t> agg) {
-	for (static_val<int> i(0); i < 10; i = i + 1) {
+	for (static_val<int> i{0}; i < 10; i = i + 1) {
 		if (agg > 5) {
 			agg = agg + 1;
 		}
@@ -25,7 +25,7 @@ val<int32_t> staticLoopWithIf(val<int32_t> agg) {
 val<int32_t> staticLoopWithDynamicLoop(val<int32_t> counter) {
 	val<int32_t> sum = 0;
 	for (val<int32_t> i = 0; i < counter; i = i + 1) {
-		for (static_val<int> j(0); j < 3; j = j + 1) {
+		for (static_val<int> j{0}; j < 3; j = j + 1) {
 			if (i > 5) {
 				sum = sum + 1;
 			}
@@ -61,7 +61,7 @@ val<int32_t> staticConstIterator(val<int32_t> ref) {
 
 val<int32_t> staticLoopIncrement() {
 	val<int32_t> agg = val<int32_t>(1);
-	for (static_val<int> i(0); i < 10; i++) {
+	for (static_val<int> i{0}; i < 10; i++) {
 		agg = agg + 10;
 	}
 	return agg;
@@ -69,7 +69,7 @@ val<int32_t> staticLoopIncrement() {
 
 val<int32_t> staticWhileLoopDecrement() {
 	val<int32_t> agg = val<int32_t>(1);
-	static_val<int32_t> upperLimit(10);
+	static_val<int32_t> upperLimit{10};
 	while (upperLimit >= 0) {
 		agg = agg + upperLimit;
 		upperLimit--;
