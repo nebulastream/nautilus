@@ -18,7 +18,7 @@ public:
 		tracing::pushStaticVal(&value);
 	}
 
-	explicit static_val(T v) : value(v) {
+	static_val(T v) : value(v) {
 		tracing::pushStaticVal((void*) &value);
 	}
 
@@ -35,7 +35,7 @@ public:
 	}
 
 	template <typename OT>
-	explicit static_val(const static_val<OT>& other) : static_val((T) (OT) other) {
+	static_val(const static_val<OT>& other) : static_val((T) (OT) other) {
 	}
 
 	template <typename OT>
