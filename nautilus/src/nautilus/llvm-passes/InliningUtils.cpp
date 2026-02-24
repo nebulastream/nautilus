@@ -41,7 +41,7 @@ std::string getUniqueName(llvm::GlobalValue* gv, SymbolMap& symbolMap, const llv
 #ifdef NDEBUG
 	auto name = getUUIDString();
 #else
-	auto name = (originalModule->getName() + gv->getName()).str();
+	auto name = (originalModule->getName() + gv->getName()).str() + getUUIDString();
 #endif
 	symbolMap.insert({gv, name});
 	return name;
