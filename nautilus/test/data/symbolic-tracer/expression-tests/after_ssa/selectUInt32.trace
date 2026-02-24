@@ -1,0 +1,3 @@
+B0($1:bool,$2:ui32,$3:ui32)
+	SELECT	$7	$1	$2	$3	:ui32
+	RETURN	$0	$7	:ui32

@@ -1,0 +1,9 @@
+B0($1:bool,$2:bool)
+	AND	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
+B1()
+	CONST	$5	true	:bool
+	RETURN	$0	$5	:bool
+B2()
+	CONST	$6	false	:bool
+	RETURN	$0	$6	:bool

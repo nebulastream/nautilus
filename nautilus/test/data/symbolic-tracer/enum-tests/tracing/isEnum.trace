@@ -1,0 +1,17 @@
+B0($1:ui32)
+	CONST	$2	0	:ui32
+	EQ	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
+B1()
+	CONST	$5	1	:i32
+	RETURN	$0	$5	:i32
+B2()
+	CONST	$6	1	:ui32
+	EQ	$7	$1	$6	:bool
+	CMP	$8	$7	B3()	B4()	:void
+B3()
+	CONST	$9	2	:i32
+	RETURN	$0	$9	:i32
+B4()
+	CONST	$10	42	:i32
+	RETURN	$0	$10	:i32

@@ -1,0 +1,23 @@
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr
+	ASSIGN	$3	$2	:ptr
+	LOAD	$4	$3	:i32
+	CONST	$5	10	:i32
+	GT	$6	$4	$5	:bool
+	CMP	$7	$6	B1()	B2()	:void
+B1()
+	ASSIGN	$8	$1	:ptr
+	ASSIGN	$9	$8	:ptr
+	CONST	$10	1	:i32
+	ASSIGN	$11	$10	:i32
+	ASSIGN	$12	$11	:i32
+	STORE	$13	$9	$12	:void
+	RETURN	$0	:void
+B2()
+	ASSIGN	$14	$1	:ptr
+	ASSIGN	$15	$14	:ptr
+	CONST	$16	42	:i32
+	ASSIGN	$17	$16	:i32
+	ASSIGN	$18	$17	:i32
+	STORE	$19	$15	$18	:void
+	RETURN	$0	:void
