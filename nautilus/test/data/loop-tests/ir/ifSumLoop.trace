@@ -8,9 +8,9 @@ Block_0():
 
 Block_5($1:i32, $2:i32, $3:i32):
 	$4 = $2 < $3 :bool
-	if $4 ? Block_1($2, $1) : Block_2($1) :void
+	if $4 ? Block_1($1, $2) : Block_2($1) :void
 
-Block_1($2:i32, $1:i32):
+Block_1($1:i32, $2:i32):
 	$6 = 50 :i32
 	$7 = $1 < $6 :bool
 	if $7 ? Block_3($2, $1) : Block_4($1, $2) :void
