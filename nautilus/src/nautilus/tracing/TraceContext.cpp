@@ -211,6 +211,9 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 		} catch (const TraceTerminationException& ex) {
 			// Normal termination when we hit a known control flow merge or loop
 		}
+		// After each iteration, the static variable stack must be empty.
+		// All static_val destructors should have fired via normal return or stack unwinding.
+		assert(traceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 
 	// Clean up: reset state pointer (TraceContext is no longer initialized)
