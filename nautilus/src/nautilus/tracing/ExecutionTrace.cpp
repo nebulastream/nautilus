@@ -150,20 +150,18 @@ void ExecutionTrace::nextOperation() {
 }
 
 TraceOperation& ExecutionTrace::getCurrentOperation() {
-	Block* block = &getCurrentBlock();
-	if (currentOperationIndex >= block->operations.size()) {
+	if (currentOperationIndex >= getCurrentBlock().operations.size()) {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	while (block->operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(block->operations[currentOperationIndex].input[0]);
+	while (getCurrentBlock().operations[currentOperationIndex].op == JMP) {
+		auto& nextBlock = std::get<BlockRef>(getCurrentBlock().operations[currentOperationIndex].input[0]);
 		setCurrentBlock(nextBlock.block);
-		block = &getCurrentBlock();
-		if (currentOperationIndex >= block->operations.size()) {
+		if (currentOperationIndex >= getCurrentBlock().operations.size()) {
 			throw RuntimeException("Current operation index out of bounds after JMP: " +
 			                       std::to_string(currentOperationIndex));
 		}
 	}
-	return block->operations[currentOperationIndex];
+	return getCurrentBlock().operations[currentOperationIndex];
 }
 
 uint16_t ExecutionTrace::createBlock() {
