@@ -284,7 +284,17 @@ TEST_CASE("Static Trace Test") {
 	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
-	    {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)}};
+	    {"staticWhileLoopDecrement", details::createFunctionWrapper(staticWhileLoopDecrement)},
+	    {"staticPreIncrement", details::createFunctionWrapper(staticPreIncrement)},
+	    {"staticPreDecrement", details::createFunctionWrapper(staticPreDecrement)},
+	    {"staticNestedLoop", details::createFunctionWrapper(staticNestedLoop)},
+	    {"staticLoopMultipleAccumulators", details::createFunctionWrapper(staticLoopMultipleAccumulators)},
+	    {"staticLoopSingleIteration", details::createFunctionWrapper(staticLoopSingleIteration)},
+	    {"staticCountdown", details::createFunctionWrapper(staticCountdown)},
+	    {"staticLoopWithArg", details::createFunctionWrapper(staticLoopWithArg)},
+	    {"staticSequentialLoops", details::createFunctionWrapper(staticSequentialLoops)},
+	    {"staticLoopAccumulateCounter", details::createFunctionWrapper(staticLoopAccumulateCounter)},
+	    {"staticIteratorSum", details::createFunctionWrapper(staticIteratorSum)}};
 	runTraceTests("static-loop-tests", tests);
 }
 

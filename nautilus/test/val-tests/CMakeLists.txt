@@ -4,6 +4,7 @@ add_executable(nautilus-value-tests
         PtrValTypeTest.cpp
         FunctionTest.cpp
         ValConceptTest.cpp
+        StaticValTypeTest.cpp
         #  Interface/IntegerTypeTest.cpp
         #   Interface/FloatTypeTest.cpp
 )

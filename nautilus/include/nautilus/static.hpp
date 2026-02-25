@@ -1,6 +1,9 @@
 #pragma once
 
+#include "nautilus/config.hpp"
+#ifdef ENABLE_TRACING
 #include "nautilus/tracing/TracingUtil.hpp"
+#endif
 #include <iostream>
 #include <iterator>
 #include <type_traits>
@@ -15,18 +18,24 @@ public:
 	using raw_type = T;
 
 	static_val() {
+#ifdef ENABLE_TRACING
 		tracing::pushStaticVal(&value);
+#endif
 	}
 
 	static_val(T v) : value(v) {
+#ifdef ENABLE_TRACING
 		tracing::pushStaticVal((void*) &value);
+#endif
 	}
 
 	static_val(const static_val& other) : static_val((T) other) {
 	}
 
 	~static_val() {
+#ifdef ENABLE_TRACING
 		tracing::popStaticVal();
+#endif
 	}
 
 	static_val& operator=(const static_val& other) {
@@ -58,8 +67,8 @@ public:
 		return *this;
 	}
 
-	auto operator++(int) {
-		auto temp = *this;
+	T operator++(int) {
+		T temp = value;
 		++value;
 		return temp;
 	}
@@ -69,8 +78,8 @@ public:
 		return *this;
 	}
 
-	auto operator--(int) {
-		auto temp = *this;
+	T operator--(int) {
+		T temp = value;
 		--value;
 		return temp;
 	}
@@ -100,7 +109,7 @@ public:
 	}
 
 	template <typename Arg>
-	static_val<T> operator+(const Arg& other) const {
+	T operator+(const Arg& other) const {
 		return value + other;
 	}
 
