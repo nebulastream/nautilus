@@ -2,6 +2,7 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/logging.hpp"
 #include <fmt/format.h>
 #include <iostream>
 namespace nautilus::tracing {
@@ -84,11 +85,33 @@ std::ostream& operator<<(std::ostream& os, const Op& operation) {
 void pushStaticVal(void* valPtr) {
 	if (auto* ctx = TraceContext::get()) {
 		ctx->getStaticVars().emplace_back((size_t*) valPtr);
+		if (log::options::getLogStaticVars()) {
+			auto& vars = ctx->getStaticVars();
+			std::string state;
+			for (size_t i = 0; i < vars.size(); i++) {
+				if (i > 0) {
+					state += ", ";
+				}
+				state += std::to_string(getStaticVarValue(vars[i]));
+			}
+			log::info("pushStaticVal: [{}]", state.c_str());
+		}
 	}
 }
 
 void popStaticVal() {
 	if (auto* ctx = TraceContext::get()) {
+		if (log::options::getLogStaticVars()) {
+			auto& vars = ctx->getStaticVars();
+			std::string state;
+			for (size_t i = 0; i < vars.size(); i++) {
+				if (i > 0) {
+					state += ", ";
+				}
+				state += std::to_string(getStaticVarValue(vars[i]));
+			}
+			log::info("popStaticVal: [{}] (popping last)", state.c_str());
+		}
 		ctx->getStaticVars().pop_back();
 	}
 }

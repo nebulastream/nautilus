@@ -8,4 +8,12 @@ bool getLogAddresses() {
 void setLogAddresses(bool value) {
 	logAddresses = value;
 }
+
+static bool logStaticVars = false;
+bool getLogStaticVars() {
+	return logStaticVars;
+}
+void setLogStaticVars(bool value) {
+	logStaticVars = value;
+}
 } // namespace nautilus::log::options
