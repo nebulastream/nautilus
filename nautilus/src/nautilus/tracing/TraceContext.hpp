@@ -22,7 +22,12 @@ struct StaticVarHolder {
 private:
 	const size_t* ptr;
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
+	friend size_t getStaticVarValue(const StaticVarHolder& holder);
 };
+
+inline size_t getStaticVarValue(const StaticVarHolder& holder) {
+	return *holder.ptr;
+}
 
 /**
  * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.

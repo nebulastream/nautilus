@@ -39,5 +39,8 @@ namespace options {
 bool getLogAddresses();
 void setLogAddresses(bool);
 
+bool getLogStaticVars();
+void setLogStaticVars(bool);
+
 } // namespace options
 } // namespace nautilus::log
