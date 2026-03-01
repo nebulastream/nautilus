@@ -186,7 +186,7 @@ private:
 public:
 	// Default-constructs the object on the traced stack.
 	// For trivially-default-constructible types the ctor call is elided.
-	val<ValueType>() : value_ptr(details::nautilus_alloca<ValueType>()) {
+	val() : value_ptr(details::nautilus_alloca<ValueType>()) {
 		if constexpr (!std::is_trivially_default_constructible_v<ValueType>) {
 			invoke(val<ValueType>::construct, value_ptr);
 		}
@@ -194,7 +194,7 @@ public:
 
 	// Copy-constructs from another val<ValueType>.
 	// Trivially-copyable types use a traced memcpy; others use copy_construct via invoke().
-	val<ValueType>(const val<ValueType>& other) : value_ptr(details::nautilus_alloca<ValueType>()) {
+	val(const val<ValueType>& other) : value_ptr(details::nautilus_alloca<ValueType>()) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
 			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
@@ -288,7 +288,7 @@ public:
 	}
 
 	// Destroys the object. For trivially-destructible types the dtor call is elided.
-	~val<ValueType>() {
+	~val() {
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
 			invoke(destruct, value_ptr);
 		}
