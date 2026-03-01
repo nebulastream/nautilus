@@ -67,6 +67,7 @@ public:
 		SubOp,
 		BinaryComp,
 		ShiftOp,
+		AllocaOp,
 	};
 
 	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,

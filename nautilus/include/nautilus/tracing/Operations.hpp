@@ -43,6 +43,7 @@ enum Op : uint8_t {
 	NEGATE,
 	// Ternary
 	SELECT,
+	ALLOCA,
 };
 
 constexpr const char* toString(Op type) {
@@ -109,6 +110,8 @@ constexpr const char* toString(Op type) {
 		return "NEGATE";
 	case SELECT:
 		return "SELECT";
+	case ALLOCA:
+		return "ALLOCA";
 	default:
 		__builtin_unreachable();
 	}

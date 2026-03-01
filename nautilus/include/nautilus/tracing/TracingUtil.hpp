@@ -8,6 +8,7 @@
 #include "nautilus/val_concepts.hpp"
 #include <any>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <vector>
@@ -29,6 +30,7 @@ TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& 
 TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& firstState,
                               const TypedValueRef& secondState, const TypedValueRef& thirdState);
 
+TypedValueRef& traceAlloca(const size_t size);
 // Traces a boolean value with an associated probability
 bool traceBool(const TypedValueRef& state, double probability);
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);

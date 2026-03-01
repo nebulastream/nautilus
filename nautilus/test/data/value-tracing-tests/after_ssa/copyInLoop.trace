@@ -1,0 +1,29 @@
+B0($1:i32)
+	ALLOCA	$2	:ptr
+	ALLOCA	$18	:ptr
+	CONST	$4	0	:ui64
+	CONST	$6	8	:ui64
+	MUL	$7	$4	$6	:ui64
+	ADD	$8	$2	$7	:ptr
+	CONST	$10	10	:i32
+	STORE	$13	$8	$10	:void
+	CONST	$14	0	:i32
+	CONST	$15	0	:i32
+	JMP	$0	B3($14,$15,$1,$18,$2)	:void
+B1($1:i32,$15:i32,$14:i32,$18:ptr,$2:ptr)
+	CONST	$19	8	:ui64
+	CALL	$20	func_*($18,$2,$19)	:ptr
+	CONST	$22	0	:ui64
+	CONST	$24	8	:ui64
+	MUL	$25	$22	$24	:ui64
+	ADD	$26	$18	$25	:ptr
+	LOAD	$28	$26	:i32
+	ADD	$29	$14	$28	:i32
+	CONST	$30	1	:i32
+	ADD	$31	$15	$30	:i32
+	JMP	$0	B3($29,$31,$1,$18,$2)	:void
+B2($14:i32)
+	RETURN	$0	$14	:i32
+B3($14:i32,$15:i32,$1:i32,$18:ptr,$2:ptr) ControlFlowMerge
+	LT	$16	$15	$1	:bool
+	CMP	$17	$16	B1($1,$15,$14,$18,$2)	B2($14)	:void

@@ -5,6 +5,7 @@
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
+#include "ValueTypeFunctions.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/profile/assume.hpp"
@@ -760,6 +761,13 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+void valueExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("constructAndAccess") {
+		auto f = engine.registerFunction(constructAndAccess);
+		REQUIRE(f() == 42);
+	}
+}
+
 void pointerExecutionTest(engine::NautilusEngine& engine) {
 	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
@@ -1182,6 +1190,9 @@ void runAllTests(engine::NautilusEngine& engine) {
 	}
 	SECTION("pointerExecutionTest") {
 		pointerExecutionTest(engine);
+	}
+	SECTION("valueExecutionTest") {
+		valueExecutionTest(engine);
 	}
 
 	SECTION("sameAsAboveButPassArgumentsByValueContiguousResult") {

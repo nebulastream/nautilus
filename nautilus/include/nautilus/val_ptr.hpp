@@ -1,12 +1,15 @@
 
 #pragma once
 
+#include "nautilus/AllocationContext.hpp"
 #include "nautilus/static.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace nautilus {
@@ -75,13 +78,13 @@ public:
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(T other) noexcept {                                                                            \
+	void operator OP## = (T other) noexcept {                                                                          \
 		val<baseType> value {other};                                                                                   \
 		*this OP## = value;                                                                                            \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(val<T> other) noexcept {                                                                       \
+	void operator OP## = (val<T> other) noexcept {                                                                     \
 		val<baseType> value {other};                                                                                   \
 		*this = *this OP value;                                                                                        \
 	}                                                                                                                  \
@@ -203,11 +206,45 @@ protected:
 	ValuePtrType value;
 };
 
+template <typename T, typename F>
+std::size_t field_offset(F T::* pm) {
+	alignas(T) std::byte storage[sizeof(T)] {};
+	T* obj = std::launder(reinterpret_cast<T*>(storage));                       // ← reinterpret_cast: not constexpr
+	return reinterpret_cast<char*>(&(obj->*pm)) - reinterpret_cast<char*>(obj); // ← same
+}
+
 template <is_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
+
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	auto get(F T::* pm) {
+		auto offset = field_offset(pm);
+		auto valuePtr = (*this) + offset;
+#ifdef ENABLE_TRACING
+		return val<F&>(valuePtr, this->state);
+#else
+		return val<F&>(valuePtr);
+#endif
+	}
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::* pm, val<F> value) {
+		val<F&> valueRef = get(pm);
+		valueRef = value;
+	}
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::* pm, F value) {
+		val<F&> valueRef = get(pm);
+		valueRef = value;
+	}
 
 #ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue)

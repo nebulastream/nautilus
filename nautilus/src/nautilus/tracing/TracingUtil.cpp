@@ -2,6 +2,9 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/tracing/Operations.hpp"
+#include "nautilus/tracing/Types.hpp"
+#include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
 namespace nautilus::tracing {
@@ -76,6 +79,10 @@ TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef
 	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
 }
 
+TypedValueRef& traceAlloca(size_t allocSize) {
+	return TraceContext::get()->traceOperation(ALLOCA, Type::ptr, {allocSize});
+}
+
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
 	os << toString(operation);
 	return os;
@@ -109,8 +116,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {
