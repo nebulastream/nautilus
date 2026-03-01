@@ -35,9 +35,8 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 			// Check 1: No ASSIGN operations should remain
 			if (operation.op == Op::ASSIGN) {
 				result.valid = false;
-				result.errors.push_back(
-				    fmt::format("B{}: ASSIGN operation found at index {} (should be eliminated by SSA)", block.blockId,
-				                opIdx));
+				result.errors.push_back(fmt::format(
+				    "B{}: ASSIGN operation found at index {} (should be eliminated by SSA)", block.blockId, opIdx));
 			}
 
 			// Check 2: Every TypedValueRef input must be defined locally
@@ -65,9 +64,9 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 				const auto& targetBlock = trace.blocks[it->second];
 				if (blockRef.arguments.size() != targetBlock.arguments.size()) {
 					result.valid = false;
-					result.errors.push_back(fmt::format(
-					    "B{} op {}: BlockRef to B{} passes {} arguments but target has {}", block.blockId, opIdx,
-					    blockRef.block, blockRef.arguments.size(), targetBlock.arguments.size()));
+					result.errors.push_back(
+					    fmt::format("B{} op {}: BlockRef to B{} passes {} arguments but target has {}", block.blockId,
+					                opIdx, blockRef.block, blockRef.arguments.size(), targetBlock.arguments.size()));
 				}
 				// Check each argument ref is defined in the current block
 				for (const auto& arg : blockRef.arguments) {
