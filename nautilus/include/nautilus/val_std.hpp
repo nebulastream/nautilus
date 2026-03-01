@@ -107,11 +107,10 @@
 
 #pragma once
 
-
 #include "nautilus/function.hpp"
-#include "nautilus/val_ptr.hpp"
-#include "nautilus/val_concepts.hpp"
 #include "nautilus/std/cstring.h"
+#include "nautilus/val_concepts.hpp"
+#include "nautilus/val_ptr.hpp"
 #include <cstring>
 #include <type_traits>
 
@@ -135,17 +134,17 @@ template <typename T>
 using unwrap_val_t = typename unwrap_val<std::remove_cvref_t<T>>::type;
 
 template <typename ValueType>
-	val<ValueType*> nautilus_alloca() {
-		if (tracing::inTracer()) {
-			auto valueRef = tracing::traceAlloca(sizeof(ValueType));
-			return val<ValueType*>(valueRef);
-		} else {
-			auto* ctx = AllocationContext::get();
-			assert(ctx != nullptr && "val<T*>::alloca() called outside of an engine-managed context");
-			return val<ValueType*>(ctx->allocate<ValueType>());
-		}
+val<ValueType*> nautilus_alloca() {
+	if (tracing::inTracer()) {
+		auto valueRef = tracing::traceAlloca(sizeof(ValueType));
+		return val<ValueType*>(valueRef);
+	} else {
+		auto* ctx = AllocationContext::get();
+		assert(ctx != nullptr && "val<T*>::alloca() called outside of an engine-managed context");
+		return val<ValueType*>(ctx->allocate<ValueType>());
 	}
 }
+} // namespace details
 
 /**
  * val<T> specialization for C++ class/struct types (non-pointer).
@@ -153,7 +152,7 @@ template <typename ValueType>
  * See the file-level documentation above for the full usage guide and limitations.
  */
 template <typename ValueType>
-requires (std::is_class_v<ValueType> && !std::is_pointer_v<ValueType>)
+    requires(std::is_class_v<ValueType> && !std::is_pointer_v<ValueType>)
 class val<ValueType> {
 private:
 	// All data lives behind a traced pointer so that loads, stores and the
@@ -197,7 +196,7 @@ public:
 	// Trivially-copyable types use a traced memcpy; others use copy_construct via invoke().
 	val<ValueType>(const val<ValueType>& other) : value_ptr(details::nautilus_alloca<ValueType>()) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
-            nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
+			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
 			invoke(copy_construct, value_ptr, other.value_ptr);
 		}
@@ -218,7 +217,7 @@ public:
 	// Trivially-copyable types use a traced memcpy; others use copy_assign via invoke().
 	val<ValueType>& operator=(const val<ValueType>& other) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
-			 nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
+			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
 			invoke(copy_assign, value_ptr, other.value_ptr);
 		}
@@ -236,8 +235,8 @@ public:
 	 * Limitation: `pm` must designate a *direct* member. Base-class members require
 	 * casting the internal pointer to `val<Base*>` first.
 	 */
-	template<typename F, typename T = ValueType>
-	requires std::is_class_v<T>
+	template <typename F, typename T = ValueType>
+	    requires std::is_class_v<T>
 	auto get(F T::* pm) {
 		return value_ptr.get(pm);
 	}
@@ -248,8 +247,8 @@ public:
 	 * @param pm     Pointer-to-member.
 	 * @param value  The traced value to store.
 	 */
-	template<typename F, typename T = ValueType>
-	requires std::is_class_v<T>
+	template <typename F, typename T = ValueType>
+	    requires std::is_class_v<T>
 	void set(F T::* pm, val<F> value) {
 		return value_ptr.set(pm, value);
 	}
@@ -263,14 +262,28 @@ public:
 	 * @param pm     Pointer-to-member.
 	 * @param value  The constant value to store.
 	 */
-	template<typename F, typename T = ValueType>
-	requires std::is_class_v<T>
+	template <typename F, typename T = ValueType>
+	    requires std::is_class_v<T>
 	void set(F T::* pm, F value) {
 		return value_ptr.set(pm, value);
 	}
 
-	/** Returns a reference to the underlying pointer, enabling address-of operations on the stack-allocated struct. */
-	val<ValueType*>& operator&() {
+	/**
+	 * Returns a val<ValueType*> pointing to the engine-managed storage of this object.
+	 *
+	 * This is the primary mechanism for passing a stack-allocated val<Struct> as an
+	 * output parameter to an invoke'd runtime function. Because runtime functions
+	 * cannot return val<T> directly, the idiomatic pattern is:
+	 *
+	 *   val<Result> result;
+	 *   invoke(myRuntimeFunc, &result, arg1, arg2);   // fills result via pointer
+	 *   return result.get(&Result::field);
+	 *
+	 * In tracing mode the returned val<ValueType*> carries the SSA reference of
+	 * the alloca so that all subsequent loads and stores through the pointer are
+	 * correctly recorded in the IR.
+	 */
+	val<ValueType*> operator&() {
 		return value_ptr;
 	}
 
@@ -281,4 +294,4 @@ public:
 		}
 	}
 };
-}
+} // namespace nautilus

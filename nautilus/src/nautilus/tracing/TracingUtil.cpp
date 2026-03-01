@@ -79,7 +79,7 @@ TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef
 	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
 }
 
-TypedValueRef& traceAlloca(size_t allocSize){
+TypedValueRef& traceAlloca(size_t allocSize) {
 	return TraceContext::get()->traceOperation(ALLOCA, Type::ptr, {allocSize});
 }
 
@@ -116,8 +116,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

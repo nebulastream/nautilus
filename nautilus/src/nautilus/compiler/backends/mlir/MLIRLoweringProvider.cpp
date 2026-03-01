@@ -370,7 +370,7 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 		break;
 	case ir::Operation::OperationType::AllocaOp:
 		generateMLIR(as<ir::AllocaOperation>(operation), frame);
-		break;	
+		break;
 	case ir::Operation::OperationType::SelectOp:
 		generateMLIR(as<ir::SelectOperation>(operation), frame);
 		break;
@@ -910,7 +910,7 @@ void MLIRLoweringProvider::generateMLIR(ir::AllocaOperation* allocaOperation, Va
 	auto ptrTy = LLVM::LLVMPointerType::get(context);
 	auto i64Ty = IntegerType::get(context, 64);
 	Value sizeVal = builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty,
-	                                                   builder->getI64IntegerAttr(allocaOperation->getSize()));
+	                                                  builder->getI64IntegerAttr(allocaOperation->getSize()));
 	auto alloca = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, 8u);
 
 	frame.setValue(allocaOperation->getIdentifier(), alloca);

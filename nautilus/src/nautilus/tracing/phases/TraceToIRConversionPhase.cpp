@@ -390,7 +390,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& frame, BasicBlock* currentBlock,
-                                                                TraceOperation& operation) {
+                                                                  TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	AllocSize allocationSize = std::get<AllocSize>(operation.input[0]);
 	auto allocaOperation = currentBlock->addOperation<AllocaOperation>(allocationSize);

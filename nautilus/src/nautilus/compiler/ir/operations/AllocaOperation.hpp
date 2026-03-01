@@ -11,8 +11,8 @@ public:
 	~AllocaOperation() override = default;
 
 	size_t getSize() const;
-	
-	private:
-		size_t allocationSize;
+
+private:
+	size_t allocationSize;
 };
 } // namespace nautilus::compiler::ir

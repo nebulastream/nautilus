@@ -2,7 +2,6 @@
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
-#include "ValueTypeFunctions.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
@@ -10,6 +9,7 @@
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
+#include "ValueTypeFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -289,7 +289,6 @@ TEST_CASE("Static Trace Test") {
 	runTraceTests("static-loop-tests", tests);
 }
 
-
 TEST_CASE("Value Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    // default constructor
@@ -307,17 +306,17 @@ TEST_CASE("Value Trace Test") {
 	    // loops
 	    {"modifyInLoop", details::createFunctionWrapper(modifyInLoop)},
 	    {"copyInLoop", details::createFunctionWrapper(copyInLoop)},
-		{"constructAndCall", details::createFunctionWrapper(constructAndCall)},
-		
+	    {"constructAndCall", details::createFunctionWrapper(constructAndCall)},
+
 	};
 	runTraceTests("value-tracing-tests", tests);
 }
 
 TEST_CASE("Pointer Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-		{"getField", details::createFunctionWrapper(getField)},
-		{"setFieldConst", details::createFunctionWrapper(setFieldConst)},
-		{"setFieldIndirect", details::createFunctionWrapper(setFieldIndirect)},
+	    {"getField", details::createFunctionWrapper(getField)},
+	    {"setFieldConst", details::createFunctionWrapper(setFieldConst)},
+	    {"setFieldIndirect", details::createFunctionWrapper(setFieldIndirect)},
 	    {"customPointerAdd", details::createFunctionWrapper(customPointerAdd)},
 	    {"pointerAdd", details::createFunctionWrapper(pointerAdd)},
 	    {"pointerAddConst", details::createFunctionWrapper(pointerAddConst)},

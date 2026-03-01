@@ -16,8 +16,8 @@ struct Test {
 	int32_t b;
 };
 
-void addFunc(Test* res, int32_t a, int32_t b){
-	res->a = a+b;
+void addFunc(Test* res, int32_t a, int32_t b) {
+	res->a = a + b;
 }
 
 // Struct with non-trivial default and parameterised constructors.
@@ -25,8 +25,10 @@ void addFunc(Test* res, int32_t a, int32_t b){
 struct TestWithCtor {
 	int32_t a;
 	int32_t b;
-	TestWithCtor() : a(0), b(0) {}
-	TestWithCtor(int32_t a, int32_t b) : a(a), b(b) {}
+	TestWithCtor() : a(0), b(0) {
+	}
+	TestWithCtor(int32_t a, int32_t b) : a(a), b(b) {
+	}
 };
 
 // Struct with a non-trivial destructor.
@@ -34,10 +36,12 @@ struct TestWithCtor {
 // is_trivially_copyable    = false  → copies use copy_construct / copy_assign via invoke().
 struct TestWithDtor {
 	int32_t value;
-	TestWithDtor() : value(0) {}
+	TestWithDtor() : value(0) {
+	}
 	TestWithDtor(const TestWithDtor&) = default;
 	TestWithDtor& operator=(const TestWithDtor&) = default;
-	~TestWithDtor() {}
+	~TestWithDtor() {
+	}
 };
 
 // --- Default constructor tests ---
@@ -64,14 +68,11 @@ val<int32_t> constructNonTrivialDefault() {
 	return value.get(&TestWithCtor::a);
 }
 
-
-
 val<int32_t> constructAndCall(val<int32_t> x) {
 	val<Test> value;
 	invoke(addFunc, &value, x, x);
 	return value.get(&Test::a);
 }
-
 
 // --- Parameterised constructor test ---
 

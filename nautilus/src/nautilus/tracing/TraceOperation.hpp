@@ -18,7 +18,6 @@ class None {};
 using BranchProbability = double;
 using AllocSize = size_t;
 
-
 /**
  * @brief Represents a function call operation in the trace.
  *
@@ -46,7 +45,8 @@ struct BlockRef {
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocSize>;
+using InputVariant =
+    std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocSize>;
 
 /**
  * @brief Represents an individual operation in a trace.

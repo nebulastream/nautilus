@@ -30,8 +30,6 @@ val<int32_t> ptrAssignment(val<int32_t*> ptr, val<int32_t*> ptr2) {
 	return val<int32_t>(*ptr) + val<int32_t>(*tempPtr);
 }
 
-
-
 template <typename T>
 val<bool> isNullptr(val<T*> ptr) {
 	return ptr == nullptr;
@@ -168,7 +166,6 @@ struct FieldStruct {
 	int x;
 };
 
-
 val<int32_t> getField(val<FieldStruct*> ptr) {
 	// cast base struct to custom struct
 	val<int32_t> intValue = ptr.get(&FieldStruct::x);
@@ -187,7 +184,6 @@ void setFieldIndirect(val<FieldStruct*> ptr, val<int32_t> x) {
 struct CustomStruct2 {
 	int x;
 };
-
 
 /*
  * Specialize the pointer type to implement some custom wrapper functions

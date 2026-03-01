@@ -135,7 +135,7 @@ private:
 	void generateMLIR(ir::CastOperation* castOperation, ValueFrame& frame);
 	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
 	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
-	void generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame);	
+	void generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame);
 	/**
 	 * @brief Generates a basic block inside of the current MLIR module. Used for control flow (if,loop).
 	 * @param blockInvocation:  basic block that is invocated.

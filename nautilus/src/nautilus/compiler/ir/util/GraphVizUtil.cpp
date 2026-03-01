@@ -487,7 +487,7 @@ protected:
 		case Operation::OperationType::StoreOp:
 			return "memory";
 		case Operation::OperationType::AllocaOp:
-			return "alloca";	
+			return "alloca";
 		case Operation::OperationType::MLIR_YIELD:
 			return "other";
 		}

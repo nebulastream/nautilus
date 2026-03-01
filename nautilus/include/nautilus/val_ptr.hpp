@@ -78,13 +78,13 @@ public:
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(T other) noexcept {                                                                            \
+	void operator OP## = (T other) noexcept {                                                                          \
 		val<baseType> value {other};                                                                                   \
 		*this OP## = value;                                                                                            \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(val<T> other) noexcept {                                                                       \
+	void operator OP## = (val<T> other) noexcept {                                                                     \
 		val<baseType> value {other};                                                                                   \
 		*this = *this OP value;                                                                                        \
 	}                                                                                                                  \
@@ -208,9 +208,9 @@ protected:
 
 template <typename T, typename F>
 std::size_t field_offset(F T::* pm) {
-    alignas(T) std::byte storage[sizeof(T)]{};
-    T* obj = std::launder(reinterpret_cast<T*>(storage));  // ← reinterpret_cast: not constexpr
-    return reinterpret_cast<char*>(&(obj->*pm)) - reinterpret_cast<char*>(obj);  // ← same
+	alignas(T) std::byte storage[sizeof(T)] {};
+	T* obj = std::launder(reinterpret_cast<T*>(storage));                       // ← reinterpret_cast: not constexpr
+	return reinterpret_cast<char*>(&(obj->*pm)) - reinterpret_cast<char*>(obj); // ← same
 }
 
 template <is_ptr ValuePtrType>
@@ -220,36 +220,31 @@ public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
 
-
-	template<typename F, typename T = ValType>
-	requires std::is_class_v<T>
-	auto get(F T::* pm)
-	{
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	auto get(F T::* pm) {
 		auto offset = field_offset(pm);
 		auto valuePtr = (*this) + offset;
-		#ifdef ENABLE_TRACING
-				return val<F&>(valuePtr, this->state);
-		#else
-				return val<F&>(valuePtr);
-		#endif
+#ifdef ENABLE_TRACING
+		return val<F&>(valuePtr, this->state);
+#else
+		return val<F&>(valuePtr);
+#endif
 	}
 
-	template<typename F, typename T = ValType>
-	requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value)
-	{
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::* pm, val<F> value) {
 		val<F&> valueRef = get(pm);
 		valueRef = value;
 	}
 
-	template<typename F, typename T = ValType>
-	requires std::is_class_v<T>
-	void set(F T::* pm, F value)
-	{
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::* pm, F value) {
 		val<F&> valueRef = get(pm);
 		valueRef = value;
 	}
-	
 
 #ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue)
@@ -572,5 +567,3 @@ private:
 };
 
 } // namespace nautilus
-
-
