@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include "nautilus/function.hpp"
+#include <cstdint>
 #include <nautilus/Engine.hpp>
 #include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
@@ -13,6 +15,10 @@ struct Test {
 	int32_t a;
 	int32_t b;
 };
+
+void addFunc(Test* res, int32_t a, int32_t b){
+	res->a = a+b;
+}
 
 // Struct with non-trivial default and parameterised constructors.
 // is_trivially_default_constructible = false → invoke(construct, ...) is traced.
@@ -57,6 +63,15 @@ val<int32_t> constructNonTrivialDefault() {
 	value.set(&TestWithCtor::a, 7);
 	return value.get(&TestWithCtor::a);
 }
+
+
+
+val<int32_t> constructAndCall(val<int32_t> x) {
+	val<Test> value;
+	invoke(addFunc, &value, x, x);
+	return value.get(&Test::a);
+}
+
 
 // --- Parameterised constructor test ---
 

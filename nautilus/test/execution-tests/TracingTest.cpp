@@ -307,6 +307,8 @@ TEST_CASE("Value Trace Test") {
 	    // loops
 	    {"modifyInLoop", details::createFunctionWrapper(modifyInLoop)},
 	    {"copyInLoop", details::createFunctionWrapper(copyInLoop)},
+		{"constructAndCall", details::createFunctionWrapper(constructAndCall)},
+		
 	};
 	runTraceTests("value-tracing-tests", tests);
 }

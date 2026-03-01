@@ -269,6 +269,11 @@ public:
 		return value_ptr.set(pm, value);
 	}
 
+	/** Returns a reference to the underlying pointer, enabling address-of operations on the stack-allocated struct. */
+	val<ValueType*>& operator&() {
+		return value_ptr;
+	}
+
 	// Destroys the object. For trivially-destructible types the dtor call is elided.
 	~val<ValueType>() {
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
