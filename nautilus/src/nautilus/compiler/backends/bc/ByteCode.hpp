@@ -714,6 +714,7 @@ public:
 
 	std::vector<short> arguments = std::vector<short>();
 	std::vector<CodeBlock> blocks = std::vector<CodeBlock>();
+	std::vector<std::vector<uint8_t>> allocaBuffers;
 	Type returnType = Type::v;
 
 	friend std::ostream& operator<<(std::ostream& os, const Code& code);

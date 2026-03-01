@@ -17,6 +17,7 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
@@ -111,6 +112,7 @@ private:
 		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::NotOperation* opt, short block, RegisterFrame& frame);
 
+		void process(ir::AllocaOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);

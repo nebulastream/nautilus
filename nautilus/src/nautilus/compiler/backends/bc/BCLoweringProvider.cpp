@@ -1168,6 +1168,11 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 		process(select, block, frame);
 		return;
 	}
+	case ir::Operation::OperationType::AllocaOp: {
+		auto alloca = as<ir::AllocaOperation>(opt);
+		process(alloca, block, frame);
+		return;
+	}
 	default: {
 
 		throw NotImplementedException("This type is not supported.");
@@ -1842,6 +1847,15 @@ void BCLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp,
 	// For SELECT: reg1=condition, reg2=trueValue, reg3=falseValue, output=result
 	OpCode oc = {bc, conditionReg, trueValueReg, resultReg, falseValueReg};
 	program.blocks[block].code.emplace_back(oc);
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp, short /*block*/,
+                                                  RegisterFrame& frame) {
+	auto resultRegister = registerProvider.allocRegister();
+	allocateRegister(resultRegister);
+	program.allocaBuffers.emplace_back(allocaOp->getSize(), uint8_t {0});
+	defaultRegisterFile[resultRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
+	frame.setValue(allocaOp->getIdentifier(), resultRegister);
 }
 
 } // namespace nautilus::compiler::bc

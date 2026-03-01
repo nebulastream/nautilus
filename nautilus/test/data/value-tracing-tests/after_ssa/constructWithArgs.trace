@@ -1,0 +1,15 @@
+B0($1:i32,$2:i32)
+	ALLOCA	$3	:ptr
+	CALL	$4	func_*($3,$1,$2)	:void
+	CONST	$6	0	:ui64
+	CONST	$8	8	:ui64
+	MUL	$9	$6	$8	:ui64
+	ADD	$10	$3	$9	:ptr
+	CONST	$13	4	:ui64
+	CONST	$15	8	:ui64
+	MUL	$16	$13	$15	:ui64
+	ADD	$17	$3	$16	:ptr
+	LOAD	$19	$10	:i32
+	LOAD	$20	$17	:i32
+	ADD	$21	$19	$20	:i32
+	RETURN	$0	$21	:i32

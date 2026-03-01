@@ -363,6 +363,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(select, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::AllocaOp: {
+		auto alloca = as<ir::AllocaOperation>(opt);
+		process(alloca, blockIndex, frame);
+		return;
+	}
 	default: {
 		throw NotImplementedException("Operation is not implemented");
 	}
@@ -435,6 +440,16 @@ void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp
 	blockArguments << getType(selectOp->getStamp()) << " " << resultVar << ";\n";
 	frame.setValue(selectOp->getIdentifier(), resultVar);
 	blocks[blockIndex] << resultVar << " = " << condition << " ? " << trueValue << " : " << falseValue << ";\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto resultVar = getVariable(allocaOp->getIdentifier());
+	auto bufVar = "alloca_buf_" + allocaOp->getIdentifier().toString();
+	blockArguments << "alignas(8) uint8_t " << bufVar << "[" << allocaOp->getSize() << "];\n";
+	blockArguments << "uint8_t* " << resultVar << ";\n";
+	frame.setValue(allocaOp->getIdentifier(), resultVar);
+	blocks[blockIndex] << resultVar << " = " << bufVar << ";\n";
 }
 
 std::string CPPLoweringProvider::LoweringContext::getVariable(const ir::OperationIdentifier& id) {

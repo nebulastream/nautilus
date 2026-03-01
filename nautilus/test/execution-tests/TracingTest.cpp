@@ -2,6 +2,7 @@
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
+#include "ValueTypeFunctions.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
@@ -288,8 +289,33 @@ TEST_CASE("Static Trace Test") {
 	runTraceTests("static-loop-tests", tests);
 }
 
+
+TEST_CASE("Value Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    // default constructor
+	    {"constructAndAccess", details::createFunctionWrapper(constructAndAccess)},
+	    {"constructSetBothFields", details::createFunctionWrapper(constructSetBothFields)},
+	    {"constructNonTrivialDefault", details::createFunctionWrapper(constructNonTrivialDefault)},
+	    // parameterised constructor
+	    {"constructWithArgs", details::createFunctionWrapper(constructWithArgs)},
+	    // copy constructor and copy assignment
+	    {"copyConstruct", details::createFunctionWrapper(copyConstruct)},
+	    {"copyAssign", details::createFunctionWrapper(copyAssign)},
+	    {"copyConstructNonTrivial", details::createFunctionWrapper(copyConstructNonTrivial)},
+	    // destructor
+	    {"nonTrivialDestructor", details::createFunctionWrapper(nonTrivialDestructor)},
+	    // loops
+	    {"modifyInLoop", details::createFunctionWrapper(modifyInLoop)},
+	    {"copyInLoop", details::createFunctionWrapper(copyInLoop)},
+	};
+	runTraceTests("value-tracing-tests", tests);
+}
+
 TEST_CASE("Pointer Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+		{"getField", details::createFunctionWrapper(getField)},
+		{"setFieldConst", details::createFunctionWrapper(setFieldConst)},
+		{"setFieldIndirect", details::createFunctionWrapper(setFieldIndirect)},
 	    {"customPointerAdd", details::createFunctionWrapper(customPointerAdd)},
 	    {"pointerAdd", details::createFunctionWrapper(pointerAdd)},
 	    {"pointerAddConst", details::createFunctionWrapper(pointerAddConst)},

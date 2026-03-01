@@ -2,6 +2,9 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/tracing/Operations.hpp"
+#include "nautilus/tracing/Types.hpp"
+#include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
 namespace nautilus::tracing {
@@ -74,6 +77,10 @@ TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& 
 TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
                               const TypedValueRef& third) {
 	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
+}
+
+TypedValueRef& traceAlloca(size_t allocSize){
+	return TraceContext::get()->traceOperation(ALLOCA, Type::ptr, {allocSize});
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& operation) {

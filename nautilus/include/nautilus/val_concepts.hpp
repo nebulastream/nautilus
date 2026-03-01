@@ -67,6 +67,7 @@ concept is_arithmetic_ref = std::is_arithmetic_v<std::remove_reference_t<T>> && 
 template <typename T>
 concept is_nautilus_ref = is_ptr_ref<T> || is_arithmetic_ref<T>;
 
+
 template <typename T>
 concept is_void_ptr = is_ptr<T> && std::is_void_v<std::remove_pointer_t<T>>;
 

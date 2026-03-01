@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
@@ -233,6 +234,8 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		fmt::format_to(out, "{} = !{}", notOp->getIdentifier(), notOp->getInput()->getIdentifier());
 	} else if (auto negateOp = op.dynCast<NegateOperation>()) {
 		fmt::format_to(out, "{} = ~{}", negateOp->getIdentifier(), negateOp->getInput()->getIdentifier());
+	} else if (auto alloca = op.dynCast<AllocaOperation>()) {
+		fmt::format_to(out, "{} = alloca {}b", alloca->getIdentifier(), alloca->getSize());
 	} else {
 		fmt::format_to(out, "{}", op.getIdentifier().toString());
 	}

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/AllocationContext.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/config.hpp"
@@ -82,6 +83,7 @@ public:
 	typename R::raw_type operator()(FunctionArguments... args) {
 		return std::visit(
 		    overloaded {[&](std::function<R(val<FunctionArguments>...)>& fn) -> typename R::raw_type {
+			                AllocationContextGuard alloca_guard;
 			                return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(
 			                    fn(make_value(args)...));
 		                },
@@ -116,7 +118,10 @@ public:
 	}
 
 	auto operator()(FunctionArguments... args) {
-		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
+		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) {
+			                       AllocationContextGuard alloca_guard;
+			                       fn(make_value(args)...);
+		                       },
 		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
 			                       fn(args...);
 		                       }},
