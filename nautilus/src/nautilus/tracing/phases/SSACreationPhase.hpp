@@ -3,9 +3,9 @@
 
 #include "nautilus/tracing/TraceOperation.hpp"
 #include <memory>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::tracing {
 
@@ -49,27 +49,19 @@ private:
 		Block& getReturnBlock();
 
 		/**
-		 * @brief Checks if an ValueRef is defined in a specific block by an argument or an operation before the current
-		 * operationIndex
-		 * @param block reference to the current basic block
-		 * @param valRef reference to the the value ref we are looking fore
-		 * @param operationIndex the operation index, which accesses the ValueRef
-		 * @return true if Value Ref is defined locally.
+		 * @brief Checks if a ValueRef is defined in the local scope of a block by an operation
+		 * before operationIndex, or by a block argument.
 		 */
-		static bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
-
-		void processValueRef(Block& block, TypedValueRef& type, Type ref_type, uint32_t operationIndex);
-
-		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
+		static bool isLocalValueRef(Block& block, TypedValueRef& ref, Type ref_type, uint32_t operationIndex);
 
 		/**
-		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.
-		 * Adds the value as a block argument and to predecessor branch instructions,
-		 * continuing until reaching a block where the value is locally defined.
-		 * @param block the block where the non-local value was discovered
-		 * @param ref the value reference to propagate
+		 * @brief Propagates a batch of non-local value references upward through predecessor
+		 * blocks in a single traversal. Adds each ref as a block argument and updates branch
+		 * instructions, stopping at blocks where the value is locally defined.
+		 * @param startBlock the block where the non-local values were discovered
+		 * @param refs the value references to propagate
 		 */
-		void propagateValue(Block& block, TypedValueRef ref);
+		void propagateBatch(Block& startBlock, const std::vector<TypedValueRef>& refs);
 
 		/**
 		 * @brief Removes the assignment operations from all blocks.
@@ -84,7 +76,7 @@ private:
 
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
-		std::set<uint32_t> processedBlocks;
+		std::unordered_set<uint32_t> processedBlocks;
 		// Precomputed set of value refs defined by operations in each block.
 		// Used for O(1) locality checks during value propagation.
 		std::unordered_map<uint16_t, std::unordered_set<uint16_t>> blockDefinitions;
