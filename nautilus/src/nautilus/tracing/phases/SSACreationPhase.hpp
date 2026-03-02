@@ -3,9 +3,9 @@
 
 #include "nautilus/tracing/TraceOperation.hpp"
 #include <memory>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::tracing {
 
@@ -72,6 +72,12 @@ private:
 		void propagateValue(Block& block, TypedValueRef ref);
 
 		/**
+		 * @brief Returns the set of value refs defined by operations in the given block,
+		 * computing and caching it on first access.
+		 */
+		const std::unordered_set<uint16_t>& getOrBuildDefinitions(uint16_t blockId);
+
+		/**
 		 * @brief Removes the assignment operations from all blocks.
 		 * Assignment operations are only required to infer SSA form.
 		 */
@@ -84,10 +90,16 @@ private:
 
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
-		std::set<uint32_t> processedBlocks;
-		// Precomputed set of value refs defined by operations in each block.
-		// Used for O(1) locality checks during value propagation.
+		// O(1) block-visit tracking; the iterative version never erases, so unordered_set is safe.
+		std::unordered_set<uint32_t> processedBlocks;
+		// Lazy cache: maps blockId → set of value refs produced by operations in that block.
+		// Entries are built on first access rather than upfront.
 		std::unordered_map<uint16_t, std::unordered_set<uint16_t>> blockDefinitions;
+		// Tracks (blockId << 16 | ref) pairs that have already been propagated,
+		// replacing the O(n) std::find on predBlock.arguments.
+		std::unordered_set<uint32_t> propagatedValues;
+		// Reused across propagateValue calls to avoid repeated heap allocation.
+		std::vector<uint16_t> propWorklist;
 	};
 };
 
