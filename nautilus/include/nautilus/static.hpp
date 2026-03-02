@@ -1,5 +1,4 @@
 #pragma once
-
 #include "nautilus/config.hpp"
 #ifdef ENABLE_TRACING
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -20,36 +19,70 @@ public:
 	static_val() {
 #ifdef ENABLE_TRACING
 		tracing::pushStaticVal(&value);
+		owns_trace = true;
 #endif
 	}
 
 	static_val(T v) : value(v) {
 #ifdef ENABLE_TRACING
 		tracing::pushStaticVal((void*) &value);
+		owns_trace = true;
 #endif
 	}
 
-	static_val(const static_val& other) : static_val((T) other) {
+	// Copy constructor: carries the value but does NOT push to tracing stack.
+	// The number of copies is ABI/platform-dependent (calling convention,
+	// copy elision), so suppressing tracing here avoids platform-divergent
+	// push/pop imbalances.
+	static_val(const static_val& other) : value((T) other) {
+		// owns_trace stays false — no push, no matching pop needed
+	}
+
+	// Move constructor: transfers ownership of the trace slot so the
+	// destructor of the moved-from object does not pop.
+	static_val(static_val&& other) noexcept : value(other.value) {
+#ifdef ENABLE_TRACING
+		owns_trace = other.owns_trace;
+		other.owns_trace = false;
+#endif
 	}
 
 	~static_val() {
 #ifdef ENABLE_TRACING
-		tracing::popStaticVal();
+		if (owns_trace) {
+			tracing::popStaticVal();
+		}
 #endif
 	}
 
+	// Copy-assign: update value only, tracing ownership does not change.
 	static_val& operator=(const static_val& other) {
-		*this = (T) other;
+		value = (T) other;
+		return *this;
+	}
+
+	// Move-assign: transfer value and tracing ownership.
+	static_val& operator=(static_val&& other) noexcept {
+		value = other.value;
+#ifdef ENABLE_TRACING
+		// If we currently own a trace slot, pop it before stealing other's.
+		if (owns_trace) {
+			tracing::popStaticVal();
+		}
+		owns_trace = other.owns_trace;
+		other.owns_trace = false;
+#endif
 		return *this;
 	}
 
 	template <typename OT>
-	static_val(const static_val<OT>& other) : static_val((T) (OT) other) {
+	static_val(const static_val<OT>& other) : value((T) (OT) other) {
+		// Cross-type copy: same rationale as copy constructor — no trace push.
 	}
 
 	template <typename OT>
 	static_val& operator=(const static_val<OT>& other) {
-		*this = (T) (OT) other;
+		value = (T) (OT) other;
 		return *this;
 	}
 
@@ -87,34 +120,33 @@ public:
 	bool operator<(const T& other) const {
 		return value < other;
 	}
-
 	bool operator<=(const T& other) const {
 		return value <= other;
 	}
-
 	bool operator>=(const T& other) const {
 		return value >= other;
 	}
-
 	bool operator==(const T& other) const {
 		return value == other;
 	}
-
 	bool operator!=(const T& other) const {
 		return value != other;
 	}
-
 	bool operator>(const T& other) const {
 		return value > other;
 	}
 
 	template <typename Arg>
+	    requires std::is_integral_v<Arg>
 	T operator+(const Arg& other) const {
-		return value + other;
+		return value + static_cast<T>(other);
 	}
 
 private:
-	T value;
+	T value {};
+#ifdef ENABLE_TRACING
+	bool owns_trace = false;
+#endif
 };
 
 template <typename Iterator>
@@ -152,7 +184,6 @@ public:
 		return tmp;
 	}
 
-	// Define comparison operators as friends to control their argument order
 	friend bool operator==(const static_iterator& lhs, const static_iterator& rhs) {
 		return lhs.m_iterator == rhs.m_iterator;
 	}

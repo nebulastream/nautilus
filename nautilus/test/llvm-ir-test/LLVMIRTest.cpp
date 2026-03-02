@@ -450,6 +450,18 @@ TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoop", "[loops][static]") {
 	testLLVMIR("staticLoopWithDynamicLoop", staticLoopWithDynamicLoop);
 }
 
+TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoopPostIncrement", "[loops][static]") {
+	testLLVMIR("staticLoopWithDynamicLoopPostIncrement", staticLoopWithDynamicLoopPostIncrement);
+}
+
+TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoopPreIncrement", "[loops][static]") {
+	testLLVMIR("staticLoopWithDynamicLoopPreIncrement", staticLoopWithDynamicLoopPreIncrement);
+}
+
+TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoopNotEqual", "[loops][static]") {
+	testLLVMIR("staticLoopWithDynamicLoopNotEqual", staticLoopWithDynamicLoopNotEqual);
+}
+
 TEST_CASE("LLVM IR Test: staticIterator", "[loops][static]") {
 	testLLVMIR("staticIterator", staticIterator);
 }

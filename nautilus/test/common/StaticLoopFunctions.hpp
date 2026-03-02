@@ -35,6 +35,45 @@ val<int32_t> staticLoopWithDynamicLoop(val<int32_t> counter) {
 	return sum;
 }
 
+val<int32_t> staticLoopWithDynamicLoopPostIncrement(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < counter; i++) {
+		for (static_val<int> start = 0; start < 3; start++) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
+val<int32_t> staticLoopWithDynamicLoopPreIncrement(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < counter; ++i) {
+		for (static_val<int> start = 0; start < 3; ++start) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
+val<int32_t> staticLoopWithDynamicLoopNotEqual(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i != counter; i++) {
+		for (static_val<int> start = 0; start != 3; start++) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
 std::vector<int> vec = {1, 2, 3, 4, 5};
 
 val<int32_t> staticIterator(val<int32_t> ref) {
