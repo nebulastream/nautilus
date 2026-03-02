@@ -110,7 +110,6 @@
 #include "nautilus/function.hpp"
 #include "nautilus/std/cstring.h"
 #include "nautilus/val_concepts.hpp"
-#include "nautilus/val_ptr.hpp"
 #include <cstring>
 #include <type_traits>
 
@@ -139,9 +138,8 @@ val<ValueType*> nautilus_alloca() {
 		auto valueRef = tracing::traceAlloca(sizeof(ValueType));
 		return val<ValueType*>(valueRef);
 	} else {
-		auto* ctx = AllocationContext::get();
-		assert(ctx != nullptr && "val<T*>::alloca() called outside of an engine-managed context");
-		return val<ValueType*>(ctx->allocate<ValueType>());
+        ValueType* ptr = static_cast<ValueType*>(::operator new(sizeof(ValueType)));
+		return val<ValueType*>(ptr);
 	}
 }
 } // namespace details
@@ -292,6 +290,10 @@ public:
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
 			invoke(destruct, value_ptr);
 		}
+        // in intermeter mode the value is allocated on heap, so we remove the allocation here
+        if (!tracing::inTracer()) {
+            ::operator delete(value_ptr.value);
+        }
 	}
 };
 } // namespace nautilus

@@ -1,7 +1,6 @@
 
 #pragma once
 
-#include "nautilus/AllocationContext.hpp"
 #include "nautilus/static.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
@@ -203,6 +202,7 @@ protected:
 	friend val<ValueType> inline operator+(val<ValueType> left, IndexType offset);
 
 	friend details::RawValueResolver<ValuePtrType>;
+	friend val<ValType>;
 	ValuePtrType value;
 };
 
