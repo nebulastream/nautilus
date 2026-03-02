@@ -89,34 +89,59 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& block) {
+void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
+	// Precompute the set of values defined by operations in each block.
+	// This allows O(1) locality checks during value propagation.
+	for (auto& block : trace->getBlocks()) {
+		auto& defined = blockDefinitions[block.blockId];
+		for (auto& op : block.operations) {
+			defined.insert(op.resultRef.ref);
+		}
+	}
 
-	// Process the inputs of all operations in the current block
-	for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
-		auto& operation = block.operations[i];
-		// process input for each variable
-		for (auto& input : operation.input) {
-			if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-				// set op type
-				processValueRef(block, *valueRef, operation.resultType, i);
-			} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-				processBlockRef(block, *blockRef, i);
-			} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-				for (auto valueRef : fcallRef->arguments) {
-					processValueRef(block, valueRef, valueRef.type, i);
+	// Single-pass traversal from the return block through predecessors.
+	// Each block is visited exactly once. Non-local value references are
+	// eagerly propagated upward through the predecessor chain by
+	// propagateValue, eliminating the need to re-process any block.
+	std::vector<uint16_t> worklist;
+	worklist.push_back(startBlock.blockId);
+
+	while (!worklist.empty()) {
+		auto blockId = worklist.back();
+		worklist.pop_back();
+
+		if (processedBlocks.contains(blockId)) {
+			continue;
+		}
+
+		auto& block = trace->getBlock(blockId);
+
+		// Process the inputs of all operations in the current block
+		for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
+			auto& operation = block.operations[i];
+			// process input for each variable
+			for (auto& input : operation.input) {
+				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
+					processValueRef(block, *valueRef, operation.resultType, i);
+				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
+					processBlockRef(block, *blockRef, i);
+				} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
+					for (auto valueRef : fcallRef->arguments) {
+						processValueRef(block, valueRef, valueRef.type, i);
+					}
 				}
 			}
 		}
-	}
-	processedBlocks.emplace(block.blockId);
-	// Recursively process the predecessors of this block
-	// If the current block is a control-flow merge it may have multiple
-	// predecessors. We avoid visiting them again by checking the processedBlocks
-	// set.
-	for (auto pred : block.predecessors) {
-		auto& predBlock = trace->getBlock(pred);
-		if (!processedBlocks.contains(pred)) {
-			processBlock(predBlock);
+
+		processedBlocks.emplace(block.blockId);
+
+		// Add unprocessed predecessors to the worklist in reverse order so that
+		// the stack (LIFO) pops them in the original left-to-right order,
+		// matching the DFS traversal order of the previous recursive version.
+		for (auto it = block.predecessors.rbegin(); it != block.predecessors.rend(); ++it) {
+			if (!processedBlocks.contains(*it)) {
+				worklist.push_back(*it);
+			}
 		}
 	}
 }
@@ -127,32 +152,57 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
 	} else {
-		// The valeRef references a different block, so we have to add it to the
-		// local arguments and append it to the pre-predecessor calls
-		block.addArgument(ref);
-		// add to parameters in parent blocks
-		for (auto& predecessor : block.predecessors) {
-			// add to final call
+		// The valueRef references a different block. Eagerly propagate it upward
+		// through the predecessor chain so every block that needs to pass this
+		// value receives it without requiring the main loop to revisit any block.
+		propagateValue(block, ref);
+	}
+}
+
+void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
+	block.addArgument(ref);
+
+	// Iterative worklist: propagate the value upward through predecessors
+	// until we reach blocks where the value is locally defined.
+	std::vector<uint16_t> propWorklist;
+	propWorklist.push_back(block.blockId);
+
+	while (!propWorklist.empty()) {
+		auto curBlockId = propWorklist.back();
+		propWorklist.pop_back();
+
+		auto& curBlock = trace->getBlock(curBlockId);
+
+		for (auto& predecessor : curBlock.predecessors) {
 			auto& predBlock = trace->getBlock(predecessor);
 			auto& lastOperation = predBlock.operations.back();
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				for (auto& input : lastOperation.input) {
 					if (auto blockRef = std::get_if<BlockRef>(&input)) {
-						if (blockRef->block == block.blockId) {
-							// TODO check if we contain the type already.
+						if (blockRef->block == curBlockId) {
 							blockRef->arguments.emplace_back(ref);
-							// we changed the block an arguments, thus we have to revisit it.
-							if (processedBlocks.contains(predBlock.blockId)) {
-								processedBlocks.erase(predBlock.blockId);
-							}
 						}
 					}
 				}
-			} else {
-				// NES_ERROR(trace->toString());
-				// NES_THROW_RUNTIME_ERROR("Last operation of pred block should be JMP
-				// or CMP");
 			}
+
+			// If the value is defined by an operation in the predecessor, it is
+			// locally available there and no further propagation is needed.
+			auto defIt = blockDefinitions.find(predecessor);
+			if (defIt != blockDefinitions.end() && defIt->second.contains(ref.ref)) {
+				continue;
+			}
+
+			// If the predecessor already has this value as an argument, it was
+			// already propagated (handles loops and diamond merges).
+			if (std::find(predBlock.arguments.begin(), predBlock.arguments.end(), ref) != predBlock.arguments.end()) {
+				continue;
+			}
+
+			// Value is not local in the predecessor: add as argument and
+			// continue propagating upward.
+			predBlock.addArgument(ref);
+			propWorklist.push_back(predecessor);
 		}
 	}
 }

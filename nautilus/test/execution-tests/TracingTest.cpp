@@ -14,6 +14,7 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
+#include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdio>
@@ -107,6 +108,14 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 			auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
 			DYNAMIC_SECTION("after_ssa") {
 				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
+			}
+			DYNAMIC_SECTION("ssa_verify") {
+				auto ssaResult = tracing::VerifySSA(*afterSSA);
+				if (!ssaResult.valid) {
+					for (const auto& error : ssaResult.errors) {
+						FAIL(error);
+					}
+				}
 			}
 			DYNAMIC_SECTION("ir") {
 				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
