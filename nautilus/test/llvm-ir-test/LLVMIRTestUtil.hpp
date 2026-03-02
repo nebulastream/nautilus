@@ -26,7 +26,7 @@ namespace nautilus::engine {
 template <typename Func>
 void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsics,
                 const std::filesystem::path& referenceIRDir) {
-	std::string dumpPath = "/tmp/nautilus-ir-test";
+	std::string dumpPath = (std::filesystem::temp_directory_path() / ("nautilus-ir-test-" + functionName)).string();
 	std::filesystem::remove_all(dumpPath);
 	std::filesystem::create_directories(dumpPath);
 
@@ -63,13 +63,14 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 		std::system(normCmd.c_str());
 
 		// Skip comparison since we just created the reference
+		std::filesystem::remove_all(dumpPath);
 		return;
 	}
 
 	// Normalize IR files to remove machine-specific attributes
 	// This ensures tests pass across different CPU architectures and LLVM versions
-	std::string tempGenFile = "/tmp/" + functionName + "_gen_normalized.ll";
-	std::string tempRefFile = "/tmp/" + functionName + "_ref_normalized.ll";
+	std::string tempGenFile = dumpPath + "/" + functionName + "_gen_normalized.ll";
+	std::string tempRefFile = dumpPath + "/" + functionName + "_ref_normalized.ll";
 
 	// Strip machine-specific attributes:
 	// - target-cpu and target-features (CPU-specific)
@@ -104,6 +105,8 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	}
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
 	int result = std::system(command.c_str());
+
+	std::filesystem::remove_all(dumpPath);
 
 	// llvm-diff returns 0 if files are equivalent, 1 if different
 	REQUIRE(result == 0);

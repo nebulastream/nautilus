@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <unistd.h>
 
 namespace nautilus::log::options {
 
@@ -86,10 +87,14 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 	}
 
 	char tmpName[] = "/tmp/actual_trace_XXXXXX";
-	mkstemp(tmpName);
+	int tmpFd = mkstemp(tmpName);
+	close(tmpFd);
 	std::ofstream tmpfile {tmpName};
 	tmpfile << actual;
-	std::cout << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	std::cerr << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	std::cerr << "=== Expected (" << filePath << ") ===\n"
+	          << expect.str() << "\n=== Actual ===\n"
+	          << actual << "\n=== End ===\n";
 	return false;
 }
 
@@ -288,8 +293,12 @@ TEST_CASE("Static Trace Test") {
 	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
 	    // this test is sensitive to compiler options
 	    //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
-	    //{"staticLoopWithDynamicLoop",
-	    // details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	    {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	    {"staticLoopWithDynamicLoopPostIncrement",
+	     details::createFunctionWrapper(staticLoopWithDynamicLoopPostIncrement)},
+	    {"staticLoopWithDynamicLoopPreIncrement",
+	     details::createFunctionWrapper(staticLoopWithDynamicLoopPreIncrement)},
+	    {"staticLoopWithDynamicLoopNotEqual", details::createFunctionWrapper(staticLoopWithDynamicLoopNotEqual)},
 	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
