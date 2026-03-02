@@ -56,7 +56,8 @@ TEST_CASE("SSA Creation Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 
-		// skip this test
+		// skip nestedIf/chainedIf: SSA creation crashes on these due to a
+		// pre-existing bug in multi-return block handling (see getReturnBlock).
 		if (name == "nestedIf10" || name == "nestedIf100" || name == "chainedIf10" || name == "chainedIf100") {
 			continue;
 		}

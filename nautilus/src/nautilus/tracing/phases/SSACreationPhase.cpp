@@ -60,9 +60,6 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// Eliminate all assign operations. We only needed them to create the SSA
 	// from.
 	removeAssignOperations();
-	// Finally we make all block arguments unique to their local block.
-	// As a result two blocks, can't use the same value references.
-	makeBlockArgumentsUnique();
 
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
