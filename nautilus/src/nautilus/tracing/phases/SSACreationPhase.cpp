@@ -46,7 +46,6 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	}
 
 	return returnBlock;
-	//  return trace->getBlock(bl);
 }
 
 std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::process() {
@@ -60,9 +59,6 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// Eliminate all assign operations. We only needed them to create the SSA
 	// from.
 	removeAssignOperations();
-	// Finally we make all block arguments unique to their local block.
-	// As a result two blocks, can't use the same value references.
-	makeBlockArgumentsUnique();
 
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
@@ -75,27 +71,41 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
-                                                                uint32_t operationIndex) {
-	// A value ref is defined in the local scope, if it is the result of an
-	// operation before the operationIndex
-	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto& resOperation = block.operations[i];
-		if (resOperation.resultRef == ref) {
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(uint16_t blockId, uint16_t ref,
+                                                                uint32_t operationIndex) const {
+	// Check if ref is defined by an operation before operationIndex in this block (O(1) lookup)
+	auto blockIt = blockFirstDefIndex.find(blockId);
+	if (blockIt != blockFirstDefIndex.end()) {
+		auto refIt = blockIt->second.find(ref);
+		if (refIt != blockIt->second.end() && refIt->second < operationIndex) {
 			return true;
 		}
 	}
-	// check if the operation is defined in the block arguments
-	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
+	// Check if the operation is defined in the block arguments (O(1) lookup)
+	auto argIt = blockArgSets.find(blockId);
+	return argIt != blockArgSets.end() && argIt->second.contains(ref);
+}
+
+void SSACreationPhase::SSACreationPhaseContext::addBlockArgument(Block& block, TypedValueRef ref) {
+	if (blockArgSets[block.blockId].insert(ref.ref).second) {
+		block.arguments.emplace_back(ref);
+	}
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
-	// Precompute the set of values defined by operations in each block.
-	// This allows O(1) locality checks during value propagation.
+	// Precompute: for each block, map from valueRef to its first definition index.
+	// Also initialize the argument set from existing block arguments.
 	for (auto& block : trace->getBlocks()) {
-		auto& defined = blockDefinitions[block.blockId];
-		for (auto& op : block.operations) {
-			defined.insert(op.resultRef.ref);
+		auto& defIndex = blockFirstDefIndex[block.blockId];
+		for (uint32_t i = 0; i < block.operations.size(); i++) {
+			auto ref = block.operations[i].resultRef.ref;
+			if (!defIndex.contains(ref)) {
+				defIndex[ref] = i;
+			}
+		}
+		auto& argSet = blockArgSets[block.blockId];
+		for (auto& arg : block.arguments) {
+			argSet.insert(arg.ref);
 		}
 	}
 
@@ -122,12 +132,12 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 			// process input for each variable
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					processValueRef(block, *valueRef, operation.resultType, i);
+					processValueRef(block, *valueRef, i);
 				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
 					processBlockRef(block, *blockRef, i);
 				} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
 					for (auto valueRef : fcallRef->arguments) {
-						processValueRef(block, valueRef, valueRef.type, i);
+						processValueRef(block, valueRef, i);
 					}
 				}
 			}
@@ -146,12 +156,9 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref,
                                                                 uint32_t operationIndex) {
-	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
-		// variable is a local ref -> don't do anything as the value is defined in
-		// the current block
-	} else {
+	if (!isLocalValueRef(block.blockId, ref.ref, operationIndex)) {
 		// The valueRef references a different block. Eagerly propagate it upward
 		// through the predecessor chain so every block that needs to pass this
 		// value receives it without requiring the main loop to revisit any block.
@@ -160,7 +167,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 }
 
 void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
-	block.addArgument(ref);
+	addBlockArgument(block, ref);
 
 	// Iterative worklist: propagate the value upward through predecessors
 	// until we reach blocks where the value is locally defined.
@@ -188,20 +195,19 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 			// If the value is defined by an operation in the predecessor, it is
 			// locally available there and no further propagation is needed.
-			auto defIt = blockDefinitions.find(predecessor);
-			if (defIt != blockDefinitions.end() && defIt->second.contains(ref.ref)) {
+			auto defIt = blockFirstDefIndex.find(predecessor);
+			if (defIt != blockFirstDefIndex.end() && defIt->second.contains(ref.ref)) {
 				continue;
 			}
 
-			// If the predecessor already has this value as an argument, it was
-			// already propagated (handles loops and diamond merges).
-			if (std::find(predBlock.arguments.begin(), predBlock.arguments.end(), ref) != predBlock.arguments.end()) {
+			// Try to add as block argument; if already present, skip
+			// (handles loops and diamond merges in O(1)).
+			if (!blockArgSets[predecessor].insert(ref.ref).second) {
 				continue;
 			}
 
-			// Value is not local in the predecessor: add as argument and
-			// continue propagating upward.
-			predBlock.addArgument(ref);
+			// Value was newly added as argument, continue propagating upward.
+			predBlock.arguments.emplace_back(ref);
 			propWorklist.push_back(predecessor);
 		}
 	}
@@ -212,22 +218,24 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
 	for (auto& input : blockRef.arguments) {
-		processValueRef(block, input, input.type, operationIndex);
+		processValueRef(block, input, operationIndex);
 	}
 }
 
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
-	// Iterate over all block and eliminate the ASSIGN operation.
+	// Single-pass: resolve assignment chains, replace references, and compact in one traversal.
 	for (Block& block : trace->getBlocks()) {
 		std::unordered_map<uint16_t, uint16_t> assignmentMap;
-		for (auto& operation : block.operations) {
+		size_t writeIdx = 0;
+		for (size_t readIdx = 0; readIdx < block.operations.size(); readIdx++) {
+			auto& operation = block.operations[readIdx];
 			if (operation.op == Op::ASSIGN) {
 				auto& valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
 				if (foundAssignment != assignmentMap.end()) {
 					assignmentMap[operation.resultRef.ref] = foundAssignment->second;
 				} else {
-					assignmentMap[operation.resultRef.ref] = get<TypedValueRef>(operation.input[0]).ref;
+					assignmentMap[operation.resultRef.ref] = valueRef.ref;
 				}
 			} else {
 				for (auto& input : operation.input) {
@@ -252,58 +260,13 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 						}
 					}
 				}
-			}
-		}
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
-	}
-}
-
-void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
-	for (Block& block : trace->getBlocks()) {
-		std::unordered_map<uint16_t, uint16_t> blockArgumentMap;
-
-		// iterate over all arguments of this block and create new ValRefs if the
-		// argument ref is not local. for (uint64_t argIndex = 0; argIndex <
-		// block.arguments.size(); argIndex++) {
-		//    auto argRef = block.arguments[argIndex];
-		//    if (argRef.blockId != block.blockId) {
-		//        auto newLocalRef =
-		//                ValueRef(block.blockId, block.operations.size() +
-		//                blockArgumentMap.size() + 100,
-		//                         argRef.type);
-		//        blockArgumentMap[argRef] = newLocalRef;
-		//        block.arguments[argIndex] = newLocalRef;
-		//    }
-		//}
-
-		// set the new ValRefs to all depending on operations.
-		for (uint64_t i = 0; i < block.operations.size(); i++) {
-			auto& operation = block.operations[i];
-			for (auto& input : operation.input) {
-				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
-					if (foundAssignment != blockArgumentMap.end()) {
-						// todo check assignment
-						valueRef->ref = foundAssignment->second;
-						// valueRef->blockId = foundAssignment->second.blockId;
-						// valueRef->operationId = foundAssignment->second.operationId;
-					}
-				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-					for (auto& blockArgument : blockRef->arguments) {
-						auto foundAssignment = blockArgumentMap.find(blockArgument.ref);
-						if (foundAssignment != blockArgumentMap.end()) {
-							// valueRef = &foundAssignment->second;
-							blockArgument.ref = foundAssignment->second;
-							// blockArgument.blockId = foundAssignment->second.blockId;
-							// blockArgument.operationId =
-							// foundAssignment->second.operationId;
-						}
-					}
+				if (writeIdx != readIdx) {
+					block.operations[writeIdx] = std::move(operation);
 				}
+				writeIdx++;
 			}
 		}
-
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+		block.operations.erase(block.operations.begin() + writeIdx, block.operations.end());
 	}
 }
 
