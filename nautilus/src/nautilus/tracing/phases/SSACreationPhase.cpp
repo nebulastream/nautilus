@@ -60,9 +60,6 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	// Eliminate all assign operations. We only needed them to create the SSA
 	// from.
 	removeAssignOperations();
-	// Finally we make all block arguments unique to their local block.
-	// As a result two blocks, can't use the same value references.
-	makeBlockArgumentsUnique();
 
 	// check arguments
 	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
@@ -90,19 +87,11 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
-	// Precompute the set of values defined by operations in each block.
-	// This allows O(1) locality checks during value propagation.
-	for (auto& block : trace->getBlocks()) {
-		auto& defined = blockDefinitions[block.blockId];
-		for (auto& op : block.operations) {
-			defined.insert(op.resultRef.ref);
-		}
-	}
-
 	// Single-pass traversal from the return block through predecessors.
 	// Each block is visited exactly once. Non-local value references are
 	// eagerly propagated upward through the predecessor chain by
 	// propagateValue, eliminating the need to re-process any block.
+	// blockDefinitions entries are built lazily on first access.
 	std::vector<uint16_t> worklist;
 	worklist.push_back(startBlock.blockId);
 
@@ -159,12 +148,24 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 	}
 }
 
+const std::unordered_set<uint16_t>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint16_t blockId) {
+	auto it = blockDefinitions.find(blockId);
+	if (it != blockDefinitions.end()) {
+		return it->second;
+	}
+	auto& defined = blockDefinitions[blockId];
+	for (auto& op : trace->getBlock(blockId).operations) {
+		defined.insert(op.resultRef.ref);
+	}
+	return defined;
+}
+
 void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
 	block.addArgument(ref);
+	propagatedValues.insert((uint32_t(block.blockId) << 16) | ref.ref);
 
-	// Iterative worklist: propagate the value upward through predecessors
-	// until we reach blocks where the value is locally defined.
-	std::vector<uint16_t> propWorklist;
+	// Reuse the member worklist to avoid heap allocation per call.
+	propWorklist.clear();
 	propWorklist.push_back(block.blockId);
 
 	while (!propWorklist.empty()) {
@@ -188,20 +189,21 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 			// If the value is defined by an operation in the predecessor, it is
 			// locally available there and no further propagation is needed.
-			auto defIt = blockDefinitions.find(predecessor);
-			if (defIt != blockDefinitions.end() && defIt->second.contains(ref.ref)) {
+			if (getOrBuildDefinitions(predecessor).contains(ref.ref)) {
 				continue;
 			}
 
-			// If the predecessor already has this value as an argument, it was
-			// already propagated (handles loops and diamond merges).
-			if (std::find(predBlock.arguments.begin(), predBlock.arguments.end(), ref) != predBlock.arguments.end()) {
+			// O(1) check: if we have already propagated this value to this predecessor
+			// (handles loops and diamond merges), skip re-queuing.
+			uint32_t key = (uint32_t(predecessor) << 16) | ref.ref;
+			if (propagatedValues.contains(key)) {
 				continue;
 			}
 
 			// Value is not local in the predecessor: add as argument and
 			// continue propagating upward.
 			predBlock.addArgument(ref);
+			propagatedValues.insert(key);
 			propWorklist.push_back(predecessor);
 		}
 	}
