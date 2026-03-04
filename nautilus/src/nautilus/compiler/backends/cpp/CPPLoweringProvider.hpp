@@ -96,8 +96,10 @@ private:
 		void processConst(const std::unique_ptr<ir::Operation>& opt, short blockIndex, RegisterFrame& frame) {
 			auto constValue = static_cast<Type*>(opt.get());
 			auto var = getVariable(constValue->getIdentifier());
-			blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
-			frame.setValue(constValue->getIdentifier(), var);
+			if (!frame.contains(constValue->getIdentifier())) {
+				blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
+				frame.setValue(constValue->getIdentifier(), var);
+			}
 
 			std::stringstream ss;
 			ss << constValue->getValue();
@@ -116,8 +118,10 @@ private:
 			auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 			auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());
 			auto resultVar = getVariable(op->getIdentifier());
-			blockArguments << getType(op->getStamp()) << " " << resultVar << ";\n";
-			frame.setValue(op->getIdentifier(), resultVar);
+			if (!frame.contains(op->getIdentifier())) {
+				blockArguments << getType(op->getStamp()) << " " << resultVar << ";\n";
+				frame.setValue(op->getIdentifier(), resultVar);
+			}
 			blocks[blockIndex] << resultVar << " = " << leftInput << operation << rightInput << ";\n";
 		}
 	};

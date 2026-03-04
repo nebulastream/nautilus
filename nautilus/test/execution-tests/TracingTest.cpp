@@ -292,7 +292,7 @@ TEST_CASE("Static Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
 	    // this test is sensitive to compiler options
-	    //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
+	    {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
 	    {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
 	    {"staticLoopWithDynamicLoopPostIncrement",
 	     details::createFunctionWrapper(staticLoopWithDynamicLoopPostIncrement)},
@@ -312,7 +312,11 @@ TEST_CASE("Static Trace Test") {
 	    {"staticLoopWithArg", details::createFunctionWrapper(staticLoopWithArg)},
 	    {"staticSequentialLoops", details::createFunctionWrapper(staticSequentialLoops)},
 	    {"staticLoopAccumulateCounter", details::createFunctionWrapper(staticLoopAccumulateCounter)},
-	    {"staticIteratorSum", details::createFunctionWrapper(staticIteratorSum)}};
+	    {"staticIteratorSum", details::createFunctionWrapper(staticIteratorSum)},
+	    {"staticRawArrayIterator", details::createFunctionWrapper(staticRawArrayIterator)},
+	    {"staticStdArrayIterator", details::createFunctionWrapper(staticStdArrayIterator)},
+	    {"staticEnumerateWeightedSum", details::createFunctionWrapper(staticEnumerateWeightedSum)},
+	    {"staticEnumerateSum", details::createFunctionWrapper(staticEnumerateSum)}};
 	runTraceTests("static-loop-tests", tests);
 }
 

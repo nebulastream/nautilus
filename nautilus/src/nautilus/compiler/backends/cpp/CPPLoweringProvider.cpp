@@ -135,8 +135,10 @@ void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, 
 	auto leftInput = frame.getValue(cmpOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(cmpOp->getRightInput()->getIdentifier());
 	auto resultVar = getVariable(cmpOp->getIdentifier());
-	blockArguments << getType(cmpOp->getStamp()) << " " << resultVar << ";\n";
-	frame.setValue(cmpOp->getIdentifier(), resultVar);
+	if (!frame.contains(cmpOp->getIdentifier())) {
+		blockArguments << getType(cmpOp->getStamp()) << " " << resultVar << ";\n";
+		frame.setValue(cmpOp->getIdentifier(), resultVar);
+	}
 
 	// we have to handle the special case that we want to do a null check.
 	// Currently, Nautilus IR just contains a x == 0, thus we check if x is a ptr
@@ -170,8 +172,10 @@ void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, 
 void CPPLoweringProvider::LoweringContext::process(ir::LoadOperation* loadOp, short blockIndex, RegisterFrame& frame) {
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
 	auto resultVar = getVariable(loadOp->getIdentifier());
-	blockArguments << getType(loadOp->getStamp()) << " " << resultVar << ";\n";
-	frame.setValue(loadOp->getIdentifier(), resultVar);
+	if (!frame.contains(loadOp->getIdentifier())) {
+		blockArguments << getType(loadOp->getStamp()) << " " << resultVar << ";\n";
+		frame.setValue(loadOp->getIdentifier(), resultVar);
+	}
 	auto type = getType(loadOp->getStamp());
 	blocks[blockIndex] << resultVar << " = *reinterpret_cast<" << type << "*>(" << address << ");\n";
 }
@@ -392,8 +396,10 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 	}
 	if (opt->getStamp() != Type::v) {
 		auto resultVar = getVariable(opt->getIdentifier());
-		blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
-		frame.setValue(opt->getIdentifier(), resultVar);
+		if (!frame.contains(opt->getIdentifier())) {
+			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
+			frame.setValue(opt->getIdentifier(), resultVar);
+		}
 		blocks[blockIndex] << resultVar << " = ";
 	}
 	blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
@@ -403,8 +409,10 @@ void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOp
                                                    RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(negateOperation->getIdentifier());
-	blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
-	frame.setValue(negateOperation->getIdentifier(), resultVar);
+	if (!frame.contains(negateOperation->getIdentifier())) {
+		blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
+		frame.setValue(negateOperation->getIdentifier(), resultVar);
+	}
 	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
 }
 
@@ -412,17 +420,21 @@ void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperatio
                                                    RegisterFrame& frame) {
 	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(notOperation->getIdentifier());
-	blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";
-	frame.setValue(notOperation->getIdentifier(), resultVar);
+	if (!frame.contains(notOperation->getIdentifier())) {
+		blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";
+		frame.setValue(notOperation->getIdentifier(), resultVar);
+	}
 	blocks[blockIndex] << resultVar << "= !" << input << ";\n";
 }
 
 void CPPLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, short blockIndex, RegisterFrame& frame) {
 	auto input = frame.getValue(castOp->getInput()->getIdentifier());
 	auto var = getVariable(castOp->getIdentifier());
-	frame.setValue(castOp->getIdentifier(), var);
 	auto targetType = getType(castOp->getStamp());
-	blockArguments << targetType << " " << var << ";\n";
+	if (!frame.contains(castOp->getIdentifier())) {
+		blockArguments << targetType << " " << var << ";\n";
+		frame.setValue(castOp->getIdentifier(), var);
+	}
 	blocks[blockIndex] << var << " = (" << targetType << ")" << input << ";\n";
 }
 
@@ -432,8 +444,10 @@ void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp
 	auto trueValue = frame.getValue(selectOp->getTrueValue()->getIdentifier());
 	auto falseValue = frame.getValue(selectOp->getFalseValue()->getIdentifier());
 	auto resultVar = getVariable(selectOp->getIdentifier());
-	blockArguments << getType(selectOp->getStamp()) << " " << resultVar << ";\n";
-	frame.setValue(selectOp->getIdentifier(), resultVar);
+	if (!frame.contains(selectOp->getIdentifier())) {
+		blockArguments << getType(selectOp->getStamp()) << " " << resultVar << ";\n";
+		frame.setValue(selectOp->getIdentifier(), resultVar);
+	}
 	blocks[blockIndex] << resultVar << " = " << condition << " ? " << trueValue << " : " << falseValue << ";\n";
 }
 
