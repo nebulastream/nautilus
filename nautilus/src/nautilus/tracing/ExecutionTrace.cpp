@@ -238,13 +238,15 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	ValueRef argRef = index + 1;
-	auto& arguments = blocks[0].arguments;
-	if (arguments.size() < argRef) {
-		arguments.resize(argRef);
+	auto& block0 = blocks[0];
+	if (block0.arguments.size() < argRef) {
+		block0.arguments.resize(argRef);
 	}
-	// arguments[index] = {argRef, type};
-	arguments[index] = TypedValueRef(argRef, type);
-	return arguments[index];
+	block0.arguments[index] = TypedValueRef(argRef, type);
+	// Keep argumentSet in sync with the arguments vector so that O(1) membership
+	// checks in isLocalValueRef see the initial function parameters correctly.
+	block0.argumentSet.emplace(argRef);
+	return block0.arguments[index];
 }
 
 std::vector<operation_identifier> ExecutionTrace::getReturn() {

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/tracing/TraceOperation.hpp"
+#include "nautilus/tracing/TypedValueRef.hpp"
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,18 +50,22 @@ private:
 		Block& getReturnBlock();
 
 		/**
-		 * @brief Checks if an ValueRef is defined in a specific block by an argument or an operation before the current
-		 * operationIndex
+		 * @brief Checks if a ValueRef is defined in a specific block by an argument or an operation before the current
+		 * operationIndex. Uses a pre-built map from resultRef to its operation index for O(1) lookup.
+		 * @param localDefs map from resultRef.ref to the operation index that defines it within the block
 		 * @param block reference to the current basic block
-		 * @param valRef reference to the the value ref we are looking fore
-		 * @param operationIndex the operation index, which accesses the ValueRef
-		 * @return true if Value Ref is defined locally.
+		 * @param valRef reference to the value ref we are looking for
+		 * @param operationIndex the operation index which accesses the ValueRef
+		 * @return true if ValueRef is defined locally.
 		 */
-		static bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
+		static bool isLocalValueRef(const std::unordered_map<ValueRef, uint32_t>& localDefs, const Block& block,
+		                            const TypedValueRef& valRef, uint32_t operationIndex);
 
-		void processValueRef(Block& block, TypedValueRef& type, Type ref_type, uint32_t operationIndex);
+		void processValueRef(const std::unordered_map<ValueRef, uint32_t>& localDefs, Block& block, TypedValueRef& ref,
+		                     uint32_t operationIndex);
 
-		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
+		void processBlockRef(const std::unordered_map<ValueRef, uint32_t>& localDefs, Block& block, BlockRef& blockRef,
+		                     uint32_t operationIndex);
 
 		/**
 		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.

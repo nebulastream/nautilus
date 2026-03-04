@@ -15,8 +15,8 @@ operation_identifier Block::addOperation(nautilus::tracing::TraceOperation&& ope
 }
 
 void Block::addArgument(TypedValueRef ref) {
-	// only add ref to arguments if it not already exists
-	if (std::find(arguments.begin(), arguments.end(), ref) == arguments.end()) {
+	// Only add ref to arguments if it does not already exist. O(1) via argumentSet.
+	if (argumentSet.emplace(ref.ref).second) {
 		arguments.emplace_back(ref);
 	}
 }

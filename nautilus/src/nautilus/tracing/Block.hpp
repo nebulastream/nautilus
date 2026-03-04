@@ -4,6 +4,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
+#include <unordered_set>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -51,6 +52,12 @@ public:
 	 * @brief indicates a list of arguments that this block receives.
 	 */
 	std::vector<TypedValueRef> arguments;
+
+	/**
+	 * @brief Set of argument refs for O(1) membership check in addArgument.
+	 * Kept in sync with arguments via addArgument.
+	 */
+	std::unordered_set<ValueRef> argumentSet;
 
 	/**
 	 * @brief Defines a list of operations this block contains.

@@ -72,18 +72,16 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(const std::unordered_map<ValueRef, uint32_t>& localDefs,
+                                                                const Block& block, const TypedValueRef& ref,
                                                                 uint32_t operationIndex) {
-	// A value ref is defined in the local scope, if it is the result of an
-	// operation before the operationIndex
-	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto& resOperation = block.operations[i];
-		if (resOperation.resultRef == ref) {
-			return true;
-		}
+	// O(1): check if ref is produced by an operation earlier in this block.
+	auto it = localDefs.find(ref.ref);
+	if (it != localDefs.end() && it->second < operationIndex) {
+		return true;
 	}
-	// check if the operation is defined in the block arguments
-	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
+	// O(1): check if ref is a block argument using the companion set.
+	return block.argumentSet.contains(ref.ref);
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
@@ -105,18 +103,27 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 
 		auto& block = trace->getBlock(blockId);
 
+		// Pre-build a map from each operation's resultRef to its index within the block.
+		// This allows isLocalValueRef to determine in O(1) whether a given ref is
+		// produced by an earlier operation, avoiding an O(n) scan per lookup.
+		std::unordered_map<ValueRef, uint32_t> localDefs;
+		localDefs.reserve(block.operations.size());
+		for (uint32_t opIdx = 0; opIdx < block.operations.size(); opIdx++) {
+			localDefs.emplace(block.operations[opIdx].resultRef.ref, opIdx);
+		}
+
 		// Process the inputs of all operations in the current block
 		for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
 			auto& operation = block.operations[i];
 			// process input for each variable
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					processValueRef(block, *valueRef, operation.resultType, i);
+					processValueRef(localDefs, block, *valueRef, i);
 				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-					processBlockRef(block, *blockRef, i);
+					processBlockRef(localDefs, block, *blockRef, i);
 				} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
 					for (auto valueRef : fcallRef->arguments) {
-						processValueRef(block, valueRef, valueRef.type, i);
+						processValueRef(localDefs, block, valueRef, i);
 					}
 				}
 			}
@@ -135,9 +142,10 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(const std::unordered_map<ValueRef, uint32_t>& localDefs,
+                                                                Block& block, TypedValueRef& ref,
                                                                 uint32_t operationIndex) {
-	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
+	if (isLocalValueRef(localDefs, block, ref, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
 	} else {
@@ -212,7 +220,8 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef,
+void SSACreationPhase::SSACreationPhaseContext::processBlockRef(const std::unordered_map<ValueRef, uint32_t>& localDefs,
+                                                                Block& block, BlockRef& blockRef,
                                                                 uint32_t operationIndex) {
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
@@ -221,7 +230,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	// range-for iterators.
 	auto arguments = blockRef.arguments;
 	for (auto& input : arguments) {
-		processValueRef(block, input, input.type, operationIndex);
+		processValueRef(localDefs, block, input, operationIndex);
 	}
 }
 
