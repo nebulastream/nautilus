@@ -149,6 +149,12 @@ private:
 #endif
 };
 
+// Forward declaration for use in static_iterator friendship.
+template <typename Iterator>
+class static_sentinel;
+
+// Iterator wrapper that holds a static_val counter so the tracer sees a unique
+// snapshot hash on every step, enabling full loop unrolling at trace time.
 template <typename Iterator>
 class static_iterator {
 public:
@@ -161,24 +167,24 @@ public:
 	explicit static_iterator(Iterator it) : val(0), m_iterator(it) {
 	}
 
-	reference operator*() {
-		val = val + 1;
+	// Dereference is side-effect-free; the counter advances only in operator++.
+	reference operator*() const {
 		return *m_iterator;
 	}
 
-	pointer operator->() {
-		val = val + 1;
-		return std::addressof(operator*());
+	pointer operator->() const {
+		return std::addressof(*m_iterator);
 	}
 
+	// Advance: increment the static counter (new snapshot hash) and the underlying iterator.
 	static_iterator& operator++() {
-		val = val + 1;
+		++val;
 		++m_iterator;
 		return *this;
 	}
 
+	// Standard post-increment: copy current state, advance *this, return old state.
 	static_iterator operator++(int) {
-		val = val + 1;
 		static_iterator tmp = *this;
 		++(*this);
 		return tmp;
@@ -195,20 +201,141 @@ public:
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
+	friend class static_sentinel<Iterator>;
 };
 
+// Sentinel for end(): stores only the end iterator without a static_val,
+// avoiding a spurious constant in the snapshot hash.
+template <typename Iterator>
+class static_sentinel {
+public:
+	explicit static_sentinel(Iterator it) : m_end(it) {
+	}
+
+	friend bool operator==(const static_iterator<Iterator>& it, const static_sentinel& s) {
+		return it.m_iterator == s.m_end;
+	}
+
+	friend bool operator!=(const static_iterator<Iterator>& it, const static_sentinel& s) {
+		return it.m_iterator != s.m_end;
+	}
+
+private:
+	Iterator m_end;
+};
+
+// Wraps any container (or C-style array via std::begin/end) so that a range-for
+// loop over it is fully unrolled at trace time.
 template <typename Container>
 class static_iterable {
 public:
-	static_iterable(Container& container) : m_container(container) {
+	explicit static_iterable(Container& container) : m_container(container) {
 	}
 
 	auto begin() {
-		return static_iterator<decltype(m_container.begin())>(m_container.begin());
+		using std::begin;
+		auto it = begin(m_container);
+		return static_iterator<decltype(it)>(it);
 	}
 
 	auto end() {
-		return static_iterator<decltype(m_container.end())>(m_container.end());
+		using std::end;
+		auto it = end(m_container);
+		return static_sentinel<decltype(it)>(it);
+	}
+
+private:
+	Container& m_container;
+};
+
+// --- enumerate support ---
+
+template <typename Iterator, typename IndexType = int64_t>
+class enumerate_sentinel;
+
+// Iterator that exposes the static loop counter alongside each element.
+// Structured-binding friendly: `for (auto [idx, elem] : static_enumerable(c))`.
+// `idx` is `static_val<IndexType>&` — a reference into the iterator, valid for
+// the lifetime of the loop body.
+template <typename Iterator, typename IndexType = int64_t>
+class enumerate_iterator {
+public:
+	using value_type = typename std::iterator_traits<Iterator>::value_type;
+	using reference = typename std::iterator_traits<Iterator>::reference;
+
+	struct value_ref {
+		static_val<IndexType>& index;
+		reference element;
+	};
+
+	explicit enumerate_iterator(Iterator it) : index(0), m_iterator(it) {
+	}
+
+	value_ref operator*() {
+		return {index, *m_iterator};
+	}
+
+	enumerate_iterator& operator++() {
+		++index;
+		++m_iterator;
+		return *this;
+	}
+
+	enumerate_iterator operator++(int) {
+		enumerate_iterator tmp = *this;
+		++(*this);
+		return tmp;
+	}
+
+	friend bool operator==(const enumerate_iterator& lhs, const enumerate_iterator& rhs) {
+		return lhs.m_iterator == rhs.m_iterator;
+	}
+
+	friend bool operator!=(const enumerate_iterator& lhs, const enumerate_iterator& rhs) {
+		return lhs.m_iterator != rhs.m_iterator;
+	}
+
+private:
+	static_val<IndexType> index;
+	Iterator m_iterator;
+	friend class enumerate_sentinel<Iterator, IndexType>;
+};
+
+template <typename Iterator, typename IndexType>
+class enumerate_sentinel {
+public:
+	explicit enumerate_sentinel(Iterator it) : m_end(it) {
+	}
+
+	friend bool operator==(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel& s) {
+		return it.m_iterator == s.m_end;
+	}
+
+	friend bool operator!=(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel& s) {
+		return it.m_iterator != s.m_end;
+	}
+
+private:
+	Iterator m_end;
+};
+
+// Like static_iterable but also exposes the iteration index as a static_val.
+template <typename Container, typename IndexType = int64_t>
+class static_enumerable {
+public:
+	explicit static_enumerable(Container& container) : m_container(container) {
+	}
+
+	auto begin() {
+		using std::begin;
+		auto it = begin(m_container);
+		return enumerate_iterator<decltype(it), IndexType>(it);
+	}
+
+	auto end() {
+		using std::end;
+		auto it = end(m_container);
+		return enumerate_sentinel<decltype(it), IndexType>(it);
 	}
 
 private:
