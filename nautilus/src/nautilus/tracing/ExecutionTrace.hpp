@@ -169,9 +169,9 @@ public:
 
 	/**
 	 * @brief Gets the next available value reference identifier
-	 * @return uint16_t The next value reference ID
+	 * @return ValueRef The next value reference ID
 	 */
-	uint16_t getNextValueRef();
+	ValueRef getNextValueRef();
 
 private:
 	/**
@@ -183,10 +183,10 @@ private:
 
 public:
 	uint16_t currentBlockIndex;
-	uint16_t currentOperationIndex;
+	ValueRef currentOperationIndex;
 	std::vector<Block> blocks;
 	std::vector<operation_identifier> returnRefs;
-	uint16_t lastValueRef = 0;
+	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
 

@@ -88,16 +88,6 @@ jobs:
         with:
           path: build/mlir-*
           key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: |
-            build/CMakeCache.txt
-            build/CMakeFiles
-          key: cmake-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-          restore-keys: |
-            cmake-${{ matrix.os }}-${{ matrix.cc }}-
-            cmake-${{ matrix.os }}-
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:

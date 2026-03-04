@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
@@ -32,28 +33,27 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 /**
  * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.
  *
- * This class maintains reference counts for up to 65536 variables and computes a hash that reflects
- * both which variables are alive and their reference counts. The hash is updated incrementally in O(1)
- * time on each increment/decrement operation, avoiding the need to recompute the entire hash.
+ * This class maintains reference counts using a sparse hash map to support the full uint32_t range
+ * of variable IDs while keeping memory usage reasonable. The hash reflects both which variables
+ * are alive and their reference counts, updated incrementally in O(1) average time.
  *
  * Implementation details:
  * - Uses XOR-based hashing for O(1) incremental updates
  * - Each variable ID is mixed with a constant multiplier for better hash distribution
  * - The hash incorporates both variable identity (ID) and reference count
- * - Memory footprint: 256KB (only counts array, no precomputed hash table)
+ * - Uses unordered_map for sparse storage (only allocates for variables that exist)
  *
  * Performance characteristics:
- * - increment(): O(1) - two XOR operations, two multiplications
- * - decrement(): O(1) - two XOR operations, two multiplications
+ * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
+ * - decrement(): O(1) average - hash map lookup + two XOR operations, two multiplications
  * - hash(): O(1) - returns cached value
  *
- * @note This replaces the previous vector-based approach which required O(n) hashing on snapshot.
+ * @note Changed from fixed array to hash map to support uint32_t ValueRef (was uint16_t).
  */
 class AliveVariableHash {
-	static constexpr size_t N = 1u << 16;
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
-	std::array<uint32_t, N> counts {};
+	std::unordered_map<uint32_t, uint32_t> counts;
 	uint64_t alive_hash = 0;
 
 public:
@@ -68,9 +68,9 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
-	 * @param id Variable identifier (16-bit value)
+	 * @param id Variable identifier (32-bit value)
 	 */
-	inline void increment(uint16_t id) noexcept {
+	inline void increment(uint32_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		++c;
@@ -83,9 +83,9 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
-	 * @param id Variable identifier (16-bit value)
+	 * @param id Variable identifier (32-bit value)
 	 */
-	inline void decrement(uint16_t id) noexcept {
+	inline void decrement(uint32_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		--c;
@@ -109,11 +109,11 @@ public:
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
 	 * This efficiently clears all counts without creating a temporary object.
-	 * Optimized: if hash is already 0, we assume counts are already 0 and skip the fill.
+	 * Optimized: if hash is already 0, we assume counts are already empty and skip the clear.
 	 */
 	inline void reset() noexcept {
 		if (alive_hash != 0) {
-			counts.fill(0);
+			counts.clear();
 			alive_hash = 0;
 		}
 	}

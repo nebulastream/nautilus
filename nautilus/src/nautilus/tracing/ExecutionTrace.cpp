@@ -237,7 +237,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
-	uint16_t argRef = index + 1;
+	ValueRef argRef = index + 1;
 	auto& arguments = blocks[0].arguments;
 	if (arguments.size() < argRef) {
 		arguments.resize(argRef);
@@ -251,13 +251,13 @@ std::vector<operation_identifier> ExecutionTrace::getReturn() {
 	return returnRefs;
 }
 
-uint16_t ExecutionTrace::getNextValueRef() {
+ValueRef ExecutionTrace::getNextValueRef() {
 	return ++lastValueRef;
 }
 
 operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 	currentOperationIndex = getCurrentBlock().operations.size() - 1;
-	return {currentBlockIndex, (uint16_t) currentOperationIndex};
+	return {currentBlockIndex, currentOperationIndex};
 }
 
 void ExecutionTrace::resetExecution() {

@@ -181,7 +181,10 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 				for (auto& input : lastOperation.input) {
 					if (auto blockRef = std::get_if<BlockRef>(&input)) {
 						if (blockRef->block == curBlockId) {
-							blockRef->arguments.emplace_back(ref);
+							if (std::find(blockRef->arguments.begin(), blockRef->arguments.end(), ref) ==
+							    blockRef->arguments.end()) {
+								blockRef->arguments.emplace_back(ref);
+							}
 						}
 					}
 				}
@@ -213,7 +216,11 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
                                                                 uint32_t operationIndex) {
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
-	for (auto& input : blockRef.arguments) {
+	// Snapshot the argument list: processValueRef may append to blockRef.arguments
+	// (for self-loop blocks where predBlock == block), which would invalidate the
+	// range-for iterators.
+	auto arguments = blockRef.arguments;
+	for (auto& input : arguments) {
 		processValueRef(block, input, input.type, operationIndex);
 	}
 }
@@ -221,7 +228,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
 	for (Block& block : trace->getBlocks()) {
-		std::unordered_map<uint16_t, uint16_t> assignmentMap;
+		std::unordered_map<ValueRef, ValueRef> assignmentMap;
 		for (auto& operation : block.operations) {
 			if (operation.op == Op::ASSIGN) {
 				auto& valueRef = get<TypedValueRef>(operation.input[0]);
@@ -262,7 +269,7 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 
 void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 	for (Block& block : trace->getBlocks()) {
-		std::unordered_map<uint16_t, uint16_t> blockArgumentMap;
+		std::unordered_map<ValueRef, ValueRef> blockArgumentMap;
 
 		// iterate over all arguments of this block and create new ValRefs if the
 		// argument ref is not local. for (uint64_t argIndex = 0; argIndex <

@@ -9,7 +9,7 @@ Block::Block(uint16_t blockId) : blockId(blockId), type(Type::Default) {
 }
 
 operation_identifier Block::addOperation(nautilus::tracing::TraceOperation&& operation) {
-	uint16_t operationIndex = operations.size();
+	uint32_t operationIndex = operations.size();
 	operations.emplace_back(std::move(operation));
 	return {blockId, operationIndex};
 }
