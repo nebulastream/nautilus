@@ -49,7 +49,7 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
 
-void pushStaticVal(void* ptr);
+void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();
 void allocateValRef(ValueRef ref);
 void freeValRef(ValueRef ref);

@@ -689,8 +689,11 @@ void staticLoopExecutionTest(engine::NautilusEngine& engine) {
 	}
 	SECTION("staticLoopWithIf") {
 		auto f = engine.registerFunction(staticLoopWithIf);
-		REQUIRE(f(0) == 109);
-		REQUIRE(f(6) == 116);
+		REQUIRE(f(-100) == 0); // always <= 5: pure +10 each iter
+		REQUIRE(f(0) == 109);  // first iter no bonus, then 9x +11
+		REQUIRE(f(5) == 114);  // 5 not > 5: first iter +10, then 9x +11
+		REQUIRE(f(6) == 116);  // always > 5: 10x +11
+		REQUIRE(f(10) == 120); // always > 5: 10 + 10*11
 	}
 	SECTION("staticLoopWithDynamicLoop") {
 		auto f = engine.registerFunction(staticLoopWithDynamicLoop);

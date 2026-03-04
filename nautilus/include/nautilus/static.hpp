@@ -18,14 +18,14 @@ public:
 
 	static_val() {
 #ifdef ENABLE_TRACING
-		tracing::pushStaticVal(&value);
+		tracing::pushStaticVal(&value, sizeof(T));
 		owns_trace = true;
 #endif
 	}
 
 	static_val(T v) : value(v) {
 #ifdef ENABLE_TRACING
-		tracing::pushStaticVal((void*) &value);
+		tracing::pushStaticVal((void*) &value, sizeof(T));
 		owns_trace = true;
 #endif
 	}
@@ -198,6 +198,9 @@ public:
 		return lhs.m_iterator != rhs.m_iterator;
 	}
 
+	friend bool operator==(const static_iterator& it, const static_sentinel<Iterator>& s);
+	friend bool operator!=(const static_iterator& it, const static_sentinel<Iterator>& s);
+
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
@@ -294,6 +297,9 @@ public:
 	friend bool operator!=(const enumerate_iterator& lhs, const enumerate_iterator& rhs) {
 		return lhs.m_iterator != rhs.m_iterator;
 	}
+
+	friend bool operator==(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
+	friend bool operator!=(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
 
 private:
 	static_val<IndexType> index;

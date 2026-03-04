@@ -289,16 +289,18 @@ TEST_CASE("Bool Trace Test") {
 }
 
 TEST_CASE("Static Trace Test") {
+
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+// these tests are sensitive to compiler options and not supported on ARM
+#ifndef __aarch64__
 	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
-	    // this test is sensitive to compiler options
-	    {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
 	    {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
 	    {"staticLoopWithDynamicLoopPostIncrement",
 	     details::createFunctionWrapper(staticLoopWithDynamicLoopPostIncrement)},
 	    {"staticLoopWithDynamicLoopPreIncrement",
 	     details::createFunctionWrapper(staticLoopWithDynamicLoopPreIncrement)},
 	    {"staticLoopWithDynamicLoopNotEqual", details::createFunctionWrapper(staticLoopWithDynamicLoopNotEqual)},
+#endif
 	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},

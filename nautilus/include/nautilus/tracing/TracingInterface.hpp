@@ -65,7 +65,9 @@ public:
 	virtual void freeValRef(ValueRef ref) = 0;
 
 	/// Push a static variable onto the static-variable stack used for snapshot hashing.
-	virtual void pushStaticVal(void* ptr) = 0;
+	/// @param ptr   Pointer to the raw value inside the static_val.
+	/// @param size  sizeof(T) — only this many bytes are valid at ptr.
+	virtual void pushStaticVal(void* ptr, size_t size) = 0;
 
 	/// Pop the top static variable from the static-variable stack.
 	virtual void popStaticVal() = 0;
