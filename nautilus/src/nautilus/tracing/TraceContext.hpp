@@ -10,6 +10,7 @@
 #include "tag/TagRecorder.hpp"
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -18,17 +19,20 @@ namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
 struct StaticVarHolder {
-	explicit StaticVarHolder(size_t* ptr) : ptr(ptr) {
+	explicit StaticVarHolder(const void* ptr, size_t size) : ptr(ptr), size(size) {
 	}
 
 private:
-	const size_t* ptr;
+	const void* ptr;
+	size_t size;
 	friend uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
 	friend size_t getStaticVarValue(const StaticVarHolder& holder);
 };
 
 inline size_t getStaticVarValue(const StaticVarHolder& holder) {
-	return *holder.ptr;
+	size_t result = 0;
+	std::memcpy(&result, holder.ptr, holder.size);
+	return result;
 }
 
 /**
@@ -184,7 +188,7 @@ public:
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
 
-	void pushStaticVal(void* ptr) override;
+	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
 	// --- Non-interface public API ---

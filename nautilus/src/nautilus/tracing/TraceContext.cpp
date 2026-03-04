@@ -167,8 +167,8 @@ std::string TraceContext::formatStaticVars() const {
 	return result;
 }
 
-void TraceContext::pushStaticVal(void* valPtr) {
-	staticVars.emplace_back((size_t*) valPtr);
+void TraceContext::pushStaticVal(void* valPtr, size_t size) {
+	staticVars.emplace_back(valPtr, size);
 	if (log::options::getLogStaticVars()) {
 		log::info("pushStaticVal: [{}]", formatStaticVars());
 	}
@@ -331,8 +331,10 @@ constexpr size_t offset_basis = 0xcbf29ce484222325;
 
 uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	size_t hash = offset_basis;
-	for (auto& value : data) {
-		hash ^= *value.ptr;
+	for (auto& entry : data) {
+		uint64_t val = 0;
+		std::memcpy(&val, entry.ptr, entry.size);
+		hash ^= val;
 		hash *= fnv_prime;
 	}
 	return hash;

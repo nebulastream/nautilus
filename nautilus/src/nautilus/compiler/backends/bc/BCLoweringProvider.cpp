@@ -11,7 +11,9 @@ namespace nautilus::compiler::bc {
 BCLoweringProvider::BCLoweringProvider() {
 }
 
-BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir) : ir(std::move(ir)) {
+BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir)
+    : program(), defaultRegisterFile(), ir(std::move(ir)), registerProvider(), activeBlocks(), usageCounts(),
+      functionArgs() {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir) {

@@ -52,9 +52,9 @@ void freeValRef(ValueRef ref) {
 	}
 }
 
-void pushStaticVal(void* ptr) {
+void pushStaticVal(void* ptr, size_t size) {
 	if (activeTracer) {
-		activeTracer->pushStaticVal(ptr);
+		activeTracer->pushStaticVal(ptr, size);
 	}
 }
 
