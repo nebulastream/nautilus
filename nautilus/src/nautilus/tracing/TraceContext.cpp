@@ -2,6 +2,7 @@
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
@@ -28,14 +29,11 @@ TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionCon
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
-TraceContext* TraceContext::get() {
-	return traceContext.state ? &traceContext : nullptr;
-}
-
 TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
                                        SymbolicExecutionContext& symbolicExecutionContext,
                                        const engine::Options& options) {
 	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	setActiveTracer(&traceContext);
 	return &traceContext;
 }
 
@@ -54,10 +52,6 @@ TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
 	return state->executionTrace.setArgument(type, index);
 }
 
-void TraceContext::traceValueDestruction(nautilus::tracing::TypedValueRef) {
-	// currently yed not implemented
-}
-
 bool TraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
@@ -69,7 +63,7 @@ TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstValue(Type type, const ConstantLiteral& constValue) {
+TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
@@ -113,7 +107,7 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
                                        const std::vector<tracing::TypedValueRef>& arguments,
-                                       const FunctionAttributes fnAttrs) {
+                                       FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
@@ -127,9 +121,9 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
-void TraceContext::traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) {
+void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, targetRef, sourceRef, resultType);
+		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 	});
 }
 
@@ -148,7 +142,46 @@ TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<
 	});
 }
 
-bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probability) {
+TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                           const TypedValueRef& right) {
+	return traceOperation(op, resultType, {left, right});
+}
+
+TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+	return traceOperation(op, resultType, {input});
+}
+
+TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
+                                            const TypedValueRef& second, const TypedValueRef& third) {
+	return traceOperation(op, resultType, {first, second, third});
+}
+
+std::string TraceContext::formatStaticVars() const {
+	std::string result;
+	for (size_t i = 0; i < staticVars.size(); i++) {
+		if (i > 0) {
+			result += ", ";
+		}
+		result += std::to_string(getStaticVarValue(staticVars[i]));
+	}
+	return result;
+}
+
+void TraceContext::pushStaticVal(void* valPtr) {
+	staticVars.emplace_back((size_t*) valPtr);
+	if (log::options::getLogStaticVars()) {
+		log::info("pushStaticVal: [{}]", formatStaticVars());
+	}
+}
+
+void TraceContext::popStaticVal() {
+	if (log::options::getLogStaticVars()) {
+		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
+	}
+	staticVars.pop_back();
+}
+
+bool TraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step
@@ -158,7 +191,7 @@ bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probabi
 		// record
 		auto tag = recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
-			state->executionTrace.addCmpOperation(tag, targetRef, probability);
+			state->executionTrace.addCmpOperation(tag, value, probability);
 			result = state->symbolicExecutionContext.record(tag);
 		} else {
 			// this is actually the same tag -> throw up
@@ -204,7 +237,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 			// Prepare for next iteration
 			symbolicExecutionContext.next();
 			executionTrace.resetExecution();
-			TraceContext::get()->resume(); // Reset persistent state (staticVars, aliveVars)
+			tc->resume(); // Reset persistent state (staticVars, aliveVars)
 
 			// Execute the traced function
 			traceFunction();
@@ -216,7 +249,8 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 		assert(traceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 
-	// Clean up: reset state pointer (TraceContext is no longer initialized)
+	// Clean up: deregister active tracer and reset state pointer
+	setActiveTracer(nullptr);
 	tc->state.reset();
 
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
@@ -225,10 +259,6 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	// Move stack-allocated executionTrace into a unique_ptr for return
 	// The caller gets ownership of the trace
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
-}
-
-std::vector<StaticVarHolder>& TraceContext::getStaticVars() {
-	return staticVars;
 }
 
 void TraceContext::allocateValRef(ValueRef ref) {

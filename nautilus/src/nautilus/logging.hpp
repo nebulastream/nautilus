@@ -16,14 +16,18 @@ void info([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 template <typename... Args>
 void debug([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 #ifdef ENABLE_LOGGING
-	spdlog::debug("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+	if (spdlog::should_log(spdlog::level::debug)) {
+		spdlog::debug("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+	}
 #endif
 }
 
 template <typename... Args>
 void trace([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 #ifdef ENABLE_LOGGING
-	spdlog::trace("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+	if (spdlog::should_log(spdlog::level::trace)) {
+		spdlog::trace("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+	}
 #endif
 }
 

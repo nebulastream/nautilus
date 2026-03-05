@@ -3,34 +3,33 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/tracing/Operations.hpp"
+#include "nautilus/tracing/TracingInterface.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val_concepts.hpp"
-#include <any>
-#include <array>
 #include <cstdint>
 #include <iosfwd>
 #include <vector>
 
 namespace nautilus::tracing {
 
-// Forward declaration
-class TraceContext;
-
 bool inTracer();
 
-// Get the current tracer context pointer (returns nullptr if not tracing)
-// This can be cached locally to avoid repeated thread-local access
-TraceContext* getTracerIfActive();
+/// Get the active TracingInterface for the current thread, or nullptr if not tracing.
+/// The returned pointer is valid for the lifetime of the current trace invocation.
+TracingInterface* getActiveTracer();
 
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
-                             const TypedValueRef& rightState);
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& inputState);
-TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& firstState,
-                              const TypedValueRef& secondState, const TypedValueRef& thirdState);
+/// Set the active TracingInterface for the current thread.
+/// Pass nullptr to indicate that tracing is no longer active.
+void setActiveTracer(TracingInterface* tracer);
 
-// Traces a boolean value with an associated probability
-bool traceBool(const TypedValueRef& state, double probability);
+TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right);
+TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input);
+TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
+                              const TypedValueRef& third);
+
+/// Traces a boolean branch with an associated taken-probability hint.
+bool traceBool(const TypedValueRef& value, double probability);
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {
@@ -41,7 +40,7 @@ TypedValueRef traceConstant(T&& value) {
 }
 
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
-TypedValueRef traceCopy(const TypedValueRef& state);
+TypedValueRef traceCopy(const TypedValueRef& ref);
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);
@@ -49,10 +48,10 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
-void traceValueDestruction(TypedValueRef ref);
 
 void pushStaticVal(void* ptr);
 void popStaticVal();
 void allocateValRef(ValueRef ref);
 void freeValRef(ValueRef ref);
+
 } // namespace nautilus::tracing
