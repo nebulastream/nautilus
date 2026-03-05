@@ -5,6 +5,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
+#include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
 #include <array>
@@ -144,14 +145,16 @@ struct TraceState {
  * - ExecutionTrace and SymbolicExecutionContext are allocated on the stack in trace()
  * - TraceState holds references to these stack objects and is created during initialization
  * - staticVars and aliveVars are persistent members that get reset between trace iterations
+ * - Inherits from TracingInterface so different implementations can be swapped per trace via setActiveTracer().
  *
  * Lifecycle:
  * 1. trace() allocates ExecutionTrace and SymbolicExecutionContext on its stack
- * 2. initialize() creates TraceState with references to these stack objects
+ * 2. initialize() creates TraceState with references to these stack objects and registers itself
+ *    as the active tracer via setActiveTracer(this)
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
- * 4. After tracing completes, state is reset and ExecutionTrace is moved into unique_ptr for return
+ * 4. After tracing completes, setActiveTracer(nullptr) is called and ExecutionTrace is returned
  */
-class TraceContext {
+class TraceContext : public TracingInterface {
 public:
 	/**
 	 * @brief Get a thread local reference to the trace context.
@@ -164,46 +167,42 @@ public:
 
 	static bool shouldTrace();
 
-	TypedValueRef& registerFunctionArgument(Type type, size_t index);
+	// --- TracingInterface overrides ---
 
-	void traceValueDestruction(TypedValueRef target);
+	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
 
-	/**
-	 * @brief Trace a constant operation.
-	 * @param valueReference reference to the const value.
-	 * @param constValue constant value.
-	 */
-	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue);
+	void traceValueDestruction(TypedValueRef target) override;
 
-	TypedValueRef& traceCopy(const TypedValueRef& ref);
+	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue) override;
 
-	/**
-	 * @brief Trace a unary operation, e.g., negate.
-	 * @param op operation code.
-	 * @param inputRef reference to the input.
-	 * @param resultRef reference to the result.
-	 */
-	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
+	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 
-	/**
-	 * @brief Trace the return function.
-	 * @param resultRef referent to the return value.
-	 */
-	void traceReturnOperation(Type type, const TypedValueRef& ref);
+	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+	                             const TypedValueRef& right) override;
 
-	/**
-	 * @brief Trace a value assignment.
-	 * @param targetRef reference to the target value.
-	 * @param sourceRef reference to the source value.
-	 */
-	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType);
+	TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) override;
+
+	TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
+	                              const TypedValueRef& third) override;
+
+	void traceReturnOperation(Type type, const TypedValueRef& ref) override;
+
+	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) override;
 
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs);
+	                         FunctionAttributes fnAttrs) override;
 
-	bool traceCmp(const TypedValueRef& targetRef, double probability);
+	bool traceCmp(const TypedValueRef& targetRef, double probability) override;
 
-	~TraceContext() = default;
+	void allocateValRef(ValueRef ref) override;
+	void freeValRef(ValueRef ref) override;
+
+	void pushStaticVal(void* ptr) override;
+	void popStaticVal() override;
+
+	// --- Non-interface public API ---
+
+	~TraceContext() override = default;
 
 	/**
 	 * @brief Resets persistent state between trace iterations.
@@ -214,6 +213,7 @@ public:
 
 	/**
 	 * @brief Initialize the trace context with references to stack-allocated objects.
+	 * Sets this context as the active tracer via setActiveTracer().
 	 * @param tagRecorder Reference to TagRecorder for creating unique tags
 	 * @param executionTrace Reference to stack-allocated ExecutionTrace
 	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
@@ -232,9 +232,10 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
 	                                             const engine::Options& options = engine::Options());
 
+	/// Low-level entry point used by the internal tracing loop.
+	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
+
 	std::vector<StaticVarHolder>& getStaticVars();
-	void allocateValRef(ValueRef ref);
-	void freeValRef(ValueRef ref);
 
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);

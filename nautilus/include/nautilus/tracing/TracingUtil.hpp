@@ -3,6 +3,7 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/tracing/Operations.hpp"
+#include "nautilus/tracing/TracingInterface.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val_concepts.hpp"
@@ -14,14 +15,15 @@
 
 namespace nautilus::tracing {
 
-// Forward declaration
-class TraceContext;
-
 bool inTracer();
 
-// Get the current tracer context pointer (returns nullptr if not tracing)
-// This can be cached locally to avoid repeated thread-local access
-TraceContext* getTracerIfActive();
+/// Get the active TracingInterface for the current thread, or nullptr if not tracing.
+/// The returned pointer is valid for the lifetime of the current trace invocation.
+TracingInterface* getActiveTracer();
+
+/// Set the active TracingInterface for the current thread.
+/// Pass nullptr to indicate that tracing is no longer active.
+void setActiveTracer(TracingInterface* tracer);
 
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& leftState,
                              const TypedValueRef& rightState);

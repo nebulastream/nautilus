@@ -2,6 +2,7 @@
 #include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
@@ -36,6 +37,7 @@ TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace&
                                        SymbolicExecutionContext& symbolicExecutionContext,
                                        const engine::Options& options) {
 	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	setActiveTracer(&traceContext);
 	return &traceContext;
 }
 
@@ -148,6 +150,48 @@ TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<
 	});
 }
 
+TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                           const TypedValueRef& right) {
+	return traceOperation(op, resultType, {left, right});
+}
+
+TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+	return traceOperation(op, resultType, {input});
+}
+
+TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
+                                            const TypedValueRef& second, const TypedValueRef& third) {
+	return traceOperation(op, resultType, {first, second, third});
+}
+
+void TraceContext::pushStaticVal(void* valPtr) {
+	staticVars.emplace_back((size_t*) valPtr);
+	if (log::options::getLogStaticVars()) {
+		std::string stateStr;
+		for (size_t i = 0; i < staticVars.size(); i++) {
+			if (i > 0) {
+				stateStr += ", ";
+			}
+			stateStr += std::to_string(getStaticVarValue(staticVars[i]));
+		}
+		log::info("pushStaticVal: [{}]", stateStr.c_str());
+	}
+}
+
+void TraceContext::popStaticVal() {
+	if (log::options::getLogStaticVars()) {
+		std::string stateStr;
+		for (size_t i = 0; i < staticVars.size(); i++) {
+			if (i > 0) {
+				stateStr += ", ";
+			}
+			stateStr += std::to_string(getStaticVarValue(staticVars[i]));
+		}
+		log::info("popStaticVal: [{}] (popping last)", stateStr.c_str());
+	}
+	staticVars.pop_back();
+}
+
 bool TraceContext::traceCmp(const TypedValueRef& targetRef, const double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
@@ -216,7 +260,8 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 		assert(traceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 
-	// Clean up: reset state pointer (TraceContext is no longer initialized)
+	// Clean up: deregister active tracer and reset state pointer
+	setActiveTracer(nullptr);
 	tc->state.reset();
 
 	log::debug("Tracing Terminated with {} iterations", traceIteration);

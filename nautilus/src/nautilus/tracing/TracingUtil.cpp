@@ -1,80 +1,90 @@
 
 #include "nautilus/tracing/TracingUtil.hpp"
-#include "TraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include <fmt/format.h>
 #include <iostream>
+
 namespace nautilus::tracing {
 
+// Thread-local pointer to the active TracingInterface implementation.
+// Set to non-null during trace() and cleared afterwards, so all operations
+// within a single trace go through the same implementation object.
+static thread_local TracingInterface* activeTracer = nullptr;
+
+TracingInterface* getActiveTracer() {
+	return activeTracer;
+}
+
+void setActiveTracer(TracingInterface* tracer) {
+	activeTracer = tracer;
+}
+
+bool inTracer() {
+	return activeTracer != nullptr;
+}
+
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
-	if (auto* ctx = TraceContext::get()) {
-		ctx->traceAssignment(target, source, resultType);
+	if (activeTracer) {
+		activeTracer->traceAssignment(target, source, resultType);
 	}
 }
 
 void traceValueDestruction(const TypedValueRef& target) {
-	TraceContext::get()->traceValueDestruction(target);
+	activeTracer->traceValueDestruction(target);
 }
 
 void traceReturnOperation(Type type, const TypedValueRef& ref) {
-	TraceContext::get()->traceReturnOperation(type, ref);
+	activeTracer->traceReturnOperation(type, ref);
 }
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index) {
-	return TraceContext::get()->registerFunctionArgument(type, index);
+	return activeTracer->registerFunctionArgument(type, index);
 }
 
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
-	return TraceContext::get()->traceConstValue(type, value);
+	return activeTracer->traceConstValue(type, value);
 }
 
 bool traceBool(const TypedValueRef& state, const double probability) {
-	return TraceContext::get()->traceCmp(state, probability);
+	return activeTracer->traceCmp(state, probability);
 }
 
 void allocateValRef(ValueRef ref) {
-	if (auto* ctx = TraceContext::get()) {
-		ctx->allocateValRef(ref);
+	if (activeTracer) {
+		activeTracer->allocateValRef(ref);
 	}
 }
+
 void freeValRef(ValueRef ref) {
-	if (auto* ctx = TraceContext::get()) {
-		ctx->freeValRef(ref);
+	if (activeTracer) {
+		activeTracer->freeValRef(ref);
 	}
 }
 
 TypedValueRef traceCopy(const TypedValueRef& state) {
-	if (auto* ctx = TraceContext::get()) {
-		return ctx->traceCopy(state);
+	if (activeTracer) {
+		return activeTracer->traceCopy(state);
 	}
 	return {};
 }
 
-bool inTracer() {
-	return TraceContext::get() != nullptr;
-}
-
-TraceContext* getTracerIfActive() {
-	return TraceContext::get();
-}
-
 TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
-	return TraceContext::get()->traceOperation(operation, resultType, {left, right});
+	return activeTracer->traceBinaryOp(operation, resultType, left, right);
 }
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          const FunctionAttributes fnAttrs) {
-	return TraceContext::get()->traceCall(fptn, resultType, arguments, fnAttrs);
+	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
-	return TraceContext::get()->traceOperation(operation, resultType, {input});
+	return activeTracer->traceUnaryOp(operation, resultType, input);
 }
 
 TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
                               const TypedValueRef& third) {
-	return TraceContext::get()->traceOperation(operation, resultType, {first, second, third});
+	return activeTracer->traceTernaryOp(operation, resultType, first, second, third);
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& operation) {
@@ -83,36 +93,14 @@ std::ostream& operator<<(std::ostream& os, const Op& operation) {
 }
 
 void pushStaticVal(void* valPtr) {
-	if (auto* ctx = TraceContext::get()) {
-		ctx->getStaticVars().emplace_back((size_t*) valPtr);
-		if (log::options::getLogStaticVars()) {
-			auto& vars = ctx->getStaticVars();
-			std::string state;
-			for (size_t i = 0; i < vars.size(); i++) {
-				if (i > 0) {
-					state += ", ";
-				}
-				state += std::to_string(getStaticVarValue(vars[i]));
-			}
-			log::info("pushStaticVal: [{}]", state.c_str());
-		}
+	if (activeTracer) {
+		activeTracer->pushStaticVal(valPtr);
 	}
 }
 
 void popStaticVal() {
-	if (auto* ctx = TraceContext::get()) {
-		if (log::options::getLogStaticVars()) {
-			auto& vars = ctx->getStaticVars();
-			std::string state;
-			for (size_t i = 0; i < vars.size(); i++) {
-				if (i > 0) {
-					state += ", ";
-				}
-				state += std::to_string(getStaticVarValue(vars[i]));
-			}
-			log::info("popStaticVal: [{}] (popping last)", state.c_str());
-		}
-		ctx->getStaticVars().pop_back();
+	if (activeTracer) {
+		activeTracer->popStaticVal();
 	}
 }
 
