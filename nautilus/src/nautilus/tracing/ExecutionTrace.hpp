@@ -187,8 +187,7 @@ public:
 	std::vector<Block> blocks;
 	std::vector<operation_identifier> returnRefs;
 	ValueRef lastValueRef = 0;
-	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
-	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	std::unordered_map<Snapshot, operation_identifier> tagMap;
 
 	/**
 	 * @brief Gets the next available operation identifier
