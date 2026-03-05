@@ -29,10 +29,10 @@ public:
 	virtual TypedValueRef& registerFunctionArgument(Type type, size_t index) = 0;
 
 	/// Notify the tracer that a value has gone out of scope.
-	virtual void traceValueDestruction(TypedValueRef target) = 0;
+	virtual void traceValueDestruction(TypedValueRef value) = 0;
 
 	/// Trace a constant value of the given type.
-	virtual TypedValueRef& traceConstValue(Type type, const ConstantLiteral& value) = 0;
+	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
@@ -59,7 +59,7 @@ public:
 	                                 FunctionAttributes fnAttrs) = 0;
 
 	/// Trace a conditional branch. Returns the taken branch direction.
-	virtual bool traceCmp(const TypedValueRef& target, double probability) = 0;
+	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;

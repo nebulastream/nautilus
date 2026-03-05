@@ -156,24 +156,13 @@ struct TraceState {
  */
 class TraceContext final : public TracingInterface {
 public:
-	/**
-	 * @brief Get a thread local reference to the trace context.
-	 * If the trace context is not initialized (state == nullptr) this function returns nullptr.
-	 * @return TraceContext* pointer to thread_local TraceContext if initialized, nullptr otherwise
-	 */
-	static TraceContext* get();
-
-	static TraceContext* getIfActive();
-
-	static bool shouldTrace();
-
 	// --- TracingInterface overrides ---
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
 
-	void traceValueDestruction(TypedValueRef target) override;
+	void traceValueDestruction(TypedValueRef value) override;
 
-	TypedValueRef& traceConstValue(Type type, const ConstantLiteral& constValue) override;
+	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
 
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 
@@ -187,12 +176,12 @@ public:
 
 	void traceReturnOperation(Type type, const TypedValueRef& ref) override;
 
-	void traceAssignment(const TypedValueRef& targetRef, const TypedValueRef& sourceRef, Type resultType) override;
+	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs) override;
 
-	bool traceCmp(const TypedValueRef& targetRef, double probability) override;
+	bool traceBool(const TypedValueRef& value, double probability) override;
 
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
@@ -235,8 +224,6 @@ public:
 	/// Low-level entry point used by the internal tracing loop.
 	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
 
-	std::vector<StaticVarHolder>& getStaticVars();
-
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
 
@@ -252,6 +239,7 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
+	std::string formatStaticVars() const;
 
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
 	// nullptr when not tracing, set during initialize()

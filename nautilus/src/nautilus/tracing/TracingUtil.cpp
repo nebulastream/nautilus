@@ -24,30 +24,20 @@ bool inTracer() {
 	return activeTracer != nullptr;
 }
 
+// --- Guarded wrappers: may be called from val<T> constructors/destructors
+//     that run outside a tracing context (e.g. copies, assignments, ref-counting).
+
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	if (activeTracer) {
 		activeTracer->traceAssignment(target, source, resultType);
 	}
 }
 
-void traceValueDestruction(const TypedValueRef& target) {
-	activeTracer->traceValueDestruction(target);
-}
-
-void traceReturnOperation(Type type, const TypedValueRef& ref) {
-	activeTracer->traceReturnOperation(type, ref);
-}
-
-TypedValueRef& registerFunctionArgument(Type type, size_t index) {
-	return activeTracer->registerFunctionArgument(type, index);
-}
-
-TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
-	return activeTracer->traceConstValue(type, value);
-}
-
-bool traceBool(const TypedValueRef& state, const double probability) {
-	return activeTracer->traceCmp(state, probability);
+TypedValueRef traceCopy(const TypedValueRef& ref) {
+	if (activeTracer) {
+		return activeTracer->traceCopy(ref);
+	}
+	return {};
 }
 
 void allocateValRef(ValueRef ref) {
@@ -62,39 +52,9 @@ void freeValRef(ValueRef ref) {
 	}
 }
 
-TypedValueRef traceCopy(const TypedValueRef& state) {
+void pushStaticVal(void* ptr) {
 	if (activeTracer) {
-		return activeTracer->traceCopy(state);
-	}
-	return {};
-}
-
-TypedValueRef& traceBinaryOp(Op operation, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
-	return activeTracer->traceBinaryOp(operation, resultType, left, right);
-}
-
-TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         const FunctionAttributes fnAttrs) {
-	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
-}
-
-TypedValueRef& traceUnaryOp(Op operation, Type resultType, const TypedValueRef& input) {
-	return activeTracer->traceUnaryOp(operation, resultType, input);
-}
-
-TypedValueRef& traceTernaryOp(Op operation, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
-                              const TypedValueRef& third) {
-	return activeTracer->traceTernaryOp(operation, resultType, first, second, third);
-}
-
-std::ostream& operator<<(std::ostream& os, const Op& operation) {
-	os << toString(operation);
-	return os;
-}
-
-void pushStaticVal(void* valPtr) {
-	if (activeTracer) {
-		activeTracer->pushStaticVal(valPtr);
+		activeTracer->pushStaticVal(ptr);
 	}
 }
 
@@ -102,6 +62,52 @@ void popStaticVal() {
 	if (activeTracer) {
 		activeTracer->popStaticVal();
 	}
+}
+
+// --- Unguarded wrappers: only called from within SHOULD_TRACE() blocks,
+//     where activeTracer is guaranteed non-null.
+
+void traceValueDestruction(TypedValueRef value) {
+	activeTracer->traceValueDestruction(value);
+}
+
+void traceReturnOperation(Type type, const TypedValueRef& ref) {
+	activeTracer->traceReturnOperation(type, ref);
+}
+
+TypedValueRef& registerFunctionArgument(Type type, size_t index) {
+	return activeTracer->registerFunctionArgument(type, index);
+}
+
+TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) {
+	return activeTracer->traceConstant(type, value);
+}
+
+bool traceBool(const TypedValueRef& value, double probability) {
+	return activeTracer->traceBool(value, probability);
+}
+
+TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
+	return activeTracer->traceBinaryOp(op, resultType, left, right);
+}
+
+TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+	return activeTracer->traceUnaryOp(op, resultType, input);
+}
+
+TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
+                              const TypedValueRef& third) {
+	return activeTracer->traceTernaryOp(op, resultType, first, second, third);
+}
+
+TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                         FunctionAttributes fnAttrs) {
+	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
+}
+
+std::ostream& operator<<(std::ostream& os, const Op& op) {
+	os << toString(op);
+	return os;
 }
 
 } // namespace nautilus::tracing
