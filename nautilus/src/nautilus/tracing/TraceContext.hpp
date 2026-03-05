@@ -154,7 +154,7 @@ struct TraceState {
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
  * 4. After tracing completes, setActiveTracer(nullptr) is called and ExecutionTrace is returned
  */
-class TraceContext : public TracingInterface {
+class TraceContext final : public TracingInterface {
 public:
 	/**
 	 * @brief Get a thread local reference to the trace context.
