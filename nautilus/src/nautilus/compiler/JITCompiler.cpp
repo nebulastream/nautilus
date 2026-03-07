@@ -16,6 +16,7 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/tracing/CompletingTraceContext.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -64,7 +65,9 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
-	auto executionTrace = tracing::TraceContext::trace(function, options);
+	auto useCompletingTrace = options.getOptionOrDefault("engine.completingTrace", false);
+	auto executionTrace = useCompletingTrace ? tracing::CompletingTraceContext::trace(function, options)
+	                                         : tracing::TraceContext::trace(function, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
 	// create ssa

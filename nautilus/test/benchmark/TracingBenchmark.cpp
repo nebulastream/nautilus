@@ -14,6 +14,7 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/tracing/CompletingTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -21,6 +22,8 @@
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
+
+using TraceFn = std::unique_ptr<tracing::ExecutionTrace> (*)(std::function<void()>&, const engine::Options&);
 
 static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
     {"add", details::createFunctionWrapper(int8AddExpression)},
@@ -39,14 +42,22 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
 };
 
+static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
+    {"trace", tracing::TraceContext::trace},
+    {"completing_trace", tracing::CompletingTraceContext::trace},
+};
+
 TEST_CASE("Tracing Benchmark") {
 
-	for (auto& test : tests) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		Catch::Benchmark::Benchmark("trace_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			meter.measure([&func] { return tracing::TraceContext::trace(func); });
-		});
+	for (auto& [name, func] : tests) {
+		for (auto& [ctxName, traceFn] : traceContexts) {
+			auto benchName = ctxName + "_" + name;
+			auto fn = traceFn;
+			Catch::Benchmark::Benchmark(std::string(benchName))
+			    .operator=([&func, fn](Catch::Benchmark::Chronometer meter) {
+				    meter.measure([&func, fn] { return fn(func, engine::Options()); });
+			    });
+		}
 	}
 }
 

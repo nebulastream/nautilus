@@ -331,7 +331,7 @@ constexpr size_t offset_basis = 0xcbf29ce484222325;
 
 uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	size_t hash = offset_basis;
-	for (auto& value : data) {
+	for (const auto& value : data) {
 		hash ^= *value.ptr;
 		hash *= fnv_prime;
 	}

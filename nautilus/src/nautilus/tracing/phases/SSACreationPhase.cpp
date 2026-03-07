@@ -1,5 +1,6 @@
 
 #include "fmt/core.h"
+#include <algorithm>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
