@@ -42,6 +42,50 @@ bool SymbolicExecutionContext::record(const Snapshot& tag) {
 	throw TraceTerminationException();
 }
 
+RecordResult SymbolicExecutionContext::recordNoThrow(const Snapshot& tag) {
+	// special case if we are currently in the follow mode, we switch to record
+	// and change the last decision in this execution path.
+	if (currentMode == SymbolicExecutionContext::MODE::FOLLOW) {
+		currentMode = SymbolicExecutionContext::MODE::RECORD;
+		currentExecutionPath.getPath().pop_back();
+	}
+
+	auto foundTag = tagMap.find(tag);
+	if (foundTag == tagMap.end()) {
+		// If was not visited yet -> store the execution trace and return true.
+		tagMap.emplace(tag, SymbolicExecutionContext::TagState::FirstVisit);
+		currentExecutionPath.append(true);
+		currentExecutionPath.setFinalTag(tag);
+		inflightExecutionPaths.emplace_back(currentExecutionPath);
+		return {true, false};
+	}
+	// The tag already exists in the tag map.
+	switch (foundTag->second) {
+	case SymbolicExecutionContext::TagState::FirstVisit: {
+		foundTag->second = SymbolicExecutionContext::TagState::SecondVisit;
+		currentExecutionPath.append(false);
+		return {false, false};
+	};
+	case SymbolicExecutionContext::TagState::SecondVisit: {
+		// The tag is in SecondVisit state -> signal termination instead of throwing.
+		return {false, true};
+	};
+	}
+	return {false, true};
+}
+
+RecordResult SymbolicExecutionContext::followNoThrow() {
+	assert(getCurrentMode() == MODE::FOLLOW);
+	if (currentOperation >= currentExecutionPath.getSize() - 1) {
+		// we have the last operation
+		auto finalTag = currentExecutionPath.getFinalTag();
+		return recordNoThrow(finalTag);
+	}
+	auto operation = currentExecutionPath[currentOperation];
+	currentOperation++;
+	return {get<0>(operation), false};
+}
+
 SymbolicExecutionContext::MODE SymbolicExecutionContext::getCurrentMode() const {
 	return this->currentMode;
 }

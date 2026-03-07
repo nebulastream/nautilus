@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include <algorithm>
 
 namespace nautilus::compiler::ir {
 
@@ -23,23 +24,11 @@ void BasicBlockInvocation::removeArgument(uint64_t argumentIndex) {
 }
 
 void BasicBlockInvocation::replaceArgument(Operation* toReplace, Operation* replaceWith) {
-	auto argumentIndex = 0;
-	for (const auto& argument : operations) {
-		if (argument == toReplace) {
-			operations.at(argumentIndex) = replaceWith;
-		}
-		++argumentIndex;
-	}
+	std::replace(operations.begin(), operations.end(), toReplace, replaceWith);
 }
 
 void BasicBlockInvocation::replaceArgument(const Operation* toReplace, Operation* replaceWith) {
-	auto argumentIndex = 0;
-	for (const auto& argument : operations) {
-		if (argument == toReplace) {
-			operations.at(argumentIndex) = replaceWith;
-		}
-		++argumentIndex;
-	}
+	std::replace(operations.begin(), operations.end(), const_cast<Operation*>(toReplace), replaceWith);
 }
 
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
