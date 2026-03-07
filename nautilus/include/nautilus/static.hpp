@@ -198,9 +198,6 @@ public:
 		return lhs.m_iterator != rhs.m_iterator;
 	}
 
-	friend bool operator==(const static_iterator& it, const static_sentinel<Iterator>& s);
-	friend bool operator!=(const static_iterator& it, const static_sentinel<Iterator>& s);
-
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
@@ -297,9 +294,6 @@ public:
 	friend bool operator!=(const enumerate_iterator& lhs, const enumerate_iterator& rhs) {
 		return lhs.m_iterator != rhs.m_iterator;
 	}
-
-	friend bool operator==(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
-	friend bool operator!=(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
 
 private:
 	static_val<IndexType> index;
