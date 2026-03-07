@@ -5,6 +5,7 @@
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
+#include "StaticLoopFunctions.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/profile/assume.hpp"
@@ -681,6 +682,131 @@ void loopExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+void staticLoopExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("staticLoop") {
+		auto f = engine.registerFunction(staticLoop);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticLoopWithIf") {
+		auto f = engine.registerFunction(staticLoopWithIf);
+		REQUIRE(f(-100) == 0); // always <= 5: pure +10 each iter
+		REQUIRE(f(0) == 109);  // first iter no bonus, then 9x +11
+		REQUIRE(f(5) == 114);  // 5 not > 5: first iter +10, then 9x +11
+		REQUIRE(f(6) == 116);  // always > 5: 10x +11
+		REQUIRE(f(10) == 120); // always > 5: 10 + 10*11
+	}
+	SECTION("staticLoopWithDynamicLoop") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoop);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopPostIncrement") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopPostIncrement);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopPreIncrement") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopPreIncrement);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticLoopWithDynamicLoopNotEqual") {
+		auto f = engine.registerFunction(staticLoopWithDynamicLoopNotEqual);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 90);
+		REQUIRE(f(10) == 312);
+	}
+	SECTION("staticIterator") {
+		auto f = engine.registerFunction(staticIterator);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 2);
+		REQUIRE(f(6) == 5);
+	}
+	SECTION("staticConstIterator") {
+		auto f = engine.registerFunction(staticConstIterator);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(3) == 2);
+		REQUIRE(f(6) == 5);
+	}
+	SECTION("staticLoopIncrement") {
+		auto f = engine.registerFunction(staticLoopIncrement);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticWhileLoopDecrement") {
+		auto f = engine.registerFunction(staticWhileLoopDecrement);
+		REQUIRE(f() == 56);
+	}
+	SECTION("staticPreIncrement") {
+		auto f = engine.registerFunction(staticPreIncrement);
+		REQUIRE(f() == 101);
+	}
+	SECTION("staticPreDecrement") {
+		auto f = engine.registerFunction(staticPreDecrement);
+		REQUIRE(f() == 56);
+	}
+	SECTION("staticNestedLoop") {
+		auto f = engine.registerFunction(staticNestedLoop);
+		REQUIRE(f() == 12);
+	}
+	SECTION("staticLoopMultipleAccumulators") {
+		auto f = engine.registerFunction(staticLoopMultipleAccumulators);
+		REQUIRE(f() == 82);
+	}
+	SECTION("staticLoopSingleIteration") {
+		auto f = engine.registerFunction(staticLoopSingleIteration);
+		REQUIRE(f() == 42);
+	}
+	SECTION("staticCountdown") {
+		auto f = engine.registerFunction(staticCountdown);
+		REQUIRE(f() == 15);
+	}
+	SECTION("staticLoopWithArg") {
+		auto f = engine.registerFunction(staticLoopWithArg);
+		REQUIRE(f(0) == 5);
+		REQUIRE(f(10) == 15);
+	}
+	SECTION("staticSequentialLoops") {
+		auto f = engine.registerFunction(staticSequentialLoops);
+		REQUIRE(f() == 230);
+	}
+	SECTION("staticLoopAccumulateCounter") {
+		auto f = engine.registerFunction(staticLoopAccumulateCounter);
+		REQUIRE(f() == 15);
+	}
+	SECTION("staticIteratorSum") {
+		auto f = engine.registerFunction(staticIteratorSum);
+		REQUIRE(f(0) == 360);
+		REQUIRE(f(10) == 370);
+	}
+	// C-style array: rawArray = {2, 4, 6, 8, 10}
+	SECTION("staticRawArrayIterator") {
+		auto f = engine.registerFunction(staticRawArrayIterator);
+		REQUIRE(f(0) == 5);  // all 5 elements > 0
+		REQUIRE(f(5) == 3);  // {6, 8, 10} > 5
+		REQUIRE(f(10) == 0); // none > 10
+	}
+	// std::array: stdArray = {3, 6, 9, 12, 15}
+	SECTION("staticStdArrayIterator") {
+		auto f = engine.registerFunction(staticStdArrayIterator);
+		REQUIRE(f(0) == 5);  // all 5 elements > 0
+		REQUIRE(f(9) == 2);  // {12, 15} > 9
+		REQUIRE(f(15) == 0); // none > 15
+	}
+	// enumerate: enumVec = {10, 20, 30}, weighted sum = 10*0 + 20*1 + 30*2 = 80
+	SECTION("staticEnumerateWeightedSum") {
+		auto f = engine.registerFunction(staticEnumerateWeightedSum);
+		REQUIRE(f() == 80);
+	}
+	// enumerate: element + index: (10+0) + (20+1) + (30+2) = 63
+	SECTION("staticEnumerateSum") {
+		auto f = engine.registerFunction(staticEnumerateSum);
+		REQUIRE(f() == 63);
+	}
+}
+
 Derived d;
 void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	SECTION("simpleDirectCall") {
@@ -1176,6 +1302,9 @@ void runAllTests(engine::NautilusEngine& engine) {
 	}
 	SECTION("loopExecutionTest") {
 		loopExecutionTest(engine);
+	}
+	SECTION("staticLoopExecutionTest") {
+		staticLoopExecutionTest(engine);
 	}
 	SECTION("functionCallExecutionTest") {
 		functionCallExecutionTest(engine);

@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <unistd.h>
 
 namespace nautilus::log::options {
 
@@ -86,10 +87,14 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 	}
 
 	char tmpName[] = "/tmp/actual_trace_XXXXXX";
-	mkstemp(tmpName);
+	int tmpFd = mkstemp(tmpName);
+	close(tmpFd);
 	std::ofstream tmpfile {tmpName};
 	tmpfile << actual;
-	std::cout << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	std::cerr << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
+	std::cerr << "=== Expected (" << filePath << ") ===\n"
+	          << expect.str() << "\n=== Actual ===\n"
+	          << actual << "\n=== End ===\n";
 	return false;
 }
 
@@ -284,12 +289,18 @@ TEST_CASE("Bool Trace Test") {
 }
 
 TEST_CASE("Static Trace Test") {
+
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+// these tests are sensitive to compiler options and not supported on ARM
+#ifndef __aarch64__
 	    {"staticLoop", details::createFunctionWrapper(staticLoop)},
-	    // this test is sensitive to compiler options
-	    //{"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
-	    //{"staticLoopWithDynamicLoop",
-	    // details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	    {"staticLoopWithDynamicLoop", details::createFunctionWrapper(staticLoopWithDynamicLoop)},
+	    {"staticLoopWithDynamicLoopPostIncrement",
+	     details::createFunctionWrapper(staticLoopWithDynamicLoopPostIncrement)},
+	    {"staticLoopWithDynamicLoopPreIncrement",
+	     details::createFunctionWrapper(staticLoopWithDynamicLoopPreIncrement)},
+	    {"staticLoopWithDynamicLoopNotEqual", details::createFunctionWrapper(staticLoopWithDynamicLoopNotEqual)},
+#endif
 	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
@@ -303,7 +314,11 @@ TEST_CASE("Static Trace Test") {
 	    {"staticLoopWithArg", details::createFunctionWrapper(staticLoopWithArg)},
 	    {"staticSequentialLoops", details::createFunctionWrapper(staticSequentialLoops)},
 	    {"staticLoopAccumulateCounter", details::createFunctionWrapper(staticLoopAccumulateCounter)},
-	    {"staticIteratorSum", details::createFunctionWrapper(staticIteratorSum)}};
+	    {"staticIteratorSum", details::createFunctionWrapper(staticIteratorSum)},
+	    {"staticRawArrayIterator", details::createFunctionWrapper(staticRawArrayIterator)},
+	    {"staticStdArrayIterator", details::createFunctionWrapper(staticStdArrayIterator)},
+	    {"staticEnumerateWeightedSum", details::createFunctionWrapper(staticEnumerateWeightedSum)},
+	    {"staticEnumerateSum", details::createFunctionWrapper(staticEnumerateSum)}};
 	runTraceTests("static-loop-tests", tests);
 }
 

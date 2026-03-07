@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <nautilus/Engine.hpp>
 
 namespace nautilus::engine {
@@ -26,6 +27,45 @@ val<int32_t> staticLoopWithDynamicLoop(val<int32_t> counter) {
 	val<int32_t> sum = 0;
 	for (val<int32_t> i = 0; i < counter; i = i + 1) {
 		for (static_val<int> start = 0; start < 3; start = start + 1) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
+val<int32_t> staticLoopWithDynamicLoopPostIncrement(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < counter; i++) {
+		for (static_val<int> start = 0; start < 3; start++) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
+val<int32_t> staticLoopWithDynamicLoopPreIncrement(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < counter; ++i) {
+		for (static_val<int> start = 0; start < 3; ++start) {
+			if (i > 5) {
+				sum = sum + 1;
+			}
+			sum = sum + 10;
+		}
+	}
+	return sum;
+}
+
+val<int32_t> staticLoopWithDynamicLoopNotEqual(val<int32_t> counter) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i != counter; i++) {
+		for (static_val<int> start = 0; start != 3; start++) {
 			if (i > 5) {
 				sum = sum + 1;
 			}
@@ -179,6 +219,56 @@ val<int32_t> staticIteratorSum(val<int32_t> ref) {
 		sum = sum + x;
 	}
 	return sum + ref;
+}
+
+// --- C-style array support ---
+
+int rawArray[] = {2, 4, 6, 8, 10};
+
+val<int32_t> staticRawArrayIterator(val<int32_t> threshold) {
+	val<int32_t> count = 0;
+	for (auto x : static_iterable(rawArray)) {
+		if (x > threshold) {
+			count = count + 1;
+		}
+	}
+	return count;
+}
+
+// --- std::array support ---
+
+std::array<int, 5> stdArray = {3, 6, 9, 12, 15};
+
+val<int32_t> staticStdArrayIterator(val<int32_t> threshold) {
+	val<int32_t> count = 0;
+	for (auto x : static_iterable(stdArray)) {
+		if (x > threshold) {
+			count = count + 1;
+		}
+	}
+	return count;
+}
+
+// --- static_enumerable: index exposed as static_val ---
+
+std::vector<int> enumVec = {10, 20, 30};
+
+// Computes sum of (element * index): 10*0 + 20*1 + 30*2 = 80.
+val<int32_t> staticEnumerateWeightedSum() {
+	val<int32_t> sum = 0;
+	for (auto [idx, x] : static_enumerable(enumVec)) {
+		sum = sum + x * (int32_t) (int64_t) idx;
+	}
+	return sum;
+}
+
+// Verifies that idx and x are independent: sum of (element + index).
+val<int32_t> staticEnumerateSum() {
+	val<int32_t> sum = 0;
+	for (auto [idx, x] : static_enumerable(enumVec)) {
+		sum = sum + x + (int32_t) (int64_t) idx;
+	}
+	return sum; // (10+0) + (20+1) + (30+2) = 63
 }
 
 } // namespace nautilus::engine

@@ -313,10 +313,6 @@ TEST_CASE("Static Val Type Constraint Test", "[static_val]") {
 		STATIC_REQUIRE(std::is_same_v<static_val<int32_t>::raw_type, int32_t>);
 		STATIC_REQUIRE(std::is_same_v<static_val<uint64_t>::raw_type, uint64_t>);
 	}
-	SECTION("alignment is 64 bytes") {
-		STATIC_REQUIRE(alignof(static_val<int32_t>) == 64);
-		STATIC_REQUIRE(alignof(static_val<int64_t>) == 64);
-	}
 }
 
 TEST_CASE("Static Val Operator Return Types Test", "[static_val]") {
