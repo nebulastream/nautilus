@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/inline.hpp"
@@ -366,6 +367,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 		break;
 	case ir::Operation::OperationType::ShiftOp:
 		generateMLIR(as<ir::ShiftOperation>(operation), frame);
+		break;
+	case ir::Operation::OperationType::AllocaOp:
+		generateMLIR(as<ir::AllocaOperation>(operation), frame);
 		break;
 	case ir::Operation::OperationType::SelectOp:
 		generateMLIR(as<ir::SelectOperation>(operation), frame);
@@ -899,6 +903,17 @@ void MLIRLoweringProvider::generateMLIR(ir::ShiftOperation* shiftOperation,
 		break;
 	}
 	frame.setValue(shiftOperation->getIdentifier(), op);
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame) {
+	auto i8Type = builder->getI8Type();
+	auto ptrTy = LLVM::LLVMPointerType::get(context);
+	auto i64Ty = IntegerType::get(context, 64);
+	Value sizeVal = builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty,
+	                                                  builder->getI64IntegerAttr(allocaOperation->getSize()));
+	auto alloca = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, 8u);
+
+	frame.setValue(allocaOperation->getIdentifier(), alloca);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstBooleanOperation* constBooleanOp,

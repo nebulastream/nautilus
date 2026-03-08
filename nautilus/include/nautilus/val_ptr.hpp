@@ -3,10 +3,12 @@
 
 #include "nautilus/static.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace nautilus {
@@ -49,7 +51,7 @@ public:
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
-	void operator=(val<T> other) noexcept {
+	void operator=(val<T> other) {
 		val<baseType> value {other};
 
 		// store value
@@ -67,7 +69,7 @@ public:
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
-	void operator=(T other) noexcept {
+	void operator=(T other) {
 		val<baseType> value {val<T> {other}};
 		*this = value;
 	}
@@ -75,26 +77,26 @@ public:
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(T other) noexcept {                                                                            \
+	void operator OP##=(T other) {                                                                                     \
 		val<baseType> value {other};                                                                                   \
 		*this OP## = value;                                                                                            \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP##=(val<T> other) noexcept {                                                                       \
+	void operator OP##=(val<T> other) {                                                                                \
 		val<baseType> value {other};                                                                                   \
 		*this = *this OP value;                                                                                        \
 	}                                                                                                                  \
                                                                                                                        \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	auto operator OP(T other) noexcept {                                                                               \
+	auto operator OP(T other) {                                                                                        \
 		val<baseType> value {other};                                                                                   \
 		return *this OP value;                                                                                         \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	auto operator OP(val<T> other) noexcept {                                                                          \
+	auto operator OP(val<T> other) {                                                                                   \
 		val<baseType> ourVal {*this};                                                                                  \
 		return ourVal OP other;                                                                                        \
 	}
@@ -111,14 +113,14 @@ public:
 #define BINARY_COMPARISON_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	bool operator OP(T other) noexcept {                                                                               \
+	bool operator OP(T other) {                                                                                        \
 		val<baseType> value {other};                                                                                   \
 		return *this OP value;                                                                                         \
 	}                                                                                                                  \
                                                                                                                        \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	bool operator OP(val<T> other) noexcept {                                                                          \
+	bool operator OP(val<T> other) {                                                                                   \
 		val<baseType> ourVal {*this};                                                                                  \
 		return ourVal OP other;                                                                                        \
 	}
@@ -174,40 +176,77 @@ public:
 protected:
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator==(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator==(val<ValueType> left, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator==(val<ValueType> left, std::nullptr_t);
+	friend val<bool> inline operator==(val<ValueType> left, std::nullptr_t);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator==(std::nullptr_t, val<ValueType> right);
+	friend val<bool> inline operator==(std::nullptr_t, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator<=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator<=(val<ValueType> left, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator<(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator<(val<ValueType> left, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator>(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator>(val<ValueType> left, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator>=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator>=(val<ValueType> left, val<ValueType> right);
 	template <typename ValueType>
 	    requires std::is_pointer_v<ValueType>
-	friend auto inline operator!=(val<ValueType> left, val<ValueType> right);
+	friend val<bool> inline operator!=(val<ValueType> left, val<ValueType> right);
 	template <is_ptr ValueType, is_fundamental_val IndexType>
 	friend val<ValueType> inline operator+(val<ValueType> left, IndexType offset);
 
 	friend details::RawValueResolver<ValuePtrType>;
+	friend val<ValType>;
 	ValuePtrType value;
 };
 
+template <typename T, typename F>
+std::size_t field_offset(F T::*pm) {
+	alignas(T) std::byte storage[sizeof(T)] {};
+	T* obj = std::launder(reinterpret_cast<T*>(storage));                       // ← reinterpret_cast: not constexpr
+	return reinterpret_cast<char*>(&(obj->*pm)) - reinterpret_cast<char*>(obj); // ← same
+}
+
 template <is_ptr ValuePtrType>
 class val<ValuePtrType> : public base_ptr_val<ValuePtrType> {
+
 public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 	using ValType = typename base_ptr_val<ValuePtrType>::ValType;
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	auto get(F T::*pm) {
+		auto offset = field_offset(pm);
+		val<uint8_t*> bytePtr = static_cast<val<uint8_t*>>(*this);
+		val<uint8_t*> fieldBytePtr = bytePtr + offset;
+		val<F*> fieldPtr = static_cast<val<F*>>(fieldBytePtr);
+#ifdef ENABLE_TRACING
+		return val<F&>(fieldPtr, fieldPtr.state);
+#else
+		return val<F&>(fieldPtr);
+#endif
+	}
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::*pm, val<F> value) {
+		val<F&> valueRef = get(pm);
+		valueRef = value;
+	}
+
+	template <typename F, typename T = ValType>
+	    requires std::is_class_v<T>
+	void set(F T::*pm, F value) {
+		val<F&> valueRef = get(pm);
+		valueRef = value;
+	}
 
 #ifdef ENABLE_TRACING
 	val(const val<ValuePtrType>& otherValue)
@@ -362,7 +401,7 @@ val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator==(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -375,21 +414,21 @@ auto inline operator==(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator==(val<ValueType> left, std::nullptr_t) {
+val<bool> inline operator==(val<ValueType> left, std::nullptr_t) {
 	auto nullVal = val<ValueType>(NULL);
 	return left == nullVal;
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator==(std::nullptr_t, val<ValueType> right) {
+val<bool> inline operator==(std::nullptr_t, val<ValueType> right) {
 	auto nullVal = val<ValueType>(NULL);
 	return nullVal == right;
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator<=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
@@ -401,7 +440,7 @@ auto inline operator<=(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator<(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
@@ -413,7 +452,7 @@ auto inline operator<(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator>(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
@@ -425,7 +464,7 @@ auto inline operator>(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator>=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
@@ -437,7 +476,7 @@ auto inline operator>=(val<ValueType> left, val<ValueType> right) {
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
-auto inline operator!=(val<ValueType> left, val<ValueType> right) {
+val<bool> inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
@@ -485,14 +524,14 @@ public:
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
-	void operator=(T other) noexcept {
+	void operator=(T other) {
 		val<baseType> value {other};
 		*this = value;
 	}
 
 	template <class T>
 	    requires std::is_convertible_v<T, baseType>
-	void operator=(val<T> other) noexcept {
+	void operator=(val<T> other) {
 		val<baseType> value {other};
 
 		// store value

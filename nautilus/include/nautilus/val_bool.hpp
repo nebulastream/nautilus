@@ -297,7 +297,7 @@ public:
 	/// val<bool> b = false;
 	/// b = std::move(a);  // b now contains true
 	/// ```
-	val<bool>& operator=(val<bool>&& other) noexcept {
+	val<bool>& operator=(val<bool>&& other) {
 #ifdef ENABLE_TRACING
 		tracing::traceAssignment(state, other.state, Type::b);
 #endif

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <nautilus/Engine.hpp>
 #include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
@@ -159,6 +160,25 @@ val<int32_t> castCustomClass(val<BaseClass*> voidPtr) {
 	// cast base struct to custom struct
 	auto resultPtr = static_cast<val<CustomClass*>>(voidPtr);
 	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, resultPtr);
+}
+
+struct FieldStruct {
+	int x;
+};
+
+val<int32_t> getField(val<FieldStruct*> ptr) {
+	// cast base struct to custom struct
+	val<int32_t> intValue = ptr.get(&FieldStruct::x);
+	val<int32_t&> intRef = ptr.get(&FieldStruct::x);
+	return intValue + intRef;
+}
+
+void setFieldConst(val<FieldStruct*> ptr) {
+	ptr.set(&FieldStruct::x, 42);
+}
+
+void setFieldIndirect(val<FieldStruct*> ptr, val<int32_t> x) {
+	ptr.set(&FieldStruct::x, x);
 }
 
 struct CustomStruct2 {

@@ -1,6 +1,7 @@
 
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
@@ -195,6 +196,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	case SELECT:
 		processTernaryOperator<SelectOperation>(frame, currentIrBlock, operation);
 		return;
+	case ALLOCA:
+		processAlloca(frame, currentIrBlock, operation);
+		return;
 	default: {
 		throw NotImplementedException("Operation type is not implemented.");
 	}
@@ -383,6 +387,14 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.resultType);
 	frame.setValue(resultIdentifier, castOperation);
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& frame, BasicBlock* currentBlock,
+                                                                  TraceOperation& operation) {
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	AllocSize allocationSize = std::get<AllocSize>(operation.input[0]);
+	auto allocaOperation = currentBlock->addOperation<AllocaOperation>(allocationSize);
+	frame.setValue(resultIdentifier, allocaOperation);
 }
 
 } // namespace nautilus::tracing

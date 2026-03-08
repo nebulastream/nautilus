@@ -6,6 +6,7 @@
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
+#include <cstddef>
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <fmt/format.h>
@@ -95,6 +96,10 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 			throw TraceTerminationException();
 		}
 	}
+}
+
+TypedValueRef& TraceContext::traceAlloca(size_t allocSize) {
+	return traceOperation(ALLOCA, Type::ptr, {allocSize});
 }
 
 TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {

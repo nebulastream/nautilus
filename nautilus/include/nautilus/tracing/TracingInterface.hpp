@@ -32,6 +32,9 @@ public:
 	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
 
 	/// Trace a copy of an existing traced value.
+	virtual TypedValueRef& traceAlloca(size_t allocSize) = 0;
+
+	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
 
 	/// Trace a binary operation (e.g. ADD, MUL, EQ, ...).

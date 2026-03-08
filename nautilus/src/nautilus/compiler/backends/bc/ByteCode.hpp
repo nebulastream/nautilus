@@ -2,9 +2,6 @@
 
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/Types.hpp"
-#include <any>
-#include <array>
-#include <climits>
 #include <cstdint>
 #include <ostream>
 #include <variant>
@@ -714,6 +711,10 @@ public:
 
 	std::vector<short> arguments = std::vector<short>();
 	std::vector<CodeBlock> blocks = std::vector<CodeBlock>();
+	std::vector<std::vector<uint8_t>> allocaBuffers = std::vector<std::vector<uint8_t>>();
+	// Maps register index → allocaBuffers index. Used to re-point the register file
+	// after Code is copied, since copying allocaBuffers changes the inner .data() pointers.
+	std::vector<std::pair<short, size_t>> allocaRegisterMap = std::vector<std::pair<short, size_t>>();
 	Type returnType = Type::v;
 
 	friend std::ostream& operator<<(std::ostream& os, const Code& code);

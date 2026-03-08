@@ -2,6 +2,9 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/tracing/Operations.hpp"
+#include "nautilus/tracing/Types.hpp"
+#include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
 
@@ -99,6 +102,10 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs) {
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
+}
+
+TypedValueRef& traceAlloca(size_t allocSize) {
+	return activeTracer->traceAlloca(allocSize);
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& op) {
