@@ -109,7 +109,7 @@ public:
 	}
 
 	/// Move assignment operator. Moves value and traces if enabled.
-	val<ValueType>& operator=(val<ValueType>&& other) noexcept {
+	val<ValueType>& operator=(val<ValueType>&& other) {
 #ifdef ENABLE_TRACING
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif

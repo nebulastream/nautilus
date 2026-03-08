@@ -175,7 +175,7 @@ public:
 
 	TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
 	                              const TypedValueRef& third) override;
-
+	TypedValueRef& traceAlloca(size_t allocSize) override;
 	void traceReturnOperation(Type type, const TypedValueRef& ref) override;
 
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;

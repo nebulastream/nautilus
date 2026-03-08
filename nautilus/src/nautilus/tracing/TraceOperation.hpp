@@ -5,6 +5,7 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
+#include <cstddef>
 #include <nautilus/common/FunctionAttributes.hpp>
 #include <type_traits>
 #include <utility>
@@ -15,6 +16,7 @@ namespace nautilus::tracing {
 
 class None {};
 using BranchProbability = double;
+using AllocSize = size_t;
 
 /**
  * @brief Represents a function call operation in the trace.
@@ -43,7 +45,8 @@ struct BlockRef {
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability>;
+using InputVariant =
+    std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocSize>;
 
 /**
  * @brief Represents an individual operation in a trace.

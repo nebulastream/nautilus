@@ -5,6 +5,7 @@ add_subdirectory(BinaryOperations)
 
 add_source_files(nautilus
         Operation.cpp
+        AllocaOperation.cpp
         LoadOperation.cpp
         StoreOperation.cpp
         ConstIntOperation.cpp

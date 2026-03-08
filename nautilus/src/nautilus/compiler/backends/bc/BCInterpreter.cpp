@@ -445,7 +445,14 @@ FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> argum
     : arguments(std::move(arguments)), functionPtr(functionPtr) {
 }
 
-BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile) : code(std::move(code)), registerFile(registerFile) {
+BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile)
+    : code(std::move(code)), registerFile(std::move(registerFile)) {
+	// The register file was built against a temporary Code instance whose allocaBuffers
+	// may have been copied (and thus relocated) before reaching this constructor.
+	// Re-point each alloca register at the actual buffer in *this* code object.
+	for (const auto& [reg, bufIdx] : this->code.allocaRegisterMap) {
+		this->registerFile[reg] = reinterpret_cast<int64_t>(this->code.allocaBuffers[bufIdx].data());
+	}
 }
 
 class BCInvocable : public Executable::GenericInvocable {
@@ -477,6 +484,13 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 	// TODO this causes an bug with the decimal data type
 	//    NES_ASSERT(args.size() == code.arguments.size(), "Arguments are not of
 	//    the correct size");
+
+	// Zero alloca buffers so each invocation starts with a clean stack frame.
+	// The register file already points to the correct buffers (fixed up in the constructor).
+	for (auto& [reg, bufIdx] : code.allocaRegisterMap) {
+		auto& buf = code.allocaBuffers[bufIdx];
+		std::fill(buf.begin(), buf.end(), uint8_t {0});
+	}
 
 	for (size_t i = 0; i < args.size(); i++) {
 		if (auto* value = std::any_cast<int8_t>(&args[i])) {

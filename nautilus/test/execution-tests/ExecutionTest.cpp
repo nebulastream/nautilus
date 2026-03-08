@@ -6,6 +6,7 @@
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
+#include "ValueTypeFunctions.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/profile/assume.hpp"
@@ -886,6 +887,68 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+void valueExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("constructAndAccess") {
+		auto f = engine.registerFunction(constructAndAccess);
+		REQUIRE(f() == 42);
+	}
+	SECTION("constructSetBothFields") {
+		auto f = engine.registerFunction(constructSetBothFields);
+		REQUIRE(f() == 42);
+	}
+	SECTION("constructNonTrivialDefault") {
+		auto f = engine.registerFunction(constructNonTrivialDefault);
+		REQUIRE(f() == 7);
+	}
+	SECTION("constructAndCall") {
+		auto f = engine.registerFunction(constructAndCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 5) == 10);
+		REQUIRE(f((int32_t) 21) == 42);
+		// edge cases: negative and INT_MAX/2
+		REQUIRE(f((int32_t) -3) == -6);
+	}
+	SECTION("constructWithArgs") {
+		auto f = engine.registerFunction(constructWithArgs);
+		REQUIRE(f((int32_t) 0, (int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 10, (int32_t) 32) == 42);
+		REQUIRE(f((int32_t) -5, (int32_t) 5) == 0);
+		REQUIRE(f((int32_t) -10, (int32_t) -10) == -20);
+		REQUIRE(f((int32_t) 1, (int32_t) 0) == 1);
+	}
+	SECTION("copyConstruct") {
+		auto f = engine.registerFunction(copyConstruct);
+		REQUIRE(f() == 52);
+	}
+	SECTION("copyAssign") {
+		auto f = engine.registerFunction(copyAssign);
+		REQUIRE(f() == 42);
+	}
+	SECTION("copyConstructNonTrivial") {
+		auto f = engine.registerFunction(copyConstructNonTrivial);
+		REQUIRE(f() == 99);
+	}
+	SECTION("nonTrivialDestructor") {
+		auto f = engine.registerFunction(nonTrivialDestructor);
+		REQUIRE(f() == 42);
+	}
+	SECTION("modifyInLoop") {
+		auto f = engine.registerFunction(modifyInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 5) == 5);
+		REQUIRE(f((int32_t) 10) == 10);
+		REQUIRE(f((int32_t) 100) == 100);
+	}
+	SECTION("copyInLoop") {
+		auto f = engine.registerFunction(copyInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 10);
+		REQUIRE(f((int32_t) 3) == 30);
+		REQUIRE(f((int32_t) 10) == 100);
+	}
+}
+
 void pointerExecutionTest(engine::NautilusEngine& engine) {
 	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
@@ -1311,6 +1374,9 @@ void runAllTests(engine::NautilusEngine& engine) {
 	}
 	SECTION("pointerExecutionTest") {
 		pointerExecutionTest(engine);
+	}
+	SECTION("valueExecutionTest") {
+		valueExecutionTest(engine);
 	}
 
 	SECTION("sameAsAboveButPassArgumentsByValueContiguousResult") {

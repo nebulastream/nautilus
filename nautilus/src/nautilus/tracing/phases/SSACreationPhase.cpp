@@ -49,8 +49,34 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	//  return trace->getBlock(bl);
 }
 
+void SSACreationPhase::SSACreationPhaseContext::hoistAllocaOperations() {
+	// Collect all ALLOCA operations from every block, preserving their relative order.
+	std::vector<TraceOperation> allocaOps;
+	for (auto& block : trace->getBlocks()) {
+		for (auto it = block.operations.begin(); it != block.operations.end();) {
+			if (it->op == Op::ALLOCA) {
+				allocaOps.push_back(std::move(*it));
+				it = block.operations.erase(it);
+			} else {
+				++it;
+			}
+		}
+	}
+
+	// Prepend the collected ALLOCA operations to the head of the initial block.
+	if (!allocaOps.empty()) {
+		auto& initialBlock = trace->getBlocks().front();
+		initialBlock.operations.insert(initialBlock.operations.begin(), std::make_move_iterator(allocaOps.begin()),
+		                               std::make_move_iterator(allocaOps.end()));
+	}
+}
+
 std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::process() {
 	auto rootBlockNumberOfArguments = trace->getArguments().size();
+
+	// Hoist all ALLOCA operations to the head of the initial block first.
+	hoistAllocaOperations();
+
 	//  In the first step we get the return block, which contains the return call.
 	//  Starting with this block we trace all inputs
 

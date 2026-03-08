@@ -75,22 +75,22 @@ public:
 		    data_ptr, index);
 	}
 
-	val<size_type> size() const noexcept {
+	val<size_type> size() const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->size(); }, data_ptr);
 	}
 
-	val<size_type> length() const noexcept {
+	val<size_type> length() const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->length(); }, data_ptr);
 	}
 
-	val<size_type> max_size() const noexcept {
+	val<size_type> max_size() const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->max_size(); }, data_ptr);
 	}
 
-	val<bool> empty() const noexcept {
+	val<bool> empty() const {
 		return invoke(
 		    +[](std::basic_string_view<CharT, Traits>* ptr) { return ptr->empty(); }, data_ptr);
 	}

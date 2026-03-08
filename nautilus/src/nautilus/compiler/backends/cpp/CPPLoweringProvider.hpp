@@ -3,6 +3,7 @@
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
@@ -83,6 +84,7 @@ private:
 		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::NotOperation* opt, short block, RegisterFrame& frame);
 
+		void process(ir::AllocaOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);

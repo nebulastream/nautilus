@@ -76,6 +76,7 @@ private:
 		void processLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void processStore(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+		void processAlloca(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void processCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
