@@ -35,7 +35,7 @@ std::string compileWithDebugAndGetIR(const std::string& functionName, Func func)
 	auto generatedLLVMFile = function.getExecutable()->getGeneratedFile("after_llvm_generation");
 	REQUIRE(!generatedLLVMFile.empty());
 
-	std::string generatedLLVMFilePath{generatedLLVMFile};
+	std::string generatedLLVMFilePath {generatedLLVMFile};
 	std::ifstream file(generatedLLVMFilePath);
 	REQUIRE(file.is_open());
 	std::ostringstream ss;
