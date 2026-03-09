@@ -18,8 +18,7 @@ class DebugVariablePass {
 public:
 	/// Add debug variable intrinsics to the "execute" function.
 	/// nameMap: maps LLVM value names to human-readable debugger names.
-	static void run(llvm::Module& module,
-	                const std::unordered_map<std::string, std::string>& nameMap = {});
+	static void run(llvm::Module& module, const std::unordered_map<std::string, std::string>& nameMap = {});
 };
 
 } // namespace nautilus::compiler::mlir

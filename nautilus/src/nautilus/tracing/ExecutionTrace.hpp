@@ -189,6 +189,9 @@ public:
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	/// Keeps the TagRecorder alive for the lifetime of this trace.
+	/// Tag* pointers inside Snapshots point into the trie owned by this recorder.
+	std::unique_ptr<TagRecorder> ownedTagRecorder;
 
 	/**
 	 * @brief Gets the next available operation identifier

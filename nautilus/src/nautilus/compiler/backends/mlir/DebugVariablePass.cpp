@@ -86,8 +86,8 @@ void DebugVariablePass::run(llvm::Module& module, const std::unordered_map<std::
 				continue;
 			}
 			diBuilder.insertDbgValueIntrinsic(&inst, diVar, diBuilder.createExpression(),
-			                                 llvm::DILocation::get(ctx, loc->getLine(), loc->getColumn(), diSP),
-			                                 insertBefore->getIterator());
+			                                  llvm::DILocation::get(ctx, loc->getLine(), loc->getColumn(), diSP),
+			                                  insertBefore->getIterator());
 		}
 	}
 

@@ -216,7 +216,10 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
                                                     const engine::Options& options) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+	// Heap-allocate TagRecorder so it can be transferred into the returned
+	// ExecutionTrace, keeping Tag* pointers in Snapshots valid after trace() returns.
+	auto trOwner = std::make_unique<tracing::TagRecorder>((tracing::TagAddress) rootAddress);
+	auto& tr = *trOwner;
 
 	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
 	// This is the key optimization: no heap allocations for these large objects
@@ -256,8 +259,11 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
 	log::trace("Final trace: {}", executionTrace);
 
+	// Transfer TagRecorder ownership into the trace so Tag* pointers remain valid.
+	executionTrace.ownedTagRecorder = std::move(trOwner);
+
 	// Move stack-allocated executionTrace into a unique_ptr for return
-	// The caller gets ownership of the trace
+	// The caller gets ownership of the trace (including the TagRecorder)
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
