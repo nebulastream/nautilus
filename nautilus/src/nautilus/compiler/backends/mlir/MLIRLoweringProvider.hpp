@@ -163,6 +163,15 @@ private:
 	::mlir::Location getNameLoc(const std::string& name);
 
 	/**
+	 * @brief Generates a location using source locations from the IR operation when available.
+	 * Builds a nested CallSiteLoc chain from the operation's source location chain.
+	 * Falls back to getNameLoc(name) when no source locations are present.
+	 * @param name: Operation-descriptive name (e.g., "binOpResult").
+	 * @param op: IR operation that may carry source locations.
+	 */
+	::mlir::Location getNameLoc(const std::string& name, const ir::Operation* op);
+
+	/**
 	 * @brief Get MLIR Type from a basic  type.
 	 * @param type:  basic type.
 	 * @return mlir::Type: MLIR Type.

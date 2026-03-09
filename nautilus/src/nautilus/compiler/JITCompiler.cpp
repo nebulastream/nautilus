@@ -18,6 +18,7 @@
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
+#include "nautilus/tracing/phases/SourceLocationResolutionPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #endif
 
@@ -71,6 +72,12 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
 	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSA->toString(); });
+
+	// resolve source locations from tag address chains (only when debug.enabled)
+	if (options.getOptionOrDefault("debug.enabled", false)) {
+		tracing::SourceLocationResolutionPhase::apply(*afterSSA);
+	}
+
 	// get nautilus ir from trace
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);

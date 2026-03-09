@@ -23,7 +23,14 @@ std::unique_ptr<::mlir::ExecutionEngine> JITCompiler::jitCompileModule(
 
 	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
 	::mlir::ExecutionEngineOptions options;
-	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+	if (nautilusOptions.getOptionOrDefault("debug.enabled", false)) {
+		// Reduce optimization to preserve debug info; enable GDB JIT interface.
+		options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::None;
+		options.enableGDBNotificationListener = true;
+		options.enablePerfNotificationListener = true;
+	} else {
+		options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+	}
 	options.transformer = optPipeline;
 	auto maybeEngine = ::mlir::ExecutionEngine::create(*mlirModule, options);
 

@@ -94,6 +94,12 @@ private:
 		void processTernaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
 		                            TraceOperation& operation);
 
+		void copySourceLocations(compiler::ir::Operation* irOp, TraceOperation& traceOp) {
+			if (!traceOp.sourceLocations.empty()) {
+				irOp->setSourceLocations(traceOp.sourceLocations);
+			}
+		}
+
 	private:
 		std::shared_ptr<ExecutionTrace> trace;
 		Type returnType;

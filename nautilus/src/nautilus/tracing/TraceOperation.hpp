@@ -3,6 +3,7 @@
 
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/tag/SourceLocation.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
 #include <nautilus/common/FunctionAttributes.hpp>
@@ -57,6 +58,7 @@ public:
 	Type resultType;
 	TypedValueRef resultRef;
 	std::vector<InputVariant> input;
+	SourceLocationChain sourceLocations;
 };
 
 } // namespace nautilus::tracing

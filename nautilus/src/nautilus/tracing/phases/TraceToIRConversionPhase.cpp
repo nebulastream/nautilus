@@ -210,6 +210,7 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryOperator(ValueF
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
 	auto operation = currentBlock->addOperation<OpType>(resultIdentifier, leftInput, rightInput);
 	frame.setValue(resultIdentifier, operation);
+	copySourceLocations(operation, op);
 }
 
 template <typename OpType>
@@ -220,6 +221,7 @@ void TraceToIRConversionPhase::IRConversionContext::processUnaryOperator(ValueFr
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
 	auto operation = currentBlock->addOperation<OpType>(resultIdentifier, input);
 	frame.setValue(resultIdentifier, operation);
+	copySourceLocations(operation, op);
 }
 
 template <typename OpType>
@@ -233,6 +235,7 @@ void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(Value
 	auto operation =
 	    currentBlock->addOperation<OpType>(resultIdentifier, firstInput, secondInput, thirdInput, op.resultRef.type);
 	frame.setValue(resultIdentifier, operation);
+	copySourceLocations(operation, op);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame, BasicBlock* block,
@@ -291,6 +294,7 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(ValueFrame
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto divOperation = currentBlock->addOperation<BinaryCompOperation>(resultIdentifier, leftInput, rightInput, type);
 	frame.setValue(resultIdentifier, divOperation);
+	copySourceLocations(divOperation, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processShift(ValueFrame& frame,
@@ -302,6 +306,7 @@ void TraceToIRConversionPhase::IRConversionContext::processShift(ValueFrame& fra
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto divOperation = currentBlock->addOperation<ShiftOperation>(resultIdentifier, leftInput, rightInput, type);
 	frame.setValue(resultIdentifier, divOperation);
+	copySourceLocations(divOperation, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processLogicalComperator(ValueFrame& frame,
@@ -313,6 +318,7 @@ void TraceToIRConversionPhase::IRConversionContext::processLogicalComperator(Val
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput, comp);
 	frame.setValue(resultIdentifier, compareOperation);
+	copySourceLocations(compareOperation, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& frame, BasicBlock* currentBlock,
@@ -321,8 +327,10 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = operation.resultType;
 	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType);
-	frame.setValue(resultIdentifier, loadOperation.get());
+	auto* loadOperationPtr = loadOperation.get();
+	frame.setValue(resultIdentifier, loadOperationPtr);
 	currentBlock->addOperation(std::move(loadOperation));
+	copySourceLocations(loadOperationPtr, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& frame, BasicBlock* currentBlock,
@@ -349,6 +357,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
+	copySourceLocations(proxyCallOperation, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,
@@ -375,6 +384,7 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 	    constant);
 
 	frame.setValue(resultIdentifier, constOperation);
+	copySourceLocations(constOperation, operation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& frame, BasicBlock* currentBlock,
@@ -383,6 +393,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.resultType);
 	frame.setValue(resultIdentifier, castOperation);
+	copySourceLocations(castOperation, operation);
 }
 
 } // namespace nautilus::tracing

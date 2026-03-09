@@ -19,6 +19,10 @@ public:
 
 	bool operator!=(const Snapshot& rhs) const;
 
+	Tag* getTag() const {
+		return tag;
+	}
+
 private:
 	friend std::hash<Snapshot>;
 	uint64_t staticValueHash;

@@ -2,6 +2,8 @@
 
 #include "nautilus/compiler/backends/mlir/LLVMIROptimizer.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/backends/mlir/DebugInfoPass.hpp"
+#include "nautilus/compiler/backends/mlir/DebugVariablePass.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/Attributes.h>
@@ -46,8 +48,18 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 			inlineFunctions(*llvmIRModule);
 		}
 
-		auto optPipeline =
-		    ::mlir::makeOptimizingTransformer(getOptimizationLevel(options), SIZE_LEVEL, targetMachinePtr);
+		// When debug mode is enabled, add DWARF debug info and variable intrinsics
+		// before LLVM optimization so the debugger can step through JIT'd code.
+		if (options.getOptionOrDefault("debug.enabled", false)) {
+			DebugInfoPass::run(*llvmIRModule);
+			DebugVariablePass::run(*llvmIRModule);
+		}
+
+		int optLevel = options.getOptionOrDefault("debug.enabled", false)
+		                   ? options.getOptionOrDefault("debug.optimization_level", 0)
+		                   : getOptimizationLevel(options);
+
+		auto optPipeline = ::mlir::makeOptimizingTransformer(optLevel, SIZE_LEVEL, targetMachinePtr);
 		auto optimizedModule = optPipeline(llvmIRModule);
 
 		handler.dump("after_llvm_generation", "ll", [&]() {
