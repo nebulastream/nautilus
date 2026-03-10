@@ -1,9 +1,7 @@
 
 #pragma once
 
-#include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
-#include "nautilus/tracing/tag/Tag.hpp"
 #include <any>
 #include <cstddef>
 #include <nautilus/common/FunctionAttributes.hpp>
@@ -53,9 +51,8 @@ using InputVariant =
  */
 class TraceOperation {
 public:
-	TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref, std::vector<InputVariant>&& input);
+	TraceOperation(Op op, Type resultType, TypedValueRef ref, std::vector<InputVariant>&& input);
 	TraceOperation(Op op, std::vector<InputVariant>&& input);
-	Snapshot tag;
 	Op op;
 	Type resultType;
 	TypedValueRef resultRef;

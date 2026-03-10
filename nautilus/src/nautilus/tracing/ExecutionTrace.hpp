@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Block.hpp"
+#include "Snapshot.hpp"
 #include "TraceOperation.hpp"
 #include "tag/TagRecorder.hpp"
 #include <memory>
@@ -122,14 +123,6 @@ public:
 	uint16_t getCurrentBlockIndex() const;
 
 	/**
-	 * @brief Adds an operation without a result to the trace
-	 * @param snapshot The current execution snapshot
-	 * @param operation The operation to add
-	 * @param inputs The input operands for the operation
-	 */
-	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs);
-
-	/**
 	 * @brief Returns the current block
 	 * @return Block&
 	 */
@@ -187,8 +180,7 @@ public:
 	std::vector<Block> blocks;
 	std::vector<operation_identifier> returnRefs;
 	ValueRef lastValueRef = 0;
-	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
-	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	std::unordered_map<Snapshot, operation_identifier> tagMap;
 
 	/**
 	 * @brief Gets the next available operation identifier

@@ -249,7 +249,7 @@ private:
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
-	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash
 	std::unordered_map<void*, std::string> mangledNameCache;
 };
 

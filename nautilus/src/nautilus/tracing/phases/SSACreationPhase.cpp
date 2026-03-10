@@ -36,10 +36,9 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		if (returnValue.input.empty()) {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
-			auto snap = Snapshot();
 			returnOpBlock.operations[returnOp.operationIndex] =
-			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			    TraceOperation(ASSIGN, defaultReturnOp.resultType, std::get<TypedValueRef>(defaultReturnOp.input[0]),
+			                   {returnValue.input[0]});
 		}
 		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
