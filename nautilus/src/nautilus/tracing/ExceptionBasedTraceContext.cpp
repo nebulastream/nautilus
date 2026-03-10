@@ -79,9 +79,9 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 		return follow(op);
 	}
 	auto tag = recordSnapshot();
-	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
-	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
+	auto tagIter = state->executionTrace.tagMap.find(tag);
+	if (tagIter != state->executionTrace.tagMap.end()) {
+		auto& ref = tagIter->second;
 		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
