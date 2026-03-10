@@ -75,7 +75,7 @@ private:
 		 * @brief Returns the set of value refs defined by operations in the given block,
 		 * computing and caching it on first access.
 		 */
-		const std::unordered_set<uint16_t>& getOrBuildDefinitions(uint16_t blockId);
+		const std::unordered_set<ValueRef>& getOrBuildDefinitions(uint16_t blockId);
 
 		/**
 		 * @brief Removes the assignment operations from all blocks.
@@ -94,10 +94,10 @@ private:
 		std::unordered_set<uint32_t> processedBlocks;
 		// Lazy cache: maps blockId → set of value refs produced by operations in that block.
 		// Entries are built on first access rather than upfront.
-		std::unordered_map<uint16_t, std::unordered_set<uint16_t>> blockDefinitions;
-		// Tracks (blockId << 16 | ref) pairs that have already been propagated,
+		std::unordered_map<uint16_t, std::unordered_set<ValueRef>> blockDefinitions;
+		// Tracks (blockId, ref) pairs that have already been propagated,
 		// replacing the O(n) std::find on predBlock.arguments.
-		std::unordered_set<uint32_t> propagatedValues;
+		std::unordered_set<uint64_t> propagatedValues;
 		// Reused across propagateValue calls to avoid repeated heap allocation.
 		std::vector<uint16_t> propWorklist;
 	};
