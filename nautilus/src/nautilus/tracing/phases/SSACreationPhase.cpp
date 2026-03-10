@@ -148,7 +148,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 	}
 }
 
-const std::unordered_set<uint16_t>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint16_t blockId) {
+const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint16_t blockId) {
 	auto it = blockDefinitions.find(blockId);
 	if (it != blockDefinitions.end()) {
 		return it->second;
@@ -162,7 +162,7 @@ const std::unordered_set<uint16_t>& SSACreationPhase::SSACreationPhaseContext::g
 
 void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
 	block.addArgument(ref);
-	propagatedValues.insert((uint32_t(block.blockId) << 16) | ref.ref);
+	propagatedValues.insert((uint64_t(block.blockId) << 32) | ref.ref);
 
 	// Reuse the member worklist to avoid heap allocation per call.
 	propWorklist.clear();
@@ -198,7 +198,7 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 			// O(1) check: if we have already propagated this value to this predecessor
 			// (handles loops and diamond merges), skip re-queuing.
-			uint32_t key = (uint32_t(predecessor) << 16) | ref.ref;
+			uint64_t key = (uint64_t(predecessor) << 32) | ref.ref;
 			if (propagatedValues.contains(key)) {
 				continue;
 			}
