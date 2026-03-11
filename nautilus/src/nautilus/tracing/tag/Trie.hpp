@@ -1,15 +1,15 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <vector>
+#include <unordered_map>
 
 namespace nautilus::tracing {
 
 /**
- * @brief A basic trie data structure, which stores sequences of values.
+ * @brief A trie node that stores sequences of values.
+ * Uses an unordered_map for O(1) average child lookup instead of linear scan.
  * @tparam T
  */
 template <typename T>
@@ -27,17 +27,15 @@ public:
 	 * @return TrieNode<T>*
 	 */
 	TrieNode<T>* append(T& value) {
-		auto found = std::find_if(children.begin(), children.end(),
-		                          [value](std::unique_ptr<TrieNode<T>>& x) { return x->content == value; });
-		if (found == children.end()) {
-			return children.emplace_back(std::make_unique<TrieNode<T>>(value)).get();
-		} else {
-			return found->get();
+		auto [it, inserted] = children.try_emplace(value, nullptr);
+		if (inserted) {
+			it->second = std::make_unique<TrieNode<T>>(value);
 		}
+		return it->second.get();
 	}
 
 private:
 	T content;
-	std::vector<std::unique_ptr<TrieNode<T>>> children;
+	std::unordered_map<T, std::unique_ptr<TrieNode<T>>> children;
 };
 } // namespace nautilus::tracing

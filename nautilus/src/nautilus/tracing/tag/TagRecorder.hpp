@@ -14,18 +14,6 @@ public:
 	static constexpr size_t MAX_TAG_SIZE = 256;
 
 	/**
-	 * @brief Factory to create a new tag recorder.
-	 * @return TagRecorder
-	 */
-	static inline __attribute__((always_inline)) TagRecorder createTagRecorder() {
-		// First we derive the base address, which is the first common address between two bracktraces.
-		auto referenceTag1 = createBaseTag();
-		auto referenceTag2 = createBaseTag();
-		auto baseAddress = getBaseAddress(referenceTag1, referenceTag2);
-		return TagRecorder(baseAddress);
-	}
-
-	/**
 	 * @brief Derive the tag of a specific instruction and returns the tag pointer, which uniquely identifies this
 	 * instruction.
 	 * @return Tag*
@@ -41,10 +29,6 @@ public:
 	explicit TagRecorder(TagAddress startAddress);
 
 private:
-	static TagAddress getBaseAddress(TagVector& tag1, TagVector& tag2);
-
-	static TagVector createBaseTag();
-
 	Tag* createReferenceTag();
 	Tag* createReferenceTagBacktrace();
 	Tag* createReferenceTagBuildin();
@@ -52,7 +36,7 @@ private:
 	// The start address, which is used as the start to calculate tags for sub instructions.
 	const TagAddress startAddress;
 	// The tag recorder stores the individual tags in a trie of addresses, to minimize space consumption.
-	Tag rootTagThreeNode = Tag();
+	Tag rootTagTrieNode = Tag();
 	bool useBuiltinTagCreation;
 };
 } // namespace nautilus::tracing

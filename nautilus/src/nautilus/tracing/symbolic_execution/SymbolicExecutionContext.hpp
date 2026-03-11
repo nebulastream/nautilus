@@ -6,7 +6,6 @@
 #include <unordered_map>
 
 namespace nautilus::tracing {
-class TagRecorder;
 
 class TraceContext;
 
@@ -20,13 +19,6 @@ public:
 	static const uint64_t MAX_ITERATIONS = 100000;
 
 	enum class MODE : const uint8_t { FOLLOW, RECORD };
-
-	/**
-	 * @brief Performs a symbolic execution of a CMP operation.
-	 * Depending on all previous executions this function determines if a branch should be explored or not.
-	 * @return the return value of this branch
-	 */
-	bool executeCMP(TagRecorder& tr);
 
 	/**
 	 * @brief Check if we should continue the symbolic execution or if we evaluated all possible execution passes.
@@ -49,7 +41,6 @@ public:
 
 	/**
 	 * @brief Records a new cmp operation
-	 * @param tr TagRecorder
 	 * @return
 	 */
 	bool record(const Snapshot& tag);
