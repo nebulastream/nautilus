@@ -375,6 +375,30 @@ TEST_CASE("Pointer Trace Test") {
 	    {"castCustomClass", details::createFunctionWrapper(castCustomClass)},
 	    {"specializeType", details::createFunctionWrapper(specializeType)},
 	    {"useWrapper", details::createFunctionWrapper(useWrapper)},
+	    // pointer arithmetic with different pointer element types (fixed int32_t offset)
+	    {"pointerAdd_i8_i32", details::createFunctionWrapper(pointerAddInt<int8_t, int32_t>)},
+	    {"pointerAdd_i16_i32", details::createFunctionWrapper(pointerAddInt<int16_t, int32_t>)},
+	    {"pointerAdd_i64_i32", details::createFunctionWrapper(pointerAddInt<int64_t, int32_t>)},
+	    // pointer arithmetic with different integer offset types (fixed int32_t pointer element)
+	    {"pointerAdd_i32_i8", details::createFunctionWrapper(pointerAddInt<int32_t, int8_t>)},
+	    {"pointerAdd_i32_i16", details::createFunctionWrapper(pointerAddInt<int32_t, int16_t>)},
+	    {"pointerAdd_i32_i64", details::createFunctionWrapper(pointerAddInt<int32_t, int64_t>)},
+	    {"pointerAdd_i32_ui32", details::createFunctionWrapper(pointerAddInt<int32_t, uint32_t>)},
+	    {"pointerAdd_i32_ui64", details::createFunctionWrapper(pointerAddInt<int32_t, uint64_t>)},
+	    // pointer subtraction with different types
+	    {"pointerSub_i8_i32", details::createFunctionWrapper(pointerSubInt<int8_t, int32_t>)},
+	    {"pointerSub_i16_i32", details::createFunctionWrapper(pointerSubInt<int16_t, int32_t>)},
+	    {"pointerSub_i64_i32", details::createFunctionWrapper(pointerSubInt<int64_t, int32_t>)},
+	    {"pointerSub_i32_i8", details::createFunctionWrapper(pointerSubInt<int32_t, int8_t>)},
+	    {"pointerSub_i32_i16", details::createFunctionWrapper(pointerSubInt<int32_t, int16_t>)},
+	    {"pointerSub_i32_i64", details::createFunctionWrapper(pointerSubInt<int32_t, int64_t>)},
+	    // constant pointer arithmetic for different element types
+	    {"pointerAddConst_i8", details::createFunctionWrapper(pointerAddConstInt<int8_t>)},
+	    {"pointerAddConst_i16", details::createFunctionWrapper(pointerAddConstInt<int16_t>)},
+	    {"pointerAddConst_i64", details::createFunctionWrapper(pointerAddConstInt<int64_t>)},
+	    {"pointerSubConst_i8", details::createFunctionWrapper(pointerSubConstInt<int8_t>)},
+	    {"pointerSubConst_i16", details::createFunctionWrapper(pointerSubConstInt<int16_t>)},
+	    {"pointerSubConst_i64", details::createFunctionWrapper(pointerSubConstInt<int64_t>)},
 	};
 	runTraceTests("pointer-tests", tests);
 }

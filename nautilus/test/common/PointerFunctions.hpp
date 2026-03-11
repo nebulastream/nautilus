@@ -152,6 +152,30 @@ val<CustomClass*> customPointerAdd(val<CustomClass*> customClassPtr, val<int32_t
 	return result;
 }
 
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerAddInt(val<PtrElem*> ptr, val<OffsetType> offset) {
+	auto result = ptr + offset;
+	return *result;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerSubInt(val<PtrElem*> ptr, val<OffsetType> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerAddConstInt(val<PtrElem*> ptr) {
+	auto result = ptr + 2;
+	return *result;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerSubConstInt(val<PtrElem*> ptr) {
+	auto result = ptr - 2;
+	return *result;
+}
+
 val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
 	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);
 }
