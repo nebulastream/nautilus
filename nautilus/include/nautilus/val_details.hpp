@@ -85,7 +85,7 @@ decltype(auto) inline cast_value(LeftType&& value) {
 	using basic_type = typename std::remove_reference_t<LeftType>::basic_type;
 	using commonType = std::common_type_t<basic_type, RightType>;
 
-	if constexpr (std::is_same_v<basic_type, RightType>) {
+	if constexpr (tracing::same_nautilus_type<basic_type, RightType>::value) {
 		return std::forward<LeftType>(value);
 	} else {
 		return static_cast<val<commonType>>(value);
