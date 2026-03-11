@@ -15,10 +15,10 @@ namespace nautilus::tracing {
 template <typename T>
 class TrieNode {
 public:
-	explicit TrieNode() : content(0) {
+	explicit TrieNode() : content(0), parent_(nullptr) {
 	}
 
-	explicit TrieNode(T value) : content(value) {
+	explicit TrieNode(T value) : content(value), parent_(nullptr) {
 	}
 
 	/**
@@ -30,14 +30,31 @@ public:
 		auto found = std::find_if(children.begin(), children.end(),
 		                          [value](std::unique_ptr<TrieNode<T>>& x) { return x->content == value; });
 		if (found == children.end()) {
-			return children.emplace_back(std::make_unique<TrieNode<T>>(value)).get();
+			auto& node = children.emplace_back(std::make_unique<TrieNode<T>>(value));
+			node->parent_ = this;
+			return node.get();
 		} else {
 			return found->get();
 		}
 	}
 
+	/**
+	 * @brief Walks parent chain to collect the full address sequence (leaf to root).
+	 * Returns innermost address first, outermost last.
+	 * Stops at root (parent_ == nullptr).
+	 * @return std::vector<T> address chain from innermost to outermost
+	 */
+	std::vector<T> getAddressChain() const {
+		std::vector<T> chain;
+		for (auto* node = this; node->parent_ != nullptr; node = node->parent_) {
+			chain.push_back(node->content);
+		}
+		return chain;
+	}
+
 private:
 	T content;
+	TrieNode<T>* parent_ = nullptr;
 	std::vector<std::unique_ptr<TrieNode<T>>> children;
 };
 } // namespace nautilus::tracing

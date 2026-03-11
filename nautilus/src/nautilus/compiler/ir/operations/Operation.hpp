@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/tracing/Types.hpp"
+#include "nautilus/tracing/tag/SourceLocation.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -95,11 +96,22 @@ public:
 		return dynamic_cast<const OP*>(this);
 	}
 
+	const tracing::SourceLocationChain& getSourceLocations() const {
+		return sourceLocations;
+	}
+
+	void setSourceLocations(tracing::SourceLocationChain locs) {
+		sourceLocations = std::move(locs);
+	}
+
 protected:
 	const OperationType opType;
 	const OperationIdentifier identifier;
 	const Type stamp;
 	std::vector<Operation*> inputs;
+
+private:
+	tracing::SourceLocationChain sourceLocations;
 };
 
 template <typename T>

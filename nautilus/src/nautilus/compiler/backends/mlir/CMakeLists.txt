@@ -26,6 +26,8 @@ if (ENABLE_MLIR_BACKEND)
     
     add_subdirectory(intrinsics)    
     add_source_files(nautilus
+            DebugInfoPass.cpp
+            DebugVariablePass.cpp
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp
             MLIRExecutable.cpp
