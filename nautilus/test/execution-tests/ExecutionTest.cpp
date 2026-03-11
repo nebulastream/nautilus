@@ -1207,6 +1207,142 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		CustomStruct2 x2 = {.x = 42};
 		REQUIRE(f(&x, &x2) == 84);
 	}
+
+	// pointer arithmetic with different pointer element types (fixed int32_t offset)
+	SECTION("pointerAdd_i8_i32") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerAddInt<int8_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 10);
+		REQUIRE(f(data, (int32_t) 1) == 20);
+		REQUIRE(f(data, (int32_t) 4) == 50);
+	}
+	SECTION("pointerAdd_i16_i32") {
+		int16_t data[] = {100, 200, 300, 400, 500};
+		auto f = engine.registerFunction(pointerAddInt<int16_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 100);
+		REQUIRE(f(data, (int32_t) 1) == 200);
+		REQUIRE(f(data, (int32_t) 4) == 500);
+	}
+	SECTION("pointerAdd_i64_i32") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerAddInt<int64_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 1000);
+		REQUIRE(f(data, (int32_t) 1) == 2000);
+		REQUIRE(f(data, (int32_t) 4) == 5000);
+	}
+
+	// pointer arithmetic with different integer offset types (fixed int32_t pointer element)
+	SECTION("pointerAdd_i32_i8") {
+		auto f = engine.registerFunction(pointerAddInt<int32_t, int8_t>);
+		REQUIRE(f(values, (int8_t) 0) == 1);
+		REQUIRE(f(values, (int8_t) 1) == 2);
+		REQUIRE(f(values, (int8_t) 3) == 4);
+	}
+	SECTION("pointerAdd_i32_i16") {
+		auto f = engine.registerFunction(pointerAddInt<int32_t, int16_t>);
+		REQUIRE(f(values, (int16_t) 0) == 1);
+		REQUIRE(f(values, (int16_t) 1) == 2);
+		REQUIRE(f(values, (int16_t) 3) == 4);
+	}
+	SECTION("pointerAdd_i32_i64") {
+		auto f = engine.registerFunction(pointerAddInt<int32_t, int64_t>);
+		REQUIRE(f(values, (int64_t) 0) == 1);
+		REQUIRE(f(values, (int64_t) 1) == 2);
+		REQUIRE(f(values, (int64_t) 3) == 4);
+	}
+	SECTION("pointerAdd_i32_ui32") {
+		auto f = engine.registerFunction(pointerAddInt<int32_t, uint32_t>);
+		REQUIRE(f(values, (uint32_t) 0) == 1);
+		REQUIRE(f(values, (uint32_t) 1) == 2);
+		REQUIRE(f(values, (uint32_t) 3) == 4);
+	}
+	SECTION("pointerAdd_i32_ui64") {
+		auto f = engine.registerFunction(pointerAddInt<int32_t, uint64_t>);
+		REQUIRE(f(values, (uint64_t) 0) == 1);
+		REQUIRE(f(values, (uint64_t) 1) == 2);
+		REQUIRE(f(values, (uint64_t) 3) == 4);
+	}
+
+	// pointer subtraction with different pointer element types
+	SECTION("pointerSub_i8_i32") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerSubInt<int8_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 10);
+		REQUIRE(f(&data[1], (int32_t) 1) == 10);
+		REQUIRE(f(&data[4], (int32_t) 4) == 10);
+	}
+	SECTION("pointerSub_i16_i32") {
+		int16_t data[] = {100, 200, 300, 400, 500};
+		auto f = engine.registerFunction(pointerSubInt<int16_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 100);
+		REQUIRE(f(&data[1], (int32_t) 1) == 100);
+		REQUIRE(f(&data[4], (int32_t) 4) == 100);
+	}
+	SECTION("pointerSub_i64_i32") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerSubInt<int64_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 1000);
+		REQUIRE(f(&data[1], (int32_t) 1) == 1000);
+		REQUIRE(f(&data[4], (int32_t) 4) == 1000);
+	}
+
+	// pointer subtraction with different offset integer types
+	SECTION("pointerSub_i32_i8") {
+		auto f = engine.registerFunction(pointerSubInt<int32_t, int8_t>);
+		REQUIRE(f(values, (int8_t) 0) == 1);
+		REQUIRE(f(&values[1], (int8_t) 1) == 1);
+		REQUIRE(f(&values[3], (int8_t) 3) == 1);
+	}
+	SECTION("pointerSub_i32_i16") {
+		auto f = engine.registerFunction(pointerSubInt<int32_t, int16_t>);
+		REQUIRE(f(values, (int16_t) 0) == 1);
+		REQUIRE(f(&values[1], (int16_t) 1) == 1);
+		REQUIRE(f(&values[3], (int16_t) 3) == 1);
+	}
+	SECTION("pointerSub_i32_i64") {
+		auto f = engine.registerFunction(pointerSubInt<int32_t, int64_t>);
+		REQUIRE(f(values, (int64_t) 0) == 1);
+		REQUIRE(f(&values[1], (int64_t) 1) == 1);
+		REQUIRE(f(&values[3], (int64_t) 3) == 1);
+	}
+
+	// constant pointer arithmetic for different element types
+	SECTION("pointerAddConst_i8") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerAddConstInt<int8_t>);
+		REQUIRE(f(data) == 30);
+		REQUIRE(f(&data[1]) == 40);
+	}
+	SECTION("pointerAddConst_i16") {
+		int16_t data[] = {100, 200, 300, 400, 500};
+		auto f = engine.registerFunction(pointerAddConstInt<int16_t>);
+		REQUIRE(f(data) == 300);
+		REQUIRE(f(&data[1]) == 400);
+	}
+	SECTION("pointerAddConst_i64") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerAddConstInt<int64_t>);
+		REQUIRE(f(data) == 3000);
+		REQUIRE(f(&data[1]) == 4000);
+	}
+	SECTION("pointerSubConst_i8") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerSubConstInt<int8_t>);
+		REQUIRE(f(&data[2]) == 10);
+		REQUIRE(f(&data[3]) == 20);
+	}
+	SECTION("pointerSubConst_i16") {
+		int16_t data[] = {100, 200, 300, 400, 500};
+		auto f = engine.registerFunction(pointerSubConstInt<int16_t>);
+		REQUIRE(f(&data[2]) == 100);
+		REQUIRE(f(&data[3]) == 200);
+	}
+	SECTION("pointerSubConst_i64") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerSubConstInt<int64_t>);
+		REQUIRE(f(&data[2]) == 1000);
+		REQUIRE(f(&data[3]) == 2000);
+	}
 }
 
 class Clazz {

@@ -1,0 +1,11 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr):
+	$3 = -2 :ui64
+	$5 = 2 :ui64
+	$6 = $3 * $5 :ui64
+	$7 = $1 + $6 :ptr
+	$10 = load($7) :i16
+	return ($10) :i16
+}
+} //NESIR
