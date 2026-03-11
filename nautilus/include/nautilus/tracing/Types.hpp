@@ -86,18 +86,13 @@ struct TypeResolver<T> {
 	}
 };
 
-
 template <typename Ta, typename Tb>
 struct same_nautilus_type {
-    static constexpr bool value =
-        tracing::TypeResolver<Ta>::to_type() ==
-        tracing::TypeResolver<Tb>::to_type();
+	static constexpr bool value = tracing::TypeResolver<Ta>::to_type() == tracing::TypeResolver<Tb>::to_type();
 };
 
 template <typename Ta, typename Tb>
-inline constexpr bool same_nautilus_type_v =
-    same_nautilus_type<Ta, Tb>::value;
-
+inline constexpr bool same_nautilus_type_v = same_nautilus_type<Ta, Tb>::value;
 
 } // namespace tracing
 
