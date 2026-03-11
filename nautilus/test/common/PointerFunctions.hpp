@@ -138,6 +138,34 @@ inline void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {
 	memcpy(dest, src, 0);
 }
 
+inline val<int32_t> pointerAddNegativeOffset(val<int32_t*> ptr, val<int32_t> offset) {
+	auto result = ptr - offset;
+	return *result;
+}
+
+inline val<bool> pointerLessThanAfterAdd(val<int32_t*> base, val<int32_t> offset) {
+	auto advanced = base + offset;
+	return base < advanced;
+}
+
+inline val<bool> pointerGreaterThanAfterAdd(val<int32_t*> base, val<int32_t> offset) {
+	auto advanced = base + offset;
+	return advanced > base;
+}
+
+inline val<int32_t> pointerRoundTrip(val<int32_t*> ptr, val<int32_t> offset) {
+	auto advanced = ptr + offset;
+	auto back = advanced - offset;
+	return *back;
+}
+
+inline val<int32_t> pointerMultiStep(val<int32_t*> ptr) {
+	auto p1 = ptr + 1;
+	auto p2 = p1 + 1;
+	auto p3 = p2 + 1;
+	return *p3;
+}
+
 class BaseClass {};
 
 class CustomClass : public BaseClass {

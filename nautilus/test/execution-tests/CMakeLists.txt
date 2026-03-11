@@ -7,6 +7,8 @@ add_executable(nautilus-execution-tests
         DumpHelperTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
+        BitIntrinsicExecutionTest.cpp
+        MemoryIntrinsicExecutionTest.cpp
 )
 
 nautilus_inline(nautilus-execution-tests)
