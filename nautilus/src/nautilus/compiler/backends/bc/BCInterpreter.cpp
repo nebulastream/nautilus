@@ -37,7 +37,7 @@ void dyncallArgI32(const OpCode& op, RegisterFile& regs) {
 
 void dyncallArgI64(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<int64_t>(regs, op.reg1);
-	Dyncall::getVM().addArgI32(value);
+	Dyncall::getVM().addArgI64(value);
 }
 
 void dyncallArgF(const OpCode& op, RegisterFile& regs) {
