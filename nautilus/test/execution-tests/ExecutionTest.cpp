@@ -1343,6 +1343,100 @@ void pointerExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&data[2]) == 1000);
 		REQUIRE(f(&data[3]) == 2000);
 	}
+
+	// compound assignment: += with different pointer element types
+	SECTION("pointerPlusAssign_i32_i32") {
+		auto f = engine.registerFunction(pointerPlusAssign<int32_t, int32_t>);
+		REQUIRE(f(values, (int32_t) 0) == 1);
+		REQUIRE(f(values, (int32_t) 2) == 3);
+		REQUIRE(f(values, (int32_t) 4) == 5);
+	}
+	SECTION("pointerPlusAssign_i8_i32") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerPlusAssign<int8_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 10);
+		REQUIRE(f(data, (int32_t) 2) == 30);
+		REQUIRE(f(data, (int32_t) 4) == 50);
+	}
+	SECTION("pointerPlusAssign_i64_i32") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerPlusAssign<int64_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 1000);
+		REQUIRE(f(data, (int32_t) 2) == 3000);
+		REQUIRE(f(data, (int32_t) 4) == 5000);
+	}
+
+	// compound assignment: += with different offset integer types
+	SECTION("pointerPlusAssign_i32_i8") {
+		auto f = engine.registerFunction(pointerPlusAssign<int32_t, int8_t>);
+		REQUIRE(f(values, (int8_t) 0) == 1);
+		REQUIRE(f(values, (int8_t) 2) == 3);
+		REQUIRE(f(values, (int8_t) 4) == 5);
+	}
+	SECTION("pointerPlusAssign_i32_i64") {
+		auto f = engine.registerFunction(pointerPlusAssign<int32_t, int64_t>);
+		REQUIRE(f(values, (int64_t) 0) == 1);
+		REQUIRE(f(values, (int64_t) 2) == 3);
+		REQUIRE(f(values, (int64_t) 4) == 5);
+	}
+
+	// compound assignment: -= with different pointer element types
+	SECTION("pointerMinusAssign_i32_i32") {
+		auto f = engine.registerFunction(pointerMinusAssign<int32_t, int32_t>);
+		REQUIRE(f(values, (int32_t) 0) == 1);
+		REQUIRE(f(&values[2], (int32_t) 2) == 1);
+		REQUIRE(f(&values[4], (int32_t) 4) == 1);
+	}
+	SECTION("pointerMinusAssign_i8_i32") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerMinusAssign<int8_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 10);
+		REQUIRE(f(&data[2], (int32_t) 2) == 10);
+		REQUIRE(f(&data[4], (int32_t) 4) == 10);
+	}
+	SECTION("pointerMinusAssign_i64_i32") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerMinusAssign<int64_t, int32_t>);
+		REQUIRE(f(data, (int32_t) 0) == 1000);
+		REQUIRE(f(&data[2], (int32_t) 2) == 1000);
+		REQUIRE(f(&data[4], (int32_t) 4) == 1000);
+	}
+
+	// compound assignment: -= with different offset integer types
+	SECTION("pointerMinusAssign_i32_i8") {
+		auto f = engine.registerFunction(pointerMinusAssign<int32_t, int8_t>);
+		REQUIRE(f(values, (int8_t) 0) == 1);
+		REQUIRE(f(&values[2], (int8_t) 2) == 1);
+		REQUIRE(f(&values[4], (int8_t) 4) == 1);
+	}
+	SECTION("pointerMinusAssign_i32_i64") {
+		auto f = engine.registerFunction(pointerMinusAssign<int32_t, int64_t>);
+		REQUIRE(f(values, (int64_t) 0) == 1);
+		REQUIRE(f(&values[2], (int64_t) 2) == 1);
+		REQUIRE(f(&values[4], (int64_t) 4) == 1);
+	}
+
+	// pre-increment operator ++ for different pointer element types
+	SECTION("pointerPreIncrement_i8") {
+		int8_t data[] = {10, 20, 30, 40, 50};
+		auto f = engine.registerFunction(pointerPreIncrement<int8_t>);
+		REQUIRE(f(data) == 20);
+		REQUIRE(f(&data[1]) == 30);
+		REQUIRE(f(&data[3]) == 50);
+	}
+	SECTION("pointerPreIncrement_i32") {
+		auto f = engine.registerFunction(pointerPreIncrement<int32_t>);
+		REQUIRE(f(values) == 2);
+		REQUIRE(f(&values[1]) == 3);
+		REQUIRE(f(&values[3]) == 5);
+	}
+	SECTION("pointerPreIncrement_i64") {
+		int64_t data[] = {1000, 2000, 3000, 4000, 5000};
+		auto f = engine.registerFunction(pointerPreIncrement<int64_t>);
+		REQUIRE(f(data) == 2000);
+		REQUIRE(f(&data[1]) == 3000);
+		REQUIRE(f(&data[3]) == 5000);
+	}
 }
 
 class Clazz {

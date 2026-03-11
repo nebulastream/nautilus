@@ -399,6 +399,20 @@ TEST_CASE("Pointer Trace Test") {
 	    {"pointerSubConst_i8", details::createFunctionWrapper(pointerSubConstInt<int8_t>)},
 	    {"pointerSubConst_i16", details::createFunctionWrapper(pointerSubConstInt<int16_t>)},
 	    {"pointerSubConst_i64", details::createFunctionWrapper(pointerSubConstInt<int64_t>)},
+	    // compound assignment operators: +=, -=, ++
+	    {"pointerPlusAssign_i32_i32", details::createFunctionWrapper(pointerPlusAssign<int32_t, int32_t>)},
+	    {"pointerPlusAssign_i8_i32", details::createFunctionWrapper(pointerPlusAssign<int8_t, int32_t>)},
+	    {"pointerPlusAssign_i64_i32", details::createFunctionWrapper(pointerPlusAssign<int64_t, int32_t>)},
+	    {"pointerPlusAssign_i32_i8", details::createFunctionWrapper(pointerPlusAssign<int32_t, int8_t>)},
+	    {"pointerPlusAssign_i32_i64", details::createFunctionWrapper(pointerPlusAssign<int32_t, int64_t>)},
+	    {"pointerMinusAssign_i32_i32", details::createFunctionWrapper(pointerMinusAssign<int32_t, int32_t>)},
+	    {"pointerMinusAssign_i8_i32", details::createFunctionWrapper(pointerMinusAssign<int8_t, int32_t>)},
+	    {"pointerMinusAssign_i64_i32", details::createFunctionWrapper(pointerMinusAssign<int64_t, int32_t>)},
+	    {"pointerMinusAssign_i32_i8", details::createFunctionWrapper(pointerMinusAssign<int32_t, int8_t>)},
+	    {"pointerMinusAssign_i32_i64", details::createFunctionWrapper(pointerMinusAssign<int32_t, int64_t>)},
+	    {"pointerPreIncrement_i8", details::createFunctionWrapper(pointerPreIncrement<int8_t>)},
+	    {"pointerPreIncrement_i32", details::createFunctionWrapper(pointerPreIncrement<int32_t>)},
+	    {"pointerPreIncrement_i64", details::createFunctionWrapper(pointerPreIncrement<int64_t>)},
 	};
 	runTraceTests("pointer-tests", tests);
 }
