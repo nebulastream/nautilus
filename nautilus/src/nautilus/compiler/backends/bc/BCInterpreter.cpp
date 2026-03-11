@@ -517,11 +517,15 @@ std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
 			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<char>(&args[i])) {
 			writeReg<>(registerFile, code.arguments[i], *value);
+		} else if (auto* value = std::any_cast<unsigned long>(&args[i])) {
+			writeReg<>(registerFile, code.arguments[i], *value);
 		} else if (auto* value = std::any_cast<void*>(&args[i])) {
 			auto val = (int64_t) *value;
 			registerFile[code.arguments[i]] = val;
+		} else if (auto* value = std::any_cast<const void*>(&args[i])) {
+			auto val = (int64_t) *value;
+			registerFile[code.arguments[i]] = val;
 		} else {
-
 			throw NotImplementedException("This type is not supported.");
 		}
 	}
