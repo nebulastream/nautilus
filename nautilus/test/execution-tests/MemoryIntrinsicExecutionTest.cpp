@@ -27,7 +27,7 @@ void memoryIntrinsicTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(memcpyFunction);
 		int32_t src[4] = {1, 2, 3, 4};
 		int32_t dest[4] = {};
-		f((void*) dest, (const void*) src, (size_t)(4 * sizeof(int32_t)));
+		f((void*) dest, (const void*) src, (size_t) (4 * sizeof(int32_t)));
 		REQUIRE(dest[0] == 1);
 		REQUIRE(dest[1] == 2);
 		REQUIRE(dest[2] == 3);
@@ -97,7 +97,7 @@ void memoryIntrinsicTest(engine::NautilusEngine& engine) {
 	SECTION("memset zero helper") {
 		auto f = engine.registerFunction(memsetZeroFunction);
 		int32_t buf[4] = {1, 2, 3, 4};
-		f((void*) buf, (size_t)(4 * sizeof(int32_t)));
+		f((void*) buf, (size_t) (4 * sizeof(int32_t)));
 		REQUIRE(buf[0] == 0);
 		REQUIRE(buf[1] == 0);
 		REQUIRE(buf[2] == 0);
