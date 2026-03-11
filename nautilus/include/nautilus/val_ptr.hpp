@@ -316,10 +316,22 @@ public:
 		return *this != static_cast<val<ValuePtrType>>(nullptr);
 	}
 
-	const val<ValuePtrType>& operator++() {
-		// increment
-		++this->value;
-		// assign
+	template <typename IndexType>
+	    requires is_integral<IndexType> || is_fundamental_val<IndexType>
+	val<ValuePtrType>& operator+=(IndexType offset) {
+		*this = *this + offset;
+		return *this;
+	}
+
+	template <typename IndexType>
+	    requires is_integral<IndexType> || is_fundamental_val<IndexType>
+	val<ValuePtrType>& operator-=(IndexType offset) {
+		*this = *this - offset;
+		return *this;
+	}
+
+	val<ValuePtrType>& operator++() {
+		*this += static_cast<int32_t>(1);
 		return *this;
 	}
 };

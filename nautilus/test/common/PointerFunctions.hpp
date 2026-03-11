@@ -176,6 +176,24 @@ val<PtrElem> pointerSubConstInt(val<PtrElem*> ptr) {
 	return *result;
 }
 
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerPlusAssign(val<PtrElem*> ptr, val<OffsetType> offset) {
+	ptr += offset;
+	return *ptr;
+}
+
+template <typename PtrElem, typename OffsetType>
+val<PtrElem> pointerMinusAssign(val<PtrElem*> ptr, val<OffsetType> offset) {
+	ptr -= offset;
+	return *ptr;
+}
+
+template <typename PtrElem>
+val<PtrElem> pointerPreIncrement(val<PtrElem*> ptr) {
+	++ptr;
+	return *ptr;
+}
+
 val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
 	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);
 }
