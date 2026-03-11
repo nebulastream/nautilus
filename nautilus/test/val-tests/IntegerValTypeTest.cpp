@@ -2,6 +2,7 @@
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 #include <iostream>
+#include <limits>
 
 namespace nautilus {
 
@@ -102,11 +103,34 @@ TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, in
 			REQUIRE(res == static_cast<TestType>(3));
 		}
 		SECTION("%") {
-			SKIP("Not Implemented");
 			auto f1 = val<TestType>(static_cast<TestType>(13));
 			auto f2 = val<TestType>(static_cast<TestType>(5));
 			auto res = f1 % f2;
 			REQUIRE(res == static_cast<TestType>(3));
+		}
+		SECTION("% zero remainder") {
+			auto f1 = val<TestType>(static_cast<TestType>(15));
+			auto f2 = val<TestType>(static_cast<TestType>(5));
+			auto res = f1 % f2;
+			REQUIRE(res == static_cast<TestType>(0));
+		}
+		SECTION("% dividend less than divisor") {
+			auto f1 = val<TestType>(static_cast<TestType>(3));
+			auto f2 = val<TestType>(static_cast<TestType>(10));
+			auto res = f1 % f2;
+			REQUIRE(res == static_cast<TestType>(3));
+		}
+		SECTION("% dividend equals divisor") {
+			auto f1 = val<TestType>(static_cast<TestType>(7));
+			auto f2 = val<TestType>(static_cast<TestType>(7));
+			auto res = f1 % f2;
+			REQUIRE(res == static_cast<TestType>(0));
+		}
+		SECTION("% power of two divisor") {
+			auto f1 = val<TestType>(static_cast<TestType>(17));
+			auto f2 = val<TestType>(static_cast<TestType>(8));
+			auto res = f1 % f2;
+			REQUIRE(res == static_cast<TestType>(1));
 		}
 		/*SECTION("++") {
 
@@ -131,6 +155,46 @@ TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, in
 			auto f1 = val<TestType>(static_cast<TestType>(3));
 			f1 += static_cast<TestType>(3);
 			REQUIRE(f1 == static_cast<TestType>(6));
+		}
+	}
+	SECTION("overflow and underflow behavior") {
+		SECTION("max value identity") {
+			auto max_val = val<TestType>(std::numeric_limits<TestType>::max());
+			REQUIRE(max_val == std::numeric_limits<TestType>::max());
+		}
+		SECTION("min value identity") {
+			auto min_val = val<TestType>(std::numeric_limits<TestType>::min());
+			REQUIRE(min_val == std::numeric_limits<TestType>::min());
+		}
+		SECTION("unsigned overflow wraparound") {
+			// Guard against integer promotion for small types (uint8/uint16 get promoted to int)
+			if constexpr (std::is_unsigned_v<TestType> && sizeof(TestType) >= sizeof(int)) {
+				// Unsigned overflow is well-defined: max + 1 wraps to 0
+				auto max_val = val<TestType>(std::numeric_limits<TestType>::max());
+				auto one = val<TestType>(static_cast<TestType>(1));
+				auto res = max_val + one;
+				REQUIRE(res == static_cast<TestType>(0));
+			}
+		}
+		SECTION("unsigned underflow wraparound") {
+			// Guard against integer promotion for small types (uint8/uint16 get promoted to int)
+			if constexpr (std::is_unsigned_v<TestType> && sizeof(TestType) >= sizeof(int)) {
+				// Unsigned underflow: 0 - 1 wraps to max
+				auto zero = val<TestType>(static_cast<TestType>(0));
+				auto one = val<TestType>(static_cast<TestType>(1));
+				auto res = zero - one;
+				REQUIRE(res == std::numeric_limits<TestType>::max());
+			}
+		}
+		SECTION("unsigned multiply max by two") {
+			// Guard against integer promotion for small types (uint8/uint16 get promoted to int)
+			if constexpr (std::is_unsigned_v<TestType> && sizeof(TestType) >= sizeof(int)) {
+				// (2^N - 1) * 2 mod 2^N = 2^N - 2
+				auto two = val<TestType>(static_cast<TestType>(2));
+				auto max_val = val<TestType>(std::numeric_limits<TestType>::max());
+				auto res = max_val * two;
+				REQUIRE(res == static_cast<TestType>(std::numeric_limits<TestType>::max() - 1));
+			}
 		}
 	}
 	SECTION("C++ semantic equivalence") {

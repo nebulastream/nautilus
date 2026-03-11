@@ -262,6 +262,45 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&data[1]) == 3000);
 		REQUIRE(f(&data[3]) == 5000);
 	}
+
+	SECTION("pointerAddNegativeOffset") {
+		auto f = engine.registerFunction(pointerAddNegativeOffset);
+		// values = {1, 2, 3, 4, 5, 6, 7, 8, 9}
+		// &values[3] - 1 should point to values[2] = 3
+		REQUIRE(f(&values[3], (int32_t) 1) == 3);
+		REQUIRE(f(&values[5], (int32_t) 2) == 4);
+		REQUIRE(f(&values[4], (int32_t) 4) == 1);
+	}
+
+	SECTION("pointerLessThanAfterAdd") {
+		auto f = engine.registerFunction(pointerLessThanAfterAdd);
+		// base < base + positive_offset should be true
+		REQUIRE(f(values, (int32_t) 1) == true);
+		REQUIRE(f(values, (int32_t) 5) == true);
+	}
+
+	SECTION("pointerGreaterThanAfterAdd") {
+		auto f = engine.registerFunction(pointerGreaterThanAfterAdd);
+		// base + positive_offset > base should be true
+		REQUIRE(f(values, (int32_t) 1) == true);
+		REQUIRE(f(values, (int32_t) 3) == true);
+	}
+
+	SECTION("pointerRoundTrip") {
+		auto f = engine.registerFunction(pointerRoundTrip);
+		// ptr + offset - offset should give back ptr
+		REQUIRE(f(values, (int32_t) 3) == 1);
+		REQUIRE(f(&values[2], (int32_t) 2) == 3);
+		REQUIRE(f(&values[4], (int32_t) 0) == 5);
+	}
+
+	SECTION("pointerMultiStep") {
+		auto f = engine.registerFunction(pointerMultiStep);
+		// ptr + 1 + 1 + 1 = ptr + 3
+		REQUIRE(f(values) == 4);     // values[3] = 4
+		REQUIRE(f(&values[1]) == 5); // values[4] = 5
+		REQUIRE(f(&values[5]) == 9); // values[8] = 9
+	}
 }
 
 TEST_CASE("Pointer Interpreter Test") {
