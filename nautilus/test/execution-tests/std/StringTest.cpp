@@ -84,12 +84,16 @@ TEST_CASE("StringTest - Compiler") {
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			runStringTest(engine);
+		for (auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				engine::Options options;
+				options.setOption("engine.backend", backend);
+				options.setOption("engine.traceMode", traceMode);
+				auto engine = engine::NautilusEngine(options);
+				runStringTest(engine);
+			}
 		}
 	}
 }

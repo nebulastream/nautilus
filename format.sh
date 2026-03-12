@@ -17,17 +17,34 @@ EOF
 fi
 
 
-if [ -x "$(command -v clang-format-18)" ]
-then
-    CLANG_FORMAT="clang-format-18"
-elif [ -x "$(command -v clang-format)" ] && clang-format --version | grep "version 18" > /dev/null
-then
+CLANG_FORMAT=""
+
+# Try versioned binaries from highest to lowest
+for version in 21 20 19 18 17 16 15; do
+    if [ -x "$(command -v clang-format-${version})" ]; then
+        CLANG_FORMAT="clang-format-${version}"
+        break
+    fi
+done
+
+# Fall back to unversioned clang-format if available
+if [ -z "$CLANG_FORMAT" ] && [ -x "$(command -v clang-format)" ]; then
     CLANG_FORMAT="clang-format"
-else
-    echo could not find clang-format 18 in PATH, please install.
+fi
+
+if [ -z "$CLANG_FORMAT" ]; then
+    echo "could not find clang-format in PATH, please install."
     exit 1
 fi
 
+echo "Using: $($CLANG_FORMAT --version)"
+
+# Cross-platform CPU count
+if command -v nproc > /dev/null 2>&1; then
+    NPROC="$(nproc)"
+else
+    NPROC="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)"
+fi
 
 FAIL=0
 
@@ -36,7 +53,7 @@ then
     # clang-format
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
-      | xargs --max-args=10 --max-procs="$(nproc)" "$CLANG_FORMAT" -i
+      | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" -i
 
     # newline at eof
     #
@@ -47,13 +64,13 @@ then
     git ls-files \
       | grep --invert-match "^third_party" \
       | grep --invert-match -e "\.png$" -e "\.zip$" \
-      | xargs --max-procs="$(nproc)" -I {} sh -c '[ "$(tail -c 1 {} | od -A n -t d1)" = "   10" ] || echo "" >> {}'
+      | xargs --max-procs="$NPROC" -I {} sh -c '[ "$(tail -c 1 {} | wc -l | tr -d "[:space:]")" = "1" ] || printf "\n" >> {}'
 
 else
     # clang-format
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
-      | xargs --max-args=10 --max-procs="$(nproc)" "$CLANG_FORMAT" --dry-run -Werror \
+      | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" --dry-run -Werror \
       || FAIL=1
 
     # newline at eof
@@ -66,7 +83,7 @@ else
     git ls-files \
       | grep --invert-match "^third_party" \
       | grep --invert-match -e "\.png$" -e "\.zip$" \
-      | xargs --max-args=10 --max-procs="$(nproc)" tail -qc 1  | wc -cl \
+      | xargs --max-args=10 --max-procs="$NPROC" tail -qc 1  | wc -cl \
       | awk '$1 != $2 { print $2-$1, "missing newline(s) at EOF. Please run \"format.sh -i\" to fix"; exit 1 }' \
       || FAIL=1
 fi

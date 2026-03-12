@@ -1280,18 +1280,22 @@ TEST_CASE("Engine Compiler Test") {
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			options.setOption("dump.all", true);
-			if (backend == "mlir") {
-				options.setOption("engine.Compilation", true);
-				options.setOption("mlir.enableMultithreading", false);
-				options.setOption("mlir.inline_invoke_calls", true);
+		for (auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				engine::Options options;
+				options.setOption("engine.backend", backend);
+				options.setOption("dump.all", true);
+				options.setOption("engine.traceMode", traceMode);
+				if (backend == "mlir") {
+					options.setOption("engine.Compilation", true);
+					options.setOption("mlir.enableMultithreading", false);
+					options.setOption("mlir.inline_invoke_calls", true);
+				}
+				auto engine = engine::NautilusEngine(options);
+				runAllTests(engine);
 			}
-			auto engine = engine::NautilusEngine(options);
-			runAllTests(engine);
 		}
 	}
 #if not defined(__APPLE__)

@@ -2,6 +2,7 @@
 #include "nautilus/tracing/TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/Types.hpp"
+#include <algorithm>
 
 namespace nautilus::tracing {
 

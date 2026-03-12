@@ -8,7 +8,8 @@ if (ENABLE_TRACING)
             Block.cpp
             ExecutionTrace.cpp
             TracingUtil.cpp
-            TraceContext.cpp
+            ExceptionBasedTraceContext.cpp
+            LazyTraceContext.cpp
             TraceOperation.cpp
             Snapshot.cpp)
 endif ()
