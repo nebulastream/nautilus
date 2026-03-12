@@ -44,35 +44,22 @@ std::vector<Block>& ExecutionTrace::getBlocks() {
 }
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
-	// check if operation is in global map -> we have a repeating operation ->
-	// this is a control-flow merge
-	auto globalTabIter = globalTagMap.find(snapshot);
-	if (globalTabIter != globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
-		processControlFlowMerge(ref);
-		return false;
-	}
-
-	// check if we visited the same operation in this execution -> loop
-	auto localTagIter = localTagMap.find(snapshot);
-	if (localTagIter != localTagMap.end()) {
-		auto& ref = localTagIter->second;
-		processControlFlowMerge(ref);
+	// check if operation was already seen -> control-flow merge or loop
+	auto tagIter = tagMap.find(snapshot);
+	if (tagIter != tagMap.end()) {
+		processControlFlowMerge(tagIter->second);
 		return false;
 	}
 	return true;
 }
 
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
-	if (blocks.empty()) {
-		createBlock();
-	}
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = Op::RETURN;
 	if (ref.type == Type::v) {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
+		operations.emplace_back(op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
 	} else {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
+		operations.emplace_back(op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
 	}
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -82,34 +69,19 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 
 TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef,
                                                       const TypedValueRef& srcRef, Type resultType) {
-	if (blocks.empty()) {
-		createBlock();
-	}
 	auto& operations = blocks[currentBlockIndex].operations;
 	auto op = ASSIGN;
-	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	auto& operation = operations.emplace_back(op, resultType, targetRef, std::vector<InputVariant> {srcRef});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return operation.resultRef;
 }
 
-void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
-}
-
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
                                                       std::vector<InputVariant> inputs) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
 	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   std::move(inputs));
+	auto& to =
+	    operations.emplace_back(operation, resultType, TypedValueRef(getNextValueRef(), resultType), std::move(inputs));
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -119,18 +91,15 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 // Adds a comparison operation to the execution trace
 // This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
 void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const double probability) {
-	if (blocks.empty()) {
-		createBlock();
-	}
-
 	// create if and else blocks
 	auto trueBlock = createBlock();
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto& operations = blocks[currentBlockIndex].operations;
+	auto op = CMP;
 	operations.emplace_back(
-	    snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
+	    op, Type::v, TypedValueRef(getNextValueRef(), Type::v),
 	    std::vector<InputVariant> {condition, BlockRef(trueBlock), BlockRef(falseBlock), probability});
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -184,25 +153,23 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
-	// 1. move operation to new block
+	// 1. move operations to new block
 	// move everything from the reference block between opId and end to merge block
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
-		auto& sourceOperation = referenceBlock.operations[opIndex];
-		// Save values needed after move
-		auto opType = sourceOperation.op;
-		auto opTag = sourceOperation.tag;
-		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));
-		// update in global and local tag map
+		mergeBlock.addOperation(std::move(referenceBlock.operations[opIndex]));
+	}
 
-		if (opType == RETURN) {
-			for (auto& returnRef : returnRefs) {
-				if (returnRef.blockIndex == referenceBlock.blockId && returnRef.operationIndex == opIndex) {
-					returnRef = operationReference;
-				}
-			}
-		} else {
-			globalTagMap[opTag] = operationReference;
-			localTagMap[opTag] = operationReference;
+	// update return refs that pointed into the moved range
+	for (auto& returnRef : returnRefs) {
+		if (returnRef.blockIndex == referenceBlock.blockId && returnRef.operationIndex >= oi.operationIndex) {
+			returnRef = {mergedBlockId, returnRef.operationIndex - oi.operationIndex};
+		}
+	}
+
+	// update tag map entries that pointed into the moved range
+	for (auto& [snapshot, id] : tagMap) {
+		if (id.blockIndex == referenceBlock.blockId && id.operationIndex >= oi.operationIndex) {
+			id = {mergedBlockId, id.operationIndex - oi.operationIndex};
 		}
 	}
 
@@ -263,8 +230,6 @@ operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 void ExecutionTrace::resetExecution() {
 	currentBlockIndex = 0;
 	currentOperationIndex = 0;
-	globalTagMap.merge(localTagMap);
-	localTagMap.clear();
 }
 
 const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
@@ -272,8 +237,7 @@ const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
 }
 
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
-	globalTagMap[snapshot] = identifier;
-	localTagMap[snapshot] = identifier;
+	tagMap[snapshot] = identifier;
 }
 
 } // namespace nautilus::tracing

@@ -21,6 +21,20 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 
 namespace nautilus::tracing {
 
+constexpr uint64_t fnv_prime = 0x100000001b3;
+constexpr uint64_t offset_basis = 0xcbf29ce484222325;
+
+uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
+	uint64_t hash = offset_basis;
+	for (auto& entry : data) {
+		uint64_t val = 0;
+		std::memcpy(&val, entry.ptr, entry.size);
+		hash ^= val;
+		hash *= fnv_prime;
+	}
+	return hash;
+}
+
 // Thread-local TraceContext object (not a pointer)
 // This is allocated in thread-local storage - zero heap allocation overhead
 static thread_local TraceContext traceContext;
@@ -71,9 +85,9 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 		return follow(op);
 	}
 	auto tag = recordSnapshot();
-	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
-	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
+	auto tagIter = state->executionTrace.tagMap.find(tag);
+	if (tagIter != state->executionTrace.tagMap.end()) {
+		auto& ref = tagIter->second;
 		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
@@ -329,20 +343,6 @@ std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangle
 
 	// Demangling failed, return the mangled name
 	return mangledName;
-}
-
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
-
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& entry : data) {
-		uint64_t val = 0;
-		std::memcpy(&val, entry.ptr, entry.size);
-		hash ^= val;
-		hash *= fnv_prime;
-	}
-	return hash;
 }
 
 Snapshot TraceContext::recordSnapshot() {
