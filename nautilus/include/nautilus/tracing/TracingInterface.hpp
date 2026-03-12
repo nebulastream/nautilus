@@ -18,7 +18,7 @@ namespace nautilus::tracing {
  * as a thread-local pointer, so all operations within a single trace go through the
  * same implementation while different traces can use different ones.
  *
- * Concrete implementations (e.g. TraceContext) are set via setActiveTracer() before
+ * Concrete implementations (e.g. ExceptionBasedTraceContext) are set via setActiveTracer() before
  * executing a traced function and cleared afterwards.
  */
 class TracingInterface {

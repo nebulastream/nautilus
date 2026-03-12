@@ -145,7 +145,7 @@ struct TraceState {
  * function.
  *
  * Design Philosophy:
- * - TraceContext is a simple thread_local object (not a pointer) - zero heap allocation
+ * - ExceptionBasedTraceContext is a simple thread_local object (not a pointer) - zero heap allocation
  * - ExecutionTrace and SymbolicExecutionContext are allocated on the stack in trace()
  * - TraceState holds references to these stack objects and is created during initialization
  * - staticVars and aliveVars are persistent members that get reset between trace iterations
@@ -158,7 +158,7 @@ struct TraceState {
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
  * 4. After tracing completes, setActiveTracer(nullptr) is called and ExecutionTrace is returned
  */
-class TraceContext final : public TracingInterface {
+class ExceptionBasedTraceContext final : public TracingInterface {
 public:
 	// --- TracingInterface overrides ---
 
@@ -193,7 +193,7 @@ public:
 
 	// --- Non-interface public API ---
 
-	~TraceContext() override = default;
+	~ExceptionBasedTraceContext() override = default;
 
 	/**
 	 * @brief Resets persistent state between trace iterations.
@@ -209,10 +209,11 @@ public:
 	 * @param executionTrace Reference to stack-allocated ExecutionTrace
 	 * @param symbolicExecutionContext Reference to stack-allocated SymbolicExecutionContext
 	 * @param options Reference to engine options for configuration
-	 * @return Pointer to initialized thread_local TraceContext
+	 * @return Pointer to initialized thread_local ExceptionBasedTraceContext
 	 */
-	static TraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-	                                SymbolicExecutionContext& symbolicExecutionContext, const engine::Options& options);
+	static ExceptionBasedTraceContext* initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+	                                              SymbolicExecutionContext& symbolicExecutionContext,
+	                                              const engine::Options& options);
 
 	/**
 	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
@@ -233,7 +234,7 @@ public:
 	 * @brief Default constructor - public to allow thread_local storage.
 	 * Initializes with empty state (state == nullptr means not initialized).
 	 */
-	TraceContext() = default;
+	ExceptionBasedTraceContext() = default;
 
 private:
 	bool isFollowing();

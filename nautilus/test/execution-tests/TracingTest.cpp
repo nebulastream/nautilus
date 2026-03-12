@@ -12,8 +12,9 @@
 #include "ValueTypeFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -99,34 +100,43 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 	return false;
 }
 
+using TraceFn = std::unique_ptr<tracing::ExecutionTrace> (*)(std::function<void()>&, const engine::Options&);
+
+static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
+    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::trace},
+    {"LazyTraceContext", tracing::LazyTraceContext::trace},
+};
+
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
-	for (auto& test : tests) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		DYNAMIC_SECTION(name) {
-			auto executionTrace = tracing::TraceContext::trace(func);
-			DYNAMIC_SECTION("tracing") {
-				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
-			}
-			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
-			DYNAMIC_SECTION("after_ssa") {
-				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
-			}
-			DYNAMIC_SECTION("ssa_verify") {
-				auto ssaResult = tracing::VerifySSA(*afterSSA);
-				if (!ssaResult.valid) {
-					for (const auto& error : ssaResult.errors) {
-						FAIL(error);
+	for (auto& [ctxName, traceFn] : traceContexts) {
+		DYNAMIC_SECTION(ctxName) {
+			for (auto& [name, func] : tests) {
+				DYNAMIC_SECTION(name) {
+					auto executionTrace = traceFn(func, engine::Options());
+					DYNAMIC_SECTION("tracing") {
+						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+					}
+					auto ssaCreationPhase = tracing::SSACreationPhase();
+					auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
+					DYNAMIC_SECTION("after_ssa") {
+						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
+					}
+					DYNAMIC_SECTION("ssa_verify") {
+						auto ssaResult = tracing::VerifySSA(*afterSSA);
+						if (!ssaResult.valid) {
+							for (const auto& error : ssaResult.errors) {
+								FAIL(error);
+							}
+						}
+					}
+					DYNAMIC_SECTION("ir") {
+						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
+						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
 					}
 				}
-			}
-			DYNAMIC_SECTION("ir") {
-				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
 			}
 		}
 	}
@@ -631,4 +641,5 @@ TEST_CASE("Select Trace Test") {
 	};
 	runTraceTests("expression-tests", tests);
 }
+
 } // namespace nautilus::engine

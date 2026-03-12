@@ -4,8 +4,8 @@
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
@@ -77,19 +77,23 @@ TEST_CASE("Execution Benchmark") {
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (auto& backend : backends) {
-		for (auto& test : benchmarks) {
-			auto func = std::get<1>(test);
-			auto name = std::get<0>(test);
+		for (auto& traceMode : traceModes) {
+			for (auto& test : benchmarks) {
+				auto func = std::get<1>(test);
+				auto name = std::get<0>(test);
 
-			Catch::Benchmark::Benchmark("exec_" + backend + "_" + name)
-			    .operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    // force compilation for the MLIR backend.
-				    op.setOption("mlir.eager_compilation", true);
-				    op.setOption("engine.backend", backend);
-				    func(meter, op);
-			    });
+				Catch::Benchmark::Benchmark("exec_" + backend + "_" + traceMode + "_" + name)
+				    .operator=([&func, backend, traceMode](Catch::Benchmark::Chronometer meter) {
+					    auto op = engine::Options();
+					    // force compilation for the MLIR backend.
+					    op.setOption("mlir.eager_compilation", true);
+					    op.setOption("engine.backend", backend);
+					    op.setOption("engine.traceMode", traceMode);
+					    func(meter, op);
+				    });
+			}
 		}
 	}
 }

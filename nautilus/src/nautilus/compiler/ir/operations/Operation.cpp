@@ -17,7 +17,7 @@ Operation::OperationType Operation::getOperationType() const {
 	return opType;
 }
 
-std::vector<Operation*> Operation::getInputs() {
+const std::vector<Operation*>& Operation::getInputs() const {
 	return inputs;
 }
 

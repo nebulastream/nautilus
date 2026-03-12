@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - v0.1
   pull_request:
     branches:
       - main
+      - v0.1
 # cancel previous runs of same PR / branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,6 +19,12 @@ jobs:
     name: Check format
     steps:
       - uses: actions/checkout@v4
+      - name: Install clang-format-21
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update -q
+          sudo apt-get install -y clang-format-21
       - name: run format.sh
         run: |
           ./format.sh
