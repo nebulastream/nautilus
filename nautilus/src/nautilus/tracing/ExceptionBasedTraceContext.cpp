@@ -1,5 +1,5 @@
 
-#include "TraceContext.hpp"
+#include "ExceptionBasedTraceContext.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -21,24 +21,25 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 
 namespace nautilus::tracing {
 
-// Thread-local TraceContext object (not a pointer)
+// Thread-local ExceptionBasedTraceContext object (not a pointer)
 // This is allocated in thread-local storage - zero heap allocation overhead
-static thread_local TraceContext traceContext;
+static thread_local ExceptionBasedTraceContext traceContext;
 
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
-TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                       SymbolicExecutionContext& symbolicExecutionContext,
-                                       const engine::Options& options) {
+ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& tagRecorder,
+                                                                   ExecutionTrace& executionTrace,
+                                                                   SymbolicExecutionContext& symbolicExecutionContext,
+                                                                   const engine::Options& options) {
 	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	setActiveTracer(&traceContext);
 	return &traceContext;
 }
 
-void TraceContext::resume() {
+void ExceptionBasedTraceContext::resume() {
 	// Clear dynamic containers
 	staticVars.clear();
 
@@ -49,22 +50,22 @@ void TraceContext::resume() {
 	// as it needs to persist across trace iterations
 }
 
-TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef& ExceptionBasedTraceContext::registerFunctionArgument(Type type, size_t index) {
 	return state->executionTrace.setArgument(type, index);
 }
 
-bool TraceContext::isFollowing() {
+bool ExceptionBasedTraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
+TypedValueRef& ExceptionBasedTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
+TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
@@ -84,7 +85,7 @@ TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& con
 }
 
 template <typename OnCreation>
-TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
+TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	if (isFollowing()) {
 		return follow(op);
 	} else {
@@ -98,11 +99,11 @@ TypedValueRef& TraceContext::traceOperation(Op op, OnCreation&& onCreation) {
 	}
 }
 
-TypedValueRef& TraceContext::traceAlloca(size_t allocSize) {
+TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t allocSize) {
 	return traceOperation(ALLOCA, Type::ptr, {allocSize});
 }
 
-TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
 	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		auto resultRef = state->executionTrace.getNextValueRef();
@@ -110,9 +111,9 @@ TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 }
 
-TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
-                                       const std::vector<tracing::TypedValueRef>& arguments,
-                                       FunctionAttributes fnAttrs) {
+TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
+                                                     const std::vector<tracing::TypedValueRef>& arguments,
+                                                     FunctionAttributes fnAttrs) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
@@ -126,13 +127,14 @@ TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
-void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
+void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
+                                                 Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 	});
 }
 
-void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
+void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
@@ -141,27 +143,27 @@ void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& re
 	}
 }
 
-TypedValueRef& TraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
+TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
 	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
 	});
 }
 
-TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
-                                           const TypedValueRef& right) {
+TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                                         const TypedValueRef& right) {
 	return traceOperation(op, resultType, {left, right});
 }
 
-TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+TypedValueRef& ExceptionBasedTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	return traceOperation(op, resultType, {input});
 }
 
-TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
-                                            const TypedValueRef& second, const TypedValueRef& third) {
+TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
+                                                          const TypedValueRef& second, const TypedValueRef& third) {
 	return traceOperation(op, resultType, {first, second, third});
 }
 
-std::string TraceContext::formatStaticVars() const {
+std::string ExceptionBasedTraceContext::formatStaticVars() const {
 	std::string result;
 	for (size_t i = 0; i < staticVars.size(); i++) {
 		if (i > 0) {
@@ -172,21 +174,21 @@ std::string TraceContext::formatStaticVars() const {
 	return result;
 }
 
-void TraceContext::pushStaticVal(void* valPtr, size_t size) {
+void ExceptionBasedTraceContext::pushStaticVal(void* valPtr, size_t size) {
 	staticVars.emplace_back(valPtr, size);
 	if (log::options::getLogStaticVars()) {
 		log::info("pushStaticVal: [{}]", formatStaticVars());
 	}
 }
 
-void TraceContext::popStaticVal() {
+void ExceptionBasedTraceContext::popStaticVal() {
 	if (log::options::getLogStaticVars()) {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
 	}
 	staticVars.pop_back();
 }
 
-bool TraceContext::traceBool(const TypedValueRef& value, const double probability) {
+bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step
@@ -217,8 +219,8 @@ bool TraceContext::traceBool(const TypedValueRef& value, const double probabilit
 	return result;
 }
 
-std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
-                                                    const engine::Options& options) {
+std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<void()>& traceFunction,
+                                                                  const engine::Options& options) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
@@ -228,7 +230,7 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	ExecutionTrace executionTrace;
 	SymbolicExecutionContext symbolicExecutionContext;
 
-	// Initialize TraceContext with references to our stack objects
+	// Initialize ExceptionBasedTraceContext with references to our stack objects
 	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
 	auto traceIteration = 0;
 
@@ -266,14 +268,14 @@ std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& trace
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
-void TraceContext::allocateValRef(ValueRef ref) {
+void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
 	aliveVars.increment(ref);
 }
-void TraceContext::freeValRef(ValueRef ref) {
+void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-std::string TraceContext::getMangledName(void* fnptr) {
+std::string ExceptionBasedTraceContext::getMangledName(void* fnptr) {
 	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
 		return it->second;
 	}
@@ -291,7 +293,7 @@ std::string TraceContext::getMangledName(void* fnptr) {
 	return ptrStr;
 }
 
-std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
+std::string ExceptionBasedTraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
 	// Check if function name normalization is enabled
 	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
 
@@ -345,7 +347,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	return hash;
 }
 
-Snapshot TraceContext::recordSnapshot() {
+Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
 

@@ -243,7 +243,7 @@ protected:
 				for (const auto& op : block->getOperations()) {
 					const auto& to = nodeIdMap[op.get()];
 					// process inputs of node
-					for (auto input : op->getInputs()) {
+					for (const auto* input : op->getInputs()) {
 						const auto& from = nodeIdMap[input];
 						writeEdge(from, to, "data", input->getIdentifier().toString());
 					}

@@ -112,8 +112,7 @@ __attribute__((noinline)) void* get_addr(size_t index) {
 		         (void(addr = __builtin_extract_return_addr(__builtin_return_address(ints + 2))), true)) ||
 		        ...);
 		return addr;
-	}
-	(std::make_index_sequence<StackSize> {});
+	}(std::make_index_sequence<StackSize> {});
 }
 
 static void* getReturnAddress(uint32_t offset) {

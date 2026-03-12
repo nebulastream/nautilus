@@ -8,7 +8,17 @@
 namespace nautilus::tracing {
 class TagRecorder;
 
-class TraceContext;
+class ExceptionBasedTraceContext;
+class LazyTraceContext;
+
+/**
+ * @brief Result of a non-throwing record operation.
+ * Used by LazyTraceContext to avoid TraceTerminationException.
+ */
+struct RecordResult {
+	bool branchDirection;
+	bool shouldTerminate;
+};
 
 /**
  * @brief The symbolic execution context supports the symbolic execution of functions.
@@ -48,18 +58,34 @@ public:
 	MODE getCurrentMode() const;
 
 	/**
-	 * @brief Records a new cmp operation
-	 * @param tr TagRecorder
-	 * @return
+	 * @brief Records a new cmp operation. Throws TraceTerminationException on SecondVisit.
+	 * @param tag The snapshot tag for this branch
+	 * @return the branch direction
 	 */
 	bool record(const Snapshot& tag);
+
+	/**
+	 * @brief Non-throwing variant of record(). Returns a RecordResult instead of throwing.
+	 * Used by LazyTraceContext to avoid TraceTerminationException.
+	 * @param tag The snapshot tag for this branch
+	 * @return RecordResult with branch direction and termination signal
+	 */
+	RecordResult recordNoThrow(const Snapshot& tag);
 
 	bool shouldFollow();
 
 	bool follow();
 
+	/**
+	 * @brief Non-throwing variant of follow(). Returns a RecordResult instead of throwing.
+	 * Used by LazyTraceContext to avoid TraceTerminationException.
+	 * @return RecordResult with branch direction and termination signal
+	 */
+	RecordResult followNoThrow();
+
 private:
-	friend TraceContext;
+	friend ExceptionBasedTraceContext;
+	friend LazyTraceContext;
 	/**
 	 * @brief Symbolic execution mode.
 	 * That identifies if, we follow a previously recorded execution or if we record a new one.

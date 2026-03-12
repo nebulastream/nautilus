@@ -86,7 +86,7 @@ public:
 
 	bool isConstOperation() const;
 
-	std::vector<Operation*> getInputs();
+	const std::vector<Operation*>& getInputs() const;
 
 	void replaceInput(Operation* toReplace, std::shared_ptr<Operation> replaceWith);
 

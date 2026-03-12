@@ -16,7 +16,8 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
-#include "nautilus/tracing/TraceContext.hpp"
+#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
+#include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #endif
@@ -64,7 +65,9 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
 	// derive trace from function
-	auto executionTrace = tracing::TraceContext::trace(function, options);
+	auto traceMode = options.getOptionOrDefault("engine.traceMode", std::string("lazyTracing"));
+	auto executionTrace = (traceMode == "lazyTracing") ? tracing::LazyTraceContext::trace(function, options)
+	                                                   : tracing::ExceptionBasedTraceContext::trace(function, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
 	// create ssa
