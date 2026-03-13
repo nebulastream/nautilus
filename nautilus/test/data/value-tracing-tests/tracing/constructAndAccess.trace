@@ -1,3 +1,4 @@
+EXECUTE:
 B0()
 	ALLOCA	$1	:ptr
 	ASSIGN	$2	$1	:ptr
@@ -22,3 +23,4 @@ B0()
 	ASSIGN	$21	$20	:ptr
 	LOAD	$22	$21	:i32
 	RETURN	$0	$22	:i32
+

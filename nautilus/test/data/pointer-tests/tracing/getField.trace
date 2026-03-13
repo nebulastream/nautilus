@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr)
 	ASSIGN	$2	$1	:ptr
 	CONST	$3	0	:ui64
@@ -19,3 +20,4 @@ B0($1:ptr)
 	LOAD	$19	$18	:i32
 	ADD	$20	$10	$19	:i32
 	RETURN	$0	$20	:i32
+

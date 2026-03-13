@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	0	:i32
@@ -18,3 +19,4 @@ B4()
 	JMP	$0	B5($13)	:void
 B5($2:i32)
 	RETURN	$0	$2	:i32
+

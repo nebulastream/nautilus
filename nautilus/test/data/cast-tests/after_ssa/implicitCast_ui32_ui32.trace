@@ -1,2 +1,4 @@
+EXECUTE:
 B0($1:ui32)
 	RETURN	$0	$1	:ui32
+

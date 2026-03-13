@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	ALLOCA	$3	:ptr
 	CALL	$4	func_*($3,$1,$2)	:void
@@ -13,3 +14,4 @@ B0($1:i32,$2:i32)
 	LOAD	$22	$18	:i32
 	ADD	$23	$21	$22	:i32
 	RETURN	$0	$23	:i32
+

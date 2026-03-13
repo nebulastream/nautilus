@@ -6,7 +6,12 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
+#include <functional>
 #include <vector>
+
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 
 namespace nautilus::tracing {
 
@@ -60,6 +65,12 @@ public:
 
 	/// Trace a call through a runtime function pointer value (indirect call).
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+	                                         const std::vector<TypedValueRef>& arguments,
+	                                         FunctionAttributes fnAttrs) = 0;
+
+	/// Trace a call to a nested Nautilus function. Registers the function for later tracing.
+	virtual TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition,
+	                                         std::function<void()> fwrapper, Type resultType,
 	                                         const std::vector<TypedValueRef>& arguments,
 	                                         FunctionAttributes fnAttrs) = 0;
 

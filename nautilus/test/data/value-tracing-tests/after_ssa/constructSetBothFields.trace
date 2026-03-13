@@ -1,3 +1,4 @@
+EXECUTE:
 B0()
 	ALLOCA	$1	:ptr
 	CONST	$3	0	:ui64
@@ -24,3 +25,4 @@ B0()
 	LOAD	$43	$39	:i32
 	ADD	$44	$42	$43	:i32
 	RETURN	$0	$44	:i32
+

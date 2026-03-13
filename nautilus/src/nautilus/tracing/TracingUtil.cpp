@@ -109,6 +109,12 @@ TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                 FunctionAttributes fnAttrs) {
+	return activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+}
+
 TypedValueRef& traceAlloca(size_t allocSize) {
 	return activeTracer->traceAlloca(allocSize);
 }

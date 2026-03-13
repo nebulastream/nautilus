@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:i16)
 	CONST	$4	0	:i32
 	CAST	$5	$2	:i32
@@ -8,3 +9,4 @@ B0($1:ptr,$2:i16)
 	ADD	$11	$1	$10	:ptr
 	LOAD	$14	$11	:i32
 	RETURN	$0	$14	:i32
+
