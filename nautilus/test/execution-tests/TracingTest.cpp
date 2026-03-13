@@ -3,6 +3,7 @@
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
+#include "FunctionPtrFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
@@ -640,6 +641,29 @@ TEST_CASE("Select Trace Test") {
 	    {"selectPointerAndDeref", details::createFunctionWrapper(selectPointerAndDeref)},
 	};
 	runTraceTests("expression-tests", tests);
+}
+
+TEST_CASE("Function Ptr Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"fnPtrIsNull", details::createFunctionWrapper(fnPtrIsNull)},
+	    {"fnPtrNotNull", details::createFunctionWrapper(fnPtrNotNull)},
+	    {"fnPtrEquals", details::createFunctionWrapper(fnPtrEquals)},
+	    {"fnPtrNotEquals", details::createFunctionWrapper(fnPtrNotEquals)},
+	    {"callThroughFnPtr", details::createFunctionWrapper(callThroughFnPtr)},
+	    {"callVoidFnPtr", details::createFunctionWrapper(callVoidFnPtr)},
+	    {"fnPtrToVoidPtr", details::createFunctionWrapper(fnPtrToVoidPtr)},
+	    {"fnPtrAsTypedArg", details::createFunctionWrapper(fnPtrAsTypedArg)},
+	    {"fnPtrCopyAndCall", details::createFunctionWrapper(fnPtrCopyAndCall)},
+	    {"fnPtrAssignAndCall", details::createFunctionWrapper(fnPtrAssignAndCall)},
+	    {"selectFnPtr", details::createFunctionWrapper(selectFnPtr)},
+	    {"fnPtrInLoop", details::createFunctionWrapper(fnPtrInLoop)},
+	    {"fnPtrNullBranch", details::createFunctionWrapper(fnPtrNullBranch)},
+	    {"fnPtrFromLambda", details::createFunctionWrapper(fnPtrFromLambda)},
+	    {"fnPtrRoundtripVoidPtr", details::createFunctionWrapper(fnPtrRoundtripVoidPtr)},
+	    {"fnPtrInlineConst", details::createFunctionWrapper(fnPtrInlineConst)},
+	    {"fnPtrInlineConstUnary", details::createFunctionWrapper(fnPtrInlineConstUnary)},
+	};
+	runTraceTests("function-ptr-tests", tests);
 }
 
 } // namespace nautilus::engine

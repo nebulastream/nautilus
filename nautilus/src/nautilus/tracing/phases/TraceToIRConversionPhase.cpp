@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
@@ -177,6 +178,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	};
 	case Op::CALL:
 		processCall(frame, currentIrBlock, operation);
+		return;
+	case Op::INDIRECT_CALL:
+		processIndirectCall(frame, currentIrBlock, operation);
 		return;
 	case LSH:
 		processShift(frame, currentIrBlock, operation, compiler::ir::ShiftOperation::LS);
@@ -352,6 +356,23 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	    inputArguments, resultType, functionCallTarget.fnAttrs);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
+	}
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFrame& frame, BasicBlock* currentBlock,
+                                                                        TraceOperation& operation) {
+	auto indirectCall = std::get<IndirectFunctionCall>(operation.input[0]);
+	auto fnPtrOperand = frame.getValue(createValueIdentifier(indirectCall.fnPtr));
+	auto inputArguments = std::vector<Operation*> {};
+	for (auto& argument : indirectCall.arguments) {
+		inputArguments.emplace_back(frame.getValue(createValueIdentifier(argument)));
+	}
+	auto resultType = operation.resultType;
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto indirectCallOp = currentBlock->addOperation<IndirectCallOperation>(
+	    resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs);
+	if (resultType != Type::v) {
+		frame.setValue(resultIdentifier, indirectCallOp);
 	}
 }
 

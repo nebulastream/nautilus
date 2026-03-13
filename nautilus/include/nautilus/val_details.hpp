@@ -57,6 +57,13 @@ decltype(auto) inline make_value(Type&& value) {
 	return std::forward<Type>(value);
 }
 
+/// Converts a raw function pointer to a val<FuncPtr> wrapper.
+template <typename Type>
+    requires is_function_ptr<Type>
+decltype(auto) inline make_value(Type value) {
+	return val<Type>(value);
+}
+
 /// Converts convertible types to val<T> wrappers.
 ///
 /// Handles conversion of fundamental types, pointers, and enums to appropriate

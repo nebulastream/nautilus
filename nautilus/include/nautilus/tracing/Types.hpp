@@ -19,7 +19,7 @@ namespace tracing {
 
 template <typename T>
 concept is_compatible_val_type =
-    is_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
+    is_ptr<T> || is_function_ptr<T> || is_fundamental<T> || is_fundamental_ref<T> || is_bool<T> || is_bool_ref<T>;
 
 template <typename T>
     requires is_ptr<std::remove_cvref_t<T>>

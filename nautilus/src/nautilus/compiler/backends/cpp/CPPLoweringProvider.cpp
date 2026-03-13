@@ -339,6 +339,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(call, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::IndirectCallOp: {
+		auto call = as<ir::IndirectCallOperation>(opt);
+		process(call, blockIndex, frame);
+		return;
+	}
 	case ir::Operation::OperationType::OrOp: {
 		processBinary<ir::OrOperation>(opt, "||", blockIndex, frame);
 		return;
@@ -408,6 +413,36 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		blocks[blockIndex] << resultVar << " = ";
 	}
 	blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::IndirectCallOperation* opt, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto returnType = getType(opt->getStamp());
+	std::stringstream argTypes;
+	std::stringstream args;
+	auto inputArguments = opt->getInputArguments();
+	for (size_t i = 0; i < inputArguments.size(); i++) {
+		auto arg = inputArguments[i];
+		if (i != 0) {
+			argTypes << ",";
+			args << ",";
+		}
+		args << frame.getValue(arg->getIdentifier());
+		argTypes << getType(arg->getStamp());
+	}
+	auto fnPtrVar = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
+	if (opt->getStamp() != Type::v) {
+		auto resultVar = getVariable(opt->getIdentifier());
+		if (!frame.contains(opt->getIdentifier())) {
+			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
+			frame.setValue(opt->getIdentifier(), resultVar);
+		}
+		blocks[blockIndex] << resultVar << " = ((" << returnType << "(*)(" << argTypes.str() << "))" << fnPtrVar << ")("
+		                   << args.str() << ");\n";
+	} else {
+		blocks[blockIndex] << "((" << returnType << "(*)(" << argTypes.str() << "))" << fnPtrVar << ")(" << args.str()
+		                   << ");\n";
+	}
 }
 
 void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short blockIndex,

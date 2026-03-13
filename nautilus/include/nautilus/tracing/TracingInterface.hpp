@@ -58,6 +58,11 @@ public:
 	virtual TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) = 0;
 
+	/// Trace a call through a runtime function pointer value (indirect call).
+	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+	                                         const std::vector<TypedValueRef>& arguments,
+	                                         FunctionAttributes fnAttrs) = 0;
+
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 

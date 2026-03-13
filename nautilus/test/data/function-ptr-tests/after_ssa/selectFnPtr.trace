@@ -1,0 +1,12 @@
+B0($1:bool,$2:i32,$3:i32)
+	CONST	$4	*	:ptr
+	CMP	$5	$1	B1($2,$3)	B2($2,$3)	:void
+B1($2:i32,$3:i32)
+	CONST	$6	*	:ptr
+	JMP	$0	B3($6,$2,$3)	:void
+B2($2:i32,$3:i32)
+	CONST	$11	*	:ptr
+	JMP	$0	B3($11,$2,$3)	:void
+B3($4:ptr,$2:i32,$3:i32) ControlFlowMerge
+	INDIRECT_CALL	$7	:i32
+	RETURN	$0	$7	:i32

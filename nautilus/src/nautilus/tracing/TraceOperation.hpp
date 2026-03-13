@@ -39,14 +39,21 @@ struct FunctionCall {
 	FunctionAttributes fnAttrs;
 };
 
+/// Represents an indirect call through a runtime function pointer value.
+struct IndirectFunctionCall {
+	TypedValueRef fnPtr;
+	std::vector<TypedValueRef> arguments;
+	FunctionAttributes fnAttrs;
+};
+
 struct BlockRef {
 	explicit BlockRef(uint16_t block);
 	uint16_t block;
 	std::vector<TypedValueRef> arguments;
 };
 
-using InputVariant =
-    std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocSize>;
+using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability,
+                                  AllocSize, IndirectFunctionCall>;
 
 /**
  * @brief Represents an individual operation in a trace.

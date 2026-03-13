@@ -1,5 +1,6 @@
 
 #include "ExceptionBasedTraceContext.hpp"
+#include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -124,6 +125,16 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 		                                       .arguments = arguments,
 		                                       .fnAttrs = fnAttrs};
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                                             const std::vector<tracing::TypedValueRef>& arguments,
+                                                             FunctionAttributes fnAttrs) {
+	auto op = Op::INDIRECT_CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 

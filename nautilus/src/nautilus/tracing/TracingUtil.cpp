@@ -104,6 +104,11 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
+}
+
 TypedValueRef& traceAlloca(size_t allocSize) {
 	return activeTracer->traceAlloca(allocSize);
 }
