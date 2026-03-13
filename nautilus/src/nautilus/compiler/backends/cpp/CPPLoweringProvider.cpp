@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include <cassert>
 #include <nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp>
@@ -78,6 +79,9 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		activeBlocks.clear();
 		blockArguments.str("");
 		blockArguments.clear();
+		functions.str("");
+		functions.clear();
+		functionNames.clear();
 
 		RegisterFrame rootFrame;
 		std::vector<std::string> arguments;
@@ -397,6 +401,11 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		process(alloca, blockIndex, frame);
 		return;
 	}
+	case ir::Operation::OperationType::FunctionAddressOfOp: {
+		auto funcAddr = as<ir::FunctionAddressOfOperation>(opt);
+		process(funcAddr, blockIndex, frame);
+		return;
+	}
 	default: {
 		throw NotImplementedException("Operation is not implemented");
 	}
@@ -419,7 +428,12 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		args << frame.getValue(arg->getIdentifier());
 		argTypes << getType(arg->getStamp());
 	}
-	if (!functionNames.contains(opt->getFunctionSymbol())) {
+	// Check if this function is defined in the same compilation unit (i.e., a NautilusFunction).
+	// If so, call it directly by name instead of through a function pointer cast,
+	// because the stored ptr for NautilusFunction calls is not a valid function pointer.
+	bool isInternalFunction = ir->getFunctionOperation(opt->getFunctionName()) != nullptr;
+
+	if (!isInternalFunction && !functionNames.contains(opt->getFunctionSymbol())) {
 		functions << "auto f_" << opt->getFunctionSymbol() << " = " << "(" << returnType << "(*)(" << argTypes.str()
 		          << "))" << opt->getFunctionPtr() << ";\n";
 		functionNames.emplace(opt->getFunctionSymbol());
@@ -432,7 +446,11 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 		}
 		blocks[blockIndex] << resultVar << " = ";
 	}
-	blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+	if (isInternalFunction) {
+		blocks[blockIndex] << opt->getFunctionName() << "(" << args.str() << ");\n";
+	} else {
+		blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+	}
 }
 
 void CPPLoweringProvider::LoweringContext::process(ir::IndirectCallOperation* opt, short blockIndex,
@@ -521,6 +539,26 @@ void CPPLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp
 		frame.setValue(allocaOp->getIdentifier(), resultVar);
 	}
 	blocks[blockIndex] << resultVar << " = " << bufVar << ";\n";
+}
+
+void CPPLoweringProvider::LoweringContext::process(ir::FunctionAddressOfOperation* funcAddrOp, short blockIndex,
+                                                   RegisterFrame& frame) {
+	auto resultVar = getVariable(funcAddrOp->getIdentifier());
+	if (!frame.contains(funcAddrOp->getIdentifier())) {
+		blockArguments << "uint8_t* " << resultVar << ";\n";
+		frame.setValue(funcAddrOp->getIdentifier(), resultVar);
+	}
+	bool isInternalFunction = ir->getFunctionOperation(funcAddrOp->getFunctionName()) != nullptr;
+	if (isInternalFunction) {
+		blocks[blockIndex] << resultVar << " = (uint8_t*)&" << funcAddrOp->getFunctionName() << ";\n";
+	} else {
+		if (!functionNames.contains(funcAddrOp->getFunctionSymbol())) {
+			functions << "auto f_" << funcAddrOp->getFunctionSymbol() << " = (void*)" << funcAddrOp->getFunctionPtr()
+			          << ";\n";
+			functionNames.emplace(funcAddrOp->getFunctionSymbol());
+		}
+		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << funcAddrOp->getFunctionSymbol() << ";\n";
+	}
 }
 
 std::string CPPLoweringProvider::LoweringContext::getVariable(const ir::OperationIdentifier& id) {

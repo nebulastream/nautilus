@@ -14,6 +14,7 @@ add_source_files(nautilus
         IfOperation.cpp
         ProxyCallOperation.cpp
         IndirectCallOperation.cpp
+        FunctionAddressOfOperation.cpp
         ReturnOperation.cpp
         CastOperation.cpp
         BranchOperation.cpp

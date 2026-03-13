@@ -166,6 +166,26 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 	});
 }
 
+TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+                                                                    std::function<void()> fwrapper) {
+	auto functionName = definition->name();
+	if (registeredFunctions.insert(functionName).second) {
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, std::move(fwrapper)));
+		log::debug("Added function '{}' to functionsToTrace list (via FUNC_ADDR). List now has {} functions",
+		           functionName, functionsToTrace.size());
+	}
+	auto op = Op::FUNC_ADDR;
+	auto resultType = Type::ptr;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = {},
+		                                       .fnAttrs = {}};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
 void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
                                                  Type resultType) {
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
@@ -367,14 +387,13 @@ void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-std::string ExceptionBasedTraceContext::getMangledName(void* fnptr) {
+std::string TraceContextBase::getMangledName(void* fnptr) {
 	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
 		return it->second;
 	}
 
 	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
+	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
 		mangledNameCache[fnptr] = info.dli_sname;
 		return info.dli_sname;
 	}
@@ -385,43 +404,33 @@ std::string ExceptionBasedTraceContext::getMangledName(void* fnptr) {
 	return ptrStr;
 }
 
-std::string ExceptionBasedTraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	// Check if function name normalization is enabled
+std::string TraceContextBase::getFunctionName(void* fnptr, const std::string& mangledName) {
 	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
 
 	if (normalizeFunctionNames) {
-		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
-		// Check if we already have a normalized name for this function
 		auto it = state->normalizedFunctionNameCache.find(fnptr);
 		if (it != state->normalizedFunctionNameCache.end()) {
 			return "runtimeFunc" + std::to_string(it->second);
 		}
-
-		// Assign a new normalized function index
 		uint32_t index = state->nextNormalizedFunctionIndex++;
 		state->normalizedFunctionNameCache[fnptr] = index;
 		return "runtimeFunc" + std::to_string(index);
 	}
 
-	// Check if demangling is enabled
 	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
 
 	if (!demangleFunctionNames) {
-		// Return the mangled name as-is
 		return mangledName;
 	}
 
-	// Try to demangle the function name for human-readable output
 	int status;
 	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
 	if (status == 0 && demangled != nullptr) {
-		// Demangling succeeded
 		std::string result(demangled);
 		std::free(demangled);
 		return result;
 	}
 
-	// Demangling failed, return the mangled name
 	return mangledName;
 }
 

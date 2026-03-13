@@ -477,6 +477,7 @@ protected:
 		case Operation::OperationType::FunctionOp:
 		case Operation::OperationType::ProxyCallOp:
 		case Operation::OperationType::IndirectCallOp:
+		case Operation::OperationType::FunctionAddressOfOp:
 			return "call";
 		case Operation::OperationType::IfOp:
 		case Operation::OperationType::LoopOp:

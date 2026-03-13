@@ -22,6 +22,7 @@ if (ENABLE_MLIR_BACKEND)
             # Dialects
             MLIRMathToLLVM
             MLIRFuncToLLVM
+            MLIRReconcileUnrealizedCasts
     )
     
     add_subdirectory(intrinsics)    

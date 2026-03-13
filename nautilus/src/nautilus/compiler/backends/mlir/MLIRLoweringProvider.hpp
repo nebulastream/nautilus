@@ -20,6 +20,7 @@
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
@@ -143,6 +144,7 @@ private:
 	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
 	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
 	void generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame);
+	void generateMLIR(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame);
 	/**
 	 * @brief Generates a basic block inside of the current MLIR module. Used for control flow (if,loop).
 	 * @param blockInvocation:  basic block that is invocated.

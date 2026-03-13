@@ -58,6 +58,10 @@ if (TARGET InliningPass)
     list(APPEND EXPORT_TARGETS InliningPass)
 endif ()
 
+if (ENABLE_BC_BACKEND AND TARGET dyncallback_s)
+    list(APPEND EXPORT_TARGETS dyncallback_s)
+endif ()
+
 install(
         TARGETS nautilus ${EXPORT_TARGETS}
         EXPORT ${PROJECT_NAME}-config

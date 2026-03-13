@@ -54,4 +54,12 @@ TEST_CASE("Member Function Test") {
 	REQUIRE(result == 35);
 }
 
+TEST_CASE("getFuncPtr Test") {
+	// Test that getFuncPtr() returns a valid function pointer outside of tracing
+	auto funcPtr = nautilusAdd.getFuncPtr();
+	// The function pointer should be callable and produce correct results
+	auto result = funcPtr(val<int>(3), val<int>(4));
+	REQUIRE(result == 7);
+}
+
 } // namespace nautilus

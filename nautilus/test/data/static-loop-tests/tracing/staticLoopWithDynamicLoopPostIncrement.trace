@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	0	:i32
@@ -61,3 +62,4 @@ B12() ControlFlowMerge
 	ADD	$29	$3	$28	:i32
 	ASSIGN	$3	$29	:i32
 	JMP	$0	B9()	:void
+

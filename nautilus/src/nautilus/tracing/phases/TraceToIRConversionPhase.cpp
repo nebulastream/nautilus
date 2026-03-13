@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
@@ -233,6 +234,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	case ALLOCA:
 		processAlloca(frame, currentIrBlock, operation);
 		return;
+	case FUNC_ADDR:
+		processFuncAddr(frame, currentIrBlock, operation);
+		return;
 	default: {
 		throw NotImplementedException("Operation type is not implemented.");
 	}
@@ -404,6 +408,15 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& frame, BasicBlock* currentBlock,
+                                                                    TraceOperation& operation) {
+	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto funcAddrOp = currentBlock->addOperation<FunctionAddressOfOperation>(
+	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier);
+	frame.setValue(resultIdentifier, funcAddrOp);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,

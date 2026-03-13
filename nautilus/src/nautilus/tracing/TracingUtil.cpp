@@ -115,6 +115,10 @@ TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, s
 	return activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper) {
+	return activeTracer->traceNautilusFunctionPtr(definition, std::move(fwrapper));
+}
+
 TypedValueRef& traceAlloca(size_t allocSize) {
 	return activeTracer->traceAlloca(allocSize);
 }
