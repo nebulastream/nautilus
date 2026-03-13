@@ -3,12 +3,56 @@
 
 #include "nautilus/Engine.hpp"   // engine::details::createFunctionWrapper
 #include "nautilus/function.hpp" // getArgumentReferences
+#include "nautilus/val_func.hpp" // val<R(*)(Args...)>
 #include <functional>            // std::invoke
 #include <string>
 #include <type_traits> // std::is_void_v, std::invoke_result_t
 #include <utility>     // std::forward, std::move
 
 namespace nautilus {
+
+// Type trait: extracts the raw function pointer type from a callable F that
+// operates on val<T> types.  E.g. for F with signature val<int>(val<int>, val<int>)
+// this produces raw_func_ptr_t = int(*)(int, int).
+namespace detail {
+
+// Primary template — unspecialised
+template <typename F, typename = void>
+struct nautilus_function_traits;
+
+// Specialisation for std::function<R(Args...)>
+template <typename R, typename... Args>
+struct nautilus_function_traits<std::function<R(Args...)>> {
+	using raw_func_ptr_t = typename R::raw_type (*)(typename Args::raw_type...);
+};
+
+// Specialisation for std::function<void(Args...)>
+template <typename... Args>
+struct nautilus_function_traits<std::function<void(Args...)>> {
+	using raw_func_ptr_t = void (*)(typename Args::raw_type...);
+};
+
+// Specialisation for raw function pointers R(*)(Args...)
+template <typename R, typename... Args>
+struct nautilus_function_traits<R (*)(Args...), void> {
+	using raw_func_ptr_t = typename R::raw_type (*)(typename Args::raw_type...);
+};
+
+// Specialisation for void(*)(Args...)
+template <typename... Args>
+struct nautilus_function_traits<void (*)(Args...), void> {
+	using raw_func_ptr_t = void (*)(typename Args::raw_type...);
+};
+
+// For general callables (lambdas, functors): deduce via std::function
+template <typename F>
+struct nautilus_function_traits<F, std::void_t<decltype(std::function(std::declval<F>()))>>
+    : nautilus_function_traits<decltype(std::function(std::declval<F>()))> {};
+
+} // namespace detail
+
+template <typename F>
+using nautilus_raw_func_ptr_t = typename detail::nautilus_function_traits<std::decay_t<F>>::raw_func_ptr_t;
 
 class NautilusFunctionDefinition {
 public:
@@ -85,12 +129,43 @@ public:
 		return definition_.name();
 	}
 
+	/// Returns a val wrapping the compiled function pointer for this NautilusFunction.
+	/// During tracing: emits a FUNC_ADDR operation that registers the function for compilation.
+	/// Outside tracing: JIT-compiles the function on demand and returns the compiled pointer.
+	auto getFuncPtr() {
+		using RawFuncPtr = nautilus_raw_func_ptr_t<F>;
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto& resultRef = tracing::traceNautilusFunctionPtr(&definition_, fwrapper);
+			return val<RawFuncPtr>(resultRef);
+		}
+#endif
+		// Non-tracing path: JIT-compile on demand and cache.
+		// The Executable is intentionally leaked to avoid static destruction order
+		// issues when NautilusFunction is declared at file scope — the MLIR context
+		// may already be torn down by the time ~NautilusFunction runs.
+		if (!compiledFuncPtr_) {
+#ifdef ENABLE_TRACING
+			compiler::JITCompiler jit;
+			auto executable = jit.compile(fwrapper);
+			compiledFuncPtr_ = executable->getInvocableFunctionPtr("execute");
+			(void) executable.release(); // intentional leak
+#else
+			// Without tracing, we cannot JIT-compile. This should not be reached
+			// in normal usage since getFuncPtr() is designed for traced contexts.
+			compiledFuncPtr_ = nullptr;
+#endif
+		}
+		return val<RawFuncPtr>(reinterpret_cast<RawFuncPtr>(compiledFuncPtr_));
+	}
+
 private:
 	NautilusFunctionDefinition definition_;
 	F f_;
 #ifdef ENABLE_TRACING
 	std::function<void()> fwrapper;
 #endif
+	void* compiledFuncPtr_ = nullptr;
 };
 
 // CTAD helper (so you can write NautilusFunction{"name", callable};)

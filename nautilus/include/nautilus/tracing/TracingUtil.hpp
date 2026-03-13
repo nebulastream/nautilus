@@ -59,6 +59,8 @@ TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, s
                                  Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                  FunctionAttributes fnAttrs);
 
+TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper);
+
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);

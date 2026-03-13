@@ -45,6 +45,7 @@ enum Op : uint8_t {
 	// Ternary
 	SELECT,
 	ALLOCA,
+	FUNC_ADDR,
 };
 
 constexpr const char* toString(Op type) {
@@ -115,6 +116,8 @@ constexpr const char* toString(Op type) {
 		return "SELECT";
 	case ALLOCA:
 		return "ALLOCA";
+	case FUNC_ADDR:
+		return "FUNC_ADDR";
 	default:
 		__builtin_unreachable();
 	}

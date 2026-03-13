@@ -17,6 +17,7 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
@@ -92,6 +93,7 @@ private:
 		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::FunctionAddressOfOperation* opt, short block, RegisterFrame& frame);
 
 		static std::string getVariable(const ir::OperationIdentifier& id);
 

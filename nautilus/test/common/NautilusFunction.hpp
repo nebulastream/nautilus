@@ -19,7 +19,7 @@ val<int> nautilusFunction(val<int> a, val<int> b) {
 
 val<int> nautilusFunction2(val<int> a, val<int> b) {
 	auto result1 = nautilusAdd(a, b);
-	auto result2 = nautilusAdd(result1, b);
+	[[maybe_unused]] auto result2 = nautilusAdd(result1, b);
 	auto result3 = nautilusAdd(a, b);
 	return result3;
 }
@@ -163,7 +163,9 @@ val<int> nautilusFunctionInline(val<int> a, val<int> b) {
 
 // Test: Inline NautilusFunction with lambda
 val<int> nautilusFunctionInlineLambda(val<int> a, val<int> b) {
-	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
+	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> {
+		                                   return x * y;
+	                                   }};
 	return inlineMul(a, b);
 }
 
@@ -184,10 +186,23 @@ val<int> nautilusFunctionInlineMember(val<int> a, val<int> b) {
 // Test: Multiple inline NautilusFunctions in one function
 val<int> nautilusFunctionMultipleInline(val<int> a, val<int> b) {
 	auto inlineAdd = NautilusFunction {"inlineAdd2", add_indirect};
-	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
+	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> {
+		                                   return x * y;
+	                                   }};
 	auto sum = inlineAdd(a, b);
 	auto product = inlineMul(a, b);
 	return sum + product;
+}
+
+// Test: getFuncPtr() — obtain a function pointer from a NautilusFunction
+// and pass it through invoke() to a runtime function that calls it.
+int32_t applyFnPtr(int32_t (*fn)(int32_t, int32_t), int32_t a, int32_t b) {
+	return fn(a, b);
+}
+
+val<int32_t> nautilusFunctionGetFuncPtr(val<int32_t> a, val<int32_t> b) {
+	auto fnPtr = nautilusAdd.getFuncPtr();
+	return invoke(applyFnPtr, fnPtr, a, b);
 }
 
 } // namespace nautilus::engine

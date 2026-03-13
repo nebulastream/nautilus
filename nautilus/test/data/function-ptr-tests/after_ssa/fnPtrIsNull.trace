@@ -1,4 +1,6 @@
+EXECUTE:
 B0($1:ptr)
 	CONST	$3	*	:ptr
 	EQ	$6	$1	$3	:bool
 	RETURN	$0	$6	:bool
+
