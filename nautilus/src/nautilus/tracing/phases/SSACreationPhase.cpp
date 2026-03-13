@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
+#include <nautilus/tracing/TraceOperation.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <unordered_map>
 
@@ -145,6 +146,11 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 					for (auto valueRef : fcallRef->arguments) {
 						processValueRef(block, valueRef, valueRef.type, i);
 					}
+				} else if (auto* indirectCallRef = std::get_if<IndirectFunctionCall>(&input)) {
+					processValueRef(block, indirectCallRef->fnPtr, indirectCallRef->fnPtr.type, i);
+					for (auto& valueRef : indirectCallRef->arguments) {
+						processValueRef(block, valueRef, valueRef.type, i);
+					}
 				}
 			}
 		}
@@ -281,6 +287,17 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 						}
 					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
 						for (auto& funcArg : fcallRef->arguments) {
+							auto foundAssignment = assignmentMap.find(funcArg.ref);
+							if (foundAssignment != assignmentMap.end()) {
+								funcArg.ref = foundAssignment->second;
+							}
+						}
+					} else if (auto* indirectCallRef = std::get_if<IndirectFunctionCall>(&input)) {
+						auto foundFnPtr = assignmentMap.find(indirectCallRef->fnPtr.ref);
+						if (foundFnPtr != assignmentMap.end()) {
+							indirectCallRef->fnPtr.ref = foundFnPtr->second;
+						}
+						for (auto& funcArg : indirectCallRef->arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								funcArg.ref = foundAssignment->second;

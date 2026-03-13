@@ -15,6 +15,7 @@ enum Op : uint8_t {
 	CAST,
 	FREE,
 	CALL,
+	INDIRECT_CALL,
 	// Memory
 	LOAD,
 	STORE,
@@ -54,6 +55,8 @@ constexpr const char* toString(Op type) {
 		return "CAST";
 	case CALL:
 		return "CALL";
+	case INDIRECT_CALL:
+		return "INDIRECT_CALL";
 	case LOAD:
 		return "LOAD";
 	case STORE:

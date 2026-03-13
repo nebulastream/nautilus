@@ -61,6 +61,7 @@ public:
 		NegateOp,
 		OrOp,
 		ProxyCallOp,
+		IndirectCallOp,
 		ReturnOp,
 		SelectOp,
 		StoreOp,

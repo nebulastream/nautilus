@@ -3,6 +3,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/inline.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -341,6 +342,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 	case ir::Operation::OperationType::ProxyCallOp:
 		generateMLIR(as<ir::ProxyCallOperation>(operation), frame);
 		break;
+	case ir::Operation::OperationType::IndirectCallOp:
+		generateMLIR(as<ir::IndirectCallOperation>(operation), frame);
+		break;
 	case ir::Operation::OperationType::ReturnOp:
 		generateMLIR(as<ir::ReturnOperation>(operation), frame);
 		break;
@@ -647,6 +651,26 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 		frame.setValue(proxyCallOp->getIdentifier(), res.getResult());
 	} else {
 		builder->create<mlir::LLVM::CallOp>(builder->getUnknownLoc(), mlir::TypeRange(), functionRef, functionArgs);
+	}
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame) {
+	auto calleePtr = frame.getValue(indirectCallOp->getFunctionPtrOperand()->getIdentifier());
+	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
+	std::vector<mlir::Value> allOperands;
+	allOperands.push_back(calleePtr);
+	std::vector<mlir::Type> argTypes;
+	for (const auto& arg : indirectCallOp->getInputArguments()) {
+		allOperands.push_back(frame.getValue(arg->getIdentifier()));
+		argTypes.push_back(getMLIRType(arg->getStamp()));
+	}
+	auto resultMLIRType = getMLIRType(indirectCallOp->getStamp());
+	auto fnType = mlir::LLVM::LLVMFunctionType::get(resultMLIRType, argTypes);
+	if (indirectCallOp->getStamp() != Type::v) {
+		auto res = builder->create<mlir::LLVM::CallOp>(getNameLoc("indirectCall"), fnType, allOperands);
+		frame.setValue(indirectCallOp->getIdentifier(), res.getResult());
+	} else {
+		builder->create<mlir::LLVM::CallOp>(builder->getUnknownLoc(), fnType, allOperands);
 	}
 }
 

@@ -48,6 +48,9 @@ TypedValueRef traceCopy(const TypedValueRef& ref);
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);
 
+TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs);
+
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);

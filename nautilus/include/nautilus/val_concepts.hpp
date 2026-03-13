@@ -30,6 +30,7 @@ concept is_fundamental_val = requires {
 
 template <typename T>
 concept convertible_to_fundamental = !std::is_enum_v<T> && !is_fundamental_val<T> &&
+                                     !(std::is_pointer_v<T> && std::is_function_v<std::remove_pointer_t<T>>) &&
                                      (convertible_to_integral<T> || std::is_convertible_v<T, float> ||
                                       std::is_convertible_v<T, double> || std::is_convertible_v<T, bool>);
 
@@ -53,7 +54,10 @@ template <typename T, typename ValT>
 concept convertible_to_integral_val = is_integral_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;
 
 template <typename T>
-concept is_ptr = std::is_pointer_v<T>;
+concept is_function_ptr = std::is_pointer_v<T> && std::is_function_v<std::remove_pointer_t<T>>;
+
+template <typename T>
+concept is_ptr = std::is_pointer_v<T> && !std::is_function_v<std::remove_pointer_t<T>>;
 
 template <typename T>
 concept is_arithmetic_ptr = is_ptr<T> && std::is_arithmetic_v<std::remove_pointer_t<T>>;

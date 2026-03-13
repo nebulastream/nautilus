@@ -21,6 +21,7 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
@@ -104,6 +105,8 @@ private:
 		void process(ir::StoreOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+
+		void process(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
 
 		void process(ir::OrOperation* opt, short block, RegisterFrame& frame);
 

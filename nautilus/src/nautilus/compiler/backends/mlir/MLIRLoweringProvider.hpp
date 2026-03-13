@@ -22,6 +22,7 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
@@ -127,6 +128,7 @@ private:
 	void generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame);
 	void generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame);
 	void generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame);
+	void generateMLIR(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame);
 	void generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame);
 	void generateMLIR(ir::AndOperation* andOperation, ValueFrame& frame);
 	void generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame);

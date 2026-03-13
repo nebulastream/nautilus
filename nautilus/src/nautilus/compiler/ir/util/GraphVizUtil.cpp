@@ -476,6 +476,7 @@ protected:
 			return "calc";
 		case Operation::OperationType::FunctionOp:
 		case Operation::OperationType::ProxyCallOp:
+		case Operation::OperationType::IndirectCallOp:
 			return "call";
 		case Operation::OperationType::IfOp:
 		case Operation::OperationType::LoopOp:

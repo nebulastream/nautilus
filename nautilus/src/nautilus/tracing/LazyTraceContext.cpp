@@ -1,5 +1,6 @@
 
 #include "LazyTraceContext.hpp"
+#include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -132,6 +133,19 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 		                                       .arguments = arguments,
 		                                       .fnAttrs = fnAttrs};
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                                   const std::vector<tracing::TypedValueRef>& arguments,
+                                                   FunctionAttributes fnAttrs) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto op = Op::INDIRECT_CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 

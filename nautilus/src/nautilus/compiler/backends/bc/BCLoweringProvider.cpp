@@ -1125,6 +1125,11 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 		process(call, block, frame);
 		return;
 	}
+	case ir::Operation::OperationType::IndirectCallOp: {
+		auto call = as<ir::IndirectCallOperation>(opt);
+		process(call, block, frame);
+		return;
+	}
 	case ir::Operation::OperationType::OrOp: {
 		auto call = as<ir::OrOperation>(opt);
 		process(call, block, frame);
@@ -1188,6 +1193,121 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 void BCLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame) {
 	// create a dynamic call using dyncall.h
 	processDynamicCall(opt, block, frame);
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame) {
+	auto& code = program.blocks[block].code;
+	auto arguments = opt->getInputArguments();
+
+	// 1. reset dyncall stack
+	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
+
+	// 2. set dyncall arguments
+	for (auto& arg : arguments) {
+		auto argType = (arg->getStamp());
+		ByteCode bc;
+		switch (argType) {
+		case Type::i8:
+			bc = ByteCode::DYNCALL_arg_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::DYNCALL_arg_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::DYNCALL_arg_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::DYNCALL_arg_i64;
+			break;
+		case Type::ui8:
+			bc = ByteCode::DYNCALL_arg_i8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::DYNCALL_arg_i16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::DYNCALL_arg_i32;
+			break;
+		case Type::ui64:
+			bc = ByteCode::DYNCALL_arg_i64;
+			break;
+		case Type::f32:
+			bc = ByteCode::DYNCALL_arg_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::DYNCALL_arg_d;
+			break;
+		case Type::b:
+			bc = ByteCode::DYNCALL_arg_b;
+			break;
+		case Type::ptr:
+			bc = ByteCode::DYNCALL_arg_ptr;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
+		auto registerSlot = frame.getValue(arg->getIdentifier());
+		code.emplace_back(bc, registerSlot, -1, -1);
+	}
+
+	// 3. call through the function pointer held in the register frame
+	auto returnType = opt->getStamp();
+	ByteCode bc;
+	switch (returnType) {
+	case Type::i8:
+		bc = ByteCode::DYNCALL_call_i8;
+		break;
+	case Type::i16:
+		bc = ByteCode::DYNCALL_call_i16;
+		break;
+	case Type::i32:
+		bc = ByteCode::DYNCALL_call_i32;
+		break;
+	case Type::i64:
+		bc = ByteCode::DYNCALL_call_i64;
+		break;
+	case Type::ui8:
+		bc = ByteCode::DYNCALL_call_i8;
+		break;
+	case Type::ui16:
+		bc = ByteCode::DYNCALL_call_i16;
+		break;
+	case Type::ui32:
+		bc = ByteCode::DYNCALL_call_i32;
+		break;
+	case Type::ui64:
+		bc = ByteCode::DYNCALL_call_i64;
+		break;
+	case Type::ptr:
+		bc = ByteCode::DYNCALL_call_ptr;
+		break;
+	case Type::v:
+		bc = ByteCode::DYNCALL_call_v;
+		break;
+	case Type::b:
+		bc = ByteCode::DYNCALL_call_b;
+		break;
+	case Type::f32:
+		bc = ByteCode::DYNCALL_call_f;
+		break;
+	case Type::f64:
+		bc = ByteCode::DYNCALL_call_d;
+		break;
+	default: {
+		throw NotImplementedException("This type is not supported.");
+	}
+	}
+
+	// The function pointer SSA value is already in the register frame.
+	auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
+
+	if (opt->getStamp() != Type::v) {
+		auto resultRegister = getResultRegister(opt, frame);
+		frame.setValue(opt->getIdentifier(), resultRegister);
+		code.emplace_back(bc, funcPtrRegister, -1, resultRegister);
+	} else {
+		code.emplace_back(bc, funcPtrRegister, -1, -1);
+	}
 }
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,

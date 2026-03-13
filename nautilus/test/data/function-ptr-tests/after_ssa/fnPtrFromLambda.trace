@@ -1,0 +1,4 @@
+B0($1:i32)
+	CONST	$2	*	:ptr
+	INDIRECT_CALL	$3	:i32
+	RETURN	$0	$3	:i32

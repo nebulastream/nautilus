@@ -80,6 +80,8 @@ private:
 
 		void processCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
+		void processIndirectCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+
 		void processConst(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void processCast(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
