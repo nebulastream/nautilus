@@ -1,6 +1,8 @@
+EXECUTE:
 B0($1:bool,$2:i16,$3:i16)
 	ASSIGN	$4	$1	:bool
 	ASSIGN	$5	$2	:i16
 	ASSIGN	$6	$3	:i16
 	SELECT	$7	$4	$5	$6	:i16
 	RETURN	$0	$7	:i16
+

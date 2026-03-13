@@ -64,41 +64,61 @@ std::string CPPLoweringProvider::LoweringContext::getType(const Type& stamp) {
 }
 
 std::stringstream CPPLoweringProvider::LoweringContext::process() {
-
-	const auto& functionOperation = ir->getRootOperation();
-	RegisterFrame rootFrame;
-	std::vector<std::string> arguments;
-	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
-	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
-		auto argument = functionBasicBlock.getArguments()[i].get();
-		auto var = getVariable(argument->getIdentifier());
-		rootFrame.setValue(argument->getIdentifier(), var);
-		arguments.emplace_back(getType(argument->getStamp()) + " " + var);
-	}
-	this->process(&functionBasicBlock, rootFrame);
-
 	std::stringstream pipelineCode;
 	pipelineCode << "\n";
-	pipelineCode << "#include <cstdint>";
-	pipelineCode << "\n";
-	pipelineCode << "extern \"C\" " << returnType << " execute(";
-	for (size_t i = 0; i < arguments.size(); i++) {
-		if (i != 0) {
-			pipelineCode << ",";
+	pipelineCode << "#include <cstdint>\n\n";
+
+	// Process all function operations in the IR graph
+	const auto& functionOperations = ir->getFunctionOperations();
+
+	// Helper lambda to process a single function
+	auto processFunction = [&](const ir::FunctionOperation& functionOperation) {
+		// Reset state for each function
+		blocks.clear();
+		activeBlocks.clear();
+		blockArguments.str("");
+		blockArguments.clear();
+
+		RegisterFrame rootFrame;
+		std::vector<std::string> arguments;
+		const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
+
+		for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
+			auto argument = functionBasicBlock.getArguments()[i].get();
+			auto var = getVariable(argument->getIdentifier());
+			rootFrame.setValue(argument->getIdentifier(), var);
+			arguments.emplace_back(getType(argument->getStamp()) + " " + var);
 		}
-		pipelineCode << arguments[i] << " ";
+
+		this->process(&functionBasicBlock, rootFrame);
+
+		// Generate function code
+		pipelineCode << "extern \"C\" " << returnType << " " << functionOperation.getName() << "(";
+		for (size_t i = 0; i < arguments.size(); i++) {
+			if (i != 0) {
+				pipelineCode << ",";
+			}
+			pipelineCode << arguments[i] << " ";
+		}
+		pipelineCode << "){\n";
+		pipelineCode << "//variable declarations\n";
+		pipelineCode << blockArguments.str();
+		if (!functions.str().empty()) {
+			pipelineCode << "//function definitions\n";
+			pipelineCode << functions.str();
+		}
+		pipelineCode << "//basic blocks\n";
+		for (auto& block : blocks) {
+			pipelineCode << block.str();
+			pipelineCode << "\n";
+		}
+		pipelineCode << "}\n\n";
+	};
+
+	// New path: multiple functions via TraceModule
+	for (const auto& functionOperation : functionOperations) {
+		processFunction(*functionOperation);
 	}
-	pipelineCode << "){\n";
-	pipelineCode << "//variable declarations\n";
-	pipelineCode << blockArguments.str();
-	pipelineCode << "//function definitions\n";
-	pipelineCode << functions.str();
-	pipelineCode << "//basic blocks\n";
-	for (auto& block : blocks) {
-		pipelineCode << block.str();
-		pipelineCode << "\n";
-	}
-	pipelineCode << "}\n";
 
 	return pipelineCode;
 }

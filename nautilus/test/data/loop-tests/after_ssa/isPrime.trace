@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	false	:bool
 	CONST	$3	true	:bool
@@ -28,3 +29,4 @@ B7($2:bool,$1:i32,$8:i32,$3:bool) ControlFlowMerge
 	CMP	$11	$10	B3($2,$1,$8,$3)	B4($3)	:void
 B8($2:bool)
 	RETURN	$0	$2	:bool
+

@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr)
 	LOAD	$4	$1	:i32
 	CONST	$5	10	:i32
@@ -13,3 +14,4 @@ B2($1:ptr)
 	JMP	$0	B3()	:void
 B3()
 	RETURN	$0	:void
+

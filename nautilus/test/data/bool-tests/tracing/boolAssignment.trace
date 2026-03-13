@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:bool)
 	ASSIGN	$2	$1	:bool
 	RETURN	$0	$2	:bool
+

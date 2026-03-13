@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:bool,$2:bool)
 	EQ	$5	$1	$2	:bool
 	CMP	$6	$5	B1()	B2()	:void
@@ -9,3 +10,4 @@ B2()
 	JMP	$0	B3($10)	:void
 B3($7:bool)
 	RETURN	$0	$7	:bool
+

@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	CONST	$3	0	:i32
@@ -6497,3 +6498,4 @@ B1498() ControlFlowMerge
 B1499() ControlFlowMerge
 	GT	$2499	$1	$2498	:bool
 	CMP	$2500	$2499	B999()	B1000()	:void
+

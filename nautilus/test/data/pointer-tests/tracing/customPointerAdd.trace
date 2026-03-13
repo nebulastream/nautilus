@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:i32)
 	ASSIGN	$3	$1	:ptr
 	ASSIGN	$4	$2	:i32
@@ -7,3 +8,4 @@ B0($1:ptr,$2:i32)
 	MUL	$8	$7	$6	:ui64
 	ADD	$9	$3	$8	:ptr
 	RETURN	$0	$9	:ptr
+

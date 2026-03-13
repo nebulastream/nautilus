@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
@@ -12,12 +13,19 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
+
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+class TraceModule;
 struct StaticVarHolder {
 	explicit StaticVarHolder(const void* ptr, size_t size) : ptr(ptr), size(size) {
 	}
@@ -166,6 +174,17 @@ public:
 
 	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
 
+	/**
+	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
+	 * @param functionsToTrace List of functions to trace
+	 * @param options Engine options for configuration
+	 * @return unique_ptr to TraceModule containing all function traces
+	 */
+	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                        const engine::Options& options);
+	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                          const engine::Options& options);
+
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
@@ -191,6 +210,10 @@ public:
 
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
+
+	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                                 FunctionAttributes fnAttrs) override;
 
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
@@ -240,6 +263,8 @@ public:
 	 */
 	ExceptionBasedTraceContext() = default;
 
+	bool isActive() const;
+
 private:
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
@@ -256,6 +281,8 @@ private:
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
 	std::unordered_map<void*, std::string> mangledNameCache;
+	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
+	std::unordered_set<std::string> registeredFunctions;
 };
 
 } // namespace nautilus::tracing

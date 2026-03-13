@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:bool,$2:i64,$3:i64)
 	SELECT	$7	$1	$2	$3	:i64
 	RETURN	$0	$7	:i64
+

@@ -1,0 +1,18 @@
+INNER:
+B0($1:i32)
+	CONST	$2	2	:i32
+	MUL	$3	$1	$2	:i32
+	RETURN	$0	$3	:i32
+
+OUTER:
+B0($1:i32)
+	CALL	$2	func_*($1)	:i32
+	CONST	$3	5	:i32
+	ADD	$4	$2	$3	:i32
+	RETURN	$0	$4	:i32
+
+EXECUTE:
+B0($1:i32)
+	CALL	$2	func_*($1)	:i32
+	RETURN	$0	$2	:i32
+

@@ -1,5 +1,7 @@
+EXECUTE:
 B0($1:ptr,$2:ptr)
 	ASSIGN	$3	$1	:ptr
 	ASSIGN	$4	$2	:ptr
 	GT	$5	$3	$4	:bool
 	RETURN	$0	$5	:bool
+
