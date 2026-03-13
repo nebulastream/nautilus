@@ -168,6 +168,48 @@ TEST_CASE("Expression Trace Test") {
 	    {"mulInt64AndNotDefinedI64", details::createFunctionWrapper(mulInt64AndNotDefinedI64)},
 	    {"subInt8AndInt8", details::createFunctionWrapper(subInt8AndInt8)},
 	    {"addInt8AndInt32", details::createFunctionWrapper(addInt8AndInt32)},
+	    // previously missing: C++ semantic tests
+	    {"subInt8AndInt8TruncateResult", details::createFunctionWrapper(subInt8AndInt8TruncateResult)},
+	    {"chainedPrefixIncrement", details::createFunctionWrapper(chainedPrefixIncrement)},
+	    {"chainedPrefixDecrement", details::createFunctionWrapper(chainedPrefixDecrement)},
+	    {"unaryPlus", details::createFunctionWrapper(unaryPlus)},
+	    {"unaryMinus", details::createFunctionWrapper(unaryMinus)},
+	    {"moveAssignment", details::createFunctionWrapper(moveAssignment)},
+	    {"prefixIncrementReturnValue", details::createFunctionWrapper(prefixIncrementReturnValue)},
+	    {"prefixDecrementReturnValue", details::createFunctionWrapper(prefixDecrementReturnValue)},
+	    // wider type coverage for shift/negate
+	    {"shiftLeft_i32", details::createFunctionWrapper(shiftLeft<int32_t>)},
+	    {"shiftRight_i32", details::createFunctionWrapper(shiftRight<int32_t>)},
+	    {"shiftLeft_i64", details::createFunctionWrapper(shiftLeft<int64_t>)},
+	    {"shiftRight_i64", details::createFunctionWrapper(shiftRight<int64_t>)},
+	    {"negate_i32", details::createFunctionWrapper(negate<int32_t>)},
+	    {"negate_i64", details::createFunctionWrapper(negate<int64_t>)},
+	    // standalone arithmetic operators
+	    {"int32SubExpression", details::createFunctionWrapper(int32SubExpression)},
+	    {"int32MulExpression", details::createFunctionWrapper(int32MulExpression)},
+	    {"int32DivExpression", details::createFunctionWrapper(int32DivExpression)},
+	    {"int32ModExpression", details::createFunctionWrapper(int32ModExpression)},
+	    // bitwise operators
+	    {"bitwiseAnd", details::createFunctionWrapper(bitwiseAnd)},
+	    {"bitwiseOr", details::createFunctionWrapper(bitwiseOr)},
+	    {"bitwiseXor", details::createFunctionWrapper(bitwiseXor)},
+	    // comparison operators
+	    {"cmpEqual", details::createFunctionWrapper(cmpEqual)},
+	    {"cmpNotEqual", details::createFunctionWrapper(cmpNotEqual)},
+	    {"cmpLessThan", details::createFunctionWrapper(cmpLessThan)},
+	    {"cmpLessThanOrEqual", details::createFunctionWrapper(cmpLessThanOrEqual)},
+	    {"cmpGreaterThan", details::createFunctionWrapper(cmpGreaterThan)},
+	    {"cmpGreaterThanOrEqual", details::createFunctionWrapper(cmpGreaterThanOrEqual)},
+	    // unsigned arithmetic
+	    {"uint32AddExpression", details::createFunctionWrapper(uint32AddExpression)},
+	    {"uint32SubExpression", details::createFunctionWrapper(uint32SubExpression)},
+	    {"uint32MulExpression", details::createFunctionWrapper(uint32MulExpression)},
+	    {"uint32DivExpression", details::createFunctionWrapper(uint32DivExpression)},
+	    {"uint64AddExpression", details::createFunctionWrapper(uint64AddExpression)},
+	    // multi-operation expressions
+	    {"complexArithmetic", details::createFunctionWrapper(complexArithmetic)},
+	    {"multipleAssignments", details::createFunctionWrapper(multipleAssignments)},
+	    {"expressionWithConstants", details::createFunctionWrapper(expressionWithConstants)},
 	};
 	runTraceTests("expression-tests", tests);
 }
@@ -241,6 +283,13 @@ TEST_CASE("Loop Trace Test") {
 	    {"forBreak", details::createFunctionWrapper(forBreak)},
 	    {"whileBreak", details::createFunctionWrapper(whileBreak)},
 	    {"whileContinue", details::createFunctionWrapper(whileContinue)},
+	    // new loop pattern tests
+	    {"forContinue", details::createFunctionWrapper(forContinue)},
+	    {"whileMultiCondition", details::createFunctionWrapper(whileMultiCondition)},
+	    {"nestedLoopBreak", details::createFunctionWrapper(nestedLoopBreak)},
+	    {"loopCounterModification", details::createFunctionWrapper(loopCounterModification)},
+	    {"doWhileMinOnce", details::createFunctionWrapper(doWhileMinOnce)},
+	    {"power", details::createFunctionWrapper(power)},
 	};
 	runTraceTests("loop-tests", tests);
 }
@@ -256,7 +305,14 @@ TEST_CASE("Runtime Call Trace Test") {
 	    {"nestedLambdaRuntimeFunction", details::createFunctionWrapper(nestedLambdaRuntimeFunction)},
 	    {"callSameFunction", details::createFunctionWrapper(callSameFunction)},
 	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)},
-	    {"callTwoFunctions", details::createFunctionWrapper(callTwoFunctions)}};
+	    {"callTwoFunctions", details::createFunctionWrapper(callTwoFunctions)},
+	    // previously missing runtime call tests
+	    {"directCallWithNestedCalls", details::createFunctionWrapper(directCallWithNestedCalls)},
+	    {"loopDirectCall2", details::createFunctionWrapper(loopDirectCall2)},
+	    {"directCallComplexFunction", details::createFunctionWrapper(directCallComplexFunction)},
+	    {"callCountFuncCall", details::createFunctionWrapper(callCountFuncCall)},
+	    {"callMemberFunction", details::createFunctionWrapper(callMemberFunction)},
+	};
 	runTraceTests("runtime-call-tests", tests);
 }
 
@@ -284,6 +340,9 @@ TEST_CASE("Bool Trace Test") {
 	    {"boolNotEquals", details::createFunctionWrapper(boolNotEquals)},
 	    {"boolIfElse", details::createFunctionWrapper(boolIfElse)},
 	    {"boolNestedFunction", details::createFunctionWrapper(boolNestedFunction)},
+	    // previously missing bool tests
+	    {"boolComplexOps", details::createFunctionWrapper(boolComplexOps)},
+	    {"boolProbabilityTest", details::createFunctionWrapper(boolProbabilityTest)},
 	};
 	runTraceTests("bool-tests", tests);
 }
@@ -301,6 +360,7 @@ TEST_CASE("Static Trace Test") {
 	     details::createFunctionWrapper(staticLoopWithDynamicLoopPreIncrement)},
 	    {"staticLoopWithDynamicLoopNotEqual", details::createFunctionWrapper(staticLoopWithDynamicLoopNotEqual)},
 #endif
+	    {"staticLoopWithIf", details::createFunctionWrapper(staticLoopWithIf)},
 	    {"staticIterator", details::createFunctionWrapper(staticIterator)},
 	    {"staticConstIterator", details::createFunctionWrapper(staticConstIterator)},
 	    {"staticLoopIncrement", details::createFunctionWrapper(staticLoopIncrement)},
