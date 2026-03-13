@@ -920,6 +920,13 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(0, 5) == 5);  // 5 + 0
 		REQUIRE(f(2, 3) == 11); // 5 + 6
 	}
+
+	SECTION("nautilusFunctionGetFuncPtr") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtr);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
 }
 
 void valueExecutionTest(engine::NautilusEngine& engine) {
@@ -1347,5 +1354,38 @@ TEST_CASE("NautilusFunction Execution Test") {
 	auto engine = engine::NautilusEngine(options);
 	nautilusFunctionExecutionTest(engine);
 }
+
+#ifdef ENABLE_TRACING
+TEST_CASE("NautilusFunction Compiled Execution Test") {
+	std::vector<std::string> backends = {};
+#ifdef ENABLE_MLIR_BACKEND
+	backends.emplace_back("mlir");
+#endif
+#ifdef ENABLE_C_BACKEND
+	backends.emplace_back("cpp");
+#endif
+#ifdef ENABLE_BC_BACKEND
+	backends.emplace_back("bc");
+#endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	for (auto& backend : backends) {
+		for (auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				engine::Options options;
+				options.setOption("engine.backend", backend);
+				options.setOption("engine.traceMode", traceMode);
+				if (backend == "mlir") {
+					options.setOption("engine.Compilation", true);
+					options.setOption("mlir.enableMultithreading", false);
+					options.setOption("mlir.inline_invoke_calls", true);
+				}
+				auto engine = engine::NautilusEngine(options);
+				nautilusFunctionExecutionTest(engine);
+			}
+		}
+	}
+}
+
+#endif
 
 } // namespace nautilus::engine

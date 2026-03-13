@@ -445,6 +445,9 @@ void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& op
 	case ir::Operation::OperationType::SelectOp:
 		generateMLIR(as<ir::SelectOperation>(operation), frame);
 		break;
+	case ir::Operation::OperationType::FunctionAddressOfOp:
+		generateMLIR(as<ir::FunctionAddressOfOperation>(operation), frame);
+		break;
 	default: {
 		throw NotImplementedException("");
 	}
@@ -770,6 +773,46 @@ void MLIRLoweringProvider::generateMLIR(ir::IndirectCallOperation* indirectCallO
 	} else {
 		builder->create<mlir::LLVM::CallOp>(builder->getUnknownLoc(), fnType, allOperands);
 	}
+}
+
+void MLIRLoweringProvider::generateMLIR(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame) {
+	auto functionName = funcAddrOp->getFunctionName();
+	auto ptrType = mlir::LLVM::LLVMPointerType::get(builder->getContext());
+
+	// The nested function is compiled as a func::FuncOp in this module.
+	// To get its address as an !llvm.ptr, we create a helper function that
+	// returns the function reference via func::ConstantOp. The helper's return
+	// type uses the original function type (not !llvm.ptr) so that the
+	// func-to-llvm pass can cleanly convert everything — ConstantOp becomes
+	// llvm.mlir.addressof and the function type becomes !llvm.ptr.
+	auto helperName = "__nautilus_fptr_" + functionName;
+	auto funcOp = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);
+	auto funcType = funcOp.getFunctionType();
+
+	if (!theModule.lookupSymbol<mlir::func::FuncOp>(helperName)) {
+		mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
+		builder->restoreInsertionPoint(*globalInsertPoint);
+
+		// Create helper: func @__nautilus_fptr_add() -> (original-func-type)
+		auto helperFnType = builder->getFunctionType({}, {funcType});
+		auto helperFn = builder->create<mlir::func::FuncOp>(theModule.getLoc(), helperName, helperFnType);
+		helperFn.setPrivate();
+
+		auto* entryBlock = helperFn.addEntryBlock();
+		builder->setInsertionPointToStart(entryBlock);
+
+		// Get the function reference via func::ConstantOp and return it.
+		auto funcConstant = builder->create<mlir::func::ConstantOp>(theModule.getLoc(), funcType, functionName);
+		builder->create<mlir::func::ReturnOp>(theModule.getLoc(), funcConstant.getResult());
+	}
+
+	// Call the helper. After func-to-llvm, the return type becomes !llvm.ptr.
+	auto callOp = builder->create<mlir::func::CallOp>(getNameLoc("funcAddr"), helperName, mlir::TypeRange {funcType},
+	                                                  mlir::ValueRange {});
+	// Cast the function-typed result to !llvm.ptr for downstream use.
+	auto castOp =
+	    builder->create<mlir::UnrealizedConversionCastOp>(getNameLoc("funcAddr"), ptrType, callOp.getResult(0));
+	frame.setValue(funcAddrOp->getIdentifier(), castOp.getResult(0));
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFrame& frame) {

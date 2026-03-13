@@ -2,7 +2,6 @@
 #include <cassert>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/Dyncall.hpp>
-#include <nautilus/exceptions/NotImplementedException.hpp>
 #include <sstream>
 #include <utility>
 
@@ -455,119 +454,83 @@ BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile)
 	}
 }
 
-class BCInvocable : public Executable::GenericInvocable {
-public:
-	explicit BCInvocable(BCInterpreter& bcInterpreter) : bcInterpreter(bcInterpreter) {
+BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
+                           std::vector<std::unique_ptr<BCCallbackData>> callbackData,
+                           std::vector<DCCallback*> callbacks)
+    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)) {
+}
+
+BCExecutable::~BCExecutable() {
+	for (auto* cb : callbacks_) {
+		dcbFreeCallback(cb);
 	}
+}
 
-	std::any invokeGeneric(const std::vector<std::any>& vector) override {
-		return bcInterpreter.invokeGeneric(vector);
+void* BCExecutable::getInvocableFunctionPtr(const std::string& member) {
+	auto it = functionPtrs_.find(member);
+	if (it != functionPtrs_.end()) {
+		return it->second;
 	}
-
-private:
-	BCInterpreter& bcInterpreter;
-};
-
-void* BCInterpreter::getInvocableFunctionPtr(const std::string&) {
-	return (void*) nullptr;
+	return nullptr;
 }
 
-bool BCInterpreter::hasInvocableFunctionPtr() {
-	return false;
+bool BCExecutable::hasInvocableFunctionPtr() {
+	return true;
 }
 
-std::unique_ptr<Executable::GenericInvocable> BCInterpreter::getGenericInvocable(const std::string&) {
-	return std::make_unique<BCInvocable>(*this);
-}
-
-std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {
-	// TODO this causes an bug with the decimal data type
-	//    NES_ASSERT(args.size() == code.arguments.size(), "Arguments are not of
-	//    the correct size");
-
+int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 	// Zero alloca buffers so each invocation starts with a clean stack frame.
-	// The register file already points to the correct buffers (fixed up in the constructor).
 	for (auto& [reg, bufIdx] : code.allocaRegisterMap) {
 		auto& buf = code.allocaBuffers[bufIdx];
 		std::fill(buf.begin(), buf.end(), uint8_t {0});
 	}
 
-	for (size_t i = 0; i < args.size(); i++) {
-		if (auto* value = std::any_cast<int8_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<int16_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<int32_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<int64_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<uint8_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<uint16_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<uint32_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<uint64_t>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<float>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<double>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<bool>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<char>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<unsigned long>(&args[i])) {
-			writeReg<>(registerFile, code.arguments[i], *value);
-		} else if (auto* value = std::any_cast<void*>(&args[i])) {
-			auto val = (int64_t) *value;
-			registerFile[code.arguments[i]] = val;
-		} else if (auto* value = std::any_cast<const void*>(&args[i])) {
-			auto val = (int64_t) *value;
-			registerFile[code.arguments[i]] = val;
-		} else {
-			throw NotImplementedException("This type is not supported.");
+	// Read arguments from DCArgs directly into the register file.
+	for (size_t i = 0; i < argTypes.size(); i++) {
+		auto reg = code.arguments[i];
+		switch (argTypes[i]) {
+		case Type::b:
+			writeReg<bool>(registerFile, reg, static_cast<bool>(dcbArgBool(args)));
+			break;
+		case Type::i8:
+			writeReg<int8_t>(registerFile, reg, static_cast<int8_t>(dcbArgChar(args)));
+			break;
+		case Type::i16:
+			writeReg<int16_t>(registerFile, reg, static_cast<int16_t>(dcbArgShort(args)));
+			break;
+		case Type::i32:
+			writeReg<int32_t>(registerFile, reg, static_cast<int32_t>(dcbArgInt(args)));
+			break;
+		case Type::i64:
+			writeReg<int64_t>(registerFile, reg, static_cast<int64_t>(dcbArgLong(args)));
+			break;
+		case Type::ui8:
+			writeReg<uint8_t>(registerFile, reg, static_cast<uint8_t>(dcbArgUChar(args)));
+			break;
+		case Type::ui16:
+			writeReg<uint16_t>(registerFile, reg, static_cast<uint16_t>(dcbArgUShort(args)));
+			break;
+		case Type::ui32:
+			writeReg<uint32_t>(registerFile, reg, static_cast<uint32_t>(dcbArgUInt(args)));
+			break;
+		case Type::ui64:
+			writeReg<uint64_t>(registerFile, reg, static_cast<uint64_t>(dcbArgULong(args)));
+			break;
+		case Type::f32:
+			writeReg<float>(registerFile, reg, static_cast<float>(dcbArgFloat(args)));
+			break;
+		case Type::f64:
+			writeReg<double>(registerFile, reg, static_cast<double>(dcbArgDouble(args)));
+			break;
+		case Type::ptr:
+			registerFile[reg] = reinterpret_cast<int64_t>(dcbArgPointer(args));
+			break;
+		default:
+			break;
 		}
 	}
-	// set arguments
-	auto result = execute(registerFile);
-	switch (code.returnType) {
-	case Type::v:
-		return nullptr;
-	case Type::i8:
-		return (int8_t) result;
-	case Type::i16:
-		return (int16_t) result;
-	case Type::i32:
-		return (int32_t) result;
-		;
-	case Type::i64:
-		return (int64_t) result;
-		;
-	case Type::ui8:
-		return (uint8_t) result;
-	case Type::ui16:
-		return (uint16_t) result;
-	case Type::ui32:
-		return (uint32_t) result;
-	case Type::ui64:
-		return (uint64_t) result;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-	case Type::f64:
-		return *reinterpret_cast<double*>(&result);
-	case Type::f32:
-		return *reinterpret_cast<float*>(&result);
-#pragma GCC diagnostic pop
-	case Type::b:
-		return (bool) result;
-		;
-	case Type::ptr:
-		return (void*) result;
-		;
-	}
-	assert(false);
-	return nullptr;
+
+	return execute(registerFile);
 }
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {

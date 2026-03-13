@@ -31,7 +31,7 @@ class SymbolicExecutionContext;
  * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
  * "lazyTracing").
  */
-class LazyTraceContext final : public TracingInterface {
+class LazyTraceContext final : public TraceContextBase {
 public:
 	// --- TracingInterface overrides ---
 
@@ -54,6 +54,8 @@ public:
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
 	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
@@ -109,16 +111,10 @@ private:
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
-	std::string getMangledName(void* fnptr);
-	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
-
-	// Injected state - holds references to stack-allocated objects
-	std::unique_ptr<TraceState> state;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
-	std::unordered_map<void*, std::string> mangledNameCache;
 
 	// Passive mode state
 	bool paused_ = false;

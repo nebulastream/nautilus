@@ -93,7 +93,7 @@ TEST_CASE("IR Creation Benchmark") {
 		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
 			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
 			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+			auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
 			meter.measure([&] {
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
@@ -129,7 +129,7 @@ TEST_CASE("Backend Compilation Benchmark") {
 			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
 				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
-				    auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+				    auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
 				    auto backendBackend = registry->getBackend(backend);
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();

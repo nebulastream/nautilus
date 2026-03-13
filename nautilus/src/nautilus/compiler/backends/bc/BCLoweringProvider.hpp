@@ -19,6 +19,7 @@
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
@@ -32,6 +33,7 @@
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
+#include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::compiler::bc {
@@ -44,6 +46,18 @@ public:
 	BCLoweringProvider();
 
 	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir);
+
+	/// Lower with a map of internal function name -> native function pointer.
+	/// Used when NautilusFunction calls have been pre-compiled to dyncallback thunks.
+	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir,
+	                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+
+	/// Lower a specific named function from the IRGraph.
+	std::tuple<Code, RegisterFile> lowerFunction(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName);
+
+	/// Lower a specific named function with resolved internal function pointers.
+	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
+	                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs);
 
 private:
 	using RegisterFrame = Frame<ir::OperationIdentifier, short>;
@@ -65,7 +79,11 @@ private:
 
 	class LoweringContext {
 	public:
-		LoweringContext(std::shared_ptr<ir::IRGraph> ir);
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName = "execute");
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir,
+		                const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
+		                const std::unordered_map<std::string, void*>& internalFunctionPtrs);
 
 		std::tuple<Code, RegisterFile> process();
 
@@ -77,6 +95,8 @@ private:
 		Code program;
 		RegisterFile defaultRegisterFile;
 		std::shared_ptr<ir::IRGraph> ir;
+		std::unordered_map<std::string, void*> internalFunctionPtrs;
+		std::string targetFunctionName = "execute";
 		RegisterProvider registerProvider;
 		std::unordered_map<std::string, short> activeBlocks;
 		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
@@ -120,6 +140,7 @@ private:
 		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
 		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
+		void process(ir::FunctionAddressOfOperation* opt, short block, RegisterFrame& frame);
 
 		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
 

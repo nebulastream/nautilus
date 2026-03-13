@@ -77,23 +77,20 @@ TEST_CASE("Execution Benchmark") {
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif
-	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (auto& backend : backends) {
-		for (auto& traceMode : traceModes) {
-			for (auto& test : benchmarks) {
-				auto func = std::get<1>(test);
-				auto name = std::get<0>(test);
+		for (auto& test : benchmarks) {
+			auto func = std::get<1>(test);
+			auto name = std::get<0>(test);
 
-				Catch::Benchmark::Benchmark("exec_" + backend + "_" + traceMode + "_" + name)
-				    .operator=([&func, backend, traceMode](Catch::Benchmark::Chronometer meter) {
-					    auto op = engine::Options();
-					    // force compilation for the MLIR backend.
-					    op.setOption("mlir.eager_compilation", true);
-					    op.setOption("engine.backend", backend);
-					    op.setOption("engine.traceMode", traceMode);
-					    func(meter, op);
-				    });
-			}
+			Catch::Benchmark::Benchmark("exec_" + backend + "_" + name)
+			    .operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    // force compilation for the MLIR backend.
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", backend);
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    func(meter, op);
+			    });
 		}
 	}
 }

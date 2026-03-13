@@ -74,6 +74,11 @@ public:
 	                                         const std::vector<TypedValueRef>& arguments,
 	                                         FunctionAttributes fnAttrs) = 0;
 
+	/// Get the address of a Nautilus function as a function pointer value.
+	/// Registers the function for later tracing and returns a ptr-typed value.
+	virtual TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+	                                                std::function<void()> fwrapper) = 0;
+
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
