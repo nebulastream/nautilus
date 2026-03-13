@@ -1,0 +1,7 @@
+NautilusIr {
+execute() {
+Block_0($1:f32, $2:f32, $3:f32):
+	$7 = func_*($1,$2,$3) :f32
+	return ($7) :f32
+}
+} //NESIR

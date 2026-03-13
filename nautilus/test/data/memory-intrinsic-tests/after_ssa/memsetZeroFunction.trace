@@ -1,0 +1,4 @@
+B0($1:ptr,$2:ui64)
+	CONST	$4	0	:i32
+	CALL	$6	func_*($1,$4,$2)	:ptr
+	RETURN	$0	$6	:ptr

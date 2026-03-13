@@ -1,0 +1,8 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ui64):
+	$4 = 0 :i32
+	$6 = func_*($1,$4,$2) :ptr
+	return ($6) :ptr
+}
+} //NESIR

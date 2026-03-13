@@ -1,0 +1,13 @@
+NautilusIr {
+execute() {
+Block_0($1:i32, $2:i32):
+	$3 = 0 :i32
+	$4 = $1 > $3 :bool
+	$5 = 0 :i32
+	$6 = $2 > $5 :bool
+	$7 = $4 and $6 :bool
+	func_*($7) :void
+	$10 = $1 + $2 :i32
+	return ($10) :i32
+}
+} //NESIR

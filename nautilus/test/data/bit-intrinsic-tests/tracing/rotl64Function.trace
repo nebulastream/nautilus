@@ -1,0 +1,5 @@
+B0($1:ui64,$2:ui64)
+	ASSIGN	$3	$1	:ui64
+	ASSIGN	$4	$2	:ui64
+	CALL	$5	func_*($3,$4)	:ui64
+	RETURN	$0	$5	:ui64
