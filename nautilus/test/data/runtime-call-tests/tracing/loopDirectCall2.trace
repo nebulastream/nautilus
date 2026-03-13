@@ -1,0 +1,19 @@
+B0($1:i32)
+	CONST	$2	0	:i32
+	CALL	$3	func_*()	:i32
+	CONST	$4	0	:ui64
+	JMP	$0	B3()	:void
+B1()
+	CALL	$8	func_*($2,$1)	:i32
+	ASSIGN	$2	$8	:i32
+	CONST	$9	1	:i32
+	CAST	$10	$9	:ui64
+	ADD	$11	$4	$10	:ui64
+	ASSIGN	$4	$11	:ui64
+	JMP	$0	B3()	:void
+B2()
+	RETURN	$0	$2	:i32
+B3() ControlFlowMerge
+	CAST	$5	$3	:ui64
+	LT	$6	$4	$5	:bool
+	CMP	$7	$6	B1()	B2()	:void

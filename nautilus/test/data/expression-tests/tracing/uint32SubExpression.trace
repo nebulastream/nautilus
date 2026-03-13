@@ -1,0 +1,4 @@
+B0($1:ui32)
+	CONST	$2	3	:ui32
+	SUB	$3	$1	$2	:ui32
+	RETURN	$0	$3	:ui32
