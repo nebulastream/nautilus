@@ -1,13 +1,17 @@
+#include "BitIntrinsicFunctions.hpp"
 #include "BoolOperations.hpp"
+#include "CMathIntrinsicFunctions.hpp"
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "FunctionPtrFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "MemoryIntrinsicFunctions.hpp"
 #include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
+#include "ProfileFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -252,8 +256,9 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
 	    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
 	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
-	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)}
-
+	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
+	    // previously missing control flow test
+	    {"withBranchProbability", details::createFunctionWrapper(withBranchProbability)},
 	};
 	runTraceTests("control-flow-tests", tests);
 }
@@ -312,6 +317,8 @@ TEST_CASE("Runtime Call Trace Test") {
 	    {"directCallComplexFunction", details::createFunctionWrapper(directCallComplexFunction)},
 	    {"callCountFuncCall", details::createFunctionWrapper(callCountFuncCall)},
 	    {"callMemberFunction", details::createFunctionWrapper(callMemberFunction)},
+	    {"incrementFuncCallFiveTimesWithModRef", details::createFunctionWrapper(incrementFuncCallFiveTimesWithModRef)},
+	    {"incrementFuncCallFiveTimesWithRef", details::createFunctionWrapper(incrementFuncCallFiveTimesWithRef)},
 	};
 	runTraceTests("runtime-call-tests", tests);
 }
@@ -472,6 +479,13 @@ TEST_CASE("Pointer Trace Test") {
 	    {"pointerPreIncrement_i8", details::createFunctionWrapper(pointerPreIncrement<int8_t>)},
 	    {"pointerPreIncrement_i32", details::createFunctionWrapper(pointerPreIncrement<int32_t>)},
 	    {"pointerPreIncrement_i64", details::createFunctionWrapper(pointerPreIncrement<int64_t>)},
+	    // previously missing pointer tests
+	    {"isNotNullptr_i8", details::createFunctionWrapper(isNotNullptr<int8_t>)},
+	    {"pointerAddNegativeOffset", details::createFunctionWrapper(pointerAddNegativeOffset)},
+	    {"pointerRoundTrip", details::createFunctionWrapper(pointerRoundTrip)},
+	    {"pointerMultiStep", details::createFunctionWrapper(pointerMultiStep)},
+	    {"pointerLessThanAfterAdd", details::createFunctionWrapper(pointerLessThanAfterAdd)},
+	    {"pointerGreaterThanAfterAdd", details::createFunctionWrapper(pointerGreaterThanAfterAdd)},
 	};
 	runTraceTests("pointer-tests", tests);
 }
@@ -714,6 +728,7 @@ TEST_CASE("Function Ptr Trace Test") {
 	runTraceTests("function-ptr-tests", tests);
 }
 
+<<<<<<< HEAD
 TEST_CASE("Nautilus Function Call Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"nautilusFunction", details::createFunctionWrapper(nautilusFunction)},
@@ -734,4 +749,96 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }
+=======
+TEST_CASE("Bit Intrinsic Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"countlZeroFunction", details::createFunctionWrapper(countlZeroFunction)},
+	    {"countrZeroFunction", details::createFunctionWrapper(countrZeroFunction)},
+	    {"popcountFunction", details::createFunctionWrapper(popcountFunction)},
+	    {"countlZero64Function", details::createFunctionWrapper(countlZero64Function)},
+	    {"countrZero64Function", details::createFunctionWrapper(countrZero64Function)},
+	    {"popcount64Function", details::createFunctionWrapper(popcount64Function)},
+	    {"byteswap32Function", details::createFunctionWrapper(byteswap32Function)},
+	    {"byteswap64Function", details::createFunctionWrapper(byteswap64Function)},
+	    {"rotlFunction", details::createFunctionWrapper(rotlFunction)},
+	    {"rotrFunction", details::createFunctionWrapper(rotrFunction)},
+	    {"rotl64Function", details::createFunctionWrapper(rotl64Function)},
+	    {"rotr64Function", details::createFunctionWrapper(rotr64Function)},
+	};
+	runTraceTests("bit-intrinsic-tests", tests);
+}
+
+TEST_CASE("CMath Intrinsic Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    // unary operations
+	    {"sinFunction", details::createFunctionWrapper(sinFunction)},
+	    {"cosFunction", details::createFunctionWrapper(cosFunction)},
+	    {"sqrtFunction", details::createFunctionWrapper(sqrtFunction)},
+	    {"expFunction", details::createFunctionWrapper(expFunction)},
+	    {"logFunction", details::createFunctionWrapper(logFunction)},
+	    {"ceilFunction", details::createFunctionWrapper(ceilFunction)},
+	    {"floorFunction", details::createFunctionWrapper(floorFunction)},
+	    {"fabsFunction", details::createFunctionWrapper(fabsFunction)},
+	    {"tanFunction", details::createFunctionWrapper(tanFunction)},
+	    {"asinFunction", details::createFunctionWrapper(asinFunction)},
+	    {"acosFunction", details::createFunctionWrapper(acosFunction)},
+	    {"atanFunction", details::createFunctionWrapper(atanFunction)},
+	    // binary operations
+	    {"powFunction", details::createFunctionWrapper(powFunction)},
+	    {"atan2Function", details::createFunctionWrapper(atan2Function)},
+	    {"fminFunction", details::createFunctionWrapper(fminFunction)},
+	    {"fmaxFunction", details::createFunctionWrapper(fmaxFunction)},
+	    {"fmodFunction", details::createFunctionWrapper(fmodFunction)},
+	    {"copysignFunction", details::createFunctionWrapper(copysignFunction)},
+	    // ternary operation
+	    {"fmaFunction", details::createFunctionWrapper(fmaFunction)},
+	};
+	runTraceTests("cmath-intrinsic-tests", tests);
+}
+
+TEST_CASE("Memory Intrinsic Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"memcpyFunction", details::createFunctionWrapper(memcpyFunction)},
+	    {"memmoveFunction", details::createFunctionWrapper(memmoveFunction)},
+	    {"memsetFunction", details::createFunctionWrapper(memsetFunction)},
+	    {"memcpyBytesFunction", details::createFunctionWrapper(memcpyBytesFunction)},
+	    {"memmoveOverlapFunction", details::createFunctionWrapper(memmoveOverlapFunction)},
+	    {"memsetZeroFunction", details::createFunctionWrapper(memsetZeroFunction)},
+	};
+	runTraceTests("memory-intrinsic-tests", tests);
+}
+
+TEST_CASE("Profile Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"assumeFunction", details::createFunctionWrapper(assumeFunction)},
+	    {"assumeComplexCondition", details::createFunctionWrapper(assumeComplexCondition)},
+	    {"assumeAlignedFunction", details::createFunctionWrapper(assumeAlignedFunction)},
+	};
+	runTraceTests("profile-tests", tests);
+}
+
+TEST_CASE("Cross-Type Arithmetic Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    // multiplication across types
+	    {"mulAWithB_i8_i32_i32", details::createFunctionWrapper(mulAWithB<int8_t, int32_t, int32_t>)},
+	    {"mulAWithB_i32_i64_i64", details::createFunctionWrapper(mulAWithB<int32_t, int64_t, int64_t>)},
+	    {"mulAWithB_i16_i32_i32", details::createFunctionWrapper(mulAWithB<int16_t, int32_t, int32_t>)},
+	    {"mulAWithB_f_d_d", details::createFunctionWrapper(mulAWithB<float, double, double>)},
+	    // addition across types
+	    {"addAWithB_i8_i32_i32", details::createFunctionWrapper(addAWithB<int8_t, int32_t, int32_t>)},
+	    {"addAWithB_i32_i64_i64", details::createFunctionWrapper(addAWithB<int32_t, int64_t, int64_t>)},
+	    {"addAWithB_f_d_d", details::createFunctionWrapper(addAWithB<float, double, double>)},
+	    // subtraction across types
+	    {"subAWithB_i8_i32_i32", details::createFunctionWrapper(subAWithB<int8_t, int32_t, int32_t>)},
+	    {"subAWithB_i32_i64_i64", details::createFunctionWrapper(subAWithB<int32_t, int64_t, int64_t>)},
+	    {"subAWithB_f_d_d", details::createFunctionWrapper(subAWithB<float, double, double>)},
+	    // division across types
+	    {"divAWithB_i8_i32_i32", details::createFunctionWrapper(divAWithB<int8_t, int32_t, int32_t>)},
+	    {"divAWithB_i32_i64_i64", details::createFunctionWrapper(divAWithB<int32_t, int64_t, int64_t>)},
+	    {"divAWithB_f_d_d", details::createFunctionWrapper(divAWithB<float, double, double>)},
+	};
+	runTraceTests("cross-type-arithmetic-tests", tests);
+}
+
+>>>>>>> 07cfaa9 (Add trace tests for intrinsics, cross-type arithmetic, and remaining gaps)
 } // namespace nautilus::engine
