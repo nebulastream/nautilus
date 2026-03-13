@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr)
 	ASSIGN	$2	$1	:ptr
 	CONST	$3	0	:ui64
@@ -12,3 +13,4 @@ B0($1:ptr)
 	ASSIGN	$12	$11	:i32
 	STORE	$13	$9	$12	:void
 	RETURN	$0	:void
+

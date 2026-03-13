@@ -11,6 +11,7 @@
 #include "StaticLoopFunctions.hpp"
 #include "TracingUtil.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
@@ -92,11 +93,11 @@ TEST_CASE("IR Creation Benchmark") {
 		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
 			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
 			auto ssaCreationPhase = tracing::SSACreationPhase();
-			trace = ssaCreationPhase.apply(trace);
+			auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
 
 			meter.measure([&] {
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				return irConversionPhase.apply(trace);
+				return irConversionPhase.apply(afterSSAModule);
 			});
 		});
 	}
@@ -128,10 +129,11 @@ TEST_CASE("Backend Compilation Benchmark") {
 			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
 				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
-				    trace = ssaCreationPhase.apply(trace);
+				    auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+
 				    auto backendBackend = registry->getBackend(backend);
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				    auto ir = irConversionPhase.apply(trace);
+				    auto ir = irConversionPhase.apply(afterSSAModule);
 				    auto op = engine::Options();
 				    // force compilation for the MLIR backend.
 				    op.setOption("mlir.eager_compilation", true);

@@ -1,0 +1,12 @@
+ADD:
+B0($1:i32,$2:i32)
+	ADD	$3	$1	$2	:i32
+	RETURN	$0	$3	:i32
+
+EXECUTE:
+B0($1:i32,$2:i32)
+	CALL	$3	func_*($1,$2)	:i32
+	CALL	$4	func_*($3,$2)	:i32
+	CALL	$5	func_*($1,$2)	:i32
+	RETURN	$0	$5	:i32
+

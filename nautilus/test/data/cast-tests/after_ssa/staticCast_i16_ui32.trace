@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:i16)
 	CAST	$2	$1	:ui32
 	RETURN	$0	$2	:ui32
+

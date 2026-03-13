@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:f64)
 	CAST	$2	$1	:i16
 	RETURN	$0	$2	:i16
+

@@ -1,2 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	RETURN	$0	$1	:i32
+

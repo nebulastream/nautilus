@@ -1,2 +1,4 @@
+EXECUTE:
 B0($1:i8)
 	RETURN	$0	$1	:i8
+

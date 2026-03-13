@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:ptr,$2:ptr)
 	LTE	$5	$1	$2	:bool
 	RETURN	$0	$5	:bool
+

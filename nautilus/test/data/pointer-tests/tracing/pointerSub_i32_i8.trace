@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:i8)
 	ASSIGN	$3	$1	:ptr
 	CONST	$4	0	:i32
@@ -12,3 +13,4 @@ B0($1:ptr,$2:i8)
 	ASSIGN	$13	$12	:ptr
 	LOAD	$14	$13	:i32
 	RETURN	$0	$14	:i32
+

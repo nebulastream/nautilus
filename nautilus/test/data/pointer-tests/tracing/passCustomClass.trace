@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:ptr)
 	CALL	$2	func_*($1)	:i32
 	RETURN	$0	$2	:i32
+
