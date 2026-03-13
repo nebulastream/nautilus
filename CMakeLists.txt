@@ -16,6 +16,7 @@ cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "USE_PRE_BUILD_MLIR" ON "ENABLE_ML
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_COMPILER" OFF)
+cmake_dependent_option(ENABLE_TPDE_BACKEND "Enable the TPDE fast JIT backend" OFF "ENABLE_COMPILER" OFF)
 
 option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer." OFF)
@@ -153,6 +154,22 @@ if (ENABLE_ASMJIT_BACKEND)
     set(ASMJIT_NO_DEPRECATED ON)
     add_subdirectory(${THIRD_PARTY_DIR}/asmjit)
     target_compile_options(asmjit PUBLIC -Wno-deprecated-anon-enum-enum-conversion -Wno-nested-anon-types -Wno-gnu-anonymous-struct)
+endif ()
+
+if (ENABLE_TPDE_BACKEND)
+    set(TPDE_LOGGING "OFF" CACHE STRING "Disable TPDE logging to avoid spdlog conflicts")
+    set(TPDE_INCLUDE_TESTS OFF CACHE BOOL "Disable TPDE tests")
+    add_subdirectory(${THIRD_PARTY_DIR}/tpde/tpde)
+    target_compile_options(tpde PUBLIC
+        -Wno-nested-anon-types
+        -Wno-gnu-anonymous-struct
+        -Wno-missing-field-initializers
+        -Wno-extra-semi
+    )
+    target_compile_options(disarm64 PUBLIC
+        -Wno-nested-anon-types
+        -Wno-gnu-anonymous-struct
+    )
 endif ()
 
 add_subdirectory(nautilus)

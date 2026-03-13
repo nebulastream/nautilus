@@ -3,6 +3,9 @@
 #ifdef ENABLE_ASMJIT_BACKEND
 #include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
 #endif
+#ifdef ENABLE_TPDE_BACKEND
+#include "nautilus/compiler/backends/tpde/TPDECompilationBackend.hpp"
+#endif
 #ifdef ENABLE_BC_BACKEND
 #include "nautilus/compiler/backends/bc/BCInterpreterBackend.hpp"
 #endif
@@ -23,6 +26,9 @@ CompilationBackendRegistry::CompilationBackendRegistry() {
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	items["asmjit"] = std::make_unique<asmjit::AsmJitCompilationBackend>();
+#endif
+#ifdef ENABLE_TPDE_BACKEND
+	items["tpde"] = std::make_unique<tpde::TPDECompilationBackend>();
 #endif
 #ifdef ENABLE_BC_BACKEND
 	items["bc"] = std::make_unique<bc::BCInterpreterBackend>();

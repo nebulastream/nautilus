@@ -1,0 +1,3 @@
+[submodule "third_party/tpde"]
+	path = third_party/tpde
+	url = https://github.com/tpde/tpde.git

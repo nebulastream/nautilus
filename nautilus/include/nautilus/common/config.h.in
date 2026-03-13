@@ -6,6 +6,7 @@
 #cmakedefine ENABLE_C_BACKEND
 #cmakedefine ENABLE_MLIR_BACKEND
 #cmakedefine ENABLE_ASMJIT_BACKEND
+#cmakedefine ENABLE_TPDE_BACKEND
 #cmakedefine ENABLE_COMPILER
 #cmakedefine ENABLE_STACKTRACE
 #cmakedefine TEST_DATA_FOLDER "@TEST_DATA_FOLDER@"
