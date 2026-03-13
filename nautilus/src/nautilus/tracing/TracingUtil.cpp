@@ -100,8 +100,8 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
 }
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs) {
-	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
+                         FunctionAttributes fnAttrs, std::string_view nameHint) {
+	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs, nameHint);
 }
 
 TypedValueRef& traceAlloca(size_t allocSize) {
@@ -129,8 +129,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
-    -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
+                                                       format_context& ctx) const -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

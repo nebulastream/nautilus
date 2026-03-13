@@ -113,9 +113,26 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
                                                      const std::vector<tracing::TypedValueRef>& arguments,
-                                                     FunctionAttributes fnAttrs) {
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
+                                                     FunctionAttributes fnAttrs, std::string_view nameHint) {
+	// Prefer the compile-time name hint (supplied by invoke<FnPtr>) over the runtime dladdr lookup.
+	// dladdr silently fails for static/inline functions and lambdas that are not in the dynamic
+	// symbol table, in which case it returns a raw pointer hex string as the symbol name.
+	std::string mangledName;
+	std::string functionName;
+	if (!nameHint.empty()) {
+		// nameHint is already a demangled source name extracted from __PRETTY_FUNCTION__ at the
+		// invoke<FnPtr> call site.  Still attempt dladdr so that we can populate mangledName for
+		// backends that use the raw symbol (e.g. the MLIR linker look-up); fall back to the hint.
+		mangledName = getMangledName(fptn);
+		bool hasDladdr = !mangledName.empty() && mangledName[0] != '0'; // hex ptr fallback starts with '0'
+		functionName = hasDladdr ? getFunctionName(fptn, mangledName) : std::string(nameHint);
+		if (!hasDladdr) {
+			mangledName = std::string(nameHint);
+		}
+	} else {
+		mangledName = getMangledName(fptn);
+		functionName = getFunctionName(fptn, mangledName);
+	}
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto functionArguments = FunctionCall {.functionName = functionName,

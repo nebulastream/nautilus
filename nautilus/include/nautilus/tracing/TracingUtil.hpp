@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <string_view>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -45,8 +46,10 @@ TypedValueRef traceConstant(T&& value) {
 void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType);
 TypedValueRef traceCopy(const TypedValueRef& ref);
 
+/// When nameHint is non-empty it is used as the function name instead of the dladdr symbol lookup.
+/// This is the preferred path when invoke<FnPtr> supplies a compile-time demangled name.
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs);
+                         FunctionAttributes fnAttrs, std::string_view nameHint = "");
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 

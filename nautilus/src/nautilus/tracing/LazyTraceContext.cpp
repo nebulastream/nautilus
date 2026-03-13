@@ -118,12 +118,23 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
                                            const std::vector<tracing::TypedValueRef>& arguments,
-                                           FunctionAttributes fnAttrs) {
+                                           FunctionAttributes fnAttrs, std::string_view nameHint) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
+	std::string mangledName;
+	std::string functionName;
+	if (!nameHint.empty()) {
+		mangledName = getMangledName(fptn);
+		bool hasDladdr = !mangledName.empty() && mangledName[0] != '0';
+		functionName = hasDladdr ? getFunctionName(fptn, mangledName) : std::string(nameHint);
+		if (!hasDladdr) {
+			mangledName = std::string(nameHint);
+		}
+	} else {
+		mangledName = getMangledName(fptn);
+		functionName = getFunctionName(fptn, mangledName);
+	}
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto functionArguments = FunctionCall {.functionName = functionName,

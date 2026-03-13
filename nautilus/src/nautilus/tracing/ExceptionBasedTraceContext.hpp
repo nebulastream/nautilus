@@ -181,7 +181,7 @@ public:
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs) override;
+	                         FunctionAttributes fnAttrs, std::string_view nameHint) override;
 
 	bool traceBool(const TypedValueRef& value, double probability) override;
 

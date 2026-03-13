@@ -6,6 +6,7 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
+#include <string_view>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -55,8 +56,11 @@ public:
 	virtual void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) = 0;
 
 	/// Trace a runtime function call.
+	/// @param nameHint  Optional compile-time demangled name (e.g. from invoke<FnPtr>).
+	///                  When non-empty it is preferred over the dladdr symbol lookup,
+	///                  which silently fails for static/inline functions and lambdas.
 	virtual TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
-	                                 FunctionAttributes fnAttrs) = 0;
+	                                 FunctionAttributes fnAttrs, std::string_view nameHint) = 0;
 
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;

@@ -4,10 +4,74 @@
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
 #include <functional>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
 namespace nautilus {
+
+namespace detail {
+
+/// Extract a human-readable function name for a compile-time function pointer FnPtr.
+///
+/// Uses __PRETTY_FUNCTION__ (GCC/Clang extension) to obtain the demangled name at
+/// compile time without depending on dladdr or the dynamic symbol table.  This means
+/// the name is available even for static, inline, and local functions that are
+/// invisible to dladdr.
+///
+/// Examples of what GCC/Clang produce in the template instantiation:
+///   GCC:   "... [with auto FnPtr = &add(int, int)]"
+///   Clang: "... [FnPtr = &add]"
+///
+/// The returned string is initialized once (function-static) per distinct FnPtr value.
+template <auto FnPtr>
+const std::string& functionNameHint() {
+	static const std::string name = [] {
+		std::string_view sv(__PRETTY_FUNCTION__);
+		// Both GCC and Clang embed "FnPtr = " in the expansion.
+		constexpr std::string_view needle = "FnPtr = ";
+		const auto pos0 = sv.find(needle);
+		if (pos0 == std::string_view::npos) {
+			return std::string(sv);
+		}
+		auto pos = pos0 + needle.size();
+		// Skip leading address-of operator '&'.
+		if (pos < sv.size() && sv[pos] == '&') {
+			++pos;
+		}
+		// GCC may emit a cast expression "(return_type (*)(args...))funcname".
+		// Skip over it so we are left with just the function name.
+		if (pos < sv.size() && sv[pos] == '(') {
+			size_t depth = 1;
+			size_t scan = pos + 1;
+			while (scan < sv.size() && depth > 0) {
+				if (sv[scan] == '(') {
+					++depth;
+				} else if (sv[scan] == ')') {
+					--depth;
+				}
+				++scan;
+			}
+			pos = scan;
+		}
+		// The template parameter list ends at ']'; GCC also appends the argument
+		// types after the function name before ']', which we intentionally keep
+		// because "add(int, int)" is more informative than just "add".
+		const auto end = sv.find(']', pos);
+		return std::string(sv.substr(pos, end == std::string_view::npos ? sv.size() - pos : end - pos));
+	}();
+	return name;
+}
+
+/// Helper that constructs a CallableRuntimeFunction from a compile-time function pointer
+/// and forwards the deduced argument/return types automatically.
+template <typename R, typename... FunctionArguments>
+auto makeCallableWithHint(R (*fnptr)(FunctionArguments...), std::string_view hint) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, hint);
+}
+
+} // namespace detail
 
 template <typename... ValueArguments>
 auto getArgumentReferences(const ValueArguments&... arguments) {
@@ -24,6 +88,12 @@ public:
 	    : fnAttrs(fnAttrs), fnptr(fnptr) {
 	}
 
+	/// Constructor used by invoke<FnPtr>: carries a compile-time demangled name hint so that
+	/// traceCall can use it instead of (or as a fallback for) the dladdr symbol lookup.
+	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...), std::string_view nameHint)
+	    : fnptr(fnptr), nameHint_(nameHint) {
+	}
+
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
@@ -31,7 +101,7 @@ public:
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
 			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			                                    functionArgumentReferences, fnAttrs);
+			                                    functionArgumentReferences, fnAttrs, nameHint_);
 			return val<R>(resultRef);
 		}
 #endif
@@ -45,7 +115,7 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
+			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs, nameHint_);
 			return;
 		}
 #endif
@@ -60,6 +130,7 @@ public:
 private:
 	FunctionAttributes fnAttrs;
 	R (*fnptr)(FunctionArguments...);
+	std::string_view nameHint_;
 };
 
 /// Invoke calls without attributes
@@ -101,6 +172,22 @@ void invoke(const FunctionAttributes fnAttrs, void (*fnptr)(FunctionArguments...
 template <typename R, typename... FunctionArguments>
 auto function(R (*fnptr)(FunctionArguments...)) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
+}
+
+/// invoke<FnPtr>(args...) — non-type template parameter variant.
+///
+/// By taking the function pointer as a compile-time non-type template argument the
+/// implementation can extract a reliable demangled name from __PRETTY_FUNCTION__ at
+/// the point of template instantiation.  This name is then passed as a hint to the
+/// tracer so that the trace correctly identifies static, inline, or lambda-wrapper
+/// functions that would otherwise be invisible to the dladdr symbol lookup.
+///
+/// Usage:
+///   val<int32_t> result = invoke<&add>(x, y);
+template <auto FnPtr, typename... ValueArguments>
+decltype(auto) invoke(ValueArguments&&... args) {
+	return detail::makeCallableWithHint(FnPtr,
+	                                    detail::functionNameHint<FnPtr>())(std::forward<ValueArguments>(args)...);
 }
 
 class MemberFuncWrapper {};
