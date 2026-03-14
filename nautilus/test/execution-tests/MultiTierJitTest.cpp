@@ -1,7 +1,7 @@
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/MultiTierJitCompiler.hpp"
 #include "nautilus/MultiTierExecutable.hpp"
+#include "nautilus/MultiTierJitCompiler.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 #include <thread>
@@ -250,7 +250,9 @@ TEST_CASE("MultiTierJitCompiler Backend Combinations") {
 		options.setOption("engine.multiTier.tier2Threshold", 3);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x * 2; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x * 2;
+		};
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -280,7 +282,9 @@ TEST_CASE("MultiTierJitCompiler Backend Combinations") {
 		options.setOption("engine.multiTier.tier2Threshold", 3);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x + 100; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x + 100;
+		};
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -298,7 +302,9 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		options.setOption("engine.multiTier.tier2Threshold", 0);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x * x; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x * x;
+		};
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -319,7 +325,9 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		options.setOption("engine.multiTier.tier2Threshold", 1);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x + x; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x + x;
+		};
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -339,7 +347,9 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		options.setOption("engine.multiTier.tier2Threshold", 1000000);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x - 5; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x - 5;
+		};
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -430,7 +440,9 @@ TEST_CASE("MultiTierJitCompiler State Inspection") {
 
 	compiler::MultiTierJitCompiler jit(options);
 
-	std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x; };
+	std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+		return x;
+	};
 	auto wrapper = details::createFunctionWrapper(func);
 	auto executable = jit.compile(wrapper);
 	auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
@@ -563,7 +575,9 @@ TEST_CASE("MultiTierJitCompiler Backend Name Interface") {
 		options.setOption("engine.multiTier.tier2Threshold", 2);
 
 		compiler::MultiTierJitCompiler jit(options);
-		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) { return x * 3; };
+		std::function<val<int32_t>(val<int32_t>)> func = [](val<int32_t> x) {
+			return x * 3;
+		};
 
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);

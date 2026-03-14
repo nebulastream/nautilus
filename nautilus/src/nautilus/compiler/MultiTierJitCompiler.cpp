@@ -43,9 +43,8 @@ std::unique_ptr<Executable> MultiTierJitCompiler::compile(MultiTierJitCompiler::
 	auto dumpHandler = DumpHandler(options, compilationId + "_tier1");
 
 	auto traceMode = options.getOptionOrDefault("engine.traceMode", std::string("lazyTracing"));
-	auto executionTrace = (traceMode == "lazyTracing")
-	                          ? tracing::LazyTraceContext::trace(function, options)
-	                          : tracing::ExceptionBasedTraceContext::trace(function, options);
+	auto executionTrace = (traceMode == "lazyTracing") ? tracing::LazyTraceContext::trace(function, options)
+	                                                   : tracing::ExceptionBasedTraceContext::trace(function, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return executionTrace->toString(); });
 
 	auto ssaCreationPhase = tracing::SSACreationPhase();

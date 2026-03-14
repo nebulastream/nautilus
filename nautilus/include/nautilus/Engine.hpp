@@ -1,12 +1,13 @@
-
 #pragma once
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
+#include "nautilus/MultiTierJitCompiler.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
 #include <functional>
+#include <variant>
 
 namespace nautilus::engine {
 namespace details {
@@ -86,7 +87,9 @@ public:
 			                    fn(make_value(args)...));
 		                },
 		                [&](compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>& fn) ->
-		                typename R::raw_type { return fn(args...); }},
+		                typename R::raw_type {
+			                return fn(args...);
+		                }},
 		    func);
 	}
 
@@ -115,7 +118,9 @@ public:
 
 	auto operator()(FunctionArguments... args) {
 		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
-		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) { fn(args...); }},
+		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
+			                       fn(args...);
+		                       }},
 		           func);
 	}
 
@@ -129,8 +134,10 @@ private:
 /**
  * The Nautilus Engine maintains the execution context of one or multiple nautilus functions,
  * which are registered using registerFunction.
- * Depending on the provided options, this functions may be compiled using a compilation backend or are executed
- * directly. In general, the NautilusEngine mussed outlive any registered functions.
+ * Depending on the provided options, these functions may be compiled using a compilation backend or are executed
+ * directly. In general, the NautilusEngine must outlive any registered functions.
+ *
+ * Set "engine.backend" to "multi-tier" to use tiered compilation (fast tier 1 + optimized tier 2).
  */
 class NautilusEngine {
 public:
@@ -147,23 +154,23 @@ public:
 #ifdef ENABLE_TRACING
 		if (isCompiled()) {
 			auto wrapper = details::createFunctionWrapper(func);
-			auto executable = jit.compile(wrapper);
+			auto executable = compileWrapper(wrapper);
 			return CallableFunction<R, FunctionArguments...>(executable);
 		}
 #endif
 		return CallableFunction<R, FunctionArguments...>(func);
 	}
 
-	std::string getNameOfBackend() const {
-		return jit.getName();
-	}
+	std::string getNameOfBackend() const;
 
 	bool isCompiled() const {
 		return options.getOptionOrDefault("engine.Compilation", true);
 	}
 
 private:
-	const compiler::JITCompiler jit;
+	std::unique_ptr<compiler::Executable> compileWrapper(compiler::JITCompiler::wrapper_function wrapper) const;
+
+	std::variant<compiler::JITCompiler, compiler::MultiTierJitCompiler> jit_;
 	const Options options;
 };
 } // namespace nautilus::engine
