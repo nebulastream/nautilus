@@ -1,0 +1,3 @@
+B0($1:ui32,$2:ui32)
+	CALL	$5	func_*($1,$2)	:ui32
+	RETURN	$0	$5	:ui32

@@ -1,0 +1,11 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:i32):
+	$6 = 4 :ui64
+	$7 = $2 cast_to ui64 :ui64
+	$8 = $7 * $6 :ui64
+	$9 = $1 + $8 :ptr
+	$12 = $9 > $1 :bool
+	return ($12) :bool
+}
+} //NESIR
