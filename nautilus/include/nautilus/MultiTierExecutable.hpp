@@ -18,11 +18,11 @@ namespace nautilus::compiler {
 class CompilationBackendRegistry;
 
 /**
- * @brief Executable that manages tier transitions with a stable function pointer.
+ * @brief Executable that manages tier transitions.
  *
  * Thread safety:
- * - Invocation counting is atomic and thread-safe
- * - Tier transitions are protected by mutex
+ * - Invocation counting is atomic
+ * - Tier transitions and type metadata are protected by mutex
  * - Multiple threads can safely invoke the same executable
  */
 class MultiTierExecutable : public Executable {
@@ -50,6 +50,10 @@ public:
 		return tier2_compiling_.load(std::memory_order_acquire);
 	}
 
+	bool isTier2Failed() const {
+		return tier2_failed_.load(std::memory_order_acquire);
+	}
+
 	std::string getTier1BackendName() const {
 		return tier1_backend_name_;
 	}
@@ -72,7 +76,7 @@ public:
 private:
 	void onInvocation();
 	void compileTier2();
-	void switchToTier2(std::unique_ptr<Executable> newExecutable);
+	void switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type, std::vector<Type> arg_types);
 	Executable* getActiveExecutable();
 	GenericInvocable* getFunctionPointerInvocable(const std::string& member, void* fptr);
 
@@ -88,10 +92,11 @@ private:
 	std::atomic<uint8_t> current_tier_;
 	std::atomic<uint64_t> invocation_count_;
 	std::atomic<bool> tier2_compiling_;
+	std::atomic<bool> tier2_failed_;
 	std::future<void> tier2_compilation_future_;
 	std::mutex tier_transition_mutex_;
 
-	// Type metadata extracted during tier 2 compilation for dyncall dispatch
+	// Type metadata for dyncall dispatch, protected by tier_transition_mutex_
 	Type return_type_ = Type::v;
 	std::vector<Type> arg_types_;
 
