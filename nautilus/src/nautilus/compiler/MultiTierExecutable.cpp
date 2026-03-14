@@ -69,6 +69,9 @@ private:
 			dyncall.addArgPtr(*v);
 		} else if (auto* v = std::any_cast<const void*>(&arg)) {
 			dyncall.addArgPtr(const_cast<void*>(*v));
+		} else {
+			throw std::runtime_error(
+			    fmt::format("FunctionPointerInvocable: unsupported argument type: {}", arg.type().name()));
 		}
 	}
 
@@ -148,7 +151,8 @@ MultiTierExecutable::MultiTierExecutable(std::unique_ptr<Executable> tier1Execut
       tier2_backend_name_(std::move(tier2BackendName)),
       current_tier_(1),
       invocation_count_(0),
-      tier2_compiling_(false) {
+      tier2_compiling_(false),
+      tier2_failed_(false) {
 }
 
 MultiTierExecutable::~MultiTierExecutable() {
@@ -157,12 +161,16 @@ MultiTierExecutable::~MultiTierExecutable() {
 	}
 }
 
-void* MultiTierExecutable::getInvocableFunctionPtr(const std::string&) {
+void* MultiTierExecutable::getInvocableFunctionPtr(const std::string& member) {
+	auto* active = getActiveExecutable();
+	if (active->hasInvocableFunctionPtr()) {
+		return active->getInvocableFunctionPtr(member);
+	}
 	return nullptr;
 }
 
 bool MultiTierExecutable::hasInvocableFunctionPtr() {
-	return false;
+	return getActiveExecutable()->hasInvocableFunctionPtr();
 }
 
 std::unique_ptr<Executable::GenericInvocable> MultiTierExecutable::getGenericInvocable(const std::string& member) {
@@ -176,7 +184,6 @@ Executable::GenericInvocable* MultiTierExecutable::getFunctionPointerInvocable(c
 	if (it != fptr_invocable_cache_.end() && it->second.first == fptr) {
 		return it->second.second.get();
 	}
-	// Determine return type from IR metadata stored during compilation
 	auto invocable = std::make_unique<FunctionPointerInvocable>(fptr, return_type_, arg_types_);
 	auto* raw = invocable.get();
 	fptr_invocable_cache_[member] = std::make_pair(fptr, std::move(invocable));
@@ -186,7 +193,10 @@ Executable::GenericInvocable* MultiTierExecutable::getFunctionPointerInvocable(c
 void MultiTierExecutable::onInvocation() {
 	uint64_t count = invocation_count_.fetch_add(1, std::memory_order_acq_rel);
 
-	if (count == tier2_threshold_ && !tier2_compiling_.load(std::memory_order_acquire)) {
+	// Trigger tier 2 after tier2_threshold_ invocations (threshold=0 means first call)
+	bool at_threshold = (tier2_threshold_ == 0) ? (count == 0) : (count + 1 == tier2_threshold_);
+	if (at_threshold && !tier2_compiling_.load(std::memory_order_acquire) &&
+	    !tier2_failed_.load(std::memory_order_acquire)) {
 		bool expected = false;
 		if (tier2_compiling_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
 			tier2_compilation_future_ = std::async(std::launch::async, [this]() { this->compileTier2(); });
@@ -224,8 +234,8 @@ void MultiTierExecutable::compileTier2() {
 
 		// Extract return type and argument types from IR for dyncall dispatch
 		auto& rootOp = ir->getRootOperation();
-		return_type_ = rootOp.getOutputArg();
-		arg_types_ = rootOp.getInputArgs();
+		auto return_type = rootOp.getOutputArg();
+		auto arg_types = rootOp.getInputArgs();
 
 		if (options_.getOptionOrDefault("dump.graph", false)) {
 			ir::createGraphVizFromIr(ir, options_, dumpHandler);
@@ -235,18 +245,26 @@ void MultiTierExecutable::compileTier2() {
 		auto newExecutable = tier2Backend->compile(ir, dumpHandler, options_);
 		newExecutable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 
-		switchToTier2(std::move(newExecutable));
+		switchToTier2(std::move(newExecutable), return_type, std::move(arg_types));
 	} catch (const std::exception& e) {
 		log::error("Tier 2 compilation failed: {}", e.what());
+		std::lock_guard<std::mutex> lock(tier_transition_mutex_);
+		tier2_failed_.store(true, std::memory_order_release);
 		tier2_compiling_.store(false, std::memory_order_release);
 	}
 #else
+	std::lock_guard<std::mutex> lock(tier_transition_mutex_);
+	tier2_failed_.store(true, std::memory_order_release);
 	tier2_compiling_.store(false, std::memory_order_release);
 #endif
 }
 
-void MultiTierExecutable::switchToTier2(std::unique_ptr<Executable> newExecutable) {
+void MultiTierExecutable::switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type,
+                                        std::vector<Type> arg_types) {
 	std::lock_guard<std::mutex> lock(tier_transition_mutex_);
+	return_type_ = return_type;
+	arg_types_ = std::move(arg_types);
+	fptr_invocable_cache_.clear();
 	tier2_executable_ = std::move(newExecutable);
 	current_tier_.store(2, std::memory_order_release);
 	tier2_compiling_.store(false, std::memory_order_release);

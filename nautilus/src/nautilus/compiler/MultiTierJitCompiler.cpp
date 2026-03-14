@@ -23,7 +23,7 @@ MultiTierJitCompiler::MultiTierJitCompiler() : options(), backends_(CompilationB
 }
 
 MultiTierJitCompiler::MultiTierJitCompiler(engine::Options options)
-    : options(std::move(options)), backends_(CompilationBackendRegistry::getInstance()) {
+    : options(options), backends_(CompilationBackendRegistry::getInstance()) {
 }
 
 MultiTierJitCompiler::~MultiTierJitCompiler() = default;

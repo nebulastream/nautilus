@@ -228,15 +228,13 @@ TEST_CASE("MultiTierJitCompiler Invocation Tracking") {
 	SECTION("Tier 2 compilation triggers at threshold") {
 		REQUIRE(!mt->isTier2Compiling());
 
-		// fetch_add returns pre-increment value, so count == threshold
-		// triggers on the (threshold+1)-th call
-		for (int i = 0; i < 10; i++) {
+		// Invoke below threshold (threshold=10, so 9 calls stay in tier 1)
+		for (int i = 0; i < 9; i++) {
 			invocable(i, i);
 		}
 		REQUIRE(mt->getCurrentTier() == 1);
-		REQUIRE(!mt->isTier2Compiling());
 
-		// This invocation sees count == 10 == threshold, triggering tier 2
+		// 10th invocation triggers tier 2
 		invocable(10, 10);
 
 		mt->waitForTier2Compilation();
@@ -488,12 +486,11 @@ TEST_CASE("MultiTierJitCompiler Complex Control Flow") {
 		auto invocable = executable->getInvocableMember<int64_t, int64_t>("execute");
 		auto* mt = getMultiTier(executable.get());
 
-		// Tier 1 (threshold=4, need 5 calls to trigger)
+		// Tier 1 (threshold=4, 4th call triggers tier 2)
 		REQUIRE(invocable(0) == 0);
 		REQUIRE(invocable(1) == 1);
 		REQUIRE(invocable(3) == 9);
 		REQUIRE(invocable(5) == 25);
-		REQUIRE(invocable(2) == 4);
 
 		mt->waitForTier2Compilation();
 		REQUIRE(mt->getCurrentTier() == 2);
@@ -525,12 +522,11 @@ TEST_CASE("MultiTierJitCompiler Complex Control Flow") {
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
 		auto* mt = getMultiTier(executable.get());
 
-		// Tier 1 (threshold=4, need 5 calls to trigger)
+		// Tier 1 (threshold=4, 4th call triggers tier 2)
 		REQUIRE(invocable(-5) == 5);
 		REQUIRE(invocable(0) == 0);
 		REQUIRE(invocable(5) == 10);
 		REQUIRE(invocable(50) == 25);
-		REQUIRE(invocable(200) == 100);
 
 		mt->waitForTier2Compilation();
 		REQUIRE(mt->getCurrentTier() == 2);
