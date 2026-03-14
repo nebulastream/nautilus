@@ -11,6 +11,7 @@ add_executable(nautilus-execution-tests
         SelectExecutionTest.cpp
         BitIntrinsicExecutionTest.cpp
         MemoryIntrinsicExecutionTest.cpp
+        MultiTierJitTest.cpp
 )
 
 nautilus_inline(nautilus-execution-tests)
