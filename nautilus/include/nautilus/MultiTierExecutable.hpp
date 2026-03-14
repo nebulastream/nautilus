@@ -62,6 +62,13 @@ public:
 		return getCurrentTier() == 1 ? tier1_backend_name_ : tier2_backend_name_;
 	}
 
+	/// Blocks until any in-progress tier 2 compilation completes.
+	void waitForTier2Compilation() {
+		if (tier2_compilation_future_.valid()) {
+			tier2_compilation_future_.wait();
+		}
+	}
+
 private:
 	void onInvocation();
 	void compileTier2();
