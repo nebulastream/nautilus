@@ -7,7 +7,8 @@
 namespace nautilus::engine {
 
 void pointerTest(engine::NautilusEngine& engine) {
-	int* values = new int[10] {1, 2, 3, 4, 5, 6, 7, 8, 9};
+	int values_arr[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+	int* values = values_arr;
 
 	SECTION("pointerAdd") {
 		auto f = engine.registerFunction(pointerAdd);
