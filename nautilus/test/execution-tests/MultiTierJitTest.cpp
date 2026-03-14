@@ -8,16 +8,10 @@
 
 namespace nautilus::engine {
 
-/**
- * @brief Test function that performs a simple addition.
- */
 val<int32_t> simpleAdd(val<int32_t> x, val<int32_t> y) {
 	return x + y;
 }
 
-/**
- * @brief Test function that performs a loop-based computation.
- */
 val<int64_t> loopSum(val<int64_t> n) {
 	val<int64_t> sum = 0;
 	for (val<int64_t> i = 0; i < n; i = i + 1) {
@@ -26,9 +20,6 @@ val<int64_t> loopSum(val<int64_t> n) {
 	return sum;
 }
 
-/**
- * @brief Test function with complex control flow.
- */
 val<int32_t> complexControlFlow(val<int32_t> x) {
 	val<int32_t> result = 0;
 	if (x > 10) {
@@ -41,8 +32,14 @@ val<int32_t> complexControlFlow(val<int32_t> x) {
 	return result;
 }
 
+/// Helper to get the MultiTierExecutable* from an Executable and wait for tier 2.
+static compiler::MultiTierExecutable* getMultiTier(compiler::Executable* exec) {
+	auto* mt = dynamic_cast<compiler::MultiTierExecutable*>(exec);
+	REQUIRE(mt != nullptr);
+	return mt;
+}
+
 TEST_CASE("MultiTierJitCompiler Basic Functionality") {
-	// Configure multi-tier JIT with bc -> mlir
 	Options options;
 	options.setOption("engine.multiTier.tier1Backend", "bc");
 	options.setOption("engine.multiTier.tier2Backend", "mlir");
@@ -52,41 +49,31 @@ TEST_CASE("MultiTierJitCompiler Basic Functionality") {
 
 	SECTION("Simple addition with tier transition") {
 		std::function<val<int32_t>(val<int32_t>, val<int32_t>)> func = simpleAdd;
-
-		// Create wrapper
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
-
-		// Get the invocable
 		auto invocable = executable->getInvocableMember<int32_t, int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Initial invocations should use tier 1 (bytecode)
+		// Tier 1 invocations
 		REQUIRE(invocable(5, 3) == 8);
 		REQUIRE(invocable(10, 20) == 30);
 		REQUIRE(invocable(-5, 15) == 10);
-
-		// Verify we're still on tier 1
-		auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-		if (multiTierExec) {
-			REQUIRE(multiTierExec->getCurrentTier() == 1);
-			REQUIRE(multiTierExec->getInvocationCount() == 3);
-		}
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(mt->getInvocationCount() == 3);
 
 		// Cross threshold to trigger tier 2 compilation
 		REQUIRE(invocable(100, 200) == 300);
 		REQUIRE(invocable(1, 1) == 2);
 		REQUIRE(invocable(7, 8) == 15);
 
-		// Give some time for async compilation to complete
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// Wait deterministically for tier 2
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Continue invoking - should eventually use tier 2
+		// Verify tier 2 produces correct results
 		for (int i = 0; i < 10; i++) {
 			REQUIRE(invocable(i, i + 1) == 2 * i + 1);
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
-
-		// Verify correct results even after tier transition
 		REQUIRE(invocable(42, 58) == 100);
 	}
 
@@ -95,21 +82,18 @@ TEST_CASE("MultiTierJitCompiler Basic Functionality") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int64_t, int64_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Test with various inputs
-		REQUIRE(invocable(0) == 0);     // sum of 0 to -1
-		REQUIRE(invocable(1) == 0);     // sum of 0 to 0
-		REQUIRE(invocable(5) == 10);    // sum of 0 to 4 = 0+1+2+3+4
-		REQUIRE(invocable(10) == 45);   // sum of 0 to 9
-		REQUIRE(invocable(100) == 4950); // sum of 0 to 99
-
-		// Cross threshold
+		REQUIRE(invocable(0) == 0);
+		REQUIRE(invocable(1) == 0);
+		REQUIRE(invocable(5) == 10);
+		REQUIRE(invocable(10) == 45);
+		REQUIRE(invocable(100) == 4950);
 		REQUIRE(invocable(50) == 1225);
 
-		// Give time for compilation
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Continue testing
 		for (int i = 0; i < 10; i++) {
 			int64_t n = i * 10;
 			int64_t expected = (n * (n - 1)) / 2;
@@ -122,21 +106,20 @@ TEST_CASE("MultiTierJitCompiler Basic Functionality") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Test tier 1
-		REQUIRE(invocable(15) == 30);  // x > 10: x * 2
-		REQUIRE(invocable(7) == 17);   // x > 5: x + 10
-		REQUIRE(invocable(3) == -2);   // else: x - 5
-		REQUIRE(invocable(10) == 20);  // x > 5: x + 10
-		REQUIRE(invocable(5) == 0);    // else: x - 5
-
-		// Cross threshold
+		// Tier 1
+		REQUIRE(invocable(15) == 30);
+		REQUIRE(invocable(7) == 17);
+		REQUIRE(invocable(3) == -2);
+		REQUIRE(invocable(10) == 20);
+		REQUIRE(invocable(5) == 0);
 		REQUIRE(invocable(20) == 40);
 
-		// Wait for tier 2
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Test tier 2
+		// Tier 2
 		REQUIRE(invocable(12) == 24);
 		REQUIRE(invocable(6) == 16);
 		REQUIRE(invocable(2) == -3);
@@ -186,7 +169,6 @@ TEST_CASE("MultiTierJitCompiler Thread Safety") {
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t, int32_t>("execute");
 
-		// Launch multiple threads
 		const int numThreads = 4;
 		const int iterationsPerThread = 25;
 		std::vector<std::thread> threads;
@@ -198,21 +180,19 @@ TEST_CASE("MultiTierJitCompiler Thread Safety") {
 					int32_t b = i;
 					int32_t result = invocable(a, b);
 					REQUIRE(result == a + b);
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
 			});
 		}
 
-		// Wait for all threads
 		for (auto& thread : threads) {
 			thread.join();
 		}
 
-		// Verify total invocation count
-		auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-		if (multiTierExec) {
-			REQUIRE(multiTierExec->getInvocationCount() == numThreads * iterationsPerThread);
-		}
+		auto* mt = getMultiTier(executable.get());
+		REQUIRE(mt->getInvocationCount() == numThreads * iterationsPerThread);
+
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 	}
 }
 
@@ -227,48 +207,40 @@ TEST_CASE("MultiTierJitCompiler Invocation Tracking") {
 	auto executable = jit.compile(wrapper);
 	auto invocable = executable->getInvocableMember<int32_t, int32_t, int32_t>("execute");
 
-	auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-	REQUIRE(multiTierExec != nullptr);
+	auto* mt = getMultiTier(executable.get());
 
 	SECTION("Invocation count increments correctly") {
-		REQUIRE(multiTierExec->getInvocationCount() == 0);
-		REQUIRE(multiTierExec->getCurrentTier() == 1);
+		REQUIRE(mt->getInvocationCount() == 0);
+		REQUIRE(mt->getCurrentTier() == 1);
 
 		invocable(1, 1);
-		REQUIRE(multiTierExec->getInvocationCount() == 1);
+		REQUIRE(mt->getInvocationCount() == 1);
 
 		invocable(2, 2);
-		REQUIRE(multiTierExec->getInvocationCount() == 2);
+		REQUIRE(mt->getInvocationCount() == 2);
 
 		for (int i = 0; i < 8; i++) {
 			invocable(i, i);
 		}
-		REQUIRE(multiTierExec->getInvocationCount() == 10);
+		REQUIRE(mt->getInvocationCount() == 10);
 	}
 
 	SECTION("Tier 2 compilation triggers at threshold") {
-		REQUIRE(!multiTierExec->isTier2Compiling());
+		REQUIRE(!mt->isTier2Compiling());
 
-		// Invoke up to threshold (fetch_add returns pre-increment value,
-		// so count == threshold triggers on the (threshold+1)-th call)
+		// fetch_add returns pre-increment value, so count == threshold
+		// triggers on the (threshold+1)-th call
 		for (int i = 0; i < 10; i++) {
 			invocable(i, i);
 		}
-		REQUIRE(!multiTierExec->isTier2Compiling());
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(!mt->isTier2Compiling());
 
 		// This invocation sees count == 10 == threshold, triggering tier 2
 		invocable(10, 10);
 
-		// Wait for tier 2 compilation to start or complete
-		bool compilingOrSwitched = false;
-		for (int attempt = 0; attempt < 50; attempt++) {
-			if (multiTierExec->isTier2Compiling() || multiTierExec->getCurrentTier() == 2) {
-				compilingOrSwitched = true;
-				break;
-			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-		REQUIRE(compilingOrSwitched);
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 	}
 }
 
@@ -284,17 +256,20 @@ TEST_CASE("MultiTierJitCompiler Backend Combinations") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Test tier 1
+		// Tier 1
 		REQUIRE(invocable(5) == 10);
 		REQUIRE(invocable(10) == 20);
 		REQUIRE(invocable(15) == 30);
 
 		// Trigger tier 2
 		REQUIRE(invocable(20) == 40);
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-		// Test tier 2
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
+
+		// Tier 2
 		REQUIRE(invocable(25) == 50);
 		REQUIRE(invocable(100) == 200);
 	}
@@ -329,13 +304,14 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// First invocation should trigger tier 2 compilation
+		// First invocation triggers tier 2
 		REQUIRE(invocable(5) == 25);
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Should work correctly even with immediate tier 2
 		REQUIRE(invocable(10) == 100);
 		REQUIRE(invocable(7) == 49);
 	}
@@ -349,11 +325,13 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
 		REQUIRE(invocable(10) == 20);
 		REQUIRE(invocable(20) == 40);
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
 		REQUIRE(invocable(30) == 60);
 	}
@@ -367,17 +345,14 @@ TEST_CASE("MultiTierJitCompiler Threshold Edge Cases") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-		REQUIRE(multiTierExec != nullptr);
-
-		// Execute many times, should stay in tier 1
 		for (int i = 0; i < 100; i++) {
 			REQUIRE(invocable(i + 10) == i + 5);
 		}
 
-		REQUIRE(multiTierExec->getCurrentTier() == 1);
-		REQUIRE(!multiTierExec->isTier2Compiling());
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(!mt->isTier2Compiling());
 	}
 }
 
@@ -388,7 +363,6 @@ TEST_CASE("MultiTierJitCompiler Correctness Across Transitions") {
 
 		compiler::MultiTierJitCompiler jit(options);
 
-		// Complex function to test correctness
 		std::function<val<int32_t>(val<int32_t>, val<int32_t>)> func = [](val<int32_t> a, val<int32_t> b) {
 			val<int32_t> result = 0;
 			if (a > b) {
@@ -402,28 +376,22 @@ TEST_CASE("MultiTierJitCompiler Correctness Across Transitions") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Test cases to validate
-		std::vector<std::tuple<int32_t, int32_t, int32_t>> testCases = {
-		    {10, 5, 60},   // a > b: 10 * 5 + 10 = 60
-		    {3, 7, 17},    // a <= b: 3 + 7 * 2 = 17
-		    {8, 8, 24},    // a == b: 8 + 8 * 2 = 24
-		    {15, 2, 40},   // a > b: 15 * 2 + 10 = 40
-		    {1, 9, 19},    // a < b: 1 + 9 * 2 = 19
-		    {20, 3, 70},   // After tier 2 trigger
-		    {5, 10, 25},   // After tier 2
-		    {100, 50, 5010}, // After tier 2
-		};
+		// Tier 1 test cases
+		REQUIRE(invocable(10, 5) == 60);
+		REQUIRE(invocable(3, 7) == 17);
+		REQUIRE(invocable(8, 8) == 24);
+		REQUIRE(invocable(15, 2) == 40);
+		REQUIRE(invocable(1, 9) == 19);
+		REQUIRE(invocable(20, 3) == 70);
 
-		for (size_t i = 0; i < testCases.size(); i++) {
-			auto [a, b, expected] = testCases[i];
-			REQUIRE(invocable(a, b) == expected);
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-			// Give time for tier 2 compilation after threshold
-			if (i == 5) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			}
-		}
+		// Same cases on tier 2
+		REQUIRE(invocable(5, 10) == 25);
+		REQUIRE(invocable(100, 50) == 5010);
 	}
 
 	SECTION("Floating point operations across tiers") {
@@ -439,17 +407,20 @@ TEST_CASE("MultiTierJitCompiler Correctness Across Transitions") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<double, double, double>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Tier 1 tests
+		// Tier 1
 		REQUIRE(invocable(3.0, 4.0) == Catch::Approx(25.0));
 		REQUIRE(invocable(1.0, 1.0) == Catch::Approx(2.0));
 		REQUIRE(invocable(5.0, 12.0) == Catch::Approx(169.0));
 
 		// Trigger tier 2
 		REQUIRE(invocable(2.0, 2.0) == Catch::Approx(8.0));
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-		// Tier 2 tests
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
+
+		// Tier 2
 		REQUIRE(invocable(6.0, 8.0) == Catch::Approx(100.0));
 		REQUIRE(invocable(0.5, 0.5) == Catch::Approx(0.5));
 	}
@@ -465,43 +436,33 @@ TEST_CASE("MultiTierJitCompiler State Inspection") {
 	auto wrapper = details::createFunctionWrapper(func);
 	auto executable = jit.compile(wrapper);
 	auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
-
-	auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-	REQUIRE(multiTierExec != nullptr);
+	auto* mt = getMultiTier(executable.get());
 
 	SECTION("Initial state") {
-		REQUIRE(multiTierExec->getCurrentTier() == 1);
-		REQUIRE(multiTierExec->getInvocationCount() == 0);
-		REQUIRE(!multiTierExec->isTier2Compiling());
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(mt->getInvocationCount() == 0);
+		REQUIRE(!mt->isTier2Compiling());
 	}
 
 	SECTION("State during tier 1 execution") {
 		invocable(1);
-		REQUIRE(multiTierExec->getCurrentTier() == 1);
-		REQUIRE(multiTierExec->getInvocationCount() == 1);
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(mt->getInvocationCount() == 1);
 
 		invocable(2);
 		invocable(3);
-		REQUIRE(multiTierExec->getInvocationCount() == 3);
-		REQUIRE(!multiTierExec->isTier2Compiling());
+		REQUIRE(mt->getInvocationCount() == 3);
+		REQUIRE(!mt->isTier2Compiling());
 	}
 
 	SECTION("State after crossing threshold") {
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 6; i++) {
 			invocable(i);
 		}
-		REQUIRE(multiTierExec->getInvocationCount() == 5);
+		REQUIRE(mt->getInvocationCount() == 6);
 
-		// Cross threshold
-		invocable(5);
-		REQUIRE(multiTierExec->getInvocationCount() == 6);
-
-		// May or may not be compiling depending on timing
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-		// Should have switched to tier 2 or still be tier 1
-		uint8_t tier = multiTierExec->getCurrentTier();
-		REQUIRE((tier == 1 || tier == 2));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 	}
 }
 
@@ -525,17 +486,19 @@ TEST_CASE("MultiTierJitCompiler Complex Control Flow") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int64_t, int64_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Tier 1 tests
+		// Tier 1 (threshold=4, need 5 calls to trigger)
 		REQUIRE(invocable(0) == 0);
 		REQUIRE(invocable(1) == 1);
 		REQUIRE(invocable(3) == 9);
 		REQUIRE(invocable(5) == 25);
+		REQUIRE(invocable(2) == 4);
 
-		// Trigger tier 2
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Tier 2 tests
+		// Tier 2
 		REQUIRE(invocable(4) == 16);
 		REQUIRE(invocable(10) == 100);
 	}
@@ -560,17 +523,19 @@ TEST_CASE("MultiTierJitCompiler Complex Control Flow") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		// Test all branches in tier 1
+		// Tier 1 (threshold=4, need 5 calls to trigger)
 		REQUIRE(invocable(-5) == 5);
 		REQUIRE(invocable(0) == 0);
 		REQUIRE(invocable(5) == 10);
 		REQUIRE(invocable(50) == 25);
+		REQUIRE(invocable(200) == 100);
 
-		// Trigger tier 2
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
 
-		// Test all branches in tier 2
+		// Tier 2
 		REQUIRE(invocable(-10) == 10);
 		REQUIRE(invocable(8) == 16);
 		REQUIRE(invocable(20) == 10);
@@ -607,29 +572,21 @@ TEST_CASE("MultiTierJitCompiler Backend Name Interface") {
 		auto wrapper = details::createFunctionWrapper(func);
 		auto executable = jit.compile(wrapper);
 		auto invocable = executable->getInvocableMember<int32_t, int32_t>("execute");
+		auto* mt = getMultiTier(executable.get());
 
-		auto* multiTierExec = dynamic_cast<compiler::MultiTierExecutable*>(executable.get());
-		REQUIRE(multiTierExec != nullptr);
+		REQUIRE(mt->getCurrentTier() == 1);
+		REQUIRE(mt->getTier1BackendName() == "bc");
+		REQUIRE(mt->getTier2BackendName() == "mlir");
+		REQUIRE(mt->getCurrentBackendName() == "bc");
 
-		// Initially should be tier 1
-		REQUIRE(multiTierExec->getCurrentTier() == 1);
-		REQUIRE(multiTierExec->getTier1BackendName() == "bc");
-		REQUIRE(multiTierExec->getTier2BackendName() == "mlir");
-		REQUIRE(multiTierExec->getCurrentBackendName() == "bc");
-
-		// Execute to cross threshold
+		// Cross threshold
 		invocable(1);
 		invocable(2);
-		REQUIRE(multiTierExec->getCurrentBackendName() == "bc"); // Still tier 1
-
-		// Trigger tier 2
 		invocable(3);
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-		// Should have switched or be compiling
-		if (multiTierExec->getCurrentTier() == 2) {
-			REQUIRE(multiTierExec->getCurrentBackendName() == "mlir");
-		}
+		mt->waitForTier2Compilation();
+		REQUIRE(mt->getCurrentTier() == 2);
+		REQUIRE(mt->getCurrentBackendName() == "mlir");
 	}
 }
 
