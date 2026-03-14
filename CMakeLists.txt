@@ -112,6 +112,7 @@ set(EXPORT_TARGETS)
 if (ENABLE_TESTS OR ENABLE_BENCHMARKS)
     set(CATCH_ENABLE_REPRODUCIBLE_BUILD OFF CACHE INTERNAL "Disable reproducible build for Catch2")
     add_subdirectory(${THIRD_PARTY_DIR}/Catch2)
+    disable_target_warnings(Catch2)
     list(APPEND EXPORT_TARGETS Catch2)
 endif ()
 
