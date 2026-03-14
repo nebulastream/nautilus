@@ -141,7 +141,7 @@ auto& memberFunc(T func) {
 	using ClassType = typename traits::class_type;
 	using ReturnType = typename traits::return_type;
 	// using ArgTypes = typename traits::arg_types;
-	auto ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
+	static auto* ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
 	return *ptr;
 }
 
