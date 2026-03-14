@@ -141,17 +141,10 @@ MultiTierExecutable::MultiTierExecutable(std::unique_ptr<Executable> tier1Execut
                                          engine::Options options, const CompilationBackendRegistry* backends,
                                          uint64_t tier2Threshold, std::string tier1BackendName,
                                          std::string tier2BackendName)
-    : tier1_executable_(std::move(tier1Executable)),
-      tier2_executable_(nullptr),
-      wrapper_function_(std::move(wrapperFunction)),
-      options_(std::move(options)),
-      backends_(backends),
-      tier2_threshold_(tier2Threshold),
-      tier1_backend_name_(std::move(tier1BackendName)),
-      tier2_backend_name_(std::move(tier2BackendName)),
-      current_tier_(1),
-      invocation_count_(0),
-      tier2_compiling_(false),
+    : tier1_executable_(std::move(tier1Executable)), tier2_executable_(nullptr),
+      wrapper_function_(std::move(wrapperFunction)), options_(std::move(options)), backends_(backends),
+      tier2_threshold_(tier2Threshold), tier1_backend_name_(std::move(tier1BackendName)),
+      tier2_backend_name_(std::move(tier2BackendName)), current_tier_(1), invocation_count_(0), tier2_compiling_(false),
       tier2_failed_(false) {
 }
 
@@ -162,6 +155,10 @@ MultiTierExecutable::~MultiTierExecutable() {
 }
 
 void* MultiTierExecutable::getInvocableFunctionPtr(const std::string& member) {
+	// Forward to the active tier. During tier 1 (bc) this typically returns nullptr
+	// since bc uses GenericInvocable. After tier 2 (MLIR) is active, callers get
+	// the optimized function pointer directly — no tier 3 exists, so bypassing
+	// onInvocation() is safe and faster.
 	auto* active = getActiveExecutable();
 	if (active->hasInvocableFunctionPtr()) {
 		return active->getInvocableFunctionPtr(member);
@@ -177,8 +174,7 @@ std::unique_ptr<Executable::GenericInvocable> MultiTierExecutable::getGenericInv
 	return std::make_unique<MultiTierInvocable>(*this, member);
 }
 
-Executable::GenericInvocable* MultiTierExecutable::getFunctionPointerInvocable(const std::string& member,
-                                                                               void* fptr) {
+Executable::GenericInvocable* MultiTierExecutable::getFunctionPointerInvocable(const std::string& member, void* fptr) {
 	std::lock_guard<std::mutex> lock(tier_transition_mutex_);
 	auto it = fptr_invocable_cache_.find(member);
 	if (it != fptr_invocable_cache_.end() && it->second.first == fptr) {
