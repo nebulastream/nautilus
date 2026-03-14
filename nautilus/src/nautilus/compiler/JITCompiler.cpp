@@ -29,7 +29,7 @@ JITCompiler::JITCompiler() : options(), backends(CompilationBackendRegistry::get
 }
 
 JITCompiler::JITCompiler(engine::Options options)
-    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()) {
+    : options(options), backends(CompilationBackendRegistry::getInstance()) {
 }
 
 JITCompiler::~JITCompiler() = default;
