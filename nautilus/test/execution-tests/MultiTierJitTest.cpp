@@ -174,7 +174,7 @@ TEST_CASE("MultiTierJitCompiler Thread Safety") {
 		std::vector<std::thread> threads;
 
 		for (int t = 0; t < numThreads; t++) {
-			threads.emplace_back([&invocable, t, iterationsPerThread]() {
+			threads.emplace_back([&invocable, t]() {
 				for (int i = 0; i < iterationsPerThread; i++) {
 					int32_t a = t * 100 + i;
 					int32_t b = i;
