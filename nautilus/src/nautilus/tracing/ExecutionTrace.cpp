@@ -13,14 +13,14 @@ ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0
 	createBlock();
 }
 
-Block& ExecutionTrace::getBlock(uint16_t blockIndex) {
+Block& ExecutionTrace::getBlock(uint32_t blockIndex) {
 	if (blockIndex >= blocks.size()) {
 		throw RuntimeException("Block index out of bounds: " + std::to_string(blockIndex));
 	}
 	return blocks[blockIndex];
 }
 
-uint16_t ExecutionTrace::getCurrentBlockIndex() const {
+uint32_t ExecutionTrace::getCurrentBlockIndex() const {
 	return currentBlockIndex;
 }
 
@@ -31,7 +31,7 @@ Block& ExecutionTrace::getCurrentBlock() {
 	return blocks[currentBlockIndex];
 }
 
-void ExecutionTrace::setCurrentBlock(uint16_t index) {
+void ExecutionTrace::setCurrentBlock(uint32_t index) {
 	if (index >= blocks.size()) {
 		throw RuntimeException("Cannot set current block to out of bounds index: " + std::to_string(index));
 	}
@@ -164,7 +164,7 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 	return getCurrentBlock().operations[currentOperationIndex];
 }
 
-uint16_t ExecutionTrace::createBlock() {
+uint32_t ExecutionTrace::createBlock() {
 	auto& block = blocks.emplace_back(blocks.size());
 	return block.blockId;
 }
@@ -307,8 +307,8 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
-    -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
+                                                 format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -330,8 +330,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;

@@ -2,7 +2,7 @@
 
 namespace nautilus::tracing {
 
-BlockRef::BlockRef(uint16_t block) : block(block) {
+BlockRef::BlockRef(uint32_t block) : block(block) {
 }
 
 TraceOperation::TraceOperation(Snapshot& tag, Op op, Type resultType, TypedValueRef ref,
