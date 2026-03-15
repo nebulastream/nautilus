@@ -40,8 +40,8 @@ struct FunctionCall {
 };
 
 struct BlockRef {
-	explicit BlockRef(uint16_t block);
-	uint16_t block;
+	explicit BlockRef(uint32_t block);
+	uint32_t block;
 	std::vector<TypedValueRef> arguments;
 };
 
