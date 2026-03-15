@@ -11,13 +11,47 @@ namespace nautilus::compiler::bc {
 BCLoweringProvider::BCLoweringProvider() {
 }
 
-BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir)
-    : program(), defaultRegisterFile(), ir(std::move(ir)), registerProvider(), activeBlocks(), usageCounts(),
+BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName)
+    : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(),
+      targetFunctionName(std::move(targetFunctionName)), registerProvider(), activeBlocks(), usageCounts(),
+      functionArgs() {
+}
+
+BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir,
+                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs)
+    : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
+      targetFunctionName("execute"), registerProvider(), activeBlocks(), usageCounts(), functionArgs() {
+}
+
+BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
+                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs)
+    : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
+      targetFunctionName(std::move(targetFunctionName)), registerProvider(), activeBlocks(), usageCounts(),
       functionArgs() {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir) {
 	auto ctx = LoweringContext(ir);
+	return ctx.process();
+}
+
+std::tuple<Code, RegisterFile>
+BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
+                          const std::unordered_map<std::string, void*>& internalFunctionPtrs) {
+	auto ctx = LoweringContext(ir, internalFunctionPtrs);
+	return ctx.process();
+}
+
+std::tuple<Code, RegisterFile> BCLoweringProvider::lowerFunction(std::shared_ptr<ir::IRGraph> ir,
+                                                                 const std::string& functionName) {
+	auto ctx = LoweringContext(std::move(ir), functionName);
+	return ctx.process();
+}
+
+std::tuple<Code, RegisterFile>
+BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
+                          const std::unordered_map<std::string, void*>& internalFunctionPtrs) {
+	auto ctx = LoweringContext(std::move(ir), std::string(functionName), internalFunctionPtrs);
 	return ctx.process();
 }
 
@@ -37,9 +71,27 @@ void BCLoweringProvider::RegisterProvider::freeRegister(short reg) {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
-	const auto& functionOperation = ir->getRootOperation();
+	// BC interpreter only processes a single function (the main "execute" function)
+	// Get all functions and process the first one (typically "execute")
+	const auto& functionOperations = ir->getFunctionOperations();
+	if (functionOperations.empty()) {
+		throw NotImplementedException("No functions found in IR graph");
+	}
+
+	// Find the target function by name, or use the first function as fallback
+	const ir::FunctionOperation* targetFunction = nullptr;
+	for (const auto& funcOp : functionOperations) {
+		if (funcOp->getName() == targetFunctionName) {
+			targetFunction = funcOp.get();
+			break;
+		}
+	}
+	if (targetFunction == nullptr) {
+		targetFunction = functionOperations.front().get();
+	}
+
 	RegisterFrame rootFrame;
-	const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
+	const auto& functionBasicBlock = targetFunction->getFunctionBasicBlock();
 	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
 		auto& argument = functionBasicBlock.getArguments()[i];
 		auto argumentRegister = registerProvider.allocRegister();
@@ -1180,6 +1232,11 @@ void BCLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Oper
 		process(alloca, block, frame);
 		return;
 	}
+	case ir::Operation::OperationType::FunctionAddressOfOp: {
+		auto funcAddr = as<ir::FunctionAddressOfOperation>(opt);
+		process(funcAddr, block, frame);
+		return;
+	}
 	default: {
 
 		throw NotImplementedException("This type is not supported.");
@@ -1418,7 +1475,13 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 
 	auto funcInfoRegister = registerProvider.allocRegister();
 	allocateRegister(funcInfoRegister);
-	defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
+	// For internal NautilusFunction calls, use the pre-compiled callback pointer
+	auto it = internalFunctionPtrs.find(opt->getFunctionName());
+	if (it != internalFunctionPtrs.end()) {
+		defaultRegisterFile[funcInfoRegister] = (int64_t) it->second;
+	} else {
+		defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
+	}
 
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
@@ -1980,6 +2043,25 @@ void BCLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp,
 	program.allocaRegisterMap.emplace_back(resultRegister, bufferIndex);
 	defaultRegisterFile[resultRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
 	frame.setValue(allocaOp->getIdentifier(), resultRegister);
+}
+
+void BCLoweringProvider::LoweringContext::process(ir::FunctionAddressOfOperation* funcAddrOp, short block,
+                                                  RegisterFrame& frame) {
+	// Store the function pointer constant into a register, same pattern as ConstPtrOperation.
+	auto defaultRegister = registerProvider.allocRegister();
+	allocateRegister(defaultRegister);
+	// For internal NautilusFunction calls, use the pre-compiled callback pointer
+	auto it = internalFunctionPtrs.find(funcAddrOp->getFunctionName());
+	if (it != internalFunctionPtrs.end()) {
+		defaultRegisterFile[defaultRegister] = (int64_t) it->second;
+	} else {
+		defaultRegisterFile[defaultRegister] = (int64_t) funcAddrOp->getFunctionPtr();
+	}
+
+	auto targetRegister = registerProvider.allocRegister();
+	frame.setValue(funcAddrOp->getIdentifier(), targetRegister);
+	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
+	program.blocks[block].code.emplace_back(oc);
 }
 
 } // namespace nautilus::compiler::bc

@@ -2,14 +2,13 @@
 #include "LazyTraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include <cassert>
-#include <cxxabi.h>
-#include <dlfcn.h>
 #include <fmt/format.h>
-#include <sstream>
 
 namespace fmt {
 template <>
@@ -146,6 +145,54 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
+	});
+}
+
+TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
+                                                   std::function<void()> fwrapper, Type resultType,
+                                                   const std::vector<tracing::TypedValueRef>& arguments,
+                                                   FunctionAttributes fnAttrs) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto functionName = definition->name();
+	auto mangledName = getMangledName((void*) definition);
+	if (registeredFunctions.insert(functionName).second) {
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper));
+		log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
+		           functionsToTrace.size());
+	}
+	auto op = Op::CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = arguments,
+		                                       .fnAttrs = fnAttrs};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+                                                          std::function<void()> fwrapper) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto functionName = definition->name();
+	if (registeredFunctions.insert(functionName).second) {
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, std::move(fwrapper)));
+		log::debug("Added function '{}' to functionsToTrace list (via FUNC_ADDR). List now has {} functions",
+		           functionName, functionsToTrace.size());
+	}
+	auto op = Op::FUNC_ADDR;
+	auto resultType = Type::ptr;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = {},
+		                                       .fnAttrs = {}};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
@@ -293,6 +340,56 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
+std::unique_ptr<TraceModule> LazyTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
+                                                     const engine::Options& options) {
+	return completingTraceContext.startTrace(functions, options);
+}
+
+std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
+                                                          const engine::Options& options) {
+	log::debug("Initialize Lazy Tracing");
+	auto traceModule = std::make_unique<TraceModule>();
+	functionsToTrace = functions;
+	registeredFunctions.clear();
+	setActiveTracer(this);
+
+	while (!functionsToTrace.empty()) {
+		auto currentFunction = functionsToTrace.front();
+		functionsToTrace.pop_front();
+		if (traceModule->hasFunction(currentFunction.getName())) {
+			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
+			continue;
+		}
+
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName());
+		auto wrapperFunc = currentFunction.getFunction();
+
+		auto rootAddress = __builtin_return_address(0);
+		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		SymbolicExecutionContext symbolicExecutionContext;
+		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		auto traceIteration = 0;
+
+		while (symbolicExecutionContext.shouldContinue()) {
+			traceIteration = traceIteration + 1;
+			log::trace("Lazy Trace Iteration {}", traceIteration);
+			log::trace("{}", executionTrace);
+			symbolicExecutionContext.next();
+			executionTrace.resetExecution();
+			resume();
+			wrapperFunc();
+			assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+		}
+
+		state.reset();
+		log::debug("Lazy Tracing Terminated with {} iterations", traceIteration);
+		log::trace("Final trace: {}", executionTrace);
+	}
+
+	setActiveTracer(nullptr);
+	return traceModule;
+}
+
 void LazyTraceContext::allocateValRef(ValueRef ref) {
 	if (paused_) {
 		return;
@@ -334,53 +431,6 @@ std::string LazyTraceContext::formatStaticVars() const {
 		result += std::to_string(getStaticVarValue(staticVars[i]));
 	}
 	return result;
-}
-
-std::string LazyTraceContext::getMangledName(void* fnptr) {
-	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
-		return it->second;
-	}
-
-	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
-		mangledNameCache[fnptr] = info.dli_sname;
-		return info.dli_sname;
-	}
-	std::stringstream ss;
-	ss << fnptr;
-	std::string ptrStr = ss.str();
-	mangledNameCache[fnptr] = ptrStr;
-	return ptrStr;
-}
-
-std::string LazyTraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
-
-	if (normalizeFunctionNames) {
-		auto it = state->normalizedFunctionNameCache.find(fnptr);
-		if (it != state->normalizedFunctionNameCache.end()) {
-			return "runtimeFunc" + std::to_string(it->second);
-		}
-		uint32_t index = state->nextNormalizedFunctionIndex++;
-		state->normalizedFunctionNameCache[fnptr] = index;
-		return "runtimeFunc" + std::to_string(index);
-	}
-
-	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
-
-	if (!demangleFunctionNames) {
-		return mangledName;
-	}
-
-	int status;
-	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
-	if (status == 0 && demangled != nullptr) {
-		std::string result(demangled);
-		std::free(demangled);
-		return result;
-	}
-	return mangledName;
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {

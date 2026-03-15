@@ -9,9 +9,13 @@
 #include "nautilus/val_concepts.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iosfwd>
 #include <vector>
 
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 namespace nautilus::tracing {
 
 bool inTracer();
@@ -50,6 +54,12 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs);
+
+TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                 FunctionAttributes fnAttrs);
+
+TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper);
 
 TypedValueRef& registerFunctionArgument(Type type, size_t index);
 

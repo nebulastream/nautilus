@@ -6,7 +6,12 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
+#include <functional>
 #include <vector>
+
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 
 namespace nautilus::tracing {
 
@@ -62,6 +67,17 @@ public:
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                         const std::vector<TypedValueRef>& arguments,
 	                                         FunctionAttributes fnAttrs) = 0;
+
+	/// Trace a call to a nested Nautilus function. Registers the function for later tracing.
+	virtual TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition,
+	                                         std::function<void()> fwrapper, Type resultType,
+	                                         const std::vector<TypedValueRef>& arguments,
+	                                         FunctionAttributes fnAttrs) = 0;
+
+	/// Get the address of a Nautilus function as a function pointer value.
+	/// Registers the function for later tracing and returns a ptr-typed value.
+	virtual TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+	                                                std::function<void()> fwrapper) = 0;
 
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;

@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	CALL	$3	func_*($1,$2)	:void
 	RETURN	$0	$1	:i32
+

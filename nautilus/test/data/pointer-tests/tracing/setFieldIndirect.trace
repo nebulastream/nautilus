@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:i32)
 	ASSIGN	$3	$2	:i32
 	ASSIGN	$4	$1	:ptr
@@ -12,3 +13,4 @@ B0($1:ptr,$2:i32)
 	ASSIGN	$13	$12	:i32
 	STORE	$14	$11	$13	:void
 	RETURN	$0	:void
+

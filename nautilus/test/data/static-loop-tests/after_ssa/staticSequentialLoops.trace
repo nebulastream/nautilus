@@ -1,3 +1,4 @@
+EXECUTE:
 B0()
 	CONST	$1	0	:i32
 	CONST	$2	10	:i32
@@ -11,3 +12,4 @@ B0()
 	CONST	$10	100	:i32
 	ADD	$11	$9	$10	:i32
 	RETURN	$0	$11	:i32
+

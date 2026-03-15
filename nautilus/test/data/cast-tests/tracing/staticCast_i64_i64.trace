@@ -1,3 +1,5 @@
+EXECUTE:
 B0($1:i64)
 	ASSIGN	$2	$1	:i64
 	RETURN	$0	$2	:i64
+

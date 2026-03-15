@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	10	:i32
 	GT	$3	$1	$2	:bool
@@ -9,3 +10,4 @@ B0($1:i32)
 	CONST	$11	200	:i32
 	SELECT	$13	$3	$11	$9	:i32
 	RETURN	$0	$13	:i32
+

@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:ptr,$2:i32,$3:i32)
 	CONST	$5	*	:ptr
 	EQ	$8	$1	$5	:bool
@@ -10,3 +11,4 @@ B2($1:ptr,$2:i32,$3:i32)
 	JMP	$0	B3($14)	:void
 B3($10:i32)
 	RETURN	$0	$10	:i32
+

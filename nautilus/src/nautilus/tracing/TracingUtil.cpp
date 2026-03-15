@@ -109,6 +109,16 @@ TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+                                 FunctionAttributes fnAttrs) {
+	return activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+}
+
+TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper) {
+	return activeTracer->traceNautilusFunctionPtr(definition, std::move(fwrapper));
+}
+
 TypedValueRef& traceAlloca(size_t allocSize) {
 	return activeTracer->traceAlloca(allocSize);
 }
@@ -134,8 +144,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
-    -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
+                                                       format_context& ctx) const -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

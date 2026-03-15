@@ -8,6 +8,7 @@ namespace nautilus::compiler {
 
 class Executable;
 class CompilationBackendRegistry;
+class CompilableFunction;
 
 using CompilationUnitID = std::string;
 

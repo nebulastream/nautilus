@@ -2,7 +2,9 @@
 #include "ExceptionBasedTraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
@@ -29,6 +31,10 @@ static thread_local ExceptionBasedTraceContext traceContext;
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
     : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
+}
+
+bool ExceptionBasedTraceContext::isActive() const {
+	return state != nullptr;
 }
 
 ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& tagRecorder,
@@ -135,6 +141,48 @@ TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
+	});
+}
+
+TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
+                                                             std::function<void()> fwrapper, Type resultType,
+                                                             const std::vector<tracing::TypedValueRef>& arguments,
+                                                             FunctionAttributes fnAttrs) {
+	auto functionName = definition->name();
+	auto mangledName = getMangledName((void*) definition);
+	if (registeredFunctions.insert(functionName).second) {
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper));
+		log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
+		           functionsToTrace.size());
+	}
+	auto op = Op::CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = arguments,
+		                                       .fnAttrs = fnAttrs};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+                                                                    std::function<void()> fwrapper) {
+	auto functionName = definition->name();
+	if (registeredFunctions.insert(functionName).second) {
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, std::move(fwrapper)));
+		log::debug("Added function '{}' to functionsToTrace list (via FUNC_ADDR). List now has {} functions",
+		           functionName, functionsToTrace.size());
+	}
+	auto op = Op::FUNC_ADDR;
+	auto resultType = Type::ptr;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto functionArguments = FunctionCall {.functionName = functionName,
+		                                       .mangledName = functionName,
+		                                       .ptr = (void*) definition,
+		                                       .arguments = {},
+		                                       .fnAttrs = {}};
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
@@ -279,6 +327,59 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
 }
 
+std::unique_ptr<TraceModule> ExceptionBasedTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
+                                                               const engine::Options& options) {
+	return traceContext.startTrace(functions, options);
+}
+
+std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
+                                                                    const engine::Options& options) {
+	log::debug("Initialize Tracing");
+	auto traceModule = std::make_unique<TraceModule>();
+	functionsToTrace = functions;
+	registeredFunctions.clear();
+	setActiveTracer(this);
+
+	while (!functionsToTrace.empty()) {
+		auto currentFunction = functionsToTrace.front();
+		functionsToTrace.pop_front();
+		if (traceModule->hasFunction(currentFunction.getName())) {
+			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
+			continue;
+		}
+
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName());
+		auto wrapperFunc = currentFunction.getFunction();
+
+		auto rootAddress = __builtin_return_address(0);
+		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		SymbolicExecutionContext symbolicExecutionContext;
+		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		auto traceIteration = 0;
+
+		while (symbolicExecutionContext.shouldContinue()) {
+			try {
+				traceIteration = traceIteration + 1;
+				log::trace("Trace Iteration {}", traceIteration);
+				log::trace("{}", executionTrace);
+				symbolicExecutionContext.next();
+				executionTrace.resetExecution();
+				resume();
+				wrapperFunc();
+			} catch (const TraceTerminationException& ex) {
+			}
+			assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+		}
+
+		state.reset();
+		log::debug("Tracing Terminated with {} iterations", traceIteration);
+		log::trace("Final trace: {}", executionTrace);
+	}
+
+	setActiveTracer(nullptr);
+	return traceModule;
+}
+
 void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
 	aliveVars.increment(ref);
 }
@@ -286,14 +387,13 @@ void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-std::string ExceptionBasedTraceContext::getMangledName(void* fnptr) {
+std::string TraceContextBase::getMangledName(void* fnptr) {
 	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
 		return it->second;
 	}
 
 	Dl_info info;
-	dladdr(reinterpret_cast<void*>(fnptr), &info);
-	if (info.dli_sname != nullptr) {
+	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
 		mangledNameCache[fnptr] = info.dli_sname;
 		return info.dli_sname;
 	}
@@ -304,43 +404,33 @@ std::string ExceptionBasedTraceContext::getMangledName(void* fnptr) {
 	return ptrStr;
 }
 
-std::string ExceptionBasedTraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
-	// Check if function name normalization is enabled
+std::string TraceContextBase::getFunctionName(void* fnptr, const std::string& mangledName) {
 	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
 
 	if (normalizeFunctionNames) {
-		// Return normalized name (runtimeFunc0, runtimeFunc1, etc.)
-		// Check if we already have a normalized name for this function
 		auto it = state->normalizedFunctionNameCache.find(fnptr);
 		if (it != state->normalizedFunctionNameCache.end()) {
 			return "runtimeFunc" + std::to_string(it->second);
 		}
-
-		// Assign a new normalized function index
 		uint32_t index = state->nextNormalizedFunctionIndex++;
 		state->normalizedFunctionNameCache[fnptr] = index;
 		return "runtimeFunc" + std::to_string(index);
 	}
 
-	// Check if demangling is enabled
 	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
 
 	if (!demangleFunctionNames) {
-		// Return the mangled name as-is
 		return mangledName;
 	}
 
-	// Try to demangle the function name for human-readable output
 	int status;
 	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
 	if (status == 0 && demangled != nullptr) {
-		// Demangling succeeded
 		std::string result(demangled);
 		std::free(demangled);
 		return result;
 	}
 
-	// Demangling failed, return the mangled name
 	return mangledName;
 }
 

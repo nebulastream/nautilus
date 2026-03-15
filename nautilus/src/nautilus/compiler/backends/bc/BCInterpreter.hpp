@@ -2,27 +2,26 @@
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
+#include <dyncall_callback.h>
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
 namespace nautilus::compiler::bc {
 
+/// Data passed to the dyncallback handler for each function.
+struct BCCallbackData {
+	std::unique_ptr<class BCInterpreter> interpreter;
+	std::vector<Type> argTypes;
+	Type returnType;
+};
+
 /**
- * @brief Implements the interpreter for an specific executable bytecode fragment
+ * @brief Interprets a single bytecode function.
  */
-class BCInterpreter : public Executable {
+class BCInterpreter {
 public:
-	/**
-	 * Constructor to create a bytecode interpreter.
-	 */
 	BCInterpreter(Code code, RegisterFile registerFile);
-
-	~BCInterpreter() override = default;
-
-public:
-	void* getInvocableFunctionPtr(const std::string& member) override;
-
-	bool hasInvocableFunctionPtr() override;
-
-	std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string& string) override;
 
 	std::any invokeGeneric(const std::vector<std::any>& arguments);
 
@@ -32,4 +31,29 @@ private:
 	Code code;
 	RegisterFile registerFile;
 };
+
+/**
+ * @brief Executable that wraps all BC functions as dyncallback thunks.
+ *
+ * Each function (including the main "execute" function) is lowered to bytecode,
+ * wrapped in a BCInterpreter, and exposed via a dyncallback. The main function's
+ * callback is returned from getInvocableFunctionPtr("execute").
+ */
+class BCExecutable : public Executable {
+public:
+	BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
+	             std::vector<std::unique_ptr<BCCallbackData>> callbackData, std::vector<DCCallback*> callbacks);
+
+	~BCExecutable() override;
+
+	void* getInvocableFunctionPtr(const std::string& member) override;
+
+	bool hasInvocableFunctionPtr() override;
+
+private:
+	std::unordered_map<std::string, void*> functionPtrs_;
+	std::vector<std::unique_ptr<BCCallbackData>> callbackData_;
+	std::vector<DCCallback*> callbacks_;
+};
+
 } // namespace nautilus::compiler::bc

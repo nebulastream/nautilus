@@ -20,6 +20,7 @@
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
@@ -36,6 +37,10 @@
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
 #include <unordered_set>
+
+namespace mlir { namespace func {
+class FuncOp;
+}} // namespace mlir::func
 
 namespace nautilus::compiler::mlir {
 
@@ -107,7 +112,8 @@ private:
 	 */
 	void generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame);
 
-	void generateMLIR(const ir::FunctionOperation& funcOp, ValueFrame& frame);
+	void generateFunction(::mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& funcOp, ValueFrame& frame);
+	::mlir::func::FuncOp generateFunctionDefinitions(const ir::FunctionOperation& funcOp);
 
 	void generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
 
@@ -138,6 +144,7 @@ private:
 	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
 	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
 	void generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame);
+	void generateMLIR(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame);
 	/**
 	 * @brief Generates a basic block inside of the current MLIR module. Used for control flow (if,loop).
 	 * @param blockInvocation:  basic block that is invocated.

@@ -2,8 +2,11 @@
 #pragma once
 
 #include "ExceptionBasedTraceContext.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include <functional>
+#include <list>
 #include <memory>
+#include <unordered_set>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
@@ -28,7 +31,7 @@ class SymbolicExecutionContext;
  * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
  * "lazyTracing").
  */
-class LazyTraceContext final : public TracingInterface {
+class LazyTraceContext final : public TraceContextBase {
 public:
 	// --- TracingInterface overrides ---
 
@@ -48,6 +51,11 @@ public:
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                 const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                                 FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
@@ -82,6 +90,18 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
 	                                             const engine::Options& options = engine::Options());
 
+	/**
+	 * @brief Multi-function tracing entry point. Traces all functions in the work-list,
+	 * including nested Nautilus functions discovered during tracing.
+	 * @param functions Initial list of functions to trace
+	 * @param options Engine options for configuration
+	 * @return unique_ptr to TraceModule containing all function traces
+	 */
+	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functions,
+	                                        const engine::Options& options);
+	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
+	                                          const engine::Options& options);
+
 	LazyTraceContext() = default;
 
 private:
@@ -91,20 +111,20 @@ private:
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
-	std::string getMangledName(void* fnptr);
-	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
-
-	// Injected state - holds references to stack-allocated objects
-	std::unique_ptr<TraceState> state;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
-	std::unordered_map<void*, std::string> mangledNameCache;
 
 	// Passive mode state
 	bool paused_ = false;
+	// Returned by all trace methods when paused. Safe because callers (val<T> constructors)
+	// always copy the TypedValueRef by value — no one holds the reference across calls.
 	TypedValueRef dummyRef_ = {0, Type::v};
+
+	// Work-list for multi-function tracing
+	std::list<compiler::CompilableFunction> functionsToTrace;
+	std::unordered_set<std::string> registeredFunctions;
 };
 
 } // namespace nautilus::tracing

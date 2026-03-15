@@ -5,6 +5,7 @@
 #include "ExpressionFunctions.hpp"
 #include "FunctionPtrFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
@@ -12,6 +13,7 @@
 #include "StaticLoopFunctions.hpp"
 #include "ValueTypeFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -35,30 +37,6 @@ void setLogAddresses(bool);
 
 } // namespace nautilus::log::options
 namespace nautilus::engine {
-
-namespace details {
-// old tracing functions for functions pointers
-template <size_t... Indices, typename R, typename... FunctionArguments>
-std::function<void()> createFunctionWrapper(std::index_sequence<Indices...>, R (*fnptr)(FunctionArguments...)) {
-	[[maybe_unused]] std::size_t args = sizeof...(FunctionArguments);
-	auto traceFunc = [=]() {
-		if constexpr (std::is_void_v<R>) {
-			fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
-		} else {
-			auto returnValue = fnptr(details::createTraceableArgument<FunctionArguments, Indices>()...);
-			auto type = tracing::TypeResolver<typename decltype(returnValue)::raw_type>::to_type();
-			tracing::traceReturnOperation(type, returnValue.state);
-		}
-	};
-	return traceFunc;
-}
-
-template <typename R, typename... FunctionArguments>
-std::function<void()> createFunctionWrapper(R (*fnptr)(FunctionArguments...)) {
-	return createFunctionWrapper(std::make_index_sequence<sizeof...(FunctionArguments)> {}, fnptr);
-}
-} // namespace details
 
 bool checkTestFile(std::string actual, const std::string category, const std::string group, const std::string& name) {
 	auto groupDir = std::string(TEST_DATA_FOLDER) + category + "/" + group + "/";
@@ -101,11 +79,12 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 	return false;
 }
 
-using TraceFn = std::unique_ptr<tracing::ExecutionTrace> (*)(std::function<void()>&, const engine::Options&);
+using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
+                                                          const engine::Options&);
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::trace},
-    {"LazyTraceContext", tracing::LazyTraceContext::trace},
+    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
+    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
 };
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
@@ -115,20 +94,29 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 		DYNAMIC_SECTION(ctxName) {
 			for (auto& [name, func] : tests) {
 				DYNAMIC_SECTION(name) {
-					auto executionTrace = traceFn(func, engine::Options());
+					auto rootFunction = compiler::CompilableFunction("execute", func);
+					std::list<compiler::CompilableFunction> functionsToTrace;
+					functionsToTrace.push_back(rootFunction);
+
+					// Trace all functions (initially just "execute", but may include nested functions)
+
+					auto executionTrace = traceFn(functionsToTrace, engine::Options());
 					DYNAMIC_SECTION("tracing") {
 						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 					}
 					auto ssaCreationPhase = tracing::SSACreationPhase();
-					auto afterSSA = ssaCreationPhase.apply(std::move(executionTrace));
+					auto afterSSA =
+					    ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
 					DYNAMIC_SECTION("after_ssa") {
 						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
 					}
 					DYNAMIC_SECTION("ssa_verify") {
-						auto ssaResult = tracing::VerifySSA(*afterSSA);
-						if (!ssaResult.valid) {
-							for (const auto& error : ssaResult.errors) {
-								FAIL(error);
+						for (const auto& fnName : afterSSA->getFunctionNames()) {
+							auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
+							if (!ssaResult.valid) {
+								for (const auto& error : ssaResult.errors) {
+									FAIL(error);
+								}
 							}
 						}
 					}
@@ -666,4 +654,24 @@ TEST_CASE("Function Ptr Trace Test") {
 	runTraceTests("function-ptr-tests", tests);
 }
 
+TEST_CASE("Nautilus Function Call Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"nautilusFunction", details::createFunctionWrapper(nautilusFunction)},
+	    {"nautilusFunction2", details::createFunctionWrapper(nautilusFunction2)},
+	    {"nautilusFunctionVoid", details::createFunctionWrapper(nautilusFunctionVoid)},
+	    {"nautilusFunctionMultipleResults", details::createFunctionWrapper(nautilusFunctionMultipleResults)},
+	    {"nautilusFunctionNested", details::createFunctionWrapper(nautilusFunctionNested)},
+	    {"nautilusFunctionConditional", details::createFunctionWrapper(nautilusFunctionConditional)},
+	    {"nautilusFunctionLoop", details::createFunctionWrapper(nautilusFunctionLoop)},
+	    {"nautilusFunctionMultiple", details::createFunctionWrapper(nautilusFunctionMultiple)},
+	    {"nautilusFunctionRecursiveStyle", details::createFunctionWrapper(nautilusFunctionRecursiveStyle)},
+	    {"nautilusFunctionComplex", details::createFunctionWrapper(nautilusFunctionComplex)},
+	    {"nautilusFunctionInline", details::createFunctionWrapper(nautilusFunctionInline)},
+	    {"nautilusFunctionInlineLambda", details::createFunctionWrapper(nautilusFunctionInlineLambda)},
+	    {"nautilusFunctionInlineMember", details::createFunctionWrapper(nautilusFunctionInlineMember)},
+	    {"nautilusFunctionMultipleInline", details::createFunctionWrapper(nautilusFunctionMultipleInline)},
+	    {"nautilusFunctionGetFuncPtr", details::createFunctionWrapper(nautilusFunctionGetFuncPtr)},
+	};
+	runTraceTests("nautilus-function-call-tests", tests);
+}
 } // namespace nautilus::engine

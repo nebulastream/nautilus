@@ -2,6 +2,7 @@
 #include "EnumFunction.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
+#include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
@@ -887,6 +888,47 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
+void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
+	SECTION("nautilusFunction") {
+		auto f = engine.registerFunction(nautilusFunction);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+	SECTION("nautilusFunctionInline") {
+		auto f = engine.registerFunction(nautilusFunctionInline);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+	SECTION("nautilusFunctionInlineLambda") {
+		auto f = engine.registerFunction(nautilusFunctionInlineLambda);
+		REQUIRE(f(3, 4) == 12);
+		REQUIRE(f(0, 5) == 0);
+		REQUIRE(f(-2, 3) == -6);
+	}
+	SECTION("nautilusFunctionInlineMember") {
+		auto f = engine.registerFunction(nautilusFunctionInlineMember);
+		REQUIRE(f(10, 3) == 7);
+		REQUIRE(f(5, 5) == 0);
+		REQUIRE(f(0, 1) == -1);
+	}
+	SECTION("nautilusFunctionMultipleInline") {
+		auto f = engine.registerFunction(nautilusFunctionMultipleInline);
+		// result = (a + b) + (a * b)
+		REQUIRE(f(3, 4) == 19); // 7 + 12
+		REQUIRE(f(0, 5) == 5);  // 5 + 0
+		REQUIRE(f(2, 3) == 11); // 5 + 6
+	}
+
+	SECTION("nautilusFunctionGetFuncPtr") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtr);
+		REQUIRE(f(3, 4) == 7);
+		REQUIRE(f(0, 0) == 0);
+		REQUIRE(f(-5, 5) == 0);
+	}
+}
+
 void valueExecutionTest(engine::NautilusEngine& engine) {
 	SECTION("constructAndAccess") {
 		auto f = engine.registerFunction(constructAndAccess);
@@ -1305,4 +1347,45 @@ TEST_CASE("Engine Compiler Test") {
 #endif
 }
 #endif
+
+TEST_CASE("NautilusFunction Execution Test") {
+	engine::Options options;
+	options.setOption("engine.Compilation", false);
+	auto engine = engine::NautilusEngine(options);
+	nautilusFunctionExecutionTest(engine);
+}
+
+#ifdef ENABLE_TRACING
+TEST_CASE("NautilusFunction Compiled Execution Test") {
+	std::vector<std::string> backends = {};
+#ifdef ENABLE_MLIR_BACKEND
+	backends.emplace_back("mlir");
+#endif
+#ifdef ENABLE_C_BACKEND
+	backends.emplace_back("cpp");
+#endif
+#ifdef ENABLE_BC_BACKEND
+	backends.emplace_back("bc");
+#endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	for (auto& backend : backends) {
+		for (auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				engine::Options options;
+				options.setOption("engine.backend", backend);
+				options.setOption("engine.traceMode", traceMode);
+				if (backend == "mlir") {
+					options.setOption("engine.Compilation", true);
+					options.setOption("mlir.enableMultithreading", false);
+					options.setOption("mlir.inline_invoke_calls", true);
+				}
+				auto engine = engine::NautilusEngine(options);
+				nautilusFunctionExecutionTest(engine);
+			}
+		}
+	}
+}
+
+#endif
+
 } // namespace nautilus::engine

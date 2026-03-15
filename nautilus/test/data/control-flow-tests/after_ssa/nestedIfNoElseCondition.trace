@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i32)
 	CONST	$3	42	:i32
 	EQ	$4	$1	$3	:bool
@@ -26,3 +27,4 @@ B5($2:i32,$8:i32) ControlFlowMerge
 B6($2:i32,$8:i32) ControlFlowMerge
 	ADD	$9	$2	$8	:i32
 	RETURN	$0	$9	:i32
+

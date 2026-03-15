@@ -455,29 +455,28 @@ BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile)
 	}
 }
 
-class BCInvocable : public Executable::GenericInvocable {
-public:
-	explicit BCInvocable(BCInterpreter& bcInterpreter) : bcInterpreter(bcInterpreter) {
-	}
-
-	std::any invokeGeneric(const std::vector<std::any>& vector) override {
-		return bcInterpreter.invokeGeneric(vector);
-	}
-
-private:
-	BCInterpreter& bcInterpreter;
-};
-
-void* BCInterpreter::getInvocableFunctionPtr(const std::string&) {
-	return (void*) nullptr;
+BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
+                           std::vector<std::unique_ptr<BCCallbackData>> callbackData,
+                           std::vector<DCCallback*> callbacks)
+    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)) {
 }
 
-bool BCInterpreter::hasInvocableFunctionPtr() {
-	return false;
+BCExecutable::~BCExecutable() {
+	for (auto* cb : callbacks_) {
+		dcbFreeCallback(cb);
+	}
 }
 
-std::unique_ptr<Executable::GenericInvocable> BCInterpreter::getGenericInvocable(const std::string&) {
-	return std::make_unique<BCInvocable>(*this);
+void* BCExecutable::getInvocableFunctionPtr(const std::string& member) {
+	auto it = functionPtrs_.find(member);
+	if (it != functionPtrs_.end()) {
+		return it->second;
+	}
+	return nullptr;
+}
+
+bool BCExecutable::hasInvocableFunctionPtr() {
+	return true;
 }
 
 std::any BCInterpreter::invokeGeneric(const std::vector<std::any>& args) {

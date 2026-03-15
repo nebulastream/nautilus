@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
@@ -18,6 +19,7 @@
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cassert>
@@ -37,13 +39,26 @@ OperationIdentifier createValueIdentifier(InputVariant& val) {
 	throw NotImplementedException("wrong input variant");
 }
 
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
+                                                         const compiler::CompilationUnitID& id) {
+	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
+
+	// Process all functions in the trace module
+	for (const auto& [functionName, trace] : *traceModule) {
+		auto phaseContext = IRConversionContext(trace.get(), id);
+		ir->addFunctionOperation(phaseContext.processFunction(functionName));
+	}
+
+	return ir;
+}
+
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
                                                          const compiler::CompilationUnitID& id) {
-	auto phaseContext = IRConversionContext(std::move(trace), id);
+	auto phaseContext = IRConversionContext(trace.get(), id);
 	return phaseContext.process();
 }
 
-TraceToIRConversionPhase::IRConversionContext::IRConversionContext(std::shared_ptr<ExecutionTrace> trace,
+TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrace* trace,
                                                                    const compiler::CompilationUnitID& id)
     : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {
 }
@@ -54,6 +69,22 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 	                                                             std::vector<std::string> {}, returnType);
 	ir->addRootOperation(std::move(functionOperation));
 	return ir;
+}
+
+std::unique_ptr<FunctionOperation>
+TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string& functionName) {
+	// Clear state for this function
+	currentBasicBlocks.clear();
+	blockMap.clear();
+	returnType = Type::v;
+
+	// Process all blocks starting from the first block
+	processBlock(trace->getBlocks().front());
+
+	// Create and return the function operation
+	auto functionOperation = std::make_unique<FunctionOperation>(functionName, currentBasicBlocks, std::vector<Type> {},
+	                                                             std::vector<std::string> {}, returnType);
+	return functionOperation;
 }
 
 BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {
@@ -202,6 +233,9 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 		return;
 	case ALLOCA:
 		processAlloca(frame, currentIrBlock, operation);
+		return;
+	case FUNC_ADDR:
+		processFuncAddr(frame, currentIrBlock, operation);
 		return;
 	default: {
 		throw NotImplementedException("Operation type is not implemented.");
@@ -374,6 +408,15 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& frame, BasicBlock* currentBlock,
+                                                                    TraceOperation& operation) {
+	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto funcAddrOp = currentBlock->addOperation<FunctionAddressOfOperation>(
+	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier);
+	frame.setValue(resultIdentifier, funcAddrOp);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& frame, BasicBlock* currentBlock,

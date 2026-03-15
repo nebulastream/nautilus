@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
@@ -12,12 +13,19 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
+
+namespace nautilus {
+class NautilusFunctionDefinition;
+}
 
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+class TraceModule;
 struct StaticVarHolder {
 	explicit StaticVarHolder(const void* ptr, size_t size) : ptr(ptr), size(size) {
 	}
@@ -141,6 +149,28 @@ struct TraceState {
 };
 
 /**
+ * @brief Common base class for trace context implementations.
+ *
+ * Holds shared state (TraceState, mangledNameCache) and provides
+ * getMangledName() / getFunctionName() so they are not duplicated
+ * across ExceptionBasedTraceContext and LazyTraceContext.
+ */
+class TraceContextBase : public TracingInterface {
+public:
+	~TraceContextBase() override = default;
+
+	std::string getMangledName(void* fnptr);
+	std::string getFunctionName(void* fnptr, const std::string& mangledName);
+
+protected:
+	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
+	// nullptr when not tracing, set during initialize()
+	std::unique_ptr<TraceState> state;
+
+	std::unordered_map<void*, std::string> mangledNameCache;
+};
+
+/**
  * @brief The trace context manages a thread local instance to record a symbolic execution trace of a given Nautilus
  * function.
  *
@@ -149,7 +179,7 @@ struct TraceState {
  * - ExecutionTrace and SymbolicExecutionContext are allocated on the stack in trace()
  * - TraceState holds references to these stack objects and is created during initialization
  * - staticVars and aliveVars are persistent members that get reset between trace iterations
- * - Inherits from TracingInterface so different implementations can be swapped per trace via setActiveTracer().
+ * - Inherits from TraceContextBase so different implementations can be swapped per trace via setActiveTracer().
  *
  * Lifecycle:
  * 1. trace() allocates ExecutionTrace and SymbolicExecutionContext on its stack
@@ -158,13 +188,24 @@ struct TraceState {
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
  * 4. After tracing completes, setActiveTracer(nullptr) is called and ExecutionTrace is returned
  */
-class ExceptionBasedTraceContext final : public TracingInterface {
+class ExceptionBasedTraceContext final : public TraceContextBase {
 public:
 	// --- TracingInterface overrides ---
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
 
 	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
+
+	/**
+	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
+	 * @param functionsToTrace List of functions to trace
+	 * @param options Engine options for configuration
+	 * @return unique_ptr to TraceModule containing all function traces
+	 */
+	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                        const engine::Options& options);
+	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                          const engine::Options& options);
 
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 
@@ -191,6 +232,13 @@ public:
 
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
+
+	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
+	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
+	                                 FunctionAttributes fnAttrs) override;
+
+	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+	                                        std::function<void()> fwrapper) override;
 
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
@@ -231,14 +279,13 @@ public:
 	/// Low-level entry point used by the internal tracing loop.
 	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
 
-	std::string getMangledName(void* fnptr);
-	std::string getFunctionName(void* fnptr, const std::string& mangledNamed);
-
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.
 	 * Initializes with empty state (state == nullptr means not initialized).
 	 */
 	ExceptionBasedTraceContext() = default;
+
+	bool isActive() const;
 
 private:
 	bool isFollowing();
@@ -248,14 +295,11 @@ private:
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 
-	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
-	// nullptr when not tracing, set during initialize()
-	std::unique_ptr<TraceState> state;
-
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
-	std::unordered_map<void*, std::string> mangledNameCache;
+	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
+	std::unordered_set<std::string> registeredFunctions;
 };
 
 } // namespace nautilus::tracing
