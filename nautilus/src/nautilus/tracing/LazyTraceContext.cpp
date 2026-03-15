@@ -286,7 +286,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	assert(currentOperation.op == CMP);
 
-	uint16_t nextBlock;
+	uint32_t nextBlock;
 	if (result) {
 		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
 	} else {

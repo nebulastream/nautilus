@@ -206,14 +206,14 @@ public:
 	 * @brief Creates a new block in the trace.
 	 * @return
 	 */
-	uint16_t createBlock();
+	uint32_t createBlock();
 
 	/**
 	 * @brief Returns the reference to a specific block
 	 * @param blockIndex
 	 * @return Block&
 	 */
-	Block& getBlock(uint16_t blockIndex);
+	Block& getBlock(uint32_t blockIndex);
 
 	/**
 	 * @brief Returns a reference to all blocks
@@ -225,7 +225,7 @@ public:
 	 * @brief Returns the index to the current block.
 	 * @return uint32_t
 	 */
-	uint16_t getCurrentBlockIndex() const;
+	uint32_t getCurrentBlockIndex() const;
 
 	/**
 	 * @brief Adds an operation without a result to the trace
@@ -251,7 +251,7 @@ public:
 	 * @brief Sets the current block
 	 * @param index
 	 */
-	void setCurrentBlock(uint16_t index);
+	void setCurrentBlock(uint32_t index);
 
 	/**
 	 * @brief Processes a control flow merge
@@ -288,7 +288,7 @@ private:
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
 
 public:
-	uint16_t currentBlockIndex;
+	uint32_t currentBlockIndex;
 	ValueRef currentOperationIndex;
 	std::vector<Block> blocks;
 	std::vector<operation_identifier> returnRefs;

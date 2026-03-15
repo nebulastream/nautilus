@@ -146,7 +146,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	// eagerly propagated upward through the predecessor chain by
 	// propagateValue, eliminating the need to re-process any block.
 	// blockDefinitions entries are built lazily on first access.
-	std::vector<uint16_t> worklist;
+	std::vector<uint32_t> worklist;
 	worklist.push_back(startBlock.blockId);
 
 	while (!worklist.empty()) {
@@ -207,7 +207,7 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 	}
 }
 
-const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint16_t blockId) {
+const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint32_t blockId) {
 	auto it = blockDefinitions.find(blockId);
 	if (it != blockDefinitions.end()) {
 		return it->second;

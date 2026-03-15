@@ -15,7 +15,7 @@ public:
 	 * @param Operations: A list of Operations that are executed in the BasicBlock.
 	 * @param nextBlocks : The BasicBlock that is next in the control flow of the execution.
 	 */
-	explicit BasicBlock(uint16_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments);
+	explicit BasicBlock(uint32_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments);
 
 	virtual ~BasicBlock();
 
@@ -65,7 +65,7 @@ public:
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();
 
 private:
-	uint16_t identifier;
+	uint32_t identifier;
 	std::vector<std::unique_ptr<Operation>> operations;
 	std::vector<std::unique_ptr<BasicBlockArgument>> arguments;
 	std::vector<BasicBlock*> predecessors;
