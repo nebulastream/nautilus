@@ -1,0 +1,227 @@
+name: Update vcpkg Port
+run-name: Update nautilus vcpkg port for ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - v0.1
+  workflow_dispatch:
+
+# cancel previous runs of same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-vcpkg-port:
+    runs-on: ubuntu-24.04
+    name: Update nautilus vcpkg port in nebulastream
+    env:
+      TARGET_REPO: nebulastream/nebulastream
+      PORT_DIR: vcpkg/vcpkg-registry/ports/nautilus
+    steps:
+      - name: Compute source archive SHA512
+        id: source
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/${COMMIT_SHA}.tar.gz"
+
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Downloading archive: ${ARCHIVE_URL}"
+
+          HASH=$(curl -sL "${ARCHIVE_URL}" | sha512sum | awk '{print $1}')
+          EMPTY_HASH="cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
+          if [ -z "$HASH" ] || [ "$HASH" = "$EMPTY_HASH" ]; then
+            echo "::error::Failed to download source archive or archive is empty"
+            exit 1
+          fi
+
+          echo "sha512=${HASH}" >> "$GITHUB_OUTPUT"
+          echo "Computed SHA512: ${HASH}"
+
+      - name: Clone target repository
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${TARGET_REPO}.git" \
+            target-repo
+
+      - name: Validate port directory exists
+        run: |
+          if [ ! -d "target-repo/${PORT_DIR}" ]; then
+            echo "::error::Port directory does not exist: ${PORT_DIR}"
+            echo "Create the port manually first before using this automation."
+            exit 1
+          fi
+
+      - name: Update portfile.cmake
+        env:
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+          SHA512: ${{ steps.source.outputs.sha512 }}
+        run: |
+          PORTFILE="target-repo/${PORT_DIR}/portfile.cmake"
+
+          if [ ! -f "$PORTFILE" ]; then
+            echo "::error::portfile.cmake not found"
+            exit 1
+          fi
+
+          echo "=== portfile.cmake before ==="
+          cat "$PORTFILE"
+
+          sed -i "s/^\(\s*REF\s\+\).*/\1${COMMIT_SHA}/" "$PORTFILE"
+          sed -i "s/^\(\s*SHA512\s\+\).*/\1${SHA512}/" "$PORTFILE"
+
+          echo "=== portfile.cmake after ==="
+          cat "$PORTFILE"
+
+          grep -q "$COMMIT_SHA" "$PORTFILE" || { echo "::error::Failed to update REF"; exit 1; }
+          grep -q "$SHA512" "$PORTFILE" || { echo "::error::Failed to update SHA512"; exit 1; }
+
+      - name: Update vcpkg.json port-version
+        run: |
+          VCPKG_JSON="target-repo/${PORT_DIR}/vcpkg.json"
+
+          if [ ! -f "$VCPKG_JSON" ]; then
+            echo "::warning::vcpkg.json not found, skipping version bump"
+            exit 0
+          fi
+
+          echo "=== vcpkg.json before ==="
+          cat "$VCPKG_JSON"
+
+          python3 -c "
+          import json
+          with open('${VCPKG_JSON}', 'r') as f:
+              data = json.load(f)
+          data['port-version'] = data.get('port-version', 0) + 1
+          with open('${VCPKG_JSON}', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+
+          echo "=== vcpkg.json after ==="
+          cat "$VCPKG_JSON"
+
+      - name: Validate patch files against new source
+        id: patches
+        env:
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+        run: |
+          PATCH_FILES=$(find "target-repo/${PORT_DIR}" -maxdepth 1 \( -name "*.patch" -o -name "*.diff" \) 2>/dev/null)
+
+          if [ -z "$PATCH_FILES" ]; then
+            echo "No patch files found"
+            echo "patches_ok=true" >> "$GITHUB_OUTPUT"
+            echo "patch_report=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found patch files:"
+          echo "$PATCH_FILES"
+
+          ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/${COMMIT_SHA}.tar.gz"
+          mkdir -p /tmp/nautilus-source
+          curl -sL "${ARCHIVE_URL}" | tar xz -C /tmp/nautilus-source --strip-components=1
+
+          FAILED=""
+          for patch in $PATCH_FILES; do
+            name=$(basename "$patch")
+            if patch -d /tmp/nautilus-source --dry-run -p1 < "$patch" > /dev/null 2>&1; then
+              echo "  OK: ${name}"
+            else
+              echo "  FAIL: ${name}"
+              FAILED="${FAILED}- \`${name}\`\n"
+            fi
+          done
+
+          if [ -n "$FAILED" ]; then
+            echo "::warning::Some patches do not apply cleanly"
+            echo "patches_ok=false" >> "$GITHUB_OUTPUT"
+            echo "patch_report<<PATCH_EOF" >> "$GITHUB_OUTPUT"
+            echo -e "$FAILED" >> "$GITHUB_OUTPUT"
+            echo "PATCH_EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "All patches apply cleanly"
+            echo "patches_ok=true" >> "$GITHUB_OUTPUT"
+            echo "patch_report=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for existing PR
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh pr list \
+            --repo "${TARGET_REPO}" \
+            --head "automation/update-nautilus-vcpkg-port" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "has_existing=true" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${EXISTING}" >> "$GITHUB_OUTPUT"
+            echo "Found existing PR #${EXISTING}"
+          else
+            echo "has_existing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create branch and commit
+        env:
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+        run: |
+          cd target-repo
+          git checkout -b automation/update-nautilus-vcpkg-port
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "${PORT_DIR}/"
+          git commit -m "Update nautilus vcpkg port to ${COMMIT_SHA:0:12}
+
+          Automated update from nebulastream/nautilus v0.1 branch.
+          Source commit: https://github.com/nebulastream/nautilus/commit/${COMMIT_SHA}"
+
+      - name: Push and create/update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+          PATCHES_OK: ${{ steps.patches.outputs.patches_ok }}
+          PATCH_REPORT: ${{ steps.patches.outputs.patch_report }}
+          HAS_EXISTING: ${{ steps.existing_pr.outputs.has_existing }}
+          PR_NUMBER: ${{ steps.existing_pr.outputs.pr_number }}
+        run: |
+          cd target-repo
+          git push --force origin automation/update-nautilus-vcpkg-port
+
+          PR_BODY="## Summary
+          - Update nautilus vcpkg port to [\`${COMMIT_SHA:0:12}\`](https://github.com/nebulastream/nautilus/commit/${COMMIT_SHA})
+          - Source branch: \`v0.1\`"
+
+          if [ "$PATCHES_OK" = "false" ]; then
+            PR_BODY="${PR_BODY}
+
+          > [!WARNING]
+          > The following patches failed to apply cleanly and need manual attention:
+          >
+          ${PATCH_REPORT}"
+          fi
+
+          PR_BODY="${PR_BODY}
+
+          ---
+          *Automated by [update-vcpkg-port](https://github.com/nebulastream/nautilus/actions/workflows/update-vcpkg-port.yml)*"
+
+          if [ "$HAS_EXISTING" = "true" ]; then
+            gh pr edit "$PR_NUMBER" \
+              --repo "${TARGET_REPO}" \
+              --title "Update nautilus vcpkg port to ${COMMIT_SHA:0:12}" \
+              --body "$PR_BODY"
+            echo "Updated existing PR #${PR_NUMBER}"
+          else
+            gh pr create \
+              --repo "${TARGET_REPO}" \
+              --base main \
+              --head automation/update-nautilus-vcpkg-port \
+              --title "Update nautilus vcpkg port to ${COMMIT_SHA:0:12}" \
+              --body "$PR_BODY"
+          fi
