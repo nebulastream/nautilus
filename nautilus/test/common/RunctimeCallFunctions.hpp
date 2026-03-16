@@ -175,7 +175,7 @@ val<int32_t> callSameFunction(val<int32_t> x) {
 }
 
 val<int32_t> callMemberFunction(val<Clazz*> x) {
-	auto& func = memberFunc(&Clazz::get);
+	auto& func = memberFunc<&Clazz::get>();
 	auto res = func(x);
 	return res;
 }

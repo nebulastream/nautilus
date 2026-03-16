@@ -135,13 +135,13 @@ struct member_function_traits<R (C::*)(Args...)> {
 	using arg_types = std::tuple<Args...>;
 };
 
-template <typename T>
-auto& memberFunc(T func) {
+template <auto Func>
+auto& memberFunc() {
+	using T = decltype(Func);
 	using traits = member_function_traits<T>;
 	using ClassType = typename traits::class_type;
 	using ReturnType = typename traits::return_type;
-	// using ArgTypes = typename traits::arg_types;
-	auto ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(func);
+	static auto* ptr = new MemberFuncWrapperImpl<T, ReturnType, ClassType>(Func);
 	return *ptr;
 }
 
