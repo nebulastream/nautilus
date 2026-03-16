@@ -588,6 +588,9 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 				currentBlock = &code.blocks[res->falseBlock];
 			}
 		} else if (const auto* res = std::get_if<ReturnOp>(&currentBlock->terminatorOp)) {
+			if (res->resultReg < 0) {
+				return 0;
+			}
 			return regs[res->resultReg];
 		}
 	}

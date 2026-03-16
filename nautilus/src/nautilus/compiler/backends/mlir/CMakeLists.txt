@@ -4,7 +4,7 @@ if (ENABLE_MLIR_BACKEND)
     message(STATUS MLIR_INCLUDE_DIRS=${MLIR_INCLUDE_DIRS})
     target_include_directories(nautilus SYSTEM PRIVATE
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>
-            $<INSTALL_INTERFACE:include/nebulastream/>)
+            $<INSTALL_INTERFACE:include/nautilus/>)
     add_compile_definitions(MLIR_COMPILER)
     get_property(mlir_libs GLOBAL PROPERTY MLIR_ALL_LIBS)
     get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
