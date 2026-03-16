@@ -16,6 +16,7 @@ target_link_libraries(nautilus-llvm-ir-test
     PRIVATE
     nautilus
     Catch2::Catch2WithMain
+    nautilus-sanitizer-suppressions
 )
 
 target_include_directories(nautilus-llvm-ir-test

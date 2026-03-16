@@ -15,7 +15,7 @@ add_executable(nautilus-execution-tests
 nautilus_inline(nautilus-execution-tests)
 
 
-target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain)
+target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
 endif ()
@@ -45,7 +45,7 @@ if (ENABLE_TRACING)
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../src>
                 $<INSTALL_INTERFACE:src/nautilus/>)
 
-        target_link_libraries(nautilus-tracing-tests PUBLIC nautilus Catch2::Catch2WithMain)
+        target_link_libraries(nautilus-tracing-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
         list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
         catch_discover_tests(nautilus-tracing-tests EXTRA_ARGS --allow-running-no-tests)
     else ()

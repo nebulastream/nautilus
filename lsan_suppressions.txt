@@ -1,0 +1,20 @@
+# LeakSanitizer suppressions for known LLVM/MLIR internal leaks.
+# LLVM uses static/global allocations for target info and JIT infrastructure
+# that are intentionally never freed (reclaimed at process exit).
+#
+# Usage: LSAN_OPTIONS=suppressions=lsan_suppressions.txt ./nautilus-execution-tests
+
+leak:llvm::orc::LLJIT
+leak:llvm::orc::SelfExecutorProcessControl
+leak:llvm::X86TargetLowering
+leak:llvm::X86LegalizerInfo
+leak:llvm::LLVMContextImpl
+leak:llvm::GIMatchTableExecutor
+leak:mlir::ExecutionEngine
+leak:llvm::Module::Module
+leak:llvm::MCSubtargetInfo
+leak:llvm::DataLayout::parseLayoutString
+leak:llvm::detail::IEEEFloat
+leak:createX86MCInstrInfo
+leak:LegacyLegalizerInfo
+leak:GenericLLVMIRPlatformSupport
