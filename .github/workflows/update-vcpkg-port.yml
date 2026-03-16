@@ -20,6 +20,18 @@ jobs:
       TARGET_REPO: nebulastream/nebulastream
       PORT_DIR: vcpkg/vcpkg-registry/ports/nautilus
     steps:
+      - name: Checkout nautilus source
+        uses: actions/checkout@v4
+        with:
+          path: nautilus
+
+      - name: Checkout nebulastream repository
+        uses: actions/checkout@v4
+        with:
+          repository: nebulastream/nebulastream
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: target-repo
+
       - name: Compute source archive SHA512
         id: source
         run: |
@@ -38,12 +50,6 @@ jobs:
 
           echo "sha512=${HASH}" >> "$GITHUB_OUTPUT"
           echo "Computed SHA512: ${HASH}"
-
-      - name: Clone target repository
-        run: |
-          git clone --depth 1 \
-            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${TARGET_REPO}.git" \
-            target-repo
 
       - name: Validate port directory exists
         run: |
@@ -104,8 +110,6 @@ jobs:
 
       - name: Validate patch files against new source
         id: patches
-        env:
-          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
         run: |
           PATCH_FILES=$(find "target-repo/${PORT_DIR}" -maxdepth 1 \( -name "*.patch" -o -name "*.diff" \) 2>/dev/null)
 
@@ -119,14 +123,10 @@ jobs:
           echo "Found patch files:"
           echo "$PATCH_FILES"
 
-          ARCHIVE_URL="https://github.com/${{ github.repository }}/archive/${COMMIT_SHA}.tar.gz"
-          mkdir -p /tmp/nautilus-source
-          curl -sL "${ARCHIVE_URL}" | tar xz -C /tmp/nautilus-source --strip-components=1
-
           FAILED=""
           for patch in $PATCH_FILES; do
             name=$(basename "$patch")
-            if patch -d /tmp/nautilus-source --dry-run -p1 < "$patch" > /dev/null 2>&1; then
+            if patch -d nautilus --dry-run -p1 < "$patch" > /dev/null 2>&1; then
               echo "  OK: ${name}"
             else
               echo "  FAIL: ${name}"
