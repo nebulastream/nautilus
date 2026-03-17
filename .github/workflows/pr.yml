@@ -114,6 +114,10 @@ jobs:
             cc: 'clang-19'
             cxx: 'clang++-19'
             flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'clang-18'
+            cxx: 'clang++-18'
+            flags: '-DENABLE_ASMJIT_BACKEND=ON'
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
