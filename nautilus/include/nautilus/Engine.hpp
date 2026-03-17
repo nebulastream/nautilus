@@ -105,7 +105,7 @@ public:
 	explicit CallableFunction(std::function<R(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>&& executable)
 	    : func(executable->getInvocableMember<typename R::raw_type, FunctionArguments...>("execute")),
 	      executable(std::move(executable)) {
 	}
@@ -154,7 +154,7 @@ public:
 	explicit CallableFunction(std::function<void(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
+	explicit CallableFunction(std::unique_ptr<compiler::Executable>&& executable)
 	    : func(executable->getInvocableMember<void, FunctionArguments...>("execute")),
 	      executable(std::move(executable)) {
 	}
@@ -198,7 +198,7 @@ public:
 		if (isCompiled()) {
 			auto wrapper = details::createFunctionWrapper(func);
 			auto executable = compileWrapper(wrapper);
-			return CallableFunction<R, FunctionArguments...>(executable);
+			return CallableFunction<R, FunctionArguments...>(std::move(executable));
 		}
 #endif
 		return CallableFunction<R, FunctionArguments...>(func);

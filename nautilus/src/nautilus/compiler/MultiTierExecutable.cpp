@@ -26,8 +26,7 @@ extern std::string createCompilationUnitID();
 /// Used when tier 2 backends (MLIR, C++) only provide function pointers.
 class FunctionPointerInvocable : public Executable::GenericInvocable {
 public:
-	FunctionPointerInvocable(void* fptr, Type return_type, std::vector<Type> arg_types)
-	    : fptr_(fptr), return_type_(return_type), arg_types_(std::move(arg_types)) {
+	FunctionPointerInvocable(void* fptr, Type return_type) : fptr_(fptr), return_type_(return_type) {
 	}
 
 	std::any invokeGeneric(const std::vector<std::any>& args) override {
@@ -103,7 +102,6 @@ private:
 
 	void* fptr_;
 	Type return_type_;
-	std::vector<Type> arg_types_;
 };
 
 class MultiTierExecutable::MultiTierInvocable : public Executable::GenericInvocable {
@@ -140,12 +138,12 @@ MultiTierExecutable::MultiTierExecutable(std::unique_ptr<Executable> tier1Execut
                                          MultiTierJitCompiler::wrapper_function wrapperFunction,
                                          engine::Options options, const CompilationBackendRegistry* backends,
                                          uint64_t tier2Threshold, std::string tier1BackendName,
-                                         std::string tier2BackendName)
+                                         std::string tier2BackendName, Type returnType)
     : tier1_executable_(std::move(tier1Executable)), tier2_executable_(nullptr),
       wrapper_function_(std::move(wrapperFunction)), options_(std::move(options)), backends_(backends),
       tier2_threshold_(tier2Threshold), tier1_backend_name_(std::move(tier1BackendName)),
       tier2_backend_name_(std::move(tier2BackendName)), current_tier_(1), invocation_count_(0), tier2_compiling_(false),
-      tier2_failed_(false) {
+      tier2_failed_(false), return_type_(returnType) {
 }
 
 MultiTierExecutable::~MultiTierExecutable() {
@@ -160,14 +158,21 @@ void* MultiTierExecutable::getInvocableFunctionPtr(const std::string& member) {
 	// the optimized function pointer directly — no tier 3 exists, so bypassing
 	// onInvocation() is safe and faster.
 	auto* active = getActiveExecutable();
-	if (active->hasInvocableFunctionPtr()) {
+	if (active != nullptr && active->hasInvocableFunctionPtr()) {
 		return active->getInvocableFunctionPtr(member);
 	}
 	return nullptr;
 }
 
 bool MultiTierExecutable::hasInvocableFunctionPtr() {
-	return getActiveExecutable()->hasInvocableFunctionPtr();
+	// Return false during tier 1 so that getInvocableMember() uses
+	// GenericInvocable (MultiTierInvocable), which tracks invocations and
+	// triggers tier 2 compilation. After tier 2, forward to the active backend.
+	if (current_tier_.load(std::memory_order_acquire) < 2) {
+		return false;
+	}
+	auto* active = getActiveExecutable();
+	return active != nullptr && active->hasInvocableFunctionPtr();
 }
 
 std::unique_ptr<Executable::GenericInvocable> MultiTierExecutable::getGenericInvocable(const std::string& member) {
@@ -180,7 +185,7 @@ Executable::GenericInvocable* MultiTierExecutable::getFunctionPointerInvocable(c
 	if (it != fptr_invocable_cache_.end() && it->second.first == fptr) {
 		return it->second.second.get();
 	}
-	auto invocable = std::make_unique<FunctionPointerInvocable>(fptr, return_type_, arg_types_);
+	auto invocable = std::make_unique<FunctionPointerInvocable>(fptr, return_type_);
 	auto* raw = invocable.get();
 	fptr_invocable_cache_[member] = std::make_pair(fptr, std::move(invocable));
 	return raw;
@@ -228,10 +233,8 @@ void MultiTierExecutable::compileTier2() {
 		const auto ir = irGenerationPhase.apply(std::move(afterSSA), compilationId);
 		dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 
-		// Extract return type and argument types from IR for dyncall dispatch
-		auto& rootOp = ir->getRootOperation();
-		auto return_type = rootOp.getOutputArg();
-		auto arg_types = rootOp.getInputArgs();
+		// Extract return type from IR for dyncall dispatch
+		auto return_type = ir->getFunctionOperations()[0]->getOutputArg();
 
 		if (options_.getOptionOrDefault("dump.graph", false)) {
 			ir::createGraphVizFromIr(ir, options_, dumpHandler);
@@ -241,7 +244,7 @@ void MultiTierExecutable::compileTier2() {
 		auto newExecutable = tier2Backend->compile(ir, dumpHandler, options_);
 		newExecutable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 
-		switchToTier2(std::move(newExecutable), return_type, std::move(arg_types));
+		switchToTier2(std::move(newExecutable), return_type);
 	} catch (const std::exception& e) {
 		log::error("Tier 2 compilation failed: {}", e.what());
 		std::lock_guard<std::mutex> lock(tier_transition_mutex_);
@@ -255,11 +258,9 @@ void MultiTierExecutable::compileTier2() {
 #endif
 }
 
-void MultiTierExecutable::switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type,
-                                        std::vector<Type> arg_types) {
+void MultiTierExecutable::switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type) {
 	std::lock_guard<std::mutex> lock(tier_transition_mutex_);
 	return_type_ = return_type;
-	arg_types_ = std::move(arg_types);
 	fptr_invocable_cache_.clear();
 	tier2_executable_ = std::move(newExecutable);
 	current_tier_.store(2, std::memory_order_release);

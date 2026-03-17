@@ -11,7 +11,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 namespace nautilus::compiler {
 
@@ -30,7 +29,7 @@ public:
 	MultiTierExecutable(std::unique_ptr<Executable> tier1Executable,
 	                    MultiTierJitCompiler::wrapper_function wrapperFunction, engine::Options options,
 	                    const CompilationBackendRegistry* backends, uint64_t tier2Threshold,
-	                    std::string tier1BackendName, std::string tier2BackendName);
+	                    std::string tier1BackendName, std::string tier2BackendName, Type returnType);
 
 	~MultiTierExecutable() override;
 
@@ -76,7 +75,7 @@ public:
 private:
 	void onInvocation();
 	void compileTier2();
-	void switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type, std::vector<Type> arg_types);
+	void switchToTier2(std::unique_ptr<Executable> newExecutable, Type return_type);
 	Executable* getActiveExecutable();
 	GenericInvocable* getFunctionPointerInvocable(const std::string& member, void* fptr);
 
@@ -96,9 +95,8 @@ private:
 	std::future<void> tier2_compilation_future_;
 	std::mutex tier_transition_mutex_;
 
-	// Type metadata for dyncall dispatch, protected by tier_transition_mutex_
+	// Return type for dyncall dispatch, protected by tier_transition_mutex_
 	Type return_type_ = Type::v;
-	std::vector<Type> arg_types_;
 
 	// Cache for function pointer invocables (member -> (fptr, invocable))
 	std::map<std::string, std::pair<void*, std::unique_ptr<GenericInvocable>>> fptr_invocable_cache_;

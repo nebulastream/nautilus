@@ -10,6 +10,7 @@
 
 #ifdef ENABLE_COMPILER
 
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -59,12 +60,16 @@ std::unique_ptr<Executable> MultiTierJitCompiler::compile(MultiTierJitCompiler::
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
+	// Extract return type from IR for dyncall dispatch when active backend uses function pointers
+	auto return_type = ir->getFunctionOperations()[0]->getOutputArg();
+
 	const auto tier1Backend = backends_->getBackend(tier1_backend_name);
 	auto tier1_executable = tier1Backend->compile(ir, dumpHandler, options);
 	tier1_executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 
 	return std::make_unique<MultiTierExecutable>(std::move(tier1_executable), function, options, backends_,
-	                                             getTier2Threshold(), tier1_backend_name, getTier2BackendName());
+	                                             getTier2Threshold(), tier1_backend_name, getTier2BackendName(),
+	                                             return_type);
 }
 
 #else
