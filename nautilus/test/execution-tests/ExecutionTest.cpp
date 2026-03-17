@@ -1367,6 +1367,9 @@ TEST_CASE("NautilusFunction Compiled Execution Test") {
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
 #endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	backends.emplace_back("asmjit");
+#endif
 	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (auto& backend : backends) {
 		for (auto& traceMode : traceModes) {

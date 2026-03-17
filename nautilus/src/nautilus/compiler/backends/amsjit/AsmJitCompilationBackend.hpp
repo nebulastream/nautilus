@@ -6,12 +6,12 @@
 namespace nautilus::compiler::asmjit {
 
 /**
- * @brief Compilation backend that generates cpp code and compiles it at runtime
+ * @brief Compilation backend that JIT-compiles IR to native machine code using AsmJit
  */
 class AsmJitCompilationBackend : public CompilationBackend {
 public:
 	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                    const engine::Options& options) override;
+	                                    const engine::Options& options) const override;
 };
 
 } // namespace nautilus::compiler::asmjit

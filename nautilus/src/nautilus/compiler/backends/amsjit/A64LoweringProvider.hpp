@@ -1,107 +1,145 @@
+
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
-#include <asmjit/a64.h>
-#include <sstream>
+#include <unordered_map>
 #include <unordered_set>
-#include <vector>
+#include <variant>
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#include <asmjit/x86.h>
+#else
+#include <asmjit/a64.h>
+#endif
 
 namespace nautilus::compiler::asmjit {
 
 /**
- * @brief The lowering provider translates the IR to the a64 assembly.
+ * @brief Translates Nautilus IR to native machine code using AsmJit.
+ *
+ * All functions in the IR are compiled into a single CodeHolder using AsmJit's
+ * two-pass pattern: first all FuncNodes are registered (establishing stable Labels),
+ * then each function body is emitted. This allows forward and mutual references
+ * between functions without any ordering constraints or external thunks.
  */
-class A64LoweringProvider {
+class AsmJitLoweringProvider {
 public:
-	A64LoweringProvider() = default;
+	AsmJitLoweringProvider() = default;
 
-	void* lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime);
+	struct LowerResult {
+		void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
+		std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
+	};
+
+	/// Compile all functions in the IR graph into one JIT allocation.
+	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime);
 
 private:
-	using RegisterFrame = Frame<ir::OperationIdentifier, ::asmjit::a64::Gp>;
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+	// Integer/pointer types → GP register; float types → XMM register.
+	using AsmReg = std::variant<::asmjit::x86::Gp, ::asmjit::x86::Xmm>;
+	using RegisterFrame = Frame<ir::OperationIdentifier, AsmReg>;
 
 	class LoweringContext {
 	public:
-		explicit LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code);
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code);
 
-		void process();
+		/// Pass 1 + Pass 2 + finalize.
+		void processAll();
+
+		/// Must be called after processAll() and before rt.add() to capture label offsets.
+		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
+			return funcNodes_;
+		}
 
 	private:
-		::asmjit::a64::Compiler cc;
+		::asmjit::x86::Compiler cc;
 		std::shared_ptr<ir::IRGraph> ir;
-		std::unordered_map<std::string, std::string> activeBlocks;
-		std::unordered_set<std::string> functionNames;
-		std::string returnType;
+		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
+		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
+		std::unordered_map<std::string, ::asmjit::Label> blockLabels;
+		std::unordered_set<std::string> processedBlocks;
 
-		std::string process(const ir::BasicBlock*, RegisterFrame& frame);
+		static ::asmjit::TypeId getTypeId(Type t);
+		static bool isFloatType(Type t);
+		static bool isUnsignedType(Type t);
 
-		void process(ir::BasicBlockInvocation& opt, RegisterFrame& frame);
+		// All integer types are mapped to 64-bit GP; floats to XMM.
+		AsmReg allocReg(Type t);
+		static ::asmjit::x86::Gp toGp(const AsmReg& r);
+		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
 
-		void process(const std::unique_ptr<ir::Operation>& operation, RegisterFrame& frame);
+		::asmjit::Label getOrCreateLabel(const std::string& blockId);
+		void emitMove(const AsmReg& dst, const AsmReg& src);
 
-		void process(ir::IfOperation* opt, short block, RegisterFrame& frame);
+		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
+		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+		void processOperation(const std::unique_ptr<ir::Operation>& op, RegisterFrame& frame);
 
-		void process(ir::CompareOperation* opt, short block, RegisterFrame& frame);
+		void processConstBool(ir::ConstBooleanOperation* op, RegisterFrame& frame);
+		void processConstInt(ir::ConstIntOperation* op, RegisterFrame& frame);
+		void processConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame);
+		void processConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame);
 
-		void process(ir::BranchOperation* opt, short block, RegisterFrame& frame);
+		void processAdd(ir::AddOperation* op, RegisterFrame& frame);
+		void processSub(ir::SubOperation* op, RegisterFrame& frame);
+		void processMul(ir::MulOperation* op, RegisterFrame& frame);
+		void processDiv(ir::DivOperation* op, RegisterFrame& frame);
+		void processMod(ir::ModOperation* op, RegisterFrame& frame);
 
-		void process(ir::LoadOperation* opt, short block, RegisterFrame& frame);
+		void processCompare(ir::CompareOperation* op, RegisterFrame& frame);
+		void processAnd(ir::AndOperation* op, RegisterFrame& frame);
+		void processOr(ir::OrOperation* op, RegisterFrame& frame);
+		void processNot(ir::NotOperation* op, RegisterFrame& frame);
+		void processNegate(ir::NegateOperation* op, RegisterFrame& frame);
+		void processShift(ir::ShiftOperation* op, RegisterFrame& frame);
+		void processBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame);
 
-		void process(ir::StoreOperation* opt, short block, RegisterFrame& frame);
+		void processIf(ir::IfOperation* op, RegisterFrame& frame);
+		void processBranch(ir::BranchOperation* op, RegisterFrame& frame);
+		void processReturn(ir::ReturnOperation* op, RegisterFrame& frame);
+		void processSelect(ir::SelectOperation* op, RegisterFrame& frame);
 
-		void process(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
-
-		static std::string getVariable(const ir::OperationIdentifier& id);
-
-		static std::string getType(const Type& stamp);
-
-		template <class Type>
-		void processConst(const std::unique_ptr<ir::Operation>& opt, short blockIndex, RegisterFrame& frame) {
-			auto constValue = static_cast<Type*>(opt.get());
-			auto var = getVariable(constValue->getIdentifier());
-			blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
-			frame.setValue(constValue->getIdentifier(), var);
-			blocks[blockIndex] << var << " = " << constValue->getValue() << ";\n";
-		}
-
-		template <class Type>
-		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex,
-		                   RegisterFrame& frame) {
-			auto op = static_cast<Type*>(o.get());
-			auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
-			auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());
-			auto resultVar = getVariable(op->getIdentifier());
-			blockArguments << getType(op->getStamp()) << " " << resultVar << ";\n";
-			frame.setValue(op->getIdentifier(), resultVar);
-			blocks[blockIndex] << resultVar << " = " << leftInput << operation << rightInput << ";\n";
-		}
+		void processLoad(ir::LoadOperation* op, RegisterFrame& frame);
+		void processStore(ir::StoreOperation* op, RegisterFrame& frame);
+		void processAlloca(ir::AllocaOperation* op, RegisterFrame& frame);
+		void processProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame);
+		void processIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
+		void processFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
+		void processCast(ir::CastOperation* op, RegisterFrame& frame);
 	};
+#endif // x86
 };
+
 } // namespace nautilus::compiler::asmjit
