@@ -479,58 +479,62 @@ bool BCExecutable::hasInvocableFunctionPtr() {
 }
 
 int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
-	// Zero alloca buffers so each invocation starts with a clean stack frame.
-	for (auto& [reg, bufIdx] : code.allocaRegisterMap) {
-		auto& buf = code.allocaBuffers[bufIdx];
-		std::fill(buf.begin(), buf.end(), uint8_t {0});
+	// Per-invocation copy of the register file (thread-safe + reentrant).
+	RegisterFile regs = registerFile;
+
+	// Per-invocation alloca buffers, zeroed for a clean stack frame.
+	std::vector<std::vector<uint8_t>> localAllocaBuffers(code.allocaBuffers.size());
+	for (const auto& [reg, bufIdx] : code.allocaRegisterMap) {
+		localAllocaBuffers[bufIdx].resize(code.allocaBuffers[bufIdx].size(), 0);
+		regs[reg] = reinterpret_cast<int64_t>(localAllocaBuffers[bufIdx].data());
 	}
 
-	// Read arguments from DCArgs directly into the register file.
+	// Read arguments from DCArgs directly into the local register file.
 	for (size_t i = 0; i < argTypes.size(); i++) {
 		auto reg = code.arguments[i];
 		switch (argTypes[i]) {
 		case Type::b:
-			writeReg<bool>(registerFile, reg, static_cast<bool>(dcbArgBool(args)));
+			writeReg<bool>(regs, reg, static_cast<bool>(dcbArgBool(args)));
 			break;
 		case Type::i8:
-			writeReg<int8_t>(registerFile, reg, static_cast<int8_t>(dcbArgChar(args)));
+			writeReg<int8_t>(regs, reg, static_cast<int8_t>(dcbArgChar(args)));
 			break;
 		case Type::i16:
-			writeReg<int16_t>(registerFile, reg, static_cast<int16_t>(dcbArgShort(args)));
+			writeReg<int16_t>(regs, reg, static_cast<int16_t>(dcbArgShort(args)));
 			break;
 		case Type::i32:
-			writeReg<int32_t>(registerFile, reg, static_cast<int32_t>(dcbArgInt(args)));
+			writeReg<int32_t>(regs, reg, static_cast<int32_t>(dcbArgInt(args)));
 			break;
 		case Type::i64:
-			writeReg<int64_t>(registerFile, reg, static_cast<int64_t>(dcbArgLong(args)));
+			writeReg<int64_t>(regs, reg, static_cast<int64_t>(dcbArgLong(args)));
 			break;
 		case Type::ui8:
-			writeReg<uint8_t>(registerFile, reg, static_cast<uint8_t>(dcbArgUChar(args)));
+			writeReg<uint8_t>(regs, reg, static_cast<uint8_t>(dcbArgUChar(args)));
 			break;
 		case Type::ui16:
-			writeReg<uint16_t>(registerFile, reg, static_cast<uint16_t>(dcbArgUShort(args)));
+			writeReg<uint16_t>(regs, reg, static_cast<uint16_t>(dcbArgUShort(args)));
 			break;
 		case Type::ui32:
-			writeReg<uint32_t>(registerFile, reg, static_cast<uint32_t>(dcbArgUInt(args)));
+			writeReg<uint32_t>(regs, reg, static_cast<uint32_t>(dcbArgUInt(args)));
 			break;
 		case Type::ui64:
-			writeReg<uint64_t>(registerFile, reg, static_cast<uint64_t>(dcbArgULong(args)));
+			writeReg<uint64_t>(regs, reg, static_cast<uint64_t>(dcbArgULong(args)));
 			break;
 		case Type::f32:
-			writeReg<float>(registerFile, reg, static_cast<float>(dcbArgFloat(args)));
+			writeReg<float>(regs, reg, static_cast<float>(dcbArgFloat(args)));
 			break;
 		case Type::f64:
-			writeReg<double>(registerFile, reg, static_cast<double>(dcbArgDouble(args)));
+			writeReg<double>(regs, reg, static_cast<double>(dcbArgDouble(args)));
 			break;
 		case Type::ptr:
-			registerFile[reg] = reinterpret_cast<int64_t>(dcbArgPointer(args));
+			regs[reg] = reinterpret_cast<int64_t>(dcbArgPointer(args));
 			break;
 		default:
 			break;
 		}
 	}
 
-	return execute(registerFile);
+	return execute(regs);
 }
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
