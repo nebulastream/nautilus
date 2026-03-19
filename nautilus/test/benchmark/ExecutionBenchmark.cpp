@@ -95,4 +95,40 @@ TEST_CASE("Execution Benchmark") {
 	}
 }
 
+#ifdef ENABLE_BC_BACKEND
+
+TEST_CASE("Constant Folding Benchmark") {
+	struct OptConfig {
+		std::string name;
+		bool constantFolding;
+		bool interBlockPropagation;
+	};
+
+	auto configs = std::vector<OptConfig> {
+	    {"none", false, false},
+	    {"cf_only", true, false},
+	    {"ibcp_only", false, true},
+	    {"cf_and_ibcp", true, true},
+	};
+
+	for (auto& config : configs) {
+		for (auto& test : benchmarks) {
+			auto func = std::get<1>(test);
+			auto testName = std::get<0>(test);
+
+			Catch::Benchmark::Benchmark("exec_bc_" + config.name + "_" + testName)
+			    .operator=([&func, &config](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", std::string("lazyTracing"));
+				    op.setOption("optimization.constantFolding", config.constantFolding);
+				    op.setOption("optimization.interBlockConstantPropagation", config.interBlockPropagation);
+				    func(meter, op);
+			    });
+		}
+	}
+}
+
+#endif
+
 } // namespace nautilus::engine

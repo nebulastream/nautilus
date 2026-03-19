@@ -16,6 +16,7 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/compiler/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/phases/ConstantFoldingPhase.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -91,6 +92,12 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
+
+	// Apply constant folding optimization
+	auto constantFoldingPhase = ir::ConstantFoldingPhase();
+	constantFoldingPhase.apply(ir, options);
+	dumpHandler.dump("after_constant_folding", "ir", [&]() { return ir->toString(); });
+
 	// lower to backend
 	const auto backendName = getName();
 	const auto backend = backends->getBackend(backendName);

@@ -66,6 +66,15 @@ BasicBlock* BasicBlock::addOperation(std::unique_ptr<Operation> operation) {
 	return this;
 }
 
+void BasicBlock::addOperationBefore(Operation* before, std::unique_ptr<Operation>& operation) {
+	for (auto it = operations.begin(); it != operations.end(); ++it) {
+		if (it->get() == before) {
+			operations.insert(it, std::move(operation));
+			return;
+		}
+	}
+}
+
 void BasicBlock::addPredecessor(BasicBlock* predecessor) {
 	this->predecessors.emplace_back(predecessor);
 }
@@ -74,48 +83,8 @@ std::vector<BasicBlock*>& BasicBlock::getPredecessors() {
 	return predecessors;
 }
 
-/* void BasicBlock::replaceOperation(size_t operationIndex, Operation
- *operation) { operations.at(operationIndex) = operation;
- }
-
- void BasicBlock::removeOperation(Operation *operation) {
-     auto pos = std::find(operations.begin(), operations.end(), operation);
-     operations.erase();
- }
-
- void BasicBlock::removeArgument(BasicBlockArgument* argument) {
-     arguments.erase(std::find(arguments.begin(), arguments.end(), argument));
- }
-
- void BasicBlock::addOperationBefore(Operation *before,
- std::unique_ptr<Operation>& operation) { auto position =
- std::find(operations.begin(), operations.end(), before);
-     operations.insert(position, std::move(operation));
- }
-
- [[nodiscard]] std::pair<const BasicBlock *, const BasicBlock *>
- BasicBlock::getNextBlocks() {
-     // std::pair<std::shared_ptr<BasicBlock>, std::shared_ptr<BasicBlock>>
- nextBlocks; if (operations.back()->getOperationType() ==
- Operation::OperationType::BranchOp) { auto branchOp =
- std::static_pointer_cast<BranchOperation>(operations.back()); return
- std::make_pair(branchOp->getNextBlockInvocation().getBlock(), nullptr); } else
- if (operations.back()->getOperationType() == Operation::OperationType::IfOp) {
-         auto ifOp = std::static_pointer_cast<IfOperation>(operations.back());
-         return std::make_pair(ifOp->getTrueBlockInvocation().getBlock(),
-                               ifOp->getFalseBlockInvocation().getBlock());
-     } else if (operations.back()->getOperationType() ==
- Operation::OperationType::LoopOp) { auto loopOp =
- std::static_pointer_cast<LoopOperation>(operations.back()); return
- std::make_pair(loopOp->getLoopBodyBlock().getBlock(),
- loopOp->getLoopFalseBlock().getBlock()); } else if
- (operations.back()->getOperationType() == Operation::OperationType::ReturnOp) {
-         return {};
-     } else {
-         throw NotImplementedException(
-                 "BasicBlock::getNextBlocks: Tried to get next block for
- unsupported operation type.");
-     }
- }*/
+void BasicBlock::replaceOperation(size_t operationIndex, Operation* operation) {
+	operations.at(operationIndex) = std::unique_ptr<Operation>(operation);
+}
 
 } // namespace nautilus::compiler::ir

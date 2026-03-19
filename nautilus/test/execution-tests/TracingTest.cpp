@@ -14,6 +14,7 @@
 #include "ValueTypeFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/compiler/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/phases/ConstantFoldingPhase.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -122,8 +123,13 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 					}
 					DYNAMIC_SECTION("ir") {
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+						auto ir = irGenerationPhase.apply(std::move(afterSSA));
 						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+						DYNAMIC_SECTION("after_constant_folding") {
+							auto constantFoldingPhase = compiler::ir::ConstantFoldingPhase();
+							constantFoldingPhase.apply(ir);
+							REQUIRE(checkTestFile(ir.get()->toString(), category, "after_constant_folding", name));
+						}
 					}
 				}
 			}

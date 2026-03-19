@@ -71,6 +71,14 @@ bool Operation::isConstOperation() const {
 	       opType == OperationType::ConstIntOp;
 }
 
+void Operation::replaceInputWith(Operation* oldInput, Operation* newInput) {
+	for (auto& input : inputs) {
+		if (input == oldInput) {
+			input = newInput;
+		}
+	}
+}
+
 BinaryOperation::BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type,
                                  Operation* left, Operation* right)
     : Operation(opType, identifier, type, {left, right}) {

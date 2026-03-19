@@ -92,6 +92,11 @@ public:
 
 	void replaceInput(Operation* toReplace, std::shared_ptr<Operation> replaceWith);
 
+	/**
+	 * @brief Replaces all occurrences of oldInput with newInput in this operation's inputs.
+	 */
+	void replaceInputWith(Operation* oldInput, Operation* newInput);
+
 	template <typename OP>
 	const OP* dynCast() const {
 		return dynamic_cast<const OP*>(this);
