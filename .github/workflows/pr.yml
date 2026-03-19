@@ -24,12 +24,12 @@ jobs:
           # For push-to-main events, github.head_ref is empty and ref_name is used.
           ref: ${{ github.head_ref || github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang-format-21
+      - name: Install clang-format-22
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update -q
-          sudo apt-get install -y clang-format-21
+          sudo apt-get install -y clang-format-22
       - name: Apply formatting
         run: ./format.sh -i
       - name: Commit and push formatting fixes
@@ -78,10 +78,6 @@ jobs:
             cc: 'gcc-10'
             cxx: 'g++-10'
             flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
-          - os: 'ubuntu-22.04'
-            cc: 'clang-15'
-            cxx: 'clang++-15'
-            flags: ''
           - os: 'ubuntu-24.04'
             cc: 'clang-18'
             cxx: 'clang++-18'
@@ -115,6 +111,10 @@ jobs:
             cxx: 'clang++-19'
             flags: ''
           - os: 'ubuntu-24.04'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
+            flags: ''
+          - os: 'ubuntu-24.04'
             cc: 'clang-18'
             cxx: 'clang++-18'
             flags: '-DENABLE_ASMJIT_BACKEND=ON'
@@ -145,6 +145,16 @@ jobs:
           echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
           sudo apt-get update
           sudo apt-get install -y clang-19 clang++-19
+      - name: Install clang 22
+        if: startsWith(matrix.cc, 'clang-22') && startsWith(matrix.os, 'ubuntu')
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
+          sudo apt-get update
+          sudo apt-get install -y clang-22 clang++-22
       - name: cmake
         shell: bash
         run: |
@@ -159,10 +169,10 @@ jobs:
           ctest --test-dir build/nautilus --output-on-failure
   llvm-ir-test:
     runs-on: ubuntu-24.04
-    name: LLVM IR Test (clang-21)
+    name: LLVM IR Test (clang-22)
     env:
-      CC: clang-21
-      CXX: clang++-21
+      CC: clang-22
+      CXX: clang++-22
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -172,17 +182,17 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-llvm-ir-test
-      - name: Install clang 21 and llvm-diff-21
+      - name: Install clang 22 and llvm-diff-22
         run: |
           UBUNTU_CODENAME=$(lsb_release -cs)
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release software-properties-common
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
-          sudo apt-get install -y clang-21 clang++-21 llvm-21
+          sudo apt-get install -y clang-22 clang++-22 llvm-22
           # Create symlinks for llvm-diff
-          sudo ln -sf /usr/bin/llvm-diff-21 /usr/local/bin/llvm-diff-19
+          sudo ln -sf /usr/bin/llvm-diff-22 /usr/local/bin/llvm-diff-19
       - name: cmake
         shell: bash
         run: |

@@ -20,7 +20,7 @@ fi
 CLANG_FORMAT=""
 
 # Try versioned binaries from highest to lowest
-for version in 21 20 19 18 17 16 15; do
+for version in 22 21 20 19 18 17 16; do
     if [ -x "$(command -v clang-format-${version})" ]; then
         CLANG_FORMAT="clang-format-${version}"
         break
