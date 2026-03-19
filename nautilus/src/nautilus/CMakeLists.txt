@@ -6,4 +6,4 @@ add_subdirectory(compiler)
 add_subdirectory(api)
 add_subdirectory(llvm-passes)
 
-add_source_files(nautilus logging.cpp)
+add_source_files(nautilus logging.cpp static.cpp)
