@@ -95,7 +95,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 
 	// Apply constant folding optimization
 	auto constantFoldingPhase = ir::ConstantFoldingPhase();
-	constantFoldingPhase.apply(ir);
+	constantFoldingPhase.apply(ir, options);
 	dumpHandler.dump("after_constant_folding", "ir", [&]() { return ir->toString(); });
 
 	// lower to backend

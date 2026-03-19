@@ -521,42 +521,44 @@ bool simplifyConstantBranches(FunctionOperation& func) {
  *
  * @return true if any operations were folded or branches simplified.
  */
-bool foldFunction(FunctionOperation& func) {
+bool foldFunction(FunctionOperation& func, bool enableConstantFolding, bool enableInterBlockPropagation) {
 	bool anyChanged = false;
 	bool changed = true;
 	while (changed) {
 		changed = false;
 
 		// Intra-block: fold operations with constant inputs
-		bool localChanged = true;
-		while (localChanged) {
-			localChanged = false;
-			for (auto& block : func.getBasicBlocks()) {
-				auto& ops = block->getOperations();
-				for (size_t i = 0; i < ops.size(); i++) {
-					auto* replacement = tryFold(ops[i]);
-					if (replacement) {
-						auto* oldOp = ops[i].get();
-						replaceAllUses(func, oldOp, replacement);
-						block->replaceOperation(i, replacement);
-						localChanged = true;
-						changed = true;
-						anyChanged = true;
-						break; // Restart scanning this block since operations changed
-					}
-
-					// Special case: Select with constant condition — redirect uses
-					if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
-						auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
-						if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
-							auto* selectedValue =
-							    condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
-							replaceAllUses(func, ops[i].get(), selectedValue);
-							// Since the select's uses are already redirected, it becomes dead code.
+		if (enableConstantFolding) {
+			bool localChanged = true;
+			while (localChanged) {
+				localChanged = false;
+				for (auto& block : func.getBasicBlocks()) {
+					auto& ops = block->getOperations();
+					for (size_t i = 0; i < ops.size(); i++) {
+						auto* replacement = tryFold(ops[i]);
+						if (replacement) {
+							auto* oldOp = ops[i].get();
+							replaceAllUses(func, oldOp, replacement);
+							block->replaceOperation(i, replacement);
 							localChanged = true;
 							changed = true;
 							anyChanged = true;
-							break;
+							break; // Restart scanning this block since operations changed
+						}
+
+						// Special case: Select with constant condition — redirect uses
+						if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
+							auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
+							if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
+								auto* selectedValue =
+								    condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
+								replaceAllUses(func, ops[i].get(), selectedValue);
+								// Since the select's uses are already redirected, it becomes dead code.
+								localChanged = true;
+								changed = true;
+								anyChanged = true;
+								break;
+							}
 						}
 					}
 				}
@@ -564,13 +566,13 @@ bool foldFunction(FunctionOperation& func) {
 		}
 
 		// Inter-block: propagate constants through block arguments
-		if (propagateConstantsAcrossBlocks(func)) {
+		if (enableInterBlockPropagation && propagateConstantsAcrossBlocks(func)) {
 			changed = true;
 			anyChanged = true;
 		}
 
 		// Simplify conditional branches with constant conditions
-		if (simplifyConstantBranches(func)) {
+		if ((enableConstantFolding || enableInterBlockPropagation) && simplifyConstantBranches(func)) {
 			changed = true;
 			anyChanged = true;
 		}
@@ -583,7 +585,18 @@ bool foldFunction(FunctionOperation& func) {
 
 void ConstantFoldingPhase::apply(std::shared_ptr<IRGraph> ir) {
 	for (auto& funcOp : ir->getFunctionOperations()) {
-		foldFunction(*funcOp);
+		foldFunction(*funcOp, true, true);
+	}
+}
+
+void ConstantFoldingPhase::apply(std::shared_ptr<IRGraph> ir, const engine::Options& options) {
+	bool enableConstantFolding = options.getOptionOrDefault("optimization.constantFolding", true);
+	bool enableInterBlock = options.getOptionOrDefault("optimization.interBlockConstantPropagation", true);
+	if (!enableConstantFolding && !enableInterBlock) {
+		return;
+	}
+	for (auto& funcOp : ir->getFunctionOperations()) {
+		foldFunction(*funcOp, enableConstantFolding, enableInterBlock);
 	}
 }
 
