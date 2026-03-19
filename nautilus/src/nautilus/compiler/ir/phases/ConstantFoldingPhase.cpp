@@ -198,8 +198,9 @@ Operation* tryFold(const std::unique_ptr<Operation>& op) {
 		auto* leftConst = binOp->getLeftInput()->dynCast<ConstBooleanOperation>();
 		auto* rightConst = binOp->getRightInput()->dynCast<ConstBooleanOperation>();
 		if (leftConst && rightConst) {
-			bool result = (opType == Operation::OperationType::AndOp) ? (leftConst->getValue() && rightConst->getValue())
-			                                                          : (leftConst->getValue() || rightConst->getValue());
+			bool result = (opType == Operation::OperationType::AndOp)
+			                  ? (leftConst->getValue() && rightConst->getValue())
+			                  : (leftConst->getValue() || rightConst->getValue());
 			return new ConstBooleanOperation(id, result);
 		}
 		return nullptr;
@@ -275,8 +276,9 @@ Operation* tryFold(const std::unique_ptr<Operation>& op) {
 		auto* leftConst = shiftOp->getLeftInput()->dynCast<ConstIntOperation>();
 		auto* rightConst = shiftOp->getRightInput()->dynCast<ConstIntOperation>();
 		if (leftConst && rightConst) {
-			int64_t result = (shiftOp->getType() == ShiftOperation::LS) ? (leftConst->getValue() << rightConst->getValue())
-			                                                             : (leftConst->getValue() >> rightConst->getValue());
+			int64_t result = (shiftOp->getType() == ShiftOperation::LS)
+			                     ? (leftConst->getValue() << rightConst->getValue())
+			                     : (leftConst->getValue() >> rightConst->getValue());
 			return new ConstIntOperation(id, result, stamp);
 		}
 		return nullptr;
@@ -297,8 +299,48 @@ Operation* tryFold(const std::unique_ptr<Operation>& op) {
 }
 
 /**
- * @brief Processes a single function, folding constants until a fixed point.
- * @return true if any operations were folded.
+ * @brief Converts IfOperations with constant boolean conditions to unconditional BranchOperations.
+ *
+ * When constant folding produces a ConstBooleanOperation that feeds an IfOperation's condition,
+ * the conditional branch is replaced with an unconditional jump to the taken block.
+ *
+ * @return true if any branches were simplified.
+ */
+bool simplifyConstantBranches(FunctionOperation& func) {
+	bool anyChanged = false;
+	for (auto& block : func.getBasicBlocks()) {
+		auto* terminator = block->getTerminatorOp();
+		if (terminator->getOperationType() != Operation::OperationType::IfOp) {
+			continue;
+		}
+		auto* ifOp = static_cast<IfOperation*>(terminator);
+		auto* condConst = ifOp->getBooleanValue()->dynCast<ConstBooleanOperation>();
+		if (!condConst) {
+			continue;
+		}
+
+		// Pick the taken branch based on the constant condition value
+		auto& takenInvocation =
+		    condConst->getValue() ? ifOp->getTrueBlockInvocation() : ifOp->getFalseBlockInvocation();
+
+		// Create an unconditional branch to the taken block
+		auto* branchOp = new BranchOperation();
+		auto& nextInvocation = branchOp->getNextBlockInvocation();
+		nextInvocation.setBlock(const_cast<BasicBlock*>(takenInvocation.getBlock()));
+		for (auto* arg : takenInvocation.getArguments()) {
+			nextInvocation.addArgument(arg);
+		}
+
+		block->replaceTerminatorOperation(branchOp);
+		anyChanged = true;
+	}
+	return anyChanged;
+}
+
+/**
+ * @brief Processes a single function, folding constants until a fixed point,
+ * then simplifying conditional branches with constant conditions.
+ * @return true if any operations were folded or branches simplified.
  */
 bool foldFunction(FunctionOperation& func) {
 	bool anyChanged = false;
@@ -322,11 +364,10 @@ bool foldFunction(FunctionOperation& func) {
 				if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
 					auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
 					if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
-						auto* selectedValue = condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
+						auto* selectedValue =
+						    condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
 						replaceAllUses(func, ops[i].get(), selectedValue);
-						// Replace the select with a no-op constant that matches the selected value's type.
-						// Since the select's uses are already redirected, we can leave it as dead code.
-						// It will simply not be referenced by anything.
+						// Since the select's uses are already redirected, it becomes dead code.
 						changed = true;
 						anyChanged = true;
 						break;
@@ -335,6 +376,13 @@ bool foldFunction(FunctionOperation& func) {
 			}
 		}
 	}
+
+	// After constant folding reaches fixed point, simplify conditional branches
+	// whose conditions are now constant booleans.
+	if (simplifyConstantBranches(func)) {
+		anyChanged = true;
+	}
+
 	return anyChanged;
 }
 
