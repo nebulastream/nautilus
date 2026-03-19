@@ -66,6 +66,15 @@ BasicBlock* BasicBlock::addOperation(std::unique_ptr<Operation> operation) {
 	return this;
 }
 
+void BasicBlock::addOperationBefore(Operation* before, std::unique_ptr<Operation>& operation) {
+	for (auto it = operations.begin(); it != operations.end(); ++it) {
+		if (it->get() == before) {
+			operations.insert(it, std::move(operation));
+			return;
+		}
+	}
+}
+
 void BasicBlock::addPredecessor(BasicBlock* predecessor) {
 	this->predecessors.emplace_back(predecessor);
 }

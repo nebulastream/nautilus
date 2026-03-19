@@ -299,6 +299,182 @@ Operation* tryFold(const std::unique_ptr<Operation>& op) {
 }
 
 /**
+ * @brief Returns true if the operation is a constant (int, float, or boolean).
+ */
+bool isConstant(Operation* op) {
+	auto type = op->getOperationType();
+	return type == Operation::OperationType::ConstIntOp || type == Operation::OperationType::ConstFloatOp ||
+	       type == Operation::OperationType::ConstBooleanOp;
+}
+
+/**
+ * @brief Returns true if two constant operations hold the same value.
+ */
+bool sameConstantValue(Operation* a, Operation* b) {
+	if (a == b) {
+		return true;
+	}
+	if (a->getOperationType() != b->getOperationType()) {
+		return false;
+	}
+	if (auto* ai = a->dynCast<ConstIntOperation>()) {
+		return ai->getValue() == b->dynCast<ConstIntOperation>()->getValue();
+	}
+	if (auto* af = a->dynCast<ConstFloatOperation>()) {
+		return af->getValue() == b->dynCast<ConstFloatOperation>()->getValue();
+	}
+	if (auto* ab = a->dynCast<ConstBooleanOperation>()) {
+		return ab->getValue() == b->dynCast<ConstBooleanOperation>()->getValue();
+	}
+	return false;
+}
+
+/**
+ * @brief Collects all BasicBlockInvocations that target the given block.
+ *
+ * Scans all blocks in the function and inspects their terminators
+ * (BranchOperation and IfOperation) to find invocations targeting the block.
+ */
+std::vector<const BasicBlockInvocation*> getIncomingInvocations(FunctionOperation& func, const BasicBlock* target) {
+	std::vector<const BasicBlockInvocation*> result;
+	for (auto& block : func.getBasicBlocks()) {
+		auto* terminator = block->getTerminatorOp();
+		if (auto* branchOp = dynamic_cast<BranchOperation*>(terminator)) {
+			if (branchOp->getNextBlockInvocation().getBlock() == target) {
+				result.push_back(&branchOp->getNextBlockInvocation());
+			}
+		} else if (auto* ifOp = dynamic_cast<IfOperation*>(terminator)) {
+			if (ifOp->getTrueBlockInvocation().getBlock() == target) {
+				result.push_back(&ifOp->getTrueBlockInvocation());
+			}
+			if (ifOp->getFalseBlockInvocation().getBlock() == target) {
+				result.push_back(&ifOp->getFalseBlockInvocation());
+			}
+		}
+	}
+	return result;
+}
+
+/**
+ * @brief Returns true if any operation in the function references the given operation as an input.
+ */
+bool hasUses(FunctionOperation& func, Operation* op) {
+	for (auto& block : func.getBasicBlocks()) {
+		for (auto& blockOp : block->getOperations()) {
+			for (auto* input : blockOp->getInputs()) {
+				if (input == op) {
+					return true;
+				}
+			}
+			// Check block invocation arguments in terminators
+			if (auto* branchOp = dynamic_cast<BranchOperation*>(blockOp.get())) {
+				for (auto* arg : branchOp->getNextBlockInvocation().getArguments()) {
+					if (arg == op) {
+						return true;
+					}
+				}
+			} else if (auto* ifOp = dynamic_cast<IfOperation*>(blockOp.get())) {
+				for (auto* arg : ifOp->getTrueBlockInvocation().getArguments()) {
+					if (arg == op) {
+						return true;
+					}
+				}
+				for (auto* arg : ifOp->getFalseBlockInvocation().getArguments()) {
+					if (arg == op) {
+						return true;
+					}
+				}
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * @brief Creates a new constant operation with the same value as the source but a new identifier.
+ *
+ * The new constant is created with the block argument's identifier so it can be resolved
+ * in the target block's value frame during code generation.
+ */
+Operation* cloneConstant(Operation* source, OperationIdentifier newId) {
+	if (auto* intConst = source->dynCast<ConstIntOperation>()) {
+		return new ConstIntOperation(newId, intConst->getValue(), source->getStamp());
+	}
+	if (auto* floatConst = source->dynCast<ConstFloatOperation>()) {
+		return new ConstFloatOperation(newId, floatConst->getValue(), source->getStamp());
+	}
+	if (auto* boolConst = source->dynCast<ConstBooleanOperation>()) {
+		return new ConstBooleanOperation(newId, boolConst->getValue());
+	}
+	return nullptr;
+}
+
+/**
+ * @brief Propagates constants across basic block boundaries.
+ *
+ * For each block argument, if all predecessors pass the same constant value,
+ * creates a new constant in the target block and replaces uses of the block argument.
+ *
+ * @return true if any block arguments were replaced with constants.
+ */
+bool propagateConstantsAcrossBlocks(FunctionOperation& func) {
+	bool anyChanged = false;
+	for (auto& block : func.getBasicBlocks()) {
+		auto& blockArgs = block->getArguments();
+		if (blockArgs.empty()) {
+			continue;
+		}
+
+		auto invocations = getIncomingInvocations(func, block.get());
+		if (invocations.empty()) {
+			continue;
+		}
+
+		for (size_t argIdx = 0; argIdx < blockArgs.size(); argIdx++) {
+			// Skip block arguments that are no longer used (already propagated)
+			if (!hasUses(func, blockArgs[argIdx].get())) {
+				continue;
+			}
+
+			auto& passedArgs = invocations[0]->getArguments();
+			if (argIdx >= passedArgs.size()) {
+				continue;
+			}
+			auto* firstValue = passedArgs[argIdx];
+			if (!isConstant(firstValue)) {
+				continue;
+			}
+
+			// Check that all predecessors pass the same constant at this position
+			bool allSame = true;
+			for (size_t p = 1; p < invocations.size(); p++) {
+				auto& args = invocations[p]->getArguments();
+				if (argIdx >= args.size() || !sameConstantValue(firstValue, args[argIdx])) {
+					allSame = false;
+					break;
+				}
+			}
+			if (!allSame) {
+				continue;
+			}
+
+			// Create a new constant in this block with the block argument's identifier,
+			// so backends can resolve it in the local value frame.
+			auto* newConst = cloneConstant(firstValue, blockArgs[argIdx]->getIdentifier());
+			if (!newConst) {
+				continue;
+			}
+			replaceAllUses(func, blockArgs[argIdx].get(), newConst);
+			// Insert the constant before the first operation so it is available to all uses.
+			auto newConstPtr = std::unique_ptr<Operation>(newConst);
+			block->addOperationBefore(block->getOperationAt(0), newConstPtr);
+			anyChanged = true;
+		}
+	}
+	return anyChanged;
+}
+
+/**
  * @brief Converts IfOperations with constant boolean conditions to unconditional BranchOperations.
  *
  * When constant folding produces a ConstBooleanOperation that feeds an IfOperation's condition,
@@ -338,8 +514,11 @@ bool simplifyConstantBranches(FunctionOperation& func) {
 }
 
 /**
- * @brief Processes a single function, folding constants until a fixed point,
- * then simplifying conditional branches with constant conditions.
+ * @brief Processes a single function, folding constants until a fixed point.
+ *
+ * Iterates through intra-block constant folding, inter-block constant propagation,
+ * and branch simplification until no more changes occur.
+ *
  * @return true if any operations were folded or branches simplified.
  */
 bool foldFunction(FunctionOperation& func) {
@@ -347,40 +526,54 @@ bool foldFunction(FunctionOperation& func) {
 	bool changed = true;
 	while (changed) {
 		changed = false;
-		for (auto& block : func.getBasicBlocks()) {
-			auto& ops = block->getOperations();
-			for (size_t i = 0; i < ops.size(); i++) {
-				auto* replacement = tryFold(ops[i]);
-				if (replacement) {
-					auto* oldOp = ops[i].get();
-					replaceAllUses(func, oldOp, replacement);
-					block->replaceOperation(i, replacement);
-					changed = true;
-					anyChanged = true;
-					break; // Restart scanning this block since operations changed
-				}
 
-				// Special case: Select with constant condition — redirect uses
-				if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
-					auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
-					if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
-						auto* selectedValue =
-						    condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
-						replaceAllUses(func, ops[i].get(), selectedValue);
-						// Since the select's uses are already redirected, it becomes dead code.
+		// Intra-block: fold operations with constant inputs
+		bool localChanged = true;
+		while (localChanged) {
+			localChanged = false;
+			for (auto& block : func.getBasicBlocks()) {
+				auto& ops = block->getOperations();
+				for (size_t i = 0; i < ops.size(); i++) {
+					auto* replacement = tryFold(ops[i]);
+					if (replacement) {
+						auto* oldOp = ops[i].get();
+						replaceAllUses(func, oldOp, replacement);
+						block->replaceOperation(i, replacement);
+						localChanged = true;
 						changed = true;
 						anyChanged = true;
-						break;
+						break; // Restart scanning this block since operations changed
+					}
+
+					// Special case: Select with constant condition — redirect uses
+					if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
+						auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
+						if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
+							auto* selectedValue =
+							    condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
+							replaceAllUses(func, ops[i].get(), selectedValue);
+							// Since the select's uses are already redirected, it becomes dead code.
+							localChanged = true;
+							changed = true;
+							anyChanged = true;
+							break;
+						}
 					}
 				}
 			}
 		}
-	}
 
-	// After constant folding reaches fixed point, simplify conditional branches
-	// whose conditions are now constant booleans.
-	if (simplifyConstantBranches(func)) {
-		anyChanged = true;
+		// Inter-block: propagate constants through block arguments
+		if (propagateConstantsAcrossBlocks(func)) {
+			changed = true;
+			anyChanged = true;
+		}
+
+		// Simplify conditional branches with constant conditions
+		if (simplifyConstantBranches(func)) {
+			changed = true;
+			anyChanged = true;
+		}
 	}
 
 	return anyChanged;
