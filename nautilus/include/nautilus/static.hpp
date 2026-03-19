@@ -95,14 +95,26 @@ public:
 		return t;
 	}
 
+	static constexpr T MAX_ITERATIONS = 1000;
+
 	const auto& operator++() {
 		++value;
+		if (value == MAX_ITERATIONS) {
+			std::cerr << "Warning: static_val exceeded " << MAX_ITERATIONS
+			          << " iterations. This may cause excessive trace sizes and long compilation times. "
+			          << "Consider using a regular val<> loop instead." << std::endl;
+		}
 		return *this;
 	}
 
 	T operator++(int) {
 		T temp = value;
 		++value;
+		if (value == MAX_ITERATIONS) {
+			std::cerr << "Warning: static_val exceeded " << MAX_ITERATIONS
+			          << " iterations. This may cause excessive trace sizes and long compilation times. "
+			          << "Consider using a regular val<> loop instead." << std::endl;
+		}
 		return temp;
 	}
 
