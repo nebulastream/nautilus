@@ -1,2 +1,2 @@
 
-add_source_files(nautilus)
+add_source_files(nautilus ConstantFoldingPhase.cpp)

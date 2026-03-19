@@ -1,0 +1,349 @@
+
+#include "nautilus/compiler/ir/phases/ConstantFoldingPhase.hpp"
+#include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
+#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
+#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
+#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
+
+namespace nautilus::compiler::ir {
+
+namespace {
+
+/**
+ * @brief Replaces all uses of oldOp with newOp across all blocks in a function.
+ *
+ * Updates operation inputs and block invocation arguments.
+ */
+void replaceAllUses(FunctionOperation& func, Operation* oldOp, Operation* newOp) {
+	for (auto& block : func.getBasicBlocks()) {
+		for (auto& op : block->getOperations()) {
+			op->replaceInputWith(oldOp, newOp);
+
+			// Handle block invocation arguments in terminator operations
+			if (auto* branchOp = dynamic_cast<BranchOperation*>(op.get())) {
+				branchOp->getNextBlockInvocation().replaceArgument(oldOp, newOp);
+			} else if (auto* ifOp = dynamic_cast<IfOperation*>(op.get())) {
+				ifOp->getTrueBlockInvocation().replaceArgument(oldOp, newOp);
+				ifOp->getFalseBlockInvocation().replaceArgument(oldOp, newOp);
+			}
+		}
+	}
+}
+
+/**
+ * @brief Attempts to fold a binary arithmetic operation on two integer constants.
+ * @return A new ConstIntOperation if foldable, nullptr otherwise.
+ */
+Operation* tryFoldIntArithmetic(Operation::OperationType opType, OperationIdentifier id, int64_t left, int64_t right,
+                                Type stamp) {
+	switch (opType) {
+	case Operation::OperationType::AddOp:
+		return new ConstIntOperation(id, left + right, stamp);
+	case Operation::OperationType::SubOp:
+		return new ConstIntOperation(id, left - right, stamp);
+	case Operation::OperationType::MulOp:
+		return new ConstIntOperation(id, left * right, stamp);
+	case Operation::OperationType::DivOp:
+		if (right == 0) {
+			return nullptr;
+		}
+		return new ConstIntOperation(id, left / right, stamp);
+	case Operation::OperationType::ModOp:
+		if (right == 0) {
+			return nullptr;
+		}
+		return new ConstIntOperation(id, left % right, stamp);
+	default:
+		return nullptr;
+	}
+}
+
+/**
+ * @brief Attempts to fold a binary arithmetic operation on two float constants.
+ * @return A new ConstFloatOperation if foldable, nullptr otherwise.
+ */
+Operation* tryFoldFloatArithmetic(Operation::OperationType opType, OperationIdentifier id, double left, double right,
+                                  Type stamp) {
+	switch (opType) {
+	case Operation::OperationType::AddOp:
+		return new ConstFloatOperation(id, left + right, stamp);
+	case Operation::OperationType::SubOp:
+		return new ConstFloatOperation(id, left - right, stamp);
+	case Operation::OperationType::MulOp:
+		return new ConstFloatOperation(id, left * right, stamp);
+	case Operation::OperationType::DivOp:
+		if (right == 0.0) {
+			return nullptr;
+		}
+		return new ConstFloatOperation(id, left / right, stamp);
+	default:
+		return nullptr;
+	}
+}
+
+/**
+ * @brief Attempts to fold a comparison on two integer constants.
+ */
+Operation* tryFoldIntCompare(OperationIdentifier id, int64_t left, int64_t right,
+                             CompareOperation::Comparator comparator) {
+	bool result;
+	switch (comparator) {
+	case CompareOperation::EQ:
+		result = (left == right);
+		break;
+	case CompareOperation::NE:
+		result = (left != right);
+		break;
+	case CompareOperation::LT:
+		result = (left < right);
+		break;
+	case CompareOperation::LE:
+		result = (left <= right);
+		break;
+	case CompareOperation::GT:
+		result = (left > right);
+		break;
+	case CompareOperation::GE:
+		result = (left >= right);
+		break;
+	default:
+		return nullptr;
+	}
+	return new ConstBooleanOperation(id, result);
+}
+
+/**
+ * @brief Attempts to fold a comparison on two float constants.
+ */
+Operation* tryFoldFloatCompare(OperationIdentifier id, double left, double right,
+                               CompareOperation::Comparator comparator) {
+	bool result;
+	switch (comparator) {
+	case CompareOperation::EQ:
+		result = (left == right);
+		break;
+	case CompareOperation::NE:
+		result = (left != right);
+		break;
+	case CompareOperation::LT:
+		result = (left < right);
+		break;
+	case CompareOperation::LE:
+		result = (left <= right);
+		break;
+	case CompareOperation::GT:
+		result = (left > right);
+		break;
+	case CompareOperation::GE:
+		result = (left >= right);
+		break;
+	default:
+		return nullptr;
+	}
+	return new ConstBooleanOperation(id, result);
+}
+
+/**
+ * @brief Attempts to fold a single operation if all its inputs are constants.
+ * @return A newly allocated constant operation if foldable, nullptr otherwise.
+ */
+Operation* tryFold(const std::unique_ptr<Operation>& op) {
+	auto opType = op->getOperationType();
+	auto id = op->getIdentifier();
+	auto stamp = op->getStamp();
+
+	// Binary arithmetic: Add, Sub, Mul, Div, Mod
+	if (opType == Operation::OperationType::AddOp || opType == Operation::OperationType::SubOp ||
+	    opType == Operation::OperationType::MulOp || opType == Operation::OperationType::DivOp ||
+	    opType == Operation::OperationType::ModOp) {
+		auto* binOp = static_cast<BinaryOperation*>(op.get());
+		auto* left = binOp->getLeftInput();
+		auto* right = binOp->getRightInput();
+
+		// Both int constants
+		if (auto* leftConst = left->dynCast<ConstIntOperation>()) {
+			if (auto* rightConst = right->dynCast<ConstIntOperation>()) {
+				return tryFoldIntArithmetic(opType, id, leftConst->getValue(), rightConst->getValue(), stamp);
+			}
+		}
+		// Both float constants
+		if (auto* leftConst = left->dynCast<ConstFloatOperation>()) {
+			if (auto* rightConst = right->dynCast<ConstFloatOperation>()) {
+				return tryFoldFloatArithmetic(opType, id, leftConst->getValue(), rightConst->getValue(), stamp);
+			}
+		}
+		return nullptr;
+	}
+
+	// Logical: And, Or
+	if (opType == Operation::OperationType::AndOp || opType == Operation::OperationType::OrOp) {
+		auto* binOp = static_cast<BinaryOperation*>(op.get());
+		auto* leftConst = binOp->getLeftInput()->dynCast<ConstBooleanOperation>();
+		auto* rightConst = binOp->getRightInput()->dynCast<ConstBooleanOperation>();
+		if (leftConst && rightConst) {
+			bool result = (opType == Operation::OperationType::AndOp) ? (leftConst->getValue() && rightConst->getValue())
+			                                                          : (leftConst->getValue() || rightConst->getValue());
+			return new ConstBooleanOperation(id, result);
+		}
+		return nullptr;
+	}
+
+	// Not (unary boolean)
+	if (opType == Operation::OperationType::NotOp) {
+		auto* notOp = static_cast<NotOperation*>(op.get());
+		if (auto* inputConst = notOp->getInput()->dynCast<ConstBooleanOperation>()) {
+			return new ConstBooleanOperation(id, !inputConst->getValue());
+		}
+		return nullptr;
+	}
+
+	// Negate (unary arithmetic)
+	if (opType == Operation::OperationType::NegateOp) {
+		auto* input = op->getInputs()[0];
+		if (auto* intConst = input->dynCast<ConstIntOperation>()) {
+			return new ConstIntOperation(id, -intConst->getValue(), stamp);
+		}
+		if (auto* floatConst = input->dynCast<ConstFloatOperation>()) {
+			return new ConstFloatOperation(id, -floatConst->getValue(), stamp);
+		}
+		return nullptr;
+	}
+
+	// Compare
+	if (opType == Operation::OperationType::CompareOp) {
+		auto* cmpOp = static_cast<CompareOperation*>(op.get());
+		auto* left = cmpOp->getLeftInput();
+		auto* right = cmpOp->getRightInput();
+		auto comparator = cmpOp->getComparator();
+
+		if (auto* leftConst = left->dynCast<ConstIntOperation>()) {
+			if (auto* rightConst = right->dynCast<ConstIntOperation>()) {
+				return tryFoldIntCompare(id, leftConst->getValue(), rightConst->getValue(), comparator);
+			}
+		}
+		if (auto* leftConst = left->dynCast<ConstFloatOperation>()) {
+			if (auto* rightConst = right->dynCast<ConstFloatOperation>()) {
+				return tryFoldFloatCompare(id, leftConst->getValue(), rightConst->getValue(), comparator);
+			}
+		}
+		return nullptr;
+	}
+
+	// BinaryComp (bitwise BAND, BOR, XOR)
+	if (opType == Operation::OperationType::BinaryComp) {
+		auto* binCompOp = static_cast<BinaryCompOperation*>(op.get());
+		auto* leftConst = binCompOp->getLeftInput()->dynCast<ConstIntOperation>();
+		auto* rightConst = binCompOp->getRightInput()->dynCast<ConstIntOperation>();
+		if (leftConst && rightConst) {
+			int64_t result;
+			switch (binCompOp->getType()) {
+			case BinaryCompOperation::BAND:
+				result = leftConst->getValue() & rightConst->getValue();
+				break;
+			case BinaryCompOperation::BOR:
+				result = leftConst->getValue() | rightConst->getValue();
+				break;
+			case BinaryCompOperation::XOR:
+				result = leftConst->getValue() ^ rightConst->getValue();
+				break;
+			}
+			return new ConstIntOperation(id, result, stamp);
+		}
+		return nullptr;
+	}
+
+	// Shift (LS, RS)
+	if (opType == Operation::OperationType::ShiftOp) {
+		auto* shiftOp = static_cast<ShiftOperation*>(op.get());
+		auto* leftConst = shiftOp->getLeftInput()->dynCast<ConstIntOperation>();
+		auto* rightConst = shiftOp->getRightInput()->dynCast<ConstIntOperation>();
+		if (leftConst && rightConst) {
+			int64_t result = (shiftOp->getType() == ShiftOperation::LS) ? (leftConst->getValue() << rightConst->getValue())
+			                                                             : (leftConst->getValue() >> rightConst->getValue());
+			return new ConstIntOperation(id, result, stamp);
+		}
+		return nullptr;
+	}
+
+	// Select with constant condition
+	if (opType == Operation::OperationType::SelectOp) {
+		auto* selectOp = static_cast<SelectOperation*>(op.get());
+		if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
+			// We can't fold to a constant, but we can redirect uses to the selected input.
+			// Return the selected operation directly — the caller will handle the reference update.
+			// We use nullptr here since we handle select specially outside.
+		}
+		return nullptr;
+	}
+
+	return nullptr;
+}
+
+/**
+ * @brief Processes a single function, folding constants until a fixed point.
+ * @return true if any operations were folded.
+ */
+bool foldFunction(FunctionOperation& func) {
+	bool anyChanged = false;
+	bool changed = true;
+	while (changed) {
+		changed = false;
+		for (auto& block : func.getBasicBlocks()) {
+			auto& ops = block->getOperations();
+			for (size_t i = 0; i < ops.size(); i++) {
+				auto* replacement = tryFold(ops[i]);
+				if (replacement) {
+					auto* oldOp = ops[i].get();
+					replaceAllUses(func, oldOp, replacement);
+					block->replaceOperation(i, replacement);
+					changed = true;
+					anyChanged = true;
+					break; // Restart scanning this block since operations changed
+				}
+
+				// Special case: Select with constant condition — redirect uses
+				if (ops[i]->getOperationType() == Operation::OperationType::SelectOp) {
+					auto* selectOp = static_cast<SelectOperation*>(ops[i].get());
+					if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
+						auto* selectedValue = condConst->getValue() ? selectOp->getTrueValue() : selectOp->getFalseValue();
+						replaceAllUses(func, ops[i].get(), selectedValue);
+						// Replace the select with a no-op constant that matches the selected value's type.
+						// Since the select's uses are already redirected, we can leave it as dead code.
+						// It will simply not be referenced by anything.
+						changed = true;
+						anyChanged = true;
+						break;
+					}
+				}
+			}
+		}
+	}
+	return anyChanged;
+}
+
+} // anonymous namespace
+
+void ConstantFoldingPhase::apply(std::shared_ptr<IRGraph> ir) {
+	for (auto& funcOp : ir->getFunctionOperations()) {
+		foldFunction(*funcOp);
+	}
+}
+
+} // namespace nautilus::compiler::ir
