@@ -54,7 +54,6 @@ public:
 		ModOp,
 		FunctionOp,
 		IfOp,
-		LoopOp,
 		LoadOp,
 		MulOp,
 		MLIR_YIELD,

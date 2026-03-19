@@ -104,11 +104,7 @@ std::vector<BasicBlock*>& BasicBlock::getPredecessors() {
          auto ifOp = std::static_pointer_cast<IfOperation>(operations.back());
          return std::make_pair(ifOp->getTrueBlockInvocation().getBlock(),
                                ifOp->getFalseBlockInvocation().getBlock());
-     } else if (operations.back()->getOperationType() ==
- Operation::OperationType::LoopOp) { auto loopOp =
- std::static_pointer_cast<LoopOperation>(operations.back()); return
- std::make_pair(loopOp->getLoopBodyBlock().getBlock(),
- loopOp->getLoopFalseBlock().getBlock()); } else if
+     } else if
  (operations.back()->getOperationType() == Operation::OperationType::ReturnOp) {
          return {};
      } else {

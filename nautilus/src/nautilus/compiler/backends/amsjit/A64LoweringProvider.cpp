@@ -372,7 +372,6 @@ void AsmJitLoweringProvider::LoweringContext::processOperation(const std::unique
 	case OT::BasicBlockArgument:
 	case OT::BlockInvocation:
 	case OT::FunctionOp:
-	case OT::LoopOp:
 	case OT::MLIR_YIELD:
 		return;
 	default:
