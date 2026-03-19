@@ -3,12 +3,15 @@
 #ifdef ENABLE_TRACING
 #include "nautilus/tracing/TracingUtil.hpp"
 #endif
-#include <iostream>
 #include <iterator>
 #include <type_traits>
 #include <vector>
 
 namespace nautilus {
+
+/// Log a warning when a static_val iteration limit is reached.
+/// Defined in static.cpp; uses spdlog when ENABLE_LOGGING is active.
+void WarnStaticValIterationLimit(int64_t limit);
 
 template <typename T>
     requires std::is_integral_v<T>
@@ -100,9 +103,7 @@ public:
 	const auto& operator++() {
 		++value;
 		if (value == MAX_ITERATIONS) {
-			std::cerr << "Warning: static_val exceeded " << MAX_ITERATIONS
-			          << " iterations. This may cause excessive trace sizes and long compilation times. "
-			          << "Consider using a regular val<> loop instead." << std::endl;
+			WarnIterationLimit();
 		}
 		return *this;
 	}
@@ -111,9 +112,7 @@ public:
 		T temp = value;
 		++value;
 		if (value == MAX_ITERATIONS) {
-			std::cerr << "Warning: static_val exceeded " << MAX_ITERATIONS
-			          << " iterations. This may cause excessive trace sizes and long compilation times. "
-			          << "Consider using a regular val<> loop instead." << std::endl;
+			WarnIterationLimit();
 		}
 		return temp;
 	}
@@ -155,6 +154,10 @@ public:
 	}
 
 private:
+	static void WarnIterationLimit() {
+		WarnStaticValIterationLimit(static_cast<int64_t>(MAX_ITERATIONS));
+	}
+
 	T value {};
 #ifdef ENABLE_TRACING
 	bool owns_trace = false;
