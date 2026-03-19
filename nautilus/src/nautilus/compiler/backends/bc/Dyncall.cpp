@@ -77,7 +77,7 @@ void* Dyncall::callPtr(void* value) {
 }
 
 Dyncall& Dyncall::getVM() {
-	static Dyncall vm;
+	static thread_local Dyncall vm;
 	return vm;
 }
 
