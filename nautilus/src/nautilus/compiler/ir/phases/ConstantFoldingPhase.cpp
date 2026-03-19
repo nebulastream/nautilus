@@ -284,17 +284,6 @@ Operation* tryFold(const std::unique_ptr<Operation>& op) {
 		return nullptr;
 	}
 
-	// Select with constant condition
-	if (opType == Operation::OperationType::SelectOp) {
-		auto* selectOp = static_cast<SelectOperation*>(op.get());
-		if (auto* condConst = selectOp->getCondition()->dynCast<ConstBooleanOperation>()) {
-			// We can't fold to a constant, but we can redirect uses to the selected input.
-			// Return the selected operation directly — the caller will handle the reference update.
-			// We use nullptr here since we handle select specially outside.
-		}
-		return nullptr;
-	}
-
 	return nullptr;
 }
 
