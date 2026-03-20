@@ -12,55 +12,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  format:
-    runs-on: ubuntu-24.04
-    name: Auto-format
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # Check out the actual PR branch so we can push back to it.
-          # For push-to-main events, github.head_ref is empty and ref_name is used.
-          ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang-format-21
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-          sudo apt-get update -q
-          sudo apt-get install -y clang-format-21
-      - name: Apply formatting
-        run: ./format.sh -i
-      - name: Commit and push formatting fixes
-        # Auto-push only for PRs opened from branches in the same repo.
-        # Fork PRs don't grant write access, so we fall through to the check step below.
-        if: >
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet; then
-            git add -A
-            git commit -m "style: apply automatic clang-format"
-            git push
-          else
-            echo "No formatting changes needed."
-          fi
-      - name: Check formatting (fork PRs and main-branch pushes)
-        # For forks and direct pushes to main, fail if the tree is dirty after formatting.
-        if: >
-          github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name != github.repository
-        run: |
-          if ! git diff --quiet; then
-            echo "Formatting issues detected. Please run ./format.sh -i locally and push the result."
-            git diff
-            exit 1
-          fi
   build-test:
-    needs: format
     runs-on: ${{matrix.os}}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
     strategy:
@@ -125,9 +77,6 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-        with:
-          # Check out the actual branch tip so we include any auto-format commit.
-          ref: ${{ github.head_ref || github.ref_name }}
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: Cache MLIR binaries
@@ -162,7 +111,6 @@ jobs:
         run: |
           ctest --test-dir build/nautilus --output-on-failure
   llvm-ir-test:
-    needs: format
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-21)
     env:
@@ -171,9 +119,6 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-        with:
-          # Check out the actual branch tip so we include any auto-format commit.
-          ref: ${{ github.head_ref || github.ref_name }}
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: get ccache
