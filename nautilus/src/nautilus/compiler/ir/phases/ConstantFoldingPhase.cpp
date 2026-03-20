@@ -248,7 +248,8 @@ ConstantValue evaluateBinaryOp(const BinaryOperation* binOp, const ConstantValue
 	if (opType == Operation::OperationType::CompareOp) {
 		auto* cmpOp = static_cast<const CompareOperation*>(binOp);
 		if (isFloat(leftVal.type)) {
-			return ConstantValue::makeBool(evaluateFloatComparison(cmpOp->getComparator(), leftVal.floatValue, rightVal.floatValue));
+			return ConstantValue::makeBool(
+			    evaluateFloatComparison(cmpOp->getComparator(), leftVal.floatValue, rightVal.floatValue));
 		}
 		return ConstantValue::makeBool(evaluateComparison(cmpOp->getComparator(), leftVal.intValue, rightVal.intValue));
 	}
