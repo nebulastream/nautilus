@@ -1,0 +1,4 @@
+B0($1:ptr)
+	CONST	$3	*	:ptr
+	NEQ	$6	$1	$3	:bool
+	RETURN	$0	$6	:bool

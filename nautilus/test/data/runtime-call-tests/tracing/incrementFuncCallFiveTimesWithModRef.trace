@@ -1,0 +1,11 @@
+B0($1:bool)
+	CALL	$2	func_*($1)	:i32
+	CONST	$3	false	:bool
+	CALL	$4	func_*($3)	:i32
+	CONST	$5	false	:bool
+	CALL	$6	func_*($5)	:i32
+	CONST	$7	false	:bool
+	CALL	$8	func_*($7)	:i32
+	CONST	$9	false	:bool
+	CALL	$10	func_*($9)	:i32
+	RETURN	$0	$10	:i32

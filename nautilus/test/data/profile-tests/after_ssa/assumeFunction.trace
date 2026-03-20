@@ -1,0 +1,7 @@
+B0($1:i32)
+	CONST	$2	0	:i32
+	GT	$3	$1	$2	:bool
+	CALL	$5	func_*($3)	:void
+	CONST	$6	1	:i32
+	ADD	$7	$1	$6	:i32
+	RETURN	$0	$7	:i32
