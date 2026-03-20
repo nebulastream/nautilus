@@ -1,0 +1,44 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(cmake:*)",
+			"Bash(cd build*)",
+			"Bash(ctest*)",
+			"Bash(ninja*)",
+			"Bash(./format.sh*)",
+			"Bash(clang-format*)",
+			"Bash(clang-tidy*)",
+			"Bash(git status*)",
+			"Bash(git diff*)",
+			"Bash(git log*)",
+			"Bash(git fetch*)",
+			"Bash(git branch*)",
+			"Bash(git checkout*)",
+			"Bash(git add*)",
+			"Bash(git commit*)",
+			"Bash(git push*)",
+			"Bash(git pull*)",
+			"Bash(ls*)",
+			"Bash(mkdir*)",
+			"Bash(cat*)",
+			"Bash(uname*)",
+			"Bash(lsb_release*)",
+			"Bash(which*)",
+			"Bash(clang++-21 --version*)",
+			"Bash(clang-21 --version*)"
+		],
+		"deny": []
+	},
+	"env": {
+		"CC": "clang-21",
+		"CXX": "clang++-21"
+	},
+	"hooks": {
+		"SessionStart": [
+			{
+				"type": "command",
+				"command": ".claude/setup.sh"
+			}
+		]
+	}
+}
