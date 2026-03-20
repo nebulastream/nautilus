@@ -2,7 +2,7 @@ EXECUTE:
 B0($1:ptr,$2:i32)
 	CONST	$5	0	:ui64
 	CONST	$7	1	:ui64
-	MUL	$8	$5	$7	:ui64
+	CONST	$8	0	:ui64
 	ADD	$9	$1	$8	:ptr
 	STORE	$14	$9	$2	:void
 	RETURN	$0	:void

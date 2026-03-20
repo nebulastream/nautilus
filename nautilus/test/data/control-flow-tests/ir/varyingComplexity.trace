@@ -25,11 +25,11 @@ Block_3($1:i32):
 	$14 = 2 :i32
 	$15 = 7 :i32
 	$16 = $1 == $15 :bool
-	if $16 ? Block_5($14) : Block_6($14) :void
+	if $16 ? Block_5() : Block_6($14) :void
 
-Block_5($2:i32):
+Block_5():
 	$18 = 1 :i32
-	$19 = $2 + $18 :i32
+	$19 = 3 :i32
 	br Block_7($19) :void
 
 Block_6($2:i32):

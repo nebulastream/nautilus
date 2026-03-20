@@ -7,7 +7,7 @@ B1()
 	INDIRECT_CALL	$8	:i32
 	ASSIGN	$4	$8	:i32
 	CONST	$9	1	:i32
-	ADD	$10	$5	$9	:i32
+	CONST	$10	1	:i32
 	ASSIGN	$5	$10	:i32
 	JMP	$0	B3()	:void
 B2()

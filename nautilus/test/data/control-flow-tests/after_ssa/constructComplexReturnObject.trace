@@ -13,10 +13,10 @@ B2()
 	CONST	$16	0	:i32
 	CONST	$17	0	:i32
 	CONST	$18	1	:i32
-	ADD	$19	$16	$18	:i32
+	CONST	$19	1	:i32
 	CONST	$20	1	:i32
-	ADD	$21	$17	$20	:i32
-	ADD	$22	$19	$21	:i32
+	CONST	$21	1	:i32
+	CONST	$22	2	:i32
 	JMP	$0	B3($22)	:void
 B3($13:i32)
 	RETURN	$0	$13	:i32

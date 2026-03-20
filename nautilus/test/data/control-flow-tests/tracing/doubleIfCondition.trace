@@ -13,19 +13,21 @@ B2()
 	JMP	$0	B5()	:void
 B3()
 	CONST	$8	20	:i32
-	ADD	$9	$1	$8	:i32
+	CONST	$9	21	:i32
 	ASSIGN	$1	$9	:i32
 	CONST	$10	2	:i32
+	CONST	$11	23	:i32
 	JMP	$0	B6()	:void
 B4()
 	CONST	$14	2	:i32
 	ASSIGN	$10	$14	:i32
+	CONST	$15	3	:i32
+	ASSIGN	$11	$15	:i32
 	JMP	$0	B6()	:void
 B5() ControlFlowMerge
 	EQ	$6	$1	$5	:bool
 	CMP	$7	$6	B3()	B4()	:void
 B6() ControlFlowMerge
-	ADD	$11	$1	$10	:i32
 	ASSIGN	$1	$11	:i32
 	ASSIGN	$12	$1	:i32
 	RETURN	$0	$12	:i32

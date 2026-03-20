@@ -6,18 +6,18 @@ B0($1:i32)
 	CMP	$5	$4	B1()	B2()	:void
 B1()
 	CONST	$6	1	:i32
-	ADD	$7	$2	$6	:i32
+	CONST	$7	2	:i32
 	ASSIGN	$2	$7	:i32
 	CONST	$8	42	:i32
-	JMP	$0	B3()	:void
+	CONST	$9	44	:i32
+	RETURN	$0	$9	:i32
 B2()
 	CONST	$11	42	:i32
-	ADD	$12	$2	$11	:i32
+	CONST	$12	43	:i32
 	ASSIGN	$2	$12	:i32
 	CONST	$13	42	:i32
 	ASSIGN	$8	$13	:i32
-	JMP	$0	B3()	:void
-B3() ControlFlowMerge
-	ADD	$9	$2	$8	:i32
+	CONST	$14	85	:i32
+	ASSIGN	$9	$14	:i32
 	RETURN	$0	$9	:i32
 

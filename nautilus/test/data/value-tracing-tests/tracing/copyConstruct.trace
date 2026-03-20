@@ -5,7 +5,7 @@ B0()
 	CONST	$3	0	:ui64
 	ASSIGN	$4	$3	:ui64
 	CONST	$5	1	:ui64
-	MUL	$6	$4	$5	:ui64
+	CONST	$6	0	:ui64
 	ADD	$7	$2	$6	:ptr
 	ASSIGN	$8	$7	:ptr
 	ASSIGN	$9	$8	:ptr
@@ -17,7 +17,7 @@ B0()
 	CONST	$15	4	:ui64
 	ASSIGN	$16	$15	:ui64
 	CONST	$17	1	:ui64
-	MUL	$18	$16	$17	:ui64
+	CONST	$18	4	:ui64
 	ADD	$19	$14	$18	:ptr
 	ASSIGN	$20	$19	:ptr
 	ASSIGN	$21	$20	:ptr
@@ -32,7 +32,7 @@ B0()
 	CONST	$30	0	:ui64
 	ASSIGN	$31	$30	:ui64
 	CONST	$32	1	:ui64
-	MUL	$33	$31	$32	:ui64
+	CONST	$33	0	:ui64
 	ADD	$34	$29	$33	:ptr
 	ASSIGN	$35	$34	:ptr
 	ASSIGN	$36	$35	:ptr
@@ -40,7 +40,7 @@ B0()
 	CONST	$38	4	:ui64
 	ASSIGN	$39	$38	:ui64
 	CONST	$40	1	:ui64
-	MUL	$41	$39	$40	:ui64
+	CONST	$41	4	:ui64
 	ADD	$42	$37	$41	:ptr
 	ASSIGN	$43	$42	:ptr
 	ASSIGN	$44	$43	:ptr

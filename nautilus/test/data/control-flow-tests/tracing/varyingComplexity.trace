@@ -27,7 +27,7 @@ B4()
 	RETURN	$0	$2	:i32
 B5()
 	CONST	$18	1	:i32
-	ADD	$19	$2	$18	:i32
+	CONST	$19	3	:i32
 	ASSIGN	$2	$19	:i32
 	RETURN	$0	$2	:i32
 B6()

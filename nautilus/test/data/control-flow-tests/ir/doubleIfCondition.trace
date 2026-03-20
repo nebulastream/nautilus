@@ -12,21 +12,22 @@ Block_1($1:i32):
 
 Block_5($1:i32, $5:i32):
 	$6 = $1 == $5 :bool
-	if $6 ? Block_3($1) : Block_4($1) :void
+	if $6 ? Block_3() : Block_4() :void
 
-Block_3($1:i32):
+Block_3():
 	$8 = 20 :i32
-	$9 = $1 + $8 :i32
+	$9 = 21 :i32
 	$10 = 2 :i32
-	br Block_6($9, $10) :void
+	$11 = 23 :i32
+	br Block_6($11) :void
 
-Block_6($1:i32, $10:i32):
-	$11 = $1 + $10 :i32
+Block_6($11:i32):
 	return ($11) :i32
 
-Block_4($1:i32):
+Block_4():
 	$14 = 2 :i32
-	br Block_6($1, $14) :void
+	$15 = 3 :i32
+	br Block_6($15) :void
 
 Block_2($1:i32):
 	$13 = 1 :i32

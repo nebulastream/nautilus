@@ -1,7 +1,7 @@
 EXECUTE:
 B0($1:ptr,$2:i64)
 	CONST	$5	0	:i32
-	CAST	$6	$5	:i64
+	CONST	$6	0	:i64
 	SUB	$7	$6	$2	:i64
 	CONST	$9	4	:ui64
 	CAST	$10	$7	:ui64

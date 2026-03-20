@@ -163,7 +163,9 @@ val<int> nautilusFunctionInline(val<int> a, val<int> b) {
 
 // Test: Inline NautilusFunction with lambda
 val<int> nautilusFunctionInlineLambda(val<int> a, val<int> b) {
-	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
+	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> {
+		                                   return x * y;
+	                                   }};
 	return inlineMul(a, b);
 }
 
@@ -184,7 +186,9 @@ val<int> nautilusFunctionInlineMember(val<int> a, val<int> b) {
 // Test: Multiple inline NautilusFunctions in one function
 val<int> nautilusFunctionMultipleInline(val<int> a, val<int> b) {
 	auto inlineAdd = NautilusFunction {"inlineAdd2", add_indirect};
-	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
+	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> {
+		                                   return x * y;
+	                                   }};
 	auto sum = inlineAdd(a, b);
 	auto product = inlineMul(a, b);
 	return sum + product;

@@ -16,7 +16,7 @@ B3() ControlFlowMerge
 	ADD	$7	$2	$6	:i32
 	ASSIGN	$2	$7	:i32
 	CONST	$8	10	:i32
-	MUL	$9	$3	$8	:i32
+	CONST	$9	10	:i32
 	ASSIGN	$3	$9	:i32
 	CONST	$10	2	:i32
 	DIV	$11	$1	$10	:i32

@@ -3,14 +3,14 @@ B0($1:ptr,$2:i32,$3:i32)
 	CONST	$4	0	:i32
 	CONST	$5	0	:i32
 	JMP	$0	B3($4,$5,$3,$1,$2)	:void
-B1($3:i32,$5:i32,$1:ptr,$4:i32,$2:i32)
+B1($3:i32,$1:ptr,$4:i32,$2:i32)
 	INDIRECT_CALL	$8	:i32
 	CONST	$9	1	:i32
-	ADD	$10	$5	$9	:i32
+	CONST	$10	1	:i32
 	JMP	$0	B3($8,$10,$3,$1,$2)	:void
 B2($4:i32)
 	RETURN	$0	$4	:i32
 B3($4:i32,$5:i32,$3:i32,$1:ptr,$2:i32) ControlFlowMerge
 	LT	$6	$5	$3	:bool
-	CMP	$7	$6	B1($3,$5,$1,$4,$2)	B2($4)	:void
+	CMP	$7	$6	B1($3,$1,$4,$2)	B2($4)	:void
 

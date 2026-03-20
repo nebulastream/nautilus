@@ -4,60 +4,64 @@ Block_0():
 	$1 = 5 :i32
 	$2 = 8 :i32
 	$3 = $1 < $2 :bool
-	if $3 ? Block_1($1) : Block_2($1) :void
+	if $3 ? Block_1($1) : Block_2() :void
 
 Block_1($1:i32):
 	$5 = 6 :i32
 	$6 = $1 > $5 :bool
-	if $6 ? Block_3($1) : Block_4($1) :void
+	if $6 ? Block_3() : Block_4($1) :void
 
-Block_3($1:i32):
+Block_3():
 	$8 = 10 :i32
-	$9 = $1 + $8 :i32
+	$9 = 15 :i32
 	$10 = 2 :i32
-	br Block_5($9, $10) :void
+	$11 = 17 :i32
+	br Block_5($11) :void
 
-Block_5($1:i32, $10:i32):
-	br Block_10($1, $10) :void
+Block_5($11:i32):
+	br Block_10($11) :void
 
-Block_10($1:i32, $10:i32):
-	br Block_11($1, $10) :void
+Block_10($11:i32):
+	br Block_11($11) :void
 
-Block_11($1:i32, $10:i32):
-	br Block_12($1, $10) :void
+Block_11($11:i32):
+	br Block_12($11) :void
 
-Block_12($1:i32, $10:i32):
-	$11 = $1 + $10 :i32
+Block_12($11:i32):
 	return ($11) :i32
 
 Block_4($1:i32):
-	$16 = 6 :i32
-	$17 = $1 < $16 :bool
-	if $17 ? Block_6($1) : Block_7($1) :void
+	$17 = 6 :i32
+	$18 = $1 < $17 :bool
+	if $18 ? Block_6($1) : Block_7() :void
 
 Block_6($1:i32):
-	$19 = 5 :i32
-	$20 = $1 == $19 :bool
-	if $20 ? Block_8($1) : Block_9($1) :void
+	$20 = 5 :i32
+	$21 = $1 == $20 :bool
+	if $21 ? Block_8() : Block_9() :void
 
-Block_8($1:i32):
-	$22 = 5 :i32
-	$23 = $1 + $22 :i32
-	$24 = 2 :i32
-	br Block_10($23, $24) :void
-
-Block_9($1:i32):
-	$26 = 2 :i32
-	br Block_12($1, $26) :void
-
-Block_7($1:i32):
+Block_8():
+	$23 = 5 :i32
+	$24 = 10 :i32
 	$25 = 2 :i32
-	br Block_11($1, $25) :void
+	$26 = 12 :i32
+	br Block_10($26) :void
 
-Block_2($1:i32):
+Block_9():
+	$29 = 2 :i32
+	$30 = 7 :i32
+	br Block_12($30) :void
+
+Block_7():
+	$27 = 2 :i32
+	$28 = 7 :i32
+	br Block_11($28) :void
+
+Block_2():
 	$13 = 20 :i32
-	$14 = $1 + $13 :i32
+	$14 = 25 :i32
 	$15 = 2 :i32
-	br Block_5($14, $15) :void
+	$16 = 27 :i32
+	br Block_5($16) :void
 }
 } //NESIR

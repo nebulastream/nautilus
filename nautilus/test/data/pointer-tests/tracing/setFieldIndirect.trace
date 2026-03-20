@@ -5,7 +5,7 @@ B0($1:ptr,$2:i32)
 	CONST	$5	0	:ui64
 	ASSIGN	$6	$5	:ui64
 	CONST	$7	1	:ui64
-	MUL	$8	$6	$7	:ui64
+	CONST	$8	0	:ui64
 	ADD	$9	$4	$8	:ptr
 	ASSIGN	$10	$9	:ptr
 	ASSIGN	$11	$10	:ptr

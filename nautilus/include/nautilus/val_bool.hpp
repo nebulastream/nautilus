@@ -152,6 +152,9 @@ public:
 #ifdef ENABLE_TRACING
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
+
+	/// Whether this value is a trace-time constant
+	const bool is_const;
 #endif
 
 	/// Default constructor.
@@ -164,7 +167,7 @@ public:
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)), value(false) {
+	val() : state(tracing::traceConstant(0)), is_const(true), value(false) {
 	}
 #else
 	val() {
@@ -185,7 +188,7 @@ public:
 	/// val<bool> b = false;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {
+	val(bool value) : state(tracing::traceConstant(value)), is_const(true), value(value) {
 	}
 #else
 	val(bool value) : value(value) {
@@ -208,7 +211,7 @@ public:
 	/// assert(b == a);
 	/// ```
 #ifdef ENABLE_TRACING
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), is_const(other.is_const), value(other.value) {
 	}
 #else
 	val(const val<bool>& other) : value(other.value) {
@@ -231,7 +234,8 @@ public:
 	/// }
 	/// ```
 #ifdef ENABLE_TRACING
-	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(val<bool>&& other) noexcept
+	    : state(std::move(other.state)), is_const(other.is_const), value(std::move(other.value)) {
 	}
 #else
 	val(val<bool>&& other) noexcept : value(std::move(other.value)) {
@@ -249,7 +253,7 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
+	val(tracing::TypedValueRef& tc) : state(tc), is_const(false), value(false) {
 	}
 #endif
 
@@ -405,6 +409,11 @@ private:
 	template <typename>
 	friend struct details::RawValueResolver;
 
+#ifdef ENABLE_TRACING
+	template <typename>
+	friend struct details::ConstResolver;
+#endif
+
 	/// The underlying boolean value (true or false)
 	bool value = false;
 
@@ -421,10 +430,14 @@ private:
 
 namespace details {
 
-/// Logical OR operation for boolean values
+/// Logical OR operation for boolean values.
+/// When both operands are trace-time constants, the result is computed immediately.
 val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+		if (ConstResolver<val<bool>>::isConst(left) && ConstResolver<val<bool>>::isConst(right)) {
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right));
+		}
 		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -432,10 +445,14 @@ val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
 	return RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right);
 }
 
-/// Logical AND operation for boolean values
+/// Logical AND operation for boolean values.
+/// When both operands are trace-time constants, the result is computed immediately.
 val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+		if (ConstResolver<val<bool>>::isConst(left) && ConstResolver<val<bool>>::isConst(right)) {
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right));
+		}
 		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -443,10 +460,14 @@ val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
 	return RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right);
 }
 
-/// Logical NOT operation for boolean values
+/// Logical NOT operation for boolean values.
+/// When the operand is a trace-time constant, the result is computed immediately.
 val<bool> inline lNot(const val<bool>& arg) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+		if (ConstResolver<val<bool>>::isConst(arg)) {
+			return val<bool>(!RawValueResolver<bool>::getRawValue(arg));
+		}
 		auto tc = tracing::traceUnaryOp(tracing::NOT, Type::b, arg.state);
 		return val<bool> {tc};
 	}
@@ -454,10 +475,14 @@ val<bool> inline lNot(const val<bool>& arg) {
 	return !RawValueResolver<bool>::getRawValue(arg);
 }
 
-/// Equality comparison for boolean values
+/// Equality comparison for boolean values.
+/// When both operands are trace-time constants, the result is computed immediately.
 val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+		if (ConstResolver<val<bool>>::isConst(left) && ConstResolver<val<bool>>::isConst(right)) {
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right));
+		}
 		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -465,10 +490,14 @@ val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
 	return RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right);
 }
 
-/// Inequality comparison for boolean values
+/// Inequality comparison for boolean values.
+/// When both operands are trace-time constants, the result is computed immediately.
 val<bool> inline neq(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+		if (ConstResolver<val<bool>>::isConst(left) && ConstResolver<val<bool>>::isConst(right)) {
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) != RawValueResolver<bool>::getRawValue(right));
+		}
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}

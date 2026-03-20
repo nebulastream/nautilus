@@ -6,7 +6,7 @@ B0($1:i32,$2:i32)
 	CONST	$6	0	:ui64
 	ASSIGN	$7	$6	:ui64
 	CONST	$8	1	:ui64
-	MUL	$9	$7	$8	:ui64
+	CONST	$9	0	:ui64
 	ADD	$10	$5	$9	:ptr
 	ASSIGN	$11	$10	:ptr
 	ASSIGN	$12	$11	:ptr
@@ -14,7 +14,7 @@ B0($1:i32,$2:i32)
 	CONST	$14	4	:ui64
 	ASSIGN	$15	$14	:ui64
 	CONST	$16	1	:ui64
-	MUL	$17	$15	$16	:ui64
+	CONST	$17	4	:ui64
 	ADD	$18	$13	$17	:ptr
 	ASSIGN	$19	$18	:ptr
 	ASSIGN	$20	$19	:ptr

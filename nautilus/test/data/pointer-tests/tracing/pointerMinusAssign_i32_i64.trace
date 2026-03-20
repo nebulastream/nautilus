@@ -3,7 +3,7 @@ B0($1:ptr,$2:i64)
 	ASSIGN	$3	$2	:i64
 	ASSIGN	$4	$1	:ptr
 	CONST	$5	0	:i32
-	CAST	$6	$5	:i64
+	CONST	$6	0	:i64
 	SUB	$7	$6	$3	:i64
 	ASSIGN	$8	$7	:i64
 	CONST	$9	4	:ui64

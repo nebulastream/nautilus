@@ -13,7 +13,7 @@ B1()
 	CALL	$6	func_*($2)	:i32
 	ASSIGN	$2	$6	:i32
 	CONST	$7	1	:i32
-	ADD	$8	$3	$7	:i32
+	CONST	$8	1	:i32
 	ASSIGN	$3	$8	:i32
 	JMP	$0	B3()	:void
 B2()

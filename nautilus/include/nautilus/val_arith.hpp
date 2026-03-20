@@ -63,23 +63,30 @@ public:
 
 #ifdef ENABLE_TRACING
 	/// Default constructor. Initializes with constant 0 and records in trace.
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+	val() : state(tracing::traceConstant<raw_type>(0)), is_const(true), value(0) {
 	}
 
 	/// Value constructor. Initializes with provided value and records in trace.
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
+	val(ValueType value) : state(tracing::traceConstant(value)), is_const(true), value(value) {
 	}
 
 	/// Copy constructor. Copies value and tracing state.
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(const val<ValueType>& other)
+	    : state(tracing::traceCopy(other.state)), is_const(other.is_const), value(other.value) {
 	}
 
 	/// Move constructor. Moves value and tracing state.
-	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(val<ValueType>&& other) noexcept
+	    : state(std::move(other.state)), is_const(other.is_const), value(std::move(other.value)) {
 	}
 
 	/// Tracing constructor. Creates from TypedValueRef for internal use.
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	/// Values created from traced operations are not constants.
+	val(tracing::TypedValueRef& tc) : state(tc), is_const(false), value() {
+	}
+
+	/// Tracing constructor with const flag. Creates from TypedValueRef with explicit const status.
+	val(tracing::TypedValueRef& tc, ValueType val, bool isConst) : state(tc), is_const(isConst), value(val) {
 	}
 #else
 	/// Default constructor. Initializes with 0.
@@ -118,11 +125,16 @@ public:
 	}
 
 	/// Type conversion operator. Casts to compatible arithmetic types with tracing.
+	/// If this value is a trace-time constant, the cast result is also constant.
 	template <typename OtherType>
 	    requires std::is_convertible_v<ValueType, OtherType>
 	operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
+			if (is_const) {
+				// Constant cast: compute at trace time
+				return val<OtherType>(static_cast<OtherType>(value));
+			}
 			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
 			return val<OtherType>(resultRef);
 #endif
@@ -180,13 +192,24 @@ public:
 #ifdef ENABLE_TRACING
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
+
+	/// Whether this value is a trace-time constant (derived only from literals,
+	/// not from function arguments or runtime inputs). Used for constant folding
+	/// during tracing.
+	const bool is_const;
 #endif
 
 private:
 	template <typename>
 	friend struct details::RawValueResolver;
 
-	/// The underlying arithmetic value
+#ifdef ENABLE_TRACING
+	template <typename>
+	friend struct details::ConstResolver;
+#endif
+
+	/// The underlying arithmetic value. Declared after is_const to match
+	/// initialization order in constructors.
 	ValueType value;
 };
 
@@ -196,11 +219,15 @@ private:
 
 namespace details {
 
-/// Bitwise negation (NOT) operation for integral types
+/// Bitwise negation (NOT) operation for integral types.
+/// When the operand is a trace-time constant, the result is computed immediately.
 template <is_integral LHS>
-val<LHS> neg(const val<LHS>& val) {
+nautilus::val<LHS> neg(const nautilus::val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+		if (ConstResolver<nautilus::val<LHS>>::isConst(val)) {
+			return nautilus::val<LHS>(~RawValueResolver<LHS>::getRawValue(val));
+		}
 		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::TypeResolver<LHS>::to_type(), val.state);
 		return tc;
 	}
@@ -212,7 +239,9 @@ val<LHS> neg(const val<LHS>& val) {
 template <typename LHS, typename RHS>
 using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), decltype(+std::declval<RHS>())>;
 
-/// Binary operator helper for arithmetic operations with integer promotion
+/// Binary operator helper for arithmetic operations with integer promotion.
+/// When both operands are trace-time constants, the result is computed immediately
+/// and emitted as a single CONST operation (constant folding during tracing).
 #define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE)                                            \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
@@ -227,6 +256,13 @@ using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), 
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
                                                                                                                        \
 		if SHOULD_TRACE () {                                                                                           \
+			if (ConstResolver<decltype(lValue)>::isConst(lValue) &&                                                    \
+			    ConstResolver<decltype(rValue)>::isConst(rValue)) {                                                    \
+				auto result = static_cast<resultType>(                                                                 \
+				    RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(lValue))                  \
+				        OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));         \
+				return val<resultType>(result);                                                                        \
+			}                                                                                                          \
 			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<resultType>::to_type(),          \
 			                                 StateResolver<decltype(lValue)>::getState(lValue),                        \
 			                                 StateResolver<decltype(rValue)>::getState(rValue));                       \
@@ -251,7 +287,10 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH)
 
 DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
 
-/// Binary operator helper for comparison operations (no promotion)
+/// Binary operator helper for comparison operations (no promotion).
+/// Constant folding is not applied here to avoid header ordering issues
+/// with the val<bool> explicit specialization. Comparison results on
+/// constants are folded in val_bool.hpp operators or by later IR phases.
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \

@@ -8,7 +8,7 @@ B1()
 	DIV	$7	$1	$6	:i32
 	ASSIGN	$1	$7	:i32
 	CONST	$8	1	:i32
-	ADD	$9	$2	$8	:i32
+	CONST	$9	1	:i32
 	ASSIGN	$2	$9	:i32
 	CONST	$10	0	:i32
 	ASSIGN	$3	$10	:i32

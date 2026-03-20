@@ -46,6 +46,23 @@ struct StateResolver {
 	}
 };
 
+#ifdef ENABLE_TRACING
+/// Helper struct to check if a val<T> holds a trace-time constant.
+///
+/// During tracing, val<T> instances track whether their value is a compile-time
+/// constant (derived only from literals, not from function arguments or runtime
+/// inputs). This allows constant folding during tracing — when both operands of
+/// a binary operation are constants, the result can be computed immediately and
+/// emitted as a single CONST operation.
+template <typename T>
+struct ConstResolver {
+	template <typename U = T>
+	static bool isConst(U&& value) {
+		return value.is_const;
+	}
+};
+#endif
+
 } // namespace details
 
 /// Converts fundamental types to val<T> wrappers, or returns val<T> as-is.

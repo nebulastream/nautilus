@@ -6,10 +6,10 @@ B0($1:i32,$2:i32)
 	CONST	$6	1	:i32
 	EQ	$7	$2	$6	:bool
 	AND	$8	$5	$7	:bool
-	CMP	$9	$8	B1($3)	B2($3)	:void
-B1($3:i32)
+	CMP	$9	$8	B1()	B2($3)	:void
+B1()
 	CONST	$10	14	:i32
-	ADD	$11	$3	$10	:i32
+	CONST	$11	15	:i32
 	JMP	$0	B3($11)	:void
 B2($3:i32)
 	JMP	$0	B3($3)	:void

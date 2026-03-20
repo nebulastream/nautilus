@@ -18,13 +18,13 @@ B3($1:i32)
 	CONST	$14	2	:i32
 	CONST	$15	7	:i32
 	EQ	$16	$1	$15	:bool
-	CMP	$17	$16	B5($14)	B6($14)	:void
+	CMP	$17	$16	B5()	B6($14)	:void
 B4()
 	CONST	$21	3	:i32
 	JMP	$0	B7($21)	:void
-B5($2:i32)
+B5()
 	CONST	$18	1	:i32
-	ADD	$19	$2	$18	:i32
+	CONST	$19	3	:i32
 	JMP	$0	B7($19)	:void
 B6($2:i32)
 	JMP	$0	B7($2)	:void

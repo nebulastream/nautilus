@@ -7,11 +7,11 @@ Block_0($1:i32):
 	$5 = 1 :i32
 	$6 = $1 == $5 :bool
 	$7 = $4 or $6 :bool
-	if $7 ? Block_1($2) : Block_2($2) :void
+	if $7 ? Block_1() : Block_2($2) :void
 
-Block_1($2:i32):
+Block_1():
 	$9 = 14 :i32
-	$10 = $2 + $9 :i32
+	$10 = 15 :i32
 	br Block_3($10) :void
 
 Block_3($2:i32):

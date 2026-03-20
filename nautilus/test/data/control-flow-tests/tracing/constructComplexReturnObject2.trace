@@ -17,20 +17,20 @@ B1()
 	ADD	$16	$13	$15	:i32
 	ASSIGN	$3	$16	:i32
 	CONST	$17	42	:i32
-	JMP	$0	B3()	:void
+	CONST	$18	42	:i32
+	RETURN	$0	$18	:i32
 B2()
 	CONST	$21	0	:i32
 	CONST	$22	0	:i32
 	CONST	$23	1	:i32
-	ADD	$24	$21	$23	:i32
+	CONST	$24	1	:i32
 	CONST	$25	1	:i32
-	ADD	$26	$22	$25	:i32
-	ADD	$27	$24	$26	:i32
+	CONST	$26	1	:i32
+	CONST	$27	2	:i32
 	ASSIGN	$3	$27	:i32
 	CONST	$28	42	:i32
 	ASSIGN	$17	$28	:i32
-	JMP	$0	B3()	:void
-B3() ControlFlowMerge
-	ADD	$18	$3	$17	:i32
+	CONST	$29	44	:i32
+	ASSIGN	$18	$29	:i32
 	RETURN	$0	$18	:i32
 

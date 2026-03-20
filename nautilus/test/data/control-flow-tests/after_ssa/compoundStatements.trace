@@ -7,7 +7,7 @@ B0($1:i32)
 B1()
 	CONST	$6	1	:i32
 	CONST	$7	2	:i32
-	MUL	$8	$6	$7	:i32
+	CONST	$8	2	:i32
 	JMP	$0	B3($8)	:void
 B2($2:i32)
 	JMP	$0	B3($2)	:void

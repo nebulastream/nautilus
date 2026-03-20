@@ -4,34 +4,36 @@ Block_0():
 	$1 = 1 :i32
 	$2 = 8 :i32
 	$3 = $1 == $2 :bool
-	if $3 ? Block_1($1) : Block_2($1) :void
+	if $3 ? Block_1() : Block_2($1) :void
 
-Block_1($1:i32):
+Block_1():
 	$5 = 14 :i32
-	$6 = $1 + $5 :i32
+	$6 = 15 :i32
 	$7 = 2 :i32
-	br Block_5($6, $7) :void
+	$8 = 17 :i32
+	br Block_5($8) :void
 
-Block_5($1:i32, $7:i32):
-	br Block_6($1, $7) :void
+Block_5($8:i32):
+	br Block_6($8) :void
 
-Block_6($1:i32, $7:i32):
-	$8 = $1 + $7 :i32
+Block_6($8:i32):
 	return ($8) :i32
 
 Block_2($1:i32):
 	$10 = 1 :i32
 	$11 = $1 == $10 :bool
-	if $11 ? Block_3($1) : Block_4($1) :void
+	if $11 ? Block_3() : Block_4() :void
 
-Block_3($1:i32):
+Block_3():
 	$13 = 20 :i32
-	$14 = $1 + $13 :i32
+	$14 = 21 :i32
 	$15 = 2 :i32
-	br Block_5($14, $15) :void
+	$16 = 23 :i32
+	br Block_5($16) :void
 
-Block_4($1:i32):
-	$16 = 2 :i32
-	br Block_6($1, $16) :void
+Block_4():
+	$17 = 2 :i32
+	$18 = 3 :i32
+	br Block_6($18) :void
 }
 } //NESIR

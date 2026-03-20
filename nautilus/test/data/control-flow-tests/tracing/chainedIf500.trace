@@ -6,7 +6,7 @@ B0($1:i32)
 	CMP	$5	$4	B1()	B2()	:void
 B1()
 	CONST	$6	1	:i32
-	ADD	$7	$2	$6	:i32
+	CONST	$7	1	:i32
 	ASSIGN	$2	$7	:i32
 	CONST	$8	1	:i32
 	JMP	$0	B1001()	:void
@@ -16,7 +16,7 @@ B2()
 	JMP	$0	B1001()	:void
 B3()
 	CONST	$11	1	:i32
-	ADD	$12	$2	$11	:i32
+	CONST	$12	2	:i32
 	ASSIGN	$2	$12	:i32
 	CONST	$13	2	:i32
 	JMP	$0	B1002()	:void
@@ -26,7 +26,7 @@ B4()
 	JMP	$0	B1002()	:void
 B5()
 	CONST	$16	1	:i32
-	ADD	$17	$2	$16	:i32
+	CONST	$17	3	:i32
 	ASSIGN	$2	$17	:i32
 	CONST	$18	3	:i32
 	JMP	$0	B1003()	:void
@@ -36,7 +36,7 @@ B6()
 	JMP	$0	B1003()	:void
 B7()
 	CONST	$21	1	:i32
-	ADD	$22	$2	$21	:i32
+	CONST	$22	4	:i32
 	ASSIGN	$2	$22	:i32
 	CONST	$23	4	:i32
 	JMP	$0	B1004()	:void
@@ -46,7 +46,7 @@ B8()
 	JMP	$0	B1004()	:void
 B9()
 	CONST	$26	1	:i32
-	ADD	$27	$2	$26	:i32
+	CONST	$27	5	:i32
 	ASSIGN	$2	$27	:i32
 	CONST	$28	5	:i32
 	JMP	$0	B1005()	:void
@@ -56,7 +56,7 @@ B10()
 	JMP	$0	B1005()	:void
 B11()
 	CONST	$31	1	:i32
-	ADD	$32	$2	$31	:i32
+	CONST	$32	6	:i32
 	ASSIGN	$2	$32	:i32
 	CONST	$33	6	:i32
 	JMP	$0	B1006()	:void
@@ -66,7 +66,7 @@ B12()
 	JMP	$0	B1006()	:void
 B13()
 	CONST	$36	1	:i32
-	ADD	$37	$2	$36	:i32
+	CONST	$37	7	:i32
 	ASSIGN	$2	$37	:i32
 	CONST	$38	7	:i32
 	JMP	$0	B1007()	:void
@@ -76,7 +76,7 @@ B14()
 	JMP	$0	B1007()	:void
 B15()
 	CONST	$41	1	:i32
-	ADD	$42	$2	$41	:i32
+	CONST	$42	8	:i32
 	ASSIGN	$2	$42	:i32
 	CONST	$43	8	:i32
 	JMP	$0	B1008()	:void
@@ -86,7 +86,7 @@ B16()
 	JMP	$0	B1008()	:void
 B17()
 	CONST	$46	1	:i32
-	ADD	$47	$2	$46	:i32
+	CONST	$47	9	:i32
 	ASSIGN	$2	$47	:i32
 	CONST	$48	9	:i32
 	JMP	$0	B1009()	:void
@@ -96,7 +96,7 @@ B18()
 	JMP	$0	B1009()	:void
 B19()
 	CONST	$51	1	:i32
-	ADD	$52	$2	$51	:i32
+	CONST	$52	10	:i32
 	ASSIGN	$2	$52	:i32
 	CONST	$53	10	:i32
 	JMP	$0	B1010()	:void
@@ -106,7 +106,7 @@ B20()
 	JMP	$0	B1010()	:void
 B21()
 	CONST	$56	1	:i32
-	ADD	$57	$2	$56	:i32
+	CONST	$57	11	:i32
 	ASSIGN	$2	$57	:i32
 	CONST	$58	11	:i32
 	JMP	$0	B1011()	:void
@@ -116,7 +116,7 @@ B22()
 	JMP	$0	B1011()	:void
 B23()
 	CONST	$61	1	:i32
-	ADD	$62	$2	$61	:i32
+	CONST	$62	12	:i32
 	ASSIGN	$2	$62	:i32
 	CONST	$63	12	:i32
 	JMP	$0	B1012()	:void
@@ -126,7 +126,7 @@ B24()
 	JMP	$0	B1012()	:void
 B25()
 	CONST	$66	1	:i32
-	ADD	$67	$2	$66	:i32
+	CONST	$67	13	:i32
 	ASSIGN	$2	$67	:i32
 	CONST	$68	13	:i32
 	JMP	$0	B1013()	:void
@@ -136,7 +136,7 @@ B26()
 	JMP	$0	B1013()	:void
 B27()
 	CONST	$71	1	:i32
-	ADD	$72	$2	$71	:i32
+	CONST	$72	14	:i32
 	ASSIGN	$2	$72	:i32
 	CONST	$73	14	:i32
 	JMP	$0	B1014()	:void
@@ -146,7 +146,7 @@ B28()
 	JMP	$0	B1014()	:void
 B29()
 	CONST	$76	1	:i32
-	ADD	$77	$2	$76	:i32
+	CONST	$77	15	:i32
 	ASSIGN	$2	$77	:i32
 	CONST	$78	15	:i32
 	JMP	$0	B1015()	:void
@@ -156,7 +156,7 @@ B30()
 	JMP	$0	B1015()	:void
 B31()
 	CONST	$81	1	:i32
-	ADD	$82	$2	$81	:i32
+	CONST	$82	16	:i32
 	ASSIGN	$2	$82	:i32
 	CONST	$83	16	:i32
 	JMP	$0	B1016()	:void
@@ -166,7 +166,7 @@ B32()
 	JMP	$0	B1016()	:void
 B33()
 	CONST	$86	1	:i32
-	ADD	$87	$2	$86	:i32
+	CONST	$87	17	:i32
 	ASSIGN	$2	$87	:i32
 	CONST	$88	17	:i32
 	JMP	$0	B1017()	:void
@@ -176,7 +176,7 @@ B34()
 	JMP	$0	B1017()	:void
 B35()
 	CONST	$91	1	:i32
-	ADD	$92	$2	$91	:i32
+	CONST	$92	18	:i32
 	ASSIGN	$2	$92	:i32
 	CONST	$93	18	:i32
 	JMP	$0	B1018()	:void
@@ -186,7 +186,7 @@ B36()
 	JMP	$0	B1018()	:void
 B37()
 	CONST	$96	1	:i32
-	ADD	$97	$2	$96	:i32
+	CONST	$97	19	:i32
 	ASSIGN	$2	$97	:i32
 	CONST	$98	19	:i32
 	JMP	$0	B1019()	:void
@@ -196,7 +196,7 @@ B38()
 	JMP	$0	B1019()	:void
 B39()
 	CONST	$101	1	:i32
-	ADD	$102	$2	$101	:i32
+	CONST	$102	20	:i32
 	ASSIGN	$2	$102	:i32
 	CONST	$103	20	:i32
 	JMP	$0	B1020()	:void
@@ -206,7 +206,7 @@ B40()
 	JMP	$0	B1020()	:void
 B41()
 	CONST	$106	1	:i32
-	ADD	$107	$2	$106	:i32
+	CONST	$107	21	:i32
 	ASSIGN	$2	$107	:i32
 	CONST	$108	21	:i32
 	JMP	$0	B1021()	:void
@@ -216,7 +216,7 @@ B42()
 	JMP	$0	B1021()	:void
 B43()
 	CONST	$111	1	:i32
-	ADD	$112	$2	$111	:i32
+	CONST	$112	22	:i32
 	ASSIGN	$2	$112	:i32
 	CONST	$113	22	:i32
 	JMP	$0	B1022()	:void
@@ -226,7 +226,7 @@ B44()
 	JMP	$0	B1022()	:void
 B45()
 	CONST	$116	1	:i32
-	ADD	$117	$2	$116	:i32
+	CONST	$117	23	:i32
 	ASSIGN	$2	$117	:i32
 	CONST	$118	23	:i32
 	JMP	$0	B1023()	:void
@@ -236,7 +236,7 @@ B46()
 	JMP	$0	B1023()	:void
 B47()
 	CONST	$121	1	:i32
-	ADD	$122	$2	$121	:i32
+	CONST	$122	24	:i32
 	ASSIGN	$2	$122	:i32
 	CONST	$123	24	:i32
 	JMP	$0	B1024()	:void
@@ -246,7 +246,7 @@ B48()
 	JMP	$0	B1024()	:void
 B49()
 	CONST	$126	1	:i32
-	ADD	$127	$2	$126	:i32
+	CONST	$127	25	:i32
 	ASSIGN	$2	$127	:i32
 	CONST	$128	25	:i32
 	JMP	$0	B1025()	:void
@@ -256,7 +256,7 @@ B50()
 	JMP	$0	B1025()	:void
 B51()
 	CONST	$131	1	:i32
-	ADD	$132	$2	$131	:i32
+	CONST	$132	26	:i32
 	ASSIGN	$2	$132	:i32
 	CONST	$133	26	:i32
 	JMP	$0	B1026()	:void
@@ -266,7 +266,7 @@ B52()
 	JMP	$0	B1026()	:void
 B53()
 	CONST	$136	1	:i32
-	ADD	$137	$2	$136	:i32
+	CONST	$137	27	:i32
 	ASSIGN	$2	$137	:i32
 	CONST	$138	27	:i32
 	JMP	$0	B1027()	:void
@@ -276,7 +276,7 @@ B54()
 	JMP	$0	B1027()	:void
 B55()
 	CONST	$141	1	:i32
-	ADD	$142	$2	$141	:i32
+	CONST	$142	28	:i32
 	ASSIGN	$2	$142	:i32
 	CONST	$143	28	:i32
 	JMP	$0	B1028()	:void
@@ -286,7 +286,7 @@ B56()
 	JMP	$0	B1028()	:void
 B57()
 	CONST	$146	1	:i32
-	ADD	$147	$2	$146	:i32
+	CONST	$147	29	:i32
 	ASSIGN	$2	$147	:i32
 	CONST	$148	29	:i32
 	JMP	$0	B1029()	:void
@@ -296,7 +296,7 @@ B58()
 	JMP	$0	B1029()	:void
 B59()
 	CONST	$151	1	:i32
-	ADD	$152	$2	$151	:i32
+	CONST	$152	30	:i32
 	ASSIGN	$2	$152	:i32
 	CONST	$153	30	:i32
 	JMP	$0	B1030()	:void
@@ -306,7 +306,7 @@ B60()
 	JMP	$0	B1030()	:void
 B61()
 	CONST	$156	1	:i32
-	ADD	$157	$2	$156	:i32
+	CONST	$157	31	:i32
 	ASSIGN	$2	$157	:i32
 	CONST	$158	31	:i32
 	JMP	$0	B1031()	:void
@@ -316,7 +316,7 @@ B62()
 	JMP	$0	B1031()	:void
 B63()
 	CONST	$161	1	:i32
-	ADD	$162	$2	$161	:i32
+	CONST	$162	32	:i32
 	ASSIGN	$2	$162	:i32
 	CONST	$163	32	:i32
 	JMP	$0	B1032()	:void
@@ -326,7 +326,7 @@ B64()
 	JMP	$0	B1032()	:void
 B65()
 	CONST	$166	1	:i32
-	ADD	$167	$2	$166	:i32
+	CONST	$167	33	:i32
 	ASSIGN	$2	$167	:i32
 	CONST	$168	33	:i32
 	JMP	$0	B1033()	:void
@@ -336,7 +336,7 @@ B66()
 	JMP	$0	B1033()	:void
 B67()
 	CONST	$171	1	:i32
-	ADD	$172	$2	$171	:i32
+	CONST	$172	34	:i32
 	ASSIGN	$2	$172	:i32
 	CONST	$173	34	:i32
 	JMP	$0	B1034()	:void
@@ -346,7 +346,7 @@ B68()
 	JMP	$0	B1034()	:void
 B69()
 	CONST	$176	1	:i32
-	ADD	$177	$2	$176	:i32
+	CONST	$177	35	:i32
 	ASSIGN	$2	$177	:i32
 	CONST	$178	35	:i32
 	JMP	$0	B1035()	:void
@@ -356,7 +356,7 @@ B70()
 	JMP	$0	B1035()	:void
 B71()
 	CONST	$181	1	:i32
-	ADD	$182	$2	$181	:i32
+	CONST	$182	36	:i32
 	ASSIGN	$2	$182	:i32
 	CONST	$183	36	:i32
 	JMP	$0	B1036()	:void
@@ -366,7 +366,7 @@ B72()
 	JMP	$0	B1036()	:void
 B73()
 	CONST	$186	1	:i32
-	ADD	$187	$2	$186	:i32
+	CONST	$187	37	:i32
 	ASSIGN	$2	$187	:i32
 	CONST	$188	37	:i32
 	JMP	$0	B1037()	:void
@@ -376,7 +376,7 @@ B74()
 	JMP	$0	B1037()	:void
 B75()
 	CONST	$191	1	:i32
-	ADD	$192	$2	$191	:i32
+	CONST	$192	38	:i32
 	ASSIGN	$2	$192	:i32
 	CONST	$193	38	:i32
 	JMP	$0	B1038()	:void
@@ -386,7 +386,7 @@ B76()
 	JMP	$0	B1038()	:void
 B77()
 	CONST	$196	1	:i32
-	ADD	$197	$2	$196	:i32
+	CONST	$197	39	:i32
 	ASSIGN	$2	$197	:i32
 	CONST	$198	39	:i32
 	JMP	$0	B1039()	:void
@@ -396,7 +396,7 @@ B78()
 	JMP	$0	B1039()	:void
 B79()
 	CONST	$201	1	:i32
-	ADD	$202	$2	$201	:i32
+	CONST	$202	40	:i32
 	ASSIGN	$2	$202	:i32
 	CONST	$203	40	:i32
 	JMP	$0	B1040()	:void
@@ -406,7 +406,7 @@ B80()
 	JMP	$0	B1040()	:void
 B81()
 	CONST	$206	1	:i32
-	ADD	$207	$2	$206	:i32
+	CONST	$207	41	:i32
 	ASSIGN	$2	$207	:i32
 	CONST	$208	41	:i32
 	JMP	$0	B1041()	:void
@@ -416,7 +416,7 @@ B82()
 	JMP	$0	B1041()	:void
 B83()
 	CONST	$211	1	:i32
-	ADD	$212	$2	$211	:i32
+	CONST	$212	42	:i32
 	ASSIGN	$2	$212	:i32
 	CONST	$213	42	:i32
 	JMP	$0	B1042()	:void
@@ -426,7 +426,7 @@ B84()
 	JMP	$0	B1042()	:void
 B85()
 	CONST	$216	1	:i32
-	ADD	$217	$2	$216	:i32
+	CONST	$217	43	:i32
 	ASSIGN	$2	$217	:i32
 	CONST	$218	43	:i32
 	JMP	$0	B1043()	:void
@@ -436,7 +436,7 @@ B86()
 	JMP	$0	B1043()	:void
 B87()
 	CONST	$221	1	:i32
-	ADD	$222	$2	$221	:i32
+	CONST	$222	44	:i32
 	ASSIGN	$2	$222	:i32
 	CONST	$223	44	:i32
 	JMP	$0	B1044()	:void
@@ -446,7 +446,7 @@ B88()
 	JMP	$0	B1044()	:void
 B89()
 	CONST	$226	1	:i32
-	ADD	$227	$2	$226	:i32
+	CONST	$227	45	:i32
 	ASSIGN	$2	$227	:i32
 	CONST	$228	45	:i32
 	JMP	$0	B1045()	:void
@@ -456,7 +456,7 @@ B90()
 	JMP	$0	B1045()	:void
 B91()
 	CONST	$231	1	:i32
-	ADD	$232	$2	$231	:i32
+	CONST	$232	46	:i32
 	ASSIGN	$2	$232	:i32
 	CONST	$233	46	:i32
 	JMP	$0	B1046()	:void
@@ -466,7 +466,7 @@ B92()
 	JMP	$0	B1046()	:void
 B93()
 	CONST	$236	1	:i32
-	ADD	$237	$2	$236	:i32
+	CONST	$237	47	:i32
 	ASSIGN	$2	$237	:i32
 	CONST	$238	47	:i32
 	JMP	$0	B1047()	:void
@@ -476,7 +476,7 @@ B94()
 	JMP	$0	B1047()	:void
 B95()
 	CONST	$241	1	:i32
-	ADD	$242	$2	$241	:i32
+	CONST	$242	48	:i32
 	ASSIGN	$2	$242	:i32
 	CONST	$243	48	:i32
 	JMP	$0	B1048()	:void
@@ -486,7 +486,7 @@ B96()
 	JMP	$0	B1048()	:void
 B97()
 	CONST	$246	1	:i32
-	ADD	$247	$2	$246	:i32
+	CONST	$247	49	:i32
 	ASSIGN	$2	$247	:i32
 	CONST	$248	49	:i32
 	JMP	$0	B1049()	:void
@@ -496,7 +496,7 @@ B98()
 	JMP	$0	B1049()	:void
 B99()
 	CONST	$251	1	:i32
-	ADD	$252	$2	$251	:i32
+	CONST	$252	50	:i32
 	ASSIGN	$2	$252	:i32
 	CONST	$253	50	:i32
 	JMP	$0	B1050()	:void
@@ -506,7 +506,7 @@ B100()
 	JMP	$0	B1050()	:void
 B101()
 	CONST	$256	1	:i32
-	ADD	$257	$2	$256	:i32
+	CONST	$257	51	:i32
 	ASSIGN	$2	$257	:i32
 	CONST	$258	51	:i32
 	JMP	$0	B1051()	:void
@@ -516,7 +516,7 @@ B102()
 	JMP	$0	B1051()	:void
 B103()
 	CONST	$261	1	:i32
-	ADD	$262	$2	$261	:i32
+	CONST	$262	52	:i32
 	ASSIGN	$2	$262	:i32
 	CONST	$263	52	:i32
 	JMP	$0	B1052()	:void
@@ -526,7 +526,7 @@ B104()
 	JMP	$0	B1052()	:void
 B105()
 	CONST	$266	1	:i32
-	ADD	$267	$2	$266	:i32
+	CONST	$267	53	:i32
 	ASSIGN	$2	$267	:i32
 	CONST	$268	53	:i32
 	JMP	$0	B1053()	:void
@@ -536,7 +536,7 @@ B106()
 	JMP	$0	B1053()	:void
 B107()
 	CONST	$271	1	:i32
-	ADD	$272	$2	$271	:i32
+	CONST	$272	54	:i32
 	ASSIGN	$2	$272	:i32
 	CONST	$273	54	:i32
 	JMP	$0	B1054()	:void
@@ -546,7 +546,7 @@ B108()
 	JMP	$0	B1054()	:void
 B109()
 	CONST	$276	1	:i32
-	ADD	$277	$2	$276	:i32
+	CONST	$277	55	:i32
 	ASSIGN	$2	$277	:i32
 	CONST	$278	55	:i32
 	JMP	$0	B1055()	:void
@@ -556,7 +556,7 @@ B110()
 	JMP	$0	B1055()	:void
 B111()
 	CONST	$281	1	:i32
-	ADD	$282	$2	$281	:i32
+	CONST	$282	56	:i32
 	ASSIGN	$2	$282	:i32
 	CONST	$283	56	:i32
 	JMP	$0	B1056()	:void
@@ -566,7 +566,7 @@ B112()
 	JMP	$0	B1056()	:void
 B113()
 	CONST	$286	1	:i32
-	ADD	$287	$2	$286	:i32
+	CONST	$287	57	:i32
 	ASSIGN	$2	$287	:i32
 	CONST	$288	57	:i32
 	JMP	$0	B1057()	:void
@@ -576,7 +576,7 @@ B114()
 	JMP	$0	B1057()	:void
 B115()
 	CONST	$291	1	:i32
-	ADD	$292	$2	$291	:i32
+	CONST	$292	58	:i32
 	ASSIGN	$2	$292	:i32
 	CONST	$293	58	:i32
 	JMP	$0	B1058()	:void
@@ -586,7 +586,7 @@ B116()
 	JMP	$0	B1058()	:void
 B117()
 	CONST	$296	1	:i32
-	ADD	$297	$2	$296	:i32
+	CONST	$297	59	:i32
 	ASSIGN	$2	$297	:i32
 	CONST	$298	59	:i32
 	JMP	$0	B1059()	:void
@@ -596,7 +596,7 @@ B118()
 	JMP	$0	B1059()	:void
 B119()
 	CONST	$301	1	:i32
-	ADD	$302	$2	$301	:i32
+	CONST	$302	60	:i32
 	ASSIGN	$2	$302	:i32
 	CONST	$303	60	:i32
 	JMP	$0	B1060()	:void
@@ -606,7 +606,7 @@ B120()
 	JMP	$0	B1060()	:void
 B121()
 	CONST	$306	1	:i32
-	ADD	$307	$2	$306	:i32
+	CONST	$307	61	:i32
 	ASSIGN	$2	$307	:i32
 	CONST	$308	61	:i32
 	JMP	$0	B1061()	:void
@@ -616,7 +616,7 @@ B122()
 	JMP	$0	B1061()	:void
 B123()
 	CONST	$311	1	:i32
-	ADD	$312	$2	$311	:i32
+	CONST	$312	62	:i32
 	ASSIGN	$2	$312	:i32
 	CONST	$313	62	:i32
 	JMP	$0	B1062()	:void
@@ -626,7 +626,7 @@ B124()
 	JMP	$0	B1062()	:void
 B125()
 	CONST	$316	1	:i32
-	ADD	$317	$2	$316	:i32
+	CONST	$317	63	:i32
 	ASSIGN	$2	$317	:i32
 	CONST	$318	63	:i32
 	JMP	$0	B1063()	:void
@@ -636,7 +636,7 @@ B126()
 	JMP	$0	B1063()	:void
 B127()
 	CONST	$321	1	:i32
-	ADD	$322	$2	$321	:i32
+	CONST	$322	64	:i32
 	ASSIGN	$2	$322	:i32
 	CONST	$323	64	:i32
 	JMP	$0	B1064()	:void
@@ -646,7 +646,7 @@ B128()
 	JMP	$0	B1064()	:void
 B129()
 	CONST	$326	1	:i32
-	ADD	$327	$2	$326	:i32
+	CONST	$327	65	:i32
 	ASSIGN	$2	$327	:i32
 	CONST	$328	65	:i32
 	JMP	$0	B1065()	:void
@@ -656,7 +656,7 @@ B130()
 	JMP	$0	B1065()	:void
 B131()
 	CONST	$331	1	:i32
-	ADD	$332	$2	$331	:i32
+	CONST	$332	66	:i32
 	ASSIGN	$2	$332	:i32
 	CONST	$333	66	:i32
 	JMP	$0	B1066()	:void
@@ -666,7 +666,7 @@ B132()
 	JMP	$0	B1066()	:void
 B133()
 	CONST	$336	1	:i32
-	ADD	$337	$2	$336	:i32
+	CONST	$337	67	:i32
 	ASSIGN	$2	$337	:i32
 	CONST	$338	67	:i32
 	JMP	$0	B1067()	:void
@@ -676,7 +676,7 @@ B134()
 	JMP	$0	B1067()	:void
 B135()
 	CONST	$341	1	:i32
-	ADD	$342	$2	$341	:i32
+	CONST	$342	68	:i32
 	ASSIGN	$2	$342	:i32
 	CONST	$343	68	:i32
 	JMP	$0	B1068()	:void
@@ -686,7 +686,7 @@ B136()
 	JMP	$0	B1068()	:void
 B137()
 	CONST	$346	1	:i32
-	ADD	$347	$2	$346	:i32
+	CONST	$347	69	:i32
 	ASSIGN	$2	$347	:i32
 	CONST	$348	69	:i32
 	JMP	$0	B1069()	:void
@@ -696,7 +696,7 @@ B138()
 	JMP	$0	B1069()	:void
 B139()
 	CONST	$351	1	:i32
-	ADD	$352	$2	$351	:i32
+	CONST	$352	70	:i32
 	ASSIGN	$2	$352	:i32
 	CONST	$353	70	:i32
 	JMP	$0	B1070()	:void
@@ -706,7 +706,7 @@ B140()
 	JMP	$0	B1070()	:void
 B141()
 	CONST	$356	1	:i32
-	ADD	$357	$2	$356	:i32
+	CONST	$357	71	:i32
 	ASSIGN	$2	$357	:i32
 	CONST	$358	71	:i32
 	JMP	$0	B1071()	:void
@@ -716,7 +716,7 @@ B142()
 	JMP	$0	B1071()	:void
 B143()
 	CONST	$361	1	:i32
-	ADD	$362	$2	$361	:i32
+	CONST	$362	72	:i32
 	ASSIGN	$2	$362	:i32
 	CONST	$363	72	:i32
 	JMP	$0	B1072()	:void
@@ -726,7 +726,7 @@ B144()
 	JMP	$0	B1072()	:void
 B145()
 	CONST	$366	1	:i32
-	ADD	$367	$2	$366	:i32
+	CONST	$367	73	:i32
 	ASSIGN	$2	$367	:i32
 	CONST	$368	73	:i32
 	JMP	$0	B1073()	:void
@@ -736,7 +736,7 @@ B146()
 	JMP	$0	B1073()	:void
 B147()
 	CONST	$371	1	:i32
-	ADD	$372	$2	$371	:i32
+	CONST	$372	74	:i32
 	ASSIGN	$2	$372	:i32
 	CONST	$373	74	:i32
 	JMP	$0	B1074()	:void
@@ -746,7 +746,7 @@ B148()
 	JMP	$0	B1074()	:void
 B149()
 	CONST	$376	1	:i32
-	ADD	$377	$2	$376	:i32
+	CONST	$377	75	:i32
 	ASSIGN	$2	$377	:i32
 	CONST	$378	75	:i32
 	JMP	$0	B1075()	:void
@@ -756,7 +756,7 @@ B150()
 	JMP	$0	B1075()	:void
 B151()
 	CONST	$381	1	:i32
-	ADD	$382	$2	$381	:i32
+	CONST	$382	76	:i32
 	ASSIGN	$2	$382	:i32
 	CONST	$383	76	:i32
 	JMP	$0	B1076()	:void
@@ -766,7 +766,7 @@ B152()
 	JMP	$0	B1076()	:void
 B153()
 	CONST	$386	1	:i32
-	ADD	$387	$2	$386	:i32
+	CONST	$387	77	:i32
 	ASSIGN	$2	$387	:i32
 	CONST	$388	77	:i32
 	JMP	$0	B1077()	:void
@@ -776,7 +776,7 @@ B154()
 	JMP	$0	B1077()	:void
 B155()
 	CONST	$391	1	:i32
-	ADD	$392	$2	$391	:i32
+	CONST	$392	78	:i32
 	ASSIGN	$2	$392	:i32
 	CONST	$393	78	:i32
 	JMP	$0	B1078()	:void
@@ -786,7 +786,7 @@ B156()
 	JMP	$0	B1078()	:void
 B157()
 	CONST	$396	1	:i32
-	ADD	$397	$2	$396	:i32
+	CONST	$397	79	:i32
 	ASSIGN	$2	$397	:i32
 	CONST	$398	79	:i32
 	JMP	$0	B1079()	:void
@@ -796,7 +796,7 @@ B158()
 	JMP	$0	B1079()	:void
 B159()
 	CONST	$401	1	:i32
-	ADD	$402	$2	$401	:i32
+	CONST	$402	80	:i32
 	ASSIGN	$2	$402	:i32
 	CONST	$403	80	:i32
 	JMP	$0	B1080()	:void
@@ -806,7 +806,7 @@ B160()
 	JMP	$0	B1080()	:void
 B161()
 	CONST	$406	1	:i32
-	ADD	$407	$2	$406	:i32
+	CONST	$407	81	:i32
 	ASSIGN	$2	$407	:i32
 	CONST	$408	81	:i32
 	JMP	$0	B1081()	:void
@@ -816,7 +816,7 @@ B162()
 	JMP	$0	B1081()	:void
 B163()
 	CONST	$411	1	:i32
-	ADD	$412	$2	$411	:i32
+	CONST	$412	82	:i32
 	ASSIGN	$2	$412	:i32
 	CONST	$413	82	:i32
 	JMP	$0	B1082()	:void
@@ -826,7 +826,7 @@ B164()
 	JMP	$0	B1082()	:void
 B165()
 	CONST	$416	1	:i32
-	ADD	$417	$2	$416	:i32
+	CONST	$417	83	:i32
 	ASSIGN	$2	$417	:i32
 	CONST	$418	83	:i32
 	JMP	$0	B1083()	:void
@@ -836,7 +836,7 @@ B166()
 	JMP	$0	B1083()	:void
 B167()
 	CONST	$421	1	:i32
-	ADD	$422	$2	$421	:i32
+	CONST	$422	84	:i32
 	ASSIGN	$2	$422	:i32
 	CONST	$423	84	:i32
 	JMP	$0	B1084()	:void
@@ -846,7 +846,7 @@ B168()
 	JMP	$0	B1084()	:void
 B169()
 	CONST	$426	1	:i32
-	ADD	$427	$2	$426	:i32
+	CONST	$427	85	:i32
 	ASSIGN	$2	$427	:i32
 	CONST	$428	85	:i32
 	JMP	$0	B1085()	:void
@@ -856,7 +856,7 @@ B170()
 	JMP	$0	B1085()	:void
 B171()
 	CONST	$431	1	:i32
-	ADD	$432	$2	$431	:i32
+	CONST	$432	86	:i32
 	ASSIGN	$2	$432	:i32
 	CONST	$433	86	:i32
 	JMP	$0	B1086()	:void
@@ -866,7 +866,7 @@ B172()
 	JMP	$0	B1086()	:void
 B173()
 	CONST	$436	1	:i32
-	ADD	$437	$2	$436	:i32
+	CONST	$437	87	:i32
 	ASSIGN	$2	$437	:i32
 	CONST	$438	87	:i32
 	JMP	$0	B1087()	:void
@@ -876,7 +876,7 @@ B174()
 	JMP	$0	B1087()	:void
 B175()
 	CONST	$441	1	:i32
-	ADD	$442	$2	$441	:i32
+	CONST	$442	88	:i32
 	ASSIGN	$2	$442	:i32
 	CONST	$443	88	:i32
 	JMP	$0	B1088()	:void
@@ -886,7 +886,7 @@ B176()
 	JMP	$0	B1088()	:void
 B177()
 	CONST	$446	1	:i32
-	ADD	$447	$2	$446	:i32
+	CONST	$447	89	:i32
 	ASSIGN	$2	$447	:i32
 	CONST	$448	89	:i32
 	JMP	$0	B1089()	:void
@@ -896,7 +896,7 @@ B178()
 	JMP	$0	B1089()	:void
 B179()
 	CONST	$451	1	:i32
-	ADD	$452	$2	$451	:i32
+	CONST	$452	90	:i32
 	ASSIGN	$2	$452	:i32
 	CONST	$453	90	:i32
 	JMP	$0	B1090()	:void
@@ -906,7 +906,7 @@ B180()
 	JMP	$0	B1090()	:void
 B181()
 	CONST	$456	1	:i32
-	ADD	$457	$2	$456	:i32
+	CONST	$457	91	:i32
 	ASSIGN	$2	$457	:i32
 	CONST	$458	91	:i32
 	JMP	$0	B1091()	:void
@@ -916,7 +916,7 @@ B182()
 	JMP	$0	B1091()	:void
 B183()
 	CONST	$461	1	:i32
-	ADD	$462	$2	$461	:i32
+	CONST	$462	92	:i32
 	ASSIGN	$2	$462	:i32
 	CONST	$463	92	:i32
 	JMP	$0	B1092()	:void
@@ -926,7 +926,7 @@ B184()
 	JMP	$0	B1092()	:void
 B185()
 	CONST	$466	1	:i32
-	ADD	$467	$2	$466	:i32
+	CONST	$467	93	:i32
 	ASSIGN	$2	$467	:i32
 	CONST	$468	93	:i32
 	JMP	$0	B1093()	:void
@@ -936,7 +936,7 @@ B186()
 	JMP	$0	B1093()	:void
 B187()
 	CONST	$471	1	:i32
-	ADD	$472	$2	$471	:i32
+	CONST	$472	94	:i32
 	ASSIGN	$2	$472	:i32
 	CONST	$473	94	:i32
 	JMP	$0	B1094()	:void
@@ -946,7 +946,7 @@ B188()
 	JMP	$0	B1094()	:void
 B189()
 	CONST	$476	1	:i32
-	ADD	$477	$2	$476	:i32
+	CONST	$477	95	:i32
 	ASSIGN	$2	$477	:i32
 	CONST	$478	95	:i32
 	JMP	$0	B1095()	:void
@@ -956,7 +956,7 @@ B190()
 	JMP	$0	B1095()	:void
 B191()
 	CONST	$481	1	:i32
-	ADD	$482	$2	$481	:i32
+	CONST	$482	96	:i32
 	ASSIGN	$2	$482	:i32
 	CONST	$483	96	:i32
 	JMP	$0	B1096()	:void
@@ -966,7 +966,7 @@ B192()
 	JMP	$0	B1096()	:void
 B193()
 	CONST	$486	1	:i32
-	ADD	$487	$2	$486	:i32
+	CONST	$487	97	:i32
 	ASSIGN	$2	$487	:i32
 	CONST	$488	97	:i32
 	JMP	$0	B1097()	:void
@@ -976,7 +976,7 @@ B194()
 	JMP	$0	B1097()	:void
 B195()
 	CONST	$491	1	:i32
-	ADD	$492	$2	$491	:i32
+	CONST	$492	98	:i32
 	ASSIGN	$2	$492	:i32
 	CONST	$493	98	:i32
 	JMP	$0	B1098()	:void
@@ -986,7 +986,7 @@ B196()
 	JMP	$0	B1098()	:void
 B197()
 	CONST	$496	1	:i32
-	ADD	$497	$2	$496	:i32
+	CONST	$497	99	:i32
 	ASSIGN	$2	$497	:i32
 	CONST	$498	99	:i32
 	JMP	$0	B1099()	:void
@@ -996,7 +996,7 @@ B198()
 	JMP	$0	B1099()	:void
 B199()
 	CONST	$501	1	:i32
-	ADD	$502	$2	$501	:i32
+	CONST	$502	100	:i32
 	ASSIGN	$2	$502	:i32
 	CONST	$503	100	:i32
 	JMP	$0	B1100()	:void
@@ -1006,7 +1006,7 @@ B200()
 	JMP	$0	B1100()	:void
 B201()
 	CONST	$506	1	:i32
-	ADD	$507	$2	$506	:i32
+	CONST	$507	101	:i32
 	ASSIGN	$2	$507	:i32
 	CONST	$508	101	:i32
 	JMP	$0	B1101()	:void
@@ -1016,7 +1016,7 @@ B202()
 	JMP	$0	B1101()	:void
 B203()
 	CONST	$511	1	:i32
-	ADD	$512	$2	$511	:i32
+	CONST	$512	102	:i32
 	ASSIGN	$2	$512	:i32
 	CONST	$513	102	:i32
 	JMP	$0	B1102()	:void
@@ -1026,7 +1026,7 @@ B204()
 	JMP	$0	B1102()	:void
 B205()
 	CONST	$516	1	:i32
-	ADD	$517	$2	$516	:i32
+	CONST	$517	103	:i32
 	ASSIGN	$2	$517	:i32
 	CONST	$518	103	:i32
 	JMP	$0	B1103()	:void
@@ -1036,7 +1036,7 @@ B206()
 	JMP	$0	B1103()	:void
 B207()
 	CONST	$521	1	:i32
-	ADD	$522	$2	$521	:i32
+	CONST	$522	104	:i32
 	ASSIGN	$2	$522	:i32
 	CONST	$523	104	:i32
 	JMP	$0	B1104()	:void
@@ -1046,7 +1046,7 @@ B208()
 	JMP	$0	B1104()	:void
 B209()
 	CONST	$526	1	:i32
-	ADD	$527	$2	$526	:i32
+	CONST	$527	105	:i32
 	ASSIGN	$2	$527	:i32
 	CONST	$528	105	:i32
 	JMP	$0	B1105()	:void
@@ -1056,7 +1056,7 @@ B210()
 	JMP	$0	B1105()	:void
 B211()
 	CONST	$531	1	:i32
-	ADD	$532	$2	$531	:i32
+	CONST	$532	106	:i32
 	ASSIGN	$2	$532	:i32
 	CONST	$533	106	:i32
 	JMP	$0	B1106()	:void
@@ -1066,7 +1066,7 @@ B212()
 	JMP	$0	B1106()	:void
 B213()
 	CONST	$536	1	:i32
-	ADD	$537	$2	$536	:i32
+	CONST	$537	107	:i32
 	ASSIGN	$2	$537	:i32
 	CONST	$538	107	:i32
 	JMP	$0	B1107()	:void
@@ -1076,7 +1076,7 @@ B214()
 	JMP	$0	B1107()	:void
 B215()
 	CONST	$541	1	:i32
-	ADD	$542	$2	$541	:i32
+	CONST	$542	108	:i32
 	ASSIGN	$2	$542	:i32
 	CONST	$543	108	:i32
 	JMP	$0	B1108()	:void
@@ -1086,7 +1086,7 @@ B216()
 	JMP	$0	B1108()	:void
 B217()
 	CONST	$546	1	:i32
-	ADD	$547	$2	$546	:i32
+	CONST	$547	109	:i32
 	ASSIGN	$2	$547	:i32
 	CONST	$548	109	:i32
 	JMP	$0	B1109()	:void
@@ -1096,7 +1096,7 @@ B218()
 	JMP	$0	B1109()	:void
 B219()
 	CONST	$551	1	:i32
-	ADD	$552	$2	$551	:i32
+	CONST	$552	110	:i32
 	ASSIGN	$2	$552	:i32
 	CONST	$553	110	:i32
 	JMP	$0	B1110()	:void
@@ -1106,7 +1106,7 @@ B220()
 	JMP	$0	B1110()	:void
 B221()
 	CONST	$556	1	:i32
-	ADD	$557	$2	$556	:i32
+	CONST	$557	111	:i32
 	ASSIGN	$2	$557	:i32
 	CONST	$558	111	:i32
 	JMP	$0	B1111()	:void
@@ -1116,7 +1116,7 @@ B222()
 	JMP	$0	B1111()	:void
 B223()
 	CONST	$561	1	:i32
-	ADD	$562	$2	$561	:i32
+	CONST	$562	112	:i32
 	ASSIGN	$2	$562	:i32
 	CONST	$563	112	:i32
 	JMP	$0	B1112()	:void
@@ -1126,7 +1126,7 @@ B224()
 	JMP	$0	B1112()	:void
 B225()
 	CONST	$566	1	:i32
-	ADD	$567	$2	$566	:i32
+	CONST	$567	113	:i32
 	ASSIGN	$2	$567	:i32
 	CONST	$568	113	:i32
 	JMP	$0	B1113()	:void
@@ -1136,7 +1136,7 @@ B226()
 	JMP	$0	B1113()	:void
 B227()
 	CONST	$571	1	:i32
-	ADD	$572	$2	$571	:i32
+	CONST	$572	114	:i32
 	ASSIGN	$2	$572	:i32
 	CONST	$573	114	:i32
 	JMP	$0	B1114()	:void
@@ -1146,7 +1146,7 @@ B228()
 	JMP	$0	B1114()	:void
 B229()
 	CONST	$576	1	:i32
-	ADD	$577	$2	$576	:i32
+	CONST	$577	115	:i32
 	ASSIGN	$2	$577	:i32
 	CONST	$578	115	:i32
 	JMP	$0	B1115()	:void
@@ -1156,7 +1156,7 @@ B230()
 	JMP	$0	B1115()	:void
 B231()
 	CONST	$581	1	:i32
-	ADD	$582	$2	$581	:i32
+	CONST	$582	116	:i32
 	ASSIGN	$2	$582	:i32
 	CONST	$583	116	:i32
 	JMP	$0	B1116()	:void
@@ -1166,7 +1166,7 @@ B232()
 	JMP	$0	B1116()	:void
 B233()
 	CONST	$586	1	:i32
-	ADD	$587	$2	$586	:i32
+	CONST	$587	117	:i32
 	ASSIGN	$2	$587	:i32
 	CONST	$588	117	:i32
 	JMP	$0	B1117()	:void
@@ -1176,7 +1176,7 @@ B234()
 	JMP	$0	B1117()	:void
 B235()
 	CONST	$591	1	:i32
-	ADD	$592	$2	$591	:i32
+	CONST	$592	118	:i32
 	ASSIGN	$2	$592	:i32
 	CONST	$593	118	:i32
 	JMP	$0	B1118()	:void
@@ -1186,7 +1186,7 @@ B236()
 	JMP	$0	B1118()	:void
 B237()
 	CONST	$596	1	:i32
-	ADD	$597	$2	$596	:i32
+	CONST	$597	119	:i32
 	ASSIGN	$2	$597	:i32
 	CONST	$598	119	:i32
 	JMP	$0	B1119()	:void
@@ -1196,7 +1196,7 @@ B238()
 	JMP	$0	B1119()	:void
 B239()
 	CONST	$601	1	:i32
-	ADD	$602	$2	$601	:i32
+	CONST	$602	120	:i32
 	ASSIGN	$2	$602	:i32
 	CONST	$603	120	:i32
 	JMP	$0	B1120()	:void
@@ -1206,7 +1206,7 @@ B240()
 	JMP	$0	B1120()	:void
 B241()
 	CONST	$606	1	:i32
-	ADD	$607	$2	$606	:i32
+	CONST	$607	121	:i32
 	ASSIGN	$2	$607	:i32
 	CONST	$608	121	:i32
 	JMP	$0	B1121()	:void
@@ -1216,7 +1216,7 @@ B242()
 	JMP	$0	B1121()	:void
 B243()
 	CONST	$611	1	:i32
-	ADD	$612	$2	$611	:i32
+	CONST	$612	122	:i32
 	ASSIGN	$2	$612	:i32
 	CONST	$613	122	:i32
 	JMP	$0	B1122()	:void
@@ -1226,7 +1226,7 @@ B244()
 	JMP	$0	B1122()	:void
 B245()
 	CONST	$616	1	:i32
-	ADD	$617	$2	$616	:i32
+	CONST	$617	123	:i32
 	ASSIGN	$2	$617	:i32
 	CONST	$618	123	:i32
 	JMP	$0	B1123()	:void
@@ -1236,7 +1236,7 @@ B246()
 	JMP	$0	B1123()	:void
 B247()
 	CONST	$621	1	:i32
-	ADD	$622	$2	$621	:i32
+	CONST	$622	124	:i32
 	ASSIGN	$2	$622	:i32
 	CONST	$623	124	:i32
 	JMP	$0	B1124()	:void
@@ -1246,7 +1246,7 @@ B248()
 	JMP	$0	B1124()	:void
 B249()
 	CONST	$626	1	:i32
-	ADD	$627	$2	$626	:i32
+	CONST	$627	125	:i32
 	ASSIGN	$2	$627	:i32
 	CONST	$628	125	:i32
 	JMP	$0	B1125()	:void
@@ -1256,7 +1256,7 @@ B250()
 	JMP	$0	B1125()	:void
 B251()
 	CONST	$631	1	:i32
-	ADD	$632	$2	$631	:i32
+	CONST	$632	126	:i32
 	ASSIGN	$2	$632	:i32
 	CONST	$633	126	:i32
 	JMP	$0	B1126()	:void
@@ -1266,7 +1266,7 @@ B252()
 	JMP	$0	B1126()	:void
 B253()
 	CONST	$636	1	:i32
-	ADD	$637	$2	$636	:i32
+	CONST	$637	127	:i32
 	ASSIGN	$2	$637	:i32
 	CONST	$638	127	:i32
 	JMP	$0	B1127()	:void
@@ -1276,7 +1276,7 @@ B254()
 	JMP	$0	B1127()	:void
 B255()
 	CONST	$641	1	:i32
-	ADD	$642	$2	$641	:i32
+	CONST	$642	128	:i32
 	ASSIGN	$2	$642	:i32
 	CONST	$643	128	:i32
 	JMP	$0	B1128()	:void
@@ -1286,7 +1286,7 @@ B256()
 	JMP	$0	B1128()	:void
 B257()
 	CONST	$646	1	:i32
-	ADD	$647	$2	$646	:i32
+	CONST	$647	129	:i32
 	ASSIGN	$2	$647	:i32
 	CONST	$648	129	:i32
 	JMP	$0	B1129()	:void
@@ -1296,7 +1296,7 @@ B258()
 	JMP	$0	B1129()	:void
 B259()
 	CONST	$651	1	:i32
-	ADD	$652	$2	$651	:i32
+	CONST	$652	130	:i32
 	ASSIGN	$2	$652	:i32
 	CONST	$653	130	:i32
 	JMP	$0	B1130()	:void
@@ -1306,7 +1306,7 @@ B260()
 	JMP	$0	B1130()	:void
 B261()
 	CONST	$656	1	:i32
-	ADD	$657	$2	$656	:i32
+	CONST	$657	131	:i32
 	ASSIGN	$2	$657	:i32
 	CONST	$658	131	:i32
 	JMP	$0	B1131()	:void
@@ -1316,7 +1316,7 @@ B262()
 	JMP	$0	B1131()	:void
 B263()
 	CONST	$661	1	:i32
-	ADD	$662	$2	$661	:i32
+	CONST	$662	132	:i32
 	ASSIGN	$2	$662	:i32
 	CONST	$663	132	:i32
 	JMP	$0	B1132()	:void
@@ -1326,7 +1326,7 @@ B264()
 	JMP	$0	B1132()	:void
 B265()
 	CONST	$666	1	:i32
-	ADD	$667	$2	$666	:i32
+	CONST	$667	133	:i32
 	ASSIGN	$2	$667	:i32
 	CONST	$668	133	:i32
 	JMP	$0	B1133()	:void
@@ -1336,7 +1336,7 @@ B266()
 	JMP	$0	B1133()	:void
 B267()
 	CONST	$671	1	:i32
-	ADD	$672	$2	$671	:i32
+	CONST	$672	134	:i32
 	ASSIGN	$2	$672	:i32
 	CONST	$673	134	:i32
 	JMP	$0	B1134()	:void
@@ -1346,7 +1346,7 @@ B268()
 	JMP	$0	B1134()	:void
 B269()
 	CONST	$676	1	:i32
-	ADD	$677	$2	$676	:i32
+	CONST	$677	135	:i32
 	ASSIGN	$2	$677	:i32
 	CONST	$678	135	:i32
 	JMP	$0	B1135()	:void
@@ -1356,7 +1356,7 @@ B270()
 	JMP	$0	B1135()	:void
 B271()
 	CONST	$681	1	:i32
-	ADD	$682	$2	$681	:i32
+	CONST	$682	136	:i32
 	ASSIGN	$2	$682	:i32
 	CONST	$683	136	:i32
 	JMP	$0	B1136()	:void
@@ -1366,7 +1366,7 @@ B272()
 	JMP	$0	B1136()	:void
 B273()
 	CONST	$686	1	:i32
-	ADD	$687	$2	$686	:i32
+	CONST	$687	137	:i32
 	ASSIGN	$2	$687	:i32
 	CONST	$688	137	:i32
 	JMP	$0	B1137()	:void
@@ -1376,7 +1376,7 @@ B274()
 	JMP	$0	B1137()	:void
 B275()
 	CONST	$691	1	:i32
-	ADD	$692	$2	$691	:i32
+	CONST	$692	138	:i32
 	ASSIGN	$2	$692	:i32
 	CONST	$693	138	:i32
 	JMP	$0	B1138()	:void
@@ -1386,7 +1386,7 @@ B276()
 	JMP	$0	B1138()	:void
 B277()
 	CONST	$696	1	:i32
-	ADD	$697	$2	$696	:i32
+	CONST	$697	139	:i32
 	ASSIGN	$2	$697	:i32
 	CONST	$698	139	:i32
 	JMP	$0	B1139()	:void
@@ -1396,7 +1396,7 @@ B278()
 	JMP	$0	B1139()	:void
 B279()
 	CONST	$701	1	:i32
-	ADD	$702	$2	$701	:i32
+	CONST	$702	140	:i32
 	ASSIGN	$2	$702	:i32
 	CONST	$703	140	:i32
 	JMP	$0	B1140()	:void
@@ -1406,7 +1406,7 @@ B280()
 	JMP	$0	B1140()	:void
 B281()
 	CONST	$706	1	:i32
-	ADD	$707	$2	$706	:i32
+	CONST	$707	141	:i32
 	ASSIGN	$2	$707	:i32
 	CONST	$708	141	:i32
 	JMP	$0	B1141()	:void
@@ -1416,7 +1416,7 @@ B282()
 	JMP	$0	B1141()	:void
 B283()
 	CONST	$711	1	:i32
-	ADD	$712	$2	$711	:i32
+	CONST	$712	142	:i32
 	ASSIGN	$2	$712	:i32
 	CONST	$713	142	:i32
 	JMP	$0	B1142()	:void
@@ -1426,7 +1426,7 @@ B284()
 	JMP	$0	B1142()	:void
 B285()
 	CONST	$716	1	:i32
-	ADD	$717	$2	$716	:i32
+	CONST	$717	143	:i32
 	ASSIGN	$2	$717	:i32
 	CONST	$718	143	:i32
 	JMP	$0	B1143()	:void
@@ -1436,7 +1436,7 @@ B286()
 	JMP	$0	B1143()	:void
 B287()
 	CONST	$721	1	:i32
-	ADD	$722	$2	$721	:i32
+	CONST	$722	144	:i32
 	ASSIGN	$2	$722	:i32
 	CONST	$723	144	:i32
 	JMP	$0	B1144()	:void
@@ -1446,7 +1446,7 @@ B288()
 	JMP	$0	B1144()	:void
 B289()
 	CONST	$726	1	:i32
-	ADD	$727	$2	$726	:i32
+	CONST	$727	145	:i32
 	ASSIGN	$2	$727	:i32
 	CONST	$728	145	:i32
 	JMP	$0	B1145()	:void
@@ -1456,7 +1456,7 @@ B290()
 	JMP	$0	B1145()	:void
 B291()
 	CONST	$731	1	:i32
-	ADD	$732	$2	$731	:i32
+	CONST	$732	146	:i32
 	ASSIGN	$2	$732	:i32
 	CONST	$733	146	:i32
 	JMP	$0	B1146()	:void
@@ -1466,7 +1466,7 @@ B292()
 	JMP	$0	B1146()	:void
 B293()
 	CONST	$736	1	:i32
-	ADD	$737	$2	$736	:i32
+	CONST	$737	147	:i32
 	ASSIGN	$2	$737	:i32
 	CONST	$738	147	:i32
 	JMP	$0	B1147()	:void
@@ -1476,7 +1476,7 @@ B294()
 	JMP	$0	B1147()	:void
 B295()
 	CONST	$741	1	:i32
-	ADD	$742	$2	$741	:i32
+	CONST	$742	148	:i32
 	ASSIGN	$2	$742	:i32
 	CONST	$743	148	:i32
 	JMP	$0	B1148()	:void
@@ -1486,7 +1486,7 @@ B296()
 	JMP	$0	B1148()	:void
 B297()
 	CONST	$746	1	:i32
-	ADD	$747	$2	$746	:i32
+	CONST	$747	149	:i32
 	ASSIGN	$2	$747	:i32
 	CONST	$748	149	:i32
 	JMP	$0	B1149()	:void
@@ -1496,7 +1496,7 @@ B298()
 	JMP	$0	B1149()	:void
 B299()
 	CONST	$751	1	:i32
-	ADD	$752	$2	$751	:i32
+	CONST	$752	150	:i32
 	ASSIGN	$2	$752	:i32
 	CONST	$753	150	:i32
 	JMP	$0	B1150()	:void
@@ -1506,7 +1506,7 @@ B300()
 	JMP	$0	B1150()	:void
 B301()
 	CONST	$756	1	:i32
-	ADD	$757	$2	$756	:i32
+	CONST	$757	151	:i32
 	ASSIGN	$2	$757	:i32
 	CONST	$758	151	:i32
 	JMP	$0	B1151()	:void
@@ -1516,7 +1516,7 @@ B302()
 	JMP	$0	B1151()	:void
 B303()
 	CONST	$761	1	:i32
-	ADD	$762	$2	$761	:i32
+	CONST	$762	152	:i32
 	ASSIGN	$2	$762	:i32
 	CONST	$763	152	:i32
 	JMP	$0	B1152()	:void
@@ -1526,7 +1526,7 @@ B304()
 	JMP	$0	B1152()	:void
 B305()
 	CONST	$766	1	:i32
-	ADD	$767	$2	$766	:i32
+	CONST	$767	153	:i32
 	ASSIGN	$2	$767	:i32
 	CONST	$768	153	:i32
 	JMP	$0	B1153()	:void
@@ -1536,7 +1536,7 @@ B306()
 	JMP	$0	B1153()	:void
 B307()
 	CONST	$771	1	:i32
-	ADD	$772	$2	$771	:i32
+	CONST	$772	154	:i32
 	ASSIGN	$2	$772	:i32
 	CONST	$773	154	:i32
 	JMP	$0	B1154()	:void
@@ -1546,7 +1546,7 @@ B308()
 	JMP	$0	B1154()	:void
 B309()
 	CONST	$776	1	:i32
-	ADD	$777	$2	$776	:i32
+	CONST	$777	155	:i32
 	ASSIGN	$2	$777	:i32
 	CONST	$778	155	:i32
 	JMP	$0	B1155()	:void
@@ -1556,7 +1556,7 @@ B310()
 	JMP	$0	B1155()	:void
 B311()
 	CONST	$781	1	:i32
-	ADD	$782	$2	$781	:i32
+	CONST	$782	156	:i32
 	ASSIGN	$2	$782	:i32
 	CONST	$783	156	:i32
 	JMP	$0	B1156()	:void
@@ -1566,7 +1566,7 @@ B312()
 	JMP	$0	B1156()	:void
 B313()
 	CONST	$786	1	:i32
-	ADD	$787	$2	$786	:i32
+	CONST	$787	157	:i32
 	ASSIGN	$2	$787	:i32
 	CONST	$788	157	:i32
 	JMP	$0	B1157()	:void
@@ -1576,7 +1576,7 @@ B314()
 	JMP	$0	B1157()	:void
 B315()
 	CONST	$791	1	:i32
-	ADD	$792	$2	$791	:i32
+	CONST	$792	158	:i32
 	ASSIGN	$2	$792	:i32
 	CONST	$793	158	:i32
 	JMP	$0	B1158()	:void
@@ -1586,7 +1586,7 @@ B316()
 	JMP	$0	B1158()	:void
 B317()
 	CONST	$796	1	:i32
-	ADD	$797	$2	$796	:i32
+	CONST	$797	159	:i32
 	ASSIGN	$2	$797	:i32
 	CONST	$798	159	:i32
 	JMP	$0	B1159()	:void
@@ -1596,7 +1596,7 @@ B318()
 	JMP	$0	B1159()	:void
 B319()
 	CONST	$801	1	:i32
-	ADD	$802	$2	$801	:i32
+	CONST	$802	160	:i32
 	ASSIGN	$2	$802	:i32
 	CONST	$803	160	:i32
 	JMP	$0	B1160()	:void
@@ -1606,7 +1606,7 @@ B320()
 	JMP	$0	B1160()	:void
 B321()
 	CONST	$806	1	:i32
-	ADD	$807	$2	$806	:i32
+	CONST	$807	161	:i32
 	ASSIGN	$2	$807	:i32
 	CONST	$808	161	:i32
 	JMP	$0	B1161()	:void
@@ -1616,7 +1616,7 @@ B322()
 	JMP	$0	B1161()	:void
 B323()
 	CONST	$811	1	:i32
-	ADD	$812	$2	$811	:i32
+	CONST	$812	162	:i32
 	ASSIGN	$2	$812	:i32
 	CONST	$813	162	:i32
 	JMP	$0	B1162()	:void
@@ -1626,7 +1626,7 @@ B324()
 	JMP	$0	B1162()	:void
 B325()
 	CONST	$816	1	:i32
-	ADD	$817	$2	$816	:i32
+	CONST	$817	163	:i32
 	ASSIGN	$2	$817	:i32
 	CONST	$818	163	:i32
 	JMP	$0	B1163()	:void
@@ -1636,7 +1636,7 @@ B326()
 	JMP	$0	B1163()	:void
 B327()
 	CONST	$821	1	:i32
-	ADD	$822	$2	$821	:i32
+	CONST	$822	164	:i32
 	ASSIGN	$2	$822	:i32
 	CONST	$823	164	:i32
 	JMP	$0	B1164()	:void
@@ -1646,7 +1646,7 @@ B328()
 	JMP	$0	B1164()	:void
 B329()
 	CONST	$826	1	:i32
-	ADD	$827	$2	$826	:i32
+	CONST	$827	165	:i32
 	ASSIGN	$2	$827	:i32
 	CONST	$828	165	:i32
 	JMP	$0	B1165()	:void
@@ -1656,7 +1656,7 @@ B330()
 	JMP	$0	B1165()	:void
 B331()
 	CONST	$831	1	:i32
-	ADD	$832	$2	$831	:i32
+	CONST	$832	166	:i32
 	ASSIGN	$2	$832	:i32
 	CONST	$833	166	:i32
 	JMP	$0	B1166()	:void
@@ -1666,7 +1666,7 @@ B332()
 	JMP	$0	B1166()	:void
 B333()
 	CONST	$836	1	:i32
-	ADD	$837	$2	$836	:i32
+	CONST	$837	167	:i32
 	ASSIGN	$2	$837	:i32
 	CONST	$838	167	:i32
 	JMP	$0	B1167()	:void
@@ -1676,7 +1676,7 @@ B334()
 	JMP	$0	B1167()	:void
 B335()
 	CONST	$841	1	:i32
-	ADD	$842	$2	$841	:i32
+	CONST	$842	168	:i32
 	ASSIGN	$2	$842	:i32
 	CONST	$843	168	:i32
 	JMP	$0	B1168()	:void
@@ -1686,7 +1686,7 @@ B336()
 	JMP	$0	B1168()	:void
 B337()
 	CONST	$846	1	:i32
-	ADD	$847	$2	$846	:i32
+	CONST	$847	169	:i32
 	ASSIGN	$2	$847	:i32
 	CONST	$848	169	:i32
 	JMP	$0	B1169()	:void
@@ -1696,7 +1696,7 @@ B338()
 	JMP	$0	B1169()	:void
 B339()
 	CONST	$851	1	:i32
-	ADD	$852	$2	$851	:i32
+	CONST	$852	170	:i32
 	ASSIGN	$2	$852	:i32
 	CONST	$853	170	:i32
 	JMP	$0	B1170()	:void
@@ -1706,7 +1706,7 @@ B340()
 	JMP	$0	B1170()	:void
 B341()
 	CONST	$856	1	:i32
-	ADD	$857	$2	$856	:i32
+	CONST	$857	171	:i32
 	ASSIGN	$2	$857	:i32
 	CONST	$858	171	:i32
 	JMP	$0	B1171()	:void
@@ -1716,7 +1716,7 @@ B342()
 	JMP	$0	B1171()	:void
 B343()
 	CONST	$861	1	:i32
-	ADD	$862	$2	$861	:i32
+	CONST	$862	172	:i32
 	ASSIGN	$2	$862	:i32
 	CONST	$863	172	:i32
 	JMP	$0	B1172()	:void
@@ -1726,7 +1726,7 @@ B344()
 	JMP	$0	B1172()	:void
 B345()
 	CONST	$866	1	:i32
-	ADD	$867	$2	$866	:i32
+	CONST	$867	173	:i32
 	ASSIGN	$2	$867	:i32
 	CONST	$868	173	:i32
 	JMP	$0	B1173()	:void
@@ -1736,7 +1736,7 @@ B346()
 	JMP	$0	B1173()	:void
 B347()
 	CONST	$871	1	:i32
-	ADD	$872	$2	$871	:i32
+	CONST	$872	174	:i32
 	ASSIGN	$2	$872	:i32
 	CONST	$873	174	:i32
 	JMP	$0	B1174()	:void
@@ -1746,7 +1746,7 @@ B348()
 	JMP	$0	B1174()	:void
 B349()
 	CONST	$876	1	:i32
-	ADD	$877	$2	$876	:i32
+	CONST	$877	175	:i32
 	ASSIGN	$2	$877	:i32
 	CONST	$878	175	:i32
 	JMP	$0	B1175()	:void
@@ -1756,7 +1756,7 @@ B350()
 	JMP	$0	B1175()	:void
 B351()
 	CONST	$881	1	:i32
-	ADD	$882	$2	$881	:i32
+	CONST	$882	176	:i32
 	ASSIGN	$2	$882	:i32
 	CONST	$883	176	:i32
 	JMP	$0	B1176()	:void
@@ -1766,7 +1766,7 @@ B352()
 	JMP	$0	B1176()	:void
 B353()
 	CONST	$886	1	:i32
-	ADD	$887	$2	$886	:i32
+	CONST	$887	177	:i32
 	ASSIGN	$2	$887	:i32
 	CONST	$888	177	:i32
 	JMP	$0	B1177()	:void
@@ -1776,7 +1776,7 @@ B354()
 	JMP	$0	B1177()	:void
 B355()
 	CONST	$891	1	:i32
-	ADD	$892	$2	$891	:i32
+	CONST	$892	178	:i32
 	ASSIGN	$2	$892	:i32
 	CONST	$893	178	:i32
 	JMP	$0	B1178()	:void
@@ -1786,7 +1786,7 @@ B356()
 	JMP	$0	B1178()	:void
 B357()
 	CONST	$896	1	:i32
-	ADD	$897	$2	$896	:i32
+	CONST	$897	179	:i32
 	ASSIGN	$2	$897	:i32
 	CONST	$898	179	:i32
 	JMP	$0	B1179()	:void
@@ -1796,7 +1796,7 @@ B358()
 	JMP	$0	B1179()	:void
 B359()
 	CONST	$901	1	:i32
-	ADD	$902	$2	$901	:i32
+	CONST	$902	180	:i32
 	ASSIGN	$2	$902	:i32
 	CONST	$903	180	:i32
 	JMP	$0	B1180()	:void
@@ -1806,7 +1806,7 @@ B360()
 	JMP	$0	B1180()	:void
 B361()
 	CONST	$906	1	:i32
-	ADD	$907	$2	$906	:i32
+	CONST	$907	181	:i32
 	ASSIGN	$2	$907	:i32
 	CONST	$908	181	:i32
 	JMP	$0	B1181()	:void
@@ -1816,7 +1816,7 @@ B362()
 	JMP	$0	B1181()	:void
 B363()
 	CONST	$911	1	:i32
-	ADD	$912	$2	$911	:i32
+	CONST	$912	182	:i32
 	ASSIGN	$2	$912	:i32
 	CONST	$913	182	:i32
 	JMP	$0	B1182()	:void
@@ -1826,7 +1826,7 @@ B364()
 	JMP	$0	B1182()	:void
 B365()
 	CONST	$916	1	:i32
-	ADD	$917	$2	$916	:i32
+	CONST	$917	183	:i32
 	ASSIGN	$2	$917	:i32
 	CONST	$918	183	:i32
 	JMP	$0	B1183()	:void
@@ -1836,7 +1836,7 @@ B366()
 	JMP	$0	B1183()	:void
 B367()
 	CONST	$921	1	:i32
-	ADD	$922	$2	$921	:i32
+	CONST	$922	184	:i32
 	ASSIGN	$2	$922	:i32
 	CONST	$923	184	:i32
 	JMP	$0	B1184()	:void
@@ -1846,7 +1846,7 @@ B368()
 	JMP	$0	B1184()	:void
 B369()
 	CONST	$926	1	:i32
-	ADD	$927	$2	$926	:i32
+	CONST	$927	185	:i32
 	ASSIGN	$2	$927	:i32
 	CONST	$928	185	:i32
 	JMP	$0	B1185()	:void
@@ -1856,7 +1856,7 @@ B370()
 	JMP	$0	B1185()	:void
 B371()
 	CONST	$931	1	:i32
-	ADD	$932	$2	$931	:i32
+	CONST	$932	186	:i32
 	ASSIGN	$2	$932	:i32
 	CONST	$933	186	:i32
 	JMP	$0	B1186()	:void
@@ -1866,7 +1866,7 @@ B372()
 	JMP	$0	B1186()	:void
 B373()
 	CONST	$936	1	:i32
-	ADD	$937	$2	$936	:i32
+	CONST	$937	187	:i32
 	ASSIGN	$2	$937	:i32
 	CONST	$938	187	:i32
 	JMP	$0	B1187()	:void
@@ -1876,7 +1876,7 @@ B374()
 	JMP	$0	B1187()	:void
 B375()
 	CONST	$941	1	:i32
-	ADD	$942	$2	$941	:i32
+	CONST	$942	188	:i32
 	ASSIGN	$2	$942	:i32
 	CONST	$943	188	:i32
 	JMP	$0	B1188()	:void
@@ -1886,7 +1886,7 @@ B376()
 	JMP	$0	B1188()	:void
 B377()
 	CONST	$946	1	:i32
-	ADD	$947	$2	$946	:i32
+	CONST	$947	189	:i32
 	ASSIGN	$2	$947	:i32
 	CONST	$948	189	:i32
 	JMP	$0	B1189()	:void
@@ -1896,7 +1896,7 @@ B378()
 	JMP	$0	B1189()	:void
 B379()
 	CONST	$951	1	:i32
-	ADD	$952	$2	$951	:i32
+	CONST	$952	190	:i32
 	ASSIGN	$2	$952	:i32
 	CONST	$953	190	:i32
 	JMP	$0	B1190()	:void
@@ -1906,7 +1906,7 @@ B380()
 	JMP	$0	B1190()	:void
 B381()
 	CONST	$956	1	:i32
-	ADD	$957	$2	$956	:i32
+	CONST	$957	191	:i32
 	ASSIGN	$2	$957	:i32
 	CONST	$958	191	:i32
 	JMP	$0	B1191()	:void
@@ -1916,7 +1916,7 @@ B382()
 	JMP	$0	B1191()	:void
 B383()
 	CONST	$961	1	:i32
-	ADD	$962	$2	$961	:i32
+	CONST	$962	192	:i32
 	ASSIGN	$2	$962	:i32
 	CONST	$963	192	:i32
 	JMP	$0	B1192()	:void
@@ -1926,7 +1926,7 @@ B384()
 	JMP	$0	B1192()	:void
 B385()
 	CONST	$966	1	:i32
-	ADD	$967	$2	$966	:i32
+	CONST	$967	193	:i32
 	ASSIGN	$2	$967	:i32
 	CONST	$968	193	:i32
 	JMP	$0	B1193()	:void
@@ -1936,7 +1936,7 @@ B386()
 	JMP	$0	B1193()	:void
 B387()
 	CONST	$971	1	:i32
-	ADD	$972	$2	$971	:i32
+	CONST	$972	194	:i32
 	ASSIGN	$2	$972	:i32
 	CONST	$973	194	:i32
 	JMP	$0	B1194()	:void
@@ -1946,7 +1946,7 @@ B388()
 	JMP	$0	B1194()	:void
 B389()
 	CONST	$976	1	:i32
-	ADD	$977	$2	$976	:i32
+	CONST	$977	195	:i32
 	ASSIGN	$2	$977	:i32
 	CONST	$978	195	:i32
 	JMP	$0	B1195()	:void
@@ -1956,7 +1956,7 @@ B390()
 	JMP	$0	B1195()	:void
 B391()
 	CONST	$981	1	:i32
-	ADD	$982	$2	$981	:i32
+	CONST	$982	196	:i32
 	ASSIGN	$2	$982	:i32
 	CONST	$983	196	:i32
 	JMP	$0	B1196()	:void
@@ -1966,7 +1966,7 @@ B392()
 	JMP	$0	B1196()	:void
 B393()
 	CONST	$986	1	:i32
-	ADD	$987	$2	$986	:i32
+	CONST	$987	197	:i32
 	ASSIGN	$2	$987	:i32
 	CONST	$988	197	:i32
 	JMP	$0	B1197()	:void
@@ -1976,7 +1976,7 @@ B394()
 	JMP	$0	B1197()	:void
 B395()
 	CONST	$991	1	:i32
-	ADD	$992	$2	$991	:i32
+	CONST	$992	198	:i32
 	ASSIGN	$2	$992	:i32
 	CONST	$993	198	:i32
 	JMP	$0	B1198()	:void
@@ -1986,7 +1986,7 @@ B396()
 	JMP	$0	B1198()	:void
 B397()
 	CONST	$996	1	:i32
-	ADD	$997	$2	$996	:i32
+	CONST	$997	199	:i32
 	ASSIGN	$2	$997	:i32
 	CONST	$998	199	:i32
 	JMP	$0	B1199()	:void
@@ -1996,7 +1996,7 @@ B398()
 	JMP	$0	B1199()	:void
 B399()
 	CONST	$1001	1	:i32
-	ADD	$1002	$2	$1001	:i32
+	CONST	$1002	200	:i32
 	ASSIGN	$2	$1002	:i32
 	CONST	$1003	200	:i32
 	JMP	$0	B1200()	:void
@@ -2006,7 +2006,7 @@ B400()
 	JMP	$0	B1200()	:void
 B401()
 	CONST	$1006	1	:i32
-	ADD	$1007	$2	$1006	:i32
+	CONST	$1007	201	:i32
 	ASSIGN	$2	$1007	:i32
 	CONST	$1008	201	:i32
 	JMP	$0	B1201()	:void
@@ -2016,7 +2016,7 @@ B402()
 	JMP	$0	B1201()	:void
 B403()
 	CONST	$1011	1	:i32
-	ADD	$1012	$2	$1011	:i32
+	CONST	$1012	202	:i32
 	ASSIGN	$2	$1012	:i32
 	CONST	$1013	202	:i32
 	JMP	$0	B1202()	:void
@@ -2026,7 +2026,7 @@ B404()
 	JMP	$0	B1202()	:void
 B405()
 	CONST	$1016	1	:i32
-	ADD	$1017	$2	$1016	:i32
+	CONST	$1017	203	:i32
 	ASSIGN	$2	$1017	:i32
 	CONST	$1018	203	:i32
 	JMP	$0	B1203()	:void
@@ -2036,7 +2036,7 @@ B406()
 	JMP	$0	B1203()	:void
 B407()
 	CONST	$1021	1	:i32
-	ADD	$1022	$2	$1021	:i32
+	CONST	$1022	204	:i32
 	ASSIGN	$2	$1022	:i32
 	CONST	$1023	204	:i32
 	JMP	$0	B1204()	:void
@@ -2046,7 +2046,7 @@ B408()
 	JMP	$0	B1204()	:void
 B409()
 	CONST	$1026	1	:i32
-	ADD	$1027	$2	$1026	:i32
+	CONST	$1027	205	:i32
 	ASSIGN	$2	$1027	:i32
 	CONST	$1028	205	:i32
 	JMP	$0	B1205()	:void
@@ -2056,7 +2056,7 @@ B410()
 	JMP	$0	B1205()	:void
 B411()
 	CONST	$1031	1	:i32
-	ADD	$1032	$2	$1031	:i32
+	CONST	$1032	206	:i32
 	ASSIGN	$2	$1032	:i32
 	CONST	$1033	206	:i32
 	JMP	$0	B1206()	:void
@@ -2066,7 +2066,7 @@ B412()
 	JMP	$0	B1206()	:void
 B413()
 	CONST	$1036	1	:i32
-	ADD	$1037	$2	$1036	:i32
+	CONST	$1037	207	:i32
 	ASSIGN	$2	$1037	:i32
 	CONST	$1038	207	:i32
 	JMP	$0	B1207()	:void
@@ -2076,7 +2076,7 @@ B414()
 	JMP	$0	B1207()	:void
 B415()
 	CONST	$1041	1	:i32
-	ADD	$1042	$2	$1041	:i32
+	CONST	$1042	208	:i32
 	ASSIGN	$2	$1042	:i32
 	CONST	$1043	208	:i32
 	JMP	$0	B1208()	:void
@@ -2086,7 +2086,7 @@ B416()
 	JMP	$0	B1208()	:void
 B417()
 	CONST	$1046	1	:i32
-	ADD	$1047	$2	$1046	:i32
+	CONST	$1047	209	:i32
 	ASSIGN	$2	$1047	:i32
 	CONST	$1048	209	:i32
 	JMP	$0	B1209()	:void
@@ -2096,7 +2096,7 @@ B418()
 	JMP	$0	B1209()	:void
 B419()
 	CONST	$1051	1	:i32
-	ADD	$1052	$2	$1051	:i32
+	CONST	$1052	210	:i32
 	ASSIGN	$2	$1052	:i32
 	CONST	$1053	210	:i32
 	JMP	$0	B1210()	:void
@@ -2106,7 +2106,7 @@ B420()
 	JMP	$0	B1210()	:void
 B421()
 	CONST	$1056	1	:i32
-	ADD	$1057	$2	$1056	:i32
+	CONST	$1057	211	:i32
 	ASSIGN	$2	$1057	:i32
 	CONST	$1058	211	:i32
 	JMP	$0	B1211()	:void
@@ -2116,7 +2116,7 @@ B422()
 	JMP	$0	B1211()	:void
 B423()
 	CONST	$1061	1	:i32
-	ADD	$1062	$2	$1061	:i32
+	CONST	$1062	212	:i32
 	ASSIGN	$2	$1062	:i32
 	CONST	$1063	212	:i32
 	JMP	$0	B1212()	:void
@@ -2126,7 +2126,7 @@ B424()
 	JMP	$0	B1212()	:void
 B425()
 	CONST	$1066	1	:i32
-	ADD	$1067	$2	$1066	:i32
+	CONST	$1067	213	:i32
 	ASSIGN	$2	$1067	:i32
 	CONST	$1068	213	:i32
 	JMP	$0	B1213()	:void
@@ -2136,7 +2136,7 @@ B426()
 	JMP	$0	B1213()	:void
 B427()
 	CONST	$1071	1	:i32
-	ADD	$1072	$2	$1071	:i32
+	CONST	$1072	214	:i32
 	ASSIGN	$2	$1072	:i32
 	CONST	$1073	214	:i32
 	JMP	$0	B1214()	:void
@@ -2146,7 +2146,7 @@ B428()
 	JMP	$0	B1214()	:void
 B429()
 	CONST	$1076	1	:i32
-	ADD	$1077	$2	$1076	:i32
+	CONST	$1077	215	:i32
 	ASSIGN	$2	$1077	:i32
 	CONST	$1078	215	:i32
 	JMP	$0	B1215()	:void
@@ -2156,7 +2156,7 @@ B430()
 	JMP	$0	B1215()	:void
 B431()
 	CONST	$1081	1	:i32
-	ADD	$1082	$2	$1081	:i32
+	CONST	$1082	216	:i32
 	ASSIGN	$2	$1082	:i32
 	CONST	$1083	216	:i32
 	JMP	$0	B1216()	:void
@@ -2166,7 +2166,7 @@ B432()
 	JMP	$0	B1216()	:void
 B433()
 	CONST	$1086	1	:i32
-	ADD	$1087	$2	$1086	:i32
+	CONST	$1087	217	:i32
 	ASSIGN	$2	$1087	:i32
 	CONST	$1088	217	:i32
 	JMP	$0	B1217()	:void
@@ -2176,7 +2176,7 @@ B434()
 	JMP	$0	B1217()	:void
 B435()
 	CONST	$1091	1	:i32
-	ADD	$1092	$2	$1091	:i32
+	CONST	$1092	218	:i32
 	ASSIGN	$2	$1092	:i32
 	CONST	$1093	218	:i32
 	JMP	$0	B1218()	:void
@@ -2186,7 +2186,7 @@ B436()
 	JMP	$0	B1218()	:void
 B437()
 	CONST	$1096	1	:i32
-	ADD	$1097	$2	$1096	:i32
+	CONST	$1097	219	:i32
 	ASSIGN	$2	$1097	:i32
 	CONST	$1098	219	:i32
 	JMP	$0	B1219()	:void
@@ -2196,7 +2196,7 @@ B438()
 	JMP	$0	B1219()	:void
 B439()
 	CONST	$1101	1	:i32
-	ADD	$1102	$2	$1101	:i32
+	CONST	$1102	220	:i32
 	ASSIGN	$2	$1102	:i32
 	CONST	$1103	220	:i32
 	JMP	$0	B1220()	:void
@@ -2206,7 +2206,7 @@ B440()
 	JMP	$0	B1220()	:void
 B441()
 	CONST	$1106	1	:i32
-	ADD	$1107	$2	$1106	:i32
+	CONST	$1107	221	:i32
 	ASSIGN	$2	$1107	:i32
 	CONST	$1108	221	:i32
 	JMP	$0	B1221()	:void
@@ -2216,7 +2216,7 @@ B442()
 	JMP	$0	B1221()	:void
 B443()
 	CONST	$1111	1	:i32
-	ADD	$1112	$2	$1111	:i32
+	CONST	$1112	222	:i32
 	ASSIGN	$2	$1112	:i32
 	CONST	$1113	222	:i32
 	JMP	$0	B1222()	:void
@@ -2226,7 +2226,7 @@ B444()
 	JMP	$0	B1222()	:void
 B445()
 	CONST	$1116	1	:i32
-	ADD	$1117	$2	$1116	:i32
+	CONST	$1117	223	:i32
 	ASSIGN	$2	$1117	:i32
 	CONST	$1118	223	:i32
 	JMP	$0	B1223()	:void
@@ -2236,7 +2236,7 @@ B446()
 	JMP	$0	B1223()	:void
 B447()
 	CONST	$1121	1	:i32
-	ADD	$1122	$2	$1121	:i32
+	CONST	$1122	224	:i32
 	ASSIGN	$2	$1122	:i32
 	CONST	$1123	224	:i32
 	JMP	$0	B1224()	:void
@@ -2246,7 +2246,7 @@ B448()
 	JMP	$0	B1224()	:void
 B449()
 	CONST	$1126	1	:i32
-	ADD	$1127	$2	$1126	:i32
+	CONST	$1127	225	:i32
 	ASSIGN	$2	$1127	:i32
 	CONST	$1128	225	:i32
 	JMP	$0	B1225()	:void
@@ -2256,7 +2256,7 @@ B450()
 	JMP	$0	B1225()	:void
 B451()
 	CONST	$1131	1	:i32
-	ADD	$1132	$2	$1131	:i32
+	CONST	$1132	226	:i32
 	ASSIGN	$2	$1132	:i32
 	CONST	$1133	226	:i32
 	JMP	$0	B1226()	:void
@@ -2266,7 +2266,7 @@ B452()
 	JMP	$0	B1226()	:void
 B453()
 	CONST	$1136	1	:i32
-	ADD	$1137	$2	$1136	:i32
+	CONST	$1137	227	:i32
 	ASSIGN	$2	$1137	:i32
 	CONST	$1138	227	:i32
 	JMP	$0	B1227()	:void
@@ -2276,7 +2276,7 @@ B454()
 	JMP	$0	B1227()	:void
 B455()
 	CONST	$1141	1	:i32
-	ADD	$1142	$2	$1141	:i32
+	CONST	$1142	228	:i32
 	ASSIGN	$2	$1142	:i32
 	CONST	$1143	228	:i32
 	JMP	$0	B1228()	:void
@@ -2286,7 +2286,7 @@ B456()
 	JMP	$0	B1228()	:void
 B457()
 	CONST	$1146	1	:i32
-	ADD	$1147	$2	$1146	:i32
+	CONST	$1147	229	:i32
 	ASSIGN	$2	$1147	:i32
 	CONST	$1148	229	:i32
 	JMP	$0	B1229()	:void
@@ -2296,7 +2296,7 @@ B458()
 	JMP	$0	B1229()	:void
 B459()
 	CONST	$1151	1	:i32
-	ADD	$1152	$2	$1151	:i32
+	CONST	$1152	230	:i32
 	ASSIGN	$2	$1152	:i32
 	CONST	$1153	230	:i32
 	JMP	$0	B1230()	:void
@@ -2306,7 +2306,7 @@ B460()
 	JMP	$0	B1230()	:void
 B461()
 	CONST	$1156	1	:i32
-	ADD	$1157	$2	$1156	:i32
+	CONST	$1157	231	:i32
 	ASSIGN	$2	$1157	:i32
 	CONST	$1158	231	:i32
 	JMP	$0	B1231()	:void
@@ -2316,7 +2316,7 @@ B462()
 	JMP	$0	B1231()	:void
 B463()
 	CONST	$1161	1	:i32
-	ADD	$1162	$2	$1161	:i32
+	CONST	$1162	232	:i32
 	ASSIGN	$2	$1162	:i32
 	CONST	$1163	232	:i32
 	JMP	$0	B1232()	:void
@@ -2326,7 +2326,7 @@ B464()
 	JMP	$0	B1232()	:void
 B465()
 	CONST	$1166	1	:i32
-	ADD	$1167	$2	$1166	:i32
+	CONST	$1167	233	:i32
 	ASSIGN	$2	$1167	:i32
 	CONST	$1168	233	:i32
 	JMP	$0	B1233()	:void
@@ -2336,7 +2336,7 @@ B466()
 	JMP	$0	B1233()	:void
 B467()
 	CONST	$1171	1	:i32
-	ADD	$1172	$2	$1171	:i32
+	CONST	$1172	234	:i32
 	ASSIGN	$2	$1172	:i32
 	CONST	$1173	234	:i32
 	JMP	$0	B1234()	:void
@@ -2346,7 +2346,7 @@ B468()
 	JMP	$0	B1234()	:void
 B469()
 	CONST	$1176	1	:i32
-	ADD	$1177	$2	$1176	:i32
+	CONST	$1177	235	:i32
 	ASSIGN	$2	$1177	:i32
 	CONST	$1178	235	:i32
 	JMP	$0	B1235()	:void
@@ -2356,7 +2356,7 @@ B470()
 	JMP	$0	B1235()	:void
 B471()
 	CONST	$1181	1	:i32
-	ADD	$1182	$2	$1181	:i32
+	CONST	$1182	236	:i32
 	ASSIGN	$2	$1182	:i32
 	CONST	$1183	236	:i32
 	JMP	$0	B1236()	:void
@@ -2366,7 +2366,7 @@ B472()
 	JMP	$0	B1236()	:void
 B473()
 	CONST	$1186	1	:i32
-	ADD	$1187	$2	$1186	:i32
+	CONST	$1187	237	:i32
 	ASSIGN	$2	$1187	:i32
 	CONST	$1188	237	:i32
 	JMP	$0	B1237()	:void
@@ -2376,7 +2376,7 @@ B474()
 	JMP	$0	B1237()	:void
 B475()
 	CONST	$1191	1	:i32
-	ADD	$1192	$2	$1191	:i32
+	CONST	$1192	238	:i32
 	ASSIGN	$2	$1192	:i32
 	CONST	$1193	238	:i32
 	JMP	$0	B1238()	:void
@@ -2386,7 +2386,7 @@ B476()
 	JMP	$0	B1238()	:void
 B477()
 	CONST	$1196	1	:i32
-	ADD	$1197	$2	$1196	:i32
+	CONST	$1197	239	:i32
 	ASSIGN	$2	$1197	:i32
 	CONST	$1198	239	:i32
 	JMP	$0	B1239()	:void
@@ -2396,7 +2396,7 @@ B478()
 	JMP	$0	B1239()	:void
 B479()
 	CONST	$1201	1	:i32
-	ADD	$1202	$2	$1201	:i32
+	CONST	$1202	240	:i32
 	ASSIGN	$2	$1202	:i32
 	CONST	$1203	240	:i32
 	JMP	$0	B1240()	:void
@@ -2406,7 +2406,7 @@ B480()
 	JMP	$0	B1240()	:void
 B481()
 	CONST	$1206	1	:i32
-	ADD	$1207	$2	$1206	:i32
+	CONST	$1207	241	:i32
 	ASSIGN	$2	$1207	:i32
 	CONST	$1208	241	:i32
 	JMP	$0	B1241()	:void
@@ -2416,7 +2416,7 @@ B482()
 	JMP	$0	B1241()	:void
 B483()
 	CONST	$1211	1	:i32
-	ADD	$1212	$2	$1211	:i32
+	CONST	$1212	242	:i32
 	ASSIGN	$2	$1212	:i32
 	CONST	$1213	242	:i32
 	JMP	$0	B1242()	:void
@@ -2426,7 +2426,7 @@ B484()
 	JMP	$0	B1242()	:void
 B485()
 	CONST	$1216	1	:i32
-	ADD	$1217	$2	$1216	:i32
+	CONST	$1217	243	:i32
 	ASSIGN	$2	$1217	:i32
 	CONST	$1218	243	:i32
 	JMP	$0	B1243()	:void
@@ -2436,7 +2436,7 @@ B486()
 	JMP	$0	B1243()	:void
 B487()
 	CONST	$1221	1	:i32
-	ADD	$1222	$2	$1221	:i32
+	CONST	$1222	244	:i32
 	ASSIGN	$2	$1222	:i32
 	CONST	$1223	244	:i32
 	JMP	$0	B1244()	:void
@@ -2446,7 +2446,7 @@ B488()
 	JMP	$0	B1244()	:void
 B489()
 	CONST	$1226	1	:i32
-	ADD	$1227	$2	$1226	:i32
+	CONST	$1227	245	:i32
 	ASSIGN	$2	$1227	:i32
 	CONST	$1228	245	:i32
 	JMP	$0	B1245()	:void
@@ -2456,7 +2456,7 @@ B490()
 	JMP	$0	B1245()	:void
 B491()
 	CONST	$1231	1	:i32
-	ADD	$1232	$2	$1231	:i32
+	CONST	$1232	246	:i32
 	ASSIGN	$2	$1232	:i32
 	CONST	$1233	246	:i32
 	JMP	$0	B1246()	:void
@@ -2466,7 +2466,7 @@ B492()
 	JMP	$0	B1246()	:void
 B493()
 	CONST	$1236	1	:i32
-	ADD	$1237	$2	$1236	:i32
+	CONST	$1237	247	:i32
 	ASSIGN	$2	$1237	:i32
 	CONST	$1238	247	:i32
 	JMP	$0	B1247()	:void
@@ -2476,7 +2476,7 @@ B494()
 	JMP	$0	B1247()	:void
 B495()
 	CONST	$1241	1	:i32
-	ADD	$1242	$2	$1241	:i32
+	CONST	$1242	248	:i32
 	ASSIGN	$2	$1242	:i32
 	CONST	$1243	248	:i32
 	JMP	$0	B1248()	:void
@@ -2486,7 +2486,7 @@ B496()
 	JMP	$0	B1248()	:void
 B497()
 	CONST	$1246	1	:i32
-	ADD	$1247	$2	$1246	:i32
+	CONST	$1247	249	:i32
 	ASSIGN	$2	$1247	:i32
 	CONST	$1248	249	:i32
 	JMP	$0	B1249()	:void
@@ -2496,7 +2496,7 @@ B498()
 	JMP	$0	B1249()	:void
 B499()
 	CONST	$1251	1	:i32
-	ADD	$1252	$2	$1251	:i32
+	CONST	$1252	250	:i32
 	ASSIGN	$2	$1252	:i32
 	CONST	$1253	250	:i32
 	JMP	$0	B1250()	:void
@@ -2506,7 +2506,7 @@ B500()
 	JMP	$0	B1250()	:void
 B501()
 	CONST	$1256	1	:i32
-	ADD	$1257	$2	$1256	:i32
+	CONST	$1257	251	:i32
 	ASSIGN	$2	$1257	:i32
 	CONST	$1258	251	:i32
 	JMP	$0	B1251()	:void
@@ -2516,7 +2516,7 @@ B502()
 	JMP	$0	B1251()	:void
 B503()
 	CONST	$1261	1	:i32
-	ADD	$1262	$2	$1261	:i32
+	CONST	$1262	252	:i32
 	ASSIGN	$2	$1262	:i32
 	CONST	$1263	252	:i32
 	JMP	$0	B1252()	:void
@@ -2526,7 +2526,7 @@ B504()
 	JMP	$0	B1252()	:void
 B505()
 	CONST	$1266	1	:i32
-	ADD	$1267	$2	$1266	:i32
+	CONST	$1267	253	:i32
 	ASSIGN	$2	$1267	:i32
 	CONST	$1268	253	:i32
 	JMP	$0	B1253()	:void
@@ -2536,7 +2536,7 @@ B506()
 	JMP	$0	B1253()	:void
 B507()
 	CONST	$1271	1	:i32
-	ADD	$1272	$2	$1271	:i32
+	CONST	$1272	254	:i32
 	ASSIGN	$2	$1272	:i32
 	CONST	$1273	254	:i32
 	JMP	$0	B1254()	:void
@@ -2546,7 +2546,7 @@ B508()
 	JMP	$0	B1254()	:void
 B509()
 	CONST	$1276	1	:i32
-	ADD	$1277	$2	$1276	:i32
+	CONST	$1277	255	:i32
 	ASSIGN	$2	$1277	:i32
 	CONST	$1278	255	:i32
 	JMP	$0	B1255()	:void
@@ -2556,7 +2556,7 @@ B510()
 	JMP	$0	B1255()	:void
 B511()
 	CONST	$1281	1	:i32
-	ADD	$1282	$2	$1281	:i32
+	CONST	$1282	256	:i32
 	ASSIGN	$2	$1282	:i32
 	CONST	$1283	256	:i32
 	JMP	$0	B1256()	:void
@@ -2566,7 +2566,7 @@ B512()
 	JMP	$0	B1256()	:void
 B513()
 	CONST	$1286	1	:i32
-	ADD	$1287	$2	$1286	:i32
+	CONST	$1287	257	:i32
 	ASSIGN	$2	$1287	:i32
 	CONST	$1288	257	:i32
 	JMP	$0	B1257()	:void
@@ -2576,7 +2576,7 @@ B514()
 	JMP	$0	B1257()	:void
 B515()
 	CONST	$1291	1	:i32
-	ADD	$1292	$2	$1291	:i32
+	CONST	$1292	258	:i32
 	ASSIGN	$2	$1292	:i32
 	CONST	$1293	258	:i32
 	JMP	$0	B1258()	:void
@@ -2586,7 +2586,7 @@ B516()
 	JMP	$0	B1258()	:void
 B517()
 	CONST	$1296	1	:i32
-	ADD	$1297	$2	$1296	:i32
+	CONST	$1297	259	:i32
 	ASSIGN	$2	$1297	:i32
 	CONST	$1298	259	:i32
 	JMP	$0	B1259()	:void
@@ -2596,7 +2596,7 @@ B518()
 	JMP	$0	B1259()	:void
 B519()
 	CONST	$1301	1	:i32
-	ADD	$1302	$2	$1301	:i32
+	CONST	$1302	260	:i32
 	ASSIGN	$2	$1302	:i32
 	CONST	$1303	260	:i32
 	JMP	$0	B1260()	:void
@@ -2606,7 +2606,7 @@ B520()
 	JMP	$0	B1260()	:void
 B521()
 	CONST	$1306	1	:i32
-	ADD	$1307	$2	$1306	:i32
+	CONST	$1307	261	:i32
 	ASSIGN	$2	$1307	:i32
 	CONST	$1308	261	:i32
 	JMP	$0	B1261()	:void
@@ -2616,7 +2616,7 @@ B522()
 	JMP	$0	B1261()	:void
 B523()
 	CONST	$1311	1	:i32
-	ADD	$1312	$2	$1311	:i32
+	CONST	$1312	262	:i32
 	ASSIGN	$2	$1312	:i32
 	CONST	$1313	262	:i32
 	JMP	$0	B1262()	:void
@@ -2626,7 +2626,7 @@ B524()
 	JMP	$0	B1262()	:void
 B525()
 	CONST	$1316	1	:i32
-	ADD	$1317	$2	$1316	:i32
+	CONST	$1317	263	:i32
 	ASSIGN	$2	$1317	:i32
 	CONST	$1318	263	:i32
 	JMP	$0	B1263()	:void
@@ -2636,7 +2636,7 @@ B526()
 	JMP	$0	B1263()	:void
 B527()
 	CONST	$1321	1	:i32
-	ADD	$1322	$2	$1321	:i32
+	CONST	$1322	264	:i32
 	ASSIGN	$2	$1322	:i32
 	CONST	$1323	264	:i32
 	JMP	$0	B1264()	:void
@@ -2646,7 +2646,7 @@ B528()
 	JMP	$0	B1264()	:void
 B529()
 	CONST	$1326	1	:i32
-	ADD	$1327	$2	$1326	:i32
+	CONST	$1327	265	:i32
 	ASSIGN	$2	$1327	:i32
 	CONST	$1328	265	:i32
 	JMP	$0	B1265()	:void
@@ -2656,7 +2656,7 @@ B530()
 	JMP	$0	B1265()	:void
 B531()
 	CONST	$1331	1	:i32
-	ADD	$1332	$2	$1331	:i32
+	CONST	$1332	266	:i32
 	ASSIGN	$2	$1332	:i32
 	CONST	$1333	266	:i32
 	JMP	$0	B1266()	:void
@@ -2666,7 +2666,7 @@ B532()
 	JMP	$0	B1266()	:void
 B533()
 	CONST	$1336	1	:i32
-	ADD	$1337	$2	$1336	:i32
+	CONST	$1337	267	:i32
 	ASSIGN	$2	$1337	:i32
 	CONST	$1338	267	:i32
 	JMP	$0	B1267()	:void
@@ -2676,7 +2676,7 @@ B534()
 	JMP	$0	B1267()	:void
 B535()
 	CONST	$1341	1	:i32
-	ADD	$1342	$2	$1341	:i32
+	CONST	$1342	268	:i32
 	ASSIGN	$2	$1342	:i32
 	CONST	$1343	268	:i32
 	JMP	$0	B1268()	:void
@@ -2686,7 +2686,7 @@ B536()
 	JMP	$0	B1268()	:void
 B537()
 	CONST	$1346	1	:i32
-	ADD	$1347	$2	$1346	:i32
+	CONST	$1347	269	:i32
 	ASSIGN	$2	$1347	:i32
 	CONST	$1348	269	:i32
 	JMP	$0	B1269()	:void
@@ -2696,7 +2696,7 @@ B538()
 	JMP	$0	B1269()	:void
 B539()
 	CONST	$1351	1	:i32
-	ADD	$1352	$2	$1351	:i32
+	CONST	$1352	270	:i32
 	ASSIGN	$2	$1352	:i32
 	CONST	$1353	270	:i32
 	JMP	$0	B1270()	:void
@@ -2706,7 +2706,7 @@ B540()
 	JMP	$0	B1270()	:void
 B541()
 	CONST	$1356	1	:i32
-	ADD	$1357	$2	$1356	:i32
+	CONST	$1357	271	:i32
 	ASSIGN	$2	$1357	:i32
 	CONST	$1358	271	:i32
 	JMP	$0	B1271()	:void
@@ -2716,7 +2716,7 @@ B542()
 	JMP	$0	B1271()	:void
 B543()
 	CONST	$1361	1	:i32
-	ADD	$1362	$2	$1361	:i32
+	CONST	$1362	272	:i32
 	ASSIGN	$2	$1362	:i32
 	CONST	$1363	272	:i32
 	JMP	$0	B1272()	:void
@@ -2726,7 +2726,7 @@ B544()
 	JMP	$0	B1272()	:void
 B545()
 	CONST	$1366	1	:i32
-	ADD	$1367	$2	$1366	:i32
+	CONST	$1367	273	:i32
 	ASSIGN	$2	$1367	:i32
 	CONST	$1368	273	:i32
 	JMP	$0	B1273()	:void
@@ -2736,7 +2736,7 @@ B546()
 	JMP	$0	B1273()	:void
 B547()
 	CONST	$1371	1	:i32
-	ADD	$1372	$2	$1371	:i32
+	CONST	$1372	274	:i32
 	ASSIGN	$2	$1372	:i32
 	CONST	$1373	274	:i32
 	JMP	$0	B1274()	:void
@@ -2746,7 +2746,7 @@ B548()
 	JMP	$0	B1274()	:void
 B549()
 	CONST	$1376	1	:i32
-	ADD	$1377	$2	$1376	:i32
+	CONST	$1377	275	:i32
 	ASSIGN	$2	$1377	:i32
 	CONST	$1378	275	:i32
 	JMP	$0	B1275()	:void
@@ -2756,7 +2756,7 @@ B550()
 	JMP	$0	B1275()	:void
 B551()
 	CONST	$1381	1	:i32
-	ADD	$1382	$2	$1381	:i32
+	CONST	$1382	276	:i32
 	ASSIGN	$2	$1382	:i32
 	CONST	$1383	276	:i32
 	JMP	$0	B1276()	:void
@@ -2766,7 +2766,7 @@ B552()
 	JMP	$0	B1276()	:void
 B553()
 	CONST	$1386	1	:i32
-	ADD	$1387	$2	$1386	:i32
+	CONST	$1387	277	:i32
 	ASSIGN	$2	$1387	:i32
 	CONST	$1388	277	:i32
 	JMP	$0	B1277()	:void
@@ -2776,7 +2776,7 @@ B554()
 	JMP	$0	B1277()	:void
 B555()
 	CONST	$1391	1	:i32
-	ADD	$1392	$2	$1391	:i32
+	CONST	$1392	278	:i32
 	ASSIGN	$2	$1392	:i32
 	CONST	$1393	278	:i32
 	JMP	$0	B1278()	:void
@@ -2786,7 +2786,7 @@ B556()
 	JMP	$0	B1278()	:void
 B557()
 	CONST	$1396	1	:i32
-	ADD	$1397	$2	$1396	:i32
+	CONST	$1397	279	:i32
 	ASSIGN	$2	$1397	:i32
 	CONST	$1398	279	:i32
 	JMP	$0	B1279()	:void
@@ -2796,7 +2796,7 @@ B558()
 	JMP	$0	B1279()	:void
 B559()
 	CONST	$1401	1	:i32
-	ADD	$1402	$2	$1401	:i32
+	CONST	$1402	280	:i32
 	ASSIGN	$2	$1402	:i32
 	CONST	$1403	280	:i32
 	JMP	$0	B1280()	:void
@@ -2806,7 +2806,7 @@ B560()
 	JMP	$0	B1280()	:void
 B561()
 	CONST	$1406	1	:i32
-	ADD	$1407	$2	$1406	:i32
+	CONST	$1407	281	:i32
 	ASSIGN	$2	$1407	:i32
 	CONST	$1408	281	:i32
 	JMP	$0	B1281()	:void
@@ -2816,7 +2816,7 @@ B562()
 	JMP	$0	B1281()	:void
 B563()
 	CONST	$1411	1	:i32
-	ADD	$1412	$2	$1411	:i32
+	CONST	$1412	282	:i32
 	ASSIGN	$2	$1412	:i32
 	CONST	$1413	282	:i32
 	JMP	$0	B1282()	:void
@@ -2826,7 +2826,7 @@ B564()
 	JMP	$0	B1282()	:void
 B565()
 	CONST	$1416	1	:i32
-	ADD	$1417	$2	$1416	:i32
+	CONST	$1417	283	:i32
 	ASSIGN	$2	$1417	:i32
 	CONST	$1418	283	:i32
 	JMP	$0	B1283()	:void
@@ -2836,7 +2836,7 @@ B566()
 	JMP	$0	B1283()	:void
 B567()
 	CONST	$1421	1	:i32
-	ADD	$1422	$2	$1421	:i32
+	CONST	$1422	284	:i32
 	ASSIGN	$2	$1422	:i32
 	CONST	$1423	284	:i32
 	JMP	$0	B1284()	:void
@@ -2846,7 +2846,7 @@ B568()
 	JMP	$0	B1284()	:void
 B569()
 	CONST	$1426	1	:i32
-	ADD	$1427	$2	$1426	:i32
+	CONST	$1427	285	:i32
 	ASSIGN	$2	$1427	:i32
 	CONST	$1428	285	:i32
 	JMP	$0	B1285()	:void
@@ -2856,7 +2856,7 @@ B570()
 	JMP	$0	B1285()	:void
 B571()
 	CONST	$1431	1	:i32
-	ADD	$1432	$2	$1431	:i32
+	CONST	$1432	286	:i32
 	ASSIGN	$2	$1432	:i32
 	CONST	$1433	286	:i32
 	JMP	$0	B1286()	:void
@@ -2866,7 +2866,7 @@ B572()
 	JMP	$0	B1286()	:void
 B573()
 	CONST	$1436	1	:i32
-	ADD	$1437	$2	$1436	:i32
+	CONST	$1437	287	:i32
 	ASSIGN	$2	$1437	:i32
 	CONST	$1438	287	:i32
 	JMP	$0	B1287()	:void
@@ -2876,7 +2876,7 @@ B574()
 	JMP	$0	B1287()	:void
 B575()
 	CONST	$1441	1	:i32
-	ADD	$1442	$2	$1441	:i32
+	CONST	$1442	288	:i32
 	ASSIGN	$2	$1442	:i32
 	CONST	$1443	288	:i32
 	JMP	$0	B1288()	:void
@@ -2886,7 +2886,7 @@ B576()
 	JMP	$0	B1288()	:void
 B577()
 	CONST	$1446	1	:i32
-	ADD	$1447	$2	$1446	:i32
+	CONST	$1447	289	:i32
 	ASSIGN	$2	$1447	:i32
 	CONST	$1448	289	:i32
 	JMP	$0	B1289()	:void
@@ -2896,7 +2896,7 @@ B578()
 	JMP	$0	B1289()	:void
 B579()
 	CONST	$1451	1	:i32
-	ADD	$1452	$2	$1451	:i32
+	CONST	$1452	290	:i32
 	ASSIGN	$2	$1452	:i32
 	CONST	$1453	290	:i32
 	JMP	$0	B1290()	:void
@@ -2906,7 +2906,7 @@ B580()
 	JMP	$0	B1290()	:void
 B581()
 	CONST	$1456	1	:i32
-	ADD	$1457	$2	$1456	:i32
+	CONST	$1457	291	:i32
 	ASSIGN	$2	$1457	:i32
 	CONST	$1458	291	:i32
 	JMP	$0	B1291()	:void
@@ -2916,7 +2916,7 @@ B582()
 	JMP	$0	B1291()	:void
 B583()
 	CONST	$1461	1	:i32
-	ADD	$1462	$2	$1461	:i32
+	CONST	$1462	292	:i32
 	ASSIGN	$2	$1462	:i32
 	CONST	$1463	292	:i32
 	JMP	$0	B1292()	:void
@@ -2926,7 +2926,7 @@ B584()
 	JMP	$0	B1292()	:void
 B585()
 	CONST	$1466	1	:i32
-	ADD	$1467	$2	$1466	:i32
+	CONST	$1467	293	:i32
 	ASSIGN	$2	$1467	:i32
 	CONST	$1468	293	:i32
 	JMP	$0	B1293()	:void
@@ -2936,7 +2936,7 @@ B586()
 	JMP	$0	B1293()	:void
 B587()
 	CONST	$1471	1	:i32
-	ADD	$1472	$2	$1471	:i32
+	CONST	$1472	294	:i32
 	ASSIGN	$2	$1472	:i32
 	CONST	$1473	294	:i32
 	JMP	$0	B1294()	:void
@@ -2946,7 +2946,7 @@ B588()
 	JMP	$0	B1294()	:void
 B589()
 	CONST	$1476	1	:i32
-	ADD	$1477	$2	$1476	:i32
+	CONST	$1477	295	:i32
 	ASSIGN	$2	$1477	:i32
 	CONST	$1478	295	:i32
 	JMP	$0	B1295()	:void
@@ -2956,7 +2956,7 @@ B590()
 	JMP	$0	B1295()	:void
 B591()
 	CONST	$1481	1	:i32
-	ADD	$1482	$2	$1481	:i32
+	CONST	$1482	296	:i32
 	ASSIGN	$2	$1482	:i32
 	CONST	$1483	296	:i32
 	JMP	$0	B1296()	:void
@@ -2966,7 +2966,7 @@ B592()
 	JMP	$0	B1296()	:void
 B593()
 	CONST	$1486	1	:i32
-	ADD	$1487	$2	$1486	:i32
+	CONST	$1487	297	:i32
 	ASSIGN	$2	$1487	:i32
 	CONST	$1488	297	:i32
 	JMP	$0	B1297()	:void
@@ -2976,7 +2976,7 @@ B594()
 	JMP	$0	B1297()	:void
 B595()
 	CONST	$1491	1	:i32
-	ADD	$1492	$2	$1491	:i32
+	CONST	$1492	298	:i32
 	ASSIGN	$2	$1492	:i32
 	CONST	$1493	298	:i32
 	JMP	$0	B1298()	:void
@@ -2986,7 +2986,7 @@ B596()
 	JMP	$0	B1298()	:void
 B597()
 	CONST	$1496	1	:i32
-	ADD	$1497	$2	$1496	:i32
+	CONST	$1497	299	:i32
 	ASSIGN	$2	$1497	:i32
 	CONST	$1498	299	:i32
 	JMP	$0	B1299()	:void
@@ -2996,7 +2996,7 @@ B598()
 	JMP	$0	B1299()	:void
 B599()
 	CONST	$1501	1	:i32
-	ADD	$1502	$2	$1501	:i32
+	CONST	$1502	300	:i32
 	ASSIGN	$2	$1502	:i32
 	CONST	$1503	300	:i32
 	JMP	$0	B1300()	:void
@@ -3006,7 +3006,7 @@ B600()
 	JMP	$0	B1300()	:void
 B601()
 	CONST	$1506	1	:i32
-	ADD	$1507	$2	$1506	:i32
+	CONST	$1507	301	:i32
 	ASSIGN	$2	$1507	:i32
 	CONST	$1508	301	:i32
 	JMP	$0	B1301()	:void
@@ -3016,7 +3016,7 @@ B602()
 	JMP	$0	B1301()	:void
 B603()
 	CONST	$1511	1	:i32
-	ADD	$1512	$2	$1511	:i32
+	CONST	$1512	302	:i32
 	ASSIGN	$2	$1512	:i32
 	CONST	$1513	302	:i32
 	JMP	$0	B1302()	:void
@@ -3026,7 +3026,7 @@ B604()
 	JMP	$0	B1302()	:void
 B605()
 	CONST	$1516	1	:i32
-	ADD	$1517	$2	$1516	:i32
+	CONST	$1517	303	:i32
 	ASSIGN	$2	$1517	:i32
 	CONST	$1518	303	:i32
 	JMP	$0	B1303()	:void
@@ -3036,7 +3036,7 @@ B606()
 	JMP	$0	B1303()	:void
 B607()
 	CONST	$1521	1	:i32
-	ADD	$1522	$2	$1521	:i32
+	CONST	$1522	304	:i32
 	ASSIGN	$2	$1522	:i32
 	CONST	$1523	304	:i32
 	JMP	$0	B1304()	:void
@@ -3046,7 +3046,7 @@ B608()
 	JMP	$0	B1304()	:void
 B609()
 	CONST	$1526	1	:i32
-	ADD	$1527	$2	$1526	:i32
+	CONST	$1527	305	:i32
 	ASSIGN	$2	$1527	:i32
 	CONST	$1528	305	:i32
 	JMP	$0	B1305()	:void
@@ -3056,7 +3056,7 @@ B610()
 	JMP	$0	B1305()	:void
 B611()
 	CONST	$1531	1	:i32
-	ADD	$1532	$2	$1531	:i32
+	CONST	$1532	306	:i32
 	ASSIGN	$2	$1532	:i32
 	CONST	$1533	306	:i32
 	JMP	$0	B1306()	:void
@@ -3066,7 +3066,7 @@ B612()
 	JMP	$0	B1306()	:void
 B613()
 	CONST	$1536	1	:i32
-	ADD	$1537	$2	$1536	:i32
+	CONST	$1537	307	:i32
 	ASSIGN	$2	$1537	:i32
 	CONST	$1538	307	:i32
 	JMP	$0	B1307()	:void
@@ -3076,7 +3076,7 @@ B614()
 	JMP	$0	B1307()	:void
 B615()
 	CONST	$1541	1	:i32
-	ADD	$1542	$2	$1541	:i32
+	CONST	$1542	308	:i32
 	ASSIGN	$2	$1542	:i32
 	CONST	$1543	308	:i32
 	JMP	$0	B1308()	:void
@@ -3086,7 +3086,7 @@ B616()
 	JMP	$0	B1308()	:void
 B617()
 	CONST	$1546	1	:i32
-	ADD	$1547	$2	$1546	:i32
+	CONST	$1547	309	:i32
 	ASSIGN	$2	$1547	:i32
 	CONST	$1548	309	:i32
 	JMP	$0	B1309()	:void
@@ -3096,7 +3096,7 @@ B618()
 	JMP	$0	B1309()	:void
 B619()
 	CONST	$1551	1	:i32
-	ADD	$1552	$2	$1551	:i32
+	CONST	$1552	310	:i32
 	ASSIGN	$2	$1552	:i32
 	CONST	$1553	310	:i32
 	JMP	$0	B1310()	:void
@@ -3106,7 +3106,7 @@ B620()
 	JMP	$0	B1310()	:void
 B621()
 	CONST	$1556	1	:i32
-	ADD	$1557	$2	$1556	:i32
+	CONST	$1557	311	:i32
 	ASSIGN	$2	$1557	:i32
 	CONST	$1558	311	:i32
 	JMP	$0	B1311()	:void
@@ -3116,7 +3116,7 @@ B622()
 	JMP	$0	B1311()	:void
 B623()
 	CONST	$1561	1	:i32
-	ADD	$1562	$2	$1561	:i32
+	CONST	$1562	312	:i32
 	ASSIGN	$2	$1562	:i32
 	CONST	$1563	312	:i32
 	JMP	$0	B1312()	:void
@@ -3126,7 +3126,7 @@ B624()
 	JMP	$0	B1312()	:void
 B625()
 	CONST	$1566	1	:i32
-	ADD	$1567	$2	$1566	:i32
+	CONST	$1567	313	:i32
 	ASSIGN	$2	$1567	:i32
 	CONST	$1568	313	:i32
 	JMP	$0	B1313()	:void
@@ -3136,7 +3136,7 @@ B626()
 	JMP	$0	B1313()	:void
 B627()
 	CONST	$1571	1	:i32
-	ADD	$1572	$2	$1571	:i32
+	CONST	$1572	314	:i32
 	ASSIGN	$2	$1572	:i32
 	CONST	$1573	314	:i32
 	JMP	$0	B1314()	:void
@@ -3146,7 +3146,7 @@ B628()
 	JMP	$0	B1314()	:void
 B629()
 	CONST	$1576	1	:i32
-	ADD	$1577	$2	$1576	:i32
+	CONST	$1577	315	:i32
 	ASSIGN	$2	$1577	:i32
 	CONST	$1578	315	:i32
 	JMP	$0	B1315()	:void
@@ -3156,7 +3156,7 @@ B630()
 	JMP	$0	B1315()	:void
 B631()
 	CONST	$1581	1	:i32
-	ADD	$1582	$2	$1581	:i32
+	CONST	$1582	316	:i32
 	ASSIGN	$2	$1582	:i32
 	CONST	$1583	316	:i32
 	JMP	$0	B1316()	:void
@@ -3166,7 +3166,7 @@ B632()
 	JMP	$0	B1316()	:void
 B633()
 	CONST	$1586	1	:i32
-	ADD	$1587	$2	$1586	:i32
+	CONST	$1587	317	:i32
 	ASSIGN	$2	$1587	:i32
 	CONST	$1588	317	:i32
 	JMP	$0	B1317()	:void
@@ -3176,7 +3176,7 @@ B634()
 	JMP	$0	B1317()	:void
 B635()
 	CONST	$1591	1	:i32
-	ADD	$1592	$2	$1591	:i32
+	CONST	$1592	318	:i32
 	ASSIGN	$2	$1592	:i32
 	CONST	$1593	318	:i32
 	JMP	$0	B1318()	:void
@@ -3186,7 +3186,7 @@ B636()
 	JMP	$0	B1318()	:void
 B637()
 	CONST	$1596	1	:i32
-	ADD	$1597	$2	$1596	:i32
+	CONST	$1597	319	:i32
 	ASSIGN	$2	$1597	:i32
 	CONST	$1598	319	:i32
 	JMP	$0	B1319()	:void
@@ -3196,7 +3196,7 @@ B638()
 	JMP	$0	B1319()	:void
 B639()
 	CONST	$1601	1	:i32
-	ADD	$1602	$2	$1601	:i32
+	CONST	$1602	320	:i32
 	ASSIGN	$2	$1602	:i32
 	CONST	$1603	320	:i32
 	JMP	$0	B1320()	:void
@@ -3206,7 +3206,7 @@ B640()
 	JMP	$0	B1320()	:void
 B641()
 	CONST	$1606	1	:i32
-	ADD	$1607	$2	$1606	:i32
+	CONST	$1607	321	:i32
 	ASSIGN	$2	$1607	:i32
 	CONST	$1608	321	:i32
 	JMP	$0	B1321()	:void
@@ -3216,7 +3216,7 @@ B642()
 	JMP	$0	B1321()	:void
 B643()
 	CONST	$1611	1	:i32
-	ADD	$1612	$2	$1611	:i32
+	CONST	$1612	322	:i32
 	ASSIGN	$2	$1612	:i32
 	CONST	$1613	322	:i32
 	JMP	$0	B1322()	:void
@@ -3226,7 +3226,7 @@ B644()
 	JMP	$0	B1322()	:void
 B645()
 	CONST	$1616	1	:i32
-	ADD	$1617	$2	$1616	:i32
+	CONST	$1617	323	:i32
 	ASSIGN	$2	$1617	:i32
 	CONST	$1618	323	:i32
 	JMP	$0	B1323()	:void
@@ -3236,7 +3236,7 @@ B646()
 	JMP	$0	B1323()	:void
 B647()
 	CONST	$1621	1	:i32
-	ADD	$1622	$2	$1621	:i32
+	CONST	$1622	324	:i32
 	ASSIGN	$2	$1622	:i32
 	CONST	$1623	324	:i32
 	JMP	$0	B1324()	:void
@@ -3246,7 +3246,7 @@ B648()
 	JMP	$0	B1324()	:void
 B649()
 	CONST	$1626	1	:i32
-	ADD	$1627	$2	$1626	:i32
+	CONST	$1627	325	:i32
 	ASSIGN	$2	$1627	:i32
 	CONST	$1628	325	:i32
 	JMP	$0	B1325()	:void
@@ -3256,7 +3256,7 @@ B650()
 	JMP	$0	B1325()	:void
 B651()
 	CONST	$1631	1	:i32
-	ADD	$1632	$2	$1631	:i32
+	CONST	$1632	326	:i32
 	ASSIGN	$2	$1632	:i32
 	CONST	$1633	326	:i32
 	JMP	$0	B1326()	:void
@@ -3266,7 +3266,7 @@ B652()
 	JMP	$0	B1326()	:void
 B653()
 	CONST	$1636	1	:i32
-	ADD	$1637	$2	$1636	:i32
+	CONST	$1637	327	:i32
 	ASSIGN	$2	$1637	:i32
 	CONST	$1638	327	:i32
 	JMP	$0	B1327()	:void
@@ -3276,7 +3276,7 @@ B654()
 	JMP	$0	B1327()	:void
 B655()
 	CONST	$1641	1	:i32
-	ADD	$1642	$2	$1641	:i32
+	CONST	$1642	328	:i32
 	ASSIGN	$2	$1642	:i32
 	CONST	$1643	328	:i32
 	JMP	$0	B1328()	:void
@@ -3286,7 +3286,7 @@ B656()
 	JMP	$0	B1328()	:void
 B657()
 	CONST	$1646	1	:i32
-	ADD	$1647	$2	$1646	:i32
+	CONST	$1647	329	:i32
 	ASSIGN	$2	$1647	:i32
 	CONST	$1648	329	:i32
 	JMP	$0	B1329()	:void
@@ -3296,7 +3296,7 @@ B658()
 	JMP	$0	B1329()	:void
 B659()
 	CONST	$1651	1	:i32
-	ADD	$1652	$2	$1651	:i32
+	CONST	$1652	330	:i32
 	ASSIGN	$2	$1652	:i32
 	CONST	$1653	330	:i32
 	JMP	$0	B1330()	:void
@@ -3306,7 +3306,7 @@ B660()
 	JMP	$0	B1330()	:void
 B661()
 	CONST	$1656	1	:i32
-	ADD	$1657	$2	$1656	:i32
+	CONST	$1657	331	:i32
 	ASSIGN	$2	$1657	:i32
 	CONST	$1658	331	:i32
 	JMP	$0	B1331()	:void
@@ -3316,7 +3316,7 @@ B662()
 	JMP	$0	B1331()	:void
 B663()
 	CONST	$1661	1	:i32
-	ADD	$1662	$2	$1661	:i32
+	CONST	$1662	332	:i32
 	ASSIGN	$2	$1662	:i32
 	CONST	$1663	332	:i32
 	JMP	$0	B1332()	:void
@@ -3326,7 +3326,7 @@ B664()
 	JMP	$0	B1332()	:void
 B665()
 	CONST	$1666	1	:i32
-	ADD	$1667	$2	$1666	:i32
+	CONST	$1667	333	:i32
 	ASSIGN	$2	$1667	:i32
 	CONST	$1668	333	:i32
 	JMP	$0	B1333()	:void
@@ -3336,7 +3336,7 @@ B666()
 	JMP	$0	B1333()	:void
 B667()
 	CONST	$1671	1	:i32
-	ADD	$1672	$2	$1671	:i32
+	CONST	$1672	334	:i32
 	ASSIGN	$2	$1672	:i32
 	CONST	$1673	334	:i32
 	JMP	$0	B1334()	:void
@@ -3346,7 +3346,7 @@ B668()
 	JMP	$0	B1334()	:void
 B669()
 	CONST	$1676	1	:i32
-	ADD	$1677	$2	$1676	:i32
+	CONST	$1677	335	:i32
 	ASSIGN	$2	$1677	:i32
 	CONST	$1678	335	:i32
 	JMP	$0	B1335()	:void
@@ -3356,7 +3356,7 @@ B670()
 	JMP	$0	B1335()	:void
 B671()
 	CONST	$1681	1	:i32
-	ADD	$1682	$2	$1681	:i32
+	CONST	$1682	336	:i32
 	ASSIGN	$2	$1682	:i32
 	CONST	$1683	336	:i32
 	JMP	$0	B1336()	:void
@@ -3366,7 +3366,7 @@ B672()
 	JMP	$0	B1336()	:void
 B673()
 	CONST	$1686	1	:i32
-	ADD	$1687	$2	$1686	:i32
+	CONST	$1687	337	:i32
 	ASSIGN	$2	$1687	:i32
 	CONST	$1688	337	:i32
 	JMP	$0	B1337()	:void
@@ -3376,7 +3376,7 @@ B674()
 	JMP	$0	B1337()	:void
 B675()
 	CONST	$1691	1	:i32
-	ADD	$1692	$2	$1691	:i32
+	CONST	$1692	338	:i32
 	ASSIGN	$2	$1692	:i32
 	CONST	$1693	338	:i32
 	JMP	$0	B1338()	:void
@@ -3386,7 +3386,7 @@ B676()
 	JMP	$0	B1338()	:void
 B677()
 	CONST	$1696	1	:i32
-	ADD	$1697	$2	$1696	:i32
+	CONST	$1697	339	:i32
 	ASSIGN	$2	$1697	:i32
 	CONST	$1698	339	:i32
 	JMP	$0	B1339()	:void
@@ -3396,7 +3396,7 @@ B678()
 	JMP	$0	B1339()	:void
 B679()
 	CONST	$1701	1	:i32
-	ADD	$1702	$2	$1701	:i32
+	CONST	$1702	340	:i32
 	ASSIGN	$2	$1702	:i32
 	CONST	$1703	340	:i32
 	JMP	$0	B1340()	:void
@@ -3406,7 +3406,7 @@ B680()
 	JMP	$0	B1340()	:void
 B681()
 	CONST	$1706	1	:i32
-	ADD	$1707	$2	$1706	:i32
+	CONST	$1707	341	:i32
 	ASSIGN	$2	$1707	:i32
 	CONST	$1708	341	:i32
 	JMP	$0	B1341()	:void
@@ -3416,7 +3416,7 @@ B682()
 	JMP	$0	B1341()	:void
 B683()
 	CONST	$1711	1	:i32
-	ADD	$1712	$2	$1711	:i32
+	CONST	$1712	342	:i32
 	ASSIGN	$2	$1712	:i32
 	CONST	$1713	342	:i32
 	JMP	$0	B1342()	:void
@@ -3426,7 +3426,7 @@ B684()
 	JMP	$0	B1342()	:void
 B685()
 	CONST	$1716	1	:i32
-	ADD	$1717	$2	$1716	:i32
+	CONST	$1717	343	:i32
 	ASSIGN	$2	$1717	:i32
 	CONST	$1718	343	:i32
 	JMP	$0	B1343()	:void
@@ -3436,7 +3436,7 @@ B686()
 	JMP	$0	B1343()	:void
 B687()
 	CONST	$1721	1	:i32
-	ADD	$1722	$2	$1721	:i32
+	CONST	$1722	344	:i32
 	ASSIGN	$2	$1722	:i32
 	CONST	$1723	344	:i32
 	JMP	$0	B1344()	:void
@@ -3446,7 +3446,7 @@ B688()
 	JMP	$0	B1344()	:void
 B689()
 	CONST	$1726	1	:i32
-	ADD	$1727	$2	$1726	:i32
+	CONST	$1727	345	:i32
 	ASSIGN	$2	$1727	:i32
 	CONST	$1728	345	:i32
 	JMP	$0	B1345()	:void
@@ -3456,7 +3456,7 @@ B690()
 	JMP	$0	B1345()	:void
 B691()
 	CONST	$1731	1	:i32
-	ADD	$1732	$2	$1731	:i32
+	CONST	$1732	346	:i32
 	ASSIGN	$2	$1732	:i32
 	CONST	$1733	346	:i32
 	JMP	$0	B1346()	:void
@@ -3466,7 +3466,7 @@ B692()
 	JMP	$0	B1346()	:void
 B693()
 	CONST	$1736	1	:i32
-	ADD	$1737	$2	$1736	:i32
+	CONST	$1737	347	:i32
 	ASSIGN	$2	$1737	:i32
 	CONST	$1738	347	:i32
 	JMP	$0	B1347()	:void
@@ -3476,7 +3476,7 @@ B694()
 	JMP	$0	B1347()	:void
 B695()
 	CONST	$1741	1	:i32
-	ADD	$1742	$2	$1741	:i32
+	CONST	$1742	348	:i32
 	ASSIGN	$2	$1742	:i32
 	CONST	$1743	348	:i32
 	JMP	$0	B1348()	:void
@@ -3486,7 +3486,7 @@ B696()
 	JMP	$0	B1348()	:void
 B697()
 	CONST	$1746	1	:i32
-	ADD	$1747	$2	$1746	:i32
+	CONST	$1747	349	:i32
 	ASSIGN	$2	$1747	:i32
 	CONST	$1748	349	:i32
 	JMP	$0	B1349()	:void
@@ -3496,7 +3496,7 @@ B698()
 	JMP	$0	B1349()	:void
 B699()
 	CONST	$1751	1	:i32
-	ADD	$1752	$2	$1751	:i32
+	CONST	$1752	350	:i32
 	ASSIGN	$2	$1752	:i32
 	CONST	$1753	350	:i32
 	JMP	$0	B1350()	:void
@@ -3506,7 +3506,7 @@ B700()
 	JMP	$0	B1350()	:void
 B701()
 	CONST	$1756	1	:i32
-	ADD	$1757	$2	$1756	:i32
+	CONST	$1757	351	:i32
 	ASSIGN	$2	$1757	:i32
 	CONST	$1758	351	:i32
 	JMP	$0	B1351()	:void
@@ -3516,7 +3516,7 @@ B702()
 	JMP	$0	B1351()	:void
 B703()
 	CONST	$1761	1	:i32
-	ADD	$1762	$2	$1761	:i32
+	CONST	$1762	352	:i32
 	ASSIGN	$2	$1762	:i32
 	CONST	$1763	352	:i32
 	JMP	$0	B1352()	:void
@@ -3526,7 +3526,7 @@ B704()
 	JMP	$0	B1352()	:void
 B705()
 	CONST	$1766	1	:i32
-	ADD	$1767	$2	$1766	:i32
+	CONST	$1767	353	:i32
 	ASSIGN	$2	$1767	:i32
 	CONST	$1768	353	:i32
 	JMP	$0	B1353()	:void
@@ -3536,7 +3536,7 @@ B706()
 	JMP	$0	B1353()	:void
 B707()
 	CONST	$1771	1	:i32
-	ADD	$1772	$2	$1771	:i32
+	CONST	$1772	354	:i32
 	ASSIGN	$2	$1772	:i32
 	CONST	$1773	354	:i32
 	JMP	$0	B1354()	:void
@@ -3546,7 +3546,7 @@ B708()
 	JMP	$0	B1354()	:void
 B709()
 	CONST	$1776	1	:i32
-	ADD	$1777	$2	$1776	:i32
+	CONST	$1777	355	:i32
 	ASSIGN	$2	$1777	:i32
 	CONST	$1778	355	:i32
 	JMP	$0	B1355()	:void
@@ -3556,7 +3556,7 @@ B710()
 	JMP	$0	B1355()	:void
 B711()
 	CONST	$1781	1	:i32
-	ADD	$1782	$2	$1781	:i32
+	CONST	$1782	356	:i32
 	ASSIGN	$2	$1782	:i32
 	CONST	$1783	356	:i32
 	JMP	$0	B1356()	:void
@@ -3566,7 +3566,7 @@ B712()
 	JMP	$0	B1356()	:void
 B713()
 	CONST	$1786	1	:i32
-	ADD	$1787	$2	$1786	:i32
+	CONST	$1787	357	:i32
 	ASSIGN	$2	$1787	:i32
 	CONST	$1788	357	:i32
 	JMP	$0	B1357()	:void
@@ -3576,7 +3576,7 @@ B714()
 	JMP	$0	B1357()	:void
 B715()
 	CONST	$1791	1	:i32
-	ADD	$1792	$2	$1791	:i32
+	CONST	$1792	358	:i32
 	ASSIGN	$2	$1792	:i32
 	CONST	$1793	358	:i32
 	JMP	$0	B1358()	:void
@@ -3586,7 +3586,7 @@ B716()
 	JMP	$0	B1358()	:void
 B717()
 	CONST	$1796	1	:i32
-	ADD	$1797	$2	$1796	:i32
+	CONST	$1797	359	:i32
 	ASSIGN	$2	$1797	:i32
 	CONST	$1798	359	:i32
 	JMP	$0	B1359()	:void
@@ -3596,7 +3596,7 @@ B718()
 	JMP	$0	B1359()	:void
 B719()
 	CONST	$1801	1	:i32
-	ADD	$1802	$2	$1801	:i32
+	CONST	$1802	360	:i32
 	ASSIGN	$2	$1802	:i32
 	CONST	$1803	360	:i32
 	JMP	$0	B1360()	:void
@@ -3606,7 +3606,7 @@ B720()
 	JMP	$0	B1360()	:void
 B721()
 	CONST	$1806	1	:i32
-	ADD	$1807	$2	$1806	:i32
+	CONST	$1807	361	:i32
 	ASSIGN	$2	$1807	:i32
 	CONST	$1808	361	:i32
 	JMP	$0	B1361()	:void
@@ -3616,7 +3616,7 @@ B722()
 	JMP	$0	B1361()	:void
 B723()
 	CONST	$1811	1	:i32
-	ADD	$1812	$2	$1811	:i32
+	CONST	$1812	362	:i32
 	ASSIGN	$2	$1812	:i32
 	CONST	$1813	362	:i32
 	JMP	$0	B1362()	:void
@@ -3626,7 +3626,7 @@ B724()
 	JMP	$0	B1362()	:void
 B725()
 	CONST	$1816	1	:i32
-	ADD	$1817	$2	$1816	:i32
+	CONST	$1817	363	:i32
 	ASSIGN	$2	$1817	:i32
 	CONST	$1818	363	:i32
 	JMP	$0	B1363()	:void
@@ -3636,7 +3636,7 @@ B726()
 	JMP	$0	B1363()	:void
 B727()
 	CONST	$1821	1	:i32
-	ADD	$1822	$2	$1821	:i32
+	CONST	$1822	364	:i32
 	ASSIGN	$2	$1822	:i32
 	CONST	$1823	364	:i32
 	JMP	$0	B1364()	:void
@@ -3646,7 +3646,7 @@ B728()
 	JMP	$0	B1364()	:void
 B729()
 	CONST	$1826	1	:i32
-	ADD	$1827	$2	$1826	:i32
+	CONST	$1827	365	:i32
 	ASSIGN	$2	$1827	:i32
 	CONST	$1828	365	:i32
 	JMP	$0	B1365()	:void
@@ -3656,7 +3656,7 @@ B730()
 	JMP	$0	B1365()	:void
 B731()
 	CONST	$1831	1	:i32
-	ADD	$1832	$2	$1831	:i32
+	CONST	$1832	366	:i32
 	ASSIGN	$2	$1832	:i32
 	CONST	$1833	366	:i32
 	JMP	$0	B1366()	:void
@@ -3666,7 +3666,7 @@ B732()
 	JMP	$0	B1366()	:void
 B733()
 	CONST	$1836	1	:i32
-	ADD	$1837	$2	$1836	:i32
+	CONST	$1837	367	:i32
 	ASSIGN	$2	$1837	:i32
 	CONST	$1838	367	:i32
 	JMP	$0	B1367()	:void
@@ -3676,7 +3676,7 @@ B734()
 	JMP	$0	B1367()	:void
 B735()
 	CONST	$1841	1	:i32
-	ADD	$1842	$2	$1841	:i32
+	CONST	$1842	368	:i32
 	ASSIGN	$2	$1842	:i32
 	CONST	$1843	368	:i32
 	JMP	$0	B1368()	:void
@@ -3686,7 +3686,7 @@ B736()
 	JMP	$0	B1368()	:void
 B737()
 	CONST	$1846	1	:i32
-	ADD	$1847	$2	$1846	:i32
+	CONST	$1847	369	:i32
 	ASSIGN	$2	$1847	:i32
 	CONST	$1848	369	:i32
 	JMP	$0	B1369()	:void
@@ -3696,7 +3696,7 @@ B738()
 	JMP	$0	B1369()	:void
 B739()
 	CONST	$1851	1	:i32
-	ADD	$1852	$2	$1851	:i32
+	CONST	$1852	370	:i32
 	ASSIGN	$2	$1852	:i32
 	CONST	$1853	370	:i32
 	JMP	$0	B1370()	:void
@@ -3706,7 +3706,7 @@ B740()
 	JMP	$0	B1370()	:void
 B741()
 	CONST	$1856	1	:i32
-	ADD	$1857	$2	$1856	:i32
+	CONST	$1857	371	:i32
 	ASSIGN	$2	$1857	:i32
 	CONST	$1858	371	:i32
 	JMP	$0	B1371()	:void
@@ -3716,7 +3716,7 @@ B742()
 	JMP	$0	B1371()	:void
 B743()
 	CONST	$1861	1	:i32
-	ADD	$1862	$2	$1861	:i32
+	CONST	$1862	372	:i32
 	ASSIGN	$2	$1862	:i32
 	CONST	$1863	372	:i32
 	JMP	$0	B1372()	:void
@@ -3726,7 +3726,7 @@ B744()
 	JMP	$0	B1372()	:void
 B745()
 	CONST	$1866	1	:i32
-	ADD	$1867	$2	$1866	:i32
+	CONST	$1867	373	:i32
 	ASSIGN	$2	$1867	:i32
 	CONST	$1868	373	:i32
 	JMP	$0	B1373()	:void
@@ -3736,7 +3736,7 @@ B746()
 	JMP	$0	B1373()	:void
 B747()
 	CONST	$1871	1	:i32
-	ADD	$1872	$2	$1871	:i32
+	CONST	$1872	374	:i32
 	ASSIGN	$2	$1872	:i32
 	CONST	$1873	374	:i32
 	JMP	$0	B1374()	:void
@@ -3746,7 +3746,7 @@ B748()
 	JMP	$0	B1374()	:void
 B749()
 	CONST	$1876	1	:i32
-	ADD	$1877	$2	$1876	:i32
+	CONST	$1877	375	:i32
 	ASSIGN	$2	$1877	:i32
 	CONST	$1878	375	:i32
 	JMP	$0	B1375()	:void
@@ -3756,7 +3756,7 @@ B750()
 	JMP	$0	B1375()	:void
 B751()
 	CONST	$1881	1	:i32
-	ADD	$1882	$2	$1881	:i32
+	CONST	$1882	376	:i32
 	ASSIGN	$2	$1882	:i32
 	CONST	$1883	376	:i32
 	JMP	$0	B1376()	:void
@@ -3766,7 +3766,7 @@ B752()
 	JMP	$0	B1376()	:void
 B753()
 	CONST	$1886	1	:i32
-	ADD	$1887	$2	$1886	:i32
+	CONST	$1887	377	:i32
 	ASSIGN	$2	$1887	:i32
 	CONST	$1888	377	:i32
 	JMP	$0	B1377()	:void
@@ -3776,7 +3776,7 @@ B754()
 	JMP	$0	B1377()	:void
 B755()
 	CONST	$1891	1	:i32
-	ADD	$1892	$2	$1891	:i32
+	CONST	$1892	378	:i32
 	ASSIGN	$2	$1892	:i32
 	CONST	$1893	378	:i32
 	JMP	$0	B1378()	:void
@@ -3786,7 +3786,7 @@ B756()
 	JMP	$0	B1378()	:void
 B757()
 	CONST	$1896	1	:i32
-	ADD	$1897	$2	$1896	:i32
+	CONST	$1897	379	:i32
 	ASSIGN	$2	$1897	:i32
 	CONST	$1898	379	:i32
 	JMP	$0	B1379()	:void
@@ -3796,7 +3796,7 @@ B758()
 	JMP	$0	B1379()	:void
 B759()
 	CONST	$1901	1	:i32
-	ADD	$1902	$2	$1901	:i32
+	CONST	$1902	380	:i32
 	ASSIGN	$2	$1902	:i32
 	CONST	$1903	380	:i32
 	JMP	$0	B1380()	:void
@@ -3806,7 +3806,7 @@ B760()
 	JMP	$0	B1380()	:void
 B761()
 	CONST	$1906	1	:i32
-	ADD	$1907	$2	$1906	:i32
+	CONST	$1907	381	:i32
 	ASSIGN	$2	$1907	:i32
 	CONST	$1908	381	:i32
 	JMP	$0	B1381()	:void
@@ -3816,7 +3816,7 @@ B762()
 	JMP	$0	B1381()	:void
 B763()
 	CONST	$1911	1	:i32
-	ADD	$1912	$2	$1911	:i32
+	CONST	$1912	382	:i32
 	ASSIGN	$2	$1912	:i32
 	CONST	$1913	382	:i32
 	JMP	$0	B1382()	:void
@@ -3826,7 +3826,7 @@ B764()
 	JMP	$0	B1382()	:void
 B765()
 	CONST	$1916	1	:i32
-	ADD	$1917	$2	$1916	:i32
+	CONST	$1917	383	:i32
 	ASSIGN	$2	$1917	:i32
 	CONST	$1918	383	:i32
 	JMP	$0	B1383()	:void
@@ -3836,7 +3836,7 @@ B766()
 	JMP	$0	B1383()	:void
 B767()
 	CONST	$1921	1	:i32
-	ADD	$1922	$2	$1921	:i32
+	CONST	$1922	384	:i32
 	ASSIGN	$2	$1922	:i32
 	CONST	$1923	384	:i32
 	JMP	$0	B1384()	:void
@@ -3846,7 +3846,7 @@ B768()
 	JMP	$0	B1384()	:void
 B769()
 	CONST	$1926	1	:i32
-	ADD	$1927	$2	$1926	:i32
+	CONST	$1927	385	:i32
 	ASSIGN	$2	$1927	:i32
 	CONST	$1928	385	:i32
 	JMP	$0	B1385()	:void
@@ -3856,7 +3856,7 @@ B770()
 	JMP	$0	B1385()	:void
 B771()
 	CONST	$1931	1	:i32
-	ADD	$1932	$2	$1931	:i32
+	CONST	$1932	386	:i32
 	ASSIGN	$2	$1932	:i32
 	CONST	$1933	386	:i32
 	JMP	$0	B1386()	:void
@@ -3866,7 +3866,7 @@ B772()
 	JMP	$0	B1386()	:void
 B773()
 	CONST	$1936	1	:i32
-	ADD	$1937	$2	$1936	:i32
+	CONST	$1937	387	:i32
 	ASSIGN	$2	$1937	:i32
 	CONST	$1938	387	:i32
 	JMP	$0	B1387()	:void
@@ -3876,7 +3876,7 @@ B774()
 	JMP	$0	B1387()	:void
 B775()
 	CONST	$1941	1	:i32
-	ADD	$1942	$2	$1941	:i32
+	CONST	$1942	388	:i32
 	ASSIGN	$2	$1942	:i32
 	CONST	$1943	388	:i32
 	JMP	$0	B1388()	:void
@@ -3886,7 +3886,7 @@ B776()
 	JMP	$0	B1388()	:void
 B777()
 	CONST	$1946	1	:i32
-	ADD	$1947	$2	$1946	:i32
+	CONST	$1947	389	:i32
 	ASSIGN	$2	$1947	:i32
 	CONST	$1948	389	:i32
 	JMP	$0	B1389()	:void
@@ -3896,7 +3896,7 @@ B778()
 	JMP	$0	B1389()	:void
 B779()
 	CONST	$1951	1	:i32
-	ADD	$1952	$2	$1951	:i32
+	CONST	$1952	390	:i32
 	ASSIGN	$2	$1952	:i32
 	CONST	$1953	390	:i32
 	JMP	$0	B1390()	:void
@@ -3906,7 +3906,7 @@ B780()
 	JMP	$0	B1390()	:void
 B781()
 	CONST	$1956	1	:i32
-	ADD	$1957	$2	$1956	:i32
+	CONST	$1957	391	:i32
 	ASSIGN	$2	$1957	:i32
 	CONST	$1958	391	:i32
 	JMP	$0	B1391()	:void
@@ -3916,7 +3916,7 @@ B782()
 	JMP	$0	B1391()	:void
 B783()
 	CONST	$1961	1	:i32
-	ADD	$1962	$2	$1961	:i32
+	CONST	$1962	392	:i32
 	ASSIGN	$2	$1962	:i32
 	CONST	$1963	392	:i32
 	JMP	$0	B1392()	:void
@@ -3926,7 +3926,7 @@ B784()
 	JMP	$0	B1392()	:void
 B785()
 	CONST	$1966	1	:i32
-	ADD	$1967	$2	$1966	:i32
+	CONST	$1967	393	:i32
 	ASSIGN	$2	$1967	:i32
 	CONST	$1968	393	:i32
 	JMP	$0	B1393()	:void
@@ -3936,7 +3936,7 @@ B786()
 	JMP	$0	B1393()	:void
 B787()
 	CONST	$1971	1	:i32
-	ADD	$1972	$2	$1971	:i32
+	CONST	$1972	394	:i32
 	ASSIGN	$2	$1972	:i32
 	CONST	$1973	394	:i32
 	JMP	$0	B1394()	:void
@@ -3946,7 +3946,7 @@ B788()
 	JMP	$0	B1394()	:void
 B789()
 	CONST	$1976	1	:i32
-	ADD	$1977	$2	$1976	:i32
+	CONST	$1977	395	:i32
 	ASSIGN	$2	$1977	:i32
 	CONST	$1978	395	:i32
 	JMP	$0	B1395()	:void
@@ -3956,7 +3956,7 @@ B790()
 	JMP	$0	B1395()	:void
 B791()
 	CONST	$1981	1	:i32
-	ADD	$1982	$2	$1981	:i32
+	CONST	$1982	396	:i32
 	ASSIGN	$2	$1982	:i32
 	CONST	$1983	396	:i32
 	JMP	$0	B1396()	:void
@@ -3966,7 +3966,7 @@ B792()
 	JMP	$0	B1396()	:void
 B793()
 	CONST	$1986	1	:i32
-	ADD	$1987	$2	$1986	:i32
+	CONST	$1987	397	:i32
 	ASSIGN	$2	$1987	:i32
 	CONST	$1988	397	:i32
 	JMP	$0	B1397()	:void
@@ -3976,7 +3976,7 @@ B794()
 	JMP	$0	B1397()	:void
 B795()
 	CONST	$1991	1	:i32
-	ADD	$1992	$2	$1991	:i32
+	CONST	$1992	398	:i32
 	ASSIGN	$2	$1992	:i32
 	CONST	$1993	398	:i32
 	JMP	$0	B1398()	:void
@@ -3986,7 +3986,7 @@ B796()
 	JMP	$0	B1398()	:void
 B797()
 	CONST	$1996	1	:i32
-	ADD	$1997	$2	$1996	:i32
+	CONST	$1997	399	:i32
 	ASSIGN	$2	$1997	:i32
 	CONST	$1998	399	:i32
 	JMP	$0	B1399()	:void
@@ -3996,7 +3996,7 @@ B798()
 	JMP	$0	B1399()	:void
 B799()
 	CONST	$2001	1	:i32
-	ADD	$2002	$2	$2001	:i32
+	CONST	$2002	400	:i32
 	ASSIGN	$2	$2002	:i32
 	CONST	$2003	400	:i32
 	JMP	$0	B1400()	:void
@@ -4006,7 +4006,7 @@ B800()
 	JMP	$0	B1400()	:void
 B801()
 	CONST	$2006	1	:i32
-	ADD	$2007	$2	$2006	:i32
+	CONST	$2007	401	:i32
 	ASSIGN	$2	$2007	:i32
 	CONST	$2008	401	:i32
 	JMP	$0	B1401()	:void
@@ -4016,7 +4016,7 @@ B802()
 	JMP	$0	B1401()	:void
 B803()
 	CONST	$2011	1	:i32
-	ADD	$2012	$2	$2011	:i32
+	CONST	$2012	402	:i32
 	ASSIGN	$2	$2012	:i32
 	CONST	$2013	402	:i32
 	JMP	$0	B1402()	:void
@@ -4026,7 +4026,7 @@ B804()
 	JMP	$0	B1402()	:void
 B805()
 	CONST	$2016	1	:i32
-	ADD	$2017	$2	$2016	:i32
+	CONST	$2017	403	:i32
 	ASSIGN	$2	$2017	:i32
 	CONST	$2018	403	:i32
 	JMP	$0	B1403()	:void
@@ -4036,7 +4036,7 @@ B806()
 	JMP	$0	B1403()	:void
 B807()
 	CONST	$2021	1	:i32
-	ADD	$2022	$2	$2021	:i32
+	CONST	$2022	404	:i32
 	ASSIGN	$2	$2022	:i32
 	CONST	$2023	404	:i32
 	JMP	$0	B1404()	:void
@@ -4046,7 +4046,7 @@ B808()
 	JMP	$0	B1404()	:void
 B809()
 	CONST	$2026	1	:i32
-	ADD	$2027	$2	$2026	:i32
+	CONST	$2027	405	:i32
 	ASSIGN	$2	$2027	:i32
 	CONST	$2028	405	:i32
 	JMP	$0	B1405()	:void
@@ -4056,7 +4056,7 @@ B810()
 	JMP	$0	B1405()	:void
 B811()
 	CONST	$2031	1	:i32
-	ADD	$2032	$2	$2031	:i32
+	CONST	$2032	406	:i32
 	ASSIGN	$2	$2032	:i32
 	CONST	$2033	406	:i32
 	JMP	$0	B1406()	:void
@@ -4066,7 +4066,7 @@ B812()
 	JMP	$0	B1406()	:void
 B813()
 	CONST	$2036	1	:i32
-	ADD	$2037	$2	$2036	:i32
+	CONST	$2037	407	:i32
 	ASSIGN	$2	$2037	:i32
 	CONST	$2038	407	:i32
 	JMP	$0	B1407()	:void
@@ -4076,7 +4076,7 @@ B814()
 	JMP	$0	B1407()	:void
 B815()
 	CONST	$2041	1	:i32
-	ADD	$2042	$2	$2041	:i32
+	CONST	$2042	408	:i32
 	ASSIGN	$2	$2042	:i32
 	CONST	$2043	408	:i32
 	JMP	$0	B1408()	:void
@@ -4086,7 +4086,7 @@ B816()
 	JMP	$0	B1408()	:void
 B817()
 	CONST	$2046	1	:i32
-	ADD	$2047	$2	$2046	:i32
+	CONST	$2047	409	:i32
 	ASSIGN	$2	$2047	:i32
 	CONST	$2048	409	:i32
 	JMP	$0	B1409()	:void
@@ -4096,7 +4096,7 @@ B818()
 	JMP	$0	B1409()	:void
 B819()
 	CONST	$2051	1	:i32
-	ADD	$2052	$2	$2051	:i32
+	CONST	$2052	410	:i32
 	ASSIGN	$2	$2052	:i32
 	CONST	$2053	410	:i32
 	JMP	$0	B1410()	:void
@@ -4106,7 +4106,7 @@ B820()
 	JMP	$0	B1410()	:void
 B821()
 	CONST	$2056	1	:i32
-	ADD	$2057	$2	$2056	:i32
+	CONST	$2057	411	:i32
 	ASSIGN	$2	$2057	:i32
 	CONST	$2058	411	:i32
 	JMP	$0	B1411()	:void
@@ -4116,7 +4116,7 @@ B822()
 	JMP	$0	B1411()	:void
 B823()
 	CONST	$2061	1	:i32
-	ADD	$2062	$2	$2061	:i32
+	CONST	$2062	412	:i32
 	ASSIGN	$2	$2062	:i32
 	CONST	$2063	412	:i32
 	JMP	$0	B1412()	:void
@@ -4126,7 +4126,7 @@ B824()
 	JMP	$0	B1412()	:void
 B825()
 	CONST	$2066	1	:i32
-	ADD	$2067	$2	$2066	:i32
+	CONST	$2067	413	:i32
 	ASSIGN	$2	$2067	:i32
 	CONST	$2068	413	:i32
 	JMP	$0	B1413()	:void
@@ -4136,7 +4136,7 @@ B826()
 	JMP	$0	B1413()	:void
 B827()
 	CONST	$2071	1	:i32
-	ADD	$2072	$2	$2071	:i32
+	CONST	$2072	414	:i32
 	ASSIGN	$2	$2072	:i32
 	CONST	$2073	414	:i32
 	JMP	$0	B1414()	:void
@@ -4146,7 +4146,7 @@ B828()
 	JMP	$0	B1414()	:void
 B829()
 	CONST	$2076	1	:i32
-	ADD	$2077	$2	$2076	:i32
+	CONST	$2077	415	:i32
 	ASSIGN	$2	$2077	:i32
 	CONST	$2078	415	:i32
 	JMP	$0	B1415()	:void
@@ -4156,7 +4156,7 @@ B830()
 	JMP	$0	B1415()	:void
 B831()
 	CONST	$2081	1	:i32
-	ADD	$2082	$2	$2081	:i32
+	CONST	$2082	416	:i32
 	ASSIGN	$2	$2082	:i32
 	CONST	$2083	416	:i32
 	JMP	$0	B1416()	:void
@@ -4166,7 +4166,7 @@ B832()
 	JMP	$0	B1416()	:void
 B833()
 	CONST	$2086	1	:i32
-	ADD	$2087	$2	$2086	:i32
+	CONST	$2087	417	:i32
 	ASSIGN	$2	$2087	:i32
 	CONST	$2088	417	:i32
 	JMP	$0	B1417()	:void
@@ -4176,7 +4176,7 @@ B834()
 	JMP	$0	B1417()	:void
 B835()
 	CONST	$2091	1	:i32
-	ADD	$2092	$2	$2091	:i32
+	CONST	$2092	418	:i32
 	ASSIGN	$2	$2092	:i32
 	CONST	$2093	418	:i32
 	JMP	$0	B1418()	:void
@@ -4186,7 +4186,7 @@ B836()
 	JMP	$0	B1418()	:void
 B837()
 	CONST	$2096	1	:i32
-	ADD	$2097	$2	$2096	:i32
+	CONST	$2097	419	:i32
 	ASSIGN	$2	$2097	:i32
 	CONST	$2098	419	:i32
 	JMP	$0	B1419()	:void
@@ -4196,7 +4196,7 @@ B838()
 	JMP	$0	B1419()	:void
 B839()
 	CONST	$2101	1	:i32
-	ADD	$2102	$2	$2101	:i32
+	CONST	$2102	420	:i32
 	ASSIGN	$2	$2102	:i32
 	CONST	$2103	420	:i32
 	JMP	$0	B1420()	:void
@@ -4206,7 +4206,7 @@ B840()
 	JMP	$0	B1420()	:void
 B841()
 	CONST	$2106	1	:i32
-	ADD	$2107	$2	$2106	:i32
+	CONST	$2107	421	:i32
 	ASSIGN	$2	$2107	:i32
 	CONST	$2108	421	:i32
 	JMP	$0	B1421()	:void
@@ -4216,7 +4216,7 @@ B842()
 	JMP	$0	B1421()	:void
 B843()
 	CONST	$2111	1	:i32
-	ADD	$2112	$2	$2111	:i32
+	CONST	$2112	422	:i32
 	ASSIGN	$2	$2112	:i32
 	CONST	$2113	422	:i32
 	JMP	$0	B1422()	:void
@@ -4226,7 +4226,7 @@ B844()
 	JMP	$0	B1422()	:void
 B845()
 	CONST	$2116	1	:i32
-	ADD	$2117	$2	$2116	:i32
+	CONST	$2117	423	:i32
 	ASSIGN	$2	$2117	:i32
 	CONST	$2118	423	:i32
 	JMP	$0	B1423()	:void
@@ -4236,7 +4236,7 @@ B846()
 	JMP	$0	B1423()	:void
 B847()
 	CONST	$2121	1	:i32
-	ADD	$2122	$2	$2121	:i32
+	CONST	$2122	424	:i32
 	ASSIGN	$2	$2122	:i32
 	CONST	$2123	424	:i32
 	JMP	$0	B1424()	:void
@@ -4246,7 +4246,7 @@ B848()
 	JMP	$0	B1424()	:void
 B849()
 	CONST	$2126	1	:i32
-	ADD	$2127	$2	$2126	:i32
+	CONST	$2127	425	:i32
 	ASSIGN	$2	$2127	:i32
 	CONST	$2128	425	:i32
 	JMP	$0	B1425()	:void
@@ -4256,7 +4256,7 @@ B850()
 	JMP	$0	B1425()	:void
 B851()
 	CONST	$2131	1	:i32
-	ADD	$2132	$2	$2131	:i32
+	CONST	$2132	426	:i32
 	ASSIGN	$2	$2132	:i32
 	CONST	$2133	426	:i32
 	JMP	$0	B1426()	:void
@@ -4266,7 +4266,7 @@ B852()
 	JMP	$0	B1426()	:void
 B853()
 	CONST	$2136	1	:i32
-	ADD	$2137	$2	$2136	:i32
+	CONST	$2137	427	:i32
 	ASSIGN	$2	$2137	:i32
 	CONST	$2138	427	:i32
 	JMP	$0	B1427()	:void
@@ -4276,7 +4276,7 @@ B854()
 	JMP	$0	B1427()	:void
 B855()
 	CONST	$2141	1	:i32
-	ADD	$2142	$2	$2141	:i32
+	CONST	$2142	428	:i32
 	ASSIGN	$2	$2142	:i32
 	CONST	$2143	428	:i32
 	JMP	$0	B1428()	:void
@@ -4286,7 +4286,7 @@ B856()
 	JMP	$0	B1428()	:void
 B857()
 	CONST	$2146	1	:i32
-	ADD	$2147	$2	$2146	:i32
+	CONST	$2147	429	:i32
 	ASSIGN	$2	$2147	:i32
 	CONST	$2148	429	:i32
 	JMP	$0	B1429()	:void
@@ -4296,7 +4296,7 @@ B858()
 	JMP	$0	B1429()	:void
 B859()
 	CONST	$2151	1	:i32
-	ADD	$2152	$2	$2151	:i32
+	CONST	$2152	430	:i32
 	ASSIGN	$2	$2152	:i32
 	CONST	$2153	430	:i32
 	JMP	$0	B1430()	:void
@@ -4306,7 +4306,7 @@ B860()
 	JMP	$0	B1430()	:void
 B861()
 	CONST	$2156	1	:i32
-	ADD	$2157	$2	$2156	:i32
+	CONST	$2157	431	:i32
 	ASSIGN	$2	$2157	:i32
 	CONST	$2158	431	:i32
 	JMP	$0	B1431()	:void
@@ -4316,7 +4316,7 @@ B862()
 	JMP	$0	B1431()	:void
 B863()
 	CONST	$2161	1	:i32
-	ADD	$2162	$2	$2161	:i32
+	CONST	$2162	432	:i32
 	ASSIGN	$2	$2162	:i32
 	CONST	$2163	432	:i32
 	JMP	$0	B1432()	:void
@@ -4326,7 +4326,7 @@ B864()
 	JMP	$0	B1432()	:void
 B865()
 	CONST	$2166	1	:i32
-	ADD	$2167	$2	$2166	:i32
+	CONST	$2167	433	:i32
 	ASSIGN	$2	$2167	:i32
 	CONST	$2168	433	:i32
 	JMP	$0	B1433()	:void
@@ -4336,7 +4336,7 @@ B866()
 	JMP	$0	B1433()	:void
 B867()
 	CONST	$2171	1	:i32
-	ADD	$2172	$2	$2171	:i32
+	CONST	$2172	434	:i32
 	ASSIGN	$2	$2172	:i32
 	CONST	$2173	434	:i32
 	JMP	$0	B1434()	:void
@@ -4346,7 +4346,7 @@ B868()
 	JMP	$0	B1434()	:void
 B869()
 	CONST	$2176	1	:i32
-	ADD	$2177	$2	$2176	:i32
+	CONST	$2177	435	:i32
 	ASSIGN	$2	$2177	:i32
 	CONST	$2178	435	:i32
 	JMP	$0	B1435()	:void
@@ -4356,7 +4356,7 @@ B870()
 	JMP	$0	B1435()	:void
 B871()
 	CONST	$2181	1	:i32
-	ADD	$2182	$2	$2181	:i32
+	CONST	$2182	436	:i32
 	ASSIGN	$2	$2182	:i32
 	CONST	$2183	436	:i32
 	JMP	$0	B1436()	:void
@@ -4366,7 +4366,7 @@ B872()
 	JMP	$0	B1436()	:void
 B873()
 	CONST	$2186	1	:i32
-	ADD	$2187	$2	$2186	:i32
+	CONST	$2187	437	:i32
 	ASSIGN	$2	$2187	:i32
 	CONST	$2188	437	:i32
 	JMP	$0	B1437()	:void
@@ -4376,7 +4376,7 @@ B874()
 	JMP	$0	B1437()	:void
 B875()
 	CONST	$2191	1	:i32
-	ADD	$2192	$2	$2191	:i32
+	CONST	$2192	438	:i32
 	ASSIGN	$2	$2192	:i32
 	CONST	$2193	438	:i32
 	JMP	$0	B1438()	:void
@@ -4386,7 +4386,7 @@ B876()
 	JMP	$0	B1438()	:void
 B877()
 	CONST	$2196	1	:i32
-	ADD	$2197	$2	$2196	:i32
+	CONST	$2197	439	:i32
 	ASSIGN	$2	$2197	:i32
 	CONST	$2198	439	:i32
 	JMP	$0	B1439()	:void
@@ -4396,7 +4396,7 @@ B878()
 	JMP	$0	B1439()	:void
 B879()
 	CONST	$2201	1	:i32
-	ADD	$2202	$2	$2201	:i32
+	CONST	$2202	440	:i32
 	ASSIGN	$2	$2202	:i32
 	CONST	$2203	440	:i32
 	JMP	$0	B1440()	:void
@@ -4406,7 +4406,7 @@ B880()
 	JMP	$0	B1440()	:void
 B881()
 	CONST	$2206	1	:i32
-	ADD	$2207	$2	$2206	:i32
+	CONST	$2207	441	:i32
 	ASSIGN	$2	$2207	:i32
 	CONST	$2208	441	:i32
 	JMP	$0	B1441()	:void
@@ -4416,7 +4416,7 @@ B882()
 	JMP	$0	B1441()	:void
 B883()
 	CONST	$2211	1	:i32
-	ADD	$2212	$2	$2211	:i32
+	CONST	$2212	442	:i32
 	ASSIGN	$2	$2212	:i32
 	CONST	$2213	442	:i32
 	JMP	$0	B1442()	:void
@@ -4426,7 +4426,7 @@ B884()
 	JMP	$0	B1442()	:void
 B885()
 	CONST	$2216	1	:i32
-	ADD	$2217	$2	$2216	:i32
+	CONST	$2217	443	:i32
 	ASSIGN	$2	$2217	:i32
 	CONST	$2218	443	:i32
 	JMP	$0	B1443()	:void
@@ -4436,7 +4436,7 @@ B886()
 	JMP	$0	B1443()	:void
 B887()
 	CONST	$2221	1	:i32
-	ADD	$2222	$2	$2221	:i32
+	CONST	$2222	444	:i32
 	ASSIGN	$2	$2222	:i32
 	CONST	$2223	444	:i32
 	JMP	$0	B1444()	:void
@@ -4446,7 +4446,7 @@ B888()
 	JMP	$0	B1444()	:void
 B889()
 	CONST	$2226	1	:i32
-	ADD	$2227	$2	$2226	:i32
+	CONST	$2227	445	:i32
 	ASSIGN	$2	$2227	:i32
 	CONST	$2228	445	:i32
 	JMP	$0	B1445()	:void
@@ -4456,7 +4456,7 @@ B890()
 	JMP	$0	B1445()	:void
 B891()
 	CONST	$2231	1	:i32
-	ADD	$2232	$2	$2231	:i32
+	CONST	$2232	446	:i32
 	ASSIGN	$2	$2232	:i32
 	CONST	$2233	446	:i32
 	JMP	$0	B1446()	:void
@@ -4466,7 +4466,7 @@ B892()
 	JMP	$0	B1446()	:void
 B893()
 	CONST	$2236	1	:i32
-	ADD	$2237	$2	$2236	:i32
+	CONST	$2237	447	:i32
 	ASSIGN	$2	$2237	:i32
 	CONST	$2238	447	:i32
 	JMP	$0	B1447()	:void
@@ -4476,7 +4476,7 @@ B894()
 	JMP	$0	B1447()	:void
 B895()
 	CONST	$2241	1	:i32
-	ADD	$2242	$2	$2241	:i32
+	CONST	$2242	448	:i32
 	ASSIGN	$2	$2242	:i32
 	CONST	$2243	448	:i32
 	JMP	$0	B1448()	:void
@@ -4486,7 +4486,7 @@ B896()
 	JMP	$0	B1448()	:void
 B897()
 	CONST	$2246	1	:i32
-	ADD	$2247	$2	$2246	:i32
+	CONST	$2247	449	:i32
 	ASSIGN	$2	$2247	:i32
 	CONST	$2248	449	:i32
 	JMP	$0	B1449()	:void
@@ -4496,7 +4496,7 @@ B898()
 	JMP	$0	B1449()	:void
 B899()
 	CONST	$2251	1	:i32
-	ADD	$2252	$2	$2251	:i32
+	CONST	$2252	450	:i32
 	ASSIGN	$2	$2252	:i32
 	CONST	$2253	450	:i32
 	JMP	$0	B1450()	:void
@@ -4506,7 +4506,7 @@ B900()
 	JMP	$0	B1450()	:void
 B901()
 	CONST	$2256	1	:i32
-	ADD	$2257	$2	$2256	:i32
+	CONST	$2257	451	:i32
 	ASSIGN	$2	$2257	:i32
 	CONST	$2258	451	:i32
 	JMP	$0	B1451()	:void
@@ -4516,7 +4516,7 @@ B902()
 	JMP	$0	B1451()	:void
 B903()
 	CONST	$2261	1	:i32
-	ADD	$2262	$2	$2261	:i32
+	CONST	$2262	452	:i32
 	ASSIGN	$2	$2262	:i32
 	CONST	$2263	452	:i32
 	JMP	$0	B1452()	:void
@@ -4526,7 +4526,7 @@ B904()
 	JMP	$0	B1452()	:void
 B905()
 	CONST	$2266	1	:i32
-	ADD	$2267	$2	$2266	:i32
+	CONST	$2267	453	:i32
 	ASSIGN	$2	$2267	:i32
 	CONST	$2268	453	:i32
 	JMP	$0	B1453()	:void
@@ -4536,7 +4536,7 @@ B906()
 	JMP	$0	B1453()	:void
 B907()
 	CONST	$2271	1	:i32
-	ADD	$2272	$2	$2271	:i32
+	CONST	$2272	454	:i32
 	ASSIGN	$2	$2272	:i32
 	CONST	$2273	454	:i32
 	JMP	$0	B1454()	:void
@@ -4546,7 +4546,7 @@ B908()
 	JMP	$0	B1454()	:void
 B909()
 	CONST	$2276	1	:i32
-	ADD	$2277	$2	$2276	:i32
+	CONST	$2277	455	:i32
 	ASSIGN	$2	$2277	:i32
 	CONST	$2278	455	:i32
 	JMP	$0	B1455()	:void
@@ -4556,7 +4556,7 @@ B910()
 	JMP	$0	B1455()	:void
 B911()
 	CONST	$2281	1	:i32
-	ADD	$2282	$2	$2281	:i32
+	CONST	$2282	456	:i32
 	ASSIGN	$2	$2282	:i32
 	CONST	$2283	456	:i32
 	JMP	$0	B1456()	:void
@@ -4566,7 +4566,7 @@ B912()
 	JMP	$0	B1456()	:void
 B913()
 	CONST	$2286	1	:i32
-	ADD	$2287	$2	$2286	:i32
+	CONST	$2287	457	:i32
 	ASSIGN	$2	$2287	:i32
 	CONST	$2288	457	:i32
 	JMP	$0	B1457()	:void
@@ -4576,7 +4576,7 @@ B914()
 	JMP	$0	B1457()	:void
 B915()
 	CONST	$2291	1	:i32
-	ADD	$2292	$2	$2291	:i32
+	CONST	$2292	458	:i32
 	ASSIGN	$2	$2292	:i32
 	CONST	$2293	458	:i32
 	JMP	$0	B1458()	:void
@@ -4586,7 +4586,7 @@ B916()
 	JMP	$0	B1458()	:void
 B917()
 	CONST	$2296	1	:i32
-	ADD	$2297	$2	$2296	:i32
+	CONST	$2297	459	:i32
 	ASSIGN	$2	$2297	:i32
 	CONST	$2298	459	:i32
 	JMP	$0	B1459()	:void
@@ -4596,7 +4596,7 @@ B918()
 	JMP	$0	B1459()	:void
 B919()
 	CONST	$2301	1	:i32
-	ADD	$2302	$2	$2301	:i32
+	CONST	$2302	460	:i32
 	ASSIGN	$2	$2302	:i32
 	CONST	$2303	460	:i32
 	JMP	$0	B1460()	:void
@@ -4606,7 +4606,7 @@ B920()
 	JMP	$0	B1460()	:void
 B921()
 	CONST	$2306	1	:i32
-	ADD	$2307	$2	$2306	:i32
+	CONST	$2307	461	:i32
 	ASSIGN	$2	$2307	:i32
 	CONST	$2308	461	:i32
 	JMP	$0	B1461()	:void
@@ -4616,7 +4616,7 @@ B922()
 	JMP	$0	B1461()	:void
 B923()
 	CONST	$2311	1	:i32
-	ADD	$2312	$2	$2311	:i32
+	CONST	$2312	462	:i32
 	ASSIGN	$2	$2312	:i32
 	CONST	$2313	462	:i32
 	JMP	$0	B1462()	:void
@@ -4626,7 +4626,7 @@ B924()
 	JMP	$0	B1462()	:void
 B925()
 	CONST	$2316	1	:i32
-	ADD	$2317	$2	$2316	:i32
+	CONST	$2317	463	:i32
 	ASSIGN	$2	$2317	:i32
 	CONST	$2318	463	:i32
 	JMP	$0	B1463()	:void
@@ -4636,7 +4636,7 @@ B926()
 	JMP	$0	B1463()	:void
 B927()
 	CONST	$2321	1	:i32
-	ADD	$2322	$2	$2321	:i32
+	CONST	$2322	464	:i32
 	ASSIGN	$2	$2322	:i32
 	CONST	$2323	464	:i32
 	JMP	$0	B1464()	:void
@@ -4646,7 +4646,7 @@ B928()
 	JMP	$0	B1464()	:void
 B929()
 	CONST	$2326	1	:i32
-	ADD	$2327	$2	$2326	:i32
+	CONST	$2327	465	:i32
 	ASSIGN	$2	$2327	:i32
 	CONST	$2328	465	:i32
 	JMP	$0	B1465()	:void
@@ -4656,7 +4656,7 @@ B930()
 	JMP	$0	B1465()	:void
 B931()
 	CONST	$2331	1	:i32
-	ADD	$2332	$2	$2331	:i32
+	CONST	$2332	466	:i32
 	ASSIGN	$2	$2332	:i32
 	CONST	$2333	466	:i32
 	JMP	$0	B1466()	:void
@@ -4666,7 +4666,7 @@ B932()
 	JMP	$0	B1466()	:void
 B933()
 	CONST	$2336	1	:i32
-	ADD	$2337	$2	$2336	:i32
+	CONST	$2337	467	:i32
 	ASSIGN	$2	$2337	:i32
 	CONST	$2338	467	:i32
 	JMP	$0	B1467()	:void
@@ -4676,7 +4676,7 @@ B934()
 	JMP	$0	B1467()	:void
 B935()
 	CONST	$2341	1	:i32
-	ADD	$2342	$2	$2341	:i32
+	CONST	$2342	468	:i32
 	ASSIGN	$2	$2342	:i32
 	CONST	$2343	468	:i32
 	JMP	$0	B1468()	:void
@@ -4686,7 +4686,7 @@ B936()
 	JMP	$0	B1468()	:void
 B937()
 	CONST	$2346	1	:i32
-	ADD	$2347	$2	$2346	:i32
+	CONST	$2347	469	:i32
 	ASSIGN	$2	$2347	:i32
 	CONST	$2348	469	:i32
 	JMP	$0	B1469()	:void
@@ -4696,7 +4696,7 @@ B938()
 	JMP	$0	B1469()	:void
 B939()
 	CONST	$2351	1	:i32
-	ADD	$2352	$2	$2351	:i32
+	CONST	$2352	470	:i32
 	ASSIGN	$2	$2352	:i32
 	CONST	$2353	470	:i32
 	JMP	$0	B1470()	:void
@@ -4706,7 +4706,7 @@ B940()
 	JMP	$0	B1470()	:void
 B941()
 	CONST	$2356	1	:i32
-	ADD	$2357	$2	$2356	:i32
+	CONST	$2357	471	:i32
 	ASSIGN	$2	$2357	:i32
 	CONST	$2358	471	:i32
 	JMP	$0	B1471()	:void
@@ -4716,7 +4716,7 @@ B942()
 	JMP	$0	B1471()	:void
 B943()
 	CONST	$2361	1	:i32
-	ADD	$2362	$2	$2361	:i32
+	CONST	$2362	472	:i32
 	ASSIGN	$2	$2362	:i32
 	CONST	$2363	472	:i32
 	JMP	$0	B1472()	:void
@@ -4726,7 +4726,7 @@ B944()
 	JMP	$0	B1472()	:void
 B945()
 	CONST	$2366	1	:i32
-	ADD	$2367	$2	$2366	:i32
+	CONST	$2367	473	:i32
 	ASSIGN	$2	$2367	:i32
 	CONST	$2368	473	:i32
 	JMP	$0	B1473()	:void
@@ -4736,7 +4736,7 @@ B946()
 	JMP	$0	B1473()	:void
 B947()
 	CONST	$2371	1	:i32
-	ADD	$2372	$2	$2371	:i32
+	CONST	$2372	474	:i32
 	ASSIGN	$2	$2372	:i32
 	CONST	$2373	474	:i32
 	JMP	$0	B1474()	:void
@@ -4746,7 +4746,7 @@ B948()
 	JMP	$0	B1474()	:void
 B949()
 	CONST	$2376	1	:i32
-	ADD	$2377	$2	$2376	:i32
+	CONST	$2377	475	:i32
 	ASSIGN	$2	$2377	:i32
 	CONST	$2378	475	:i32
 	JMP	$0	B1475()	:void
@@ -4756,7 +4756,7 @@ B950()
 	JMP	$0	B1475()	:void
 B951()
 	CONST	$2381	1	:i32
-	ADD	$2382	$2	$2381	:i32
+	CONST	$2382	476	:i32
 	ASSIGN	$2	$2382	:i32
 	CONST	$2383	476	:i32
 	JMP	$0	B1476()	:void
@@ -4766,7 +4766,7 @@ B952()
 	JMP	$0	B1476()	:void
 B953()
 	CONST	$2386	1	:i32
-	ADD	$2387	$2	$2386	:i32
+	CONST	$2387	477	:i32
 	ASSIGN	$2	$2387	:i32
 	CONST	$2388	477	:i32
 	JMP	$0	B1477()	:void
@@ -4776,7 +4776,7 @@ B954()
 	JMP	$0	B1477()	:void
 B955()
 	CONST	$2391	1	:i32
-	ADD	$2392	$2	$2391	:i32
+	CONST	$2392	478	:i32
 	ASSIGN	$2	$2392	:i32
 	CONST	$2393	478	:i32
 	JMP	$0	B1478()	:void
@@ -4786,7 +4786,7 @@ B956()
 	JMP	$0	B1478()	:void
 B957()
 	CONST	$2396	1	:i32
-	ADD	$2397	$2	$2396	:i32
+	CONST	$2397	479	:i32
 	ASSIGN	$2	$2397	:i32
 	CONST	$2398	479	:i32
 	JMP	$0	B1479()	:void
@@ -4796,7 +4796,7 @@ B958()
 	JMP	$0	B1479()	:void
 B959()
 	CONST	$2401	1	:i32
-	ADD	$2402	$2	$2401	:i32
+	CONST	$2402	480	:i32
 	ASSIGN	$2	$2402	:i32
 	CONST	$2403	480	:i32
 	JMP	$0	B1480()	:void
@@ -4806,7 +4806,7 @@ B960()
 	JMP	$0	B1480()	:void
 B961()
 	CONST	$2406	1	:i32
-	ADD	$2407	$2	$2406	:i32
+	CONST	$2407	481	:i32
 	ASSIGN	$2	$2407	:i32
 	CONST	$2408	481	:i32
 	JMP	$0	B1481()	:void
@@ -4816,7 +4816,7 @@ B962()
 	JMP	$0	B1481()	:void
 B963()
 	CONST	$2411	1	:i32
-	ADD	$2412	$2	$2411	:i32
+	CONST	$2412	482	:i32
 	ASSIGN	$2	$2412	:i32
 	CONST	$2413	482	:i32
 	JMP	$0	B1482()	:void
@@ -4826,7 +4826,7 @@ B964()
 	JMP	$0	B1482()	:void
 B965()
 	CONST	$2416	1	:i32
-	ADD	$2417	$2	$2416	:i32
+	CONST	$2417	483	:i32
 	ASSIGN	$2	$2417	:i32
 	CONST	$2418	483	:i32
 	JMP	$0	B1483()	:void
@@ -4836,7 +4836,7 @@ B966()
 	JMP	$0	B1483()	:void
 B967()
 	CONST	$2421	1	:i32
-	ADD	$2422	$2	$2421	:i32
+	CONST	$2422	484	:i32
 	ASSIGN	$2	$2422	:i32
 	CONST	$2423	484	:i32
 	JMP	$0	B1484()	:void
@@ -4846,7 +4846,7 @@ B968()
 	JMP	$0	B1484()	:void
 B969()
 	CONST	$2426	1	:i32
-	ADD	$2427	$2	$2426	:i32
+	CONST	$2427	485	:i32
 	ASSIGN	$2	$2427	:i32
 	CONST	$2428	485	:i32
 	JMP	$0	B1485()	:void
@@ -4856,7 +4856,7 @@ B970()
 	JMP	$0	B1485()	:void
 B971()
 	CONST	$2431	1	:i32
-	ADD	$2432	$2	$2431	:i32
+	CONST	$2432	486	:i32
 	ASSIGN	$2	$2432	:i32
 	CONST	$2433	486	:i32
 	JMP	$0	B1486()	:void
@@ -4866,7 +4866,7 @@ B972()
 	JMP	$0	B1486()	:void
 B973()
 	CONST	$2436	1	:i32
-	ADD	$2437	$2	$2436	:i32
+	CONST	$2437	487	:i32
 	ASSIGN	$2	$2437	:i32
 	CONST	$2438	487	:i32
 	JMP	$0	B1487()	:void
@@ -4876,7 +4876,7 @@ B974()
 	JMP	$0	B1487()	:void
 B975()
 	CONST	$2441	1	:i32
-	ADD	$2442	$2	$2441	:i32
+	CONST	$2442	488	:i32
 	ASSIGN	$2	$2442	:i32
 	CONST	$2443	488	:i32
 	JMP	$0	B1488()	:void
@@ -4886,7 +4886,7 @@ B976()
 	JMP	$0	B1488()	:void
 B977()
 	CONST	$2446	1	:i32
-	ADD	$2447	$2	$2446	:i32
+	CONST	$2447	489	:i32
 	ASSIGN	$2	$2447	:i32
 	CONST	$2448	489	:i32
 	JMP	$0	B1489()	:void
@@ -4896,7 +4896,7 @@ B978()
 	JMP	$0	B1489()	:void
 B979()
 	CONST	$2451	1	:i32
-	ADD	$2452	$2	$2451	:i32
+	CONST	$2452	490	:i32
 	ASSIGN	$2	$2452	:i32
 	CONST	$2453	490	:i32
 	JMP	$0	B1490()	:void
@@ -4906,7 +4906,7 @@ B980()
 	JMP	$0	B1490()	:void
 B981()
 	CONST	$2456	1	:i32
-	ADD	$2457	$2	$2456	:i32
+	CONST	$2457	491	:i32
 	ASSIGN	$2	$2457	:i32
 	CONST	$2458	491	:i32
 	JMP	$0	B1491()	:void
@@ -4916,7 +4916,7 @@ B982()
 	JMP	$0	B1491()	:void
 B983()
 	CONST	$2461	1	:i32
-	ADD	$2462	$2	$2461	:i32
+	CONST	$2462	492	:i32
 	ASSIGN	$2	$2462	:i32
 	CONST	$2463	492	:i32
 	JMP	$0	B1492()	:void
@@ -4926,7 +4926,7 @@ B984()
 	JMP	$0	B1492()	:void
 B985()
 	CONST	$2466	1	:i32
-	ADD	$2467	$2	$2466	:i32
+	CONST	$2467	493	:i32
 	ASSIGN	$2	$2467	:i32
 	CONST	$2468	493	:i32
 	JMP	$0	B1493()	:void
@@ -4936,7 +4936,7 @@ B986()
 	JMP	$0	B1493()	:void
 B987()
 	CONST	$2471	1	:i32
-	ADD	$2472	$2	$2471	:i32
+	CONST	$2472	494	:i32
 	ASSIGN	$2	$2472	:i32
 	CONST	$2473	494	:i32
 	JMP	$0	B1494()	:void
@@ -4946,7 +4946,7 @@ B988()
 	JMP	$0	B1494()	:void
 B989()
 	CONST	$2476	1	:i32
-	ADD	$2477	$2	$2476	:i32
+	CONST	$2477	495	:i32
 	ASSIGN	$2	$2477	:i32
 	CONST	$2478	495	:i32
 	JMP	$0	B1495()	:void
@@ -4956,7 +4956,7 @@ B990()
 	JMP	$0	B1495()	:void
 B991()
 	CONST	$2481	1	:i32
-	ADD	$2482	$2	$2481	:i32
+	CONST	$2482	496	:i32
 	ASSIGN	$2	$2482	:i32
 	CONST	$2483	496	:i32
 	JMP	$0	B1496()	:void
@@ -4966,7 +4966,7 @@ B992()
 	JMP	$0	B1496()	:void
 B993()
 	CONST	$2486	1	:i32
-	ADD	$2487	$2	$2486	:i32
+	CONST	$2487	497	:i32
 	ASSIGN	$2	$2487	:i32
 	CONST	$2488	497	:i32
 	JMP	$0	B1497()	:void
@@ -4976,7 +4976,7 @@ B994()
 	JMP	$0	B1497()	:void
 B995()
 	CONST	$2491	1	:i32
-	ADD	$2492	$2	$2491	:i32
+	CONST	$2492	498	:i32
 	ASSIGN	$2	$2492	:i32
 	CONST	$2493	498	:i32
 	JMP	$0	B1498()	:void
@@ -4986,7 +4986,7 @@ B996()
 	JMP	$0	B1498()	:void
 B997()
 	CONST	$2496	1	:i32
-	ADD	$2497	$2	$2496	:i32
+	CONST	$2497	499	:i32
 	ASSIGN	$2	$2497	:i32
 	CONST	$2498	499	:i32
 	JMP	$0	B1499()	:void
@@ -4996,7 +4996,7 @@ B998()
 	JMP	$0	B1499()	:void
 B999()
 	CONST	$2501	1	:i32
-	ADD	$2502	$2	$2501	:i32
+	CONST	$2502	500	:i32
 	ASSIGN	$2	$2502	:i32
 	RETURN	$0	$2	:i32
 B1000()
