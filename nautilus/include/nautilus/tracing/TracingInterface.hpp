@@ -95,6 +95,17 @@ public:
 
 	/// Pop the top static variable from the static-variable stack.
 	virtual void popStaticVal() = 0;
+
+	/// Register a val<T> instance as a trace-time constant.
+	/// Called from val<T> constructors when the value is derived from a literal.
+	virtual void registerConstVal(const void* valPtr) = 0;
+
+	/// Unregister a val<T> instance from the const-value set.
+	/// Called when a val becomes non-const (assignment) or goes out of scope (destructor).
+	virtual void unregisterConstVal(const void* valPtr) = 0;
+
+	/// Check whether a val<T> instance is currently a trace-time constant.
+	virtual bool isConstVal(const void* valPtr) const = 0;
 };
 
 } // namespace nautilus::tracing

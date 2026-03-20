@@ -70,4 +70,8 @@ void popStaticVal();
 void allocateValRef(ValueRef ref);
 void freeValRef(ValueRef ref);
 
+void registerConstVal(const void* valPtr);
+void unregisterConstVal(const void* valPtr);
+bool isConstVal(const void* valPtr);
+
 } // namespace nautilus::tracing

@@ -67,6 +67,25 @@ void popStaticVal() {
 	}
 }
 
+void registerConstVal(const void* valPtr) {
+	if (activeTracer) {
+		activeTracer->registerConstVal(valPtr);
+	}
+}
+
+void unregisterConstVal(const void* valPtr) {
+	if (activeTracer) {
+		activeTracer->unregisterConstVal(valPtr);
+	}
+}
+
+bool isConstVal(const void* valPtr) {
+	if (activeTracer) {
+		return activeTracer->isConstVal(valPtr);
+	}
+	return false;
+}
+
 // --- Unguarded wrappers: only called from within SHOULD_TRACE() blocks,
 //     where activeTracer is guaranteed non-null.
 

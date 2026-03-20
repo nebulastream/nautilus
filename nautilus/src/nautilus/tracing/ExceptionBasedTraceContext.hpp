@@ -242,6 +242,9 @@ public:
 
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
+	void registerConstVal(const void* valPtr) override;
+	void unregisterConstVal(const void* valPtr) override;
+	bool isConstVal(const void* valPtr) const override;
 
 	// --- Non-interface public API ---
 
@@ -296,8 +299,9 @@ private:
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()
-	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
-	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	std::vector<StaticVarHolder> staticVars;    // Tracks static variable states for snapshot hashing
+	AliveVariableHash aliveVars;                // Tracks alive variables with incremental hash (256KB)
+	std::unordered_set<const void*> constVals_; // Tracks val<T> instances that are trace-time constants
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;
 };

@@ -63,30 +63,47 @@ public:
 
 #ifdef ENABLE_TRACING
 	/// Default constructor. Initializes with constant 0 and records in trace.
-	val() : state(tracing::traceConstant<raw_type>(0)), is_const(true), value(0) {
+	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+		tracing::registerConstVal(this);
 	}
 
 	/// Value constructor. Initializes with provided value and records in trace.
-	val(ValueType value) : state(tracing::traceConstant(value)), is_const(true), value(value) {
+	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
+		tracing::registerConstVal(this);
 	}
 
 	/// Copy constructor. Copies value and tracing state.
-	val(const val<ValueType>& other)
-	    : state(tracing::traceCopy(other.state)), is_const(other.is_const), value(other.value) {
+	/// If the source is a trace-time constant, the copy is also registered as const.
+	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+		if (tracing::isConstVal(&other)) {
+			tracing::registerConstVal(this);
+		}
 	}
 
 	/// Move constructor. Moves value and tracing state.
-	val(val<ValueType>&& other) noexcept
-	    : state(std::move(other.state)), is_const(other.is_const), value(std::move(other.value)) {
+	/// Transfers const registration from source to this instance.
+	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+		if (tracing::isConstVal(&other)) {
+			tracing::unregisterConstVal(&other);
+			tracing::registerConstVal(this);
+		}
 	}
 
 	/// Tracing constructor. Creates from TypedValueRef for internal use.
 	/// Values created from traced operations are not constants.
-	val(tracing::TypedValueRef& tc) : state(tc), is_const(false), value() {
+	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
 
 	/// Tracing constructor with const flag. Creates from TypedValueRef with explicit const status.
-	val(tracing::TypedValueRef& tc, ValueType val, bool isConst) : state(tc), is_const(isConst), value(val) {
+	val(tracing::TypedValueRef& tc, ValueType val, bool isConst) : state(tc), value(val) {
+		if (isConst) {
+			tracing::registerConstVal(this);
+		}
+	}
+
+	/// Destructor. Unregisters from const-value tracking when going out of scope.
+	~val() {
+		tracing::unregisterConstVal(this);
 	}
 #else
 	/// Default constructor. Initializes with 0.
@@ -107,6 +124,8 @@ public:
 #endif
 
 	/// Copy assignment operator. Assigns value and traces if enabled.
+	/// Const status is not changed — it is determined at construction time
+	/// and remains immutable throughout the val's lifetime.
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
@@ -131,7 +150,7 @@ public:
 	operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
-			if (is_const) {
+			if (tracing::isConstVal(this)) {
 				// Constant cast: compute at trace time
 				return val<OtherType>(static_cast<OtherType>(value));
 			}
@@ -192,21 +211,11 @@ public:
 #ifdef ENABLE_TRACING
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
-
-	/// Whether this value is a trace-time constant (derived only from literals,
-	/// not from function arguments or runtime inputs). Used for constant folding
-	/// during tracing.
-	const bool is_const;
 #endif
 
 private:
 	template <typename>
 	friend struct details::RawValueResolver;
-
-#ifdef ENABLE_TRACING
-	template <typename>
-	friend struct details::ConstResolver;
-#endif
 
 	/// The underlying arithmetic value. Declared after is_const to match
 	/// initialization order in constructors.

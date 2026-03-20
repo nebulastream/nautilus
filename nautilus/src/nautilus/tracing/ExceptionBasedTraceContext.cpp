@@ -49,6 +49,7 @@ ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& 
 void ExceptionBasedTraceContext::resume() {
 	// Clear dynamic containers
 	staticVars.clear();
+	constVals_.clear();
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
@@ -245,6 +246,18 @@ void ExceptionBasedTraceContext::popStaticVal() {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
 	}
 	staticVars.pop_back();
+}
+
+void ExceptionBasedTraceContext::registerConstVal(const void* valPtr) {
+	constVals_.insert(valPtr);
+}
+
+void ExceptionBasedTraceContext::unregisterConstVal(const void* valPtr) {
+	constVals_.erase(valPtr);
+}
+
+bool ExceptionBasedTraceContext::isConstVal(const void* valPtr) const {
+	return constVals_.contains(valPtr);
 }
 
 bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {

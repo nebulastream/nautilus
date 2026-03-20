@@ -61,6 +61,9 @@ public:
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
+	void registerConstVal(const void* valPtr) override;
+	void unregisterConstVal(const void* valPtr) override;
+	bool isConstVal(const void* valPtr) const override;
 
 	// --- Non-interface public API ---
 
@@ -115,6 +118,7 @@ private:
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
+	std::unordered_set<const void*> constVals_; // Tracks val<T> instances that are trace-time constants
 
 	// Passive mode state
 	bool paused_ = false;

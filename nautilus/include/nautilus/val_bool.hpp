@@ -152,9 +152,6 @@ public:
 #ifdef ENABLE_TRACING
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
-
-	/// Whether this value is a trace-time constant
-	const bool is_const;
 #endif
 
 	/// Default constructor.
@@ -167,7 +164,8 @@ public:
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)), is_const(true), value(false) {
+	val() : state(tracing::traceConstant(0)), value(false) {
+		tracing::registerConstVal(this);
 	}
 #else
 	val() {
@@ -188,7 +186,8 @@ public:
 	/// val<bool> b = false;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val(bool value) : state(tracing::traceConstant(value)), is_const(true), value(value) {
+	val(bool value) : state(tracing::traceConstant(value)), value(value) {
+		tracing::registerConstVal(this);
 	}
 #else
 	val(bool value) : value(value) {
@@ -211,7 +210,10 @@ public:
 	/// assert(b == a);
 	/// ```
 #ifdef ENABLE_TRACING
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), is_const(other.is_const), value(other.value) {
+	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+		if (tracing::isConstVal(&other)) {
+			tracing::registerConstVal(this);
+		}
 	}
 #else
 	val(const val<bool>& other) : value(other.value) {
@@ -234,8 +236,11 @@ public:
 	/// }
 	/// ```
 #ifdef ENABLE_TRACING
-	val(val<bool>&& other) noexcept
-	    : state(std::move(other.state)), is_const(other.is_const), value(std::move(other.value)) {
+	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+		if (tracing::isConstVal(&other)) {
+			tracing::unregisterConstVal(&other);
+			tracing::registerConstVal(this);
+		}
 	}
 #else
 	val(val<bool>&& other) noexcept : value(std::move(other.value)) {
@@ -253,7 +258,12 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), is_const(false), value(false) {
+	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
+	}
+
+	/// Destructor. Unregisters from const-value tracking when going out of scope.
+	~val() {
+		tracing::unregisterConstVal(this);
 	}
 #endif
 
@@ -408,11 +418,6 @@ public:
 private:
 	template <typename>
 	friend struct details::RawValueResolver;
-
-#ifdef ENABLE_TRACING
-	template <typename>
-	friend struct details::ConstResolver;
-#endif
 
 	/// The underlying boolean value (true or false)
 	bool value = false;

@@ -34,6 +34,7 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 
 void LazyTraceContext::resume() {
 	staticVars.clear();
+	constVals_.clear();
 	aliveVars.reset();
 	paused_ = false;
 }
@@ -420,6 +421,18 @@ void LazyTraceContext::popStaticVal() {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
 	}
 	staticVars.pop_back();
+}
+
+void LazyTraceContext::registerConstVal(const void* valPtr) {
+	constVals_.insert(valPtr);
+}
+
+void LazyTraceContext::unregisterConstVal(const void* valPtr) {
+	constVals_.erase(valPtr);
+}
+
+bool LazyTraceContext::isConstVal(const void* valPtr) const {
+	return constVals_.contains(valPtr);
 }
 
 std::string LazyTraceContext::formatStaticVars() const {
