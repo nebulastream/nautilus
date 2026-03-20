@@ -480,7 +480,6 @@ protected:
 		case Operation::OperationType::FunctionAddressOfOp:
 			return "call";
 		case Operation::OperationType::IfOp:
-		case Operation::OperationType::LoopOp:
 		case Operation::OperationType::ReturnOp:
 		case Operation::OperationType::BlockInvocation:
 		case Operation::OperationType::BranchOp:
