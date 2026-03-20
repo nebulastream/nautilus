@@ -3,8 +3,8 @@
 
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
+#include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
-#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"

@@ -4,10 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: memory(readwrite)
-declare i64 @runtimeFunc0(i64, i64) local_unnamed_addr #0
-
-; Function Attrs: memory(readwrite)
-define zeroext i64 @execute(i64 %0, i64 %1) local_unnamed_addr #1 {
+define zeroext i64 @execute(i64 %0, i64 %1) local_unnamed_addr #0 {
   %3 = tail call i64 @runtimeFunc0(i64 %0, i64 %1)
   ret i64 %3
 }
@@ -18,7 +15,10 @@ define zeroext i64 @_mlir_ciface_execute(i64 %0, i64 %1) local_unnamed_addr #0 {
   ret i64 %3
 }
 
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr {
+; Function Attrs: memory(readwrite)
+declare i64 @runtimeFunc0(i64, i64) local_unnamed_addr #1
+
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i64, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8
@@ -31,7 +31,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr {
   ret void
 }
 
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i64, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8

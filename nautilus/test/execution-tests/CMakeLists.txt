@@ -7,6 +7,7 @@ add_executable(nautilus-execution-tests
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp
+        ModuleTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
         BitIntrinsicExecutionTest.cpp

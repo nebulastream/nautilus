@@ -31,15 +31,18 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		llvm::TargetMachine* targetMachinePtr = targetMachine->get();
 		targetMachinePtr->setOptLevel(llvm::CodeGenOptLevel::Aggressive);
 
-		// Add target-specific attributes to the 'execute' function.
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features",
-		                             targetMachinePtr->getTargetFeatureString()));
-		llvmIRModule->getFunction("execute")->addAttributeAtIndex(
-		    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
-		llvm::SMDiagnostic Err;
+		// Add target-specific attributes to all non-declaration functions in the module.
+		for (auto& func : *llvmIRModule) {
+			if (func.isDeclaration()) {
+				continue;
+			}
+			func.addAttributeAtIndex(
+			    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-cpu", targetMachinePtr->getTargetCPU()));
+			func.addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "target-features",
+			                                                  targetMachinePtr->getTargetFeatureString()));
+			func.addAttributeAtIndex(
+			    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
+		}
 
 		// Apply llvm function inlining
 		if (options.getOptionOrDefault("mlir.inline_invoke_calls", false)) {

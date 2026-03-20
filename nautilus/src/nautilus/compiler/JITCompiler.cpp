@@ -15,7 +15,7 @@
 
 #ifdef ENABLE_COMPILER
 
-#include "nautilus/compiler/CompilableFunction.hpp"
+#include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -67,31 +67,33 @@ static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
 static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
-	const CompilationUnitID compilationId = createCompilationUnitID();
-	auto dumpHandler = DumpHandler(options, compilationId);
 	auto rootFunction = CompilableFunction(ROOT_FUNCTION_NAME, function);
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
+	return compile(functionsToTrace);
+}
+
+std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>& functions) const {
+	const CompilationUnitID compilationId = createCompilationUnitID();
+	auto dumpHandler = DumpHandler(options, compilationId);
 
 	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
 	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functionsToTrace, options)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functionsToTrace, options);
+	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options)
+	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options);
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 
-	// Create SSA for all functions in the module
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
 	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
 
-	// Convert the entire trace module to nautilus IR
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(afterSSAModule, compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
-	// lower to backend
+
 	const auto backendName = getName();
 	const auto backend = backends->getBackend(backendName);
 	auto executable = backend->compile(ir, dumpHandler, options);
@@ -102,6 +104,10 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 #else
 
 std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function) const {
+	throw RuntimeException("Jit not initialised");
+}
+
+std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 

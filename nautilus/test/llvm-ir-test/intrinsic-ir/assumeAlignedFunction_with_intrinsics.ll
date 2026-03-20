@@ -11,17 +11,17 @@ define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read, inaccessiblemem: write)
-define signext i32 @_mlir_ciface_execute(ptr %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(ptr %0) local_unnamed_addr #0 {
   call void @llvm.assume(i1 true) [ "align"(ptr %0, i8 16) ]
   %2 = load i32, ptr %0, align 16
   ret i32 %2
 }
 
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write)
-declare void @llvm.assume(i1 noundef) #2
+declare void @llvm.assume(i1 noundef) #1
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   call void @llvm.assume(i1 true) [ "align"(ptr %3, i8 16) ]
@@ -33,7 +33,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   call void @llvm.assume(i1 true) [ "align"(ptr %3, i8 16) ]
@@ -45,9 +45,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read, inaccessiblemem: write) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read, inaccessiblemem: write) }
-attributes #2 = { mustprogress nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
-attributes #3 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write) }
+attributes #1 = { mustprogress nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
+attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: write) }
 
 !llvm.module.flags = !{!0}
 

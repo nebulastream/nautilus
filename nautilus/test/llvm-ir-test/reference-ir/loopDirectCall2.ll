@@ -4,13 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: memory(readwrite)
-declare i32 @runtimeFunc0() local_unnamed_addr #0
-
-; Function Attrs: memory(readwrite)
-declare i32 @runtimeFunc1(i32, i32) local_unnamed_addr #0
-
-; Function Attrs: memory(readwrite)
-define signext i32 @execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = tail call i32 @runtimeFunc0()
   %3 = sext i32 %2 to i64
   %.not = icmp eq i32 %2, 0
@@ -49,7 +43,13 @@ execute.exit:                                     ; preds = %.lr.ph.i, %1
   ret i32 %.lcssa.i
 }
 
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr {
+; Function Attrs: memory(readwrite)
+declare i32 @runtimeFunc0() local_unnamed_addr #1
+
+; Function Attrs: memory(readwrite)
+declare i32 @runtimeFunc1(i32, i32) local_unnamed_addr #1
+
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = tail call i32 @runtimeFunc0()
@@ -73,7 +73,7 @@ execute.exit:                                     ; preds = %.lr.ph.i, %1
   ret void
 }
 
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = tail call i32 @runtimeFunc0()
