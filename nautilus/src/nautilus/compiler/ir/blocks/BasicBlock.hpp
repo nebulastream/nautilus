@@ -52,6 +52,8 @@ public:
 
 	void removeArgument(std::shared_ptr<BasicBlockArgument> argument);
 
+	void removeArgumentAt(uint64_t index);
+
 	void addOperationBefore(Operation* before, std::unique_ptr<Operation>& operation);
 
 	void addPredecessor(BasicBlock* predecessor);
