@@ -95,6 +95,8 @@ std::optional<std::string> serializeFunctionWithDependencySymbols(llvm::Function
 		auto uniqueName = getUniqueName(originalGV, symbolMap, originalModule);
 		globalVariable.setName(uniqueName);
 		globalVariable.setInitializer(nullptr);
+		globalVariable.setExternallyInitialized(true);
+		globalVariable.setDSOLocal(false);
 		globalVariable.setLinkage(llvm::GlobalValue::ExternalLinkage);
 		// note: even constant variables need to be converted to external linkage because the user code may check
 		// address equality on them
@@ -107,6 +109,7 @@ std::optional<std::string> serializeFunctionWithDependencySymbols(llvm::Function
 			function.setName(uniqueName);
 			function.deleteBody();
 			function.setLinkage(llvm::GlobalValue::ExternalLinkage);
+			function.setDSOLocal(false);
 		}
 	}
 
