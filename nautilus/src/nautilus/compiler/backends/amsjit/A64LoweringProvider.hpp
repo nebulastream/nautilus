@@ -139,7 +139,80 @@ private:
 		void processFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
 		void processCast(ir::CastOperation* op, RegisterFrame& frame);
 	};
-#endif // x86
+#else // AArch64
+	// Integer/pointer types → GP register (X); float types → Vec register (S/D).
+	using AsmReg = std::variant<::asmjit::a64::Gp, ::asmjit::a64::Vec>;
+	using RegisterFrame = Frame<ir::OperationIdentifier, AsmReg>;
+
+	class LoweringContext {
+	public:
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code);
+
+		/// Pass 1 + Pass 2 + finalize.
+		void processAll();
+
+		/// Must be called after processAll() and before rt.add() to capture label offsets.
+		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
+			return funcNodes_;
+		}
+
+	private:
+		::asmjit::a64::Compiler cc;
+		std::shared_ptr<ir::IRGraph> ir;
+		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
+		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
+		std::unordered_map<std::string, ::asmjit::Label> blockLabels;
+		std::unordered_set<std::string> processedBlocks;
+
+		static ::asmjit::TypeId getTypeId(Type t);
+		static bool isFloatType(Type t);
+		static bool isUnsignedType(Type t);
+
+		// All integer types are mapped to 64-bit GP (X); floats to Vec (S/D).
+		AsmReg allocReg(Type t);
+		static ::asmjit::a64::Gp toGp(const AsmReg& r);
+		static ::asmjit::a64::Vec toVec(const AsmReg& r);
+
+		::asmjit::Label getOrCreateLabel(const std::string& blockId);
+		void emitMove(const AsmReg& dst, const AsmReg& src);
+
+		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
+		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+		void processOperation(const std::unique_ptr<ir::Operation>& op, RegisterFrame& frame);
+
+		void processConstBool(ir::ConstBooleanOperation* op, RegisterFrame& frame);
+		void processConstInt(ir::ConstIntOperation* op, RegisterFrame& frame);
+		void processConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame);
+		void processConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame);
+
+		void processAdd(ir::AddOperation* op, RegisterFrame& frame);
+		void processSub(ir::SubOperation* op, RegisterFrame& frame);
+		void processMul(ir::MulOperation* op, RegisterFrame& frame);
+		void processDiv(ir::DivOperation* op, RegisterFrame& frame);
+		void processMod(ir::ModOperation* op, RegisterFrame& frame);
+
+		void processCompare(ir::CompareOperation* op, RegisterFrame& frame);
+		void processAnd(ir::AndOperation* op, RegisterFrame& frame);
+		void processOr(ir::OrOperation* op, RegisterFrame& frame);
+		void processNot(ir::NotOperation* op, RegisterFrame& frame);
+		void processNegate(ir::NegateOperation* op, RegisterFrame& frame);
+		void processShift(ir::ShiftOperation* op, RegisterFrame& frame);
+		void processBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame);
+
+		void processIf(ir::IfOperation* op, RegisterFrame& frame);
+		void processBranch(ir::BranchOperation* op, RegisterFrame& frame);
+		void processReturn(ir::ReturnOperation* op, RegisterFrame& frame);
+		void processSelect(ir::SelectOperation* op, RegisterFrame& frame);
+
+		void processLoad(ir::LoadOperation* op, RegisterFrame& frame);
+		void processStore(ir::StoreOperation* op, RegisterFrame& frame);
+		void processAlloca(ir::AllocaOperation* op, RegisterFrame& frame);
+		void processProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame);
+		void processIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
+		void processFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
+		void processCast(ir::CastOperation* op, RegisterFrame& frame);
+	};
+#endif
 };
 
 } // namespace nautilus::compiler::asmjit
