@@ -90,9 +90,11 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	auto ir = irGenerationPhase.apply(afterSSAModule, compilationId);
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	// Constant propagation and folding
-	auto constantFoldingPhase = ir::ConstantFoldingPhase();
-	constantFoldingPhase.apply(ir);
-	dumpHandler.dump("after_constant_folding", "ir", [&]() { return ir->toString(); });
+	if (options.getOptionOrDefault("engine.constantFolding", true)) {
+		auto constantFoldingPhase = ir::ConstantFoldingPhase();
+		constantFoldingPhase.apply(ir);
+		dumpHandler.dump("after_constant_folding", "ir", [&]() { return ir->toString(); });
+	}
 
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
