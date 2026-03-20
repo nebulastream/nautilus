@@ -60,6 +60,7 @@ jobs:
             exit 1
           fi
   build-test:
+    needs: format
     runs-on: ${{matrix.os}}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
     strategy:
@@ -124,6 +125,9 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+        with:
+          # Check out the actual branch tip so we include any auto-format commit.
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: Cache MLIR binaries
@@ -158,6 +162,7 @@ jobs:
         run: |
           ctest --test-dir build/nautilus --output-on-failure
   llvm-ir-test:
+    needs: format
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-21)
     env:
@@ -166,6 +171,9 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+        with:
+          # Check out the actual branch tip so we include any auto-format commit.
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: get ccache
