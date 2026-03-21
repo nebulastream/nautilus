@@ -3,7 +3,6 @@
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
-#include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
@@ -132,21 +131,12 @@ public:
 class CompiledModule {
 public:
 	/// Compiled mode: owns the executable produced by a backend.
-	/// If the executable is a TieredExecutable, registers a callback to bump the
-	/// version when background promotion completes, so ModuleFunction handles re-resolve.
+	/// Registers a swap callback so that executables which change their internals
+	/// (e.g. tiered promotion) automatically invalidate cached ModuleFunction handles.
 	explicit CompiledModule(std::unique_ptr<compiler::Executable> executable,
 	                        std::unordered_map<std::string, std::any> interpretedFunctions)
 	    : state_(std::make_shared<details::ModuleState>()) {
-		// Hook into tiered compilation promotion
-		auto* tiered = dynamic_cast<compiler::TieredExecutable*>(executable.get());
-		if (tiered) {
-			auto weakState = std::weak_ptr<details::ModuleState>(state_);
-			tiered->setPromotionCallback([weakState]() {
-				if (auto s = weakState.lock()) {
-					s->version.fetch_add(1, std::memory_order_release);
-				}
-			});
-		}
+		installSwapCallback(executable);
 		state_->executable = std::move(executable);
 		state_->interpretedFunctions = std::move(interpretedFunctions);
 	}
@@ -190,6 +180,7 @@ public:
 	 */
 	void setExecutable(std::unique_ptr<compiler::Executable> executable) {
 		std::unique_lock<std::shared_mutex> lock(state_->mutex);
+		installSwapCallback(executable);
 		state_->executable = std::move(executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 	}
@@ -210,6 +201,17 @@ public:
 	}
 
 private:
+	void installSwapCallback(std::unique_ptr<compiler::Executable>& executable) {
+		if (executable) {
+			auto weakState = std::weak_ptr<details::ModuleState>(state_);
+			executable->setSwapCallback([weakState]() {
+				if (auto s = weakState.lock()) {
+					s->version.fetch_add(1, std::memory_order_release);
+				}
+			});
+		}
+	}
+
 	std::shared_ptr<details::ModuleState> state_;
 };
 

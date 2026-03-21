@@ -23,24 +23,6 @@ static std::string createPromotionUnitID() {
 	return std::string(buf);
 }
 
-// --- DelegatingInvocable ---
-
-DelegatingInvocable::DelegatingInvocable(std::unique_ptr<Executable>& delegate, std::shared_mutex& mutex,
-                                         std::string member)
-    : delegate_(delegate), mutex_(mutex), member_(std::move(member)) {
-}
-
-std::any DelegatingInvocable::invokeGeneric(const std::vector<std::any>& args) {
-	std::shared_lock<std::shared_mutex> lock(mutex_);
-	auto invocable = delegate_->getGenericInvocable(member_);
-	if (invocable) {
-		return invocable->invokeGeneric(args);
-	}
-	// Fallback: delegate has function pointers but no generic invocable.
-	// This shouldn't happen since we check hasInvocableFunctionPtr in getInvocableMember.
-	return {};
-}
-
 // --- TieredExecutable ---
 
 TieredExecutable::TieredExecutable(std::unique_ptr<Executable> tier0, std::shared_ptr<ir::IRGraph> ir,
@@ -55,8 +37,9 @@ TieredExecutable::~TieredExecutable() {
 	}
 }
 
-void TieredExecutable::setPromotionCallback(PromotionCallback callback) {
-	onPromoted_ = std::move(callback);
+void TieredExecutable::setSwapCallback(std::function<void()> callback) {
+	std::unique_lock<std::shared_mutex> lock(mutex_);
+	onSwap_ = std::move(callback);
 }
 
 bool TieredExecutable::hasInvocableFunctionPtr() {
@@ -96,15 +79,16 @@ void TieredExecutable::startBackgroundPromotion() {
 			auto tier1Executable = backend->compile(cachedIR_, dumpHandler, options_);
 			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 
+			std::function<void()> cb;
 			{
 				std::unique_lock<std::shared_mutex> lock(mutex_);
 				delegate_ = std::move(tier1Executable);
+				cb = onSwap_;
 			}
 			promoted_.store(true, std::memory_order_release);
 
-			// Notify the module to re-resolve function handles
-			if (onPromoted_) {
-				onPromoted_();
+			if (cb) {
+				cb();
 			}
 
 			cachedIR_.reset();
@@ -154,17 +138,12 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-DelegatingInvocable::DelegatingInvocable(std::unique_ptr<Executable>&, std::shared_mutex&, std::string) {
-}
-
-std::any DelegatingInvocable::invokeGeneric(const std::vector<std::any>&) {
-	return {};
-}
-
 TieredExecutable::TieredExecutable(std::unique_ptr<Executable>, std::shared_ptr<ir::IRGraph>,
                                    const engine::TieredCompilationConfig&, const engine::Options&) {
 }
 TieredExecutable::~TieredExecutable() = default;
+void TieredExecutable::setSwapCallback(std::function<void()>) {
+}
 bool TieredExecutable::hasInvocableFunctionPtr() {
 	return false;
 }
