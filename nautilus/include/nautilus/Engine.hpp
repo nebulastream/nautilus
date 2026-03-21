@@ -283,7 +283,16 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto executable = jit_.compile(functions_);
-			return CompiledModule(std::move(executable), std::move(interpretedFunctions_));
+			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
+
+			// If using tiered compilation, start background promotion.
+			// The TieredJITCompiler directly swaps the executable and bumps
+			// the version in the module state when tier-1 compilation completes.
+			if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
+				tiered->promoteAsync(module.getState());
+			}
+
+			return module;
 		}
 #endif
 		return CompiledModule(std::move(interpretedFunctions_));

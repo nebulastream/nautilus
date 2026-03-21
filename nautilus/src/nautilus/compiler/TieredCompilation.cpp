@@ -1,5 +1,6 @@
 #include "nautilus/TieredCompilation.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/Module.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/logging.hpp"
@@ -23,89 +24,15 @@ static std::string createPromotionUnitID() {
 	return std::string(buf);
 }
 
-// --- TieredExecutable ---
-
-TieredExecutable::TieredExecutable(std::unique_ptr<Executable> tier0, std::shared_ptr<ir::IRGraph> ir,
-                                   const engine::TieredCompilationConfig& config, const engine::Options& options)
-    : delegate_(std::move(tier0)), cachedIR_(std::move(ir)), config_(config), options_(options) {
-	startBackgroundPromotion();
-}
-
-TieredExecutable::~TieredExecutable() {
-	if (promotionThread_.joinable()) {
-		promotionThread_.join();
-	}
-}
-
-void TieredExecutable::setSwapCallback(std::function<void()> callback) {
-	std::unique_lock<std::shared_mutex> lock(mutex_);
-	onSwap_ = std::move(callback);
-}
-
-bool TieredExecutable::hasInvocableFunctionPtr() {
-	std::shared_lock<std::shared_mutex> lock(mutex_);
-	return delegate_->hasInvocableFunctionPtr();
-}
-
-void* TieredExecutable::getInvocableFunctionPtr(const std::string& member) {
-	std::shared_lock<std::shared_mutex> lock(mutex_);
-	return delegate_->getInvocableFunctionPtr(member);
-}
-
-std::unique_ptr<Executable::GenericInvocable> TieredExecutable::getGenericInvocable(const std::string& member) {
-	std::shared_lock<std::shared_mutex> lock(mutex_);
-	return delegate_->getGenericInvocable(member);
-}
-
-bool TieredExecutable::isPromoted() const {
-	return promoted_.load(std::memory_order_acquire);
-}
-
-void TieredExecutable::waitForPromotion() {
-	if (promotionThread_.joinable()) {
-		promotionThread_.join();
-	}
-}
-
-void TieredExecutable::startBackgroundPromotion() {
-	promotionThread_ = std::thread([this]() {
-		try {
-			auto* registry = CompilationBackendRegistry::getInstance();
-			auto* backend = registry->getBackend(config_.tier1.backend);
-
-			auto compilationId = createPromotionUnitID();
-			auto dumpHandler = DumpHandler(options_, compilationId);
-
-			auto tier1Executable = backend->compile(cachedIR_, dumpHandler, options_);
-			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
-
-			std::function<void()> cb;
-			{
-				std::unique_lock<std::shared_mutex> lock(mutex_);
-				delegate_ = std::move(tier1Executable);
-				cb = onSwap_;
-			}
-			promoted_.store(true, std::memory_order_release);
-
-			if (cb) {
-				cb();
-			}
-
-			cachedIR_.reset();
-		} catch (const std::exception& e) {
-			log::error("Tier 1 promotion failed: {}", e.what());
-			promoted_.store(true, std::memory_order_release);
-		}
-	});
-}
-
 // --- TieredJITCompiler ---
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config)
     : baseCompiler_(options), config_(std::move(config)) {
 }
 
-TieredJITCompiler::~TieredJITCompiler() = default;
+TieredJITCompiler::~TieredJITCompiler() {
+	waitForPendingPromotions();
+}
 
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function) const {
 	static constexpr auto ROOT_FUNCTION_NAME = "execute";
@@ -118,8 +45,59 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions) const {
 	auto ir = baseCompiler_.compileToIR(functions);
 	auto tier0Executable = baseCompiler_.compileIR(ir, config_.tier0.backend);
-	return std::make_unique<TieredExecutable>(std::move(tier0Executable), std::move(ir), config_,
-	                                          baseCompiler_.getOptions());
+
+	// Cache the IR for the upcoming promoteAsync() call
+	lastCachedIR_ = std::move(ir);
+
+	return tier0Executable;
+}
+
+void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState> state) const {
+	auto cachedIR = std::move(lastCachedIR_);
+	if (!cachedIR) {
+		return;
+	}
+
+	pendingPromotions_.fetch_add(1, std::memory_order_relaxed);
+
+	std::lock_guard<std::mutex> lock(threadsMutex_);
+	promotionThreads_.emplace_back([weakState = std::move(state), ir = std::move(cachedIR), config = config_,
+	                                options = baseCompiler_.getOptions(), &pendingCount = pendingPromotions_]() {
+		try {
+			auto* registry = CompilationBackendRegistry::getInstance();
+			auto* backend = registry->getBackend(config.tier1.backend);
+
+			auto compilationId = createPromotionUnitID();
+			auto dumpHandler = DumpHandler(options, compilationId);
+
+			auto tier1Executable = backend->compile(ir, dumpHandler, options);
+			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
+
+			if (auto s = weakState.lock()) {
+				std::unique_lock<std::shared_mutex> lock(s->mutex);
+				s->executable = std::move(tier1Executable);
+				s->version.fetch_add(1, std::memory_order_release);
+			}
+		} catch (const std::exception& e) {
+			log::error("Tier 1 promotion failed: {}", e.what());
+		}
+
+		pendingCount.fetch_sub(1, std::memory_order_release);
+	});
+}
+
+void TieredJITCompiler::waitForPendingPromotions() const {
+	std::lock_guard<std::mutex> lock(threadsMutex_);
+	for (auto& t : promotionThreads_) {
+		if (t.joinable()) {
+			t.join();
+		}
+	}
+	promotionThreads_.clear();
+}
+
+bool TieredJITCompiler::allPromotionsComplete() const {
+	return pendingPromotions_.load(std::memory_order_acquire) == 0;
 }
 
 std::string TieredJITCompiler::getName() const {
@@ -138,29 +116,6 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-TieredExecutable::TieredExecutable(std::unique_ptr<Executable>, std::shared_ptr<ir::IRGraph>,
-                                   const engine::TieredCompilationConfig&, const engine::Options&) {
-}
-TieredExecutable::~TieredExecutable() = default;
-void TieredExecutable::setSwapCallback(std::function<void()>) {
-}
-bool TieredExecutable::hasInvocableFunctionPtr() {
-	return false;
-}
-void* TieredExecutable::getInvocableFunctionPtr(const std::string&) {
-	return nullptr;
-}
-std::unique_ptr<Executable::GenericInvocable> TieredExecutable::getGenericInvocable(const std::string&) {
-	return nullptr;
-}
-bool TieredExecutable::isPromoted() const {
-	return false;
-}
-void TieredExecutable::waitForPromotion() {
-}
-void TieredExecutable::startBackgroundPromotion() {
-}
-
 TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig) : baseCompiler_() {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
@@ -169,6 +124,13 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function) const {
 }
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>&) const {
 	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>) const {
+}
+void TieredJITCompiler::waitForPendingPromotions() const {
+}
+bool TieredJITCompiler::allPromotionsComplete() const {
+	return true;
 }
 std::string TieredJITCompiler::getName() const {
 	return "";
