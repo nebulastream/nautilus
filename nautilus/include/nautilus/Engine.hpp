@@ -10,6 +10,7 @@
 #include "nautilus/options.hpp"
 #include <any>
 #include <functional>
+#include <memory>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -95,6 +96,25 @@ std::function<void()> createFunctionWrapper(F&& func) {
 	// Convert the callable to std::function - deduction will happen at call site
 	return createFunctionWrapper(std::function(std::forward<F>(func)));
 }
+
+/**
+ * @brief Creates the appropriate IJITCompiler implementation based on options.
+ *
+ * If tiered compilation options are set (engine.tier0.backend and engine.tier1.backend),
+ * returns a TieredJITCompiler. Otherwise returns a standard JITCompiler.
+ */
+inline std::unique_ptr<compiler::IJITCompiler> createJITCompiler(const Options& options) {
+	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
+	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
+	if (!tier0.empty() && !tier1.empty()) {
+		TieredCompilationConfig config;
+		config.tier0.backend = tier0;
+		config.tier1.backend = tier1;
+		return std::make_unique<compiler::TieredJITCompiler>(options, config);
+	}
+	return std::make_unique<compiler::JITCompiler>(options);
+}
+
 #endif
 } // namespace details
 
@@ -190,6 +210,13 @@ class NautilusEngine {
 public:
 	NautilusEngine(const Options& options = Options());
 
+	/**
+	 * @brief Create an engine with a specific JIT compiler implementation.
+	 * @param jit The JIT compiler to use (takes ownership)
+	 * @param options Engine options
+	 */
+	NautilusEngine(std::unique_ptr<compiler::IJITCompiler> jit, const Options& options = Options());
+
 	template <typename R, is_val... FunctionArguments>
 	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const {
 		std::function<R(val<FunctionArguments>...)> inputFunction = fnptr;
@@ -201,7 +228,7 @@ public:
 #ifdef ENABLE_TRACING
 		if (isCompiled()) {
 			auto wrapper = details::createFunctionWrapper(func);
-			auto executable = jit.compile(wrapper);
+			auto executable = jit_->compile(wrapper);
 			return CallableFunction<R, FunctionArguments...>(executable);
 		}
 #endif
@@ -215,7 +242,7 @@ public:
 	NautilusModule createModule() const;
 
 	std::string getNameOfBackend() const {
-		return jit.getName();
+		return jit_->getName();
 	}
 
 	bool isCompiled() const {
@@ -223,7 +250,7 @@ public:
 	}
 
 private:
-	const compiler::JITCompiler jit;
+	std::unique_ptr<compiler::IJITCompiler> jit_;
 	const Options options;
 };
 
@@ -246,10 +273,10 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::JITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::IJITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/) {
+	NautilusModule(const compiler::IJITCompiler& /*jit*/, bool /*compiled*/) {
 	}
 #endif
 
@@ -315,74 +342,17 @@ public:
 		return CompiledModule(std::move(interpretedFunctions_));
 	}
 
-	/**
-	 * @brief Compile with tiered JIT: fast tier-0 backend first, then
-	 * background-promote to tier-1 after threshold invocations.
-	 *
-	 * Tier 0 compilation happens synchronously (using a fast backend like "bc").
-	 * After the module's functions have been called threshold times, tier 1
-	 * compilation starts in a background thread (using a high-performance backend
-	 * like "mlir"). When tier 1 is ready, all ModuleFunction handles seamlessly
-	 * pick up the new executable.
-	 *
-	 * @param config Tier configuration (backends and thresholds)
-	 * @return CompiledModule that will auto-promote after threshold invocations
-	 */
-	CompiledModule compileTiered(const TieredCompilationConfig& config) {
-#ifdef ENABLE_TRACING
-		if (compiled_) {
-			// Phase 1: Tracing + SSA + IR generation (shared by both tiers)
-			auto ir = jit_.compileToIR(functions_);
-
-			// Phase 2: Compile IR with tier-0 backend (fast)
-			auto tier0Executable = jit_.compileIR(ir, config.tier0.backend);
-
-			// Phase 3: Create CompiledModule with tier-0 executable
-			auto compiled = CompiledModule(std::move(tier0Executable), std::move(interpretedFunctions_));
-
-			// Phase 4: Store IR and config in ModuleState for later promotion
-			compiled.initTiering(config, std::move(ir), jit_.getOptions());
-
-			return compiled;
-		}
-#endif
-		return CompiledModule(std::move(interpretedFunctions_));
-	}
-
-	/**
-	 * @brief Compile with tiered JIT using options-based configuration.
-	 *
-	 * Reads tier configuration from engine options:
-	 * - "engine.tier0.backend" (default: "bc")
-	 * - "engine.tier1.backend" (default: "mlir")
-	 * - "engine.tier1.threshold" (default: 1000)
-	 *
-	 * @return CompiledModule that will auto-promote
-	 */
-	CompiledModule compileTiered() {
-		TieredCompilationConfig config;
-#ifdef ENABLE_TRACING
-		if (compiled_) {
-			const auto& opts = jit_.getOptions();
-			config.tier0.backend = opts.getOptionOrDefault<std::string>("engine.tier0.backend", "bc");
-			config.tier1.backend = opts.getOptionOrDefault<std::string>("engine.tier1.backend", "mlir");
-			config.tier1.threshold = opts.getOptionOrDefault<int>("engine.tier1.threshold", 1000);
-		}
-#endif
-		return compileTiered(config);
-	}
-
 private:
 	std::unordered_map<std::string, std::any> interpretedFunctions_;
 #ifdef ENABLE_TRACING
-	const compiler::JITCompiler& jit_;
+	const compiler::IJITCompiler& jit_;
 	bool compiled_;
 	std::list<compiler::CompilableFunction> functions_;
 #endif
 };
 
 inline NautilusModule NautilusEngine::createModule() const {
-	return NautilusModule(jit, isCompiled());
+	return NautilusModule(*jit_, isCompiled());
 }
 
 } // namespace nautilus::engine
