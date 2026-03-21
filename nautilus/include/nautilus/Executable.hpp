@@ -143,19 +143,6 @@ public:
 		return nullptr;
 	}
 
-	/**
-	 * @brief Register a callback invoked when this executable swaps its internals.
-	 *
-	 * Used by executables that change their underlying implementation at runtime
-	 * (e.g. tiered compilation promoting from a fast backend to an optimized one).
-	 * The callback allows owning code (CompiledModule) to invalidate cached
-	 * function pointers without knowing the concrete executable type.
-	 *
-	 * Default implementation is a no-op. Override in subclasses that swap.
-	 */
-	virtual void setSwapCallback(std::function<void()>) {
-	}
-
 	void setGeneratedFiles(const std::map<std::string, std::string>& generatedFiles);
 
 	const std::string_view getGeneratedFile(std::string_view key) const;

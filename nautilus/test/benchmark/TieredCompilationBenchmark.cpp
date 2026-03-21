@@ -121,17 +121,15 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 			TieredCompilationConfig config;
 			config.tier0.backend = "bc";
 			config.tier1.backend = "mlir";
-			auto engine = NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config));
+			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config);
+			auto* jit = tieredJit.get();
+			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();
 			module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
 			auto compiled = module.compile();
 			auto fn = compiled.getFunction<int32_t(int32_t)>("f");
 			auto result = fn(42);
-			auto* tieredExe =
-			    dynamic_cast<compiler::TieredExecutable*>(const_cast<compiler::Executable*>(compiled.getExecutable()));
-			if (tieredExe) {
-				tieredExe->waitForPromotion();
-			}
+			jit->waitForPendingPromotions();
 			return result;
 		});
 	});
