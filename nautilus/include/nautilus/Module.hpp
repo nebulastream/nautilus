@@ -3,6 +3,7 @@
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
+#include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
@@ -13,11 +14,16 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
 #endif
+
+namespace nautilus::compiler::ir {
+class IRGraph;
+}
 
 namespace nautilus::engine {
 
@@ -38,7 +44,28 @@ struct ModuleState {
 	std::unordered_map<std::string, std::any> interpretedFunctions;
 	std::atomic<uint64_t> version {0};
 	mutable std::shared_mutex mutex;
+
+	// Tiered compilation fields
+	std::atomic<uint64_t> invocationCount {0};
+	std::atomic<bool> promotionInProgress {false};
+	std::atomic<bool> promoted {false};
+	std::shared_ptr<compiler::ir::IRGraph> cachedIR;
+	TieredCompilationConfig tierConfig;
+	Options options;
+	std::thread promotionThread;
+
+	ModuleState() = default;
+	~ModuleState() {
+		if (promotionThread.joinable()) {
+			promotionThread.join();
+		}
+	}
+
+	ModuleState(const ModuleState&) = delete;
+	ModuleState& operator=(const ModuleState&) = delete;
 };
+
+void TryPromote(std::shared_ptr<ModuleState> state);
 
 } // namespace details
 
@@ -110,7 +137,22 @@ public:
 		if (cachedVersion_ != state_->version.load(std::memory_order_acquire)) {
 			resolve();
 		}
+		// Tiered compilation: count invocations and trigger promotion.
+		// cachedIR is only set by compileTiered(), so non-tiered modules skip this entirely.
+		if (state_->cachedIR && !state_->promoted.load(std::memory_order_relaxed)) {
+			auto count = state_->invocationCount.fetch_add(1, std::memory_order_relaxed);
+			if (count == static_cast<uint64_t>(state_->tierConfig.tier1.threshold)) {
+				details::TryPromote(state_);
+			}
+		}
 		return cachedImpl_(std::forward<Args>(args)...);
+	}
+
+	/**
+	 * @brief Returns true if this module has been promoted to tier 1.
+	 */
+	bool isPromoted() const {
+		return state_->promoted.load(std::memory_order_acquire);
 	}
 };
 
@@ -194,6 +236,36 @@ public:
 		auto exe = std::move(state_->executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 		return exe;
+	}
+
+	/**
+	 * @brief Initialize tiered compilation state for background promotion.
+	 * Called by NautilusModule::compileTiered() after tier 0 compilation.
+	 * @param config The tiered compilation configuration
+	 * @param ir The shared IR graph to reuse for tier 1 compilation
+	 * @param options Engine options for tier 1 backend compilation
+	 */
+	void initTiering(const TieredCompilationConfig& config, std::shared_ptr<compiler::ir::IRGraph> ir,
+	                 const Options& options) {
+		state_->tierConfig = config;
+		state_->cachedIR = std::move(ir);
+		state_->options = options;
+	}
+
+	/**
+	 * @brief Returns true if this module has been promoted to tier 1.
+	 */
+	bool isPromoted() const {
+		return state_->promoted.load(std::memory_order_acquire);
+	}
+
+	/**
+	 * @brief Blocks until tier 1 promotion completes (if in progress).
+	 */
+	void waitForPromotion() {
+		if (state_->promotionThread.joinable()) {
+			state_->promotionThread.join();
+		}
 	}
 
 private:

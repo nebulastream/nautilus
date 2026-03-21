@@ -2,6 +2,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
+#include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
@@ -81,7 +82,7 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function f
 	return compile(functionsToTrace);
 }
 
-std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>& functions) const {
+std::shared_ptr<ir::IRGraph> JITCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
 
@@ -102,11 +103,23 @@ std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>& 
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
-	const auto backendName = getName();
+	return ir;
+}
+
+std::unique_ptr<Executable> JITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+                                                   const std::string& backendName) const {
+	const CompilationUnitID compilationId = createCompilationUnitID();
+	auto dumpHandler = DumpHandler(options, compilationId);
+
 	const auto backend = backends->getBackend(backendName);
 	auto executable = backend->compile(ir, dumpHandler, options);
 	executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	return executable;
+}
+
+std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>& functions) const {
+	auto ir = compileToIR(functions);
+	return compileIR(ir, getName());
 }
 
 #else
@@ -116,6 +129,14 @@ std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function) 
 }
 
 std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>&) const {
+	throw RuntimeException("Jit not initialised");
+}
+
+std::shared_ptr<ir::IRGraph> JITCompiler::compileToIR(std::list<CompilableFunction>&) const {
+	throw RuntimeException("Jit not initialised");
+}
+
+std::unique_ptr<Executable> JITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&) const {
 	throw RuntimeException("Jit not initialised");
 }
 

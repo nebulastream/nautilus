@@ -11,6 +11,10 @@ class Executable;
 class CompilationBackendRegistry;
 class CompilableFunction;
 
+namespace ir {
+class IRGraph;
+}
+
 using CompilationUnitID = std::string;
 
 class JITCompiler {
@@ -29,9 +33,29 @@ public:
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const;
 
+	/**
+	 * @brief Trace and convert functions to IR without backend compilation.
+	 * @param functions List of named compilable functions to trace
+	 * @return Shared IR graph that can be compiled by any backend
+	 */
+	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions) const;
+
+	/**
+	 * @brief Compile a pre-built IR graph with a specific backend.
+	 * @param ir The IR graph (can be shared between tiers)
+	 * @param backendName Which backend to use for compilation
+	 * @return Compiled executable
+	 */
+	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                    const std::string& backendName) const;
+
 	virtual ~JITCompiler();
 
 	std::string getName() const;
+
+	const engine::Options& getOptions() const {
+		return options;
+	}
 
 private:
 	const engine::Options options;
