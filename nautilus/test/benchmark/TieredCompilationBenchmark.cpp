@@ -2,7 +2,6 @@
 #include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
-#include <chrono>
 
 namespace nautilus::engine {
 
@@ -20,7 +19,7 @@ static val<int32_t> benchSumLoop(val<int32_t> upperLimit) {
 }
 
 TEST_CASE("Tiered Compilation Latency Benchmark") {
-	// Measures compilation latency: tiered (tier 0 only) vs single-tier backends.
+	// Measures compilation latency: tiered vs single-tier backends.
 
 	using BenchFunc = std::pair<std::string, std::function<void(NautilusModule&)>>;
 	std::vector<BenchFunc> testFuncs = {
@@ -29,22 +28,23 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 		     m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
 	     }},
 	    {"sumLoop",
-	     [](NautilusModule& m) { m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchSumLoop); }},
+	     [](NautilusModule& m) {
+		     m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchSumLoop);
+	     }},
 	};
 
 	for (auto& [name, registerFn] : testFuncs) {
-#ifdef ENABLE_BC_BACKEND
+#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
 		Catch::Benchmark::Benchmark("tiered_compile_" + name)
 		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
 			    meter.measure([&registerFn] {
-				    auto engine = NautilusEngine();
-				    auto module = engine.createModule();
-				    registerFn(module);
 				    TieredCompilationConfig config;
 				    config.tier0.backend = "bc";
-				    config.tier1.backend = "bc";
-				    config.tier1.threshold = 0; // disabled
-				    return module.compileTiered(config);
+				    config.tier1.backend = "mlir";
+				    auto engine = NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config));
+				    auto module = engine.createModule();
+				    registerFn(module);
+				    return module.compile();
 			    });
 		    });
 #endif
@@ -77,8 +77,6 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 }
 
 TEST_CASE("Tiered Execution Throughput Benchmark") {
-	// Measures execution speed under different backends.
-
 	std::vector<std::string> backends;
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
@@ -104,98 +102,52 @@ TEST_CASE("Tiered Execution Throughput Benchmark") {
 		    });
 	}
 
-	// Interpreted baseline
-	Catch::Benchmark::Benchmark("exec_interpreted_addOne")
-	    .operator=([](Catch::Benchmark::Chronometer meter) {
-		    Options opts;
-		    opts.setOption("engine.Compilation", false);
-		    auto engine = NautilusEngine(opts);
-		    auto module = engine.createModule();
-		    module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
-		    auto compiled = module.compile();
-		    auto fn = compiled.getFunction<int32_t(int32_t)>("f");
-		    meter.measure([&fn] { return fn(42); });
-	    });
-}
-
-TEST_CASE("Tiered Promotion Overhead Benchmark") {
-	// Measures wall-clock time from threshold hit to tier 1 active.
-
-#if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	auto thresholds = std::vector<int> {10, 100, 1000};
-
-	for (auto threshold : thresholds) {
-		Catch::Benchmark::Benchmark("promotion_overhead_threshold_" + std::to_string(threshold))
-		    .operator=([threshold](Catch::Benchmark::Chronometer meter) {
-			    meter.measure([threshold] {
-				    auto engine = NautilusEngine();
-				    auto module = engine.createModule();
-				    module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
-
-				    TieredCompilationConfig config;
-				    config.tier0.backend = "bc";
-				    config.tier1.backend = "mlir";
-				    config.tier1.threshold = threshold;
-
-				    auto compiled = module.compileTiered(config);
-				    auto fn = compiled.getFunction<int32_t(int32_t)>("f");
-
-				    for (int i = 0; i <= threshold; ++i) {
-					    fn(i);
-				    }
-
-				    compiled.waitForPromotion();
-			    });
-		    });
-	}
-#else
-	SKIP("Need bc and mlir backends for promotion benchmark");
-#endif
+	Catch::Benchmark::Benchmark("exec_interpreted_addOne").operator=([](Catch::Benchmark::Chronometer meter) {
+		Options opts;
+		opts.setOption("engine.Compilation", false);
+		auto engine = NautilusEngine(opts);
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
+		auto compiled = module.compile();
+		auto fn = compiled.getFunction<int32_t(int32_t)>("f");
+		meter.measure([&fn] { return fn(42); });
+	});
 }
 
 TEST_CASE("Tiered End-to-End Benchmark") {
-	// Measures total time from cold start to peak performance.
-
 #if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	constexpr int THRESHOLD = 100;
+	Catch::Benchmark::Benchmark("e2e_tiered_bc_to_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
+		meter.measure([] {
+			TieredCompilationConfig config;
+			config.tier0.backend = "bc";
+			config.tier1.backend = "mlir";
+			auto engine = NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config));
+			auto module = engine.createModule();
+			module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
+			auto compiled = module.compile();
+			auto fn = compiled.getFunction<int32_t(int32_t)>("f");
+			auto result = fn(42);
+			auto* tieredExe =
+			    dynamic_cast<compiler::TieredExecutable*>(const_cast<compiler::Executable*>(compiled.getExecutable()));
+			if (tieredExe) {
+				tieredExe->waitForPromotion();
+			}
+			return result;
+		});
+	});
 
-	Catch::Benchmark::Benchmark("e2e_tiered_bc_to_mlir")
-	    .operator=([](Catch::Benchmark::Chronometer meter) {
-		    meter.measure([] {
-			    auto engine = NautilusEngine();
-			    auto module = engine.createModule();
-			    module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
-
-			    TieredCompilationConfig config;
-			    config.tier0.backend = "bc";
-			    config.tier1.backend = "mlir";
-			    config.tier1.threshold = THRESHOLD;
-
-			    auto compiled = module.compileTiered(config);
-			    auto fn = compiled.getFunction<int32_t(int32_t)>("f");
-
-			    for (int i = 0; i <= THRESHOLD; ++i) {
-				    fn(i);
-			    }
-
-			    compiled.waitForPromotion();
-			    return fn(42);
-		    });
-	    });
-
-	Catch::Benchmark::Benchmark("e2e_single_mlir")
-	    .operator=([](Catch::Benchmark::Chronometer meter) {
-		    meter.measure([] {
-			    Options opts;
-			    opts.setOption("engine.backend", "mlir");
-			    auto engine = NautilusEngine(opts);
-			    auto module = engine.createModule();
-			    module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
-			    auto compiled = module.compile();
-			    auto fn = compiled.getFunction<int32_t(int32_t)>("f");
-			    return fn(42);
-		    });
-	    });
+	Catch::Benchmark::Benchmark("e2e_single_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
+		meter.measure([] {
+			Options opts;
+			opts.setOption("engine.backend", "mlir");
+			auto engine = NautilusEngine(opts);
+			auto module = engine.createModule();
+			module.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
+			auto compiled = module.compile();
+			auto fn = compiled.getFunction<int32_t(int32_t)>("f");
+			return fn(42);
+		});
+	});
 #else
 	SKIP("Need bc and mlir backends for end-to-end benchmark");
 #endif
