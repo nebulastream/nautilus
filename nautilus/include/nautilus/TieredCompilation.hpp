@@ -34,47 +34,23 @@ struct TieredCompilationConfig {
 namespace nautilus::compiler {
 
 /**
- * @brief A GenericInvocable that delegates to the current executable under a shared lock.
- *
- * Used by TieredExecutable to allow transparent switching between tier-0 and tier-1
- * executables. Each call re-resolves against the current delegate, so when the
- * background promotion swaps the delegate, subsequent calls go to the new executable.
- */
-class DelegatingInvocable : public Executable::GenericInvocable {
-public:
-	DelegatingInvocable(std::unique_ptr<Executable>& delegate, std::shared_mutex& mutex, std::string member);
-	std::any invokeGeneric(const std::vector<std::any>& args) override;
-
-private:
-	std::unique_ptr<Executable>& delegate_;
-	std::shared_mutex& mutex_;
-	std::string member_;
-};
-
-/**
  * @brief An executable wrapper that starts with a fast tier-0 executable and
  * atomically switches to a tier-1 executable when background compilation completes.
  *
- * The onPromoted callback is invoked (from the background thread) when tier-1 is ready.
- * CompiledModule uses this to bump its version, causing ModuleFunction handles to re-resolve.
+ * When tier-1 is ready, the swap callback (set via setSwapCallback on the Executable
+ * base class) is invoked. CompiledModule uses this to bump its version, causing
+ * ModuleFunction handles to re-resolve — without knowing about TieredExecutable.
  *
  * Thread-safety: all accessor methods are safe to call concurrently with the
  * background promotion thread. A shared_mutex protects the delegate swap.
  */
 class TieredExecutable : public Executable {
 public:
-	using PromotionCallback = std::function<void()>;
-
 	TieredExecutable(std::unique_ptr<Executable> tier0, std::shared_ptr<ir::IRGraph> ir,
 	                 const engine::TieredCompilationConfig& config, const engine::Options& options);
 	~TieredExecutable() override;
 
-	/**
-	 * @brief Set a callback invoked when tier-1 promotion completes.
-	 * Must be called before any invocations if re-resolution is desired.
-	 */
-	void setPromotionCallback(PromotionCallback callback);
-
+	void setSwapCallback(std::function<void()> callback) override;
 	bool hasInvocableFunctionPtr() override;
 	void* getInvocableFunctionPtr(const std::string& member) override;
 	std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string& member) override;
@@ -99,7 +75,7 @@ private:
 	mutable std::shared_mutex mutex_;
 	std::atomic<bool> promoted_ {false};
 	std::thread promotionThread_;
-	PromotionCallback onPromoted_;
+	std::function<void()> onSwap_;
 };
 
 /**
