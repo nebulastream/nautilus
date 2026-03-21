@@ -131,12 +131,9 @@ public:
 class CompiledModule {
 public:
 	/// Compiled mode: owns the executable produced by a backend.
-	/// Registers a swap callback so that executables which change their internals
-	/// (e.g. tiered promotion) automatically invalidate cached ModuleFunction handles.
 	explicit CompiledModule(std::unique_ptr<compiler::Executable> executable,
 	                        std::unordered_map<std::string, std::any> interpretedFunctions)
 	    : state_(std::make_shared<details::ModuleState>()) {
-		installSwapCallback(executable);
 		state_->executable = std::move(executable);
 		state_->interpretedFunctions = std::move(interpretedFunctions);
 	}
@@ -145,6 +142,10 @@ public:
 	explicit CompiledModule(std::unordered_map<std::string, std::any> interpretedFunctions)
 	    : state_(std::make_shared<details::ModuleState>()) {
 		state_->interpretedFunctions = std::move(interpretedFunctions);
+	}
+
+	/// Construct from pre-built module state (used by NautilusModule for tiered compilation).
+	explicit CompiledModule(std::shared_ptr<details::ModuleState> state) : state_(std::move(state)) {
 	}
 
 	CompiledModule(const CompiledModule&) = delete;
@@ -180,7 +181,6 @@ public:
 	 */
 	void setExecutable(std::unique_ptr<compiler::Executable> executable) {
 		std::unique_lock<std::shared_mutex> lock(state_->mutex);
-		installSwapCallback(executable);
 		state_->executable = std::move(executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 	}
@@ -200,18 +200,12 @@ public:
 		return exe;
 	}
 
-private:
-	void installSwapCallback(std::unique_ptr<compiler::Executable>& executable) {
-		if (executable) {
-			auto weakState = std::weak_ptr<details::ModuleState>(state_);
-			executable->setSwapCallback([weakState]() {
-				if (auto s = weakState.lock()) {
-					s->version.fetch_add(1, std::memory_order_release);
-				}
-			});
-		}
+	/// Get the shared module state (used by NautilusModule for tiered compilation).
+	std::shared_ptr<details::ModuleState> getState() const {
+		return state_;
 	}
 
+private:
 	std::shared_ptr<details::ModuleState> state_;
 };
 
