@@ -67,7 +67,7 @@
  *
  * 5. **Engine-managed lifetime**: In non-tracing mode, `AllocationContext::get()` must return a
  *    non-null pointer. This is guaranteed when the function is called through the engine
- *    (`Engine::Compile`/`Engine::CallableFunction::operator()`). Constructing a `val<ClassType>`
+ *    (`Engine::Compile`/`CompiledFunction::operator()`). Constructing a `val<ClassType>`
  *    outside an engine call will trigger an assertion failure.
  *
  * 6. **No virtual dispatch inside traced code**: Virtual method calls are not tracked by the
