@@ -4,6 +4,7 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
+#include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
@@ -135,7 +136,9 @@ public:
 			                    fn(make_value(args)...));
 		                },
 		                [&](compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>& fn) ->
-		                typename R::raw_type { return fn(args...); }},
+		                typename R::raw_type {
+			                return fn(args...);
+		                }},
 		    func);
 	}
 
@@ -164,7 +167,9 @@ public:
 
 	auto operator()(FunctionArguments... args) {
 		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
-		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) { fn(args...); }},
+		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
+			                       fn(args...);
+		                       }},
 		           func);
 	}
 
@@ -308,6 +313,63 @@ public:
 		}
 #endif
 		return CompiledModule(std::move(interpretedFunctions_));
+	}
+
+	/**
+	 * @brief Compile with tiered JIT: fast tier-0 backend first, then
+	 * background-promote to tier-1 after threshold invocations.
+	 *
+	 * Tier 0 compilation happens synchronously (using a fast backend like "bc").
+	 * After the module's functions have been called threshold times, tier 1
+	 * compilation starts in a background thread (using a high-performance backend
+	 * like "mlir"). When tier 1 is ready, all ModuleFunction handles seamlessly
+	 * pick up the new executable.
+	 *
+	 * @param config Tier configuration (backends and thresholds)
+	 * @return CompiledModule that will auto-promote after threshold invocations
+	 */
+	CompiledModule compileTiered(const TieredCompilationConfig& config) {
+#ifdef ENABLE_TRACING
+		if (compiled_) {
+			// Phase 1: Tracing + SSA + IR generation (shared by both tiers)
+			auto ir = jit_.compileToIR(functions_);
+
+			// Phase 2: Compile IR with tier-0 backend (fast)
+			auto tier0Executable = jit_.compileIR(ir, config.tier0.backend);
+
+			// Phase 3: Create CompiledModule with tier-0 executable
+			auto compiled = CompiledModule(std::move(tier0Executable), std::move(interpretedFunctions_));
+
+			// Phase 4: Store IR and config in ModuleState for later promotion
+			compiled.initTiering(config, std::move(ir), jit_.getOptions());
+
+			return compiled;
+		}
+#endif
+		return CompiledModule(std::move(interpretedFunctions_));
+	}
+
+	/**
+	 * @brief Compile with tiered JIT using options-based configuration.
+	 *
+	 * Reads tier configuration from engine options:
+	 * - "engine.tier0.backend" (default: "bc")
+	 * - "engine.tier1.backend" (default: "mlir")
+	 * - "engine.tier1.threshold" (default: 1000)
+	 *
+	 * @return CompiledModule that will auto-promote
+	 */
+	CompiledModule compileTiered() {
+		TieredCompilationConfig config;
+#ifdef ENABLE_TRACING
+		if (compiled_) {
+			const auto& opts = jit_.getOptions();
+			config.tier0.backend = opts.getOptionOrDefault<std::string>("engine.tier0.backend", "bc");
+			config.tier1.backend = opts.getOptionOrDefault<std::string>("engine.tier1.backend", "mlir");
+			config.tier1.threshold = opts.getOptionOrDefault<int>("engine.tier1.threshold", 1000);
+		}
+#endif
+		return compileTiered(config);
 	}
 
 private:
