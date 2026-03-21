@@ -135,9 +135,7 @@ public:
 			                    fn(make_value(args)...));
 		                },
 		                [&](compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>& fn) ->
-		                typename R::raw_type {
-			                return fn(args...);
-		                }},
+		                typename R::raw_type { return fn(args...); }},
 		    func);
 	}
 
@@ -166,9 +164,7 @@ public:
 
 	auto operator()(FunctionArguments... args) {
 		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
-		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) {
-			                       fn(args...);
-		                       }},
+		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) { fn(args...); }},
 		           func);
 	}
 

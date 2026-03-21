@@ -29,6 +29,8 @@ class CompilationBackendRegistry {
 public:
 	static const CompilationBackendRegistry* getInstance();
 	const CompilationBackend* getBackend(const std::string& name) const;
+	/// Returns the name of the first available backend, or empty string if none.
+	std::string getDefaultBackendName() const;
 
 private:
 	CompilationBackendRegistry();

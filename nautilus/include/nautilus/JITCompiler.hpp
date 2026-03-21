@@ -31,9 +31,7 @@ public:
 
 	virtual ~JITCompiler();
 
-	std::string getName() const {
-		return options.getOptionOrDefault<std::string>("engine.backend", "mlir");
-	}
+	std::string getName() const;
 
 private:
 	const engine::Options options;
