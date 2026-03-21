@@ -30,7 +30,7 @@ define noundef i1 @execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
-define noundef i1 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define noundef i1 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp slt i32 %0, 2
   br i1 %2, label %execute.exit, label %.preheader.i
 
@@ -56,7 +56,7 @@ execute.exit:                                     ; preds = %3, %.lr.ph.i, %1, %
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp slt i32 %3, 2
@@ -87,7 +87,7 @@ execute.exit:                                     ; preds = %5, %.lr.ph.i, %1, %
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp slt i32 %3, 2
@@ -118,8 +118,7 @@ _mlir_ciface_execute.exit:                        ; preds = %5, %.lr.ph.i.i, %1,
 }
 
 attributes #0 = { nofree norecurse nosync nounwind memory(none) }
-attributes #1 = { nofree norecurse nosync nounwind memory(none) }
-attributes #2 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
+attributes #1 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

@@ -55,12 +55,15 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 		std::filesystem::create_directories(referenceIRDir);
 
 		// Normalize and store the generated IR as reference
-		std::string normCmd = "sed -E 's/ \"target-cpu\"=\"[^\"]+\"//g; "
+		std::string normCmd = "sed -E '"
+		                      "s/ \"target-cpu\"=\"[^\"]+\"//g; "
 		                      "s/ \"target-features\"=\"[^\"]+\"//g; "
 		                      "s/ \"tune-cpu\"=\"[^\"]+\"//g; "
 		                      "s/ captures\\([^)]*\\)//g; "
 		                      "s/, errnomem: [^,)]+//g; "
-		                      "s/ range\\([^)]+\\)//g' " +
+		                      "s/ range\\([^)]+\\)//g; "
+		                      "/^attributes #[0-9]+ = \\{ \\}$/d"
+		                      "' " +
 		                      std::string(generatedLLVMFile) + " > " + referenceIRPath;
 		std::system(normCmd.c_str());
 
@@ -75,35 +78,33 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	std::string tempRefFile = dumpPath + "/" + functionName + "_ref_normalized.ll";
 
 	// Strip machine-specific attributes:
-	// - target-cpu and target-features (CPU-specific)
-	// - tune-cpu (optimization hints)
-	// - captures(...) attribute (LLVM 19+ feature not in llvm-diff 18)
-	// - errnomem (LLVM 19+ memory attribute, with leading comma)
+	// - target-cpu, target-features, tune-cpu (CPU-specific)
+	// - captures(...) attribute (LLVM 19+)
+	// - errnomem (LLVM 19+ memory attribute)
 	// - range(...) (LLVM 19+ range attribute)
-	// - External function names (replace hex addresses with constant name)
-	std::string normCmd = "sed -E 's/ \"target-cpu\"=\"[^\"]+\"//g; "
+	// - Empty attribute groups left after stripping (invalid IR for llvm-diff)
+	std::string normCmd = "sed -E '"
+	                      "s/ \"target-cpu\"=\"[^\"]+\"//g; "
 	                      "s/ \"target-features\"=\"[^\"]+\"//g; "
 	                      "s/ \"tune-cpu\"=\"[^\"]+\"//g; "
 	                      "s/ captures\\([^)]*\\)//g; "
 	                      "s/, errnomem: [^,)]+//g; "
-	                      "s/ range\\([^)]+\\)//g' " +
-	                      std::string(generatedLLVMFile) + " > " + tempGenFile;
-	std::system(normCmd.c_str());
+	                      "s/ range\\([^)]+\\)//g; "
+	                      "/^attributes #[0-9]+ = \\{ \\}$/d"
+	                      "' ";
 
-	normCmd = "sed -E 's/ \"target-cpu\"=\"[^\"]+\"//g; "
-	          "s/ \"target-features\"=\"[^\"]+\"//g; "
-	          "s/ \"tune-cpu\"=\"[^\"]+\"//g; "
-	          "s/ captures\\([^)]*\\)//g; "
-	          "s/, errnomem: [^,)]+//g; "
-	          "s/ range\\([^)]+\\)//g' " +
-	          referenceIRPath + " > " + tempRefFile;
-	std::system(normCmd.c_str());
+	std::system((normCmd + std::string(generatedLLVMFile) + " > " + tempGenFile).c_str());
+	std::system((normCmd + referenceIRPath + " > " + tempRefFile).c_str());
 
-	// Run llvm-diff to compare normalized IR files
-	// Try llvm-diff-19 first, fall back to llvm-diff if not found
-	std::string llvmDiff = "llvm-diff-21";
-	if (std::system("which llvm-diff-21 > /dev/null 2>&1") != 0) {
-		llvmDiff = "llvm-diff";
+	// Run llvm-diff to compare normalized IR files.
+	// Try versioned llvm-diff in descending order, fall back to unversioned.
+	std::string llvmDiff = "llvm-diff";
+	for (const char* candidate : {"llvm-diff-21", "llvm-diff-20", "llvm-diff-19"}) {
+		std::string check = std::string("which ") + candidate + " > /dev/null 2>&1";
+		if (std::system(check.c_str()) == 0) {
+			llvmDiff = candidate;
+			break;
+		}
 	}
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
 	int result = std::system(command.c_str());

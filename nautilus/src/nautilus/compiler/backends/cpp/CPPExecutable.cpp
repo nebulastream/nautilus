@@ -7,8 +7,8 @@ namespace nautilus::compiler::cpp {
 CPPExecutable::CPPExecutable(std::shared_ptr<SharedLibrary> obj) : obj(std::move(obj)) {
 }
 
-void* CPPExecutable::getInvocableFunctionPtr(const std::string&) {
-	return obj->getInvocableFunctionPtr("execute");
+void* CPPExecutable::getInvocableFunctionPtr(const std::string& member) {
+	return obj->getInvocableFunctionPtr(member);
 }
 
 bool CPPExecutable::hasInvocableFunctionPtr() {

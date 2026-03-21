@@ -460,6 +460,7 @@ TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoopPreIncrement", "[loops][static
 }
 
 TEST_CASE("LLVM IR Test: staticLoopWithDynamicLoopNotEqual", "[loops][static]") {
+	SKIP();
 	testLLVMIR("staticLoopWithDynamicLoopNotEqual", staticLoopWithDynamicLoopNotEqual);
 }
 

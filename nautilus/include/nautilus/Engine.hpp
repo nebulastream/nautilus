@@ -3,10 +3,16 @@
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
+#include "nautilus/Module.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
+#include <any>
 #include <functional>
+
+#ifdef ENABLE_TRACING
+#include "nautilus/CompilableFunction.hpp"
+#endif
 
 namespace nautilus::engine {
 namespace details {
@@ -197,6 +203,12 @@ public:
 		return CallableFunction<R, FunctionArguments...>(func);
 	}
 
+	/**
+	 * @brief Creates a new module for registering multiple functions to be compiled together.
+	 * @return NautilusModule builder
+	 */
+	NautilusModule createModule() const;
+
 	std::string getNameOfBackend() const {
 		return jit.getName();
 	}
@@ -209,4 +221,106 @@ private:
 	const compiler::JITCompiler jit;
 	const Options options;
 };
+
+/**
+ * @brief A module that accumulates multiple named function registrations and compiles them
+ * together into a single compilation unit. All registered functions share one IR graph and
+ * are compiled by the same backend in one pass.
+ *
+ * Usage:
+ * @code
+ * auto module = engine.createModule();
+ * module.registerFunction<val<int32_t>(val<int32_t>)>("inc", [](val<int32_t> x) { return x + 1; });
+ * module.registerFunction<val<int64_t>(val<int64_t>, val<int64_t>)>("sum",
+ *     [](val<int64_t> a, val<int64_t> b) { return a + b; });
+ * auto compiled = module.compile();
+ * auto inc = compiled.getFunction<int32_t(int32_t)>("inc");
+ * auto sum = compiled.getFunction<int64_t(int64_t, int64_t)>("sum");
+ * @endcode
+ */
+class NautilusModule {
+public:
+#ifdef ENABLE_TRACING
+	NautilusModule(const compiler::JITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
+	}
+#else
+	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/) {
+	}
+#endif
+
+	/**
+	 * @brief Register a function with an explicit signature (needed for lambdas).
+	 * @tparam Signature The val-typed function signature, e.g. val<int32_t>(val<int32_t>)
+	 * @tparam F Callable type (lambda, functor)
+	 * @param name Unique name for this function in the module
+	 * @param func The callable to register
+	 */
+	template <typename Signature, typename F>
+	void registerFunction(const std::string& name, F&& func) {
+		using function_type = std::function<Signature>;
+		function_type stdFunc(std::forward<F>(func));
+		registerFunction(name, std::move(stdFunc));
+	}
+
+	/**
+	 * @brief Register a function from a std::function.
+	 * @param name Unique name for this function in the module
+	 * @param func The std::function to register
+	 */
+	template <typename R, typename... FunctionArguments>
+	void registerFunction(const std::string& name, std::function<R(val<FunctionArguments>...)> func) {
+		interpretedFunctions_[name] = func;
+#ifdef ENABLE_TRACING
+		if (compiled_) {
+			auto wrapper = details::createFunctionWrapper(std::move(func));
+			functions_.emplace_back(name, std::move(wrapper));
+		}
+#endif
+	}
+
+	/**
+	 * @brief Register a function from a function pointer.
+	 * @param name Unique name for this function in the module
+	 * @param fnptr The function pointer to register
+	 */
+	template <typename R, is_val... FunctionArguments>
+	void registerFunction(const std::string& name, R (*fnptr)(val<FunctionArguments>...)) {
+		std::function<R(val<FunctionArguments>...)> func = fnptr;
+		interpretedFunctions_[name] = func;
+#ifdef ENABLE_TRACING
+		if (compiled_) {
+			auto wrapper = details::createFunctionWrapper(fnptr);
+			functions_.emplace_back(name, std::move(wrapper));
+		}
+#endif
+	}
+
+	/**
+	 * @brief Compile all registered functions together into one compilation unit.
+	 * When compilation is disabled, returns a module that interprets functions directly.
+	 * @return CompiledModule with all functions accessible by name
+	 */
+	CompiledModule compile() {
+#ifdef ENABLE_TRACING
+		if (compiled_) {
+			auto executable = jit_.compile(functions_);
+			return CompiledModule(std::move(executable), std::move(interpretedFunctions_));
+		}
+#endif
+		return CompiledModule(std::move(interpretedFunctions_));
+	}
+
+private:
+	std::unordered_map<std::string, std::any> interpretedFunctions_;
+#ifdef ENABLE_TRACING
+	const compiler::JITCompiler& jit_;
+	bool compiled_;
+	std::list<compiler::CompilableFunction> functions_;
+#endif
+};
+
+inline NautilusModule NautilusEngine::createModule() const {
+	return NautilusModule(jit, isCompiled());
+}
+
 } // namespace nautilus::engine

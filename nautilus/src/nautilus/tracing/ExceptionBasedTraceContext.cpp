@@ -1,8 +1,8 @@
 
 #include "ExceptionBasedTraceContext.hpp"
 #include "TraceOperation.hpp"
+#include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
-#include "nautilus/compiler/CompilableFunction.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"

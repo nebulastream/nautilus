@@ -20,7 +20,7 @@ define signext i32 @_mlir_ciface_recursiveHelper(i32 %0, i32 %1) local_unnamed_a
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define signext i32 @execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = add i32 %0, 3
   ret i32 %2
 }
@@ -32,7 +32,7 @@ define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_recursiveHelper(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_recursiveHelper(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = getelementptr i8, ptr %0, i64 8
@@ -48,7 +48,7 @@ define void @_mlir_recursiveHelper(ptr readonly %0) local_unnamed_addr #2 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_recursiveHelper(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_recursiveHelper(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = getelementptr i8, ptr %0, i64 8
@@ -64,7 +64,7 @@ define void @_mlir__mlir_ciface_recursiveHelper(ptr readonly %0) local_unnamed_a
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = add i32 %3, 3
@@ -75,7 +75,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = add i32 %3, 3
@@ -86,8 +86,7 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
+attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

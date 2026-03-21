@@ -10,16 +10,16 @@ define ptr @execute(ptr returned writeonly %0, ptr readonly %1, i64 %2) local_un
 }
 
 ; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(argmem: readwrite, inaccessiblemem: readwrite)
-define ptr @_mlir_ciface_execute(ptr returned writeonly %0, ptr readonly %1, i64 %2) local_unnamed_addr #1 {
+define ptr @_mlir_ciface_execute(ptr returned writeonly %0, ptr readonly %1, i64 %2) local_unnamed_addr #0 {
   tail call void @llvm.memmove.p0.p0.i64(ptr %0, ptr readonly %1, i64 %2, i1 true)
   ret ptr %0
 }
 
 ; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite)
-declare void @llvm.memmove.p0.p0.i64(ptr writeonly, ptr readonly, i64, i1 immarg) #2
+declare void @llvm.memmove.p0.p0.i64(ptr writeonly, ptr readonly, i64, i1 immarg) #1
 
 ; Function Attrs: mustprogress nofree norecurse nounwind willreturn
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8
@@ -36,7 +36,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nounwind willreturn
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8
@@ -53,9 +53,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 attributes #0 = { mustprogress nofree norecurse nounwind willreturn memory(argmem: readwrite, inaccessiblemem: readwrite) }
-attributes #1 = { mustprogress nofree norecurse nounwind willreturn memory(argmem: readwrite, inaccessiblemem: readwrite) }
-attributes #2 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
-attributes #3 = { mustprogress nofree norecurse nounwind willreturn }
+attributes #1 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
+attributes #2 = { mustprogress nofree norecurse nounwind willreturn }
 
 !llvm.module.flags = !{!0}
 

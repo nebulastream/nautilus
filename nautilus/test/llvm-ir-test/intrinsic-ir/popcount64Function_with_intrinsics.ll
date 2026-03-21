@@ -10,16 +10,16 @@ define zeroext i64 @execute(i64 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
-define zeroext i64 @_mlir_ciface_execute(i64 %0) local_unnamed_addr #1 {
+define zeroext i64 @_mlir_ciface_execute(i64 %0) local_unnamed_addr #0 {
   %2 = tail call i64 @llvm.ctpop.i64(i64 %0)
   ret i64 %2
 }
 
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i64 @llvm.ctpop.i64(i64) #2
+declare i64 @llvm.ctpop.i64(i64) #1
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i64, ptr %2, align 8
   %4 = tail call i64 @llvm.ctpop.i64(i64 %3)
@@ -30,7 +30,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i64, ptr %2, align 8
   %4 = tail call i64 @llvm.ctpop.i64(i64 %3)
@@ -41,9 +41,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
 }
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) }
-attributes #2 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #3 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
+attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

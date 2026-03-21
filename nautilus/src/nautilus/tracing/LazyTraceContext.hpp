@@ -2,7 +2,7 @@
 #pragma once
 
 #include "ExceptionBasedTraceContext.hpp"
-#include "nautilus/compiler/CompilableFunction.hpp"
+#include "nautilus/CompilableFunction.hpp"
 #include <functional>
 #include <list>
 #include <memory>

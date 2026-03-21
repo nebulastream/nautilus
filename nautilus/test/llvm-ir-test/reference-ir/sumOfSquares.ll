@@ -110,7 +110,7 @@ vec.epilog.middle.block:                          ; preds = %vec.epilog.vector.b
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
-define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #1 {
+define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   %.not2.i = icmp slt i32 %0, 1
   br i1 %.not2.i, label %execute.exit, label %iter.check
 
@@ -216,7 +216,7 @@ execute.exit:                                     ; preds = %.lr.ph.i, %middle.b
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %.not2.i = icmp slt i32 %3, 1
@@ -327,7 +327,7 @@ execute.exit:                                     ; preds = %.lr.ph.i, %middle.b
 }
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %.not2.i.i = icmp slt i32 %3, 1
@@ -438,15 +438,14 @@ _mlir_ciface_execute.exit:                        ; preds = %.lr.ph.i.i, %middle
 }
 
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i32 @llvm.vector.reduce.add.v8i32(<8 x i32>) #3
+declare i32 @llvm.vector.reduce.add.v8i32(<8 x i32>) #2
 
 ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #3
+declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>) #2
 
 attributes #0 = { nofree norecurse nosync nounwind memory(none) }
-attributes #1 = { nofree norecurse nosync nounwind memory(none) }
-attributes #2 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
-attributes #3 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #1 = { nofree norecurse nosync nounwind memory(readwrite, inaccessiblemem: none) }
+attributes #2 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
 
 !llvm.module.flags = !{!0}
 
