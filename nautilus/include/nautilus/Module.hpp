@@ -144,6 +144,10 @@ public:
 		state_->interpretedFunctions = std::move(interpretedFunctions);
 	}
 
+	/// Construct from pre-built module state (used by NautilusModule for tiered compilation).
+	explicit CompiledModule(std::shared_ptr<details::ModuleState> state) : state_(std::move(state)) {
+	}
+
 	CompiledModule(const CompiledModule&) = delete;
 	CompiledModule(CompiledModule&&) noexcept = default;
 	CompiledModule& operator=(const CompiledModule&) = delete;
@@ -194,6 +198,11 @@ public:
 		auto exe = std::move(state_->executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 		return exe;
+	}
+
+	/// Get the shared module state (used by NautilusModule for tiered compilation).
+	std::shared_ptr<details::ModuleState> getState() const {
+		return state_;
 	}
 
 private:

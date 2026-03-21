@@ -67,7 +67,7 @@
  *
  * 5. **Engine-managed lifetime**: In non-tracing mode, `AllocationContext::get()` must return a
  *    non-null pointer. This is guaranteed when the function is called through the engine
- *    (`Engine::Compile`/`Engine::CallableFunction::operator()`). Constructing a `val<ClassType>`
+ *    (`Engine::Compile`/`CompiledFunction::operator()`). Constructing a `val<ClassType>`
  *    outside an engine call will trigger an assertion failure.
  *
  * 6. **No virtual dispatch inside traced code**: Virtual method calls are not tracked by the
@@ -236,7 +236,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	auto get(F T::* pm) {
+	auto get(F T::*pm) {
 		return value_ptr.get(pm);
 	}
 
@@ -248,7 +248,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::*pm, val<F> value) {
 		return value_ptr.set(pm, value);
 	}
 
@@ -263,7 +263,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, F value) {
+	void set(F T::*pm, F value) {
 		return value_ptr.set(pm, value);
 	}
 

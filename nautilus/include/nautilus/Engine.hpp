@@ -4,11 +4,13 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
+#include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
 #include <any>
 #include <functional>
+#include <memory>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -94,114 +96,91 @@ std::function<void()> createFunctionWrapper(F&& func) {
 	// Convert the callable to std::function - deduction will happen at call site
 	return createFunctionWrapper(std::function(std::forward<F>(func)));
 }
+
+/**
+ * @brief Creates the appropriate IJITCompiler implementation based on options.
+ *
+ * If tiered compilation options are set (engine.tier0.backend and engine.tier1.backend),
+ * returns a TieredJITCompiler. Otherwise returns a standard JITCompiler.
+ */
+inline std::unique_ptr<compiler::IJITCompiler> createJITCompiler(const Options& options) {
+	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
+	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
+	if (!tier0.empty() && !tier1.empty()) {
+		TieredCompilationConfig config;
+		config.tier0.backend = tier0;
+		config.tier1.backend = tier1;
+		return std::make_unique<compiler::TieredJITCompiler>(options, config);
+	}
+	return std::make_unique<compiler::JITCompiler>(options);
+}
+
 #endif
 } // namespace details
 
-template <class... Ts>
-struct overloaded : Ts... {
-	using Ts::operator()...;
-};
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
+/**
+ * @brief A compiled function handle returned by NautilusEngine::registerFunction().
+ *
+ * Wraps a CompiledModule with a single function named "execute". Callable via operator()
+ * and provides access to the underlying executable for inspection (e.g. LLVM IR dumps).
+ *
+ * Internally uses the same module machinery as multi-function compilation, eliminating
+ * the need for a separate single-function code path.
+ *
+ * @tparam Signature Raw function signature, e.g. int32_t(int32_t, int32_t)
+ */
+template <typename Signature>
+class CompiledFunction;
 
-template <typename R, typename... FunctionArguments>
-class CallableFunction {
+template <typename R, typename... Args>
+class CompiledFunction<R(Args...)> {
 public:
-	explicit CallableFunction(std::function<R(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
+	explicit CompiledFunction(CompiledModule module)
+	    : module_(std::move(module)), fn_(module_.getFunction<R(Args...)>("execute")) {
 	}
 
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
-	    : func(executable->getInvocableMember<typename R::raw_type, FunctionArguments...>("execute")),
-	      executable(std::move(executable)) {
+	CompiledFunction(const CompiledFunction&) = delete;
+	CompiledFunction(CompiledFunction&&) noexcept = default;
+	CompiledFunction& operator=(const CompiledFunction&) = delete;
+	CompiledFunction& operator=(CompiledFunction&&) noexcept = default;
+
+	R operator()(Args... args) const {
+		return fn_(std::forward<Args>(args)...);
 	}
 
-	CallableFunction(const CallableFunction& other) = delete;
-	CallableFunction(CallableFunction&& other) noexcept
-	    : func(std::move(other.func)), executable(std::move(other.executable)) {
-	}
-	CallableFunction& operator=(const CallableFunction& other) = delete;
-	CallableFunction& operator=(CallableFunction&& other) noexcept {
-		if (this == &other)
-			return *this;
-		func = std::move(other.func);
-		executable = std::move(other.executable);
-		return *this;
-	}
-
-	typename R::raw_type operator()(FunctionArguments... args) {
-		return std::visit(
-		    overloaded {[&](std::function<R(val<FunctionArguments>...)>& fn) -> typename R::raw_type {
-			                return nautilus::details::RawValueResolver<typename R::raw_type>::getRawValue(
-			                    fn(make_value(args)...));
-		                },
-		                [&](compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>& fn) ->
-		                typename R::raw_type { return fn(args...); }},
-		    func);
-	}
-
-	const compiler::Executable* getExecutable() {
-		return executable.get();
+	const compiler::Executable* getExecutable() const {
+		return module_.getExecutable();
 	}
 
 private:
-	std::variant<std::function<R(val<FunctionArguments>...)>,
-	             compiler::Executable::Invocable<typename R::raw_type, FunctionArguments...>>
-	    func;
-	std::unique_ptr<compiler::Executable> executable;
-};
-
-/// Specialization for void return type
-template <typename... FunctionArguments>
-class CallableFunction<void, FunctionArguments...> {
-public:
-	explicit CallableFunction(std::function<void(val<FunctionArguments>...)> func) : func(func), executable(nullptr) {
-	}
-
-	explicit CallableFunction(std::unique_ptr<compiler::Executable>& executable)
-	    : func(executable->getInvocableMember<void, FunctionArguments...>("execute")),
-	      executable(std::move(executable)) {
-	}
-
-	auto operator()(FunctionArguments... args) {
-		std::visit(overloaded {[&](std::function<void(val<FunctionArguments>...)>& fn) { fn(make_value(args)...); },
-		                       [&](compiler::Executable::Invocable<void, FunctionArguments...>& fn) { fn(args...); }},
-		           func);
-	}
-
-private:
-	std::variant<std::function<void(val<FunctionArguments>...)>,
-	             compiler::Executable::Invocable<void, FunctionArguments...>>
-	    func;
-	std::unique_ptr<compiler::Executable> executable;
+	CompiledModule module_;
+	ModuleFunction<R(Args...)> fn_;
 };
 
 /**
  * The Nautilus Engine maintains the execution context of one or multiple nautilus functions,
  * which are registered using registerFunction.
- * Depending on the provided options, this functions may be compiled using a compilation backend or are executed
- * directly. In general, the NautilusEngine mussed outlive any registered functions.
+ * Depending on the provided options, these functions may be compiled using a compilation backend or are executed
+ * directly.
  */
 class NautilusEngine {
 public:
 	NautilusEngine(const Options& options = Options());
 
-	template <typename R, is_val... FunctionArguments>
-	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const {
-		std::function<R(val<FunctionArguments>...)> inputFunction = fnptr;
-		return registerFunction(inputFunction);
-	}
+	/**
+	 * @brief Create an engine with a specific JIT compiler implementation.
+	 * @param jit The JIT compiler to use (takes ownership)
+	 * @param options Engine options
+	 */
+	NautilusEngine(std::unique_ptr<compiler::IJITCompiler> jit, const Options& options = Options());
 
+	/// Register and compile a single function pointer. Defined after NautilusModule.
+	template <typename R, is_val... FunctionArguments>
+	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const;
+
+	/// Register and compile a single std::function. Defined after NautilusModule.
 	template <typename R, typename... FunctionArguments>
-	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
-#ifdef ENABLE_TRACING
-		if (isCompiled()) {
-			auto wrapper = details::createFunctionWrapper(func);
-			auto executable = jit.compile(wrapper);
-			return CallableFunction<R, FunctionArguments...>(executable);
-		}
-#endif
-		return CallableFunction<R, FunctionArguments...>(func);
-	}
+	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const;
 
 	/**
 	 * @brief Creates a new module for registering multiple functions to be compiled together.
@@ -210,7 +189,7 @@ public:
 	NautilusModule createModule() const;
 
 	std::string getNameOfBackend() const {
-		return jit.getName();
+		return jit_->getName();
 	}
 
 	bool isCompiled() const {
@@ -218,7 +197,7 @@ public:
 	}
 
 private:
-	const compiler::JITCompiler jit;
+	std::unique_ptr<compiler::IJITCompiler> jit_;
 	const Options options;
 };
 
@@ -241,10 +220,10 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::JITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::IJITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/) {
+	NautilusModule(const compiler::IJITCompiler& /*jit*/, bool /*compiled*/) {
 	}
 #endif
 
@@ -304,7 +283,16 @@ public:
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto executable = jit_.compile(functions_);
-			return CompiledModule(std::move(executable), std::move(interpretedFunctions_));
+			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
+
+			// If using tiered compilation, start background promotion.
+			// The TieredJITCompiler directly swaps the executable and bumps
+			// the version in the module state when tier-1 compilation completes.
+			if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
+				tiered->promoteAsync(module.getState());
+			}
+
+			return module;
 		}
 #endif
 		return CompiledModule(std::move(interpretedFunctions_));
@@ -313,14 +301,47 @@ public:
 private:
 	std::unordered_map<std::string, std::any> interpretedFunctions_;
 #ifdef ENABLE_TRACING
-	const compiler::JITCompiler& jit_;
+	const compiler::IJITCompiler& jit_;
 	bool compiled_;
 	std::list<compiler::CompilableFunction> functions_;
 #endif
 };
 
 inline NautilusModule NautilusEngine::createModule() const {
-	return NautilusModule(jit, isCompiled());
+	return NautilusModule(*jit_, isCompiled());
+}
+
+namespace details {
+
+template <typename T, typename = void>
+struct raw_return_type {
+	using type = void;
+};
+
+template <typename T>
+struct raw_return_type<T, std::void_t<typename T::raw_type>> {
+	using type = typename T::raw_type;
+};
+
+template <typename T>
+using raw_return_type_t = typename raw_return_type<T>::type;
+
+} // namespace details
+
+template <typename R, is_val... FunctionArguments>
+auto NautilusEngine::registerFunction(R (*fnptr)(val<FunctionArguments>...)) const {
+	using RawR = details::raw_return_type_t<R>;
+	auto module = createModule();
+	module.registerFunction("execute", fnptr);
+	return CompiledFunction<RawR(FunctionArguments...)>(module.compile());
+}
+
+template <typename R, typename... FunctionArguments>
+auto NautilusEngine::registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
+	using RawR = details::raw_return_type_t<R>;
+	auto module = createModule();
+	module.registerFunction("execute", std::move(func));
+	return CompiledFunction<RawR(FunctionArguments...)>(module.compile());
 }
 
 } // namespace nautilus::engine
