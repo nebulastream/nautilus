@@ -1348,7 +1348,7 @@ TEST_CASE("Engine Compiler Test") {
 }
 #endif
 
-TEST_CASE("NautilusFunction Execution Test") {
+TEST_CASE("NautilusFunction Interpretation Test") {
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);

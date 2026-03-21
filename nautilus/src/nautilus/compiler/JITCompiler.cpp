@@ -34,6 +34,14 @@ JITCompiler::JITCompiler(engine::Options options)
 
 JITCompiler::~JITCompiler() = default;
 
+std::string JITCompiler::getName() const {
+	auto name = options.getOptionOrDefault<std::string>("engine.backend", "");
+	if (name.empty()) {
+		return backends->getDefaultBackendName();
+	}
+	return name;
+}
+
 #if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
 
 std::string createCompilationUnitID() {

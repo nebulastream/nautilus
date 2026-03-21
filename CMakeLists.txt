@@ -19,6 +19,7 @@ cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENAB
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_COMPILER" OFF)
 
+
 option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable address sanitizer." OFF)
 option(ENABLE_THREAD_SANITIZER "Enable thread sanitizer." OFF)

@@ -1,5 +1,5 @@
 
-#include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
+#include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -8,16 +8,17 @@
 namespace nautilus::compiler::asmjit {
 
 using namespace ::asmjit;
-using namespace ::asmjit::a64;
+using namespace ::asmjit::x86;
 
 // ── AsmJitLoweringProvider ────────────────────────────────────────────────────
 
 namespace {
+// Custom error handler that throws instead of aborting.
 class ThrowOnError : public ::asmjit::ErrorHandler {
 public:
 	void handleError(::asmjit::Error err, const char* message, ::asmjit::BaseEmitter* /*origin*/) override {
-		fprintf(stderr, "[AsmJit/A64] Error %u: %s\n", err, message ? message : "(null)");
-		throw std::runtime_error(std::string("AsmJit/A64 error: ") + (message ? message : "unknown"));
+		fprintf(stderr, "[AsmJit] Error %u: %s\n", err, message ? message : "(null)");
+		throw std::runtime_error(std::string("AsmJit error: ") + (message ? message : "unknown"));
 	}
 };
 } // anonymous namespace
@@ -32,6 +33,7 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	LoweringContext ctx(std::move(ir), code);
 	ctx.processAll();
 
+	// Capture label offsets while code is still in the CodeHolder (before rt.add resets it).
 	std::unordered_map<std::string, uint64_t> offsets;
 	for (const auto& [name, funcNode] : ctx.getFuncNodes()) {
 		offsets[name] = code.labelOffset(funcNode->label());
@@ -98,12 +100,15 @@ bool AsmJitLoweringProvider::LoweringContext::isUnsignedType(Type t) {
 }
 
 // ── Register allocation ───────────────────────────────────────────────────────
+// All integer/bool/ptr types are represented as 64-bit GP registers.
+// This avoids size-mismatch issues when combining values across operations,
+// at the cost of slightly over-wide arithmetic (acceptable for query compilation).
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::allocReg(Type t) {
 	if (t == Type::f32)
-		return cc.newVecS();
+		return cc.newXmmSs();
 	if (t == Type::f64)
-		return cc.newVecD();
+		return cc.newXmmSd();
 	return cc.newInt64();
 }
 
@@ -111,8 +116,8 @@ Gp AsmJitLoweringProvider::LoweringContext::toGp(const AsmReg& r) {
 	return std::get<Gp>(r);
 }
 
-Vec AsmJitLoweringProvider::LoweringContext::toVec(const AsmReg& r) {
-	return std::get<Vec>(r);
+Xmm AsmJitLoweringProvider::LoweringContext::toXmm(const AsmReg& r) {
+	return std::get<Xmm>(r);
 }
 
 // ── Label management ──────────────────────────────────────────────────────────
@@ -129,19 +134,26 @@ Label AsmJitLoweringProvider::LoweringContext::getOrCreateLabel(const std::strin
 // ── Register move helper ──────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const AsmReg& src) {
-	if (std::holds_alternative<Vec>(dst)) {
-		cc.fmov(toVec(dst), toVec(src));
+	if (std::holds_alternative<Xmm>(dst)) {
+		cc.movaps(toXmm(dst), toXmm(src));
 	} else {
 		cc.mov(toGp(dst), toGp(src));
 	}
 }
 
 // ── Two-pass compilation ──────────────────────────────────────────────────────
+//
+// Pass 1: call cc.newFunc() for every FunctionOperation, storing each FuncNode*.
+//         This allocates stable Labels before any code is emitted, enabling
+//         forward and mutual references between functions.
+//
+// Pass 2: for each function, call cc.addFunc(funcNode), emit the body,
+//         and call cc.endFunc(). cc.finalize() resolves all label references.
 
 void AsmJitLoweringProvider::LoweringContext::processAll() {
 	const auto& functionOperations = ir->getFunctionOperations();
 	if (functionOperations.empty()) {
-		throw std::runtime_error("AsmJit/A64: no functions found in IR graph");
+		throw std::runtime_error("AsmJit: no functions found in IR graph");
 	}
 
 	// Pass 1: register all functions and obtain stable labels.
@@ -165,13 +177,16 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 
 		cc.addFunc(funcNode);
 
+		// Reset per-function block tracking so each function starts clean.
 		blockLabels.clear();
 		processedBlocks.clear();
 
+		// Pre-create labels for all blocks in this function so forward jumps resolve.
 		for (auto& block : funcOp->getBasicBlocks()) {
 			getOrCreateLabel(block->getIdentifier());
 		}
 
+		// Bind function arguments to virtual registers and sign/zero-extend narrow types.
 		RegisterFrame rootFrame;
 		for (size_t i = 0; i < entryArgs.size(); i++) {
 			const Type stamp = entryArgs[i]->getStamp();
@@ -179,25 +194,24 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 			if (std::holds_alternative<Gp>(reg)) {
 				funcNode->setArg(i, toGp(reg));
 			} else {
-				funcNode->setArg(i, toVec(reg));
+				funcNode->setArg(i, toXmm(reg));
 			}
 			rootFrame.setValue(entryArgs[i]->getIdentifier(), reg);
 
-			// Sign/zero-extend narrow integer arguments to full 64-bit.
 			if (std::holds_alternative<Gp>(reg)) {
 				auto gReg = toGp(reg);
 				if (stamp == Type::i8) {
-					cc.sxtb(gReg.x(), gReg.w());
+					cc.movsx(gReg.r64(), gReg.r8());
 				} else if (stamp == Type::i16) {
-					cc.sxth(gReg.x(), gReg.w());
+					cc.movsx(gReg.r64(), gReg.r16());
 				} else if (stamp == Type::ui8 || stamp == Type::b) {
-					cc.uxtb(gReg.w(), gReg.w());
+					cc.movzx(gReg.r32(), gReg.r8());
 				} else if (stamp == Type::ui16) {
-					cc.uxth(gReg.w(), gReg.w());
+					cc.movzx(gReg.r32(), gReg.r16());
 				} else if (stamp == Type::i32) {
-					cc.sxtw(gReg.x(), gReg.w());
+					cc.movsxd(gReg.r64(), gReg.r32());
 				} else if (stamp == Type::ui32) {
-					cc.mov(gReg.w(), gReg.w()); // zero-extends upper 32 bits
+					cc.mov(gReg.r32(), gReg.r32()); // zero-extends upper 32 bits
 				}
 			}
 		}
@@ -217,6 +231,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 		return;
 	processedBlocks.insert(id);
 
+	// Bind the pre-created label for this block.
 	cc.bind(getOrCreateLabel(id));
 
 	for (auto& op : block->getOperations()) {
@@ -225,6 +240,8 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 }
 
 // ── Block-argument passing ────────────────────────────────────────────────────
+// Copies source values into the destination block's pre-allocated argument
+// registers, using temporaries to avoid clobbering when src/dst overlap.
 
 void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::BasicBlockInvocation& bi,
                                                                      RegisterFrame& frame) {
@@ -234,6 +251,9 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	if (srcArgs.empty())
 		return;
 
+	// Ensure every destination block-argument has a virtual register.
+	// If the identifier was already assigned (e.g. it matches a predecessor's
+	// SSA value), reuse that register; otherwise allocate a fresh one now.
 	for (size_t i = 0; i < dstArgs.size(); i++) {
 		const auto& dstId = dstArgs[i]->getIdentifier();
 		if (!frame.contains(dstId)) {
@@ -241,6 +261,8 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		}
 	}
 
+	// Copy each source to a fresh temp register first (parallel-copy semantics
+	// avoids clobbering when src and dst registers overlap).
 	std::vector<AsmReg> temps;
 	temps.reserve(srcArgs.size());
 	for (size_t i = 0; i < srcArgs.size(); i++) {
@@ -250,6 +272,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		temps.push_back(temp);
 	}
 
+	// Then write temps into the destination registers.
 	for (size_t i = 0; i < srcArgs.size(); i++) {
 		auto dst = frame.getValue(dstArgs[i]->getIdentifier());
 		emitMove(dst, temps[i]);
@@ -343,13 +366,14 @@ void AsmJitLoweringProvider::LoweringContext::processOperation(const std::unique
 	case OT::CastOp:
 		processCast(as<ir::CastOperation>(op), frame);
 		return;
+	// Structural ops handled at a higher level – nothing to emit.
 	case OT::BasicBlockArgument:
 	case OT::BlockInvocation:
 	case OT::FunctionOp:
 	case OT::MLIR_YIELD:
 		return;
 	default:
-		throw NotImplementedException("AsmJit/A64: operation not implemented");
+		throw NotImplementedException("AsmJit: operation not implemented");
 	}
 }
 
@@ -369,21 +393,21 @@ void AsmJitLoweringProvider::LoweringContext::processConstInt(ir::ConstIntOperat
 
 void AsmJitLoweringProvider::LoweringContext::processConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(op->getStamp());
-	auto vecReg = toVec(reg);
+	auto xmmReg = toXmm(reg);
 	if (op->getStamp() == Type::f32) {
 		float val = static_cast<float>(op->getValue());
 		uint32_t bits = 0;
 		memcpy(&bits, &val, sizeof(bits));
 		auto tempGp = cc.newUInt32();
 		cc.mov(tempGp, bits);
-		cc.fmov(vecReg, tempGp);
+		cc.movd(xmmReg, tempGp);
 	} else {
 		double val = op->getValue();
 		uint64_t bits = 0;
 		memcpy(&bits, &val, sizeof(bits));
 		auto tempGp = cc.newUInt64();
 		cc.mov(tempGp, bits);
-		cc.fmov(vecReg, tempGp);
+		cc.movq(xmmReg, tempGp);
 	}
 	frame.setValue(op->getIdentifier(), reg);
 }
@@ -401,9 +425,16 @@ void AsmJitLoweringProvider::LoweringContext::processAdd(ir::AddOperation* op, R
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
-		cc.fadd(toVec(result), toVec(left), toVec(right));
+		auto xDst = toXmm(result);
+		cc.movaps(xDst, toXmm(left));
+		if (op->getStamp() == Type::f32)
+			cc.addss(xDst, toXmm(right));
+		else
+			cc.addsd(xDst, toXmm(right));
 	} else {
-		cc.add(toGp(result), toGp(left), toGp(right));
+		auto gDst = toGp(result);
+		cc.mov(gDst, toGp(left));
+		cc.add(gDst, toGp(right));
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -413,9 +444,16 @@ void AsmJitLoweringProvider::LoweringContext::processSub(ir::SubOperation* op, R
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
-		cc.fsub(toVec(result), toVec(left), toVec(right));
+		auto xDst = toXmm(result);
+		cc.movaps(xDst, toXmm(left));
+		if (op->getStamp() == Type::f32)
+			cc.subss(xDst, toXmm(right));
+		else
+			cc.subsd(xDst, toXmm(right));
 	} else {
-		cc.sub(toGp(result), toGp(left), toGp(right));
+		auto gDst = toGp(result);
+		cc.mov(gDst, toGp(left));
+		cc.sub(gDst, toGp(right));
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -425,9 +463,16 @@ void AsmJitLoweringProvider::LoweringContext::processMul(ir::MulOperation* op, R
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
-		cc.fmul(toVec(result), toVec(left), toVec(right));
+		auto xDst = toXmm(result);
+		cc.movaps(xDst, toXmm(left));
+		if (op->getStamp() == Type::f32)
+			cc.mulss(xDst, toXmm(right));
+		else
+			cc.mulsd(xDst, toXmm(right));
 	} else {
-		cc.mul(toGp(result), toGp(left), toGp(right));
+		auto gDst = toGp(result);
+		cc.mov(gDst, toGp(left));
+		cc.imul(gDst, toGp(right));
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -437,11 +482,26 @@ void AsmJitLoweringProvider::LoweringContext::processDiv(ir::DivOperation* op, R
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
-		cc.fdiv(toVec(result), toVec(left), toVec(right));
-	} else if (isUnsignedType(op->getStamp())) {
-		cc.udiv(toGp(result), toGp(left), toGp(right));
+		auto xDst = toXmm(result);
+		cc.movaps(xDst, toXmm(left));
+		if (op->getStamp() == Type::f32)
+			cc.divss(xDst, toXmm(right));
+		else
+			cc.divsd(xDst, toXmm(right));
 	} else {
-		cc.sdiv(toGp(result), toGp(left), toGp(right));
+		// Integer division: use idiv (signed) or div (unsigned).
+		// AsmJit Compiler handles the rax/rdx hardware constraint automatically.
+		auto quot = cc.newInt64();
+		auto rem = cc.newInt64();
+		cc.mov(quot, toGp(left));
+		if (isUnsignedType(op->getStamp())) {
+			cc.xor_(rem, rem);
+			cc.div(rem, quot, toGp(right));
+		} else {
+			cc.cqo(rem, quot);
+			cc.idiv(rem, quot, toGp(right));
+		}
+		cc.mov(toGp(result), quot);
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -450,15 +510,17 @@ void AsmJitLoweringProvider::LoweringContext::processMod(ir::ModOperation* op, R
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
-	// ARM64 has no remainder instruction. Compute: result = left - (left / right) * right
-	auto quotient = cc.newInt64();
+	auto quot = cc.newInt64();
+	auto rem = cc.newInt64();
+	cc.mov(quot, toGp(left));
 	if (isUnsignedType(op->getStamp())) {
-		cc.udiv(quotient, toGp(left), toGp(right));
+		cc.xor_(rem, rem);
+		cc.div(rem, quot, toGp(right));
 	} else {
-		cc.sdiv(quotient, toGp(left), toGp(right));
+		cc.cqo(rem, quot);
+		cc.idiv(rem, quot, toGp(right));
 	}
-	// msub dst, quotient, right, left → dst = left - quotient * right
-	cc.msub(toGp(result), quotient, toGp(right), toGp(left));
+	cc.mov(toGp(result), rem);
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -468,93 +530,92 @@ void AsmJitLoweringProvider::LoweringContext::processCompare(ir::CompareOperatio
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(Type::b);
-	auto resultGp = toGp(result);
+	auto resultGp = toGp(result).r8();
 	const bool leftIsFloat = isFloatType(op->getLeftInput()->getStamp());
 	const bool leftIsUnsigned = isUnsignedType(op->getLeftInput()->getStamp());
 
-	// Map Nautilus comparator to ARM condition code.
-	// arm::CondCode lives in asmjit/core/archcommons.h.
-	using CC = arm::CondCode;
-	uint32_t condCode;
-
 	if (leftIsFloat) {
-		cc.fcmp(toVec(left), toVec(right));
-		// fcmp sets NZCV; for unordered (NaN), C=1, V=1.
-		// Use unsigned condition codes which give correct IEEE 754 semantics.
+		if (op->getLeftInput()->getStamp() == Type::f32)
+			cc.ucomiss(toXmm(left), toXmm(right));
+		else
+			cc.ucomisd(toXmm(left), toXmm(right));
+		// ucomiss/ucomisd is unordered: NaN operands set CF=1 and ZF=1.
+		// This gives correct IEEE 754 semantics (NaN comparisons always false for EQ/LT/LE/GT/GE, true for NE).
 		switch (op->getComparator()) {
 		case ir::CompareOperation::EQ:
-			condCode = static_cast<uint32_t>(CC::kEQ);
+			cc.sete(resultGp);
 			break;
 		case ir::CompareOperation::NE:
-			condCode = static_cast<uint32_t>(CC::kNE);
+			cc.setne(resultGp);
 			break;
 		case ir::CompareOperation::LT:
-			condCode = static_cast<uint32_t>(CC::kMI);
+			cc.setb(resultGp);
 			break;
 		case ir::CompareOperation::LE:
-			condCode = static_cast<uint32_t>(CC::kLS);
+			cc.setbe(resultGp);
 			break;
 		case ir::CompareOperation::GT:
-			condCode = static_cast<uint32_t>(CC::kGT);
+			cc.seta(resultGp);
 			break;
 		case ir::CompareOperation::GE:
-			condCode = static_cast<uint32_t>(CC::kGE);
+			cc.setae(resultGp);
 			break;
 		}
 	} else if (op->getLeftInput()->getStamp() == Type::ptr && isInteger(op->getRightInput()->getStamp())) {
-		// Null-pointer check.
-		cc.tst(toGp(left), toGp(left));
+		// Null-pointer check: compare pointer against zero.
+		cc.test(toGp(left), toGp(left));
 		if (op->getComparator() == ir::CompareOperation::EQ)
-			condCode = static_cast<uint32_t>(CC::kEQ);
+			cc.sete(resultGp);
 		else
-			condCode = static_cast<uint32_t>(CC::kNE);
+			cc.setne(resultGp);
 	} else {
 		cc.cmp(toGp(left), toGp(right));
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
-				condCode = static_cast<uint32_t>(CC::kEQ);
+				cc.sete(resultGp);
 				break;
 			case ir::CompareOperation::NE:
-				condCode = static_cast<uint32_t>(CC::kNE);
+				cc.setne(resultGp);
 				break;
 			case ir::CompareOperation::LT:
-				condCode = static_cast<uint32_t>(CC::kLO);
+				cc.setb(resultGp);
 				break;
 			case ir::CompareOperation::LE:
-				condCode = static_cast<uint32_t>(CC::kLS);
+				cc.setbe(resultGp);
 				break;
 			case ir::CompareOperation::GT:
-				condCode = static_cast<uint32_t>(CC::kHI);
+				cc.seta(resultGp);
 				break;
 			case ir::CompareOperation::GE:
-				condCode = static_cast<uint32_t>(CC::kHS);
+				cc.setae(resultGp);
 				break;
 			}
 		} else {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
-				condCode = static_cast<uint32_t>(CC::kEQ);
+				cc.sete(resultGp);
 				break;
 			case ir::CompareOperation::NE:
-				condCode = static_cast<uint32_t>(CC::kNE);
+				cc.setne(resultGp);
 				break;
 			case ir::CompareOperation::LT:
-				condCode = static_cast<uint32_t>(CC::kLT);
+				cc.setl(resultGp);
 				break;
 			case ir::CompareOperation::LE:
-				condCode = static_cast<uint32_t>(CC::kLE);
+				cc.setle(resultGp);
 				break;
 			case ir::CompareOperation::GT:
-				condCode = static_cast<uint32_t>(CC::kGT);
+				cc.setg(resultGp);
 				break;
 			case ir::CompareOperation::GE:
-				condCode = static_cast<uint32_t>(CC::kGE);
+				cc.setge(resultGp);
 				break;
 			}
 		}
 	}
-	cc.cset(resultGp, Imm(condCode));
+	// Zero-extend the 8-bit result into the full 64-bit virtual register.
+	cc.movzx(toGp(result).r32(), resultGp);
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -562,7 +623,8 @@ void AsmJitLoweringProvider::LoweringContext::processAnd(ir::AndOperation* op, R
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
-	cc.and_(toGp(result), left, right);
+	cc.mov(toGp(result), left);
+	cc.and_(toGp(result), right);
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -570,21 +632,26 @@ void AsmJitLoweringProvider::LoweringContext::processOr(ir::OrOperation* op, Reg
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
-	cc.orr(toGp(result), left, right);
+	cc.mov(toGp(result), left);
+	cc.or_(toGp(result), right);
 	frame.setValue(op->getIdentifier(), result);
 }
 
 void AsmJitLoweringProvider::LoweringContext::processNot(ir::NotOperation* op, RegisterFrame& frame) {
+	// NotOperation is logical NOT on a boolean: result = input XOR 1.
 	auto input = toGp(frame.getValue(op->getInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
-	cc.eor(toGp(result), input, Imm(1));
+	cc.mov(toGp(result), input);
+	cc.xor_(toGp(result), 1);
 	frame.setValue(op->getIdentifier(), result);
 }
 
 void AsmJitLoweringProvider::LoweringContext::processNegate(ir::NegateOperation* op, RegisterFrame& frame) {
+	// NegateOperation is bitwise NOT (~x): result = input XOR all-ones.
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
-	cc.mvn(toGp(result), toGp(src));
+	cc.mov(toGp(result), toGp(src));
+	cc.not_(toGp(result));
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -594,12 +661,15 @@ void AsmJitLoweringProvider::LoweringContext::processShift(ir::ShiftOperation* o
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
+	cc.mov(toGp(result), left);
+	// The shift count operand must be the CL register; AsmJit's Compiler
+	// handles that constraint when a GP register is given as the count.
 	if (op->getType() == ir::ShiftOperation::LS) {
-		cc.lsl(toGp(result), left, right);
+		cc.shl(toGp(result), right.r8());
 	} else if (isUnsignedType(op->getStamp())) {
-		cc.lsr(toGp(result), left, right);
+		cc.shr(toGp(result), right.r8());
 	} else {
-		cc.asr(toGp(result), left, right);
+		cc.sar(toGp(result), right.r8());
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -608,15 +678,16 @@ void AsmJitLoweringProvider::LoweringContext::processBinaryComp(ir::BinaryCompOp
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
+	cc.mov(toGp(result), left);
 	switch (op->getType()) {
 	case ir::BinaryCompOperation::BAND:
-		cc.and_(toGp(result), left, right);
+		cc.and_(toGp(result), right);
 		break;
 	case ir::BinaryCompOperation::BOR:
-		cc.orr(toGp(result), left, right);
+		cc.or_(toGp(result), right);
 		break;
 	case ir::BinaryCompOperation::XOR:
-		cc.eor(toGp(result), left, right);
+		cc.xor_(toGp(result), right);
 		break;
 	}
 	frame.setValue(op->getIdentifier(), result);
@@ -630,16 +701,17 @@ void AsmJitLoweringProvider::LoweringContext::processIf(ir::IfOperation* op, Reg
 	auto falseLabel = getOrCreateLabel(op->getFalseBlockInvocation().getBlock()->getIdentifier());
 
 	auto elsePath = cc.newLabel();
-	cc.cbz(condGp, elsePath);
+	cc.test(condGp, condGp);
+	cc.jz(elsePath);
 
 	// True branch: copy arguments then jump.
 	processBlockInvocation(op->getTrueBlockInvocation(), frame);
-	cc.b(trueLabel);
+	cc.jmp(trueLabel);
 
 	// False branch: copy arguments then jump.
 	cc.bind(elsePath);
 	processBlockInvocation(op->getFalseBlockInvocation(), frame);
-	cc.b(falseLabel);
+	cc.jmp(falseLabel);
 
 	// Emit the bodies of both successor blocks.
 	processBlock(op->getTrueBlockInvocation().getBlock(), frame);
@@ -649,39 +721,17 @@ void AsmJitLoweringProvider::LoweringContext::processIf(ir::IfOperation* op, Reg
 void AsmJitLoweringProvider::LoweringContext::processBranch(ir::BranchOperation* op, RegisterFrame& frame) {
 	const auto& bi = op->getNextBlockInvocation();
 	processBlockInvocation(bi, frame);
-	cc.b(getOrCreateLabel(bi.getBlock()->getIdentifier()));
+	cc.jmp(getOrCreateLabel(bi.getBlock()->getIdentifier()));
 	processBlock(bi.getBlock(), frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::processReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
 	if (op->hasReturnValue()) {
 		auto retReg = frame.getValue(op->getReturnValue()->getIdentifier());
-		if (std::holds_alternative<Vec>(retReg)) {
-			cc.ret(toVec(retReg));
-		} else {
-			auto gp = toGp(retReg);
-			// Ensure sub-32-bit return values are properly narrowed so the
-			// caller sees a clean W0 value that matches the ABI contract.
-			auto retType = op->getReturnValue()->getStamp();
-			switch (retType) {
-			case Type::i8:
-				cc.sxtb(gp.x(), gp.w());
-				break;
-			case Type::b:
-			case Type::ui8:
-				cc.uxtb(gp.w(), gp.w());
-				break;
-			case Type::i16:
-				cc.sxth(gp.x(), gp.w());
-				break;
-			case Type::ui16:
-				cc.uxth(gp.w(), gp.w());
-				break;
-			default:
-				break;
-			}
-			cc.ret(gp);
-		}
+		if (std::holds_alternative<Xmm>(retReg))
+			cc.ret(toXmm(retReg));
+		else
+			cc.ret(toGp(retReg));
 	} else {
 		cc.ret();
 	}
@@ -693,16 +743,16 @@ void AsmJitLoweringProvider::LoweringContext::processSelect(ir::SelectOperation*
 	auto falseVal = frame.getValue(op->getFalseValue()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 
-	// Compare condition against zero, then use conditional select.
-	cc.cmp(condGp, Imm(0));
-	using CC = arm::CondCode;
-	if (std::holds_alternative<Vec>(result)) {
-		// fcsel dst, trueVec, falseVec, NE
-		cc.fcsel(toVec(result), toVec(trueVal), toVec(falseVal), Imm(static_cast<uint32_t>(CC::kNE)));
-	} else {
-		// csel dst, trueGp, falseGp, NE
-		cc.csel(toGp(result), toGp(trueVal), toGp(falseVal), Imm(static_cast<uint32_t>(CC::kNE)));
-	}
+	auto falsePath = cc.newLabel();
+	auto donePath = cc.newLabel();
+
+	cc.test(condGp, condGp);
+	cc.jz(falsePath);
+	emitMove(result, trueVal);
+	cc.jmp(donePath);
+	cc.bind(falsePath);
+	emitMove(result, falseVal);
+	cc.bind(donePath);
 
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -714,38 +764,38 @@ void AsmJitLoweringProvider::LoweringContext::processLoad(ir::LoadOperation* op,
 	auto result = allocReg(op->getStamp());
 
 	if (op->getStamp() == Type::f32) {
-		cc.ldr(toVec(result), a64::ptr(addrGp));
+		cc.movss(toXmm(result), x86::dword_ptr(addrGp));
 	} else if (op->getStamp() == Type::f64) {
-		cc.ldr(toVec(result), a64::ptr(addrGp));
+		cc.movsd(toXmm(result), x86::qword_ptr(addrGp));
 	} else {
 		auto gDst = toGp(result);
 		switch (op->getStamp()) {
 		case Type::b:
 		case Type::ui8:
-			cc.ldrb(gDst.w(), a64::ptr(addrGp));
-			break;
+			cc.movzx(gDst.r32(), x86::byte_ptr(addrGp));
+			break; // zero-extends to 64
 		case Type::i8:
-			cc.ldrsb(gDst.x(), a64::ptr(addrGp));
+			cc.movsx(gDst.r64(), x86::byte_ptr(addrGp));
 			break;
 		case Type::ui16:
-			cc.ldrh(gDst.w(), a64::ptr(addrGp));
-			break;
+			cc.movzx(gDst.r32(), x86::word_ptr(addrGp));
+			break; // zero-extends to 64
 		case Type::i16:
-			cc.ldrsh(gDst.x(), a64::ptr(addrGp));
+			cc.movsx(gDst.r64(), x86::word_ptr(addrGp));
 			break;
 		case Type::ui32:
-			cc.ldr(gDst.w(), a64::ptr(addrGp));
-			break;
+			cc.mov(gDst.r32(), x86::dword_ptr(addrGp));
+			break; // zero-extends
 		case Type::i32:
-			cc.ldrsw(gDst.x(), a64::ptr(addrGp));
+			cc.movsxd(gDst.r64(), x86::dword_ptr(addrGp));
 			break;
 		case Type::i64:
 		case Type::ui64:
 		case Type::ptr:
-			cc.ldr(gDst.x(), a64::ptr(addrGp));
+			cc.mov(gDst.r64(), x86::qword_ptr(addrGp));
 			break;
 		default:
-			cc.ldr(gDst.x(), a64::ptr(addrGp));
+			cc.mov(gDst.r64(), x86::qword_ptr(addrGp));
 			break;
 		}
 	}
@@ -756,8 +806,12 @@ void AsmJitLoweringProvider::LoweringContext::processStore(ir::StoreOperation* o
 	auto addrGp = toGp(frame.getValue(op->getAddress()->getIdentifier()));
 	auto valReg = frame.getValue(op->getValue()->getIdentifier());
 
-	if (op->getValue()->getStamp() == Type::f32 || op->getValue()->getStamp() == Type::f64) {
-		cc.str(toVec(valReg), a64::ptr(addrGp));
+	if (op->getValue()->getStamp() == Type::f32) {
+		cc.movss(x86::dword_ptr(addrGp), toXmm(valReg));
+		return;
+	}
+	if (op->getValue()->getStamp() == Type::f64) {
+		cc.movsd(x86::qword_ptr(addrGp), toXmm(valReg));
 		return;
 	}
 
@@ -766,66 +820,62 @@ void AsmJitLoweringProvider::LoweringContext::processStore(ir::StoreOperation* o
 	case Type::b:
 	case Type::i8:
 	case Type::ui8:
-		cc.strb(valGp.w(), a64::ptr(addrGp));
+		cc.mov(x86::byte_ptr(addrGp), valGp.r8());
 		break;
 	case Type::i16:
 	case Type::ui16:
-		cc.strh(valGp.w(), a64::ptr(addrGp));
+		cc.mov(x86::word_ptr(addrGp), valGp.r16());
 		break;
 	case Type::i32:
 	case Type::ui32:
-		cc.str(valGp.w(), a64::ptr(addrGp));
+		cc.mov(x86::dword_ptr(addrGp), valGp.r32());
 		break;
 	default:
-		cc.str(valGp.x(), a64::ptr(addrGp));
+		cc.mov(x86::qword_ptr(addrGp), valGp.r64());
 		break;
 	}
 }
 
 void AsmJitLoweringProvider::LoweringContext::processAlloca(ir::AllocaOperation* op, RegisterFrame& frame) {
+	// Allocate aligned stack space and capture its address in a GP register.
 	auto stackMem = cc.newStack(static_cast<uint32_t>(op->getSize()), 8 /*align*/);
 	auto ptrReg = cc.newIntPtr();
-	cc.loadAddressOf(ptrReg, stackMem);
+	cc.lea(ptrReg, stackMem);
 	frame.setValue(op->getIdentifier(), AsmReg(ptrReg));
 }
 
 // ── External function calls ───────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
+	// Build the callee's signature dynamically from the IR's type information.
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
 
-	// ARM64 blr requires a register operand — labels and immediates are not
-	// valid operands.  Materialize the target address into a GP register.
 	InvokeNode* invokeNode = nullptr;
 	auto it = funcNodes_.find(op->getFunctionName());
 	if (it != funcNodes_.end()) {
-		// Internal JIT function: load label address via adr, then indirect call.
-		auto tmp = cc.newGpx();
-		cc.adr(tmp, it->second->label());
-		cc.invoke(&invokeNode, tmp, sig);
+		// Forward reference via AsmJit label — resolved at finalize() time.
+		cc.invoke(&invokeNode, it->second->label(), sig);
 	} else {
-		// External function: load raw pointer into register, then indirect call.
-		auto tmp = cc.newGpx();
-		cc.mov(tmp, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
-		cc.invoke(&invokeNode, tmp, sig);
+		// External function (not a Nautilus IR function): call by raw address.
+		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(op->getFunctionPtr()), sig);
 	}
 
 	for (size_t i = 0; i < op->getInputArguments().size(); i++) {
 		auto argReg = frame.getValue(op->getInputArguments()[i]->getIdentifier());
-		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+		if (std::holds_alternative<Xmm>(argReg))
+			invokeNode->setArg(i, toXmm(argReg));
 		else
 			invokeNode->setArg(i, toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
-			invokeNode->setRet(0, toVec(result));
+		if (std::holds_alternative<Xmm>(result))
+			invokeNode->setRet(0, toXmm(result));
 		else
 			invokeNode->setRet(0, toGp(result));
 		frame.setValue(op->getIdentifier(), result);
@@ -833,30 +883,32 @@ void AsmJitLoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOper
 }
 
 void AsmJitLoweringProvider::LoweringContext::processIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
+	// Build callee signature from IR type information.
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
 
+	// The function pointer is a runtime GP register value.
 	auto fnPtrGp = toGp(frame.getValue(op->getFunctionPtrOperand()->getIdentifier()));
 
 	InvokeNode* invokeNode = nullptr;
-	cc.invoke(&invokeNode, fnPtrGp.x(), sig);
+	cc.invoke(&invokeNode, fnPtrGp, sig);
 
 	const auto inputArgs = op->getInputArguments();
 	for (size_t i = 0; i < inputArgs.size(); i++) {
 		auto argReg = frame.getValue(inputArgs[i]->getIdentifier());
-		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+		if (std::holds_alternative<Xmm>(argReg))
+			invokeNode->setArg(i, toXmm(argReg));
 		else
 			invokeNode->setArg(i, toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
-			invokeNode->setRet(0, toVec(result));
+		if (std::holds_alternative<Xmm>(result))
+			invokeNode->setRet(0, toXmm(result));
 		else
 			invokeNode->setRet(0, toGp(result));
 		frame.setValue(op->getIdentifier(), result);
@@ -868,8 +920,10 @@ void AsmJitLoweringProvider::LoweringContext::processFunctionAddressOf(ir::Funct
 	auto reg = allocReg(Type::ptr);
 	auto it = funcNodes_.find(op->getFunctionName());
 	if (it != funcNodes_.end()) {
-		cc.adr(toGp(reg), it->second->label());
+		// Load the JIT function's address via RIP-relative LEA — resolved at finalize().
+		cc.lea(toGp(reg), x86::ptr(it->second->label()));
 	} else {
+		// External function: embed the raw pointer as a compile-time constant.
 		cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getFunctionPtr()));
 	}
 	frame.setValue(op->getIdentifier(), reg);
@@ -887,97 +941,88 @@ void AsmJitLoweringProvider::LoweringContext::processCast(ir::CastOperation* op,
 	const bool dstIsFloat = isFloatType(dstType);
 
 	if (!srcIsFloat && !dstIsFloat) {
-		// Integer → integer: first extend from source width, then narrow to destination width.
+		// Integer → integer: sign/zero-extend from source width.
 		auto gSrc = toGp(src);
 		auto gDst = toGp(result);
-		// Step 1: extend from source width to get a clean 64-bit representation.
 		switch (srcType) {
 		case Type::i8:
-			cc.sxtb(gDst.x(), gSrc.w());
+			cc.movsx(gDst.r64(), gSrc.r8());
 			break;
 		case Type::b:
 		case Type::ui8:
-			cc.uxtb(gDst.w(), gSrc.w());
-			break;
+			cc.movzx(gDst.r32(), gSrc.r8());
+			break; // movzx r32 zero-extends to 64
 		case Type::i16:
-			cc.sxth(gDst.x(), gSrc.w());
+			cc.movsx(gDst.r64(), gSrc.r16());
 			break;
 		case Type::ui16:
-			cc.uxth(gDst.w(), gSrc.w());
-			break;
+			cc.movzx(gDst.r32(), gSrc.r16());
+			break; // movzx r32 zero-extends to 64
 		case Type::i32:
-			cc.sxtw(gDst.x(), gSrc.w());
+			cc.movsxd(gDst.r64(), gSrc.r32());
 			break;
 		case Type::ui32:
-			cc.mov(gDst.w(), gSrc.w()); // zero-extends to 64
-			break;
+			cc.mov(gDst.r32(), gSrc.r32());
+			break; // zero-extends to 64
 		default:
 			cc.mov(gDst, gSrc);
 			break;
 		}
-		// Step 2: narrow to destination width. ARM64 has no sub-32-bit register
-		// aliases, so the upper bits of W/X must be explicitly cleared to ensure
-		// the caller sees the correct value (especially for return values).
-		switch (dstType) {
-		case Type::i8:
-			cc.sxtb(gDst.x(), gDst.w());
-			break;
-		case Type::b:
-		case Type::ui8:
-			cc.uxtb(gDst.w(), gDst.w());
-			break;
-		case Type::i16:
-			cc.sxth(gDst.x(), gDst.w());
-			break;
-		case Type::ui16:
-			cc.uxth(gDst.w(), gDst.w());
-			break;
-		case Type::i32:
-			cc.sxtw(gDst.x(), gDst.w());
-			break;
-		case Type::ui32:
-			cc.mov(gDst.w(), gDst.w());
-			break;
-		default:
-			break; // i64, ui64 — already 64-bit, no narrowing needed.
-		}
 	} else if (srcIsFloat && !dstIsFloat) {
 		// Float → integer: truncate toward zero.
 		auto gDst = toGp(result);
-		auto vSrc = toVec(src);
-		if (isUnsignedType(dstType))
-			cc.fcvtzu(gDst, vSrc);
+		auto xSrc = toXmm(src);
+		if (srcType == Type::f32)
+			cc.cvttss2si(gDst.r64(), xSrc);
 		else
-			cc.fcvtzs(gDst, vSrc);
-		// Narrow to sub-32-bit destination if needed.
-		switch (dstType) {
-		case Type::i8:
-			cc.sxtb(gDst.x(), gDst.w());
-			break;
-		case Type::b:
-		case Type::ui8:
-			cc.uxtb(gDst.w(), gDst.w());
-			break;
-		case Type::i16:
-			cc.sxth(gDst.x(), gDst.w());
-			break;
-		case Type::ui16:
-			cc.uxth(gDst.w(), gDst.w());
-			break;
-		default:
-			break;
-		}
+			cc.cvttsd2si(gDst.r64(), xSrc);
 	} else if (!srcIsFloat && dstIsFloat) {
 		// Integer → float.
 		auto gSrc = toGp(src);
-		auto vDst = toVec(result);
-		if (isUnsignedType(srcType))
-			cc.ucvtf(vDst, gSrc);
-		else
-			cc.scvtf(vDst, gSrc);
+		auto xDst = toXmm(result);
+		if (srcType == Type::ui64) {
+			// cvtsi2ss/cvtsi2sd treats input as signed; values >= 2^63 need special handling.
+			Label done = cc.newLabel();
+			Label big = cc.newLabel();
+			auto tmp = cc.newInt64();
+			auto lowBit = cc.newInt64();
+			cc.test(gSrc, gSrc);
+			cc.js(big);
+			// High bit not set: fits in signed int64, convert directly.
+			if (dstType == Type::f32)
+				cc.cvtsi2ss(xDst, gSrc.r64());
+			else
+				cc.cvtsi2sd(xDst, gSrc.r64());
+			cc.jmp(done);
+			cc.bind(big);
+			// Shift right by 1, preserving the low bit, convert, then double.
+			cc.mov(tmp, gSrc);
+			cc.mov(lowBit, gSrc);
+			cc.and_(lowBit, 1);
+			cc.shr(tmp, 1);
+			cc.or_(tmp, lowBit);
+			if (dstType == Type::f32) {
+				cc.cvtsi2ss(xDst, tmp.r64());
+				cc.addss(xDst, xDst);
+			} else {
+				cc.cvtsi2sd(xDst, tmp.r64());
+				cc.addsd(xDst, xDst);
+			}
+			cc.bind(done);
+		} else {
+			if (dstType == Type::f32)
+				cc.cvtsi2ss(xDst, gSrc.r64());
+			else
+				cc.cvtsi2sd(xDst, gSrc.r64());
+		}
 	} else {
-		// Float → float: f32↔f64.
-		cc.fcvt(toVec(result), toVec(src));
+		// Float → float.
+		auto xSrc = toXmm(src);
+		auto xDst = toXmm(result);
+		if (srcType == Type::f32 && dstType == Type::f64)
+			cc.cvtss2sd(xDst, xSrc);
+		else
+			cc.cvtsd2ss(xDst, xSrc);
 	}
 	frame.setValue(op->getIdentifier(), result);
 }

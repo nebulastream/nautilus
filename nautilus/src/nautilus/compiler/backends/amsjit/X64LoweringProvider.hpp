@@ -33,7 +33,7 @@
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
-#include <asmjit/a64.h>
+#include <asmjit/x86.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -41,7 +41,7 @@
 namespace nautilus::compiler::asmjit {
 
 /**
- * @brief Translates Nautilus IR to AArch64 machine code using AsmJit.
+ * @brief Translates Nautilus IR to x86-64 machine code using AsmJit.
  *
  * All functions in the IR are compiled into a single CodeHolder using AsmJit's
  * two-pass pattern: first all FuncNodes are registered (establishing stable Labels),
@@ -61,8 +61,8 @@ public:
 	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime);
 
 private:
-	// Integer/pointer types → GP register (X); float types → Vec register (S/D).
-	using AsmReg = std::variant<::asmjit::a64::Gp, ::asmjit::a64::Vec>;
+	// Integer/pointer types → GP register; float types → XMM register.
+	using AsmReg = std::variant<::asmjit::x86::Gp, ::asmjit::x86::Xmm>;
 	using RegisterFrame = Frame<ir::OperationIdentifier, AsmReg>;
 
 	class LoweringContext {
@@ -78,7 +78,7 @@ private:
 		}
 
 	private:
-		::asmjit::a64::Compiler cc;
+		::asmjit::x86::Compiler cc;
 		std::shared_ptr<ir::IRGraph> ir;
 		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
@@ -89,10 +89,10 @@ private:
 		static bool isFloatType(Type t);
 		static bool isUnsignedType(Type t);
 
-		// All integer types are mapped to 64-bit GP (X); floats to Vec (S/D).
+		// All integer types are mapped to 64-bit GP; floats to XMM.
 		AsmReg allocReg(Type t);
-		static ::asmjit::a64::Gp toGp(const AsmReg& r);
-		static ::asmjit::a64::Vec toVec(const AsmReg& r);
+		static ::asmjit::x86::Gp toGp(const AsmReg& r);
+		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
 
 		::asmjit::Label getOrCreateLabel(const std::string& blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);

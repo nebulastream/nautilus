@@ -48,4 +48,15 @@ const CompilationBackend* CompilationBackendRegistry::getBackend(const std::stri
 	return items.at(name).get();
 }
 
+std::string CompilationBackendRegistry::getDefaultBackendName() const {
+	// Prefer mlir if available, otherwise return the first registered backend.
+	if (items.contains("mlir")) {
+		return "mlir";
+	}
+	if (!items.empty()) {
+		return items.begin()->first;
+	}
+	return "";
+}
+
 } // namespace nautilus::compiler

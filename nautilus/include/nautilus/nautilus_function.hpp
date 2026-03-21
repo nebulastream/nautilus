@@ -142,20 +142,10 @@ public:
 #endif
 		// Non-tracing path: JIT-compile on demand and cache.
 		if (!compiledFuncPtr_) {
-#ifdef ENABLE_TRACING
-			// The Executable is intentionally leaked to avoid static destruction order
-			// issues when NautilusFunction is declared at file scope — the MLIR context
-			// may already be torn down by the time ~NautilusFunction runs.
-			compiler::JITCompiler jit;
-			auto executable = jit.compile(fwrapper);
-			compiledFuncPtr_ = executable->getInvocableFunctionPtr("execute");
-			(void) executable.release(); // intentional leak
-#else
 			// Without tracing, create a trampoline that forwards to f_ directly.
 			// NautilusFunction is non-copyable/non-movable, so the address is stable.
 			TrampolineHelper<RawFuncPtr>::fn = &f_;
 			compiledFuncPtr_ = reinterpret_cast<void*>(&TrampolineHelper<RawFuncPtr>::call);
-#endif
 		}
 		return val<RawFuncPtr>(reinterpret_cast<RawFuncPtr>(compiledFuncPtr_));
 	}
