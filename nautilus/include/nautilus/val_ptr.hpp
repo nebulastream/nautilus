@@ -169,6 +169,20 @@ public:
 		return *this != static_cast<val<ValuePtrType>>(nullptr);
 	}
 
+	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
+	/// Treats the pointer value as a uintptr_t and casts to the target type.
+	template <typename OtherType>
+	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
+	operator val<OtherType>() const {
+		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
+			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
+			return val<OtherType>(resultRef);
+#endif
+		}
+		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(value)));
+	}
+
 #ifdef ENABLE_TRACING
 	const tracing::TypedValueRefHolder state;
 #endif
@@ -312,6 +326,20 @@ public:
 #endif
 	}
 
+	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
+	template <typename OtherType>
+	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
+	operator val<OtherType>() const {
+		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
+			auto resultRef =
+			    tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), this->state);
+			return val<OtherType>(resultRef);
+#endif
+		}
+		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(this->value)));
+	}
+
 	operator bool() const {
 		return *this != static_cast<val<ValuePtrType>>(nullptr);
 	}
@@ -369,6 +397,20 @@ public:
 #else
 		return val<OtherType>((OtherType) this->value);
 #endif
+	}
+
+	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
+	template <typename OtherType>
+	    requires(is_arithmetic<OtherType> && !std::is_same_v<OtherType, bool>)
+	operator val<OtherType>() const {
+		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
+			auto resultRef =
+			    tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), this->state);
+			return val<OtherType>(resultRef);
+#endif
+		}
+		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(this->value)));
 	}
 
 	operator bool() const {

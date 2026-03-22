@@ -1004,6 +1004,40 @@ void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLo
 		// we skip the cast if input and output is the same stamp.
 		frame.setValue(castOperation->getIdentifier(), mlirInput);
 		return;
+	} else if (isInteger(inputStamp) && outputStamp == Type::ptr) {
+		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
+		auto i64Input = mlirInput;
+		if (getBitWith(inputStamp) < 64) {
+			auto i64Type = builder->getI64Type();
+			if (isSignedInteger(inputStamp)) {
+				i64Input = builder->create<mlir::arith::ExtSIOp>(getNameLoc("location"), i64Type, mlirInput);
+			} else {
+				i64Input = builder->create<mlir::arith::ExtUIOp>(getNameLoc("location"), i64Type, mlirInput);
+			}
+		}
+		auto mlirCast = builder->create<mlir::LLVM::IntToPtrOp>(getNameLoc("location"), ptrType, i64Input);
+		frame.setValue(castOperation->getIdentifier(), mlirCast);
+		return;
+	} else if (inputStamp == Type::ptr && isInteger(outputStamp)) {
+		auto mlirCast = builder->create<mlir::LLVM::PtrToIntOp>(getNameLoc("location"), outputType, mlirInput);
+		frame.setValue(castOperation->getIdentifier(), mlirCast);
+		return;
+	} else if (inputStamp == Type::ptr && isFloat(outputStamp)) {
+		auto i64Type = builder->getI64Type();
+		auto i64Value = builder->create<mlir::LLVM::PtrToIntOp>(getNameLoc("location"), i64Type, mlirInput);
+		auto mlirCast = builder->create<mlir::arith::UIToFPOp>(getNameLoc("location"), outputType, i64Value);
+		frame.setValue(castOperation->getIdentifier(), mlirCast);
+		return;
+	} else if (isFloat(inputStamp) && outputStamp == Type::ptr) {
+		auto i64Type = builder->getI64Type();
+		auto i64Value = builder->create<mlir::arith::FPToUIOp>(getNameLoc("location"), i64Type, mlirInput).getResult();
+		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
+		auto mlirCast = builder->create<mlir::LLVM::IntToPtrOp>(getNameLoc("location"), ptrType, i64Value);
+		frame.setValue(castOperation->getIdentifier(), mlirCast);
+		return;
+	} else if (inputStamp == Type::ptr && outputStamp == Type::ptr) {
+		frame.setValue(castOperation->getIdentifier(), mlirInput);
+		return;
 	} else if (getBitWith(inputStamp) < getBitWith(outputStamp)) {
 		// upcast
 		if (isSignedInteger(inputStamp) && (isUnsignedInteger(outputStamp) || isSignedInteger(outputStamp))) {

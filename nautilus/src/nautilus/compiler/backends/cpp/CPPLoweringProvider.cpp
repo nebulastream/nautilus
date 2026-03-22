@@ -247,7 +247,8 @@ void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocatio
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
+		                   << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
@@ -523,12 +524,20 @@ void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperatio
 void CPPLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, short blockIndex, RegisterFrame& frame) {
 	auto input = frame.getValue(castOp->getInput()->getIdentifier());
 	auto var = getVariable(castOp->getIdentifier());
-	auto targetType = getType(castOp->getStamp());
+	auto inputStamp = castOp->getInput()->getStamp();
+	auto outputStamp = castOp->getStamp();
+	auto targetType = getType(outputStamp);
 	if (!frame.contains(castOp->getIdentifier())) {
 		blockArguments << targetType << " " << var << ";\n";
 		frame.setValue(castOp->getIdentifier(), var);
 	}
-	blocks[blockIndex] << var << " = (" << targetType << ")" << input << ";\n";
+	bool ptrToArith = (inputStamp == Type::ptr && outputStamp != Type::ptr);
+	bool arithToPtr = (inputStamp != Type::ptr && outputStamp == Type::ptr);
+	if (ptrToArith || arithToPtr) {
+		blocks[blockIndex] << var << " = (" << targetType << ")(uintptr_t)" << input << ";\n";
+	} else {
+		blocks[blockIndex] << var << " = (" << targetType << ")" << input << ";\n";
+	}
 }
 
 void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp, short blockIndex,

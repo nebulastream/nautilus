@@ -101,11 +101,57 @@ void castTest(engine::NautilusEngine& engine) {
 	// std::numeric_limits<double>::min(), std::numeric_limits<double>::max());
 }
 
+template <typename OutType>
+void createPtrToArithSection(engine::NautilusEngine& engine, std::string name) {
+	DYNAMIC_SECTION(name) {
+		auto f = engine.registerFunction(staticCastExpression<void*, OutType>);
+		int32_t x = 42;
+		void* ptr = &x;
+		REQUIRE(f(ptr) == static_cast<OutType>(reinterpret_cast<uintptr_t>(ptr)));
+	}
+}
+
+void ptrCastTest(engine::NautilusEngine& engine) {
+	createPtrToArithSection<int8_t>(engine, "ptr_to_i8");
+	createPtrToArithSection<int16_t>(engine, "ptr_to_i16");
+	createPtrToArithSection<int32_t>(engine, "ptr_to_i32");
+	createPtrToArithSection<int64_t>(engine, "ptr_to_i64");
+	createPtrToArithSection<uint8_t>(engine, "ptr_to_ui8");
+	createPtrToArithSection<uint16_t>(engine, "ptr_to_ui16");
+	createPtrToArithSection<uint32_t>(engine, "ptr_to_ui32");
+	createPtrToArithSection<uint64_t>(engine, "ptr_to_ui64");
+	createPtrToArithSection<float>(engine, "ptr_to_float");
+	createPtrToArithSection<double>(engine, "ptr_to_double");
+
+	SECTION("i64_to_ptr") {
+		auto f = engine.registerFunction(staticCastExpression<int64_t, void*>);
+		int32_t x = 42;
+		auto intVal = static_cast<int64_t>(reinterpret_cast<uintptr_t>(&x));
+		REQUIRE(f(intVal) == reinterpret_cast<void*>(static_cast<uintptr_t>(intVal)));
+	}
+	SECTION("ui64_to_ptr") {
+		auto f = engine.registerFunction(staticCastExpression<uint64_t, void*>);
+		int32_t x = 42;
+		auto intVal = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&x));
+		REQUIRE(f(intVal) == reinterpret_cast<void*>(static_cast<uintptr_t>(intVal)));
+	}
+	SECTION("ptr_roundtrip_i64") {
+		auto ptrToInt = engine.registerFunction(staticCastExpression<void*, int64_t>);
+		auto intToPtr = engine.registerFunction(staticCastExpression<int64_t, void*>);
+		int32_t x = 42;
+		void* original = &x;
+		auto asInt = ptrToInt(original);
+		auto backToPtr = intToPtr(asInt);
+		REQUIRE(backToPtr == original);
+	}
+}
+
 TEST_CASE("Cast Interpreter Test") {
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
 	castTest(engine);
+	ptrCastTest(engine);
 }
 
 #ifdef ENABLE_TRACING
@@ -132,6 +178,33 @@ TEST_CASE("Cast Compiler Test") {
 				options.setOption("engine.traceMode", traceMode);
 				auto engine = engine::NautilusEngine(options);
 				castTest(engine);
+			}
+		}
+	}
+}
+#endif
+
+#ifdef ENABLE_TRACING
+TEST_CASE("Pointer Cast Compiler Test") {
+	std::vector<std::string> backends = {};
+#ifdef ENABLE_MLIR_BACKEND
+	backends.emplace_back("mlir");
+#endif
+#ifdef ENABLE_C_BACKEND
+	backends.emplace_back("cpp");
+#endif
+#ifdef ENABLE_BC_BACKEND
+	backends.emplace_back("bc");
+#endif
+	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	for (auto& backend : backends) {
+		for (auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				engine::Options options;
+				options.setOption("engine.backend", backend);
+				options.setOption("engine.traceMode", traceMode);
+				auto engine = engine::NautilusEngine(options);
+				ptrCastTest(engine);
 			}
 		}
 	}
