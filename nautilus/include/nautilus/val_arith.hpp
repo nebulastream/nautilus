@@ -130,6 +130,20 @@ public:
 		return val<OtherType>(value);
 	}
 
+	/// Conversion from integral type to pointer type (int→ptr).
+	/// Only available for integral value types (not float).
+	template <typename OtherType>
+	    requires std::is_pointer_v<OtherType> && std::is_integral_v<ValueType>
+	operator val<OtherType>() const {
+		if SHOULD_TRACE () {
+#ifdef ENABLE_TRACING
+			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
+			return val<OtherType>(resultRef);
+#endif
+		}
+		return val<OtherType>(reinterpret_cast<OtherType>(static_cast<uintptr_t>(value)));
+	}
+
 	/// Prefix increment operator.
 	/// Returns a non-const reference to allow chaining like ++(++x).
 	val<ValueType>& operator++() {

@@ -1548,6 +1548,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_i8_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_i8_ui64;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1580,6 +1583,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_i16_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_i16_ui64;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1598,7 +1604,7 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 			bc = ByteCode::CAST_i32_ui8;
 			break;
 		case Type::ui16:
-			bc = ByteCode::CAST_i32_ui64;
+			bc = ByteCode::CAST_i32_ui16;
 			break;
 		case Type::ui32:
 			bc = ByteCode::CAST_i32_ui32;
@@ -1611,6 +1617,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 			break;
 		case Type::f64:
 			bc = ByteCode::CAST_i32_d;
+			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_i32_ui64;
 			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
@@ -1644,6 +1653,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_i64_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_i64_ui64;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1675,6 +1687,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 			break;
 		case Type::f64:
 			bc = ByteCode::CAST_ui8_d;
+			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_ui8_ui64;
 			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
@@ -1708,6 +1723,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_ui16_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_ui16_ui64;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1739,6 +1757,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 			break;
 		case Type::f64:
 			bc = ByteCode::CAST_ui32_d;
+			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_ui32_ui64;
 			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
@@ -1773,6 +1794,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_ui64_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::REG_MOV;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1806,6 +1830,9 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 		case Type::f64:
 			bc = ByteCode::CAST_f_d;
 			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_f_ui64;
+			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
 		}
@@ -1837,6 +1864,47 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 			break;
 		case Type::f32:
 			bc = ByteCode::CAST_d_f;
+			break;
+		case Type::ptr:
+			bc = ByteCode::CAST_d_ui64;
+			break;
+		default:
+			throw NotImplementedException("This type is not supported.");
+		}
+	} else if (srcType == Type::ptr) {
+		switch (tar) {
+		case Type::i8:
+			bc = ByteCode::CAST_ui64_i8;
+			break;
+		case Type::i16:
+			bc = ByteCode::CAST_ui64_i16;
+			break;
+		case Type::i32:
+			bc = ByteCode::CAST_ui64_i32;
+			break;
+		case Type::i64:
+			bc = ByteCode::CAST_ui64_i64;
+			break;
+		case Type::ui8:
+			bc = ByteCode::CAST_ui64_ui8;
+			break;
+		case Type::ui16:
+			bc = ByteCode::CAST_ui64_ui16;
+			break;
+		case Type::ui32:
+			bc = ByteCode::CAST_ui64_ui32;
+			break;
+		case Type::ui64:
+			bc = ByteCode::REG_MOV;
+			break;
+		case Type::f32:
+			bc = ByteCode::CAST_ui64_f;
+			break;
+		case Type::f64:
+			bc = ByteCode::CAST_ui64_d;
+			break;
+		case Type::ptr:
+			bc = ByteCode::REG_MOV;
 			break;
 		default:
 			throw NotImplementedException("This type is not supported.");
