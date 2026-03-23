@@ -198,13 +198,15 @@ public:
 		return lhs.m_iterator != rhs.m_iterator;
 	}
 
-	friend bool operator==(const static_iterator& it, const static_sentinel<Iterator>& s);
-	friend bool operator!=(const static_iterator& it, const static_sentinel<Iterator>& s);
-
 private:
 	static_val<int64_t> val;
 	Iterator m_iterator;
 	friend class static_sentinel<Iterator>;
+
+	template <typename I>
+	friend bool operator==(const static_iterator<I>& it, const static_sentinel<I>& s);
+	template <typename I>
+	friend bool operator!=(const static_iterator<I>& it, const static_sentinel<I>& s);
 };
 
 // Sentinel for end(): stores only the end iterator without a static_val,
@@ -215,17 +217,24 @@ public:
 	explicit static_sentinel(Iterator it) : m_end(it) {
 	}
 
-	friend bool operator==(const static_iterator<Iterator>& it, const static_sentinel& s) {
-		return it.m_iterator == s.m_end;
-	}
-
-	friend bool operator!=(const static_iterator<Iterator>& it, const static_sentinel& s) {
-		return it.m_iterator != s.m_end;
-	}
-
 private:
 	Iterator m_end;
+
+	template <typename I>
+	friend bool operator==(const static_iterator<I>& it, const static_sentinel<I>& s);
+	template <typename I>
+	friend bool operator!=(const static_iterator<I>& it, const static_sentinel<I>& s);
 };
+
+template <typename Iterator>
+bool operator==(const static_iterator<Iterator>& it, const static_sentinel<Iterator>& s) {
+	return it.m_iterator == s.m_end;
+}
+
+template <typename Iterator>
+bool operator!=(const static_iterator<Iterator>& it, const static_sentinel<Iterator>& s) {
+	return it.m_iterator != s.m_end;
+}
 
 // Wraps any container (or C-style array via std::begin/end) so that a range-for
 // loop over it is fully unrolled at trace time.
@@ -298,13 +307,15 @@ public:
 		return lhs.m_iterator != rhs.m_iterator;
 	}
 
-	friend bool operator==(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
-	friend bool operator!=(const enumerate_iterator& it, const enumerate_sentinel<Iterator, IndexType>& s);
-
 private:
 	static_val<IndexType> index;
 	Iterator m_iterator;
 	friend class enumerate_sentinel<Iterator, IndexType>;
+
+	template <typename I, typename Idx>
+	friend bool operator==(const enumerate_iterator<I, Idx>& it, const enumerate_sentinel<I, Idx>& s);
+	template <typename I, typename Idx>
+	friend bool operator!=(const enumerate_iterator<I, Idx>& it, const enumerate_sentinel<I, Idx>& s);
 };
 
 template <typename Iterator, typename IndexType>
@@ -313,17 +324,24 @@ public:
 	explicit enumerate_sentinel(Iterator it) : m_end(it) {
 	}
 
-	friend bool operator==(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel& s) {
-		return it.m_iterator == s.m_end;
-	}
-
-	friend bool operator!=(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel& s) {
-		return it.m_iterator != s.m_end;
-	}
-
 private:
 	Iterator m_end;
+
+	template <typename I, typename Idx>
+	friend bool operator==(const enumerate_iterator<I, Idx>& it, const enumerate_sentinel<I, Idx>& s);
+	template <typename I, typename Idx>
+	friend bool operator!=(const enumerate_iterator<I, Idx>& it, const enumerate_sentinel<I, Idx>& s);
 };
+
+template <typename Iterator, typename IndexType>
+bool operator==(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel<Iterator, IndexType>& s) {
+	return it.m_iterator == s.m_end;
+}
+
+template <typename Iterator, typename IndexType>
+bool operator!=(const enumerate_iterator<Iterator, IndexType>& it, const enumerate_sentinel<Iterator, IndexType>& s) {
+	return it.m_iterator != s.m_end;
+}
 
 // Like static_iterable but also exposes the iteration index as a static_val.
 template <typename Container, typename IndexType = int64_t>

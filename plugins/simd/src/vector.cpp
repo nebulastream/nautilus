@@ -137,6 +137,52 @@ static vector_data<T, N>* nextSlot() {
 		return result;                                                                                      \
 	}
 
+#define VECTOR_IMPL_BROADCAST(T, N, SUFFIX)                                       \
+	extern "C" vector_data<T, N>* vector_broadcast_##SUFFIX##_impl(T scalar) {    \
+		auto* result = nextSlot<T, N>();                                          \
+		for (size_t i = 0; i < N; i++) result->data[i] = scalar;                 \
+		return result;                                                            \
+	}
+
+#define VECTOR_IMPL_GATHER(T, N, SUFFIX)                                                               \
+	extern "C" vector_data<T, N>* vector_gather_##SUFFIX##_impl(const T* base, const int32_t* indices) { \
+		auto* result = nextSlot<T, N>();                                                              \
+		for (size_t i = 0; i < N; i++) result->data[i] = base[indices[i]];                            \
+		return result;                                                                                \
+	}
+
+#define VECTOR_IMPL_SCATTER(T, N, SUFFIX)                                                                        \
+	extern "C" void vector_scatter_##SUFFIX##_impl(T* base, const int32_t* indices, vector_data<T, N>* data) { \
+		for (size_t i = 0; i < N; i++) base[indices[i]] = data->data[i];                                      \
+	}
+
+#define VECTOR_IMPL_EXTRACT(T, N, SUFFIX)                                                     \
+	extern "C" T vector_extract_##SUFFIX##_impl(vector_data<T, N>* v, int32_t idx) {          \
+		return v->data[idx];                                                                  \
+	}
+
+#define VECTOR_IMPL_INSERT(T, N, SUFFIX)                                                                        \
+	extern "C" vector_data<T, N>* vector_insert_##SUFFIX##_impl(vector_data<T, N>* v, T value, int32_t idx) { \
+		auto* result = nextSlot<T, N>();                                                                    \
+		for (size_t i = 0; i < N; i++) result->data[i] = v->data[i];                                       \
+		result->data[idx] = value;                                                                          \
+		return result;                                                                                      \
+	}
+
+#define VECTOR_IMPL_SHL(T, N, SUFFIX)                                                                           \
+	extern "C" vector_data<T, N>* vector_shl_##SUFFIX##_impl(vector_data<T, N>* a, vector_data<T, N>* b) {     \
+		auto* result = nextSlot<T, N>();                                                                    \
+		for (size_t i = 0; i < N; i++) result->data[i] = a->data[i] << b->data[i];                         \
+		return result;                                                                                      \
+	}
+
+#define VECTOR_IMPL_SHR(T, N, SUFFIX)                                                                           \
+	extern "C" vector_data<T, N>* vector_shr_##SUFFIX##_impl(vector_data<T, N>* a, vector_data<T, N>* b) {     \
+		auto* result = nextSlot<T, N>();                                                                    \
+		for (size_t i = 0; i < N; i++) result->data[i] = a->data[i] >> b->data[i];                         \
+		return result;                                                                                      \
+	}
+
 #define VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                         \
 	VECTOR_IMPL_LOAD(T, N, SUFFIX)                                \
 	VECTOR_IMPL_STORE(T, N, SUFFIX)                               \
@@ -157,7 +203,12 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_BLEND(T, N, SUFFIX)                               \
 	VECTOR_IMPL_BITWISE(T, N, SUFFIX, and, &)                     \
 	VECTOR_IMPL_BITWISE(T, N, SUFFIX, or, |)                      \
-	VECTOR_IMPL_BITWISE(T, N, SUFFIX, xor, ^)
+	VECTOR_IMPL_BITWISE(T, N, SUFFIX, xor, ^)                     \
+	VECTOR_IMPL_BROADCAST(T, N, SUFFIX)                           \
+	VECTOR_IMPL_GATHER(T, N, SUFFIX)                              \
+	VECTOR_IMPL_SCATTER(T, N, SUFFIX)                             \
+	VECTOR_IMPL_EXTRACT(T, N, SUFFIX)                             \
+	VECTOR_IMPL_INSERT(T, N, SUFFIX)
 
 #define VECTOR_IMPL_FLOAT_OPS(T, N, SUFFIX)                       \
 	VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                             \
@@ -170,7 +221,9 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                             \
 	VECTOR_IMPL_REDUCE(T, N, SUFFIX, add, T(0), +)               \
 	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, min, a->data[0], std::min) \
-	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, max, a->data[0], std::max)
+	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, max, a->data[0], std::max) \
+	VECTOR_IMPL_SHL(T, N, SUFFIX)                                \
+	VECTOR_IMPL_SHR(T, N, SUFFIX)
 
 // clang-format on
 
@@ -244,6 +297,39 @@ namespace detail {
 		return invoke<T, vector_data<T, N>*>(vector_reduce_##NAME##_##SUFFIX##_impl, a);                 \
 	}
 
+#define VEC_INVOKE_BROADCAST(T, N, SUFFIX)                                                                \
+	template <>                                                                                          \
+	val<vector_data<T, N>*> vec_broadcast<T, N>(val<T> scalar) {                                         \
+		return invoke<vector_data<T, N>*, T>(vector_broadcast_##SUFFIX##_impl, scalar);                  \
+	}
+
+#define VEC_INVOKE_GATHER(T, N, SUFFIX)                                                                   \
+	template <>                                                                                          \
+	val<vector_data<T, N>*> vec_gather<T, N>(val<const T*> base, val<const int32_t*> indices) {           \
+		return invoke<vector_data<T, N>*, const T*, const int32_t*>(                                     \
+		    vector_gather_##SUFFIX##_impl, base, indices);                                               \
+	}
+
+#define VEC_INVOKE_SCATTER(T, N, SUFFIX)                                                                  \
+	template <>                                                                                          \
+	void vec_scatter<T, N>(val<T*> base, val<const int32_t*> indices, val<vector_data<T, N>*> data) {    \
+		invoke<void, T*, const int32_t*, vector_data<T, N>*>(                                            \
+		    vector_scatter_##SUFFIX##_impl, base, indices, data);                                        \
+	}
+
+#define VEC_INVOKE_EXTRACT(T, N, SUFFIX)                                                                  \
+	template <>                                                                                          \
+	val<T> vec_extract<T, N>(val<vector_data<T, N>*> v, val<int32_t> idx) {                              \
+		return invoke<T, vector_data<T, N>*, int32_t>(vector_extract_##SUFFIX##_impl, v, idx);           \
+	}
+
+#define VEC_INVOKE_INSERT(T, N, SUFFIX)                                                                   \
+	template <>                                                                                          \
+	val<vector_data<T, N>*> vec_insert<T, N>(val<vector_data<T, N>*> v, val<T> value, val<int32_t> idx) {\
+		return invoke<vector_data<T, N>*, vector_data<T, N>*, T, int32_t>(                               \
+		    vector_insert_##SUFFIX##_impl, v, value, idx);                                               \
+	}
+
 #define VEC_INVOKE_ALL(T, N, SUFFIX)                                                                     \
 	VEC_INVOKE_LOAD(T, N, SUFFIX)                                                                        \
 	VEC_INVOKE_STORE(T, N, SUFFIX)                                                                       \
@@ -267,7 +353,12 @@ namespace detail {
 	VEC_INVOKE_TERNARY(T, N, SUFFIX, blend)                                                              \
 	VEC_INVOKE_BINARY(T, N, SUFFIX, and)                                                                 \
 	VEC_INVOKE_BINARY(T, N, SUFFIX, or)                                                                  \
-	VEC_INVOKE_BINARY(T, N, SUFFIX, xor)
+	VEC_INVOKE_BINARY(T, N, SUFFIX, xor)                                                                 \
+	VEC_INVOKE_BROADCAST(T, N, SUFFIX)                                                                   \
+	VEC_INVOKE_GATHER(T, N, SUFFIX)                                                                      \
+	VEC_INVOKE_SCATTER(T, N, SUFFIX)                                                                     \
+	VEC_INVOKE_EXTRACT(T, N, SUFFIX)                                                                     \
+	VEC_INVOKE_INSERT(T, N, SUFFIX)
 
 #define VEC_INVOKE_FLOAT_ALL(T, N, SUFFIX)                                                               \
 	VEC_INVOKE_ALL(T, N, SUFFIX)                                                                         \
@@ -280,18 +371,30 @@ VEC_INVOKE_FLOAT_ALL(float, 4, f32x4)
 VEC_INVOKE_FLOAT_ALL(double, 2, f64x2)
 VEC_INVOKE_ALL(int32_t, 4, i32x4)
 VEC_INVOKE_ALL(int64_t, 2, i64x2)
+VEC_INVOKE_BINARY(int32_t, 4, i32x4, shl)
+VEC_INVOKE_BINARY(int32_t, 4, i32x4, shr)
+VEC_INVOKE_BINARY(int64_t, 2, i64x2, shl)
+VEC_INVOKE_BINARY(int64_t, 2, i64x2, shr)
 
 // 256-bit (AVX / AVX2)
 VEC_INVOKE_FLOAT_ALL(float, 8, f32x8)
 VEC_INVOKE_FLOAT_ALL(double, 4, f64x4)
 VEC_INVOKE_ALL(int32_t, 8, i32x8)
 VEC_INVOKE_ALL(int64_t, 4, i64x4)
+VEC_INVOKE_BINARY(int32_t, 8, i32x8, shl)
+VEC_INVOKE_BINARY(int32_t, 8, i32x8, shr)
+VEC_INVOKE_BINARY(int64_t, 4, i64x4, shl)
+VEC_INVOKE_BINARY(int64_t, 4, i64x4, shr)
 
 // 512-bit (AVX-512)
 VEC_INVOKE_FLOAT_ALL(float, 16, f32x16)
 VEC_INVOKE_FLOAT_ALL(double, 8, f64x8)
 VEC_INVOKE_ALL(int32_t, 16, i32x16)
 VEC_INVOKE_ALL(int64_t, 8, i64x8)
+VEC_INVOKE_BINARY(int32_t, 16, i32x16, shl)
+VEC_INVOKE_BINARY(int32_t, 16, i32x16, shr)
+VEC_INVOKE_BINARY(int64_t, 8, i64x8, shl)
+VEC_INVOKE_BINARY(int64_t, 8, i64x8, shr)
 
 } // namespace detail
 

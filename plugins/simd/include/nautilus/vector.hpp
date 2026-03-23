@@ -96,6 +96,20 @@ template <typename T, size_t N>
 val<vector_data<T, N>*> vec_or(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
 val<vector_data<T, N>*> vec_xor(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_broadcast(val<T> scalar);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_gather(val<const T*> base, val<const int32_t*> indices);
+template <typename T, size_t N>
+void vec_scatter(val<T*> base, val<const int32_t*> indices, val<vector_data<T, N>*> data);
+template <typename T, size_t N>
+val<T> vec_extract(val<vector_data<T, N>*> v, val<int32_t> idx);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_insert(val<vector_data<T, N>*> v, val<T> value, val<int32_t> idx);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_shl(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
+template <typename T, size_t N>
+val<vector_data<T, N>*> vec_shr(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 
 } // namespace detail
 
@@ -142,6 +156,39 @@ public:
 	/// Store this vector to contiguous memory.
 	void Store(val<T*> ptr) const {
 		detail::vec_store<T, N>(ptr, ptr_);
+	}
+
+	/// Broadcast a scalar value to all lanes.
+	static val Broadcast(val<T> scalar) {
+		return val(detail::vec_broadcast<T, N>(scalar));
+	}
+
+	/// Gather: load elements from non-contiguous memory locations.
+	/// Loads base[indices[0]], base[indices[1]], ..., base[indices[N-1]].
+	template <typename IdxT = int32_t>
+	static val Gather(val<const T*> base, val<const IdxT*> indices) {
+		static_assert(std::is_same_v<IdxT, int32_t>, "Index type must be int32_t");
+		return val(detail::vec_gather<T, N>(base, indices));
+	}
+
+	/// Scatter: store elements to non-contiguous memory locations.
+	/// Stores lane i to base[indices[i]].
+	template <typename IdxT = int32_t>
+	void Scatter(val<T*> base, val<const IdxT*> indices) const {
+		static_assert(std::is_same_v<IdxT, int32_t>, "Index type must be int32_t");
+		detail::vec_scatter<T, N>(base, indices, ptr_);
+	}
+
+	// -- Lane access ---------------------------------------------------------
+
+	/// Extract a single lane by index.
+	val<T> Get(val<int32_t> idx) const {
+		return detail::vec_extract<T, N>(ptr_, idx);
+	}
+
+	/// Return a new vector with one lane replaced.
+	val Set(val<int32_t> idx, val<T> value) const {
+		return val(detail::vec_insert<T, N>(ptr_, value, idx));
 	}
 
 	// -- Unary operations ----------------------------------------------------
@@ -250,6 +297,34 @@ public:
 
 	friend val operator^(val a, val b) {
 		return val(detail::vec_xor<T, N>(a.ptr_, b.ptr_));
+	}
+
+	// -- Shift operators (integer types only) --------------------------------
+
+	friend val operator<<(val a, val b)
+	    requires std::is_integral_v<T>
+	{
+		return val(detail::vec_shl<T, N>(a.ptr_, b.ptr_));
+	}
+
+	friend val operator>>(val a, val b)
+	    requires std::is_integral_v<T>
+	{
+		return val(detail::vec_shr<T, N>(a.ptr_, b.ptr_));
+	}
+
+	val& operator<<=(val other)
+	    requires std::is_integral_v<T>
+	{
+		*this = *this << other;
+		return *this;
+	}
+
+	val& operator>>=(val other)
+	    requires std::is_integral_v<T>
+	{
+		*this = *this >> other;
+		return *this;
 	}
 
 private:

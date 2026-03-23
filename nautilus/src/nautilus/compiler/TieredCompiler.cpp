@@ -125,6 +125,8 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
+TieredJITCompiler::TieredJITCompiler(engine::Options) : baseCompiler_() {
+}
 TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig) : baseCompiler_() {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;

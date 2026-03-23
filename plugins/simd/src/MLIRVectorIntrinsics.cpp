@@ -1,12 +1,12 @@
 
-#include "nautilus/compiler/backends/mlir/intrinsics/MLIRVectorIntrinsics.hpp"
+#include "MLIRVectorIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "vector_impl.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/IR/Types.h>
-#include <nautilus/api/vector/vector_impl.hpp>
 
 namespace nautilus::compiler::mlir {
 
@@ -337,6 +337,316 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 	return true;
 }
 
+/// Float comparison: FCmpOp → vector<NxI1> → sext to all-ones/zeros → bitcast to float
+template <::mlir::LLVM::FCmpPredicate Pred, typename ElemT, int64_t N>
+bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                         MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, float>) {
+		elemTy = builder->getF32Type();
+	} else {
+		elemTy = builder->getF64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto b = loadVecFromPtr(builder, ptrB, vecTy);
+
+	// Compare → vector<NxI1>
+	auto cmp = builder->create<::mlir::LLVM::FCmpOp>(builder->getUnknownLoc(), Pred, a, b);
+
+	// Sign-extend i1 → iK (produces all-ones for true, all-zeros for false)
+	auto intElemTy = builder->getIntegerType(elemTy.getIntOrFloatBitWidth());
+	auto intVecTy = getVecType(intElemTy, N);
+	auto extended = builder->create<::mlir::LLVM::SExtOp>(builder->getUnknownLoc(), intVecTy, cmp);
+
+	// Bitcast int → float to match the expected return type
+	auto result = builder->create<::mlir::LLVM::BitcastOp>(builder->getUnknownLoc(), vecTy, extended);
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+/// Integer comparison: ICmpOp → vector<NxI1> → sext to all-ones/zeros
+template <::mlir::LLVM::ICmpPredicate Pred, typename ElemT, int64_t N>
+bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                         MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, int32_t>) {
+		elemTy = builder->getI32Type();
+	} else {
+		elemTy = builder->getI64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto b = loadVecFromPtr(builder, ptrB, vecTy);
+
+	// Compare → vector<NxI1>
+	auto cmp = builder->create<::mlir::LLVM::ICmpOp>(builder->getUnknownLoc(), Pred, a, b);
+
+	// Sign-extend i1 → iK (produces all-ones for true, all-zeros for false)
+	auto extended = builder->create<::mlir::LLVM::SExtOp>(builder->getUnknownLoc(), vecTy, cmp);
+
+	auto resultPtr = storeVecToAlloca(builder, extended, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+/// Float bitwise: bitcast to int, apply op, bitcast back
+template <typename MLIROp, typename ElemT, int64_t N>
+bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
+                                 const compiler::ir::ProxyCallOperation* call,
+                                 MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, float>) {
+		elemTy = builder->getF32Type();
+	} else {
+		elemTy = builder->getF64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+	auto intElemTy = builder->getIntegerType(elemTy.getIntOrFloatBitWidth());
+	auto intVecTy = getVecType(intElemTy, N);
+
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto b = loadVecFromPtr(builder, ptrB, vecTy);
+
+	// Bitcast float → int
+	auto ai = builder->create<::mlir::LLVM::BitcastOp>(builder->getUnknownLoc(), intVecTy, a);
+	auto bi = builder->create<::mlir::LLVM::BitcastOp>(builder->getUnknownLoc(), intVecTy, b);
+
+	// Apply bitwise op on integers
+	auto ri = builder->create<MLIROp>(builder->getUnknownLoc(), ai, bi);
+
+	// Bitcast int → float
+	auto result = builder->create<::mlir::LLVM::BitcastOp>(builder->getUnknownLoc(), vecTy, ri);
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+/// Blend: mask != 0 → i1 vector → select(mask, a, b)
+template <typename ElemT, int64_t N>
+bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                          MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrMask = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, float>) {
+		elemTy = builder->getF32Type();
+	} else if constexpr (std::is_same_v<ElemT, double>) {
+		elemTy = builder->getF64Type();
+	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
+		elemTy = builder->getI32Type();
+	} else {
+		elemTy = builder->getI64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+
+	auto mask = loadVecFromPtr(builder, ptrMask, vecTy);
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto b = loadVecFromPtr(builder, ptrB, vecTy);
+
+	// Convert mask to i1 vector: mask != 0
+	::mlir::Value maskI1;
+	if constexpr (std::is_floating_point_v<ElemT>) {
+		// Float: bitcast to int first, then compare != 0
+		auto intElemTy = builder->getIntegerType(elemTy.getIntOrFloatBitWidth());
+		auto intVecTy = getVecType(intElemTy, N);
+		auto maskInt = builder->create<::mlir::LLVM::BitcastOp>(builder->getUnknownLoc(), intVecTy, mask);
+		auto zero = builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), intVecTy,
+		                                                       builder->getZeroAttr(intVecTy));
+		maskI1 = builder->create<::mlir::LLVM::ICmpOp>(builder->getUnknownLoc(), ::mlir::LLVM::ICmpPredicate::ne,
+		                                               maskInt, zero);
+	} else {
+		// Int: compare directly != 0
+		auto zero =
+		    builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), vecTy, builder->getZeroAttr(vecTy));
+		maskI1 = builder->create<::mlir::LLVM::ICmpOp>(builder->getUnknownLoc(), ::mlir::LLVM::ICmpPredicate::ne, mask,
+		                                               zero);
+	}
+
+	// select: where mask is set → a, else → b
+	auto result = builder->create<::mlir::LLVM::SelectOp>(builder->getUnknownLoc(), maskI1, a, b);
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+// ============================================================================
+// Helper: get MLIR element type from C++ type
+// ============================================================================
+
+template <typename ElemT>
+static ::mlir::Type getElemType(::mlir::OpBuilder& builder) {
+	if constexpr (std::is_same_v<ElemT, float>) {
+		return builder.getF32Type();
+	} else if constexpr (std::is_same_v<ElemT, double>) {
+		return builder.getF64Type();
+	} else if constexpr (std::is_same_v<ElemT, int32_t>) {
+		return builder.getI32Type();
+	} else {
+		return builder.getI64Type();
+	}
+}
+
+// ============================================================================
+// Broadcast: splat a scalar to all vector lanes
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                              MLIRLoweringProvider::ValueFrame& frame) {
+	auto scalar = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+
+	// Insert scalar at index 0 into undef vector, then shuffle-splat
+	auto undef = builder->create<::mlir::LLVM::UndefOp>(loc, vecTy);
+	auto zero = builder->create<::mlir::LLVM::ConstantOp>(loc, builder->getI32Type(), builder->getI32IntegerAttr(0));
+	auto inserted = builder->create<::mlir::LLVM::InsertElementOp>(loc, undef, scalar, zero);
+
+	// Shuffle with all-zero mask to broadcast lane 0 to all lanes
+	llvm::SmallVector<int32_t> mask(N, 0);
+	auto result = builder->create<::mlir::LLVM::ShuffleVectorOp>(loc, inserted, undef, mask);
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+// ============================================================================
+// Gather: indexed load from non-contiguous memory
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                           MLIRLoweringProvider::ValueFrame& frame) {
+	auto basePtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto idxPtr = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+	auto i32Ty = builder->getI32Type();
+	auto idxVecTy = getVecType(i32Ty, N);
+	auto ptrTy = ::mlir::LLVM::LLVMPointerType::get(builder->getContext());
+
+	// Load all indices as a vector<Nxi32>
+	auto indices = builder->create<::mlir::LLVM::LoadOp>(loc, idxVecTy, idxPtr);
+
+	// Build result element by element: extract index, GEP, load, insert
+	::mlir::Value result = builder->create<::mlir::LLVM::UndefOp>(loc, vecTy);
+	for (int64_t i = 0; i < N; i++) {
+		::mlir::Value iConst = builder->create<::mlir::LLVM::ConstantOp>(loc, i32Ty, builder->getI32IntegerAttr(i));
+		::mlir::Value idx = builder->create<::mlir::LLVM::ExtractElementOp>(loc, indices, iConst);
+		auto elemPtr = builder->create<::mlir::LLVM::GEPOp>(loc, ptrTy, elemTy, basePtr,
+		                                                    llvm::ArrayRef<::mlir::LLVM::GEPArg> {idx});
+		::mlir::Value elem = builder->create<::mlir::LLVM::LoadOp>(loc, elemTy, elemPtr);
+		result = builder->create<::mlir::LLVM::InsertElementOp>(loc, result, elem, iConst);
+	}
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
+// ============================================================================
+// Scatter: indexed store to non-contiguous memory
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                            MLIRLoweringProvider::ValueFrame& frame) {
+	auto basePtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto idxPtr = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto dataPtr = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+	auto i32Ty = builder->getI32Type();
+	auto idxVecTy = getVecType(i32Ty, N);
+	auto ptrTy = ::mlir::LLVM::LLVMPointerType::get(builder->getContext());
+
+	// Load indices and data
+	auto indices = builder->create<::mlir::LLVM::LoadOp>(loc, idxVecTy, idxPtr);
+	auto data = loadVecFromPtr(builder, dataPtr, vecTy);
+
+	// Store element by element: extract index + element, GEP, store
+	for (int64_t i = 0; i < N; i++) {
+		::mlir::Value iConst = builder->create<::mlir::LLVM::ConstantOp>(loc, i32Ty, builder->getI32IntegerAttr(i));
+		::mlir::Value idx = builder->create<::mlir::LLVM::ExtractElementOp>(loc, indices, iConst);
+		::mlir::Value elem = builder->create<::mlir::LLVM::ExtractElementOp>(loc, data, iConst);
+		auto elemPtr = builder->create<::mlir::LLVM::GEPOp>(loc, ptrTy, elemTy, basePtr,
+		                                                    llvm::ArrayRef<::mlir::LLVM::GEPArg> {idx});
+		builder->create<::mlir::LLVM::StoreOp>(loc, elem, elemPtr);
+	}
+
+	frame.setValue(call->getIdentifier(), basePtr);
+	return true;
+}
+
+// ============================================================================
+// Extract: get a single lane by runtime index
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                            MLIRLoweringProvider::ValueFrame& frame) {
+	auto vecPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto idx = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+
+	auto vec = loadVecFromPtr(builder, vecPtr, vecTy);
+	auto result = builder->create<::mlir::LLVM::ExtractElementOp>(loc, vec, idx);
+
+	frame.setValue(call->getIdentifier(), result);
+	return true;
+}
+
+// ============================================================================
+// Insert: replace a single lane by runtime index, return new vector
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                           MLIRLoweringProvider::ValueFrame& frame) {
+	auto vecPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto idx = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+
+	auto vec = loadVecFromPtr(builder, vecPtr, vecTy);
+	auto result = builder->create<::mlir::LLVM::InsertElementOp>(loc, vec, value, idx);
+
+	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
+	frame.setValue(call->getIdentifier(), resultPtr);
+	return true;
+}
+
 // ============================================================================
 // Registration macros
 // ============================================================================
@@ -427,6 +737,91 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_max_##SUFFIX##_impl),                                \
 	                     (vectorReduceIntIntrinsic<::mlir::LLVM::vector_reduce_smax, T, N>));
 
+// Register float comparisons (eq, ne, lt, le, gt, ge)
+#define REGISTER_VECTOR_CMP_FLOAT(manager, T, N, SUFFIX)                                                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_eq_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::oeq, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_ne_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::one, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_lt_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::olt, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_le_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::ole, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_gt_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::ogt, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_ge_##SUFFIX##_impl),                                        \
+	                     (vectorFCmpIntrinsic<::mlir::LLVM::FCmpPredicate::oge, T, N>));
+
+// Register int comparisons (eq, ne, lt, le, gt, ge)
+#define REGISTER_VECTOR_CMP_INT(manager, T, N, SUFFIX)                                                               \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_eq_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::eq, T, N>));                              \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_ne_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::ne, T, N>));                              \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_lt_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::slt, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_le_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::sle, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_gt_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::sgt, T, N>));                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_ge_##SUFFIX##_impl),                                        \
+	                     (vectorICmpIntrinsic<::mlir::LLVM::ICmpPredicate::sge, T, N>));
+
+// Register float bitwise (bitcast to int, apply op, bitcast back)
+#define REGISTER_VECTOR_BITWISE_FLOAT(manager, T, N, SUFFIX)                                                         \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_and_##SUFFIX##_impl),                                       \
+	                     (vectorBitwiseFloatIntrinsic<::mlir::LLVM::AndOp, T, N>));                                  \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_or_##SUFFIX##_impl),                                        \
+	                     (vectorBitwiseFloatIntrinsic<::mlir::LLVM::OrOp, T, N>));                                   \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_xor_##SUFFIX##_impl),                                       \
+	                     (vectorBitwiseFloatIntrinsic<::mlir::LLVM::XOrOp, T, N>));
+
+// Register int bitwise (direct LLVM ops)
+#define REGISTER_VECTOR_BITWISE_INT(manager, T, N, SUFFIX)                                                           \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_and_##SUFFIX##_impl),                                       \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::AndOp, T, N>);                                          \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_or_##SUFFIX##_impl),                                        \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::OrOp, T, N>);                                           \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_xor_##SUFFIX##_impl),                                       \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::XOrOp, T, N>);
+
+// Register blend (mask → i1 → select)
+#define REGISTER_VECTOR_BLEND(manager, T, N, SUFFIX)                                                                 \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_blend_##SUFFIX##_impl),                                     \
+	                     (vectorBlendIntrinsic<T, N>));
+
+// Register broadcast (scalar → splat vector)
+#define REGISTER_VECTOR_BROADCAST(manager, T, N, SUFFIX)                                                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_broadcast_##SUFFIX##_impl),                                 \
+	                     (vectorBroadcastIntrinsic<T, N>));
+
+// Register gather (indexed load)
+#define REGISTER_VECTOR_GATHER(manager, T, N, SUFFIX)                                                                \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_gather_##SUFFIX##_impl),                                    \
+	                     (vectorGatherIntrinsic<T, N>));
+
+// Register scatter (indexed store)
+#define REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                               \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_scatter_##SUFFIX##_impl),                                   \
+	                     (vectorScatterIntrinsic<T, N>));
+
+// Register extract (lane access)
+#define REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                               \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_extract_##SUFFIX##_impl),                                   \
+	                     (vectorExtractIntrinsic<T, N>));
+
+// Register insert (lane replace)
+#define REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)                                                                \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_insert_##SUFFIX##_impl),                                    \
+	                     (vectorInsertIntrinsic<T, N>));
+
+// Register shift operations (integer only)
+#define REGISTER_VECTOR_SHIFT_INT(manager, T, N, SUFFIX)                                                             \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_shl_##SUFFIX##_impl),                                       \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::ShlOp, T, N>);                                          \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_shr_##SUFFIX##_impl),                                       \
+	                     vectorBinaryIntrinsic<::mlir::LLVM::AShrOp, T, N>);
+
 // Full registration for float type/width
 #define REGISTER_VECTOR_FLOAT_ALL(manager, T, N, SUFFIX)                                                             \
 	REGISTER_VECTOR_LOAD_STORE(manager, T, N, SUFFIX)                                                                \
@@ -435,7 +830,15 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 	REGISTER_VECTOR_NEG_FLOAT(manager, T, N, SUFFIX)                                                                 \
 	REGISTER_VECTOR_MINMAX_FLOAT(manager, T, N, SUFFIX)                                                              \
 	REGISTER_VECTOR_FMA(manager, T, N, SUFFIX)                                                                       \
-	REGISTER_VECTOR_REDUCE_FLOAT(manager, T, N, SUFFIX)
+	REGISTER_VECTOR_REDUCE_FLOAT(manager, T, N, SUFFIX)                                                              \
+	REGISTER_VECTOR_CMP_FLOAT(manager, T, N, SUFFIX)                                                                 \
+	REGISTER_VECTOR_BITWISE_FLOAT(manager, T, N, SUFFIX)                                                             \
+	REGISTER_VECTOR_BLEND(manager, T, N, SUFFIX)                                                                     \
+	REGISTER_VECTOR_BROADCAST(manager, T, N, SUFFIX)                                                                 \
+	REGISTER_VECTOR_GATHER(manager, T, N, SUFFIX)                                                                    \
+	REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)
 
 // Full registration for int type/width
 #define REGISTER_VECTOR_INT_ALL(manager, T, N, SUFFIX)                                                               \
@@ -444,7 +847,16 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 	REGISTER_VECTOR_ABS_INT(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_NEG_INT(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_MINMAX_INT(manager, T, N, SUFFIX)                                                                \
-	REGISTER_VECTOR_REDUCE_INT(manager, T, N, SUFFIX)
+	REGISTER_VECTOR_REDUCE_INT(manager, T, N, SUFFIX)                                                                \
+	REGISTER_VECTOR_CMP_INT(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_BITWISE_INT(manager, T, N, SUFFIX)                                                               \
+	REGISTER_VECTOR_BLEND(manager, T, N, SUFFIX)                                                                     \
+	REGISTER_VECTOR_BROADCAST(manager, T, N, SUFFIX)                                                                 \
+	REGISTER_VECTOR_GATHER(manager, T, N, SUFFIX)                                                                    \
+	REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)                                                                    \
+	REGISTER_VECTOR_SHIFT_INT(manager, T, N, SUFFIX)
 
 // clang-format on
 
