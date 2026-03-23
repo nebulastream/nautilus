@@ -187,6 +187,178 @@ void vectorTests(engine::NautilusEngine& engine) {
 		REQUIRE(result == expected);
 	}
 
+	// ================================================================
+	// Operator overload tests
+	// ================================================================
+
+	SECTION("operator+ float") {
+		auto f = engine.registerFunction(vectorOperatorAddFloat);
+		alignas(64) float a[FLOAT_LANES];
+		alignas(64) float b[FLOAT_LANES];
+		alignas(64) float c[FLOAT_LANES] = {};
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(i + 1);
+			b[i] = static_cast<float>(i + 5);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			REQUIRE(c[i] == a[i] + b[i]);
+		}
+	}
+
+	SECTION("operator* and operator- float (a*b - c)") {
+		auto f = engine.registerFunction(vectorOperatorMulSubFloat);
+		alignas(64) float a[FLOAT_LANES];
+		alignas(64) float b[FLOAT_LANES];
+		alignas(64) float c[FLOAT_LANES];
+		alignas(64) float d[FLOAT_LANES] = {};
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(i + 2);
+			b[i] = 3.0f;
+			c[i] = 1.0f;
+		}
+		f(a, b, c, d);
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			REQUIRE(d[i] == a[i] * b[i] - c[i]);
+		}
+	}
+
+	SECTION("unary operator- float") {
+		auto f = engine.registerFunction(vectorOperatorNegFloat);
+		alignas(64) float a[FLOAT_LANES];
+		alignas(64) float c[FLOAT_LANES] = {};
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(i + 1);
+		}
+		f(a, c);
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			REQUIRE(c[i] == -a[i]);
+		}
+	}
+
+	// ================================================================
+	// Reduce min/max tests
+	// ================================================================
+
+	SECTION("vector_reduce_min float") {
+		auto f = engine.registerFunction(vectorReduceMinFloat);
+		alignas(64) float a[FLOAT_LANES];
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(FLOAT_LANES - i);
+		}
+		a[FLOAT_LANES / 2] = -42.0f; // ensure min is in the middle
+		auto result = f(a);
+		REQUIRE(result == -42.0f);
+	}
+
+	SECTION("vector_reduce_max float") {
+		auto f = engine.registerFunction(vectorReduceMaxFloat);
+		alignas(64) float a[FLOAT_LANES];
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(i);
+		}
+		a[FLOAT_LANES / 2] = 999.0f;
+		auto result = f(a);
+		REQUIRE(result == 999.0f);
+	}
+
+	SECTION("vector_reduce_min int32") {
+		auto f = engine.registerFunction(vectorReduceMinInt);
+		alignas(64) int32_t a[INT_LANES];
+		for (size_t i = 0; i < INT_LANES; i++) {
+			a[i] = static_cast<int32_t>(100 - i);
+		}
+		a[0] = -5;
+		auto result = f(a);
+		REQUIRE(result == -5);
+	}
+
+	SECTION("vector_reduce_max int32") {
+		auto f = engine.registerFunction(vectorReduceMaxInt);
+		alignas(64) int32_t a[INT_LANES];
+		for (size_t i = 0; i < INT_LANES; i++) {
+			a[i] = static_cast<int32_t>(i);
+		}
+		a[INT_LANES - 1] = 500;
+		auto result = f(a);
+		REQUIRE(result == 500);
+	}
+
+	// ================================================================
+	// Comparison tests
+	// ================================================================
+
+	SECTION("vector_lt float") {
+		auto f = engine.registerFunction(vectorLtFloat);
+		alignas(64) float a[FLOAT_LANES];
+		alignas(64) float b[FLOAT_LANES];
+		alignas(64) float c[FLOAT_LANES] = {};
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(FLOAT_LANES / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			if (a[i] < b[i]) {
+				REQUIRE(ci == 0xFFFFFFFF);
+			} else {
+				REQUIRE(ci == 0x00000000);
+			}
+		}
+	}
+
+	// ================================================================
+	// Blend test
+	// ================================================================
+
+	SECTION("vector_blend float") {
+		auto f = engine.registerFunction(vectorBlendFloat);
+		alignas(64) float a[FLOAT_LANES];
+		alignas(64) float b[FLOAT_LANES];
+		alignas(64) float mask[FLOAT_LANES];
+		alignas(64) float c[FLOAT_LANES] = {};
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			a[i] = 10.0f;
+			b[i] = 20.0f;
+			// Alternate mask: odd lanes select a, even lanes select b
+			uint32_t m = (i % 2 == 1) ? 0xFFFFFFFF : 0x00000000;
+			std::memcpy(&mask[i], &m, sizeof(float));
+		}
+		f(a, b, mask, c);
+		for (size_t i = 0; i < FLOAT_LANES; i++) {
+			if (i % 2 == 1) {
+				REQUIRE(c[i] == 10.0f);
+			} else {
+				REQUIRE(c[i] == 20.0f);
+			}
+		}
+	}
+
+	// ================================================================
+	// Bitwise test
+	// ================================================================
+
+	SECTION("vector_and int32") {
+		auto f = engine.registerFunction(vectorAndInt);
+		alignas(64) int32_t a[INT_LANES];
+		alignas(64) int32_t b[INT_LANES];
+		alignas(64) int32_t c[INT_LANES] = {};
+		for (size_t i = 0; i < INT_LANES; i++) {
+			a[i] = 0xFF00FF00;
+			b[i] = static_cast<int32_t>(0xFFFF0000);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < INT_LANES; i++) {
+			REQUIRE(c[i] == (int32_t) (0xFF00FF00 & 0xFFFF0000));
+		}
+	}
+
+	// ================================================================
+	// Double tests
+	// ================================================================
+
 	SECTION("vector_add double") {
 		auto f = engine.registerFunction(vectorAddDouble);
 		alignas(64) double a[DOUBLE_LANES];
