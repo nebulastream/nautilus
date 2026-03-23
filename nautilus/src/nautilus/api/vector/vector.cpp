@@ -227,117 +227,108 @@ VECTOR_IMPL_NEG_INT(int64_t, 8, i64x8)
 // ============================================================================
 // Nautilus invoke() wrappers — template explicit specializations
 //
-// Vector<T> has a fixed lane count determined by preferred_vector_width<T>().
-// We only instantiate wrappers for the hardware-detected width.
-// N is derived from Vector<T>::lanes.
+// Operations use detail::VectorBase<T, N> with both T and N as template params.
+// We instantiate for ALL supported widths (128, 256, 512) so both the default
+// Vector<T> and VectorFactory<Bits> work on any platform.
 // ============================================================================
 
 // clang-format off
 
-#define VECTOR_INVOKE_LOAD(T, SUFFIX)                                                                                      \
+#define VECTOR_INVOKE_LOAD(T, N, SUFFIX)                                                                                   \
 	template <>                                                                                                            \
-	Vector<T> vector_load<T>(val<const T*> ptr) {                                                                          \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	detail::VectorBase<T, N> vector_load_n<T, N>(val<const T*> ptr) {                                                      \
 		auto result = invoke<vector_data<T, N>*, const T*>(vector_load_##SUFFIX##_impl, ptr);                              \
-		return Vector<T>(result);                                                                                          \
+		return detail::VectorBase<T, N>(result);                                                                           \
 	}
 
-#define VECTOR_INVOKE_STORE(T, SUFFIX)                                                                                     \
+#define VECTOR_INVOKE_STORE(T, N, SUFFIX)                                                                                  \
 	template <>                                                                                                            \
-	void vector_store<T>(val<T*> ptr, Vector<T> vec) {                                                                     \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	void vector_store<T, N>(val<T*> ptr, detail::VectorBase<T, N> vec) {                                                   \
 		invoke<void, T*, vector_data<T, N>*>(vector_store_##SUFFIX##_impl, ptr, vec.data());                               \
 	}
 
-#define VECTOR_INVOKE_BINARY(T, SUFFIX, NAME)                                                                              \
+#define VECTOR_INVOKE_BINARY(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	Vector<T> vector_##NAME<T>(Vector<T> a, Vector<T> b) {                                                                 \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {                 \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(                                  \
 		    vector_##NAME##_##SUFFIX##_impl, a.data(), b.data());                                                          \
-		return Vector<T>(result);                                                                                          \
+		return detail::VectorBase<T, N>(result);                                                                           \
 	}
 
-#define VECTOR_INVOKE_UNARY(T, SUFFIX, NAME)                                                                               \
+#define VECTOR_INVOKE_UNARY(T, N, SUFFIX, NAME)                                                                            \
 	template <>                                                                                                            \
-	Vector<T> vector_##NAME<T>(Vector<T> a) {                                                                              \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a) {                                             \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*>(vector_##NAME##_##SUFFIX##_impl, a.data());           \
-		return Vector<T>(result);                                                                                          \
+		return detail::VectorBase<T, N>(result);                                                                           \
 	}
 
-#define VECTOR_INVOKE_TERNARY(T, SUFFIX, NAME)                                                                             \
+#define VECTOR_INVOKE_TERNARY(T, N, SUFFIX, NAME)                                                                          \
 	template <>                                                                                                            \
-	Vector<T> vector_##NAME<T>(Vector<T> a, Vector<T> b, Vector<T> c) {                                                    \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b,                   \
+	                                             detail::VectorBase<T, N> c) {                                             \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(              \
 		    vector_##NAME##_##SUFFIX##_impl, a.data(), b.data(), c.data());                                                \
-		return Vector<T>(result);                                                                                          \
+		return detail::VectorBase<T, N>(result);                                                                           \
 	}
 
-#define VECTOR_INVOKE_REDUCE(T, SUFFIX, NAME)                                                                              \
+#define VECTOR_INVOKE_REDUCE(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	val<T> vector_reduce_##NAME<T>(Vector<T> a) {                                                                          \
-		constexpr size_t N = Vector<T>::lanes;                                                                             \
+	val<T> vector_reduce_##NAME<T, N>(detail::VectorBase<T, N> a) {                                                        \
 		return invoke<T, vector_data<T, N>*>(vector_reduce_##NAME##_##SUFFIX##_impl, a.data());                            \
 	}
 
-#define VECTOR_INVOKE_ALL(T, SUFFIX)                                                                                       \
-	VECTOR_INVOKE_LOAD(T, SUFFIX)                                                                                          \
-	VECTOR_INVOKE_STORE(T, SUFFIX)                                                                                         \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, add)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, sub)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, mul)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, div)                                                                                   \
-	VECTOR_INVOKE_UNARY(T, SUFFIX, abs)                                                                                    \
-	VECTOR_INVOKE_UNARY(T, SUFFIX, neg)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, min)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, max)                                                                                   \
-	VECTOR_INVOKE_REDUCE(T, SUFFIX, add)                                                                                   \
-	VECTOR_INVOKE_REDUCE(T, SUFFIX, min)                                                                                   \
-	VECTOR_INVOKE_REDUCE(T, SUFFIX, max)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, eq)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, ne)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, lt)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, le)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, gt)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, ge)                                                                                    \
-	VECTOR_INVOKE_TERNARY(T, SUFFIX, blend)                                                                                \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, and)                                                                                   \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, or)                                                                                    \
-	VECTOR_INVOKE_BINARY(T, SUFFIX, xor)
+#define VECTOR_INVOKE_ALL(T, N, SUFFIX)                                                                                    \
+	VECTOR_INVOKE_LOAD(T, N, SUFFIX)                                                                                       \
+	VECTOR_INVOKE_STORE(T, N, SUFFIX)                                                                                      \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, add)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, sub)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, mul)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, div)                                                                                \
+	VECTOR_INVOKE_UNARY(T, N, SUFFIX, abs)                                                                                 \
+	VECTOR_INVOKE_UNARY(T, N, SUFFIX, neg)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, min)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, max)                                                                                \
+	VECTOR_INVOKE_REDUCE(T, N, SUFFIX, add)                                                                                \
+	VECTOR_INVOKE_REDUCE(T, N, SUFFIX, min)                                                                                \
+	VECTOR_INVOKE_REDUCE(T, N, SUFFIX, max)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, eq)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, ne)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, lt)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, le)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, gt)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, ge)                                                                                 \
+	VECTOR_INVOKE_TERNARY(T, N, SUFFIX, blend)                                                                             \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, and)                                                                                \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, or)                                                                                 \
+	VECTOR_INVOKE_BINARY(T, N, SUFFIX, xor)
 
-#define VECTOR_INVOKE_FLOAT_ALL(T, SUFFIX)                                                                                 \
-	VECTOR_INVOKE_ALL(T, SUFFIX)                                                                                           \
-	VECTOR_INVOKE_TERNARY(T, SUFFIX, fma)
+#define VECTOR_INVOKE_FLOAT_ALL(T, N, SUFFIX)                                                                              \
+	VECTOR_INVOKE_ALL(T, N, SUFFIX)                                                                                        \
+	VECTOR_INVOKE_TERNARY(T, N, SUFFIX, fma)
 
 // clang-format on
 
 // ============================================================================
-// Instantiate invoke() wrappers for the hardware-detected vector width.
-// preferred_vector_width() selects the suffix at compile time.
+// Instantiate invoke() wrappers for ALL widths (128, 256, 512).
+// This enables both Vector<T> (default width) and VectorFactory<Bits>.
 // ============================================================================
 
-// On SSE2/NEON: float=4, double=2, int32=4, int64=2
-// On AVX/AVX2: float=8, double=4, int32=8, int64=4
-// On AVX-512:  float=16, double=8, int32=16, int64=8
+// 128-bit (SSE / NEON)
+VECTOR_INVOKE_FLOAT_ALL(float, 4, f32x4)
+VECTOR_INVOKE_FLOAT_ALL(double, 2, f64x2)
+VECTOR_INVOKE_ALL(int32_t, 4, i32x4)
+VECTOR_INVOKE_ALL(int64_t, 2, i64x2)
 
-#if defined(__AVX512F__)
-VECTOR_INVOKE_FLOAT_ALL(float, f32x16)
-VECTOR_INVOKE_FLOAT_ALL(double, f64x8)
-VECTOR_INVOKE_ALL(int32_t, i32x16)
-VECTOR_INVOKE_ALL(int64_t, i64x8)
-#elif defined(__AVX2__) || defined(__AVX__)
-VECTOR_INVOKE_FLOAT_ALL(float, f32x8)
-VECTOR_INVOKE_FLOAT_ALL(double, f64x4)
-VECTOR_INVOKE_ALL(int32_t, i32x8)
-VECTOR_INVOKE_ALL(int64_t, i64x4)
-#else
-// SSE2 / NEON / fallback (128-bit)
-VECTOR_INVOKE_FLOAT_ALL(float, f32x4)
-VECTOR_INVOKE_FLOAT_ALL(double, f64x2)
-VECTOR_INVOKE_ALL(int32_t, i32x4)
-VECTOR_INVOKE_ALL(int64_t, i64x2)
-#endif
+// 256-bit (AVX / AVX2)
+VECTOR_INVOKE_FLOAT_ALL(float, 8, f32x8)
+VECTOR_INVOKE_FLOAT_ALL(double, 4, f64x4)
+VECTOR_INVOKE_ALL(int32_t, 8, i32x8)
+VECTOR_INVOKE_ALL(int64_t, 4, i64x4)
+
+// 512-bit (AVX-512)
+VECTOR_INVOKE_FLOAT_ALL(float, 16, f32x16)
+VECTOR_INVOKE_FLOAT_ALL(double, 8, f64x8)
+VECTOR_INVOKE_ALL(int32_t, 16, i32x16)
+VECTOR_INVOKE_ALL(int64_t, 8, i64x8)
 
 } // namespace nautilus
