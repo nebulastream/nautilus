@@ -136,7 +136,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// Compound assignment operators
+	// Compound assignment
 	// ================================================================
 
 	SECTION("compound += float") {
@@ -376,7 +376,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// Double tests
+	// Double
 	// ================================================================
 
 	SECTION("add double") {
@@ -392,11 +392,11 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// Vector<T> alias Load / Store round-trip
+	// Vector<T> alias Load / Store
 	// ================================================================
 
 	SECTION("Vector<T> Load/Store round-trip") {
-		auto f = engine.registerFunction(vectorFactoryLoadStore);
+		auto f = engine.registerFunction(vectorAliasLoadStore);
 		alignas(64) float a[FL], c[FL] = {};
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i * 3 + 7);
@@ -406,73 +406,19 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// VectorFactory<128> explicit width (always 4 float lanes)
+	// vector_load<T> convenience function
 	// ================================================================
 
-	SECTION("VectorFactory<128> add float") {
-		auto f = engine.registerFunction(vectorFactory128AddFloat);
-		alignas(16) float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
-		alignas(16) float b[] = {5.0f, 6.0f, 7.0f, 8.0f};
-		alignas(16) float c[4] = {};
+	SECTION("vector_load convenience") {
+		auto f = engine.registerFunction(vectorConvenienceLoad);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 1);
+			b[i] = static_cast<float>(i + 5);
+		}
 		f(a, b, c);
-		REQUIRE(c[0] == 6.0f);
-		REQUIRE(c[1] == 8.0f);
-		REQUIRE(c[2] == 10.0f);
-		REQUIRE(c[3] == 12.0f);
-	}
-
-	SECTION("VectorFactory<128> reduce float") {
-		auto f = engine.registerFunction(vectorFactory128ReduceFloat);
-		alignas(16) float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
-		alignas(16) float c[4] = {};
-		f(a, c);
-		REQUIRE(c[0] == 10.0f);
-	}
-
-	// ================================================================
-	// VectorFactory<256> explicit width (always 8 float lanes)
-	// ================================================================
-
-	SECTION("VectorFactory<256> add float") {
-		auto f = engine.registerFunction(vectorFactory256AddFloat);
-		alignas(32) float a[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
-		alignas(32) float b[] = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
-		alignas(32) float c[8] = {};
-		f(a, b, c);
-		for (int i = 0; i < 8; i++)
+		for (size_t i = 0; i < FL; i++)
 			REQUIRE(c[i] == a[i] + b[i]);
-	}
-
-	// ================================================================
-	// Explicit val<vec<float, 4>> (direct template parameters)
-	// ================================================================
-
-	SECTION("val<vec<float, 4>> add") {
-		auto f = engine.registerFunction(vectorExplicit128AddFloat);
-		alignas(16) float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
-		alignas(16) float b[] = {10.0f, 20.0f, 30.0f, 40.0f};
-		alignas(16) float c[4] = {};
-		f(a, b, c);
-		REQUIRE(c[0] == 11.0f);
-		REQUIRE(c[1] == 22.0f);
-		REQUIRE(c[2] == 33.0f);
-		REQUIRE(c[3] == 44.0f);
-	}
-
-	// ================================================================
-	// Vector<T, N> alias with explicit lane count
-	// ================================================================
-
-	SECTION("Vector<double, 4> add") {
-		auto f = engine.registerFunction(vectorAlias256AddDouble);
-		alignas(32) double a[] = {1.0, 2.0, 3.0, 4.0};
-		alignas(32) double b[] = {10.0, 20.0, 30.0, 40.0};
-		alignas(32) double c[4] = {};
-		f(a, b, c);
-		REQUIRE(c[0] == 11.0);
-		REQUIRE(c[1] == 22.0);
-		REQUIRE(c[2] == 33.0);
-		REQUIRE(c[3] == 44.0);
 	}
 }
 
