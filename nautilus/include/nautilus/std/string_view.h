@@ -138,20 +138,81 @@ public:
 		    data_ptr, dest, count, pos);
 	}
 
-	/*
-	val<std::basic_string_view<CharT, Traits>> substr(val<size_type> count, val<size_type> pos = 0) {
-	    return invoke(+[](std::basic_string_view<CharT, Traits> *ptr,
-	               size_type count, size_type pos) -> std::basic_string_view<CharT, Traits> {
-	      return ptr->substr(count, pos);
-	    }, data_ptr, count, pos);
+	/**
+	 * Finds the first substring equal to the given character sequence.
+	 */
+	val<size_type> find(val<const CharT*> s, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s, size_type pos) -> size_type {
+			    return ptr->find(s, pos);
+		    },
+		    data_ptr, s, pos);
 	}
 
-	val<std::basic_string_view<CharT, Traits>> substr(val<size_type> count, val<size_type> pos = 0) {
-	    return invoke(+[](std::basic_string_view<CharT, Traits> *ptr,
-	                      size_type count, size_type pos) -> std::basic_string_view<CharT, Traits> {
-	        return ptr->substr(count, pos);
-	    }, data_ptr, count, pos);
-	}*/
+	val<size_type> find(val<CharT> ch, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT ch, size_type pos) -> size_type {
+			    return ptr->find(ch, pos);
+		    },
+		    data_ptr, ch, pos);
+	}
+
+	/**
+	 * Finds the last substring equal to the given character sequence.
+	 */
+	val<size_type> rfind(val<const CharT*> s, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s, size_type pos) -> size_type {
+			    return ptr->rfind(s, pos);
+		    },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> rfind(val<CharT> ch, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT ch, size_type pos) -> size_type {
+			    return ptr->rfind(ch, pos);
+		    },
+		    data_ptr, ch, pos);
+	}
+
+	/**
+	 * Finds the first character equal to one of the characters in the given character sequence.
+	 */
+	val<size_type> find_first_of(val<const CharT*> s, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s, size_type pos) -> size_type {
+			    return ptr->find_first_of(s, pos);
+		    },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_first_of(val<CharT> ch, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT ch, size_type pos) -> size_type {
+			    return ptr->find_first_of(ch, pos);
+		    },
+		    data_ptr, ch, pos);
+	}
+
+	/**
+	 * Finds the last character equal to one of the characters in the given character sequence.
+	 */
+	val<size_type> find_last_of(val<const CharT*> s, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, const CharT* s, size_type pos) -> size_type {
+			    return ptr->find_last_of(s, pos);
+		    },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_last_of(val<CharT> ch, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](std::basic_string_view<CharT, Traits>* ptr, CharT ch, size_type pos) -> size_type {
+			    return ptr->find_last_of(ch, pos);
+		    },
+		    data_ptr, ch, pos);
+	}
 
 	val<int> compare(val<std::basic_string_view<CharT, Traits>>& v) {
 		return invoke(

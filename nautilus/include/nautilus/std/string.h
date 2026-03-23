@@ -262,6 +262,195 @@ public:
 		    data_ptr, dest, count, pos);
 	}
 
+	/**
+	 * Returns a newly constructed string object with its value initialized to a copy of a substring of this string.
+	 */
+	val<std::basic_string<CharT, Traits>> substr(val<size_type> pos = 0, val<size_type> count = base_type::npos) {
+		auto ptr = invoke(
+		    +[](base_type* ptr, size_type pos, size_type count) -> base_type* {
+			    return new base_type(ptr->substr(pos, count));
+		    },
+		    data_ptr, pos, count);
+		return val<std::basic_string<CharT, Traits>>(ptr);
+	}
+
+	/**
+	 * Finds the first substring equal to the given character sequence.
+	 */
+	val<size_type> find(const val<const CharT*>& s, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->find(s, pos); }, data_ptr, s,
+		    pos);
+	}
+
+	val<size_type> find(val<CharT> ch, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->find(ch, pos); }, data_ptr, ch,
+		    pos);
+	}
+
+	/**
+	 * Finds the last substring equal to the given character sequence.
+	 */
+	val<size_type> rfind(const val<const CharT*>& s, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->rfind(s, pos); }, data_ptr, s,
+		    pos);
+	}
+
+	val<size_type> rfind(val<CharT> ch, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->rfind(ch, pos); }, data_ptr, ch,
+		    pos);
+	}
+
+	/**
+	 * Finds the first character equal to one of the characters in the given character sequence.
+	 */
+	val<size_type> find_first_of(const val<const CharT*>& s, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->find_first_of(s, pos); },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_first_of(val<CharT> ch, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->find_first_of(ch, pos); }, data_ptr,
+		    ch, pos);
+	}
+
+	/**
+	 * Finds the last character equal to one of the characters in the given character sequence.
+	 */
+	val<size_type> find_last_of(const val<const CharT*>& s, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->find_last_of(s, pos); },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_last_of(val<CharT> ch, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->find_last_of(ch, pos); }, data_ptr,
+		    ch, pos);
+	}
+
+	/**
+	 * Finds the first character not equal to any of the characters in the given character sequence.
+	 */
+	val<size_type> find_first_not_of(const val<const CharT*>& s, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->find_first_not_of(s, pos); },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_first_not_of(val<CharT> ch, val<size_type> pos = 0) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->find_first_not_of(ch, pos); },
+		    data_ptr, ch, pos);
+	}
+
+	/**
+	 * Finds the last character not equal to any of the characters in the given character sequence.
+	 */
+	val<size_type> find_last_not_of(const val<const CharT*>& s, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s, size_type pos) -> size_type { return ptr->find_last_not_of(s, pos); },
+		    data_ptr, s, pos);
+	}
+
+	val<size_type> find_last_not_of(val<CharT> ch, val<size_type> pos = base_type::npos) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch, size_type pos) -> size_type { return ptr->find_last_not_of(ch, pos); },
+		    data_ptr, ch, pos);
+	}
+
+	/**
+	 * Removes count characters starting at index.
+	 */
+	auto& erase(val<size_type> index = 0, val<size_type> count = base_type::npos) {
+		invoke(
+		    +[](base_type* ptr, size_type index, size_type count) -> void { ptr->erase(index, count); }, data_ptr, index,
+		    count);
+		return *this;
+	}
+
+	/**
+	 * Replaces the characters in the range [pos, pos + count) with the given string.
+	 */
+	auto& replace(val<size_type> pos, val<size_type> count, const val<const CharT*>& s) {
+		invoke(
+		    +[](base_type* ptr, size_type pos, size_type count, const CharT* s) -> void { ptr->replace(pos, count, s); },
+		    data_ptr, pos, count, s);
+		return *this;
+	}
+
+	/**
+	 * Compares two strings.
+	 */
+	val<int> compare(const val<std::basic_string<CharT, Traits>>& str) const {
+		return invoke(
+		    +[](base_type* ptr, base_type* other) -> int { return ptr->compare(*other); }, data_ptr, str.data_ptr);
+	}
+
+	val<int> compare(const val<const CharT*>& s) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s) -> int { return ptr->compare(s); }, data_ptr, s);
+	}
+
+#ifdef __cpp_lib_starts_ends_with
+	val<bool> starts_with(const val<const CharT*>& s) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s) -> bool { return ptr->starts_with(s); }, data_ptr, s);
+	}
+
+	val<bool> starts_with(val<CharT> ch) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch) -> bool { return ptr->starts_with(ch); }, data_ptr, ch);
+	}
+
+	val<bool> ends_with(const val<const CharT*>& s) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s) -> bool { return ptr->ends_with(s); }, data_ptr, s);
+	}
+
+	val<bool> ends_with(val<CharT> ch) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch) -> bool { return ptr->ends_with(ch); }, data_ptr, ch);
+	}
+#endif
+
+#ifdef __cpp_lib_string_contains
+	val<bool> contains(const val<const CharT*>& s) const {
+		return invoke(
+		    +[](base_type* ptr, const CharT* s) -> bool { return ptr->contains(s); }, data_ptr, s);
+	}
+
+	val<bool> contains(val<CharT> ch) const {
+		return invoke(
+		    +[](base_type* ptr, CharT ch) -> bool { return ptr->contains(ch); }, data_ptr, ch);
+	}
+#endif
+
+	void push_back(val<CharT> ch) {
+		invoke(
+		    +[](base_type* ptr, CharT ch) -> void { ptr->push_back(ch); }, data_ptr, ch);
+	}
+
+	void pop_back() {
+		invoke(
+		    +[](base_type* ptr) -> void { ptr->pop_back(); }, data_ptr);
+	}
+
+	void resize(val<size_type> count) {
+		invoke(
+		    +[](base_type* ptr, size_type count) -> void { ptr->resize(count); }, data_ptr, count);
+	}
+
+	void resize(val<size_type> count, val<CharT> ch) {
+		invoke(
+		    +[](base_type* ptr, size_type count, CharT ch) -> void { ptr->resize(count, ch); }, data_ptr, count, ch);
+	}
+
 	~val() {
 		invoke(
 		    +[](base_type* ptr) -> void {
