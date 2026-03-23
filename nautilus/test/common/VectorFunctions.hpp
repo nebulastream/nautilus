@@ -106,6 +106,22 @@ void vectorGeFloat(val<const float*> a, val<const float*> b, val<float*> c) {
 	(val<vec<float>>::Load(a) >= val<vec<float>>::Load(b)).Store(c);
 }
 
+void vectorEqFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) == val<vec<float>>::Load(b)).Store(c);
+}
+
+void vectorNeFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) != val<vec<float>>::Load(b)).Store(c);
+}
+
+void vectorLeFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) <= val<vec<float>>::Load(b)).Store(c);
+}
+
+void vectorGtFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) > val<vec<float>>::Load(b)).Store(c);
+}
+
 void vectorEqInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
 	(val<vec<int32_t>>::Load(a) == val<vec<int32_t>>::Load(b)).Store(c);
 }
@@ -114,8 +130,16 @@ void vectorNeInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) 
 	(val<vec<int32_t>>::Load(a) != val<vec<int32_t>>::Load(b)).Store(c);
 }
 
+void vectorLtInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(val<vec<int32_t>>::Load(a) < val<vec<int32_t>>::Load(b)).Store(c);
+}
+
+void vectorGtInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(val<vec<int32_t>>::Load(a) > val<vec<int32_t>>::Load(b)).Store(c);
+}
+
 // ============================================================================
-// Blend
+// Blend — float and int
 // ============================================================================
 
 void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*> mask_arr, val<float*> c) {
@@ -125,8 +149,15 @@ void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*
 	Blend(vmask, va, vb).Store(c);
 }
 
+void vectorBlendInt(val<const int32_t*> a, val<const int32_t*> b, val<const int32_t*> mask_arr, val<int32_t*> c) {
+	auto va = val<vec<int32_t>>::Load(a);
+	auto vb = val<vec<int32_t>>::Load(b);
+	auto vmask = val<vec<int32_t>>::Load(mask_arr);
+	Blend(vmask, va, vb).Store(c);
+}
+
 // ============================================================================
-// Bitwise operators
+// Bitwise operators — int and float
 // ============================================================================
 
 void vectorAndInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
@@ -139,6 +170,25 @@ void vectorOrInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) 
 
 void vectorXorInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
 	(val<vec<int32_t>>::Load(a) ^ val<vec<int32_t>>::Load(b)).Store(c);
+}
+
+void vectorAndFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) & val<vec<float>>::Load(b)).Store(c);
+}
+
+void vectorOrFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(val<vec<float>>::Load(a) | val<vec<float>>::Load(b)).Store(c);
+}
+
+// ============================================================================
+// Compare → Blend chain (realistic pattern)
+// ============================================================================
+
+void vectorCmpBlendFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = val<vec<float>>::Load(a);
+	auto vb = val<vec<float>>::Load(b);
+	auto mask = va > vb;          // where a > b
+	Blend(mask, va, vb).Store(c); // pick a where a > b, else b (i.e. max)
 }
 
 // ============================================================================

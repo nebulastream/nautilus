@@ -230,6 +230,66 @@ void vectorTests(engine::NautilusEngine& engine) {
 		}
 	}
 
+	SECTION("eq float (operator==)") {
+		auto f = engine.registerFunction(vectorEqFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(i % 2 == 0 ? i : i + 1);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == ((a[i] == b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("ne float (operator!=)") {
+		auto f = engine.registerFunction(vectorNeFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(i % 2 == 0 ? i : i + 1);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == ((a[i] != b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("le float (operator<=)") {
+		auto f = engine.registerFunction(vectorLeFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(FL / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == ((a[i] <= b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("gt float (operator>)") {
+		auto f = engine.registerFunction(vectorGtFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(FL / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == ((a[i] > b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
 	SECTION("eq int32 (operator==)") {
 		auto f = engine.registerFunction(vectorEqInt);
 		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
@@ -260,8 +320,38 @@ void vectorTests(engine::NautilusEngine& engine) {
 		}
 	}
 
+	SECTION("lt int32 (operator<)") {
+		auto f = engine.registerFunction(vectorLtInt);
+		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(i);
+			b[i] = static_cast<int32_t>(IL / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < IL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(int32_t));
+			REQUIRE(ci == ((a[i] < b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("gt int32 (operator>)") {
+		auto f = engine.registerFunction(vectorGtInt);
+		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(i);
+			b[i] = static_cast<int32_t>(IL / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < IL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(int32_t));
+			REQUIRE(ci == ((a[i] > b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
 	// ================================================================
-	// Blend
+	// Blend — float and int
 	// ================================================================
 
 	SECTION("blend float") {
@@ -278,8 +368,21 @@ void vectorTests(engine::NautilusEngine& engine) {
 			REQUIRE(c[i] == ((i % 2 == 1) ? 10.0f : 20.0f));
 	}
 
+	SECTION("blend int32") {
+		auto f = engine.registerFunction(vectorBlendInt);
+		alignas(64) int32_t a[IL], b[IL], mask[IL], c[IL] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = 100;
+			b[i] = 200;
+			mask[i] = (i % 2 == 0) ? (int32_t) 0xFFFFFFFF : 0;
+		}
+		f(a, b, mask, c);
+		for (size_t i = 0; i < IL; i++)
+			REQUIRE(c[i] == ((i % 2 == 0) ? 100 : 200));
+	}
+
 	// ================================================================
-	// Bitwise
+	// Bitwise — int and float
 	// ================================================================
 
 	SECTION("and int32 (operator&)") {
@@ -316,6 +419,54 @@ void vectorTests(engine::NautilusEngine& engine) {
 		f(a, b, c);
 		for (size_t i = 0; i < IL; i++)
 			REQUIRE(c[i] == (int32_t) (0xFF00FF00 ^ 0xFFFF0000));
+	}
+
+	SECTION("and float (operator&)") {
+		auto f = engine.registerFunction(vectorAndFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ai = 0xFF00FF00, bi = 0xFFFF0000;
+			std::memcpy(&a[i], &ai, sizeof(float));
+			std::memcpy(&b[i], &bi, sizeof(float));
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == (0xFF00FF00u & 0xFFFF0000u));
+		}
+	}
+
+	SECTION("or float (operator|)") {
+		auto f = engine.registerFunction(vectorOrFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ai = 0x0F0F0000, bi = 0x00F0F0F0;
+			std::memcpy(&a[i], &ai, sizeof(float));
+			std::memcpy(&b[i], &bi, sizeof(float));
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == (0x0F0F0000u | 0x00F0F0F0u));
+		}
+	}
+
+	// ================================================================
+	// Compare → Blend chain (realistic SIMD pattern)
+	// ================================================================
+
+	SECTION("compare-then-blend float (vector max via cmp+blend)") {
+		auto f = engine.registerFunction(vectorCmpBlendFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(FL - 1 - i);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++)
+			REQUIRE(c[i] == std::max(a[i], b[i]));
 	}
 
 	// ================================================================
