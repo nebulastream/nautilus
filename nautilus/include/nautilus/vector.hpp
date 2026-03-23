@@ -30,158 +30,164 @@ struct alignas(sizeof(T) * N) vector_data {
 	T data[N];
 };
 
-/// Type tag representing a SIMD vector of N elements of type T.
-/// Use as val<vec<float>> or val<vec<int32_t, 8>>.
-template <typename T, size_t N = preferred_vector_width<T>()>
+/// Type tag representing a SIMD vector of type T.
+/// The lane count is determined automatically from hardware capabilities.
+/// Use as val<vec<float>>, val<vec<int32_t>>, etc.
+template <typename T>
 struct vec {
 	static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type");
-	static_assert((N & (N - 1)) == 0, "N must be a power of 2");
-	static_assert(N >= 2, "N must be at least 2");
 	using element_type = T;
-	static constexpr size_t lanes = N;
+	static constexpr size_t lanes = preferred_vector_width<T>();
 };
 
 // ============================================================================
-// Forward declarations for low-level free functions (specialized in vector.cpp).
+// detail — N-parameterized free functions specialized in vector.cpp.
 // These are the traced entry points that backends can intercept.
+// The val<vec<T>> class calls these with N = vec<T>::lanes.
 // ============================================================================
 
+namespace detail {
+
 template <typename T, size_t N>
-val<vec<T, N>> vector_load_n(val<const T*> ptr);
+val<vector_data<T, N>*> vec_load(val<const T*> ptr);
 template <typename T, size_t N>
-void vector_store(val<T*> ptr, val<vec<T, N>> v);
+void vec_store(val<T*> ptr, val<vector_data<T, N>*> v);
 template <typename T, size_t N>
-val<vec<T, N>> vector_add(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_add(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_sub(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_sub(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_mul(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_mul(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_div(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_div(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_abs(val<vec<T, N>> a);
+val<vector_data<T, N>*> vec_abs(val<vector_data<T, N>*> a);
 template <typename T, size_t N>
-val<vec<T, N>> vector_neg(val<vec<T, N>> a);
+val<vector_data<T, N>*> vec_neg(val<vector_data<T, N>*> a);
 template <typename T, size_t N>
-val<vec<T, N>> vector_min(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_min(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_max(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_max(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_fma(val<vec<T, N>> a, val<vec<T, N>> b, val<vec<T, N>> c);
+val<vector_data<T, N>*> vec_fma(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b, val<vector_data<T, N>*> c);
 template <typename T, size_t N>
-val<T> vector_reduce_add(val<vec<T, N>> a);
+val<T> vec_reduce_add(val<vector_data<T, N>*> a);
 template <typename T, size_t N>
-val<T> vector_reduce_min(val<vec<T, N>> a);
+val<T> vec_reduce_min(val<vector_data<T, N>*> a);
 template <typename T, size_t N>
-val<T> vector_reduce_max(val<vec<T, N>> a);
+val<T> vec_reduce_max(val<vector_data<T, N>*> a);
 template <typename T, size_t N>
-val<vec<T, N>> vector_eq(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_eq(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_ne(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_ne(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_lt(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_lt(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_le(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_le(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_gt(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_gt(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_ge(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_ge(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_blend(val<vec<T, N>> mask, val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_blend(val<vector_data<T, N>*> mask, val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_and(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_and(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_or(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_or(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
 template <typename T, size_t N>
-val<vec<T, N>> vector_xor(val<vec<T, N>> a, val<vec<T, N>> b);
+val<vector_data<T, N>*> vec_xor(val<vector_data<T, N>*> a, val<vector_data<T, N>*> b);
+
+} // namespace detail
 
 // ============================================================================
-// val<vec<T, N>> — SIMD vector specialization of val<T>.
+// val<vec<T>> — SIMD vector specialization of val<T>.
 //
+// The lane count is fixed per element type based on hardware capabilities.
 // Integrates with the Nautilus tracing and compilation pipeline.
-// T is the element type (float, double, int32_t, int64_t).
-// N is the number of lanes (defaults to hardware-preferred width).
 //
 // Usage:
-//   auto v = val<vec<float>>::Load(ptr);     // load from memory
+//   auto v = val<vec<float>>::Load(ptr);
 //   auto w = val<vec<float>>::Load(ptr2);
-//   auto r = v + w;                          // element-wise add
-//   r.Store(out);                            // store to memory
-//   val<float> sum = r.ReduceAdd();          // horizontal sum
+//   auto r = v + w;
+//   r.Store(out);
+//   val<float> sum = r.ReduceAdd();
 // ============================================================================
 
-template <typename T, size_t N>
-class val<vec<T, N>> {
-public:
-	using raw_type = vec<T, N>;
-	using element_type = T;
+template <typename T>
+class val<vec<T>> {
+	static constexpr size_t N = vec<T>::lanes;
 	using data_type = vector_data<T, N>;
+	using ptr_type = val<data_type*>;
+
+public:
+	using raw_type = vec<T>;
+	using element_type = T;
 	static constexpr size_t lanes = N;
 
-	explicit val(val<data_type*> ptr) : ptr_(ptr) {
+	explicit val(ptr_type ptr) : ptr_(ptr) {
 	}
 
-	/// Access internal data pointer (for low-level use and invoke() wrappers).
-	val<data_type*> Data() const {
+	/// Access internal data pointer (for advanced use).
+	ptr_type Data() const {
 		return ptr_;
 	}
 
 	// -- Load / Store --------------------------------------------------------
 
-	/// Load N contiguous elements from memory.
+	/// Load a vector from contiguous memory.
 	static val Load(val<const T*> ptr) {
-		return vector_load_n<T, N>(ptr);
+		return val(detail::vec_load<T, N>(ptr));
 	}
 
-	/// Store this vector to N contiguous elements in memory.
+	/// Store this vector to contiguous memory.
 	void Store(val<T*> ptr) const {
-		vector_store<T, N>(ptr, *this);
+		detail::vec_store<T, N>(ptr, ptr_);
 	}
 
 	// -- Unary operations ----------------------------------------------------
 
 	/// Element-wise absolute value.
 	val Abs() const {
-		return vector_abs<T, N>(*this);
+		return val(detail::vec_abs<T, N>(ptr_));
 	}
 
 	// -- Reductions (return scalar val<T>) -----------------------------------
 
 	/// Sum all lanes.
 	val<T> ReduceAdd() const {
-		return vector_reduce_add<T, N>(*this);
+		return detail::vec_reduce_add<T, N>(ptr_);
 	}
 
 	/// Minimum across all lanes.
 	val<T> ReduceMin() const {
-		return vector_reduce_min<T, N>(*this);
+		return detail::vec_reduce_min<T, N>(ptr_);
 	}
 
 	/// Maximum across all lanes.
 	val<T> ReduceMax() const {
-		return vector_reduce_max<T, N>(*this);
+		return detail::vec_reduce_max<T, N>(ptr_);
 	}
 
 	// -- Arithmetic operators ------------------------------------------------
 
 	friend val operator+(val a, val b) {
-		return vector_add<T, N>(a, b);
+		return val(detail::vec_add<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator-(val a, val b) {
-		return vector_sub<T, N>(a, b);
+		return val(detail::vec_sub<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator*(val a, val b) {
-		return vector_mul<T, N>(a, b);
+		return val(detail::vec_mul<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator/(val a, val b) {
-		return vector_div<T, N>(a, b);
+		return val(detail::vec_div<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator-(val a) {
-		return vector_neg<T, N>(a);
+		return val(detail::vec_neg<T, N>(a.ptr_));
 	}
 
 	// -- Compound assignment -------------------------------------------------
@@ -209,45 +215,45 @@ public:
 	// -- Comparison operators (return element-wise mask vectors) --------------
 
 	friend val operator==(val a, val b) {
-		return vector_eq<T, N>(a, b);
+		return val(detail::vec_eq<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator!=(val a, val b) {
-		return vector_ne<T, N>(a, b);
+		return val(detail::vec_ne<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator<(val a, val b) {
-		return vector_lt<T, N>(a, b);
+		return val(detail::vec_lt<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator<=(val a, val b) {
-		return vector_le<T, N>(a, b);
+		return val(detail::vec_le<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator>(val a, val b) {
-		return vector_gt<T, N>(a, b);
+		return val(detail::vec_gt<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator>=(val a, val b) {
-		return vector_ge<T, N>(a, b);
+		return val(detail::vec_ge<T, N>(a.ptr_, b.ptr_));
 	}
 
 	// -- Bitwise operators ---------------------------------------------------
 
 	friend val operator&(val a, val b) {
-		return vector_and<T, N>(a, b);
+		return val(detail::vec_and<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator|(val a, val b) {
-		return vector_or<T, N>(a, b);
+		return val(detail::vec_or<T, N>(a.ptr_, b.ptr_));
 	}
 
 	friend val operator^(val a, val b) {
-		return vector_xor<T, N>(a, b);
+		return val(detail::vec_xor<T, N>(a.ptr_, b.ptr_));
 	}
 
 private:
-	val<data_type*> ptr_;
+	ptr_type ptr_;
 };
 
 // ============================================================================
@@ -255,64 +261,42 @@ private:
 // ============================================================================
 
 /// Element-wise minimum.
-template <typename T, size_t N>
-val<vec<T, N>> Min(val<vec<T, N>> a, val<vec<T, N>> b) {
-	return vector_min<T, N>(a, b);
+template <typename T>
+val<vec<T>> Min(val<vec<T>> a, val<vec<T>> b) {
+	return val<vec<T>>(detail::vec_min<T, vec<T>::lanes>(a.Data(), b.Data()));
 }
 
 /// Element-wise maximum.
-template <typename T, size_t N>
-val<vec<T, N>> Max(val<vec<T, N>> a, val<vec<T, N>> b) {
-	return vector_max<T, N>(a, b);
+template <typename T>
+val<vec<T>> Max(val<vec<T>> a, val<vec<T>> b) {
+	return val<vec<T>>(detail::vec_max<T, vec<T>::lanes>(a.Data(), b.Data()));
 }
 
 /// Fused multiply-add: a * b + c.
-template <typename T, size_t N>
-val<vec<T, N>> Fma(val<vec<T, N>> a, val<vec<T, N>> b, val<vec<T, N>> c) {
-	return vector_fma<T, N>(a, b, c);
+template <typename T>
+val<vec<T>> Fma(val<vec<T>> a, val<vec<T>> b, val<vec<T>> c) {
+	return val<vec<T>>(detail::vec_fma<T, vec<T>::lanes>(a.Data(), b.Data(), c.Data()));
 }
 
 /// Select elements: where mask bits are set take a, otherwise take b.
-template <typename T, size_t N>
-val<vec<T, N>> Blend(val<vec<T, N>> mask, val<vec<T, N>> a, val<vec<T, N>> b) {
-	return vector_blend<T, N>(mask, a, b);
+template <typename T>
+val<vec<T>> Blend(val<vec<T>> mask, val<vec<T>> a, val<vec<T>> b) {
+	return val<vec<T>>(detail::vec_blend<T, vec<T>::lanes>(mask.Data(), a.Data(), b.Data()));
 }
 
 // ============================================================================
-// Convenience aliases
+// Convenience alias
 // ============================================================================
 
 /// Vector<T> is val<vec<T>> with hardware-auto-detected lane width.
-/// Vector<T, N> specifies explicit lane count.
-template <typename T, size_t N = preferred_vector_width<T>()>
-using Vector = val<vec<T, N>>;
+template <typename T>
+using Vector = val<vec<T>>;
 
 // ============================================================================
-// VectorFactory<Bits> — factory for explicit bit-width selection (128, 256, 512).
+// Convenience free function
 // ============================================================================
 
-template <size_t Bits>
-struct VectorFactory {
-	static_assert(Bits == 128 || Bits == 256 || Bits == 512, "Supported widths: 128, 256, 512");
-
-	template <typename T>
-	static constexpr size_t lanes = Bits / (sizeof(T) * 8);
-
-	template <typename T>
-	static val<vec<T, lanes<T>>> Load(val<const T*> ptr) {
-		return val<vec<T, lanes<T>>>::Load(ptr);
-	}
-
-	template <typename T>
-	static void Store(val<T*> ptr, val<vec<T, lanes<T>>> v) {
-		v.Store(ptr);
-	}
-};
-
-// ============================================================================
-// Convenience: vector_load<T> loads a default-width Vector<T>.
-// ============================================================================
-
+/// Load a vector from contiguous memory (shorthand for Vector<T>::Load).
 template <typename T>
 Vector<T> vector_load(val<const T*> ptr) {
 	return Vector<T>::Load(ptr);

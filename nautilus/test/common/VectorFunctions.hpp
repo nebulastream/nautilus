@@ -6,7 +6,7 @@
 namespace nautilus::engine {
 
 // ============================================================================
-// Float arithmetic — using val<vec<float>> with operators
+// Float arithmetic — val<vec<float>> with operators
 // ============================================================================
 
 void vectorAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
@@ -52,7 +52,7 @@ void vectorFmaFloat(val<const float*> a, val<const float*> b, val<const float*> 
 }
 
 // ============================================================================
-// Float reductions — using member methods
+// Float reductions — member methods
 // ============================================================================
 
 val<float> vectorReduceAddFloat(val<const float*> a) {
@@ -79,7 +79,7 @@ void vectorMulSubFloat(val<const float*> a, val<const float*> b, val<const float
 }
 
 // ============================================================================
-// Compound assignment operators
+// Compound assignment
 // ============================================================================
 
 void vectorCompoundAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
@@ -166,7 +166,7 @@ val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
 }
 
 // ============================================================================
-// Double tests
+// Double
 // ============================================================================
 
 void vectorAddDouble(val<const double*> a, val<const double*> b, val<double*> c) {
@@ -174,55 +174,19 @@ void vectorAddDouble(val<const double*> a, val<const double*> b, val<double*> c)
 }
 
 // ============================================================================
-// Load / Store round-trip using Vector<T> alias
+// Vector<T> alias — Load / Store round-trip
 // ============================================================================
 
-void vectorFactoryLoadStore(val<const float*> a, val<float*> c) {
+void vectorAliasLoadStore(val<const float*> a, val<float*> c) {
 	Vector<float>::Load(a).Store(c);
 }
 
 // ============================================================================
-// VectorFactory<128> explicit width (always 4 float lanes)
+// vector_load<T> convenience function
 // ============================================================================
 
-void vectorFactory128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = VectorFactory<128>::Load<float>(a);
-	auto vb = VectorFactory<128>::Load<float>(b);
-	VectorFactory<128>::Store<float>(c, va + vb);
-}
-
-void vectorFactory128ReduceFloat(val<const float*> a, val<float*> c) {
-	c[0] = VectorFactory<128>::Load<float>(a).ReduceAdd();
-}
-
-// ============================================================================
-// VectorFactory<256> explicit width (always 8 float lanes)
-// ============================================================================
-
-void vectorFactory256AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = VectorFactory<256>::Load<float>(a);
-	auto vb = VectorFactory<256>::Load<float>(b);
-	VectorFactory<256>::Store<float>(c, va + vb);
-}
-
-// ============================================================================
-// Explicit val<vec<float, 4>> (direct template parameters)
-// ============================================================================
-
-void vectorExplicit128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = val<vec<float, 4>>::Load(a);
-	auto vb = val<vec<float, 4>>::Load(b);
-	(va + vb).Store(c);
-}
-
-// ============================================================================
-// Vector<T, N> alias with explicit lane count
-// ============================================================================
-
-void vectorAlias256AddDouble(val<const double*> a, val<const double*> b, val<double*> c) {
-	auto va = Vector<double, 4>::Load(a);
-	auto vb = Vector<double, 4>::Load(b);
-	(va + vb).Store(c);
+void vectorConvenienceLoad(val<const float*> a, val<const float*> b, val<float*> c) {
+	(vector_load<float>(a) + vector_load<float>(b)).Store(c);
 }
 
 } // namespace nautilus::engine
