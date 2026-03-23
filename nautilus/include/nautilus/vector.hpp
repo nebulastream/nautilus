@@ -46,6 +46,30 @@ public:
 		return ptr_;
 	}
 
+	// ============================================================================
+	// Operator overloads
+	// ============================================================================
+
+	friend Vector<T> operator+(Vector<T> a, Vector<T> b) {
+		return vector_add(a, b);
+	}
+
+	friend Vector<T> operator-(Vector<T> a, Vector<T> b) {
+		return vector_sub(a, b);
+	}
+
+	friend Vector<T> operator*(Vector<T> a, Vector<T> b) {
+		return vector_mul(a, b);
+	}
+
+	friend Vector<T> operator/(Vector<T> a, Vector<T> b) {
+		return vector_div(a, b);
+	}
+
+	Vector<T> operator-() {
+		return vector_neg(*this);
+	}
+
 private:
 	val<data_type*> ptr_;
 };

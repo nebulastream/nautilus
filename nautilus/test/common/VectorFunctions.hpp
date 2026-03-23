@@ -140,4 +140,88 @@ void vectorAddDouble(val<const double*> a, val<const double*> b, val<double*> c)
 	vector_store(c, vc);
 }
 
+// ============================================================================
+// Operator overload tests (float)
+// ============================================================================
+
+void vectorOperatorAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = vector_load<float>(a);
+	auto vb = vector_load<float>(b);
+	vector_store(c, va + vb);
+}
+
+void vectorOperatorMulSubFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
+	auto va = vector_load<float>(a);
+	auto vb = vector_load<float>(b);
+	auto vc = vector_load<float>(c);
+	vector_store(d, va * vb - vc);
+}
+
+void vectorOperatorNegFloat(val<const float*> a, val<float*> c) {
+	auto va = vector_load<float>(a);
+	vector_store(c, -va);
+}
+
+// ============================================================================
+// Reduce min/max (float)
+// ============================================================================
+
+val<float> vectorReduceMinFloat(val<const float*> a) {
+	auto va = vector_load<float>(a);
+	return vector_reduce_min(va);
+}
+
+val<float> vectorReduceMaxFloat(val<const float*> a) {
+	auto va = vector_load<float>(a);
+	return vector_reduce_max(va);
+}
+
+// ============================================================================
+// Reduce min/max (int32_t)
+// ============================================================================
+
+val<int32_t> vectorReduceMinInt(val<const int32_t*> a) {
+	auto va = vector_load<int32_t>(a);
+	return vector_reduce_min(va);
+}
+
+val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
+	auto va = vector_load<int32_t>(a);
+	return vector_reduce_max(va);
+}
+
+// ============================================================================
+// Comparison (float)
+// ============================================================================
+
+void vectorLtFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = vector_load<float>(a);
+	auto vb = vector_load<float>(b);
+	auto vc = vector_lt(va, vb);
+	vector_store(c, vc);
+}
+
+// ============================================================================
+// Blend (float)
+// ============================================================================
+
+void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*> mask_arr, val<float*> c) {
+	auto va = vector_load<float>(a);
+	auto vb = vector_load<float>(b);
+	auto vmask = vector_load<float>(mask_arr);
+	auto vc = vector_blend(vmask, va, vb);
+	vector_store(c, vc);
+}
+
+// ============================================================================
+// Bitwise AND (int32_t)
+// ============================================================================
+
+void vectorAndInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	auto va = vector_load<int32_t>(a);
+	auto vb = vector_load<int32_t>(b);
+	auto vc = vector_and(va, vb);
+	vector_store(c, vc);
+}
+
 } // namespace nautilus::engine

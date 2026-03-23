@@ -61,7 +61,7 @@ static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builde
 	auto numElements = vecTy.getNumElements();
 	auto byteSize = numElements * (elemTy.getIntOrFloatBitWidth() / 8);
 	auto sizeVal = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), i64Ty,
-	                                                          builder->getI64IntegerAttr(byteSize));
+	                                                         builder->getI64IntegerAttr(byteSize));
 	auto alloca =
 	    builder->create<::mlir::LLVM::AllocaOp>(builder->getUnknownLoc(), ptrTy, builder->getI8Type(), sizeVal, 0u);
 	builder->create<::mlir::LLVM::StoreOp>(builder->getUnknownLoc(), vec, alloca);
@@ -208,8 +208,8 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 
 /// Negate for float: 0 - x
 template <typename ElemT, int64_t N>
-bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                             const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
+bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                             MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
 
 	::mlir::Type elemTy;
@@ -243,8 +243,8 @@ bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	// zero - a
-	auto zero = builder->create<::mlir::arith::ConstantOp>(
-	    builder->getUnknownLoc(), vecTy, builder->getZeroAttr(vecTy));
+	auto zero =
+	    builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), vecTy, builder->getZeroAttr(vecTy));
 	auto result = builder->create<::mlir::LLVM::SubOp>(builder->getUnknownLoc(), zero, a);
 	auto resultPtr = storeVecToAlloca(builder, result, vecTy);
 	frame.setValue(call->getIdentifier(), resultPtr);
@@ -269,9 +269,9 @@ bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	// Start accumulator at 0.0
 	auto zero = builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), elemTy,
-	                                                        builder->getFloatAttr(elemTy, 0.0));
+	                                                       builder->getFloatAttr(elemTy, 0.0));
 	auto result = builder->create<::mlir::LLVM::vector_reduce_fadd>(builder->getUnknownLoc(), elemTy, zero, a,
-	                                                                 ::mlir::LLVM::FastmathFlags::reassoc);
+	                                                                ::mlir::LLVM::FastmathFlags::reassoc);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
 }
@@ -293,6 +293,46 @@ bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 	auto a = loadVecFromPtr(builder, ptrA, vecTy);
 	auto result = builder->create<::mlir::LLVM::vector_reduce_add>(builder->getUnknownLoc(), elemTy, a);
+	frame.setValue(call->getIdentifier(), result);
+	return true;
+}
+
+/// Reduce min/max for float types
+template <typename ReduceOp, typename ElemT, int64_t N>
+bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
+                                const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, float>) {
+		elemTy = builder->getF32Type();
+	} else {
+		elemTy = builder->getF64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto result = builder->create<ReduceOp>(builder->getUnknownLoc(), elemTy, a, ::mlir::LLVM::FastmathFlags::nnan);
+	frame.setValue(call->getIdentifier(), result);
+	return true;
+}
+
+/// Reduce min/max for int types
+template <typename ReduceOp, typename ElemT, int64_t N>
+bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+                              MLIRLoweringProvider::ValueFrame& frame) {
+	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+
+	::mlir::Type elemTy;
+	if constexpr (std::is_same_v<ElemT, int32_t>) {
+		elemTy = builder->getI32Type();
+	} else {
+		elemTy = builder->getI64Type();
+	}
+	auto vecTy = getVecType(elemTy, N);
+
+	auto a = loadVecFromPtr(builder, ptrA, vecTy);
+	auto result = builder->create<ReduceOp>(builder->getUnknownLoc(), elemTy, a);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
 }
@@ -372,12 +412,20 @@ bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 // Register reduce for float types
 #define REGISTER_VECTOR_REDUCE_FLOAT(manager, T, N, SUFFIX)                                                          \
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_add_##SUFFIX##_impl),                                \
-	                     (vectorReduceAddFloatIntrinsic<T, N>));
+	                     (vectorReduceAddFloatIntrinsic<T, N>));                                                      \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_min_##SUFFIX##_impl),                                \
+	                     (vectorReduceFloatIntrinsic<::mlir::LLVM::vector_reduce_fmin, T, N>));                       \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_max_##SUFFIX##_impl),                                \
+	                     (vectorReduceFloatIntrinsic<::mlir::LLVM::vector_reduce_fmax, T, N>));
 
 // Register reduce for int types
 #define REGISTER_VECTOR_REDUCE_INT(manager, T, N, SUFFIX)                                                            \
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_add_##SUFFIX##_impl),                                \
-	                     (vectorReduceAddIntIntrinsic<T, N>));
+	                     (vectorReduceAddIntIntrinsic<T, N>));                                                        \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_min_##SUFFIX##_impl),                                \
+	                     (vectorReduceIntIntrinsic<::mlir::LLVM::vector_reduce_smin, T, N>));                         \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_reduce_max_##SUFFIX##_impl),                                \
+	                     (vectorReduceIntIntrinsic<::mlir::LLVM::vector_reduce_smax, T, N>));
 
 // Full registration for float type/width
 #define REGISTER_VECTOR_FLOAT_ALL(manager, T, N, SUFFIX)                                                             \
