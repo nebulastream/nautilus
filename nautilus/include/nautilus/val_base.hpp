@@ -2,7 +2,6 @@
 
 #include "nautilus/tracing/Types.hpp"
 #include <cassert>
-#include <type_traits>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/tracing/TypedValueRef.hpp"
@@ -13,6 +12,29 @@ namespace nautilus {
 // Forward declaration
 template <typename T>
 class val;
+
+// ============================================================================
+// Unique per-type identity — address of a per-type inline variable
+// ============================================================================
+
+/// Opaque type identity token. Each distinct val<T> gets a unique TypeId.
+using TypeId = const void*;
+
+namespace detail {
+
+/// Each instantiation of this template variable for a distinct T occupies a
+/// unique address, which serves as a lightweight type identity token.
+/// The inline keyword guarantees a single address across translation units.
+template <typename T>
+inline const char type_id_tag = 0;
+
+} // namespace detail
+
+/// Returns the unique TypeId for a given type T.
+template <typename T>
+constexpr TypeId typeIdOf() {
+	return &detail::type_id_tag<T>;
+}
 
 /// Base interface for all val<T> specializations.
 ///
@@ -45,6 +67,10 @@ public:
 	val_base& operator=(const val_base&) = default;
 	val_base& operator=(val_base&&) = default;
 	virtual ~val_base() = default;
+
+	/// Returns the unique TypeId for the concrete val<T> type.
+	/// Each distinct val<T> instantiation has a different TypeId.
+	[[nodiscard]] virtual TypeId getTypeId() const = 0;
 
 	/// Returns the runtime nautilus::Type of this value.
 	[[nodiscard]] virtual Type getType() const = 0;
@@ -86,51 +112,13 @@ public:
 };
 
 // ============================================================================
-// Compile-time val<T> → Type mapping
-// ============================================================================
-
-namespace detail {
-
-/// Maps the inner type T of a val<T> to its runtime Type enum value.
-/// This is used by isa/cast/dyn_cast to determine the expected type tag.
-template <typename T>
-constexpr Type resolve_val_type() {
-	if constexpr (std::is_same_v<T, bool>) {
-		return Type::b;
-	} else if constexpr (std::is_arithmetic_v<T>) {
-		return tracing::TypeResolver<T>::to_type();
-	} else if constexpr (std::is_pointer_v<T>) {
-		return Type::ptr;
-	} else if constexpr (std::is_enum_v<T>) {
-		return tracing::TypeResolver<std::underlying_type_t<T>>::to_type();
-	} else if constexpr (std::is_reference_v<T>) {
-		return resolve_val_type<std::remove_reference_t<T>>();
-	} else {
-		// Class types, function pointers — all stored as ptr
-		return Type::ptr;
-	}
-}
-
-/// Extracts the inner type T from val<T> and resolves its Type enum.
-template <typename ValT>
-struct val_type_tag;
-
-template <typename T>
-struct val_type_tag<val<T>> {
-	static constexpr Type value = resolve_val_type<T>();
-};
-
-} // namespace detail
-
-// ============================================================================
 // LLVM-style isa / cast / dyn_cast
 // ============================================================================
 
 /// Checks whether a val_base pointer holds a specific val<T> type.
 ///
-/// Compares the runtime Type tag against the compile-time expected type.
-/// Note: types that share the same Type tag (e.g. all pointer types
-/// share Type::ptr) are indistinguishable at this level.
+/// Uses a unique per-type identity so that every distinct val<T>
+/// is distinguishable — e.g. val<int32_t*> vs val<double*>.
 ///
 /// ```cpp
 /// val<int32_t> x = 42;
@@ -141,13 +129,13 @@ struct val_type_tag<val<T>> {
 template <typename ValT>
 [[nodiscard]] bool isa(const val_base* v) {
 	assert(v && "isa called on null pointer");
-	return v->getType() == detail::val_type_tag<ValT>::value;
+	return v->getTypeId() == typeIdOf<ValT>();
 }
 
 /// Reference overload of isa.
 template <typename ValT>
 [[nodiscard]] bool isa(const val_base& v) {
-	return v.getType() == detail::val_type_tag<ValT>::value;
+	return v.getTypeId() == typeIdOf<ValT>();
 }
 
 /// Unchecked downcast — asserts the type matches in debug builds.

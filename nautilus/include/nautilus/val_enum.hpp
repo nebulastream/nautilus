@@ -26,6 +26,10 @@ public:
 		return tracing::TypeResolver<underlying_type_t>::to_type();
 	}
 
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<T>>();
+	}
+
 #ifdef ENABLE_TRACING
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)

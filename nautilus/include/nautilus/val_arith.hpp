@@ -196,6 +196,10 @@ public:
 		return tracing::TypeResolver<ValueType>::to_type();
 	}
 
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValueType>>();
+	}
+
 #ifdef ENABLE_TRACING
 	[[nodiscard]] tracing::TypedValueRef getState() const override {
 		return state;

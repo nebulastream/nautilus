@@ -154,6 +154,10 @@ public:
 		return Type::b;
 	}
 
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<bool>>();
+	}
+
 #ifdef ENABLE_TRACING
 	[[nodiscard]] tracing::TypedValueRef getState() const override {
 		return state;

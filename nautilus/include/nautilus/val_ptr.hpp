@@ -25,6 +25,10 @@ public:
 		return tracing::TypeResolver<baseType>::to_type();
 	}
 
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValueType>>();
+	}
+
 #ifdef ENABLE_TRACING
 	[[nodiscard]] tracing::TypedValueRef getState() const override {
 		return state;
@@ -194,6 +198,10 @@ public:
 
 	[[nodiscard]] Type getType() const override {
 		return Type::ptr;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValuePtrType>>();
 	}
 
 #ifdef ENABLE_TRACING
@@ -580,6 +588,10 @@ public:
 
 	[[nodiscard]] Type getType() const override {
 		return Type::b;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<bool&>>();
 	}
 
 #ifdef ENABLE_TRACING

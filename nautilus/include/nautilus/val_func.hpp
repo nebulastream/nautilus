@@ -47,6 +47,10 @@ public:
 		return Type::ptr;
 	}
 
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<R (*)(Args...)>>();
+	}
+
 #ifdef ENABLE_TRACING
 	[[nodiscard]] tracing::TypedValueRef getState() const override {
 		return state;
