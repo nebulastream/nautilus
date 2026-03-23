@@ -2,6 +2,7 @@
 
 #include "nautilus/function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -36,11 +37,21 @@ namespace nautilus {
 ///     use memberFunc() in function.hpp.
 
 template <typename R, typename... Args>
-class val<R (*)(Args...)> {
+class val<R (*)(Args...)> : public val_base {
 public:
 	using raw_type = R (*)(Args...);
 	using basic_type = raw_type;
 	using return_type = R;
+
+	[[nodiscard]] Type getType() const override {
+		return Type::ptr;
+	}
+
+#ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+#endif
 
 	val() : ptr(static_cast<void*>(nullptr)) {
 	}
