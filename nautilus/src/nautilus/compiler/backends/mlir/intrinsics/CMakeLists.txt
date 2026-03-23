@@ -4,4 +4,5 @@
             MLIRBitIntrinsics.cpp
             MLIRMathIntrinsics.cpp
             MLIRMemoryIntrinsics.cpp
+            MLIRVectorIntrinsics.cpp
     )

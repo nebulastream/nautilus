@@ -11,6 +11,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBitIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
+#include "nautilus/compiler/backends/mlir/intrinsics/MLIRVectorIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -36,6 +37,7 @@ MLIRCompilationBackend::MLIRCompilationBackend() {
 	RegisterMLIRBitIntrinsicPlugin();
 	RegisterMLIRMathIntrinsicPlugin();
 	RegisterMLIRMemoryIntrinsicPlugin();
+	RegisterMLIRVectorIntrinsicPlugin();
 }
 
 std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
