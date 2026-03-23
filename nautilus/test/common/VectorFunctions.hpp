@@ -6,106 +6,163 @@
 namespace nautilus::engine {
 
 // ============================================================================
-// Default-width tests using Vector<T> and vector_load<T>
+// Float arithmetic — using operators and member methods
 // ============================================================================
 
 void vectorAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, va + vb);
+	auto va = Vector<float>::Load(a);
+	auto vb = Vector<float>::Load(b);
+	(va + vb).Store(c);
 }
 
 void vectorSubFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, va - vb);
+	(Vector<float>::Load(a) - Vector<float>::Load(b)).Store(c);
 }
 
 void vectorMulFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, va * vb);
+	(Vector<float>::Load(a) * Vector<float>::Load(b)).Store(c);
 }
 
 void vectorDivFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, va / vb);
+	(Vector<float>::Load(a) / Vector<float>::Load(b)).Store(c);
 }
 
 void vectorNegFloat(val<const float*> a, val<float*> c) {
-	auto va = vector_load<float>(a);
-	vector_store(c, -va);
-}
-
-void vectorMinFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, vector_min(va, vb));
-}
-
-void vectorMaxFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	vector_store(c, vector_max(va, vb));
-}
-
-val<float> vectorReduceAddFloat(val<const float*> a) {
-	return vector_reduce_add(vector_load<float>(a));
-}
-
-val<float> vectorReduceMinFloat(val<const float*> a) {
-	return vector_reduce_min(vector_load<float>(a));
-}
-
-val<float> vectorReduceMaxFloat(val<const float*> a) {
-	return vector_reduce_max(vector_load<float>(a));
-}
-
-void vectorFmaFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	auto vc = vector_load<float>(c);
-	vector_store(d, vector_fma(va, vb, vc));
+	(-Vector<float>::Load(a)).Store(c);
 }
 
 void vectorAbsFloat(val<const float*> a, val<float*> c) {
-	vector_store(c, vector_abs(vector_load<float>(a)));
+	Vector<float>::Load(a).Abs().Store(c);
 }
 
 // ============================================================================
-// Chained operator test: a * b - c
+// Float min/max/fma — using top-level convenience functions
+// ============================================================================
+
+void vectorMinFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	Min(Vector<float>::Load(a), Vector<float>::Load(b)).Store(c);
+}
+
+void vectorMaxFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	Max(Vector<float>::Load(a), Vector<float>::Load(b)).Store(c);
+}
+
+void vectorFmaFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
+	Fma(Vector<float>::Load(a), Vector<float>::Load(b), Vector<float>::Load(c)).Store(d);
+}
+
+// ============================================================================
+// Float reductions — using member methods
+// ============================================================================
+
+val<float> vectorReduceAddFloat(val<const float*> a) {
+	return Vector<float>::Load(a).ReduceAdd();
+}
+
+val<float> vectorReduceMinFloat(val<const float*> a) {
+	return Vector<float>::Load(a).ReduceMin();
+}
+
+val<float> vectorReduceMaxFloat(val<const float*> a) {
+	return Vector<float>::Load(a).ReduceMax();
+}
+
+// ============================================================================
+// Chained operations
 // ============================================================================
 
 void vectorMulSubFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	auto vc = vector_load<float>(c);
-	vector_store(d, va * vb - vc);
+	auto va = Vector<float>::Load(a);
+	auto vb = Vector<float>::Load(b);
+	auto vc = Vector<float>::Load(c);
+	(va * vb - vc).Store(d);
 }
 
 // ============================================================================
-// Integer tests
+// Compound assignment operators
+// ============================================================================
+
+void vectorCompoundAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = Vector<float>::Load(a);
+	va += Vector<float>::Load(b);
+	va.Store(c);
+}
+
+void vectorCompoundMulFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = Vector<float>::Load(a);
+	va *= Vector<float>::Load(b);
+	va.Store(c);
+}
+
+// ============================================================================
+// Comparison operators
+// ============================================================================
+
+void vectorLtFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(Vector<float>::Load(a) < Vector<float>::Load(b)).Store(c);
+}
+
+void vectorGeFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	(Vector<float>::Load(a) >= Vector<float>::Load(b)).Store(c);
+}
+
+void vectorEqInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(Vector<int32_t>::Load(a) == Vector<int32_t>::Load(b)).Store(c);
+}
+
+void vectorNeInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(Vector<int32_t>::Load(a) != Vector<int32_t>::Load(b)).Store(c);
+}
+
+// ============================================================================
+// Blend — using top-level Blend()
+// ============================================================================
+
+void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*> mask_arr, val<float*> c) {
+	auto va = Vector<float>::Load(a);
+	auto vb = Vector<float>::Load(b);
+	auto vmask = Vector<float>::Load(mask_arr);
+	Blend(vmask, va, vb).Store(c);
+}
+
+// ============================================================================
+// Bitwise operators
+// ============================================================================
+
+void vectorAndInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(Vector<int32_t>::Load(a) & Vector<int32_t>::Load(b)).Store(c);
+}
+
+void vectorOrInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(Vector<int32_t>::Load(a) | Vector<int32_t>::Load(b)).Store(c);
+}
+
+void vectorXorInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
+	(Vector<int32_t>::Load(a) ^ Vector<int32_t>::Load(b)).Store(c);
+}
+
+// ============================================================================
+// Integer arithmetic + reductions
 // ============================================================================
 
 void vectorAddInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_load<int32_t>(a) + vector_load<int32_t>(b));
+	(Vector<int32_t>::Load(a) + Vector<int32_t>::Load(b)).Store(c);
 }
 
 void vectorMulInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_load<int32_t>(a) * vector_load<int32_t>(b));
+	(Vector<int32_t>::Load(a) * Vector<int32_t>::Load(b)).Store(c);
 }
 
 val<int32_t> vectorReduceAddInt(val<const int32_t*> a) {
-	return vector_reduce_add(vector_load<int32_t>(a));
+	return Vector<int32_t>::Load(a).ReduceAdd();
 }
 
 val<int32_t> vectorReduceMinInt(val<const int32_t*> a) {
-	return vector_reduce_min(vector_load<int32_t>(a));
+	return Vector<int32_t>::Load(a).ReduceMin();
 }
 
 val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
-	return vector_reduce_max(vector_load<int32_t>(a));
+	return Vector<int32_t>::Load(a).ReduceMax();
 }
 
 // ============================================================================
@@ -113,59 +170,19 @@ val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
 // ============================================================================
 
 void vectorAddDouble(val<const double*> a, val<const double*> b, val<double*> c) {
-	vector_store(c, vector_load<double>(a) + vector_load<double>(b));
+	(Vector<double>::Load(a) + Vector<double>::Load(b)).Store(c);
 }
 
 // ============================================================================
-// Comparison tests
-// ============================================================================
-
-void vectorLtFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	vector_store(c, vector_lt(vector_load<float>(a), vector_load<float>(b)));
-}
-
-void vectorEqInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_eq(vector_load<int32_t>(a), vector_load<int32_t>(b)));
-}
-
-// ============================================================================
-// Blend test
-// ============================================================================
-
-void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*> mask_arr, val<float*> c) {
-	auto va = vector_load<float>(a);
-	auto vb = vector_load<float>(b);
-	auto vmask = vector_load<float>(mask_arr);
-	vector_store(c, vector_blend(vmask, va, vb));
-}
-
-// ============================================================================
-// Bitwise tests
-// ============================================================================
-
-void vectorAndInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_and(vector_load<int32_t>(a), vector_load<int32_t>(b)));
-}
-
-void vectorOrInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_or(vector_load<int32_t>(a), vector_load<int32_t>(b)));
-}
-
-void vectorXorInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	vector_store(c, vector_xor(vector_load<int32_t>(a), vector_load<int32_t>(b)));
-}
-
-// ============================================================================
-// Vector<T>::Load / Store factory method tests
+// Vector<T>::Load / Store round-trip
 // ============================================================================
 
 void vectorFactoryLoadStore(val<const float*> a, val<float*> c) {
-	auto va = Vector<float>::Load(a);
-	va.Store(c);
+	Vector<float>::Load(a).Store(c);
 }
 
 // ============================================================================
-// VectorFactory<128> explicit width test (always 4 float lanes)
+// VectorFactory<128> explicit width (always 4 float lanes)
 // ============================================================================
 
 void vectorFactory128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
@@ -176,19 +193,27 @@ void vectorFactory128AddFloat(val<const float*> a, val<const float*> b, val<floa
 
 void vectorFactory128ReduceFloat(val<const float*> a, val<float*> c) {
 	auto va = VectorFactory<128>::Load<float>(a);
-	auto sum = vector_reduce_add(va);
-	// Store scalar result to first element
-	c[0] = sum;
+	c[0] = va.ReduceAdd();
 }
 
 // ============================================================================
-// VectorFactory<256> explicit width test (always 8 float lanes)
+// VectorFactory<256> explicit width (always 8 float lanes)
 // ============================================================================
 
 void vectorFactory256AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
 	auto va = VectorFactory<256>::Load<float>(a);
 	auto vb = VectorFactory<256>::Load<float>(b);
 	VectorFactory<256>::Store<float>(c, va + vb);
+}
+
+// ============================================================================
+// SIMD<T, N> with explicit type
+// ============================================================================
+
+void vectorSIMD128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = SIMD<float, 4>::Load(a);
+	auto vb = SIMD<float, 4>::Load(b);
+	(va + vb).Store(c);
 }
 
 } // namespace nautilus::engine

@@ -136,6 +136,34 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
+	// Compound assignment operators
+	// ================================================================
+
+	SECTION("compound += float") {
+		auto f = engine.registerFunction(vectorCompoundAddFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 1);
+			b[i] = static_cast<float>(i + 5);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++)
+			REQUIRE(c[i] == a[i] + b[i]);
+	}
+
+	SECTION("compound *= float") {
+		auto f = engine.registerFunction(vectorCompoundMulFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 2);
+			b[i] = 10.0f;
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++)
+			REQUIRE(c[i] == a[i] * b[i]);
+	}
+
+	// ================================================================
 	// Float reductions
 	// ================================================================
 
@@ -172,7 +200,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 	// Comparisons
 	// ================================================================
 
-	SECTION("lt float") {
+	SECTION("lt float (operator<)") {
 		auto f = engine.registerFunction(vectorLtFloat);
 		alignas(64) float a[FL], b[FL], c[FL] = {};
 		for (size_t i = 0; i < FL; i++) {
@@ -187,18 +215,48 @@ void vectorTests(engine::NautilusEngine& engine) {
 		}
 	}
 
-	SECTION("eq int32") {
+	SECTION("ge float (operator>=)") {
+		auto f = engine.registerFunction(vectorGeFloat);
+		alignas(64) float a[FL], b[FL], c[FL] = {};
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i);
+			b[i] = static_cast<float>(FL / 2);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(float));
+			REQUIRE(ci == ((a[i] >= b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("eq int32 (operator==)") {
 		auto f = engine.registerFunction(vectorEqInt);
 		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i);
-			b[i] = static_cast<int32_t>(i % 2 == 0 ? i : i + 1); // equal on even indices
+			b[i] = static_cast<int32_t>(i % 2 == 0 ? i : i + 1);
 		}
 		f(a, b, c);
 		for (size_t i = 0; i < IL; i++) {
 			uint32_t ci;
 			std::memcpy(&ci, &c[i], sizeof(int32_t));
 			REQUIRE(ci == ((a[i] == b[i]) ? 0xFFFFFFFF : 0x00000000));
+		}
+	}
+
+	SECTION("ne int32 (operator!=)") {
+		auto f = engine.registerFunction(vectorNeInt);
+		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(i);
+			b[i] = static_cast<int32_t>(i % 2 == 0 ? i : i + 1);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < IL; i++) {
+			uint32_t ci;
+			std::memcpy(&ci, &c[i], sizeof(int32_t));
+			REQUIRE(ci == ((a[i] != b[i]) ? 0xFFFFFFFF : 0x00000000));
 		}
 	}
 
@@ -224,7 +282,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 	// Bitwise
 	// ================================================================
 
-	SECTION("and int32") {
+	SECTION("and int32 (operator&)") {
 		auto f = engine.registerFunction(vectorAndInt);
 		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
 		for (size_t i = 0; i < IL; i++) {
@@ -236,7 +294,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 			REQUIRE(c[i] == (int32_t) (0xFF00FF00 & 0xFFFF0000));
 	}
 
-	SECTION("or int32") {
+	SECTION("or int32 (operator|)") {
 		auto f = engine.registerFunction(vectorOrInt);
 		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
 		for (size_t i = 0; i < IL; i++) {
@@ -248,7 +306,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 			REQUIRE(c[i] == (int32_t) (0x0F0F0000 | 0x00F0F0F0));
 	}
 
-	SECTION("xor int32") {
+	SECTION("xor int32 (operator^)") {
 		auto f = engine.registerFunction(vectorXorInt);
 		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
 		for (size_t i = 0; i < IL; i++) {
@@ -334,10 +392,10 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// Vector<T>::Load / Store factory method
+	// Vector<T>::Load / Store round-trip
 	// ================================================================
 
-	SECTION("Vector<T>::Load/Store factory") {
+	SECTION("Vector<T>::Load/Store round-trip") {
 		auto f = engine.registerFunction(vectorFactoryLoadStore);
 		alignas(64) float a[FL], c[FL] = {};
 		for (size_t i = 0; i < FL; i++)
@@ -383,6 +441,22 @@ void vectorTests(engine::NautilusEngine& engine) {
 		f(a, b, c);
 		for (int i = 0; i < 8; i++)
 			REQUIRE(c[i] == a[i] + b[i]);
+	}
+
+	// ================================================================
+	// SIMD<T, N> explicit type
+	// ================================================================
+
+	SECTION("SIMD<float, 4> add") {
+		auto f = engine.registerFunction(vectorSIMD128AddFloat);
+		alignas(16) float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
+		alignas(16) float b[] = {10.0f, 20.0f, 30.0f, 40.0f};
+		alignas(16) float c[4] = {};
+		f(a, b, c);
+		REQUIRE(c[0] == 11.0f);
+		REQUIRE(c[1] == 22.0f);
+		REQUIRE(c[2] == 33.0f);
+		REQUIRE(c[3] == 44.0f);
 	}
 }
 

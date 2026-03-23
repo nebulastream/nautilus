@@ -21,7 +21,7 @@ constexpr size_t preferred_vector_width() {
 #endif
 }
 
-/// Fixed-size SIMD vector storage (internal implementation detail).
+/// Fixed-size SIMD vector storage.
 template <typename T, size_t N>
 struct alignas(sizeof(T) * N) vector_data {
 	static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type");
@@ -30,169 +30,250 @@ struct alignas(sizeof(T) * N) vector_data {
 	T data[N];
 };
 
-namespace detail {
+// ============================================================================
+// Forward declarations
+// ============================================================================
 
-/// Internal base class for all vector types. Parameterized by element type and lane count.
-/// Users do not interact with this class directly — they use Vector<T> or VectorFactory.
 template <typename T, size_t N>
-class VectorBase {
+class SIMD;
+
+// Low-level free functions — specialized in vector.cpp via invoke().
+// These are the traced entry points that backends can intercept.
+template <typename T, size_t N>
+SIMD<T, N> vector_load_n(val<const T*> ptr);
+template <typename T, size_t N>
+void vector_store(val<T*> ptr, SIMD<T, N> vec);
+template <typename T, size_t N>
+SIMD<T, N> vector_add(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_sub(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_mul(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_div(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_abs(SIMD<T, N> a);
+template <typename T, size_t N>
+SIMD<T, N> vector_neg(SIMD<T, N> a);
+template <typename T, size_t N>
+SIMD<T, N> vector_min(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_max(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_fma(SIMD<T, N> a, SIMD<T, N> b, SIMD<T, N> c);
+template <typename T, size_t N>
+val<T> vector_reduce_add(SIMD<T, N> a);
+template <typename T, size_t N>
+val<T> vector_reduce_min(SIMD<T, N> a);
+template <typename T, size_t N>
+val<T> vector_reduce_max(SIMD<T, N> a);
+template <typename T, size_t N>
+SIMD<T, N> vector_eq(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_ne(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_lt(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_le(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_gt(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_ge(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_blend(SIMD<T, N> mask, SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_and(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_or(SIMD<T, N> a, SIMD<T, N> b);
+template <typename T, size_t N>
+SIMD<T, N> vector_xor(SIMD<T, N> a, SIMD<T, N> b);
+
+// ============================================================================
+// SIMD<T, N> — Fixed-width SIMD vector.
+//
+// T is the element type (float, double, int32_t, int64_t).
+// N is the number of lanes (must be a power of 2, >= 2).
+//
+// Use SIMD<T, N>::Load(ptr) to load from memory and vec.Store(ptr) to write
+// back. Arithmetic, comparison, and bitwise operators are all overloaded.
+// ============================================================================
+
+template <typename T, size_t N>
+class SIMD {
 public:
 	using element_type = T;
 	using data_type = vector_data<T, N>;
 	static constexpr size_t lanes = N;
 
-	explicit VectorBase(val<data_type*> ptr) : ptr_(ptr) {
+	explicit SIMD(val<data_type*> ptr) : ptr_(ptr) {
 	}
 
-	val<data_type*> data() const {
+	/// Access internal data pointer (for use with low-level free functions).
+	val<data_type*> Data() const {
 		return ptr_;
+	}
+
+	// -- Load / Store --------------------------------------------------------
+
+	/// Load N contiguous elements from memory into a SIMD vector.
+	static SIMD Load(val<const T*> ptr) {
+		return vector_load_n<T, N>(ptr);
+	}
+
+	/// Store this vector to N contiguous elements in memory.
+	void Store(val<T*> ptr) const {
+		vector_store<T, N>(ptr, *this);
+	}
+
+	// -- Unary operations ----------------------------------------------------
+
+	/// Element-wise absolute value.
+	SIMD Abs() const {
+		return vector_abs<T, N>(*this);
+	}
+
+	// -- Reductions (return scalar val<T>) -----------------------------------
+
+	/// Sum all lanes.
+	val<T> ReduceAdd() const {
+		return vector_reduce_add<T, N>(*this);
+	}
+
+	/// Minimum across all lanes.
+	val<T> ReduceMin() const {
+		return vector_reduce_min<T, N>(*this);
+	}
+
+	/// Maximum across all lanes.
+	val<T> ReduceMax() const {
+		return vector_reduce_max<T, N>(*this);
+	}
+
+	// -- Arithmetic operators ------------------------------------------------
+
+	friend SIMD operator+(SIMD a, SIMD b) {
+		return vector_add<T, N>(a, b);
+	}
+
+	friend SIMD operator-(SIMD a, SIMD b) {
+		return vector_sub<T, N>(a, b);
+	}
+
+	friend SIMD operator*(SIMD a, SIMD b) {
+		return vector_mul<T, N>(a, b);
+	}
+
+	friend SIMD operator/(SIMD a, SIMD b) {
+		return vector_div<T, N>(a, b);
+	}
+
+	friend SIMD operator-(SIMD a) {
+		return vector_neg<T, N>(a);
+	}
+
+	// -- Compound assignment -------------------------------------------------
+
+	SIMD& operator+=(SIMD other) {
+		*this = *this + other;
+		return *this;
+	}
+
+	SIMD& operator-=(SIMD other) {
+		*this = *this - other;
+		return *this;
+	}
+
+	SIMD& operator*=(SIMD other) {
+		*this = *this * other;
+		return *this;
+	}
+
+	SIMD& operator/=(SIMD other) {
+		*this = *this / other;
+		return *this;
+	}
+
+	// -- Comparison operators (return element-wise mask vectors) --------------
+
+	friend SIMD operator==(SIMD a, SIMD b) {
+		return vector_eq<T, N>(a, b);
+	}
+
+	friend SIMD operator!=(SIMD a, SIMD b) {
+		return vector_ne<T, N>(a, b);
+	}
+
+	friend SIMD operator<(SIMD a, SIMD b) {
+		return vector_lt<T, N>(a, b);
+	}
+
+	friend SIMD operator<=(SIMD a, SIMD b) {
+		return vector_le<T, N>(a, b);
+	}
+
+	friend SIMD operator>(SIMD a, SIMD b) {
+		return vector_gt<T, N>(a, b);
+	}
+
+	friend SIMD operator>=(SIMD a, SIMD b) {
+		return vector_ge<T, N>(a, b);
+	}
+
+	// -- Bitwise operators ---------------------------------------------------
+
+	friend SIMD operator&(SIMD a, SIMD b) {
+		return vector_and<T, N>(a, b);
+	}
+
+	friend SIMD operator|(SIMD a, SIMD b) {
+		return vector_or<T, N>(a, b);
+	}
+
+	friend SIMD operator^(SIMD a, SIMD b) {
+		return vector_xor<T, N>(a, b);
 	}
 
 private:
 	val<data_type*> ptr_;
 };
 
-} // namespace detail
-
 // ============================================================================
-// Operations — declared on detail::VectorBase<T, N> so they work for any width.
-// N is automatically deduced from the arguments.
+// Top-level convenience functions
 // ============================================================================
 
-// Load / Store
+/// Element-wise minimum.
 template <typename T, size_t N>
-detail::VectorBase<T, N> vector_load_n(val<const T*> ptr);
-
-template <typename T, size_t N>
-void vector_store(val<T*> ptr, detail::VectorBase<T, N> vec);
-
-// Arithmetic
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_add(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_sub(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_mul(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_div(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-// Math
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_abs(detail::VectorBase<T, N> a);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_neg(detail::VectorBase<T, N> a);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_min(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_max(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_fma(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b, detail::VectorBase<T, N> c);
-
-// Reductions
-template <typename T, size_t N>
-val<T> vector_reduce_add(detail::VectorBase<T, N> a);
-
-template <typename T, size_t N>
-val<T> vector_reduce_min(detail::VectorBase<T, N> a);
-
-template <typename T, size_t N>
-val<T> vector_reduce_max(detail::VectorBase<T, N> a);
-
-// Comparisons
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_eq(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_ne(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_lt(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_le(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_gt(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_ge(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-// Masking / Blend / Bitwise
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_blend(detail::VectorBase<T, N> mask, detail::VectorBase<T, N> a,
-                                      detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_and(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_or(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> vector_xor(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b);
-
-// ============================================================================
-// Operator overloads on VectorBase (inherited by all vector types)
-// ============================================================================
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> operator+(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {
-	return vector_add(a, b);
+SIMD<T, N> Min(SIMD<T, N> a, SIMD<T, N> b) {
+	return vector_min<T, N>(a, b);
 }
 
+/// Element-wise maximum.
 template <typename T, size_t N>
-detail::VectorBase<T, N> operator-(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {
-	return vector_sub(a, b);
+SIMD<T, N> Max(SIMD<T, N> a, SIMD<T, N> b) {
+	return vector_max<T, N>(a, b);
 }
 
+/// Fused multiply-add: a * b + c.
 template <typename T, size_t N>
-detail::VectorBase<T, N> operator*(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {
-	return vector_mul(a, b);
+SIMD<T, N> Fma(SIMD<T, N> a, SIMD<T, N> b, SIMD<T, N> c) {
+	return vector_fma<T, N>(a, b, c);
 }
 
+/// Select elements: where mask bits are set take a, otherwise take b.
 template <typename T, size_t N>
-detail::VectorBase<T, N> operator/(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {
-	return vector_div(a, b);
-}
-
-template <typename T, size_t N>
-detail::VectorBase<T, N> operator-(detail::VectorBase<T, N> a) {
-	return vector_neg(a);
+SIMD<T, N> Blend(SIMD<T, N> mask, SIMD<T, N> a, SIMD<T, N> b) {
+	return vector_blend<T, N>(mask, a, b);
 }
 
 // ============================================================================
-// Vector<T> — default vector with hardware-auto-detected lane width.
-// The lane count is a const member, NOT a template parameter.
+// Vector<T> — SIMD vector with hardware-auto-detected lane width.
 // ============================================================================
 
 template <typename T>
-class Vector : public detail::VectorBase<T, preferred_vector_width<T>()> {
-	using Base = detail::VectorBase<T, preferred_vector_width<T>()>;
-
-public:
-	using Base::Base;
-
-	/// Load a vector from contiguous memory.
-	static Vector<T> Load(val<const T*> ptr) {
-		return Vector<T>(vector_load_n<T, Base::lanes>(ptr).data());
-	}
-
-	/// Store this vector to contiguous memory.
-	void Store(val<T*> ptr) const {
-		vector_store(ptr, static_cast<const Base&>(*this));
-	}
-};
+using Vector = SIMD<T, preferred_vector_width<T>()>;
 
 // ============================================================================
-// VectorFactory<Bits> — factory for explicit width selection.
-// Returns VectorBase<T, N> with N derived from the bit width.
+// VectorFactory<Bits> — factory for explicit width selection (128, 256, 512).
 // ============================================================================
 
 template <size_t Bits>
@@ -203,24 +284,23 @@ struct VectorFactory {
 	static constexpr size_t lanes = Bits / (sizeof(T) * 8);
 
 	template <typename T>
-	static detail::VectorBase<T, lanes<T>> Load(val<const T*> ptr) {
-		return vector_load_n<T, lanes<T>>(ptr);
+	static SIMD<T, lanes<T>> Load(val<const T*> ptr) {
+		return SIMD<T, lanes<T>>::Load(ptr);
 	}
 
 	template <typename T>
-	static void Store(val<T*> ptr, detail::VectorBase<T, lanes<T>> vec) {
-		vector_store(ptr, vec);
+	static void Store(val<T*> ptr, SIMD<T, lanes<T>> vec) {
+		vec.Store(ptr);
 	}
 };
 
 // ============================================================================
-// Convenience: vector_load<T> returns the default-width Vector<T>.
+// Convenience: vector_load<T> loads a default-width Vector<T>.
 // ============================================================================
 
 template <typename T>
 Vector<T> vector_load(val<const T*> ptr) {
-	constexpr size_t N = preferred_vector_width<T>();
-	return Vector<T>(vector_load_n<T, N>(ptr).data());
+	return Vector<T>::Load(ptr);
 }
 
 } // namespace nautilus

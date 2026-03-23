@@ -81,6 +81,13 @@ static vector_data<T, N>* nextSlot() {
 		return result;                                                                  \
 	}
 
+#define VECTOR_IMPL_NEG(T, N, SUFFIX)                                            \
+	extern "C" vector_data<T, N>* vector_neg_##SUFFIX##_impl(vector_data<T, N>* a) { \
+		auto* result = nextSlot<T, N>();                                          \
+		for (size_t i = 0; i < N; i++) result->data[i] = -a->data[i];            \
+		return result;                                                            \
+	}
+
 #define VECTOR_IMPL_FMA(T, N, SUFFIX)                                                                                       \
 	extern "C" vector_data<T, N>* vector_fma_##SUFFIX##_impl(vector_data<T, N>* a, vector_data<T, N>* b, vector_data<T, N>* c) { \
 		auto* result = nextSlot<T, N>();                                                                                    \
@@ -144,6 +151,7 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_BINARY(T, N, SUFFIX, mul, *)                      \
 	VECTOR_IMPL_BINARY(T, N, SUFFIX, div, /)                      \
 	VECTOR_IMPL_UNARY_FUNC(T, N, SUFFIX, abs, std::abs)           \
+	VECTOR_IMPL_NEG(T, N, SUFFIX)                                 \
 	VECTOR_IMPL_BINARY_FUNC(T, N, SUFFIX, min, std::min)          \
 	VECTOR_IMPL_BINARY_FUNC(T, N, SUFFIX, max, std::max)          \
 	VECTOR_IMPL_CMP(T, N, SUFFIX, eq, ==)                         \
@@ -164,22 +172,6 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, min, a->data[0], std::min) \
 	VECTOR_IMPL_REDUCE_FUNC(T, N, SUFFIX, max, a->data[0], std::max)
 
-// Neg for float types
-#define VECTOR_IMPL_NEG_FLOAT(T, N, SUFFIX)                                     \
-	extern "C" vector_data<T, N>* vector_neg_##SUFFIX##_impl(vector_data<T, N>* a) { \
-		auto* result = nextSlot<T, N>();                                        \
-		for (size_t i = 0; i < N; i++) result->data[i] = -a->data[i];          \
-		return result;                                                          \
-	}
-
-// Neg for integer types
-#define VECTOR_IMPL_NEG_INT(T, N, SUFFIX)                                       \
-	extern "C" vector_data<T, N>* vector_neg_##SUFFIX##_impl(vector_data<T, N>* a) { \
-		auto* result = nextSlot<T, N>();                                        \
-		for (size_t i = 0; i < N; i++) result->data[i] = -a->data[i];          \
-		return result;                                                          \
-	}
-
 #define VECTOR_IMPL_INT_OPS(T, N, SUFFIX)                         \
 	VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                             \
 	VECTOR_IMPL_REDUCE(T, N, SUFFIX, add, T(0), +)               \
@@ -194,87 +186,74 @@ static vector_data<T, N>* nextSlot() {
 
 // float: 128-bit (4 lanes), 256-bit (8 lanes), 512-bit (16 lanes)
 VECTOR_IMPL_FLOAT_OPS(float, 4, f32x4)
-VECTOR_IMPL_NEG_FLOAT(float, 4, f32x4)
 VECTOR_IMPL_FLOAT_OPS(float, 8, f32x8)
-VECTOR_IMPL_NEG_FLOAT(float, 8, f32x8)
 VECTOR_IMPL_FLOAT_OPS(float, 16, f32x16)
-VECTOR_IMPL_NEG_FLOAT(float, 16, f32x16)
 
 // double: 128-bit (2 lanes), 256-bit (4 lanes), 512-bit (8 lanes)
 VECTOR_IMPL_FLOAT_OPS(double, 2, f64x2)
-VECTOR_IMPL_NEG_FLOAT(double, 2, f64x2)
 VECTOR_IMPL_FLOAT_OPS(double, 4, f64x4)
-VECTOR_IMPL_NEG_FLOAT(double, 4, f64x4)
 VECTOR_IMPL_FLOAT_OPS(double, 8, f64x8)
-VECTOR_IMPL_NEG_FLOAT(double, 8, f64x8)
 
 // int32_t: 128-bit (4 lanes), 256-bit (8 lanes), 512-bit (16 lanes)
 VECTOR_IMPL_INT_OPS(int32_t, 4, i32x4)
-VECTOR_IMPL_NEG_INT(int32_t, 4, i32x4)
 VECTOR_IMPL_INT_OPS(int32_t, 8, i32x8)
-VECTOR_IMPL_NEG_INT(int32_t, 8, i32x8)
 VECTOR_IMPL_INT_OPS(int32_t, 16, i32x16)
-VECTOR_IMPL_NEG_INT(int32_t, 16, i32x16)
 
 // int64_t: 128-bit (2 lanes), 256-bit (4 lanes), 512-bit (8 lanes)
 VECTOR_IMPL_INT_OPS(int64_t, 2, i64x2)
-VECTOR_IMPL_NEG_INT(int64_t, 2, i64x2)
 VECTOR_IMPL_INT_OPS(int64_t, 4, i64x4)
-VECTOR_IMPL_NEG_INT(int64_t, 4, i64x4)
 VECTOR_IMPL_INT_OPS(int64_t, 8, i64x8)
-VECTOR_IMPL_NEG_INT(int64_t, 8, i64x8)
 
 // ============================================================================
 // Nautilus invoke() wrappers — template explicit specializations
 //
-// Operations use detail::VectorBase<T, N> with both T and N as template params.
-// We instantiate for ALL supported widths (128, 256, 512) so both the default
-// Vector<T> and VectorFactory<Bits> work on any platform.
+// These specialize the free function templates declared in vector.hpp.
+// Each calls invoke() with the corresponding extern "C" function pointer,
+// enabling tracing and backend interception (MLIR replaces these at lowering).
 // ============================================================================
 
 // clang-format off
 
 #define VECTOR_INVOKE_LOAD(T, N, SUFFIX)                                                                                   \
 	template <>                                                                                                            \
-	detail::VectorBase<T, N> vector_load_n<T, N>(val<const T*> ptr) {                                                      \
+	SIMD<T, N> vector_load_n<T, N>(val<const T*> ptr) {                                                                   \
 		auto result = invoke<vector_data<T, N>*, const T*>(vector_load_##SUFFIX##_impl, ptr);                              \
-		return detail::VectorBase<T, N>(result);                                                                           \
+		return SIMD<T, N>(result);                                                                                         \
 	}
 
 #define VECTOR_INVOKE_STORE(T, N, SUFFIX)                                                                                  \
 	template <>                                                                                                            \
-	void vector_store<T, N>(val<T*> ptr, detail::VectorBase<T, N> vec) {                                                   \
-		invoke<void, T*, vector_data<T, N>*>(vector_store_##SUFFIX##_impl, ptr, vec.data());                               \
+	void vector_store<T, N>(val<T*> ptr, SIMD<T, N> vec) {                                                                \
+		invoke<void, T*, vector_data<T, N>*>(vector_store_##SUFFIX##_impl, ptr, vec.Data());                               \
 	}
 
 #define VECTOR_INVOKE_BINARY(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b) {                 \
+	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a, SIMD<T, N> b) {                                                          \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(                                  \
-		    vector_##NAME##_##SUFFIX##_impl, a.data(), b.data());                                                          \
-		return detail::VectorBase<T, N>(result);                                                                           \
+		    vector_##NAME##_##SUFFIX##_impl, a.Data(), b.Data());                                                          \
+		return SIMD<T, N>(result);                                                                                         \
 	}
 
 #define VECTOR_INVOKE_UNARY(T, N, SUFFIX, NAME)                                                                            \
 	template <>                                                                                                            \
-	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a) {                                             \
-		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*>(vector_##NAME##_##SUFFIX##_impl, a.data());           \
-		return detail::VectorBase<T, N>(result);                                                                           \
+	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a) {                                                                        \
+		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*>(vector_##NAME##_##SUFFIX##_impl, a.Data());           \
+		return SIMD<T, N>(result);                                                                                         \
 	}
 
 #define VECTOR_INVOKE_TERNARY(T, N, SUFFIX, NAME)                                                                          \
 	template <>                                                                                                            \
-	detail::VectorBase<T, N> vector_##NAME<T, N>(detail::VectorBase<T, N> a, detail::VectorBase<T, N> b,                   \
-	                                             detail::VectorBase<T, N> c) {                                             \
+	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a, SIMD<T, N> b, SIMD<T, N> c) {                                            \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(              \
-		    vector_##NAME##_##SUFFIX##_impl, a.data(), b.data(), c.data());                                                \
-		return detail::VectorBase<T, N>(result);                                                                           \
+		    vector_##NAME##_##SUFFIX##_impl, a.Data(), b.Data(), c.Data());                                                \
+		return SIMD<T, N>(result);                                                                                         \
 	}
 
 #define VECTOR_INVOKE_REDUCE(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	val<T> vector_reduce_##NAME<T, N>(detail::VectorBase<T, N> a) {                                                        \
-		return invoke<T, vector_data<T, N>*>(vector_reduce_##NAME##_##SUFFIX##_impl, a.data());                            \
+	val<T> vector_reduce_##NAME<T, N>(SIMD<T, N> a) {                                                                     \
+		return invoke<T, vector_data<T, N>*>(vector_reduce_##NAME##_##SUFFIX##_impl, a.Data());                            \
 	}
 
 #define VECTOR_INVOKE_ALL(T, N, SUFFIX)                                                                                    \
@@ -310,7 +289,6 @@ VECTOR_IMPL_NEG_INT(int64_t, 8, i64x8)
 
 // ============================================================================
 // Instantiate invoke() wrappers for ALL widths (128, 256, 512).
-// This enables both Vector<T> (default width) and VectorFactory<Bits>.
 // ============================================================================
 
 // 128-bit (SSE / NEON)
