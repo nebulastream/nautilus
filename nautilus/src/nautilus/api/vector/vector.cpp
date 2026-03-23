@@ -16,7 +16,6 @@ namespace nautilus {
 // plugin and replaces them with native vector dialect operations.
 // ============================================================================
 
-// Helper: comparison mask value (all-ones for true, zero for false)
 template <typename T>
 static T mask_true() {
 	T result;
@@ -31,7 +30,6 @@ static T mask_false() {
 
 // ============================================================================
 // Ring buffer for thread-safe result storage.
-// Prevents multiple concurrent calls from overwriting each other's results.
 // ============================================================================
 
 template <typename T, size_t N>
@@ -43,7 +41,7 @@ static vector_data<T, N>* nextSlot() {
 }
 
 // ============================================================================
-// Macros to reduce boilerplate for type/width instantiations
+// Macros for extern "C" scalar fallback implementations
 // ============================================================================
 
 // clang-format off
@@ -56,8 +54,8 @@ static vector_data<T, N>* nextSlot() {
 	}
 
 #define VECTOR_IMPL_STORE(T, N, SUFFIX)                                          \
-	extern "C" void vector_store_##SUFFIX##_impl(T* ptr, vector_data<T, N>* vec) { \
-		for (size_t i = 0; i < N; i++) ptr[i] = vec->data[i];                   \
+	extern "C" void vector_store_##SUFFIX##_impl(T* ptr, vector_data<T, N>* v) { \
+		for (size_t i = 0; i < N; i++) ptr[i] = v->data[i];                     \
 	}
 
 #define VECTOR_IMPL_BINARY(T, N, SUFFIX, NAME, OP)                                                         \
@@ -139,10 +137,6 @@ static vector_data<T, N>* nextSlot() {
 		return result;                                                                                      \
 	}
 
-// ============================================================================
-// Generate all extern "C" implementations for a given type/width
-// ============================================================================
-
 #define VECTOR_IMPL_ALL_OPS(T, N, SUFFIX)                         \
 	VECTOR_IMPL_LOAD(T, N, SUFFIX)                                \
 	VECTOR_IMPL_STORE(T, N, SUFFIX)                               \
@@ -184,75 +178,69 @@ static vector_data<T, N>* nextSlot() {
 // Instantiate extern "C" implementations for supported types and widths
 // ============================================================================
 
-// float: 128-bit (4 lanes), 256-bit (8 lanes), 512-bit (16 lanes)
 VECTOR_IMPL_FLOAT_OPS(float, 4, f32x4)
 VECTOR_IMPL_FLOAT_OPS(float, 8, f32x8)
 VECTOR_IMPL_FLOAT_OPS(float, 16, f32x16)
 
-// double: 128-bit (2 lanes), 256-bit (4 lanes), 512-bit (8 lanes)
 VECTOR_IMPL_FLOAT_OPS(double, 2, f64x2)
 VECTOR_IMPL_FLOAT_OPS(double, 4, f64x4)
 VECTOR_IMPL_FLOAT_OPS(double, 8, f64x8)
 
-// int32_t: 128-bit (4 lanes), 256-bit (8 lanes), 512-bit (16 lanes)
 VECTOR_IMPL_INT_OPS(int32_t, 4, i32x4)
 VECTOR_IMPL_INT_OPS(int32_t, 8, i32x8)
 VECTOR_IMPL_INT_OPS(int32_t, 16, i32x16)
 
-// int64_t: 128-bit (2 lanes), 256-bit (4 lanes), 512-bit (8 lanes)
 VECTOR_IMPL_INT_OPS(int64_t, 2, i64x2)
 VECTOR_IMPL_INT_OPS(int64_t, 4, i64x4)
 VECTOR_IMPL_INT_OPS(int64_t, 8, i64x8)
 
 // ============================================================================
-// Nautilus invoke() wrappers — template explicit specializations
-//
-// These specialize the free function templates declared in vector.hpp.
+// Nautilus invoke() wrappers — explicit specializations of the free functions.
 // Each calls invoke() with the corresponding extern "C" function pointer,
-// enabling tracing and backend interception (MLIR replaces these at lowering).
+// enabling tracing and backend interception.
 // ============================================================================
 
 // clang-format off
 
 #define VECTOR_INVOKE_LOAD(T, N, SUFFIX)                                                                                   \
 	template <>                                                                                                            \
-	SIMD<T, N> vector_load_n<T, N>(val<const T*> ptr) {                                                                   \
+	val<vec<T, N>> vector_load_n<T, N>(val<const T*> ptr) {                                                                \
 		auto result = invoke<vector_data<T, N>*, const T*>(vector_load_##SUFFIX##_impl, ptr);                              \
-		return SIMD<T, N>(result);                                                                                         \
+		return val<vec<T, N>>(result);                                                                                     \
 	}
 
 #define VECTOR_INVOKE_STORE(T, N, SUFFIX)                                                                                  \
 	template <>                                                                                                            \
-	void vector_store<T, N>(val<T*> ptr, SIMD<T, N> vec) {                                                                \
-		invoke<void, T*, vector_data<T, N>*>(vector_store_##SUFFIX##_impl, ptr, vec.Data());                               \
+	void vector_store<T, N>(val<T*> ptr, val<vec<T, N>> v) {                                                               \
+		invoke<void, T*, vector_data<T, N>*>(vector_store_##SUFFIX##_impl, ptr, v.Data());                                 \
 	}
 
 #define VECTOR_INVOKE_BINARY(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a, SIMD<T, N> b) {                                                          \
+	val<vec<T, N>> vector_##NAME<T, N>(val<vec<T, N>> a, val<vec<T, N>> b) {                                               \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(                                  \
 		    vector_##NAME##_##SUFFIX##_impl, a.Data(), b.Data());                                                          \
-		return SIMD<T, N>(result);                                                                                         \
+		return val<vec<T, N>>(result);                                                                                     \
 	}
 
 #define VECTOR_INVOKE_UNARY(T, N, SUFFIX, NAME)                                                                            \
 	template <>                                                                                                            \
-	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a) {                                                                        \
-		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*>(vector_##NAME##_##SUFFIX##_impl, a.Data());           \
-		return SIMD<T, N>(result);                                                                                         \
+	val<vec<T, N>> vector_##NAME<T, N>(val<vec<T, N>> a) {                                                                 \
+		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*>(vector_##NAME##_##SUFFIX##_impl, a.Data());            \
+		return val<vec<T, N>>(result);                                                                                     \
 	}
 
 #define VECTOR_INVOKE_TERNARY(T, N, SUFFIX, NAME)                                                                          \
 	template <>                                                                                                            \
-	SIMD<T, N> vector_##NAME<T, N>(SIMD<T, N> a, SIMD<T, N> b, SIMD<T, N> c) {                                            \
+	val<vec<T, N>> vector_##NAME<T, N>(val<vec<T, N>> a, val<vec<T, N>> b, val<vec<T, N>> c) {                              \
 		auto result = invoke<vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*, vector_data<T, N>*>(              \
 		    vector_##NAME##_##SUFFIX##_impl, a.Data(), b.Data(), c.Data());                                                \
-		return SIMD<T, N>(result);                                                                                         \
+		return val<vec<T, N>>(result);                                                                                     \
 	}
 
 #define VECTOR_INVOKE_REDUCE(T, N, SUFFIX, NAME)                                                                           \
 	template <>                                                                                                            \
-	val<T> vector_reduce_##NAME<T, N>(SIMD<T, N> a) {                                                                     \
+	val<T> vector_reduce_##NAME<T, N>(val<vec<T, N>> a) {                                                                  \
 		return invoke<T, vector_data<T, N>*>(vector_reduce_##NAME##_##SUFFIX##_impl, a.Data());                            \
 	}
 

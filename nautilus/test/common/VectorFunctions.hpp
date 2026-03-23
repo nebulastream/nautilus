@@ -6,33 +6,33 @@
 namespace nautilus::engine {
 
 // ============================================================================
-// Float arithmetic — using operators and member methods
+// Float arithmetic — using val<vec<float>> with operators
 // ============================================================================
 
 void vectorAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = Vector<float>::Load(a);
-	auto vb = Vector<float>::Load(b);
+	auto va = val<vec<float>>::Load(a);
+	auto vb = val<vec<float>>::Load(b);
 	(va + vb).Store(c);
 }
 
 void vectorSubFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	(Vector<float>::Load(a) - Vector<float>::Load(b)).Store(c);
+	(val<vec<float>>::Load(a) - val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorMulFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	(Vector<float>::Load(a) * Vector<float>::Load(b)).Store(c);
+	(val<vec<float>>::Load(a) * val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorDivFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	(Vector<float>::Load(a) / Vector<float>::Load(b)).Store(c);
+	(val<vec<float>>::Load(a) / val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorNegFloat(val<const float*> a, val<float*> c) {
-	(-Vector<float>::Load(a)).Store(c);
+	(-val<vec<float>>::Load(a)).Store(c);
 }
 
 void vectorAbsFloat(val<const float*> a, val<float*> c) {
-	Vector<float>::Load(a).Abs().Store(c);
+	val<vec<float>>::Load(a).Abs().Store(c);
 }
 
 // ============================================================================
@@ -40,15 +40,15 @@ void vectorAbsFloat(val<const float*> a, val<float*> c) {
 // ============================================================================
 
 void vectorMinFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	Min(Vector<float>::Load(a), Vector<float>::Load(b)).Store(c);
+	Min(val<vec<float>>::Load(a), val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorMaxFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	Max(Vector<float>::Load(a), Vector<float>::Load(b)).Store(c);
+	Max(val<vec<float>>::Load(a), val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorFmaFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
-	Fma(Vector<float>::Load(a), Vector<float>::Load(b), Vector<float>::Load(c)).Store(d);
+	Fma(val<vec<float>>::Load(a), val<vec<float>>::Load(b), val<vec<float>>::Load(c)).Store(d);
 }
 
 // ============================================================================
@@ -56,15 +56,15 @@ void vectorFmaFloat(val<const float*> a, val<const float*> b, val<const float*> 
 // ============================================================================
 
 val<float> vectorReduceAddFloat(val<const float*> a) {
-	return Vector<float>::Load(a).ReduceAdd();
+	return val<vec<float>>::Load(a).ReduceAdd();
 }
 
 val<float> vectorReduceMinFloat(val<const float*> a) {
-	return Vector<float>::Load(a).ReduceMin();
+	return val<vec<float>>::Load(a).ReduceMin();
 }
 
 val<float> vectorReduceMaxFloat(val<const float*> a) {
-	return Vector<float>::Load(a).ReduceMax();
+	return val<vec<float>>::Load(a).ReduceMax();
 }
 
 // ============================================================================
@@ -72,9 +72,9 @@ val<float> vectorReduceMaxFloat(val<const float*> a) {
 // ============================================================================
 
 void vectorMulSubFloat(val<const float*> a, val<const float*> b, val<const float*> c, val<float*> d) {
-	auto va = Vector<float>::Load(a);
-	auto vb = Vector<float>::Load(b);
-	auto vc = Vector<float>::Load(c);
+	auto va = val<vec<float>>::Load(a);
+	auto vb = val<vec<float>>::Load(b);
+	auto vc = val<vec<float>>::Load(c);
 	(va * vb - vc).Store(d);
 }
 
@@ -83,14 +83,14 @@ void vectorMulSubFloat(val<const float*> a, val<const float*> b, val<const float
 // ============================================================================
 
 void vectorCompoundAddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = Vector<float>::Load(a);
-	va += Vector<float>::Load(b);
+	auto va = val<vec<float>>::Load(a);
+	va += val<vec<float>>::Load(b);
 	va.Store(c);
 }
 
 void vectorCompoundMulFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = Vector<float>::Load(a);
-	va *= Vector<float>::Load(b);
+	auto va = val<vec<float>>::Load(a);
+	va *= val<vec<float>>::Load(b);
 	va.Store(c);
 }
 
@@ -99,29 +99,29 @@ void vectorCompoundMulFloat(val<const float*> a, val<const float*> b, val<float*
 // ============================================================================
 
 void vectorLtFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	(Vector<float>::Load(a) < Vector<float>::Load(b)).Store(c);
+	(val<vec<float>>::Load(a) < val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorGeFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	(Vector<float>::Load(a) >= Vector<float>::Load(b)).Store(c);
+	(val<vec<float>>::Load(a) >= val<vec<float>>::Load(b)).Store(c);
 }
 
 void vectorEqInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) == Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) == val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 void vectorNeInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) != Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) != val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 // ============================================================================
-// Blend — using top-level Blend()
+// Blend
 // ============================================================================
 
 void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*> mask_arr, val<float*> c) {
-	auto va = Vector<float>::Load(a);
-	auto vb = Vector<float>::Load(b);
-	auto vmask = Vector<float>::Load(mask_arr);
+	auto va = val<vec<float>>::Load(a);
+	auto vb = val<vec<float>>::Load(b);
+	auto vmask = val<vec<float>>::Load(mask_arr);
 	Blend(vmask, va, vb).Store(c);
 }
 
@@ -130,15 +130,15 @@ void vectorBlendFloat(val<const float*> a, val<const float*> b, val<const float*
 // ============================================================================
 
 void vectorAndInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) & Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) & val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 void vectorOrInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) | Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) | val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 void vectorXorInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) ^ Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) ^ val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 // ============================================================================
@@ -146,23 +146,23 @@ void vectorXorInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c)
 // ============================================================================
 
 void vectorAddInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) + Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) + val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 void vectorMulInt(val<const int32_t*> a, val<const int32_t*> b, val<int32_t*> c) {
-	(Vector<int32_t>::Load(a) * Vector<int32_t>::Load(b)).Store(c);
+	(val<vec<int32_t>>::Load(a) * val<vec<int32_t>>::Load(b)).Store(c);
 }
 
 val<int32_t> vectorReduceAddInt(val<const int32_t*> a) {
-	return Vector<int32_t>::Load(a).ReduceAdd();
+	return val<vec<int32_t>>::Load(a).ReduceAdd();
 }
 
 val<int32_t> vectorReduceMinInt(val<const int32_t*> a) {
-	return Vector<int32_t>::Load(a).ReduceMin();
+	return val<vec<int32_t>>::Load(a).ReduceMin();
 }
 
 val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
-	return Vector<int32_t>::Load(a).ReduceMax();
+	return val<vec<int32_t>>::Load(a).ReduceMax();
 }
 
 // ============================================================================
@@ -170,11 +170,11 @@ val<int32_t> vectorReduceMaxInt(val<const int32_t*> a) {
 // ============================================================================
 
 void vectorAddDouble(val<const double*> a, val<const double*> b, val<double*> c) {
-	(Vector<double>::Load(a) + Vector<double>::Load(b)).Store(c);
+	(val<vec<double>>::Load(a) + val<vec<double>>::Load(b)).Store(c);
 }
 
 // ============================================================================
-// Vector<T>::Load / Store round-trip
+// Load / Store round-trip using Vector<T> alias
 // ============================================================================
 
 void vectorFactoryLoadStore(val<const float*> a, val<float*> c) {
@@ -192,8 +192,7 @@ void vectorFactory128AddFloat(val<const float*> a, val<const float*> b, val<floa
 }
 
 void vectorFactory128ReduceFloat(val<const float*> a, val<float*> c) {
-	auto va = VectorFactory<128>::Load<float>(a);
-	c[0] = va.ReduceAdd();
+	c[0] = VectorFactory<128>::Load<float>(a).ReduceAdd();
 }
 
 // ============================================================================
@@ -207,12 +206,22 @@ void vectorFactory256AddFloat(val<const float*> a, val<const float*> b, val<floa
 }
 
 // ============================================================================
-// SIMD<T, N> with explicit type
+// Explicit val<vec<float, 4>> (direct template parameters)
 // ============================================================================
 
-void vectorSIMD128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
-	auto va = SIMD<float, 4>::Load(a);
-	auto vb = SIMD<float, 4>::Load(b);
+void vectorExplicit128AddFloat(val<const float*> a, val<const float*> b, val<float*> c) {
+	auto va = val<vec<float, 4>>::Load(a);
+	auto vb = val<vec<float, 4>>::Load(b);
+	(va + vb).Store(c);
+}
+
+// ============================================================================
+// Vector<T, N> alias with explicit lane count
+// ============================================================================
+
+void vectorAlias256AddDouble(val<const double*> a, val<const double*> b, val<double*> c) {
+	auto va = Vector<double, 4>::Load(a);
+	auto vb = Vector<double, 4>::Load(b);
 	(va + vb).Store(c);
 }
 

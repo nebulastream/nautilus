@@ -7,9 +7,9 @@
 
 namespace nautilus::engine {
 
-static constexpr size_t FL = Vector<float>::lanes;
-static constexpr size_t IL = Vector<int32_t>::lanes;
-static constexpr size_t DL = Vector<double>::lanes;
+static constexpr size_t FL = val<vec<float>>::lanes;
+static constexpr size_t IL = val<vec<int32_t>>::lanes;
+static constexpr size_t DL = val<vec<double>>::lanes;
 
 void vectorTests(engine::NautilusEngine& engine) {
 
@@ -392,10 +392,10 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// Vector<T>::Load / Store round-trip
+	// Vector<T> alias Load / Store round-trip
 	// ================================================================
 
-	SECTION("Vector<T>::Load/Store round-trip") {
+	SECTION("Vector<T> Load/Store round-trip") {
 		auto f = engine.registerFunction(vectorFactoryLoadStore);
 		alignas(64) float a[FL], c[FL] = {};
 		for (size_t i = 0; i < FL; i++)
@@ -444,11 +444,11 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
-	// SIMD<T, N> explicit type
+	// Explicit val<vec<float, 4>> (direct template parameters)
 	// ================================================================
 
-	SECTION("SIMD<float, 4> add") {
-		auto f = engine.registerFunction(vectorSIMD128AddFloat);
+	SECTION("val<vec<float, 4>> add") {
+		auto f = engine.registerFunction(vectorExplicit128AddFloat);
 		alignas(16) float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
 		alignas(16) float b[] = {10.0f, 20.0f, 30.0f, 40.0f};
 		alignas(16) float c[4] = {};
@@ -457,6 +457,22 @@ void vectorTests(engine::NautilusEngine& engine) {
 		REQUIRE(c[1] == 22.0f);
 		REQUIRE(c[2] == 33.0f);
 		REQUIRE(c[3] == 44.0f);
+	}
+
+	// ================================================================
+	// Vector<T, N> alias with explicit lane count
+	// ================================================================
+
+	SECTION("Vector<double, 4> add") {
+		auto f = engine.registerFunction(vectorAlias256AddDouble);
+		alignas(32) double a[] = {1.0, 2.0, 3.0, 4.0};
+		alignas(32) double b[] = {10.0, 20.0, 30.0, 40.0};
+		alignas(32) double c[4] = {};
+		f(a, b, c);
+		REQUIRE(c[0] == 11.0);
+		REQUIRE(c[1] == 22.0);
+		REQUIRE(c[2] == 33.0);
+		REQUIRE(c[3] == 44.0);
 	}
 }
 
