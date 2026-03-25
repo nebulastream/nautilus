@@ -23,11 +23,11 @@ using CompilationUnitID = std::string;
  * Implementations provide different compilation strategies (single-tier, tiered, etc.)
  * while presenting a uniform interface to the engine and module system.
  */
-class IJITCompiler {
+class JITCompiler {
 public:
 	using wrapper_function = std::function<void()>;
 
-	virtual ~IJITCompiler() = default;
+	virtual ~JITCompiler() = default;
 
 	/**
 	 * @brief Compile a single wrapper function.
@@ -52,46 +52,6 @@ public:
 	 * @brief Get the engine options.
 	 */
 	virtual const engine::Options& getOptions() const = 0;
-};
-
-/**
- * @brief Standard single-tier JIT compiler implementation.
- *
- * Compiles functions using a single backend (selected via options).
- * This is the original Nautilus compilation strategy.
- */
-class JITCompiler : public IJITCompiler {
-public:
-	JITCompiler();
-	JITCompiler(engine::Options options);
-	~JITCompiler() override;
-
-	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
-	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const override;
-
-	std::string getName() const override;
-	const engine::Options& getOptions() const override {
-		return options;
-	}
-
-	/**
-	 * @brief Trace and convert functions to IR without backend compilation.
-	 * @return Shared IR graph that can be compiled by any backend
-	 */
-	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions) const;
-
-	/**
-	 * @brief Compile a pre-built IR graph with a specific backend.
-	 * @param ir The IR graph
-	 * @param backendName Which backend to use
-	 * @return Compiled executable
-	 */
-	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
-	                                                    const std::string& backendName) const;
-
-private:
-	const engine::Options options;
-	const CompilationBackendRegistry* backends;
 };
 
 } // namespace nautilus::compiler

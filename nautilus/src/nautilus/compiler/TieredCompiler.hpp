@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LegacyCompiler.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include <atomic>
@@ -48,8 +49,9 @@ namespace nautilus::compiler {
  * executable and increments the version counter when tier-1 compilation completes.
  * This eliminates the need for swap callbacks on executables.
  */
-class TieredJITCompiler : public IJITCompiler {
+class TieredJITCompiler : public JITCompiler {
 public:
+	TieredJITCompiler(engine::Options options);
 	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config);
 	~TieredJITCompiler() override;
 
@@ -82,7 +84,7 @@ public:
 	bool allPromotionsComplete() const;
 
 private:
-	JITCompiler baseCompiler_;
+	LegacyCompiler baseCompiler_;
 	engine::TieredCompilationConfig config_;
 
 	// Mutable because compile() is const but needs to cache IR for promotion

@@ -1,4 +1,4 @@
-#include "nautilus/TieredCompilation.hpp"
+#include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/Module.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
@@ -25,6 +25,15 @@ static std::string createPromotionUnitID() {
 }
 
 // --- TieredJITCompiler ---
+
+TieredJITCompiler::TieredJITCompiler(engine::Options options) : baseCompiler_(options) {
+	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
+	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
+	if (!tier0.empty() && !tier1.empty()) {
+		config_.tier0.backend = tier0;
+		config_.tier1.backend = tier1;
+	}
+}
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config)
     : baseCompiler_(options), config_(std::move(config)) {

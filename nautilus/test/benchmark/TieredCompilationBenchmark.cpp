@@ -1,5 +1,5 @@
 #include "nautilus/Engine.hpp"
-#include "nautilus/TieredCompilation.hpp"
+#include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
 
@@ -23,14 +23,8 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 
 	using BenchFunc = std::pair<std::string, std::function<void(NautilusModule&)>>;
 	std::vector<BenchFunc> testFuncs = {
-	    {"addOne",
-	     [](NautilusModule& m) {
-		     m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne);
-	     }},
-	    {"sumLoop",
-	     [](NautilusModule& m) {
-		     m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchSumLoop);
-	     }},
+	    {"addOne", [](NautilusModule& m) { m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchAddOne); }},
+	    {"sumLoop", [](NautilusModule& m) { m.registerFunction<val<int32_t>(val<int32_t>)>("f", benchSumLoop); }},
 	};
 
 	for (auto& [name, registerFn] : testFuncs) {
