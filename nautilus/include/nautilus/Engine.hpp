@@ -4,7 +4,6 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
-#include "nautilus/TieredCompilation.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
@@ -97,24 +96,6 @@ std::function<void()> createFunctionWrapper(F&& func) {
 	return createFunctionWrapper(std::function(std::forward<F>(func)));
 }
 
-/**
- * @brief Creates the appropriate IJITCompiler implementation based on options.
- *
- * If tiered compilation options are set (engine.tier0.backend and engine.tier1.backend),
- * returns a TieredJITCompiler. Otherwise returns a standard JITCompiler.
- */
-inline std::unique_ptr<compiler::IJITCompiler> createJITCompiler(const Options& options) {
-	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
-	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
-	if (!tier0.empty() && !tier1.empty()) {
-		TieredCompilationConfig config;
-		config.tier0.backend = tier0;
-		config.tier1.backend = tier1;
-		return std::make_unique<compiler::TieredJITCompiler>(options, config);
-	}
-	return std::make_unique<compiler::JITCompiler>(options);
-}
-
 #endif
 } // namespace details
 
@@ -172,7 +153,7 @@ public:
 	 * @param jit The JIT compiler to use (takes ownership)
 	 * @param options Engine options
 	 */
-	NautilusEngine(std::unique_ptr<compiler::IJITCompiler> jit, const Options& options = Options());
+	NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options = Options());
 
 	/// Register and compile a single function pointer. Defined after NautilusModule.
 	template <typename R, is_val... FunctionArguments>
@@ -197,7 +178,7 @@ public:
 	}
 
 private:
-	std::unique_ptr<compiler::IJITCompiler> jit_;
+	std::unique_ptr<compiler::JITCompiler> jit_;
 	const Options options;
 };
 
@@ -220,10 +201,10 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::IJITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::JITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::IJITCompiler& /*jit*/, bool /*compiled*/) {
+	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/) {
 	}
 #endif
 
@@ -288,9 +269,9 @@ public:
 			// If using tiered compilation, start background promotion.
 			// The TieredJITCompiler directly swaps the executable and bumps
 			// the version in the module state when tier-1 compilation completes.
-			if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
-				tiered->promoteAsync(module.getState());
-			}
+			// if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
+			//	tiered->promoteAsync(module.getState());
+			//}
 
 			return module;
 		}
@@ -301,7 +282,7 @@ public:
 private:
 	std::unordered_map<std::string, std::any> interpretedFunctions_;
 #ifdef ENABLE_TRACING
-	const compiler::IJITCompiler& jit_;
+	const compiler::JITCompiler& jit_;
 	bool compiled_;
 	std::list<compiler::CompilableFunction> functions_;
 #endif

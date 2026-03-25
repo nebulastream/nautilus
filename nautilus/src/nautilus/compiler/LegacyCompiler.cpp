@@ -1,4 +1,4 @@
-#include "nautilus/JITCompiler.hpp"
+#include "nautilus/compiler/LegacyCompiler.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
@@ -26,16 +26,16 @@
 
 namespace nautilus::compiler {
 
-JITCompiler::JITCompiler() : options(), backends(CompilationBackendRegistry::getInstance()) {
+LegacyCompiler::LegacyCompiler() : options(), backends(CompilationBackendRegistry::getInstance()) {
 }
 
-JITCompiler::JITCompiler(engine::Options options)
+LegacyCompiler::LegacyCompiler(engine::Options options)
     : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()) {
 }
 
-JITCompiler::~JITCompiler() = default;
+LegacyCompiler::~LegacyCompiler() = default;
 
-std::string JITCompiler::getName() const {
+std::string LegacyCompiler::getName() const {
 	auto name = options.getOptionOrDefault<std::string>("engine.backend", "");
 	if (name.empty()) {
 		return backends->getDefaultBackendName();
@@ -75,14 +75,14 @@ static constexpr auto ROOT_FUNCTION_NAME = "execute";
 static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
 static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
 
-std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function function) const {
+std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_function function) const {
 	auto rootFunction = CompilableFunction(ROOT_FUNCTION_NAME, function);
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
 	return compile(functionsToTrace);
 }
 
-std::shared_ptr<ir::IRGraph> JITCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
+std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
 
@@ -106,8 +106,8 @@ std::shared_ptr<ir::IRGraph> JITCompiler::compileToIR(std::list<CompilableFuncti
 	return ir;
 }
 
-std::unique_ptr<Executable> JITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
-                                                   const std::string& backendName) const {
+std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+                                                      const std::string& backendName) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
 
@@ -117,26 +117,26 @@ std::unique_ptr<Executable> JITCompiler::compileIR(const std::shared_ptr<ir::IRG
 	return executable;
 }
 
-std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>& functions) const {
+std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction>& functions) const {
 	auto ir = compileToIR(functions);
 	return compileIR(ir, getName());
 }
 
 #else
 
-std::unique_ptr<Executable> JITCompiler::compile(JITCompiler::wrapper_function) const {
+std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_function) const {
 	throw RuntimeException("Jit not initialised");
 }
 
-std::unique_ptr<Executable> JITCompiler::compile(std::list<CompilableFunction>&) const {
+std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 
-std::shared_ptr<ir::IRGraph> JITCompiler::compileToIR(std::list<CompilableFunction>&) const {
+std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 
-std::unique_ptr<Executable> JITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&) const {
+std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&) const {
 	throw RuntimeException("Jit not initialised");
 }
 

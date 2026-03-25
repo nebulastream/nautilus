@@ -1,4 +1,4 @@
-#include "DumpHandler.hpp"
+#include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
