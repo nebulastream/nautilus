@@ -18,6 +18,8 @@ enum Op : uint8_t {
 	INDIRECT_CALL,
 	// Memory
 	LOAD,
+	LOAD_INVARIANT,
+	LOAD_NONNULL,
 	STORE,
 	// Logical
 	EQ,
@@ -60,6 +62,10 @@ constexpr const char* toString(Op type) {
 		return "INDIRECT_CALL";
 	case LOAD:
 		return "LOAD";
+	case LOAD_INVARIANT:
+		return "LOAD_INVARIANT";
+	case LOAD_NONNULL:
+		return "LOAD_NONNULL";
 	case STORE:
 		return "STORE";
 	case JMP:

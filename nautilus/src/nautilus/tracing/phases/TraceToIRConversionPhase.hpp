@@ -14,6 +14,7 @@
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
@@ -91,6 +92,9 @@ private:
 		                       compiler::ir::BinaryCompOperation::Type type);
 
 		void processLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+
+		void processHintedLoad(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation,
+		                       compiler::ir::LoadHints hints);
 
 		void processStore(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 		void processAlloca(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
