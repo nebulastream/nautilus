@@ -371,6 +371,9 @@ TEST_CASE("Value Trace Test") {
 	    {"twoStructsSameLoop", details::createFunctionWrapper(twoStructsSameLoop)},
 	    {"outerAndInnerStructLoop", details::createFunctionWrapper(outerAndInnerStructLoop)},
 	    {"multiStructConditionalLoop", details::createFunctionWrapper(multiStructConditionalLoop)},
+	    // alloca merge bug: different-sized structs with non-overlapping lifetimes
+	    {"allocaMergeBug", details::createFunctionWrapper(allocaMergeBug)},
+	    {"allocaMergeInLoop", details::createFunctionWrapper(allocaMergeInLoop)},
 
 	};
 	runTraceTests("value-tracing-tests", tests);

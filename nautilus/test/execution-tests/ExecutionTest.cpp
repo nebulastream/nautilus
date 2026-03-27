@@ -1046,6 +1046,18 @@ void valueExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((int32_t) 1, (int64_t) 1) == 10);
 		REQUIRE(f((int32_t) 4, (int64_t) 1) == 40);
 	}
+	SECTION("allocaMergeBug") {
+		auto f = engine.registerFunction(allocaMergeBug);
+		// fillSmall: a=42, fillLarge: sum(1..8)=36, result = 36 + 42 = 78
+		REQUIRE(f() == 78);
+	}
+	SECTION("allocaMergeInLoop") {
+		auto f = engine.registerFunction(allocaMergeInLoop);
+		REQUIRE(f((int32_t) 0) == 0);
+		// each iteration: 36 + 42 = 78
+		REQUIRE(f((int32_t) 1) == 78);
+		REQUIRE(f((int32_t) 3) == 234);
+	}
 }
 
 class Clazz {

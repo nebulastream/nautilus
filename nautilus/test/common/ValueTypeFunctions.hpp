@@ -427,4 +427,69 @@ val<int64_t> multiStructConditionalLoop(val<int32_t> count, val<int64_t> selecto
 	return selector;
 }
 
+// --- Alloca merge bug: different-sized structs with non-overlapping lifetimes ---
+
+struct Small {
+	int32_t a;
+	int32_t b;
+}; // 8 bytes
+
+struct Large {
+	int64_t data[8];
+}; // 64 bytes
+
+void fillSmall(Small* s) {
+	s->a = 42;
+	s->b = 10;
+}
+
+void fillLarge(Large* l) {
+	for (int i = 0; i < 8; i++) {
+		l->data[i] = i + 1;
+	}
+}
+
+int64_t sumLarge(Large* l) {
+	int64_t sum = 0;
+	for (int i = 0; i < 8; i++) {
+		sum += l->data[i];
+	}
+	return sum;
+}
+
+// val<Small> goes out of scope before val<Large> is created.
+// LLVM sees non-overlapping lifetimes and may merge both allocas,
+// using the smaller size. fillLarge then writes 64 bytes into an
+// 8-byte slot — stack corruption.
+val<int64_t> allocaMergeBug() {
+	val<int32_t> smallResult;
+	{
+		val<Small> s;
+		invoke(fillSmall, &s);
+		smallResult = s.get(&Small::a);
+	}
+	val<Large> l;
+	invoke(fillLarge, &l);
+	val<int64_t> largeSum = invoke(sumLarge, &l);
+	return largeSum + static_cast<val<int64_t>>(smallResult);
+}
+
+// Same pattern but in a loop: each iteration constructs Small then Large.
+val<int64_t> allocaMergeInLoop(val<int32_t> count) {
+	val<int64_t> result = 0;
+	for (val<int32_t> i = 0; i < count; i = i + 1) {
+		val<int32_t> tmp;
+		{
+			val<Small> s;
+			invoke(fillSmall, &s);
+			tmp = s.get(&Small::a);
+		}
+		val<Large> l;
+		invoke(fillLarge, &l);
+		val<int64_t> largeSum = invoke(sumLarge, &l);
+		result = result + largeSum + static_cast<val<int64_t>>(tmp);
+	}
+	return result;
+}
+
 } // namespace nautilus

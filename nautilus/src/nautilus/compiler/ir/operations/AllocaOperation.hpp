@@ -6,7 +6,7 @@
 namespace nautilus::compiler::ir {
 class AllocaOperation : public Operation {
 public:
-	explicit AllocaOperation(size_t allocationSize);
+	AllocaOperation(OperationIdentifier id, size_t allocationSize);
 
 	~AllocaOperation() override = default;
 

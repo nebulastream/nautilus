@@ -1,12 +1,12 @@
 NautilusIr {
 execute() {
 Block_0($1:i32, $2:i64):
-	$0 = alloca 16b :ptr
-	$0 = alloca 16b :ptr
+	$11 = alloca 16b :ptr
+	$25 = alloca 16b :ptr
 	$3 = 0 :i32
 	$4 = $3 cast_to i64 :i64
 	$5 = $2 > $4 :bool
-	if $5 ? Block_1($1, $0, $0) : Block_2($2) :void
+	if $5 ? Block_1($1, $25, $11) : Block_2($2) :void
 
 Block_1($1:i32, $25:ptr, $11:ptr):
 	$7 = 0 :i64
