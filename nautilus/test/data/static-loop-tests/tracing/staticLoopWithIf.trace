@@ -1,0 +1,162 @@
+B0($1:i32)
+	CONST	$2	5	:i32
+	GT	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
+B1()
+	CONST	$5	1	:i32
+	ADD	$6	$1	$5	:i32
+	ASSIGN	$1	$6	:i32
+	CONST	$7	10	:i32
+	JMP	$0	B21()	:void
+B2()
+	CONST	$73	10	:i32
+	ASSIGN	$7	$73	:i32
+	JMP	$0	B21()	:void
+B3()
+	CONST	$12	1	:i32
+	ADD	$13	$1	$12	:i32
+	ASSIGN	$1	$13	:i32
+	CONST	$14	10	:i32
+	JMP	$0	B22()	:void
+B4()
+	CONST	$75	10	:i32
+	ASSIGN	$14	$75	:i32
+	JMP	$0	B22()	:void
+B5()
+	CONST	$19	1	:i32
+	ADD	$20	$1	$19	:i32
+	ASSIGN	$1	$20	:i32
+	CONST	$21	10	:i32
+	JMP	$0	B23()	:void
+B6()
+	CONST	$77	10	:i32
+	ASSIGN	$21	$77	:i32
+	JMP	$0	B23()	:void
+B7()
+	CONST	$26	1	:i32
+	ADD	$27	$1	$26	:i32
+	ASSIGN	$1	$27	:i32
+	CONST	$28	10	:i32
+	JMP	$0	B24()	:void
+B8()
+	CONST	$79	10	:i32
+	ASSIGN	$28	$79	:i32
+	JMP	$0	B24()	:void
+B9()
+	CONST	$33	1	:i32
+	ADD	$34	$1	$33	:i32
+	ASSIGN	$1	$34	:i32
+	CONST	$35	10	:i32
+	JMP	$0	B25()	:void
+B10()
+	CONST	$81	10	:i32
+	ASSIGN	$35	$81	:i32
+	JMP	$0	B25()	:void
+B11()
+	CONST	$40	1	:i32
+	ADD	$41	$1	$40	:i32
+	ASSIGN	$1	$41	:i32
+	CONST	$42	10	:i32
+	JMP	$0	B26()	:void
+B12()
+	CONST	$83	10	:i32
+	ASSIGN	$42	$83	:i32
+	JMP	$0	B26()	:void
+B13()
+	CONST	$47	1	:i32
+	ADD	$48	$1	$47	:i32
+	ASSIGN	$1	$48	:i32
+	CONST	$49	10	:i32
+	JMP	$0	B27()	:void
+B14()
+	CONST	$85	10	:i32
+	ASSIGN	$49	$85	:i32
+	JMP	$0	B27()	:void
+B15()
+	CONST	$54	1	:i32
+	ADD	$55	$1	$54	:i32
+	ASSIGN	$1	$55	:i32
+	CONST	$56	10	:i32
+	JMP	$0	B28()	:void
+B16()
+	CONST	$87	10	:i32
+	ASSIGN	$56	$87	:i32
+	JMP	$0	B28()	:void
+B17()
+	CONST	$61	1	:i32
+	ADD	$62	$1	$61	:i32
+	ASSIGN	$1	$62	:i32
+	CONST	$63	10	:i32
+	JMP	$0	B29()	:void
+B18()
+	CONST	$89	10	:i32
+	ASSIGN	$63	$89	:i32
+	JMP	$0	B29()	:void
+B19()
+	CONST	$68	1	:i32
+	ADD	$69	$1	$68	:i32
+	ASSIGN	$1	$69	:i32
+	CONST	$70	10	:i32
+	JMP	$0	B30()	:void
+B20()
+	CONST	$91	10	:i32
+	ASSIGN	$70	$91	:i32
+	JMP	$0	B30()	:void
+B21() ControlFlowMerge
+	ADD	$8	$1	$7	:i32
+	ASSIGN	$1	$8	:i32
+	CONST	$9	5	:i32
+	GT	$10	$1	$9	:bool
+	CMP	$11	$10	B3()	B4()	:void
+B22() ControlFlowMerge
+	ADD	$15	$1	$14	:i32
+	ASSIGN	$1	$15	:i32
+	CONST	$16	5	:i32
+	GT	$17	$1	$16	:bool
+	CMP	$18	$17	B5()	B6()	:void
+B23() ControlFlowMerge
+	ADD	$22	$1	$21	:i32
+	ASSIGN	$1	$22	:i32
+	CONST	$23	5	:i32
+	GT	$24	$1	$23	:bool
+	CMP	$25	$24	B7()	B8()	:void
+B24() ControlFlowMerge
+	ADD	$29	$1	$28	:i32
+	ASSIGN	$1	$29	:i32
+	CONST	$30	5	:i32
+	GT	$31	$1	$30	:bool
+	CMP	$32	$31	B9()	B10()	:void
+B25() ControlFlowMerge
+	ADD	$36	$1	$35	:i32
+	ASSIGN	$1	$36	:i32
+	CONST	$37	5	:i32
+	GT	$38	$1	$37	:bool
+	CMP	$39	$38	B11()	B12()	:void
+B26() ControlFlowMerge
+	ADD	$43	$1	$42	:i32
+	ASSIGN	$1	$43	:i32
+	CONST	$44	5	:i32
+	GT	$45	$1	$44	:bool
+	CMP	$46	$45	B13()	B14()	:void
+B27() ControlFlowMerge
+	ADD	$50	$1	$49	:i32
+	ASSIGN	$1	$50	:i32
+	CONST	$51	5	:i32
+	GT	$52	$1	$51	:bool
+	CMP	$53	$52	B15()	B16()	:void
+B28() ControlFlowMerge
+	ADD	$57	$1	$56	:i32
+	ASSIGN	$1	$57	:i32
+	CONST	$58	5	:i32
+	GT	$59	$1	$58	:bool
+	CMP	$60	$59	B17()	B18()	:void
+B29() ControlFlowMerge
+	ADD	$64	$1	$63	:i32
+	ASSIGN	$1	$64	:i32
+	CONST	$65	5	:i32
+	GT	$66	$1	$65	:bool
+	CMP	$67	$66	B19()	B20()	:void
+B30() ControlFlowMerge
+	ADD	$71	$1	$70	:i32
+	ASSIGN	$1	$71	:i32
+	RETURN	$0	$1	:i32

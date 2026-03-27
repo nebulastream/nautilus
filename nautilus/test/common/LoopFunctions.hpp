@@ -253,4 +253,78 @@ val<int32_t> countDigits(val<int32_t> n) {
 	return count;
 }
 
+// ============================================================================
+// Additional Loop Pattern Tests
+// ============================================================================
+
+/// For loop with continue statement
+val<int32_t> forContinue(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		if (i % 2 == 0) {
+			continue;
+		}
+		sum = sum + i;
+	}
+	return sum;
+}
+
+/// While loop with accumulator and multiple exit conditions
+val<int32_t> whileMultiCondition(val<int32_t> x) {
+	val<int32_t> result = 0;
+	val<int32_t> i = 0;
+	while (i < 10 && result < x) {
+		result = result + i;
+		i = i + 1;
+	}
+	return result;
+}
+
+/// Nested loop with break in inner loop
+val<int32_t> nestedLoopBreak(val<int32_t> limit) {
+	val<int32_t> count = 0;
+	for (val<int32_t> i = 0; i < 5; i = i + 1) {
+		for (val<int32_t> j = 0; j < 5; j = j + 1) {
+			if (j >= limit) {
+				break;
+			}
+			count = count + 1;
+		}
+	}
+	return count;
+}
+
+/// Loop that modifies its own counter inside the body
+val<int32_t> loopCounterModification(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	val<int32_t> i = 0;
+	while (i < n) {
+		sum = sum + i;
+		if (i % 3 == 0) {
+			i = i + 2;
+		} else {
+			i = i + 1;
+		}
+	}
+	return sum;
+}
+
+/// Do-while with zero iterations check (always runs once)
+val<int32_t> doWhileMinOnce(val<int32_t> start) {
+	val<int32_t> x = start;
+	do {
+		x = x + 1;
+	} while (x < 0);
+	return x;
+}
+
+/// Power function via loop
+val<int32_t> power(val<int32_t> base, val<int32_t> exp) {
+	val<int32_t> result = 1;
+	for (val<int32_t> i = 0; i < exp; i = i + 1) {
+		result = result * base;
+	}
+	return result;
+}
+
 } // namespace nautilus::engine

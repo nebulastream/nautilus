@@ -1,0 +1,5 @@
+B0($1:ptr)
+	CONST	$2	16	:i8
+	CALL	$3	func_*($1,$2)	:void
+	LOAD	$6	$1	:i32
+	RETURN	$0	$6	:i32
