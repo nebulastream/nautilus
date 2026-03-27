@@ -44,6 +44,11 @@ enum Op : uint8_t {
 	// Ternary
 	SELECT,
 	ALLOCA,
+	// Placeholder left behind when hoistAllocaOperations() moves an ALLOCA to
+	// the entry block.  Preserves vector indices so that returnRefs (and any
+	// other operation_identifier) remain valid.  Only exists during SSA
+	// creation; stripped by removeAssignOperations before IR lowering.
+	ALLOCA_TOMBSTONE,
 };
 
 constexpr const char* toString(Op type) {
@@ -112,6 +117,8 @@ constexpr const char* toString(Op type) {
 		return "SELECT";
 	case ALLOCA:
 		return "ALLOCA";
+	case ALLOCA_TOMBSTONE:
+		return "ALLOCA_TOMBSTONE";
 	default:
 		__builtin_unreachable();
 	}

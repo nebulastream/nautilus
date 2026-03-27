@@ -1,0 +1,189 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	0	:i64
+	CONST	$3	0	:i32
+	JMP	$0	B3()	:void
+B1()
+	ALLOCA	$6	:ptr
+	CONST	$7	1	:i8
+	ASSIGN	$8	$7	:i8
+	ASSIGN	$9	$6	:ptr
+	CONST	$10	0	:ui64
+	ASSIGN	$11	$10	:ui64
+	CONST	$12	1	:ui64
+	MUL	$13	$11	$12	:ui64
+	ADD	$14	$9	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	ASSIGN	$16	$15	:ptr
+	ASSIGN	$17	$8	:i8
+	ASSIGN	$18	$17	:i8
+	STORE	$19	$16	$18	:void
+	CONST	$20	10	:i32
+	ASSIGN	$21	$20	:i32
+	ASSIGN	$22	$6	:ptr
+	CONST	$23	4	:ui64
+	ASSIGN	$24	$23	:ui64
+	CONST	$25	1	:ui64
+	MUL	$26	$24	$25	:ui64
+	ADD	$27	$22	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$21	:i32
+	ASSIGN	$31	$30	:i32
+	STORE	$32	$29	$31	:void
+	CONST	$33	100	:i64
+	ASSIGN	$34	$33	:i64
+	ASSIGN	$35	$6	:ptr
+	CONST	$36	8	:ui64
+	ASSIGN	$37	$36	:ui64
+	CONST	$38	1	:ui64
+	MUL	$39	$37	$38	:ui64
+	ADD	$40	$35	$39	:ptr
+	ASSIGN	$41	$40	:ptr
+	ASSIGN	$42	$41	:ptr
+	ASSIGN	$43	$34	:i64
+	ASSIGN	$44	$43	:i64
+	STORE	$45	$42	$44	:void
+	ASSIGN	$46	$6	:ptr
+	CONST	$47	8	:ui64
+	ASSIGN	$48	$47	:ui64
+	CONST	$49	1	:ui64
+	MUL	$50	$48	$49	:ui64
+	ADD	$51	$46	$50	:ptr
+	ASSIGN	$52	$51	:ptr
+	ASSIGN	$53	$52	:ptr
+	LOAD	$54	$53	:i64
+	ADD	$55	$2	$54	:i64
+	ASSIGN	$2	$55	:i64
+	CONST	$56	1	:i32
+	ADD	$57	$3	$56	:i32
+	ASSIGN	$3	$57	:i32
+	JMP	$0	B3()	:void
+B2()
+	CONST	$59	0	:i32
+	JMP	$0	B6()	:void
+B3() ControlFlowMerge
+	LT	$4	$3	$1	:bool
+	CMP	$5	$4	B1()	B2()	:void
+B4()
+	ALLOCA	$62	:ptr
+	CONST	$63	200	:i64
+	ASSIGN	$64	$63	:i64
+	ASSIGN	$65	$62	:ptr
+	CONST	$66	0	:ui64
+	ASSIGN	$67	$66	:ui64
+	CONST	$68	1	:ui64
+	MUL	$69	$67	$68	:ui64
+	ADD	$70	$65	$69	:ptr
+	ASSIGN	$71	$70	:ptr
+	ASSIGN	$72	$71	:ptr
+	ASSIGN	$73	$64	:i64
+	ASSIGN	$74	$73	:i64
+	STORE	$75	$72	$74	:void
+	CONST	$76	2	:i8
+	ASSIGN	$77	$76	:i8
+	ASSIGN	$78	$62	:ptr
+	CONST	$79	8	:ui64
+	ASSIGN	$80	$79	:ui64
+	CONST	$81	1	:ui64
+	MUL	$82	$80	$81	:ui64
+	ADD	$83	$78	$82	:ptr
+	ASSIGN	$84	$83	:ptr
+	ASSIGN	$85	$84	:ptr
+	ASSIGN	$86	$77	:i8
+	ASSIGN	$87	$86	:i8
+	STORE	$88	$85	$87	:void
+	CONST	$89	20	:i16
+	ASSIGN	$90	$89	:i16
+	ASSIGN	$91	$62	:ptr
+	CONST	$92	10	:ui64
+	ASSIGN	$93	$92	:ui64
+	CONST	$94	1	:ui64
+	MUL	$95	$93	$94	:ui64
+	ADD	$96	$91	$95	:ptr
+	ASSIGN	$97	$96	:ptr
+	ASSIGN	$98	$97	:ptr
+	ASSIGN	$99	$90	:i16
+	ASSIGN	$100	$99	:i16
+	STORE	$101	$98	$100	:void
+	ASSIGN	$102	$62	:ptr
+	CONST	$103	0	:ui64
+	ASSIGN	$104	$103	:ui64
+	CONST	$105	1	:ui64
+	MUL	$106	$104	$105	:ui64
+	ADD	$107	$102	$106	:ptr
+	ASSIGN	$108	$107	:ptr
+	ASSIGN	$109	$108	:ptr
+	LOAD	$110	$109	:i64
+	ADD	$111	$2	$110	:i64
+	ASSIGN	$2	$111	:i64
+	CONST	$112	1	:i32
+	ADD	$113	$59	$112	:i32
+	ASSIGN	$59	$113	:i32
+	JMP	$0	B6()	:void
+B5()
+	CONST	$115	0	:i32
+	JMP	$0	B9()	:void
+B6() ControlFlowMerge
+	LT	$60	$59	$1	:bool
+	CMP	$61	$60	B4()	B5()	:void
+B7()
+	ALLOCA	$118	:ptr
+	CONST	$119	30	:i32
+	ASSIGN	$120	$119	:i32
+	ASSIGN	$121	$118	:ptr
+	CONST	$122	0	:ui64
+	ASSIGN	$123	$122	:ui64
+	CONST	$124	1	:ui64
+	MUL	$125	$123	$124	:ui64
+	ADD	$126	$121	$125	:ptr
+	ASSIGN	$127	$126	:ptr
+	ASSIGN	$128	$127	:ptr
+	ASSIGN	$129	$120	:i32
+	ASSIGN	$130	$129	:i32
+	STORE	$131	$128	$130	:void
+	CONST	$132	3	:i32
+	ASSIGN	$133	$132	:i32
+	ASSIGN	$134	$118	:ptr
+	CONST	$135	4	:ui64
+	ASSIGN	$136	$135	:ui64
+	CONST	$137	1	:ui64
+	MUL	$138	$136	$137	:ui64
+	ADD	$139	$134	$138	:ptr
+	ASSIGN	$140	$139	:ptr
+	ASSIGN	$141	$140	:ptr
+	ASSIGN	$142	$133	:i32
+	ASSIGN	$143	$142	:i32
+	STORE	$144	$141	$143	:void
+	ASSIGN	$145	$118	:ptr
+	CONST	$146	0	:ui64
+	ASSIGN	$147	$146	:ui64
+	CONST	$148	1	:ui64
+	MUL	$149	$147	$148	:ui64
+	ADD	$150	$145	$149	:ptr
+	ASSIGN	$151	$150	:ptr
+	ASSIGN	$152	$151	:ptr
+	ASSIGN	$153	$118	:ptr
+	CONST	$154	4	:ui64
+	ASSIGN	$155	$154	:ui64
+	CONST	$156	1	:ui64
+	MUL	$157	$155	$156	:ui64
+	ADD	$158	$153	$157	:ptr
+	ASSIGN	$159	$158	:ptr
+	ASSIGN	$160	$159	:ptr
+	LOAD	$161	$152	:i32
+	LOAD	$162	$160	:i32
+	ADD	$163	$161	$162	:i32
+	CAST	$164	$163	:i64
+	ADD	$165	$2	$164	:i64
+	ASSIGN	$2	$165	:i64
+	CONST	$166	1	:i32
+	ADD	$167	$115	$166	:i32
+	ASSIGN	$115	$167	:i32
+	JMP	$0	B9()	:void
+B8()
+	RETURN	$0	$2	:i64
+B9() ControlFlowMerge
+	LT	$116	$115	$1	:bool
+	CMP	$117	$116	B7()	B8()	:void
+

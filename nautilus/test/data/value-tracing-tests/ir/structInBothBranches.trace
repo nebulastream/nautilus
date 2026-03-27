@@ -1,0 +1,40 @@
+NautilusIr {
+execute() {
+Block_0($1:i32):
+	$0 = alloca 8b :ptr
+	$0 = alloca 8b :ptr
+	$2 = 0 :i32
+	$3 = $1 > $2 :bool
+	if $3 ? Block_1($0, $1) : Block_2($0) :void
+
+Block_1($5:ptr, $1:i32):
+	$9 = 0 :ui64
+	$11 = 1 :ui64
+	$12 = $9 * $11 :ui64
+	$13 = $5 + $12 :ptr
+	store($1, $13) :void
+	$20 = 0 :ui64
+	$22 = 1 :ui64
+	$23 = $20 * $22 :ui64
+	$24 = $5 + $23 :ptr
+	$27 = load($24) :i32
+	br Block_3($27) :void
+
+Block_3($27:i32):
+	return ($27) :i32
+
+Block_2($29:ptr):
+	$31 = 0 :ui64
+	$33 = 1 :ui64
+	$34 = $31 * $33 :ui64
+	$35 = $29 + $34 :ptr
+	$38 = 42 :i32
+	store($38, $35) :void
+	$43 = 0 :ui64
+	$45 = 1 :ui64
+	$46 = $43 * $45 :ui64
+	$47 = $29 + $46 :ptr
+	$50 = load($47) :i32
+	br Block_3($50) :void
+}
+} //NESIR

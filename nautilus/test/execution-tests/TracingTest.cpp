@@ -351,6 +351,26 @@ TEST_CASE("Value Trace Test") {
 	    {"modifyInLoop", details::createFunctionWrapper(modifyInLoop)},
 	    {"copyInLoop", details::createFunctionWrapper(copyInLoop)},
 	    {"constructAndCall", details::createFunctionWrapper(constructAndCall)},
+	    // struct in conditional return paths
+	    {"structInConditionalReturn", details::createFunctionWrapper(structInConditionalReturn)},
+	    {"structInBothBranches", details::createFunctionWrapper(structInBothBranches)},
+	    {"structInNestedConditionalReturn", details::createFunctionWrapper(structInNestedConditionalReturn)},
+	    // nested function + struct tests
+	    {"modifyStructInLoopWithNestedCall", details::createFunctionWrapper(modifyStructInLoopWithNestedCall)},
+	    {"constructStructInLoopWithNestedCall", details::createFunctionWrapper(constructStructInLoopWithNestedCall)},
+	    {"multipleNestedCallsInLoop", details::createFunctionWrapper(multipleNestedCallsInLoop)},
+	    // mixed-alignment struct tests
+	    {"mixedAlignSetAll", details::createFunctionWrapper(mixedAlignSetAll)},
+	    {"mixedAlignNoClobber", details::createFunctionWrapper(mixedAlignNoClobber)},
+	    {"reversePaddingAccess", details::createFunctionWrapper(reversePaddingAccess)},
+	    {"doubleAndByteAccess", details::createFunctionWrapper(doubleAndByteAccess)},
+	    {"mixedAlignModifyInLoop", details::createFunctionWrapper(mixedAlignModifyInLoop)},
+	    {"mixedAlignConditionalReturn", details::createFunctionWrapper(mixedAlignConditionalReturn)},
+	    // multi-struct, multi-loop tests
+	    {"multiStructMultiLoop", details::createFunctionWrapper(multiStructMultiLoop)},
+	    {"twoStructsSameLoop", details::createFunctionWrapper(twoStructsSameLoop)},
+	    {"outerAndInnerStructLoop", details::createFunctionWrapper(outerAndInnerStructLoop)},
+	    {"multiStructConditionalLoop", details::createFunctionWrapper(multiStructConditionalLoop)},
 
 	};
 	runTraceTests("value-tracing-tests", tests);
