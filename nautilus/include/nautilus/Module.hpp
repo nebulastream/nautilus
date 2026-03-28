@@ -65,28 +65,38 @@ class ModuleFunction<R(Args...)> {
 	using ValFuncType = std::function<ValReturnType(val<Args>...)>;
 	using ImplType = std::function<R(Args...)>;
 
+	struct Cache {
+		ImplType impl;
+		std::atomic<uint64_t> version {~0ULL}; // force first resolve
+		std::mutex mutex;
+	};
+
 	std::shared_ptr<details::ModuleState> state_;
 	std::string name_;
-	mutable ImplType cachedImpl_;
-	mutable uint64_t cachedVersion_ = ~0ULL; // force first resolve
+	std::shared_ptr<Cache> cache_;
 
 	void resolve() const {
+		std::unique_lock<std::mutex> resolveLock(cache_->mutex);
+		// Double-check after acquiring the local lock.
+		if (cache_->version.load(std::memory_order_relaxed) == state_->version.load(std::memory_order_relaxed)) {
+			return;
+		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
 		if (state_->executable) {
 			if (state_->executable->hasInvocableFunctionPtr()) {
 				auto* fptr = reinterpret_cast<R (*)(Args...)>(state_->executable->getInvocableFunctionPtr(name_));
-				cachedImpl_ = fptr;
+				cache_->impl = fptr;
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
 				    state_->executable->getInvocableMember<R, Args...>(name_));
-				cachedImpl_ = [invocable](Args... args) -> R {
+				cache_->impl = [invocable](Args... args) -> R {
 					return (*invocable)(std::forward<Args>(args)...);
 				};
 			}
 		} else {
 			try {
 				auto typedFunc = std::any_cast<ValFuncType>(state_->interpretedFunctions.at(name_));
-				cachedImpl_ = [typedFunc = std::move(typedFunc)](Args... args) -> R {
+				cache_->impl = [typedFunc = std::move(typedFunc)](Args... args) -> R {
 					if constexpr (std::is_void_v<R>) {
 						typedFunc(make_value(args)...);
 					} else {
@@ -98,19 +108,35 @@ class ModuleFunction<R(Args...)> {
 				throw std::runtime_error("ModuleFunction type mismatch for '" + name_ + "'");
 			}
 		}
-		cachedVersion_ = state_->version.load(std::memory_order_relaxed);
+		cache_->version.store(state_->version.load(std::memory_order_relaxed), std::memory_order_release);
 	}
 
 public:
 	ModuleFunction(std::shared_ptr<details::ModuleState> state, std::string name)
-	    : state_(std::move(state)), name_(std::move(name)) {
+	    : state_(std::move(state)), name_(std::move(name)), cache_(std::make_shared<Cache>()) {
 	}
 
+	/// Each copy gets its own cache so concurrent callers never race on std::function internals.
+	ModuleFunction(const ModuleFunction& other)
+	    : state_(other.state_), name_(other.name_), cache_(std::make_shared<Cache>()) {
+	}
+
+	ModuleFunction(ModuleFunction&&) noexcept = default;
+	ModuleFunction& operator=(const ModuleFunction& other) {
+		if (this != &other) {
+			state_ = other.state_;
+			name_ = other.name_;
+			cache_ = std::make_shared<Cache>();
+		}
+		return *this;
+	}
+	ModuleFunction& operator=(ModuleFunction&&) noexcept = default;
+
 	R operator()(Args... args) const {
-		if (cachedVersion_ != state_->version.load(std::memory_order_acquire)) {
+		if (cache_->version.load(std::memory_order_acquire) != state_->version.load(std::memory_order_acquire)) {
 			resolve();
 		}
-		return cachedImpl_(std::forward<Args>(args)...);
+		return cache_->impl(std::forward<Args>(args)...);
 	}
 };
 
@@ -142,6 +168,10 @@ public:
 	explicit CompiledModule(std::unordered_map<std::string, std::any> interpretedFunctions)
 	    : state_(std::make_shared<details::ModuleState>()) {
 		state_->interpretedFunctions = std::move(interpretedFunctions);
+	}
+
+	/// Construct from pre-built module state (used by NautilusModule for tiered compilation).
+	explicit CompiledModule(std::shared_ptr<details::ModuleState> state) : state_(std::move(state)) {
 	}
 
 	CompiledModule(const CompiledModule&) = delete;
@@ -194,6 +224,11 @@ public:
 		auto exe = std::move(state_->executable);
 		state_->version.fetch_add(1, std::memory_order_release);
 		return exe;
+	}
+
+	/// Get the shared module state (used by NautilusModule for tiered compilation).
+	std::shared_ptr<details::ModuleState> getState() const {
+		return state_;
 	}
 
 private:
