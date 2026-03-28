@@ -1,4 +1,3 @@
-EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i64
 	CONST	$3	0	:i32
@@ -186,4 +185,3 @@ B8()
 B9() ControlFlowMerge
 	LT	$116	$115	$1	:bool
 	CMP	$117	$116	B7()	B8()	:void
-

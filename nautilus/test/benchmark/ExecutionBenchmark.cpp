@@ -1,7 +1,6 @@
 
 #include "TracingUtil.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"

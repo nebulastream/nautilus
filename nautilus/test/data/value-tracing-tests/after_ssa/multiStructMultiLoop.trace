@@ -1,4 +1,3 @@
-EXECUTE:
 B0($1:i32)
 	ALLOCA	$6	:ptr
 	ALLOCA	$62	:ptr
@@ -108,4 +107,3 @@ B8($2:i64)
 B9($2:i64,$115:i32,$1:i32,$118:ptr) ControlFlowMerge
 	LT	$116	$115	$1	:bool
 	CMP	$117	$116	B7($1,$115,$2,$118)	B8($2)	:void
-

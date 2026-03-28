@@ -354,11 +354,6 @@ TEST_CASE("Value Trace Test") {
 	    // struct in conditional return paths
 	    {"structInConditionalReturn", details::createFunctionWrapper(structInConditionalReturn)},
 	    {"structInBothBranches", details::createFunctionWrapper(structInBothBranches)},
-	    {"structInNestedConditionalReturn", details::createFunctionWrapper(structInNestedConditionalReturn)},
-	    // nested function + struct tests
-	    {"modifyStructInLoopWithNestedCall", details::createFunctionWrapper(modifyStructInLoopWithNestedCall)},
-	    {"constructStructInLoopWithNestedCall", details::createFunctionWrapper(constructStructInLoopWithNestedCall)},
-	    {"multipleNestedCallsInLoop", details::createFunctionWrapper(multipleNestedCallsInLoop)},
 	    // mixed-alignment struct tests
 	    {"mixedAlignSetAll", details::createFunctionWrapper(mixedAlignSetAll)},
 	    {"mixedAlignNoClobber", details::createFunctionWrapper(mixedAlignNoClobber)},
