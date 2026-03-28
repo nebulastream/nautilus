@@ -1066,6 +1066,28 @@ void valueExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((int32_t) 1, (int64_t) 1) == 10);
 		REQUIRE(f((int32_t) 4, (int64_t) 1) == 40);
 	}
+	SECTION("modifyStructInLoopWithNestedCall") {
+		auto f = engine.registerFunction(modifyStructInLoopWithNestedCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 5) == 5);
+		REQUIRE(f((int32_t) 10) == 10);
+	}
+	SECTION("constructStructInLoopWithNestedCall") {
+		auto f = engine.registerFunction(constructStructInLoopWithNestedCall);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 0);  // sum of i for i in [0..1) = 0
+		REQUIRE(f((int32_t) 4) == 6);  // 0+1+2+3 = 6
+		REQUIRE(f((int32_t) 5) == 10); // 0+1+2+3+4 = 10
+	}
+	SECTION("multipleNestedCallsInLoop") {
+		auto f = engine.registerFunction(multipleNestedCallsInLoop);
+		// iter 0: a=0, b=100, sumFields=100, a becomes 0+100=100
+		// iter 1: a=100, b=100, sumFields=200, a becomes 100+200=300
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 1) == 100);
+		REQUIRE(f((int32_t) 2) == 300);
+	}
 	SECTION("allocaMergeBug") {
 		auto f = engine.registerFunction(allocaMergeBug);
 		// fillSmall: a=42, fillLarge: sum(1..8)=36, result = 36 + 42 = 78

@@ -4,6 +4,7 @@
 #include "nautilus/function.hpp"
 #include <cstdint>
 #include <nautilus/Engine.hpp>
+#include <nautilus/nautilus_function.hpp>
 #include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
@@ -176,13 +177,51 @@ val<int32_t> readFieldA(val<Test*> ptr) {
 	return ptr.get(&Test::a);
 }
 
+static auto nautilusReadFieldA = NautilusFunction {"readFieldA", readFieldA};
+
 void incrementFieldA(val<Test*> ptr, val<int32_t> amount) {
 	ptr.set(&Test::a, ptr.get(&Test::a) + amount);
 }
 
+static auto nautilusIncrementFieldA = NautilusFunction {"incrementFieldA", incrementFieldA};
+
 // Helper: creates a Test with both fields set and returns a + b.
 val<int32_t> sumFields(val<Test*> ptr) {
 	return ptr.get(&Test::a) + ptr.get(&Test::b);
+}
+
+static auto nautilusSumFields = NautilusFunction {"sumFields", sumFields};
+
+// Struct modified in a loop via a nested NautilusFunction call.
+val<int32_t> modifyStructInLoopWithNestedCall(val<int32_t> count) {
+	val<Test> value;
+	value.set(&Test::a, 0);
+	for (val<int32_t> i = 0; i < count; i = i + 1) {
+		nautilusIncrementFieldA(&value, val<int32_t>(1));
+	}
+	return nautilusReadFieldA(&value);
+}
+
+// Struct constructed inside loop body, passed to nested function each iteration.
+val<int32_t> constructStructInLoopWithNestedCall(val<int32_t> count) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < count; i = i + 1) {
+		val<Test> tmp;
+		tmp.set(&Test::a, i);
+		sum = sum + nautilusReadFieldA(&tmp);
+	}
+	return sum;
+}
+
+// Multiple nested function calls on the same struct inside a loop.
+val<int32_t> multipleNestedCallsInLoop(val<int32_t> count) {
+	val<Test> value;
+	value.set(&Test::a, 0);
+	value.set(&Test::b, 100);
+	for (val<int32_t> i = 0; i < count; i = i + 1) {
+		nautilusIncrementFieldA(&value, nautilusSumFields(&value));
+	}
+	return nautilusReadFieldA(&value);
 }
 
 // --- Struct in conditional return paths ---
@@ -199,6 +238,16 @@ val<int32_t> structInConditionalReturn(val<int32_t> x) {
 		return value.get(&Test::a) + value.get(&Test::b);
 	}
 	return x;
+}
+
+// Struct constructed in a nested function called from a conditional return path.
+val<int32_t> structInNestedConditionalReturn(val<int32_t> x) {
+	if (x > 0) {
+		val<Test> value;
+		value.set(&Test::a, x);
+		return nautilusReadFieldA(&value);
+	}
+	return val<int32_t>(0);
 }
 
 // Two structs constructed in different branches, both returning.
