@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i64)
 	ALLOCA	$6	:ptr
 	CONST	$2	0	:i32
@@ -46,3 +47,4 @@ B2($1:i64)
 	JMP	$0	B3($1)	:void
 B3($76:i64)
 	RETURN	$0	$76	:i64
+

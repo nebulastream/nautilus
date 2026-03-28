@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	CONST	$2	0	:i32
 	GT	$3	$1	$2	:bool
@@ -51,3 +52,4 @@ B1()
 	RETURN	$0	$49	:i32
 B2()
 	RETURN	$0	$1	:i32
+

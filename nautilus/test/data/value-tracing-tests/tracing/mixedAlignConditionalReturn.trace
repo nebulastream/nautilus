@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i64)
 	CONST	$2	0	:i32
 	CAST	$3	$2	:i64
@@ -78,3 +79,4 @@ B1()
 	RETURN	$0	$76	:i64
 B2()
 	RETURN	$0	$1	:i64
+

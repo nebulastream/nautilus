@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32,$2:i64)
 	ALLOCA	$11	:ptr
 	ALLOCA	$25	:ptr
@@ -46,3 +47,4 @@ B5($7:i64,$8:i32,$1:i32,$25:ptr,$11:ptr) ControlFlowMerge
 	CMP	$10	$9	B3($1,$8,$25,$7,$11)	B4($7)	:void
 B6($2:i64)
 	RETURN	$0	$2	:i64
+

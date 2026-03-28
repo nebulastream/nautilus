@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	ALLOCA	$2	:ptr
 	CONST	$3	0	:i8
@@ -154,3 +155,4 @@ B2()
 B3() ControlFlowMerge
 	LT	$43	$42	$1	:bool
 	CMP	$44	$43	B1()	B2()	:void
+

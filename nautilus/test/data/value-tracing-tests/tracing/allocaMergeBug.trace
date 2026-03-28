@@ -1,3 +1,4 @@
+EXECUTE:
 B0()
 	CONST	$1	0	:i32
 	ALLOCA	$2	:ptr
@@ -21,3 +22,4 @@ B0()
 	CAST	$19	$1	:i64
 	ADD	$20	$18	$19	:i64
 	RETURN	$0	$20	:i64
+

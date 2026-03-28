@@ -1,3 +1,4 @@
+EXECUTE:
 B0()
 	ALLOCA	$1	:ptr
 	CONST	$2	1000	:i64
@@ -49,3 +50,4 @@ B0()
 	ASSIGN	$48	$47	:ptr
 	LOAD	$49	$48	:i64
 	RETURN	$0	$49	:i64
+

@@ -1,3 +1,4 @@
+EXECUTE:
 B0($1:i32)
 	ALLOCA	$5	:ptr
 	ALLOCA	$29	:ptr
@@ -31,3 +32,4 @@ B2($29:ptr)
 	JMP	$0	B3($50)	:void
 B3($27:i32)
 	RETURN	$0	$27	:i32
+
