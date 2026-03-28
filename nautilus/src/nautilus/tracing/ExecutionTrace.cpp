@@ -27,13 +27,15 @@ const ExecutionTrace* TraceModule::getFunction(const std::string& functionName) 
 }
 
 std::string TraceModule::toString() const {
+	// Sort function names for deterministic output across platforms.
+	auto sortedNames = getFunctionNames();
 	std::string result;
-	for (const auto& [name, trace] : functions) {
+	for (const auto& name : sortedNames) {
 		std::string functionName = name;
 		std::transform(functionName.begin(), functionName.end(), functionName.begin(),
 		               [](unsigned char c) { return std::toupper(c); });
 		result += functionName + ":\n";
-		result += trace->toString();
+		result += functions.at(name)->toString();
 		result += "\n";
 	}
 	return result;
@@ -49,6 +51,7 @@ std::vector<std::string> TraceModule::getFunctionNames() const {
 	for (const auto& [name, _] : functions) {
 		names.push_back(name);
 	}
+	std::sort(names.begin(), names.end());
 	return names;
 }
 
@@ -349,8 +352,8 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
-    -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
+                                                 format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -372,8 +375,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;
