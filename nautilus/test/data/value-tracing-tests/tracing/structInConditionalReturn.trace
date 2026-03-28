@@ -1,0 +1,53 @@
+B0($1:i32)
+	CONST	$2	0	:i32
+	GT	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2()	:void
+B1()
+	ALLOCA	$5	:ptr
+	ASSIGN	$6	$1	:i32
+	ASSIGN	$7	$6	:i32
+	ASSIGN	$8	$5	:ptr
+	CONST	$9	0	:ui64
+	ASSIGN	$10	$9	:ui64
+	CONST	$11	1	:ui64
+	MUL	$12	$10	$11	:ui64
+	ADD	$13	$8	$12	:ptr
+	ASSIGN	$14	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	ASSIGN	$16	$7	:i32
+	ASSIGN	$17	$16	:i32
+	STORE	$18	$15	$17	:void
+	ASSIGN	$19	$5	:ptr
+	CONST	$20	4	:ui64
+	ASSIGN	$21	$20	:ui64
+	CONST	$22	1	:ui64
+	MUL	$23	$21	$22	:ui64
+	ADD	$24	$19	$23	:ptr
+	ASSIGN	$25	$24	:ptr
+	ASSIGN	$26	$25	:ptr
+	CONST	$27	10	:i32
+	ASSIGN	$28	$27	:i32
+	ASSIGN	$29	$28	:i32
+	STORE	$30	$26	$29	:void
+	ASSIGN	$31	$5	:ptr
+	CONST	$32	0	:ui64
+	ASSIGN	$33	$32	:ui64
+	CONST	$34	1	:ui64
+	MUL	$35	$33	$34	:ui64
+	ADD	$36	$31	$35	:ptr
+	ASSIGN	$37	$36	:ptr
+	ASSIGN	$38	$37	:ptr
+	ASSIGN	$39	$5	:ptr
+	CONST	$40	4	:ui64
+	ASSIGN	$41	$40	:ui64
+	CONST	$42	1	:ui64
+	MUL	$43	$41	$42	:ui64
+	ADD	$44	$39	$43	:ptr
+	ASSIGN	$45	$44	:ptr
+	ASSIGN	$46	$45	:ptr
+	LOAD	$47	$38	:i32
+	LOAD	$48	$46	:i32
+	ADD	$49	$47	$48	:i32
+	RETURN	$0	$49	:i32
+B2()
+	RETURN	$0	$1	:i32

@@ -1,0 +1,37 @@
+B0($1:i32)
+	CONST	$2	0	:i64
+	CONST	$3	0	:i32
+	JMP	$0	B3()	:void
+B1()
+	CONST	$6	0	:i32
+	ALLOCA	$7	:ptr
+	ASSIGN	$8	$7	:ptr
+	CALL	$9	func_*($8)	:void
+	ASSIGN	$10	$7	:ptr
+	CONST	$11	0	:ui64
+	ASSIGN	$12	$11	:ui64
+	CONST	$13	1	:ui64
+	MUL	$14	$12	$13	:ui64
+	ADD	$15	$10	$14	:ptr
+	ASSIGN	$16	$15	:ptr
+	ASSIGN	$17	$16	:ptr
+	LOAD	$18	$17	:i32
+	ASSIGN	$6	$18	:i32
+	ALLOCA	$19	:ptr
+	ASSIGN	$20	$19	:ptr
+	CALL	$21	func_*($20)	:void
+	ASSIGN	$22	$19	:ptr
+	CALL	$23	func_*($22)	:i64
+	ADD	$24	$2	$23	:i64
+	CAST	$25	$6	:i64
+	ADD	$26	$24	$25	:i64
+	ASSIGN	$2	$26	:i64
+	CONST	$27	1	:i32
+	ADD	$28	$3	$27	:i32
+	ASSIGN	$3	$28	:i32
+	JMP	$0	B3()	:void
+B2()
+	RETURN	$0	$2	:i64
+B3() ControlFlowMerge
+	LT	$4	$3	$1	:bool
+	CMP	$5	$4	B1()	B2()	:void

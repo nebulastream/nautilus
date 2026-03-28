@@ -1,0 +1,89 @@
+B0($1:i32)
+	ALLOCA	$2	:ptr
+	CONST	$3	0	:i8
+	CONST	$6	0	:ui64
+	CONST	$8	1	:ui64
+	MUL	$9	$6	$8	:ui64
+	ADD	$10	$2	$9	:ptr
+	STORE	$15	$10	$3	:void
+	CONST	$16	0	:i32
+	CONST	$19	4	:ui64
+	CONST	$21	1	:ui64
+	MUL	$22	$19	$21	:ui64
+	ADD	$23	$2	$22	:ptr
+	STORE	$28	$23	$16	:void
+	CONST	$29	0	:i64
+	CONST	$32	8	:ui64
+	CONST	$34	1	:ui64
+	MUL	$35	$32	$34	:ui64
+	ADD	$36	$2	$35	:ptr
+	STORE	$41	$36	$29	:void
+	CONST	$42	0	:i32
+	JMP	$0	B3($2,$42,$1)	:void
+B1($2:ptr,$1:i32,$42:i32)
+	CONST	$46	0	:ui64
+	CONST	$48	1	:ui64
+	MUL	$49	$46	$48	:ui64
+	ADD	$50	$2	$49	:ptr
+	LOAD	$53	$50	:i8
+	CONST	$54	1	:i8
+	CAST	$55	$53	:i32
+	CAST	$56	$54	:i32
+	ADD	$57	$55	$56	:i32
+	CAST	$58	$57	:i8
+	CONST	$61	0	:ui64
+	CONST	$63	1	:ui64
+	MUL	$64	$61	$63	:ui64
+	ADD	$65	$2	$64	:ptr
+	STORE	$70	$65	$58	:void
+	CONST	$72	4	:ui64
+	CONST	$74	1	:ui64
+	MUL	$75	$72	$74	:ui64
+	ADD	$76	$2	$75	:ptr
+	LOAD	$79	$76	:i32
+	CONST	$80	10	:i32
+	ADD	$81	$79	$80	:i32
+	CONST	$84	4	:ui64
+	CONST	$86	1	:ui64
+	MUL	$87	$84	$86	:ui64
+	ADD	$88	$2	$87	:ptr
+	STORE	$93	$88	$81	:void
+	CONST	$95	8	:ui64
+	CONST	$97	1	:ui64
+	MUL	$98	$95	$97	:ui64
+	ADD	$99	$2	$98	:ptr
+	LOAD	$102	$99	:i64
+	CONST	$103	100	:i64
+	ADD	$104	$102	$103	:i64
+	CONST	$107	8	:ui64
+	CONST	$109	1	:ui64
+	MUL	$110	$107	$109	:ui64
+	ADD	$111	$2	$110	:ptr
+	STORE	$116	$111	$104	:void
+	CONST	$117	1	:i32
+	ADD	$118	$42	$117	:i32
+	JMP	$0	B3($2,$118,$1)	:void
+B2($2:ptr)
+	CONST	$121	0	:ui64
+	CONST	$123	1	:ui64
+	MUL	$124	$121	$123	:ui64
+	ADD	$125	$2	$124	:ptr
+	LOAD	$128	$125	:i8
+	CONST	$130	4	:ui64
+	CONST	$132	1	:ui64
+	MUL	$133	$130	$132	:ui64
+	ADD	$134	$2	$133	:ptr
+	LOAD	$137	$134	:i32
+	CONST	$139	8	:ui64
+	CONST	$141	1	:ui64
+	MUL	$142	$139	$141	:ui64
+	ADD	$143	$2	$142	:ptr
+	LOAD	$146	$143	:i64
+	CAST	$147	$128	:i64
+	CAST	$148	$137	:i64
+	ADD	$149	$147	$148	:i64
+	ADD	$150	$149	$146	:i64
+	RETURN	$0	$150	:i64
+B3($2:ptr,$42:i32,$1:i32) ControlFlowMerge
+	LT	$43	$42	$1	:bool
+	CMP	$44	$43	B1($2,$1,$42)	B2($2)	:void
