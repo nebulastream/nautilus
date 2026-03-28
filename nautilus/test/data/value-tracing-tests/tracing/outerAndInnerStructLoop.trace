@@ -1,0 +1,84 @@
+EXECUTE:
+B0($1:i32)
+	ALLOCA	$2	:ptr
+	CONST	$3	0	:i64
+	ASSIGN	$4	$3	:i64
+	ASSIGN	$5	$2	:ptr
+	CONST	$6	8	:ui64
+	ASSIGN	$7	$6	:ui64
+	CONST	$8	1	:ui64
+	MUL	$9	$7	$8	:ui64
+	ADD	$10	$5	$9	:ptr
+	ASSIGN	$11	$10	:ptr
+	ASSIGN	$12	$11	:ptr
+	ASSIGN	$13	$4	:i64
+	ASSIGN	$14	$13	:i64
+	STORE	$15	$12	$14	:void
+	CONST	$16	0	:i32
+	JMP	$0	B3()	:void
+B1()
+	ALLOCA	$19	:ptr
+	CONST	$20	5	:i32
+	ASSIGN	$21	$20	:i32
+	ASSIGN	$22	$19	:ptr
+	CONST	$23	0	:ui64
+	ASSIGN	$24	$23	:ui64
+	CONST	$25	1	:ui64
+	MUL	$26	$24	$25	:ui64
+	ADD	$27	$22	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$21	:i32
+	ASSIGN	$31	$30	:i32
+	STORE	$32	$29	$31	:void
+	ASSIGN	$33	$2	:ptr
+	CONST	$34	8	:ui64
+	ASSIGN	$35	$34	:ui64
+	CONST	$36	1	:ui64
+	MUL	$37	$35	$36	:ui64
+	ADD	$38	$33	$37	:ptr
+	ASSIGN	$39	$38	:ptr
+	ASSIGN	$40	$39	:ptr
+	LOAD	$41	$40	:i64
+	ASSIGN	$42	$19	:ptr
+	CONST	$43	0	:ui64
+	ASSIGN	$44	$43	:ui64
+	CONST	$45	1	:ui64
+	MUL	$46	$44	$45	:ui64
+	ADD	$47	$42	$46	:ptr
+	ASSIGN	$48	$47	:ptr
+	ASSIGN	$49	$48	:ptr
+	LOAD	$50	$49	:i32
+	CAST	$51	$50	:i64
+	ADD	$52	$41	$51	:i64
+	ASSIGN	$53	$52	:i64
+	ASSIGN	$54	$2	:ptr
+	CONST	$55	8	:ui64
+	ASSIGN	$56	$55	:ui64
+	CONST	$57	1	:ui64
+	MUL	$58	$56	$57	:ui64
+	ADD	$59	$54	$58	:ptr
+	ASSIGN	$60	$59	:ptr
+	ASSIGN	$61	$60	:ptr
+	ASSIGN	$62	$53	:i64
+	ASSIGN	$63	$62	:i64
+	STORE	$64	$61	$63	:void
+	CONST	$65	1	:i32
+	ADD	$66	$16	$65	:i32
+	ASSIGN	$16	$66	:i32
+	JMP	$0	B3()	:void
+B2()
+	ASSIGN	$68	$2	:ptr
+	CONST	$69	8	:ui64
+	ASSIGN	$70	$69	:ui64
+	CONST	$71	1	:ui64
+	MUL	$72	$70	$71	:ui64
+	ADD	$73	$68	$72	:ptr
+	ASSIGN	$74	$73	:ptr
+	ASSIGN	$75	$74	:ptr
+	LOAD	$76	$75	:i64
+	RETURN	$0	$76	:i64
+B3() ControlFlowMerge
+	LT	$17	$16	$1	:bool
+	CMP	$18	$17	B1()	B2()	:void
+

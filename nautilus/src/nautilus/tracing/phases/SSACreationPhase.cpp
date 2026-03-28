@@ -78,22 +78,24 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 }
 
 void SSACreationPhase::SSACreationPhaseContext::hoistAllocaOperations() {
-	// Collect all ALLOCA operations from every block, preserving their relative order.
+	// Collect all ALLOCA operations from every block, preserving their relative
+	// order.  Instead of erasing the original operation (which would invalidate
+	// every operationIndex stored in returnRefs and elsewhere), we replace it
+	// with an ALLOCA_TOMBSTONE that later phases simply skip.
 	std::vector<TraceOperation> allocaOps;
-	for (auto& block : trace->getBlocks()) {
-		for (auto it = block.operations.begin(); it != block.operations.end();) {
-			if (it->op == Op::ALLOCA) {
-				allocaOps.push_back(std::move(*it));
-				it = block.operations.erase(it);
-			} else {
-				++it;
+	auto& blocks = trace->getBlocks();
+	for (auto& block : blocks) {
+		for (auto& op : block.operations) {
+			if (op.op == Op::ALLOCA) {
+				allocaOps.push_back(op);
+				op.op = Op::ALLOCA_TOMBSTONE;
 			}
 		}
 	}
 
 	// Prepend the collected ALLOCA operations to the head of the initial block.
 	if (!allocaOps.empty()) {
-		auto& initialBlock = trace->getBlocks().front();
+		auto& initialBlock = blocks.front();
 		initialBlock.operations.insert(initialBlock.operations.begin(), std::make_move_iterator(allocaOps.begin()),
 		                               std::make_move_iterator(allocaOps.end()));
 	}
@@ -132,6 +134,9 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
 		auto& resOperation = block.operations[i];
+		if (resOperation.op == Op::ALLOCA_TOMBSTONE) {
+			continue;
+		}
 		if (resOperation.resultRef == ref) {
 			return true;
 		}
@@ -146,7 +151,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	// eagerly propagated upward through the predecessor chain by
 	// propagateValue, eliminating the need to re-process any block.
 	// blockDefinitions entries are built lazily on first access.
-	std::vector<uint16_t> worklist;
+	std::vector<uint32_t> worklist;
 	worklist.push_back(startBlock.blockId);
 
 	while (!worklist.empty()) {
@@ -207,13 +212,16 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 	}
 }
 
-const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint16_t blockId) {
+const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint32_t blockId) {
 	auto it = blockDefinitions.find(blockId);
 	if (it != blockDefinitions.end()) {
 		return it->second;
 	}
 	auto& defined = blockDefinitions[blockId];
 	for (auto& op : trace->getBlock(blockId).operations) {
+		if (op.op == Op::ALLOCA_TOMBSTONE) {
+			continue;
+		}
 		defined.insert(op.resultRef.ref);
 	}
 	return defined;
@@ -333,7 +341,8 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				}
 			}
 		}
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+		std::erase_if(block.operations,
+		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
 	}
 }
 
@@ -382,7 +391,8 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 			}
 		}
 
-		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
+		std::erase_if(block.operations,
+		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
 	}
 }
 

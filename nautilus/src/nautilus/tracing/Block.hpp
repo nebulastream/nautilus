@@ -9,7 +9,7 @@
 namespace nautilus::tracing {
 
 struct operation_identifier {
-	uint16_t blockIndex;
+	uint32_t blockIndex;
 	uint32_t operationIndex;
 };
 
@@ -27,7 +27,7 @@ public:
 	 * @brief creates a new block with a specific block id.
 	 * @param blockId
 	 */
-	explicit Block(uint16_t blockId);
+	explicit Block(uint32_t blockId);
 
 	operation_identifier addOperation(TraceOperation&& operation);
 
@@ -40,7 +40,7 @@ public:
 	/**
 	 * @brief defines the id of this block.
 	 */
-	uint16_t blockId;
+	uint32_t blockId;
 
 	/**
 	 * @brief defines the type of this block.
@@ -60,7 +60,7 @@ public:
 	/**
 	 * @brief Indicates successors of this block.
 	 */
-	std::vector<uint16_t> predecessors;
+	std::vector<uint32_t> predecessors;
 };
 
 } // namespace nautilus::tracing

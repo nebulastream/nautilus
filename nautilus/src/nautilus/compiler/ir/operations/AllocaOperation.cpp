@@ -5,8 +5,8 @@
 
 namespace nautilus::compiler::ir {
 
-AllocaOperation::AllocaOperation(size_t allocationSize)
-    : Operation(OperationType::AllocaOp, Type::ptr, {}), allocationSize(allocationSize) {
+AllocaOperation::AllocaOperation(OperationIdentifier id, size_t allocationSize)
+    : Operation(OperationType::AllocaOp, id, Type::ptr, {}), allocationSize(allocationSize) {
 }
 
 size_t AllocaOperation::getSize() const {

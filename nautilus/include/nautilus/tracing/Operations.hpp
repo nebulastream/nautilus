@@ -46,6 +46,11 @@ enum Op : uint8_t {
 	SELECT,
 	ALLOCA,
 	FUNC_ADDR,
+	// Placeholder left behind when hoistAllocaOperations() moves an ALLOCA to
+	// the entry block.  Preserves vector indices so that returnRefs (and any
+	// other operation_identifier) remain valid.  Only exists during SSA
+	// creation; stripped by removeAssignOperations before IR lowering.
+	ALLOCA_TOMBSTONE,
 };
 
 constexpr const char* toString(Op type) {
@@ -118,6 +123,8 @@ constexpr const char* toString(Op type) {
 		return "ALLOCA";
 	case FUNC_ADDR:
 		return "FUNC_ADDR";
+	case ALLOCA_TOMBSTONE:
+		return "ALLOCA_TOMBSTONE";
 	default:
 		__builtin_unreachable();
 	}
