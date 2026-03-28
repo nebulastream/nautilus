@@ -6,6 +6,7 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
 #include <type_traits>
@@ -14,13 +15,25 @@
 namespace nautilus {
 
 template <is_nautilus_ref ValueType>
-class val<ValueType> {
+class val<ValueType> : public val_base {
 public:
 	using baseType = std::remove_cvref_t<ValueType>;
 	using ref_less_type = std::remove_reference_t<ValueType>;
 	using ptrType = ref_less_type*;
 
+	[[nodiscard]] Type getType() const override {
+		return tracing::TypeResolver<baseType>::to_type();
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValueType>>();
+	}
+
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	const tracing::TypedValueRefHolder state;
 #endif
 #ifdef ENABLE_TRACING
@@ -77,13 +90,13 @@ public:
 #define BINARY_AND_ASSIGN_OPERATOR(OP)                                                                                 \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP## = (T other) noexcept {                                                                          \
+	void operator OP##=(T other) noexcept {                                                                            \
 		val<baseType> value {other};                                                                                   \
 		*this OP## = value;                                                                                            \
 	}                                                                                                                  \
 	template <class T>                                                                                                 \
 	    requires std::is_convertible_v<T, baseType>                                                                    \
-	void operator OP## = (val<T> other) noexcept {                                                                     \
+	void operator OP##=(val<T> other) noexcept {                                                                       \
 		val<baseType> value {other};                                                                                   \
 		*this = *this OP value;                                                                                        \
 	}                                                                                                                  \
@@ -138,7 +151,7 @@ private:
 };
 
 template <is_ptr ValuePtrType>
-class base_ptr_val {
+class base_ptr_val : public val_base {
 public:
 	using ValType = std::remove_pointer_t<ValuePtrType>;
 	using raw_no_qualifiers = std::remove_cv_t<ValType>;
@@ -183,7 +196,19 @@ public:
 		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(value)));
 	}
 
+	[[nodiscard]] Type getType() const override {
+		return Type::ptr;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValuePtrType>>();
+	}
+
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	const tracing::TypedValueRefHolder state;
 #endif
 
@@ -221,7 +246,7 @@ protected:
 };
 
 template <typename T, typename F>
-std::size_t field_offset(F T::* pm) {
+std::size_t field_offset(F T::*pm) {
 	alignas(T) std::byte storage[sizeof(T)] {};
 	T* obj = std::launder(reinterpret_cast<T*>(storage));                       // ← reinterpret_cast: not constexpr
 	return reinterpret_cast<char*>(&(obj->*pm)) - reinterpret_cast<char*>(obj); // ← same
@@ -236,7 +261,7 @@ public:
 
 	template <typename F, typename T = ValType>
 	    requires std::is_class_v<T>
-	auto get(F T::* pm) {
+	auto get(F T::*pm) {
 		auto offset = field_offset(pm);
 		val<uint8_t*> bytePtr = static_cast<val<uint8_t*>>(*this);
 		val<uint8_t*> fieldBytePtr = bytePtr + offset;
@@ -250,14 +275,14 @@ public:
 
 	template <typename F, typename T = ValType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::*pm, val<F> value) {
 		val<F&> valueRef = get(pm);
 		valueRef = value;
 	}
 
 	template <typename F, typename T = ValType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, F value) {
+	void set(F T::*pm, F value) {
 		val<F&> valueRef = get(pm);
 		valueRef = value;
 	}
@@ -555,13 +580,25 @@ auto inline operator!=(std::nullptr_t, val<ValueType> right) {
 }
 
 template <>
-class val<bool&> {
+class val<bool&> : public val_base {
 public:
 	using baseType = std::remove_cvref_t<bool&>;
 	using ref_less_type = std::remove_reference_t<bool&>;
 	using ptrType = ref_less_type*;
 
+	[[nodiscard]] Type getType() const override {
+		return Type::b;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<bool&>>();
+	}
+
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	tracing::TypedValueRefHolder state;
 	val(bool ref) : state(tracing::TypedValueRef()), ptr(&ref) {
 	}

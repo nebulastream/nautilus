@@ -109,6 +109,7 @@
 
 #include "nautilus/function.hpp"
 #include "nautilus/std/cstring.h"
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstring>
 #include <type_traits>
@@ -152,7 +153,22 @@ val<ValueType*> nautilus_alloca() {
  */
 template <typename ValueType>
     requires(std::is_class_v<ValueType> && !std::is_pointer_v<ValueType>)
-class val<ValueType> {
+class val<ValueType> : public val_base {
+public:
+	[[nodiscard]] Type getType() const override {
+		return Type::ptr;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValueType>>();
+	}
+
+#ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return value_ptr.getState();
+	}
+#endif
+
 private:
 	// All data lives behind a traced pointer so that loads, stores and the
 	// alloca itself appear as first-class operations in the IR.
@@ -236,7 +252,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	auto get(F T::* pm) {
+	auto get(F T::*pm) {
 		return value_ptr.get(pm);
 	}
 
@@ -248,7 +264,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::*pm, val<F> value) {
 		return value_ptr.set(pm, value);
 	}
 
@@ -263,7 +279,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, F value) {
+	void set(F T::*pm, F value) {
 		return value_ptr.set(pm, value);
 	}
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <concepts>
@@ -53,7 +54,7 @@ namespace nautilus {
 // Partial specialization for arithmetic types only
 template <typename ValueType>
     requires is_arithmetic<ValueType>
-class val<ValueType> {
+class val<ValueType> : public val_base {
 public:
 	/// The raw type stored by this value wrapper
 	using raw_type = ValueType;
@@ -191,7 +192,19 @@ public:
 		return temp;
 	}
 
+	[[nodiscard]] Type getType() const override {
+		return tracing::TypeResolver<ValueType>::to_type();
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<ValueType>>();
+	}
+
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
 #endif

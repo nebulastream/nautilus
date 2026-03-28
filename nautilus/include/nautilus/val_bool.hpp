@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <utility>
@@ -141,7 +142,7 @@ using TrueProbability = double;
 /// @see val.hpp for main header and operators
 ///
 template <>
-class val<bool> {
+class val<bool> : public val_base {
 public:
 	/// The raw type stored by this value wrapper
 	using raw_type = bool;
@@ -149,7 +150,19 @@ public:
 	/// The basic underlying type
 	using basic_type = bool;
 
+	[[nodiscard]] Type getType() const override {
+		return Type::b;
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<bool>>();
+	}
+
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
 #endif

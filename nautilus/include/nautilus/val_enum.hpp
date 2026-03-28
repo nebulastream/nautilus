@@ -1,5 +1,6 @@
 #pragma once
 #include "nautilus/config.hpp"
+#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <iostream>
 #include <memory>
@@ -15,11 +16,19 @@ namespace nautilus {
 
 template <typename T>
     requires std::is_enum_v<T>
-class val<T> {
+class val<T> : public val_base {
 public:
 	using underlying_type_t = std::underlying_type_t<T>;
 	using raw_type = underlying_type_t;
 	using basic_type = T;
+
+	[[nodiscard]] Type getType() const override {
+		return tracing::TypeResolver<underlying_type_t>::to_type();
+	}
+
+	[[nodiscard]] TypeId getTypeId() const override {
+		return typeIdOf<val<T>>();
+	}
 
 #ifdef ENABLE_TRACING
 	template <T>
@@ -112,6 +121,10 @@ public:
 	}
 
 #ifdef ENABLE_TRACING
+	[[nodiscard]] tracing::TypedValueRef getState() const override {
+		return state;
+	}
+
 	tracing::TypedValueRefHolder state;
 #endif
 
