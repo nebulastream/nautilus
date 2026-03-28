@@ -43,9 +43,10 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
 
-	// Process all functions in the trace module
-	for (const auto& [functionName, trace] : *traceModule) {
-		auto phaseContext = IRConversionContext(trace.get(), id);
+	// Process all functions in sorted order for deterministic IR output.
+	for (const auto& functionName : traceModule->getFunctionNames()) {
+		auto* trace = traceModule->getFunction(functionName);
+		auto phaseContext = IRConversionContext(trace, id);
 		ir->addFunctionOperation(phaseContext.processFunction(functionName));
 	}
 

@@ -1,13 +1,4 @@
 NautilusIr {
-readFieldA() {
-Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
-	$6 = $3 * $5 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i32
-	return ($10) :i32
-}
 execute() {
 Block_0($1:i32):
 	$5 = alloca 8b :ptr
@@ -30,5 +21,14 @@ Block_3($20:i32):
 Block_2():
 	$22 = 0 :i32
 	br Block_3($22) :void
+}
+readFieldA() {
+Block_0($1:ptr):
+	$3 = 0 :ui64
+	$5 = 1 :ui64
+	$6 = $3 * $5 :ui64
+	$7 = $1 + $6 :ptr
+	$10 = load($7) :i32
+	return ($10) :i32
 }
 } //NESIR

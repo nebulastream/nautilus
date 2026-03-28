@@ -119,7 +119,22 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		pipelineCode << "}\n\n";
 	};
 
-	// New path: multiple functions via TraceModule
+	// Emit forward declarations so functions can call each other regardless of definition order.
+	for (const auto& functionOperation : functionOperations) {
+		const auto& functionBasicBlock = functionOperation->getFunctionBasicBlock();
+		pipelineCode << "extern \"C\" " << getType(functionOperation->getOutputArg()) << " "
+		             << functionOperation->getName() << "(";
+		for (size_t i = 0; i < functionBasicBlock.getArguments().size(); i++) {
+			if (i != 0) {
+				pipelineCode << ",";
+			}
+			pipelineCode << getType(functionBasicBlock.getArguments()[i]->getStamp());
+		}
+		pipelineCode << ");\n";
+	}
+	pipelineCode << "\n";
+
+	// Emit function definitions.
 	for (const auto& functionOperation : functionOperations) {
 		processFunction(*functionOperation);
 	}
