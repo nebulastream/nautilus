@@ -27,6 +27,30 @@ from nautilus_native import (
     _register_i32_to_b,
 )
 
+# Module bindings
+from nautilus_native import (
+    _NautilusModule,
+    _CompiledModule,
+    _MF_i32_i32,
+    _MF_i32_i32_i32,
+    _MF_i64_i64,
+    _MF_i64_i64_i64,
+    _MF_f64_f64,
+    _MF_f64_f64_f64,
+)
+
+# NautilusFunction bindings
+from nautilus_native import (
+    _NautilusFunc_i32_i32,
+    _NautilusFunc_i32_i32_i32,
+    _NautilusFunc_i64_i64,
+    _NautilusFunc_f64_f64,
+    _create_nautilus_func_i32_i32,
+    _create_nautilus_func_i32_i32_i32,
+    _create_nautilus_func_i64_i64,
+    _create_nautilus_func_f64_f64,
+)
+
 import inspect
 import typing
 
@@ -41,6 +65,24 @@ _REGISTRY = {
     ((ValFloat32,), ValFloat32): _register_f32_to_f32,
     ((ValBool,), ValBool): _register_b_to_b,
     ((ValInt32,), ValBool): _register_i32_to_b,
+}
+
+# Module register/get method lookup: (arg_types, ret_type) -> (register_method_name, get_method_name)
+_MODULE_REGISTRY = {
+    ((ValInt32,), ValInt32): ("register_i32_to_i32", "get_i32_i32"),
+    ((ValInt32, ValInt32), ValInt32): ("register_i32_i32_to_i32", "get_i32_i32_i32"),
+    ((ValInt64,), ValInt64): ("register_i64_to_i64", "get_i64_i64"),
+    ((ValInt64, ValInt64), ValInt64): ("register_i64_i64_to_i64", "get_i64_i64_i64"),
+    ((ValFloat64,), ValFloat64): ("register_f64_to_f64", "get_f64_f64"),
+    ((ValFloat64, ValFloat64), ValFloat64): ("register_f64_f64_to_f64", "get_f64_f64_f64"),
+}
+
+# NautilusFunction factory lookup: (arg_types, ret_type) -> create_fn
+_NAUTILUS_FUNC_REGISTRY = {
+    ((ValInt32,), ValInt32): _create_nautilus_func_i32_i32,
+    ((ValInt32, ValInt32), ValInt32): _create_nautilus_func_i32_i32_i32,
+    ((ValInt64,), ValInt64): _create_nautilus_func_i64_i64,
+    ((ValFloat64,), ValFloat64): _create_nautilus_func_f64_f64,
 }
 
 
@@ -109,6 +151,152 @@ class Engine:
         """
         return self.register(func)
 
+    def create_module(self):
+        """Create a Module for batch-compiling multiple named functions.
+
+        Usage:
+            module = engine.create_module()
+            module.register("inc", lambda x: x + ValInt32(1),
+                            arg_types=(ValInt32,), ret_type=ValInt32)
+            compiled = module.compile()
+            inc = compiled.get("inc", arg_types=(ValInt32,), ret_type=ValInt32)
+            assert inc(5) == 6
+        """
+        return Module(self._engine.create_module())
+
+
+class Module:
+    """Batch-register multiple named functions and compile them together.
+
+    Functions can be registered either with explicit type annotations or
+    with explicit arg_types/ret_type keyword arguments.
+    """
+
+    def __init__(self, native_module):
+        self._module = native_module
+        self._signatures = {}  # name -> (arg_types, ret_type)
+
+    def register(self, name, func, *, arg_types=None, ret_type=None):
+        """Register a named function in the module.
+
+        Args:
+            name: Unique name for this function.
+            func: The Python callable.
+            arg_types: Tuple of Val types for arguments (inferred from annotations if None).
+            ret_type: Val type for return value (inferred from annotations if None).
+        """
+        if arg_types is None or ret_type is None:
+            inferred_args, inferred_ret = _get_signature(func)
+            if arg_types is None:
+                arg_types = inferred_args
+            if ret_type is None:
+                ret_type = inferred_ret
+
+        key = (arg_types, ret_type)
+        entry = _MODULE_REGISTRY.get(key)
+        if entry is None:
+            supported = ", ".join(
+                f"({', '.join(t.__name__ for t in args)}) -> {ret.__name__}"
+                for (args, ret) in _MODULE_REGISTRY.keys()
+            )
+            raise TypeError(
+                f"Unsupported module function signature: "
+                f"({', '.join(t.__name__ for t in arg_types)}) -> "
+                f"{ret_type.__name__ if ret_type else 'None'}. "
+                f"Supported: {supported}"
+            )
+
+        register_method_name = entry[0]
+        getattr(self._module, register_method_name)(name, func)
+        self._signatures[name] = key
+
+    def compile(self):
+        """Compile all registered functions and return a CompiledModule."""
+        native_compiled = self._module.compile()
+        return CompiledModule(native_compiled, self._signatures)
+
+
+class CompiledModule:
+    """Result of compiling a Module. Provides typed function access by name."""
+
+    def __init__(self, native_compiled, signatures):
+        self._compiled = native_compiled
+        self._signatures = signatures
+
+    def get(self, name, *, arg_types=None, ret_type=None):
+        """Get a callable function handle by name.
+
+        If the function was registered via Module.register(), the signature is
+        remembered and arg_types/ret_type can be omitted.
+        """
+        if arg_types is None or ret_type is None:
+            if name in self._signatures:
+                saved_args, saved_ret = self._signatures[name]
+                if arg_types is None:
+                    arg_types = saved_args
+                if ret_type is None:
+                    ret_type = saved_ret
+
+        if arg_types is None or ret_type is None:
+            raise ValueError(
+                f"Cannot determine signature for '{name}'. "
+                f"Provide arg_types and ret_type explicitly."
+            )
+
+        key = (arg_types, ret_type)
+        entry = _MODULE_REGISTRY.get(key)
+        if entry is None:
+            raise TypeError(f"Unsupported signature for module function '{name}'.")
+
+        get_method_name = entry[1]
+        return getattr(self._compiled, get_method_name)(name)
+
+
+def nautilus_function(name=None, *, arg_types=None, ret_type=None):
+    """Decorator to create a NautilusFunction from a Python callable.
+
+    A NautilusFunction can be called from within other traced functions —
+    the call is intercepted during tracing and compiled as a separate function.
+
+    Usage:
+        @nautilus_function("double_it")
+        def double_it(x: ValInt32) -> ValInt32:
+            return x + x
+
+        # Can be called from another traced function:
+        @engine.compile
+        def quadruple(x: ValInt32) -> ValInt32:
+            return double_it(double_it(x))
+    """
+    def decorator(func):
+        fn_name = name if name is not None else func.__name__
+
+        if arg_types is not None and ret_type is not None:
+            args = arg_types
+            ret = ret_type
+        else:
+            inferred_args, inferred_ret = _get_signature(func)
+            args = arg_types if arg_types is not None else inferred_args
+            ret = ret_type if ret_type is not None else inferred_ret
+
+        key = (args, ret)
+        create_fn = _NAUTILUS_FUNC_REGISTRY.get(key)
+        if create_fn is None:
+            supported = ", ".join(
+                f"({', '.join(t.__name__ for t in a)}) -> {r.__name__}"
+                for (a, r) in _NAUTILUS_FUNC_REGISTRY.keys()
+            )
+            raise TypeError(
+                f"Unsupported NautilusFunction signature: "
+                f"({', '.join(t.__name__ for t in args)}) -> "
+                f"{ret.__name__ if ret else 'None'}. "
+                f"Supported: {supported}"
+            )
+
+        return create_fn(fn_name, func)
+
+    return decorator
+
 
 __all__ = [
     "ValBool",
@@ -117,7 +305,10 @@ __all__ = [
     "ValFloat32",
     "ValFloat64",
     "Engine",
+    "Module",
+    "CompiledModule",
     "NautilusEngine",
     "Options",
     "select",
+    "nautilus_function",
 ]
