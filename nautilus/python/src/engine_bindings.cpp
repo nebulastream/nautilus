@@ -1,24 +1,49 @@
 #include "nautilus/Engine.hpp"
+#include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
+#include <Python.h>
+#include <frameobject.h>
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+// External position hint for disambiguating Python call sites that share the
+// same C++ stack trace (e.g. two different __gt__ comparisons in user code).
+#include "nautilus/tracing/ExternalPositionHint.hpp"
+
 namespace py = pybind11;
 using namespace nautilus;
 
-/// Helper macro to define a register function for a specific signature.
-/// Each Python-visible registration function captures a py::function,
-/// wraps it in a C++ std::function with the correct val<T> signature,
-/// and passes it to NautilusEngine::registerFunction.
-#define DEFINE_REGISTER_FUNC(NAME, RET_TYPE, ...)                                                                      \
-	m.def(NAME, [](const engine::NautilusEngine& eng, py::function py_func) {                                          \
-		std::function<val<RET_TYPE>(__VA_ARGS__)> cpp_func = [py_func](__VA_ARGS__ args) -> val<RET_TYPE> {            \
-			py::gil_scoped_acquire gil;                                                                                \
-			py::object result = py_func(args);                                                                         \
-			return result.cast<val<RET_TYPE>>();                                                                       \
-		};                                                                                                             \
-		return eng.registerFunction(cpp_func);                                                                         \
-	});
+// Defined in nautilus_module.cpp — the Python exception type for TraceTerminationException.
+PyObject* getTraceTerminationExceptionType();
+
+/// Returns the Python bytecode offset of the current frame.
+/// Different Python source positions produce different offsets, which
+/// disambiguates operations that route through the same pybind11 dispatcher.
+static uint64_t getPythonBytecodeOffset() {
+	PyFrameObject* frame = PyEval_GetFrame();
+	if (!frame) {
+		return 0;
+	}
+#if PY_VERSION_HEX >= 0x030b0000 // Python 3.11+
+	return static_cast<uint64_t>(static_cast<uint32_t>(PyFrame_GetLasti(frame)));
+#else
+	return static_cast<uint64_t>(static_cast<uint32_t>(frame->f_lasti));
+#endif
+}
+
+/// Re-throws TraceTerminationException if the Python error is our registered type.
+/// Otherwise re-throws the original py::error_already_set.
+/// This is critical for tracing: the C++ trace loop catches TraceTerminationException
+/// to handle control-flow merges and loop detection. Without this, the exception
+/// gets swallowed by pybind11's generic exception translation.
+[[noreturn]] inline void rethrowIfTraceTermination(py::error_already_set& e) {
+	if (e.matches(getTraceTerminationExceptionType())) {
+		e.restore();
+		PyErr_Clear();
+		throw nautilus::tracing::TraceTerminationException();
+	}
+	throw;
+}
 
 void bind_engine(py::module_& m) {
 	// --- Options ---
@@ -57,10 +82,17 @@ void bind_engine(py::module_& m) {
 	m.def("_register_i32_to_i32", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<int32_t>(val<int32_t>)> cpp_func = [py_func](val<int32_t> a) -> val<int32_t> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<int32_t>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<int32_t>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (int32_t, int32_t) -> int32_t
@@ -73,10 +105,17 @@ void bind_engine(py::module_& m) {
 		std::function<val<int32_t>(val<int32_t>, val<int32_t>)> cpp_func = [py_func](val<int32_t> a,
 		                                                                             val<int32_t> b) -> val<int32_t> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a, b);
-			return result.cast<val<int32_t>>();
+			try {
+				py::object result = py_func(a, b);
+				return result.cast<val<int32_t>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (int64_t) -> int64_t
@@ -86,10 +125,17 @@ void bind_engine(py::module_& m) {
 	m.def("_register_i64_to_i64", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<int64_t>(val<int64_t>)> cpp_func = [py_func](val<int64_t> a) -> val<int64_t> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<int64_t>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<int64_t>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (int64_t, int64_t) -> int64_t
@@ -102,10 +148,17 @@ void bind_engine(py::module_& m) {
 		std::function<val<int64_t>(val<int64_t>, val<int64_t>)> cpp_func = [py_func](val<int64_t> a,
 		                                                                             val<int64_t> b) -> val<int64_t> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a, b);
-			return result.cast<val<int64_t>>();
+			try {
+				py::object result = py_func(a, b);
+				return result.cast<val<int64_t>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (double) -> double
@@ -115,10 +168,17 @@ void bind_engine(py::module_& m) {
 	m.def("_register_f64_to_f64", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<double>(val<double>)> cpp_func = [py_func](val<double> a) -> val<double> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<double>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<double>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (double, double) -> double
@@ -131,10 +191,17 @@ void bind_engine(py::module_& m) {
 		std::function<val<double>(val<double>, val<double>)> cpp_func = [py_func](val<double> a,
 		                                                                          val<double> b) -> val<double> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a, b);
-			return result.cast<val<double>>();
+			try {
+				py::object result = py_func(a, b);
+				return result.cast<val<double>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (float) -> float
@@ -144,10 +211,17 @@ void bind_engine(py::module_& m) {
 	m.def("_register_f32_to_f32", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<float>(val<float>)> cpp_func = [py_func](val<float> a) -> val<float> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<float>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<float>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (bool) -> bool
@@ -157,10 +231,17 @@ void bind_engine(py::module_& m) {
 	m.def("_register_b_to_b", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<bool>(val<bool>)> cpp_func = [py_func](val<bool> a) -> val<bool> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<bool>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<bool>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 
 	// (int32_t) -> bool  (predicate)
@@ -170,9 +251,16 @@ void bind_engine(py::module_& m) {
 	m.def("_register_i32_to_b", [](const engine::NautilusEngine& eng, py::function py_func) {
 		std::function<val<bool>(val<int32_t>)> cpp_func = [py_func](val<int32_t> a) -> val<bool> {
 			py::gil_scoped_acquire gil;
-			py::object result = py_func(a);
-			return result.cast<val<bool>>();
+			try {
+				py::object result = py_func(a);
+				return result.cast<val<bool>>();
+			} catch (py::error_already_set& e) {
+				rethrowIfTraceTermination(e);
+			}
 		};
-		return eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = &getPythonBytecodeOffset;
+		auto result = eng.registerFunction(cpp_func);
+		tracing::externalPositionHintFn = nullptr;
+		return result;
 	});
 }

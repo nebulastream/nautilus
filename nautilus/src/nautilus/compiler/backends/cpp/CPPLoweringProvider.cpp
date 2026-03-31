@@ -247,8 +247,7 @@ void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocatio
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
-		                   << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }

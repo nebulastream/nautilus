@@ -53,47 +53,65 @@ void bind_val_types(py::module_& m) {
 	    .def("__rtruediv__", [](const val<int32_t>& a, int32_t b) { return val<int32_t>(b) / a; })
 	    .def("__rfloordiv__", [](const val<int32_t>& a, int32_t b) { return val<int32_t>(b) / a; })
 	    .def("__rmod__", [](const val<int32_t>& a, int32_t b) { return val<int32_t>(b) % a; })
-	    // Compound assignment
-	    .def("__iadd__",
-	         [](val<int32_t>& a, const val<int32_t>& b) {
-		         a = a + b;
-		         return a;
-	         })
-	    .def("__iadd__",
-	         [](val<int32_t>& a, int32_t b) {
-		         a = a + val<int32_t>(b);
-		         return a;
-	         })
-	    .def("__isub__",
-	         [](val<int32_t>& a, const val<int32_t>& b) {
-		         a = a - b;
-		         return a;
-	         })
-	    .def("__isub__",
-	         [](val<int32_t>& a, int32_t b) {
-		         a = a - val<int32_t>(b);
-		         return a;
-	         })
-	    .def("__imul__",
-	         [](val<int32_t>& a, const val<int32_t>& b) {
-		         a = a * b;
-		         return a;
-	         })
-	    .def("__imul__",
-	         [](val<int32_t>& a, int32_t b) {
-		         a = a * val<int32_t>(b);
-		         return a;
-	         })
-	    .def("__itruediv__",
-	         [](val<int32_t>& a, const val<int32_t>& b) {
-		         a = a / b;
-		         return a;
-	         })
-	    .def("__imod__",
-	         [](val<int32_t>& a, const val<int32_t>& b) {
-		         a = a % b;
-		         return a;
-	         })
+	    // Compound assignment — return by reference so the same C++ val object is reused.
+	    // Critical for while-loop tracing: alive-variable hash must stay stable across
+	    // loop iterations so the tracer can detect the loop back-edge.
+	    .def(
+	        "__iadd__",
+	        [](val<int32_t>& a, const val<int32_t>& b) -> val<int32_t>& {
+		        a = a + b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__iadd__",
+	        [](val<int32_t>& a, int32_t b) -> val<int32_t>& {
+		        a = a + val<int32_t>(b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<int32_t>& a, const val<int32_t>& b) -> val<int32_t>& {
+		        a = a - b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<int32_t>& a, int32_t b) -> val<int32_t>& {
+		        a = a - val<int32_t>(b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<int32_t>& a, const val<int32_t>& b) -> val<int32_t>& {
+		        a = a * b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<int32_t>& a, int32_t b) -> val<int32_t>& {
+		        a = a * val<int32_t>(b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__itruediv__",
+	        [](val<int32_t>& a, const val<int32_t>& b) -> val<int32_t>& {
+		        a = a / b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imod__",
+	        [](val<int32_t>& a, const val<int32_t>& b) -> val<int32_t>& {
+		        a = a % b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
 	    // Bitwise
 	    .def("__lshift__", [](const val<int32_t>& a, const val<int32_t>& b) { return a << b; })
 	    .def("__lshift__", [](const val<int32_t>& a, int32_t b) { return a << val<int32_t>(b); })
@@ -152,26 +170,34 @@ void bind_val_types(py::module_& m) {
 	    .def("__xor__", [](const val<int64_t>& a, const val<int64_t>& b) { return a ^ b; })
 	    .def("__invert__", [](const val<int64_t>& a) { return ~a; })
 	    .def("__neg__", [](const val<int64_t>& a) { return -a; })
-	    .def("__iadd__",
-	         [](val<int64_t>& a, const val<int64_t>& b) {
-		         a = a + b;
-		         return a;
-	         })
-	    .def("__iadd__",
-	         [](val<int64_t>& a, int64_t b) {
-		         a = a + val<int64_t>(b);
-		         return a;
-	         })
-	    .def("__isub__",
-	         [](val<int64_t>& a, const val<int64_t>& b) {
-		         a = a - b;
-		         return a;
-	         })
-	    .def("__imul__",
-	         [](val<int64_t>& a, const val<int64_t>& b) {
-		         a = a * b;
-		         return a;
-	         })
+	    .def(
+	        "__iadd__",
+	        [](val<int64_t>& a, const val<int64_t>& b) -> val<int64_t>& {
+		        a = a + b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__iadd__",
+	        [](val<int64_t>& a, int64_t b) -> val<int64_t>& {
+		        a = a + val<int64_t>(b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<int64_t>& a, const val<int64_t>& b) -> val<int64_t>& {
+		        a = a - b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<int64_t>& a, const val<int64_t>& b) -> val<int64_t>& {
+		        a = a * b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
 	    .def("__eq__", [](const val<int64_t>& a, const val<int64_t>& b) { return a == b; })
 	    .def("__eq__", [](const val<int64_t>& a, int64_t b) { return a == val<int64_t>(b); })
 	    .def("__ne__", [](const val<int64_t>& a, const val<int64_t>& b) { return a != b; })
@@ -194,21 +220,27 @@ void bind_val_types(py::module_& m) {
 	    .def("__mul__", [](const val<float>& a, const val<float>& b) { return a * b; })
 	    .def("__truediv__", [](const val<float>& a, const val<float>& b) { return a / b; })
 	    .def("__neg__", [](const val<float>& a) { return -a; })
-	    .def("__iadd__",
-	         [](val<float>& a, const val<float>& b) {
-		         a = a + b;
-		         return a;
-	         })
-	    .def("__isub__",
-	         [](val<float>& a, const val<float>& b) {
-		         a = a - b;
-		         return a;
-	         })
-	    .def("__imul__",
-	         [](val<float>& a, const val<float>& b) {
-		         a = a * b;
-		         return a;
-	         })
+	    .def(
+	        "__iadd__",
+	        [](val<float>& a, const val<float>& b) -> val<float>& {
+		        a = a + b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<float>& a, const val<float>& b) -> val<float>& {
+		        a = a - b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<float>& a, const val<float>& b) -> val<float>& {
+		        a = a * b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
 	    .def("__eq__", [](const val<float>& a, const val<float>& b) { return a == b; })
 	    .def("__ne__", [](const val<float>& a, const val<float>& b) { return a != b; })
 	    .def("__lt__", [](const val<float>& a, const val<float>& b) { return a < b; })
@@ -239,31 +271,41 @@ void bind_val_types(py::module_& m) {
 	    .def("__rmul__", [](const val<double>& a, double b) { return val<double>(b) * a; })
 	    .def("__rtruediv__", [](const val<double>& a, double b) { return val<double>(b) / a; })
 	    // Compound assignment
-	    .def("__iadd__",
-	         [](val<double>& a, const val<double>& b) {
-		         a = a + b;
-		         return a;
-	         })
-	    .def("__iadd__",
-	         [](val<double>& a, double b) {
-		         a = a + val<double>(b);
-		         return a;
-	         })
-	    .def("__isub__",
-	         [](val<double>& a, const val<double>& b) {
-		         a = a - b;
-		         return a;
-	         })
-	    .def("__imul__",
-	         [](val<double>& a, const val<double>& b) {
-		         a = a * b;
-		         return a;
-	         })
-	    .def("__itruediv__",
-	         [](val<double>& a, const val<double>& b) {
-		         a = a / b;
-		         return a;
-	         })
+	    .def(
+	        "__iadd__",
+	        [](val<double>& a, const val<double>& b) -> val<double>& {
+		        a = a + b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__iadd__",
+	        [](val<double>& a, double b) -> val<double>& {
+		        a = a + val<double>(b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<double>& a, const val<double>& b) -> val<double>& {
+		        a = a - b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<double>& a, const val<double>& b) -> val<double>& {
+		        a = a * b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__itruediv__",
+	        [](val<double>& a, const val<double>& b) -> val<double>& {
+		        a = a / b;
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
 	    // Unary
 	    .def("__neg__", [](const val<double>& a) { return -a; })
 	    .def("__pos__", [](const val<double>& a) { return +a; })

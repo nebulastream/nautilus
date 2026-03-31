@@ -1,5 +1,6 @@
 
 #include "LazyTraceContext.hpp"
+#include "ExternalPositionHint.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -434,7 +435,8 @@ std::string LazyTraceContext::formatStaticVars() const {
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	uint64_t hint = externalPositionHintFn ? externalPositionHintFn() : 0;
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash() ^ hint};
 }
 
 } // namespace nautilus::tracing
