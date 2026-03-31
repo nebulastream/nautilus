@@ -2,11 +2,11 @@
 #pragma once
 
 #include "nautilus/static.hpp"
+#include "nautilus/traceable_val.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include "nautilus/val.hpp"
-#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
 #include <type_traits>
@@ -15,7 +15,7 @@
 namespace nautilus {
 
 template <is_nautilus_ref ValueType>
-class val<ValueType> : public val_base {
+class val<ValueType> : public traceable_val {
 public:
 	using baseType = std::remove_cvref_t<ValueType>;
 	using ref_less_type = std::remove_reference_t<ValueType>;
@@ -30,18 +30,11 @@ public:
 	}
 
 #ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
+	val(ValueType ref) : traceable_val(tracing::TypedValueRef()), ptr(&ref) {
 	}
-
-	const tracing::TypedValueRefHolder state;
-#endif
-#ifdef ENABLE_TRACING
-	val(ValueType ref) : state(tracing::TypedValueRef()), ptr(&ref) {
+	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : traceable_val(TypedValueRef), ptr(&ref) {
 	}
-	val(ValueType ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
-	}
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : traceable_val(ref), ptr(ptr) {
 	}
 #else
 	val(ValueType ref) : ptr(&ref) {
@@ -151,7 +144,7 @@ private:
 };
 
 template <is_ptr ValuePtrType>
-class base_ptr_val : public val_base {
+class base_ptr_val : public traceable_val {
 public:
 	using ValType = std::remove_pointer_t<ValuePtrType>;
 	using raw_no_qualifiers = std::remove_cv_t<ValType>;
@@ -160,16 +153,16 @@ public:
 	using pointer_type = ValuePtrType;
 
 #ifdef ENABLE_TRACING
-	base_ptr_val() : state(tracing::traceConstant<void*>(nullptr)), value() {
+	base_ptr_val() : traceable_val(tracing::traceConstant<void*>(nullptr)), value() {
 	}
-	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
+	base_ptr_val(ValuePtrType ptr) : traceable_val(tracing::traceConstant((void*) ptr)), value(ptr) {
 	}
-	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : state(tc), value(ptr) {
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : traceable_val(tc), value(ptr) {
 	}
-	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : state(std::move(tc)), value(ptr) {
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRefHolder tc) : traceable_val(std::move(tc)), value(ptr) {
 	}
 
-	base_ptr_val(tracing::TypedValueRef ref) : state(ref), value(nullptr) {
+	base_ptr_val(tracing::TypedValueRef ref) : traceable_val(ref), value(nullptr) {
 	}
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {
@@ -203,14 +196,6 @@ public:
 	[[nodiscard]] TypeId getTypeId() const override {
 		return typeIdOf<val<ValuePtrType>>();
 	}
-
-#ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
-	}
-
-	const tracing::TypedValueRefHolder state;
-#endif
 
 protected:
 	template <typename ValueType>
@@ -580,7 +565,7 @@ auto inline operator!=(std::nullptr_t, val<ValueType> right) {
 }
 
 template <>
-class val<bool&> : public val_base {
+class val<bool&> : public traceable_val {
 public:
 	using baseType = std::remove_cvref_t<bool&>;
 	using ref_less_type = std::remove_reference_t<bool&>;
@@ -595,16 +580,11 @@ public:
 	}
 
 #ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
+	val(bool ref) : traceable_val(tracing::TypedValueRef()), ptr(&ref) {
 	}
-
-	tracing::TypedValueRefHolder state;
-	val(bool ref) : state(tracing::TypedValueRef()), ptr(&ref) {
+	val(bool& ref, tracing::TypedValueRef TypedValueRef) : traceable_val(TypedValueRef), ptr(&ref) {
 	}
-	val(bool& ref, tracing::TypedValueRef TypedValueRef) : state(TypedValueRef), ptr(&ref) {
-	}
-	val(val<ptrType> ptr, tracing::TypedValueRef ref) : state(ref), ptr(ptr) {
+	val(val<ptrType> ptr, tracing::TypedValueRef ref) : traceable_val(ref), ptr(ptr) {
 	}
 #else
 	val(bool ref) : ptr(&ref) {

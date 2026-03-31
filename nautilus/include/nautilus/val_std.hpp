@@ -107,9 +107,9 @@
 
 #pragma once
 
+#include "nautilus/any_val.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/std/cstring.h"
-#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstring>
 #include <type_traits>
@@ -153,7 +153,7 @@ val<ValueType*> nautilus_alloca() {
  */
 template <typename ValueType>
     requires(std::is_class_v<ValueType> && !std::is_pointer_v<ValueType>)
-class val<ValueType> : public val_base {
+class val<ValueType> : public any_val {
 public:
 	[[nodiscard]] Type getType() const override {
 		return Type::ptr;

@@ -1,6 +1,6 @@
 #pragma once
 #include "nautilus/config.hpp"
-#include "nautilus/val_base.hpp"
+#include "nautilus/traceable_val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <iostream>
 #include <memory>
@@ -16,7 +16,7 @@ namespace nautilus {
 
 template <typename T>
     requires std::is_enum_v<T>
-class val<T> : public val_base {
+class val<T> : public traceable_val {
 public:
 	using underlying_type_t = std::underlying_type_t<T>;
 	using raw_type = underlying_type_t;
@@ -34,24 +34,24 @@ public:
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
 	val(T val)
-	    : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
+	    : traceable_val(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
 	      value(static_cast<std::underlying_type_t<T>>(val)) {
 	}
 
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
 	val(val<T>& val)
-	    : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
+	    : traceable_val(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))),
 	      value(static_cast<std::underlying_type_t<T>>(val)) {
 	}
 	val(val<underlying_type_t> t)
-	    : state(t.state), value((T) details::RawValueResolver<underlying_type_t>::getRawValue(t)) {
+	    : traceable_val(t.state), value((T) details::RawValueResolver<underlying_type_t>::getRawValue(t)) {
 	}
-	val(val<T>& t) : state(tracing::traceCopy(t.state)), value(t.value) {
+	val(val<T>& t) : traceable_val(tracing::traceCopy(t.state)), value(t.value) {
 	}
-	val(val<T>&& t) : state(t.state), value(t.value) {
+	val(val<T>&& t) : traceable_val(t.state), value(t.value) {
 	}
-	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(val) {
+	val(T val) : traceable_val(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(val) {
 	}
 #else
 	template <T>
@@ -119,14 +119,6 @@ public:
 		this->value = other.value;
 		return *this;
 	}
-
-#ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
-	}
-
-	tracing::TypedValueRefHolder state;
-#endif
 
 private:
 	friend details::RawValueResolver<T>;

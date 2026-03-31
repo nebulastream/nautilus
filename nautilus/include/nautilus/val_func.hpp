@@ -1,8 +1,8 @@
 #pragma once
 
+#include "nautilus/any_val.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
-#include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -37,7 +37,7 @@ namespace nautilus {
 ///     use memberFunc() in function.hpp.
 
 template <typename R, typename... Args>
-class val<R (*)(Args...)> : public val_base {
+class val<R (*)(Args...)> : public any_val {
 public:
 	using raw_type = R (*)(Args...);
 	using basic_type = raw_type;

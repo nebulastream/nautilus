@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nautilus/val_base.hpp"
+#include "nautilus/traceable_val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <concepts>
@@ -54,7 +54,7 @@ namespace nautilus {
 // Partial specialization for arithmetic types only
 template <typename ValueType>
     requires is_arithmetic<ValueType>
-class val<ValueType> : public val_base {
+class val<ValueType> : public traceable_val {
 public:
 	/// The raw type stored by this value wrapper
 	using raw_type = ValueType;
@@ -64,23 +64,23 @@ public:
 
 #ifdef ENABLE_TRACING
 	/// Default constructor. Initializes with constant 0 and records in trace.
-	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
+	val() : traceable_val(tracing::traceConstant<raw_type>(0)), value(0) {
 	}
 
 	/// Value constructor. Initializes with provided value and records in trace.
-	val(ValueType value) : state(tracing::traceConstant(value)), value(value) {
+	val(ValueType value) : traceable_val(tracing::traceConstant(value)), value(value) {
 	}
 
 	/// Copy constructor. Copies value and tracing state.
-	val(const val<ValueType>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(const val<ValueType>& other) : traceable_val(tracing::traceCopy(other.state)), value(other.value) {
 	}
 
 	/// Move constructor. Moves value and tracing state.
-	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(val<ValueType>&& other) noexcept : traceable_val(std::move(other.state)), value(std::move(other.value)) {
 	}
 
 	/// Tracing constructor. Creates from TypedValueRef for internal use.
-	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	val(tracing::TypedValueRef& tc) : traceable_val(tc), value() {
 	}
 #else
 	/// Default constructor. Initializes with 0.
@@ -199,15 +199,6 @@ public:
 	[[nodiscard]] TypeId getTypeId() const override {
 		return typeIdOf<val<ValueType>>();
 	}
-
-#ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
-	}
-
-	/// Holds the tracing state for this value when tracing is enabled
-	const tracing::TypedValueRefHolder state;
-#endif
 
 private:
 	template <typename>

@@ -113,10 +113,4 @@ struct is_an_val<val<T>> // For types matching the pattern A<T>
 template <typename T>
 concept is_val_type = is_an_val<T>::value;
 
-// checks if T is a value and it is traceable
-template <typename T>
-concept is_traceable_value = requires(T a) {
-	{ a.state };
-};
-
 } // namespace nautilus

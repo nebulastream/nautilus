@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nautilus/val_base.hpp"
+#include "nautilus/traceable_val.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <utility>
@@ -142,7 +142,7 @@ using TrueProbability = double;
 /// @see val.hpp for main header and operators
 ///
 template <>
-class val<bool> : public val_base {
+class val<bool> : public traceable_val {
 public:
 	/// The raw type stored by this value wrapper
 	using raw_type = bool;
@@ -158,15 +158,6 @@ public:
 		return typeIdOf<val<bool>>();
 	}
 
-#ifdef ENABLE_TRACING
-	[[nodiscard]] tracing::TypedValueRef getState() const override {
-		return state;
-	}
-
-	/// Holds the tracing state for this value when tracing is enabled
-	const tracing::TypedValueRefHolder state;
-#endif
-
 	/// Default constructor.
 	///
 	/// Initializes the boolean value to false with default probability 0.5.
@@ -177,7 +168,7 @@ public:
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)), value(false) {
+	val() : traceable_val(tracing::traceConstant(0)), value(false) {
 	}
 #else
 	val() {
@@ -198,7 +189,7 @@ public:
 	/// val<bool> b = false;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val(bool value) : state(tracing::traceConstant(value)), value(value) {
+	val(bool value) : traceable_val(tracing::traceConstant(value)), value(value) {
 	}
 #else
 	val(bool value) : value(value) {
@@ -221,7 +212,7 @@ public:
 	/// assert(b == a);
 	/// ```
 #ifdef ENABLE_TRACING
-	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
+	val(const val<bool>& other) : traceable_val(tracing::traceCopy(other.state)), value(other.value) {
 	}
 #else
 	val(const val<bool>& other) : value(other.value) {
@@ -244,7 +235,7 @@ public:
 	/// }
 	/// ```
 #ifdef ENABLE_TRACING
-	val(val<bool>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	val(val<bool>&& other) noexcept : traceable_val(std::move(other.state)), value(std::move(other.value)) {
 	}
 #else
 	val(val<bool>&& other) noexcept : value(std::move(other.value)) {
@@ -262,7 +253,7 @@ public:
 	///
 	/// @internal This is for internal tracing machinery only
 #ifdef ENABLE_TRACING
-	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
+	val(tracing::TypedValueRef& tc) : traceable_val(tc), value(false) {
 	}
 #endif
 
