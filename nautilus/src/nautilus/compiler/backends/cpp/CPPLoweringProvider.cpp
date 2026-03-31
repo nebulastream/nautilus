@@ -247,8 +247,7 @@ void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocatio
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = "
-		                   << "temp_" << i << ";\n";
+		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
@@ -292,7 +291,7 @@ void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Ope
 		return;
 	}
 	case ir::Operation::OperationType::AddOp: {
-		processBinary<ir::AndOperation>(opt, "+", blockIndex, frame);
+		processBinary<ir::AddOperation>(opt, "+", blockIndex, frame);
 		return;
 	}
 	case ir::Operation::OperationType::MulOp: {
