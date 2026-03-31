@@ -51,7 +51,7 @@ if (ENABLE_TESTS)
 endif ()
 
 if (ENABLE_PYTHON_BINDINGS)
-    add_subdirectory(python)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../plugins/python ${CMAKE_CURRENT_BINARY_DIR}/plugins/python)
 endif ()
 
 # Handle CMake Install

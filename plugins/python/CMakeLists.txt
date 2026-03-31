@@ -26,8 +26,8 @@ pybind11_add_module(nautilus_native
 
 target_link_libraries(nautilus_native PRIVATE nautilus)
 target_include_directories(nautilus_native PRIVATE
-	${CMAKE_CURRENT_SOURCE_DIR}/../include
-	${CMAKE_CURRENT_SOURCE_DIR}/../src
+	${CMAKE_SOURCE_DIR}/nautilus/include
+	${CMAKE_SOURCE_DIR}/nautilus/src
 )
 
 # Copy the Python package next to the compiled module so `import nautilus` works
