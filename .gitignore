@@ -6,3 +6,5 @@
 .vscode/
 compile_commands.json
 Testing/
+__pycache__/
+*.pyc
