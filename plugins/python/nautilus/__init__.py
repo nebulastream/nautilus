@@ -54,6 +54,35 @@ from nautilus_native import (
 import inspect
 import typing
 
+# Python built-in type -> Val type mapping.
+# Allows users to write `def f(x: int) -> int` instead of `def f(x: ValInt32) -> ValInt32`.
+_PYTHON_TO_VAL = {
+    int: ValInt32,
+    float: ValFloat64,
+    bool: ValBool,
+}
+
+
+def _normalize_type(t):
+    """Convert a Python built-in type to its Val equivalent, or return as-is."""
+    return _PYTHON_TO_VAL.get(t, t)
+
+
+def _normalize_signature(arg_types, ret_type):
+    """Normalize a full signature, converting Python types to Val types."""
+    return (
+        tuple(_normalize_type(t) for t in arg_types),
+        _normalize_type(ret_type) if ret_type is not None else None,
+    )
+
+
+# Type aliases for explicit bit-width control in annotations.
+# Usage: `def f(x: nautilus.int64) -> nautilus.int64: ...`
+int32 = ValInt32
+int64 = ValInt64
+float32 = ValFloat32
+float64 = ValFloat64
+
 # Signature registry: (arg_types_tuple, return_type) -> registration function
 _REGISTRY = {
     ((ValInt32,), ValInt32): _register_i32_to_i32,
@@ -87,12 +116,16 @@ _NAUTILUS_FUNC_REGISTRY = {
 
 
 def _get_signature(func):
-    """Extract (arg_types, return_type) from function type annotations."""
+    """Extract (arg_types, return_type) from function type annotations.
+
+    Python built-in types (int, float, bool) are automatically mapped
+    to their Val equivalents (ValInt32, ValFloat64, ValBool).
+    """
     hints = typing.get_type_hints(func)
     params = inspect.signature(func).parameters
     arg_types = tuple(hints[name] for name in params if name in hints)
     ret_type = hints.get("return")
-    return arg_types, ret_type
+    return _normalize_signature(arg_types, ret_type)
 
 
 class Engine:
@@ -102,7 +135,7 @@ class Engine:
         engine = Engine(backend="mlir")
 
         @engine.compile
-        def add(x: ValInt32, y: ValInt32) -> ValInt32:
+        def add(x: int, y: int) -> int:
             return x + y
 
         result = add(5, 3)  # returns 8
@@ -122,7 +155,8 @@ class Engine:
     def register(self, func):
         """Register and compile a Python function for JIT execution.
 
-        The function must have type annotations using Val types.
+        The function must have type annotations using Python types (int, float, bool)
+        or Val types (ValInt32, ValFloat64, etc.).
         Returns a callable that accepts raw Python values.
         """
         arg_types, ret_type = _get_signature(func)
@@ -146,8 +180,8 @@ class Engine:
 
         Usage:
             @engine.compile
-            def my_func(x: ValInt32) -> ValInt32:
-                return x + ValInt32(1)
+            def my_func(x: int) -> int:
+                return x + 1
         """
         return self.register(func)
 
@@ -192,6 +226,7 @@ class Module:
             if ret_type is None:
                 ret_type = inferred_ret
 
+        arg_types, ret_type = _normalize_signature(arg_types, ret_type)
         key = (arg_types, ret_type)
         entry = _MODULE_REGISTRY.get(key)
         if entry is None:
@@ -243,6 +278,7 @@ class CompiledModule:
                 f"Provide arg_types and ret_type explicitly."
             )
 
+        arg_types, ret_type = _normalize_signature(arg_types, ret_type)
         key = (arg_types, ret_type)
         entry = _MODULE_REGISTRY.get(key)
         if entry is None:
@@ -260,12 +296,12 @@ def nautilus_function(name=None, *, arg_types=None, ret_type=None):
 
     Usage:
         @nautilus_function("double_it")
-        def double_it(x: ValInt32) -> ValInt32:
+        def double_it(x: int) -> int:
             return x + x
 
         # Can be called from another traced function:
         @engine.compile
-        def quadruple(x: ValInt32) -> ValInt32:
+        def quadruple(x: int) -> int:
             return double_it(double_it(x))
     """
     def decorator(func):
@@ -279,6 +315,7 @@ def nautilus_function(name=None, *, arg_types=None, ret_type=None):
             args = arg_types if arg_types is not None else inferred_args
             ret = ret_type if ret_type is not None else inferred_ret
 
+        args, ret = _normalize_signature(args, ret)
         key = (args, ret)
         create_fn = _NAUTILUS_FUNC_REGISTRY.get(key)
         if create_fn is None:
@@ -311,4 +348,8 @@ __all__ = [
     "Options",
     "select",
     "nautilus_function",
+    "int32",
+    "int64",
+    "float32",
+    "float64",
 ]

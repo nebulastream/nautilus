@@ -48,11 +48,25 @@ class TestNautilusFunctionCreation:
 
         assert my_func is not None
 
+    def test_create_with_python_int(self):
+        @nautilus_function("inc_py")
+        def inc_py(x: int) -> int:
+            return x + 1
+
+        assert inc_py is not None
+
+    def test_create_with_python_float(self):
+        @nautilus_function("neg_py")
+        def neg_py(x: float) -> float:
+            return x * -1.0
+
+        assert neg_py is not None
+
     def test_unsupported_signature_raises(self):
         with pytest.raises(TypeError):
 
             @nautilus_function("bad")
-            def bad(x: int) -> int:
+            def bad(x: str) -> str:
                 return x
 
 
@@ -98,6 +112,19 @@ class TestNautilusFunctionInTracing:
 
         result = quadruple(2.5)
         assert abs(result - 10.0) < 1e-10
+
+    def test_call_from_compiled_python_types(self):
+        @nautilus_function("triple_py")
+        def triple_py(x: int) -> int:
+            return x * 3
+
+        engine = Engine()
+
+        @engine.compile
+        def nine_x(x: int) -> int:
+            return triple_py(triple_py(x))
+
+        assert nine_x(2) == 18
 
     def test_two_nautilus_functions_in_one_compilation(self):
         @nautilus_function("add1")

@@ -144,6 +144,44 @@ class TestModule:
         half = compiled.get("half")
         assert abs(half(10.0) - 5.0) < 1e-10
 
+    def test_python_types_explicit(self):
+        engine = Engine()
+        module = engine.create_module()
+        module.register(
+            "add",
+            lambda x, y: x + y,
+            arg_types=(int, int),
+            ret_type=int,
+        )
+        compiled = module.compile()
+        add = compiled.get("add")
+        assert add(3, 4) == 7
+
+    def test_python_types_annotated(self):
+        engine = Engine()
+        module = engine.create_module()
+
+        def my_double(x: int) -> int:
+            return x * 2
+
+        module.register("double", my_double)
+        compiled = module.compile()
+        double = compiled.get("double")
+        assert double(5) == 10
+
+    def test_python_float_in_module(self):
+        engine = Engine()
+        module = engine.create_module()
+        module.register(
+            "half",
+            lambda x: x * 0.5,
+            arg_types=(float,),
+            ret_type=float,
+        )
+        compiled = module.compile()
+        half = compiled.get("half")
+        assert abs(half(10.0) - 5.0) < 1e-10
+
     def test_unsupported_signature_raises(self):
         engine = Engine()
         module = engine.create_module()
@@ -151,6 +189,6 @@ class TestModule:
             module.register(
                 "bad",
                 lambda x: x,
-                arg_types=(int,),
-                ret_type=int,
+                arg_types=(str,),
+                ret_type=str,
             )
