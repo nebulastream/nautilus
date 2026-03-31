@@ -50,6 +50,10 @@ if (ENABLE_TESTS)
     add_subdirectory(test)
 endif ()
 
+if (ENABLE_PYTHON_BINDINGS)
+    add_subdirectory(python)
+endif ()
+
 # Handle CMake Install
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)

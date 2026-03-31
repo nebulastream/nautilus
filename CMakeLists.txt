@@ -26,6 +26,7 @@ option(ENABLE_THREAD_SANITIZER "Enable thread sanitizer." OFF)
 option(ENABLE_UB_SANITIZER "Enable undefined behavior sanitizer." OFF)
 option(ENABLE_LEAK_SANITIZER "Enable leak sanitizer." OFF)
 option(ENABLE_LLVM_IR_TEST "Enable LLVM IR comparison tests (requires llvm-diff-19 or later)" OFF)
+option(ENABLE_PYTHON_BINDINGS "Build Python bindings via pybind11" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
