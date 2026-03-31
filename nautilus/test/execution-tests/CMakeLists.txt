@@ -10,6 +10,7 @@ add_executable(nautilus-execution-tests
         ModuleTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
+        SpecializationTest.cpp
         BitIntrinsicExecutionTest.cpp
         MemoryIntrinsicExecutionTest.cpp
 )

@@ -4,10 +4,16 @@
 #include "nautilus/Engine.hpp"   // engine::details::createFunctionWrapper
 #include "nautilus/function.hpp" // getArgumentReferences
 #include "nautilus/val_func.hpp" // val<R(*)(Args...)>
-#include <functional>            // std::invoke
+#include <any>
+#include <array>
+#include <cstring>    // std::memcpy
+#include <functional> // std::invoke
+#include <mutex>
 #include <string>
 #include <type_traits> // std::is_void_v, std::invoke_result_t
-#include <utility>     // std::forward, std::move
+#include <unordered_map>
+#include <utility> // std::forward, std::move
+#include <vector>
 
 namespace nautilus {
 
@@ -203,5 +209,281 @@ auto bind_instance(Obj& obj) {
 		return (obj.*Method)(std::forward<decltype(args)>(args)...);
 	});
 }
+
+// =====================================================================
+// SpecializableNautilusFunction — constant argument specialization
+// =====================================================================
+
+/// Key identifying a specialization by (argIndex, bitcast value) pairs.
+struct SpecializationKey {
+	std::vector<std::pair<size_t, uint64_t>> entries;
+
+	bool operator==(const SpecializationKey& other) const {
+		return entries == other.entries;
+	}
+
+	struct Hash {
+		size_t operator()(const SpecializationKey& key) const {
+			size_t h = 0;
+			for (auto& [idx, val] : key.entries) {
+				h ^= std::hash<size_t> {}(idx) + 0x9e3779b9 + (h << 6) + (h >> 2);
+				h ^= std::hash<uint64_t> {}(val) + 0x9e3779b9 + (h << 6) + (h >> 2);
+			}
+			return h;
+		}
+	};
+};
+
+namespace detail {
+
+/// Check at compile time whether index I is in the SpecArgs pack.
+template <size_t I, size_t... SpecArgs>
+constexpr bool IsSpecArg() {
+	return ((I == SpecArgs) || ...);
+}
+
+/// Count how many indices in SpecArgs are less than I (used for renumbering symbolic args).
+template <size_t I, size_t... SpecArgs>
+constexpr size_t SymbolicIndex() {
+	size_t count = 0;
+	size_t specArr[] = {SpecArgs...};
+	for (size_t s : specArr) {
+		if (s < I) {
+			++count;
+		}
+	}
+	return I - count;
+}
+
+/// Bit-cast a raw value to uint64_t for use as a specialization key.
+template <typename T>
+uint64_t ToBits(T value) {
+	uint64_t bits = 0;
+	if constexpr (sizeof(T) <= sizeof(uint64_t)) {
+		std::memcpy(&bits, &value, sizeof(T));
+	}
+	return bits;
+}
+
+/// Extract the raw value from a val<T> argument.
+template <typename Arg>
+auto ExtractRawValue(const Arg& arg) {
+	return details::RawValueResolver<typename std::remove_cvref_t<Arg>::raw_type>::getRawValue(arg);
+}
+
+} // namespace detail
+
+/// A variant of NautilusFunction that auto-specializes when arguments at the
+/// positions given by SpecArgs are observed to be constant across calls.
+///
+/// Template parameters:
+///   F          — the callable type (function pointer, lambda, etc.)
+///   SpecArgs   — 0-based indices of arguments to speculate on
+///
+/// Usage:
+///   static SpecializableNautilusFunction<decltype(myFunc), 0, 2> sf{"myFunc", myFunc};
+///   sf(val<int>(42), val<float>(3.14f), val<int>(99));
+///   // After STABILITY_THRESHOLD consecutive calls with the same value for args 0 and 2,
+///   // a specialized variant is created where those args are baked in as constants.
+template <class F, size_t... SpecArgs>
+class SpecializableNautilusFunction {
+	static_assert(sizeof...(SpecArgs) > 0, "At least one argument index must be marked as speculatable");
+
+public:
+	SpecializableNautilusFunction(std::string name, F f)
+	    : definition_(std::move(name)), f_(std::move(f))
+#ifdef ENABLE_TRACING
+	      ,
+	      generic_fwrapper_(engine::details::createFunctionWrapper(f_))
+#endif
+	{
+	}
+
+	SpecializableNautilusFunction(const SpecializableNautilusFunction&) = delete;
+	SpecializableNautilusFunction& operator=(const SpecializableNautilusFunction&) = delete;
+	SpecializableNautilusFunction(SpecializableNautilusFunction&&) = delete;
+	SpecializableNautilusFunction& operator=(SpecializableNautilusFunction&&) = delete;
+
+	template <class... Args>
+	    requires std::invocable<F&, Args...>
+	decltype(auto) operator()(Args&&... args) {
+		using R = std::invoke_result_t<F&, Args...>;
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			return callInTracer<R>(std::forward<Args>(args)...);
+		}
+#endif
+		return callOutsideTracer<R>(std::forward<Args>(args)...);
+	}
+
+	const std::string& name() const noexcept {
+		return definition_.name();
+	}
+
+private:
+	static constexpr uint32_t STABILITY_THRESHOLD = 3;
+
+	NautilusFunctionDefinition definition_;
+	F f_;
+#ifdef ENABLE_TRACING
+	std::function<void()> generic_fwrapper_;
+#endif
+
+	// --- Stability tracking ---
+	struct ArgTracker {
+		uint64_t last_value = 0;
+		uint32_t stable_count = 0;
+	};
+	std::array<ArgTracker, sizeof...(SpecArgs)> trackers_ = {};
+
+	// --- Specialization cache ---
+	struct SpecializedVariant {
+		NautilusFunctionDefinition definition;
+#ifdef ENABLE_TRACING
+		std::function<void()> fwrapper;
+#endif
+	};
+	std::mutex cache_mutex_;
+	std::unordered_map<SpecializationKey, SpecializedVariant, SpecializationKey::Hash> cache_;
+
+	/// Build a SpecializationKey from the current argument values.
+	template <class... Args>
+	SpecializationKey buildKey(const std::tuple<Args...>& argsTuple) const {
+		SpecializationKey key;
+		key.entries.reserve(sizeof...(SpecArgs));
+		buildKeyImpl(argsTuple, key, std::index_sequence_for<Args...> {});
+		return key;
+	}
+
+	template <class Tuple, size_t... Is>
+	void buildKeyImpl(const Tuple& t, SpecializationKey& key, std::index_sequence<Is...>) const {
+		(buildKeyEntry<Is>(t, key), ...);
+	}
+
+	template <size_t I, class Tuple>
+	void buildKeyEntry(const Tuple& t, SpecializationKey& key) const {
+		if constexpr (detail::IsSpecArg<I, SpecArgs...>()) {
+			auto raw = detail::ExtractRawValue(std::get<I>(t));
+			key.entries.emplace_back(I, detail::ToBits(raw));
+		}
+	}
+
+	/// Generate a unique name for a specialized variant.
+	std::string makeSpecializedName(const SpecializationKey& key) const {
+		std::string result = definition_.name();
+		for (auto& [idx, bits] : key.entries) {
+			result += "$" + std::to_string(idx) + "=" + std::to_string(bits);
+		}
+		return result;
+	}
+
+	/// Update trackers and check if all speculatable args are stable.
+	template <class... Args>
+	bool updateAndCheckStability(const std::tuple<Args...>& argsTuple) {
+		bool allStable = true;
+		updateStabilityImpl(argsTuple, allStable, std::index_sequence_for<Args...> {});
+		return allStable;
+	}
+
+	template <class Tuple, size_t... Is>
+	void updateStabilityImpl(const Tuple& t, bool& allStable, std::index_sequence<Is...>) {
+		(updateStabilityEntry<Is>(t, allStable), ...);
+	}
+
+	template <size_t I, class Tuple>
+	void updateStabilityEntry(const Tuple& t, bool& allStable) {
+		if constexpr (detail::IsSpecArg<I, SpecArgs...>()) {
+			// Find which tracker index corresponds to this arg
+			constexpr size_t trackerIdx = trackerIndexFor<I>();
+			auto raw = detail::ExtractRawValue(std::get<I>(t));
+			uint64_t bits = detail::ToBits(raw);
+			auto& tracker = trackers_[trackerIdx];
+			if (bits == tracker.last_value) {
+				if (tracker.stable_count < STABILITY_THRESHOLD) {
+					tracker.stable_count++;
+				}
+			} else {
+				tracker.last_value = bits;
+				tracker.stable_count = 1;
+			}
+			if (tracker.stable_count < STABILITY_THRESHOLD) {
+				allStable = false;
+			}
+		}
+	}
+
+	/// Compute the tracker array index for a given argument index.
+	template <size_t TargetIdx>
+	static constexpr size_t trackerIndexFor() {
+		constexpr size_t specArr[] = {SpecArgs...};
+		for (size_t i = 0; i < sizeof...(SpecArgs); ++i) {
+			if (specArr[i] == TargetIdx) {
+				return i;
+			}
+		}
+		return 0; // unreachable if TargetIdx is in SpecArgs
+	}
+
+#ifdef ENABLE_TRACING
+	/// Inside-tracer call path: behave like NautilusFunction (generic, all args symbolic).
+	/// Specialization only applies to the outside-tracer (runtime) path.
+	template <typename R, class... Args>
+	decltype(auto) callInTracer(Args&&... args) {
+		auto functionArgumentReferences = getArgumentReferences(std::forward<Args>(args)...);
+
+		if constexpr (std::is_void_v<R>) {
+			tracing::traceNautilusCall(&definition_, generic_fwrapper_, Type::v, functionArgumentReferences,
+			                           FunctionAttributes {});
+			return;
+		} else {
+			auto resultRef = tracing::traceNautilusCall(&definition_, generic_fwrapper_,
+			                                            tracing::TypeResolver<typename R::raw_type>::to_type(),
+			                                            functionArgumentReferences, FunctionAttributes {});
+			return R(resultRef);
+		}
+	}
+
+	/// Create a specialized tracing wrapper where speculatable args are constants.
+	template <class... Args>
+	std::function<void()> createSpecializedWrapper(const std::tuple<Args...>& argsTuple) {
+		std::unordered_map<size_t, std::any> constants;
+		captureConstants(argsTuple, constants, std::index_sequence_for<Args...> {});
+		return engine::details::createSpecializedFunctionWrapper<SpecArgs...>(f_, constants);
+	}
+
+	template <class Tuple, size_t... Is>
+	void captureConstants(const Tuple& t, std::unordered_map<size_t, std::any>& constants,
+	                      std::index_sequence<Is...>) const {
+		(captureConstantEntry<Is>(t, constants), ...);
+	}
+
+	template <size_t I, class Tuple>
+	void captureConstantEntry(const Tuple& t, std::unordered_map<size_t, std::any>& constants) const {
+		if constexpr (detail::IsSpecArg<I, SpecArgs...>()) {
+			auto raw = detail::ExtractRawValue(std::get<I>(t));
+			constants[I] = raw;
+		}
+	}
+#endif // ENABLE_TRACING
+
+	/// Outside-tracer call path: track stability and dispatch.
+	template <typename R, class... Args>
+	decltype(auto) callOutsideTracer(Args&&... args) {
+		auto argsTuple = std::forward_as_tuple(args...);
+		bool stable = updateAndCheckStability(argsTuple);
+		(void) stable;
+		// Always execute the original function with all arguments.
+		// Specialization only benefits the tracing/compilation path.
+		if constexpr (std::is_void_v<R>) {
+			std::invoke(f_, std::forward<Args>(args)...);
+		} else {
+			return std::invoke(f_, std::forward<Args>(args)...);
+		}
+	}
+};
+
+// CTAD for SpecializableNautilusFunction is not possible for non-type template
+// parameters, so users must specify SpecArgs explicitly:
+//   SpecializableNautilusFunction<decltype(fn), 0, 2> sf{"name", fn};
 
 } // namespace nautilus

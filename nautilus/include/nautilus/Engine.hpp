@@ -9,6 +9,7 @@
 #include "nautilus/options.hpp"
 #include <any>
 #include <functional>
+#include <unordered_map>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -94,6 +95,78 @@ std::function<void()> createFunctionWrapper(F&& func) {
 	// Convert the callable to std::function - deduction will happen at call site
 	return createFunctionWrapper(std::function(std::forward<F>(func)));
 }
+/// Helper struct that creates specialized function wrappers where some arguments
+/// are baked in as constants and the rest are symbolic traceable arguments.
+/// SpecArgs are the 0-based indices of arguments to treat as constants.
+template <size_t... SpecArgs>
+struct SpecializedWrapperBuilder {
+
+	/// Check if index I is one of the specialized arguments.
+	template <size_t I>
+	static constexpr bool isSpec() {
+		return ((I == SpecArgs) || ...);
+	}
+
+	/// Compute the symbolic argument index for position I,
+	/// counting only non-specialized positions before I.
+	template <size_t I>
+	static constexpr size_t symIndex() {
+		size_t idx = 0;
+		for (size_t j = 0; j < I; ++j) {
+			if (!((j == SpecArgs) || ...)) {
+				++idx;
+			}
+		}
+		return idx;
+	}
+
+	/// Create a single argument at position I for the specialized wrapper.
+	template <size_t I, typename ArgType>
+	static auto makeArg(const std::unordered_map<size_t, std::any>& constants) {
+		using raw_type = typename ArgType::raw_type;
+		if constexpr (isSpec<I>()) {
+			auto rawValue = std::any_cast<raw_type>(constants.at(I));
+			return val<raw_type>(rawValue);
+		} else {
+			constexpr size_t sIdx = symIndex<I>();
+			return createTraceableArgument<ArgType, sIdx>();
+		}
+	}
+
+	/// Build the wrapper from a std::function and a constants map.
+	template <size_t... Indices, typename R, typename... FunctionArguments>
+	static std::function<void()> build(std::index_sequence<Indices...>, std::function<R(FunctionArguments...)> func,
+	                                   std::unordered_map<size_t, std::any> constants) {
+		return std::function([func = std::move(func), constants = std::move(constants)]() {
+			if constexpr (std::is_void_v<R>) {
+				func(SpecializedWrapperBuilder::makeArg<Indices, FunctionArguments>(constants)...);
+				tracing::traceReturnOperation(Type::v, tracing::TypedValueRef());
+			} else {
+				auto returnValue = func(SpecializedWrapperBuilder::makeArg<Indices, FunctionArguments>(constants)...);
+				auto type = tracing::TypeResolver<typename decltype(returnValue)::raw_type>::to_type();
+				tracing::traceReturnOperation(type, returnValue.state);
+			}
+		});
+	}
+};
+
+/// Creates a specialized function wrapper from a std::function.
+/// Constants map holds {argIndex -> std::any(raw_value)} for each SpecArg.
+template <size_t... SpecArgs, typename R, typename... FunctionArguments>
+std::function<void()> createSpecializedFunctionWrapper(std::function<R(FunctionArguments...)> func,
+                                                       std::unordered_map<size_t, std::any> constants) {
+	return SpecializedWrapperBuilder<SpecArgs...>::build(std::make_index_sequence<sizeof...(FunctionArguments)> {},
+	                                                     std::move(func), std::move(constants));
+}
+
+/// Public entry point: creates a specialized function wrapper.
+/// F can be any callable; converted to std::function internally.
+template <size_t... SpecArgs, typename F>
+std::function<void()> createSpecializedFunctionWrapper(F& func, std::unordered_map<size_t, std::any> constants) {
+	auto stdFunc = std::function(func);
+	return createSpecializedFunctionWrapper<SpecArgs...>(std::move(stdFunc), std::move(constants));
+}
+
 #endif
 } // namespace details
 
