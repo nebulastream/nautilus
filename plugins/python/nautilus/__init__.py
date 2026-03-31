@@ -23,6 +23,7 @@ from nautilus_native import (
     _register_f64_to_f64,
     _register_f64_f64_to_f64,
     _register_f32_to_f32,
+    _register_f32_f32_to_f32,
     _register_b_to_b,
     _register_i32_to_b,
 )
@@ -37,18 +38,24 @@ from nautilus_native import (
     _MF_i64_i64_i64,
     _MF_f64_f64,
     _MF_f64_f64_f64,
+    _MF_f32_f32,
+    _MF_f32_f32_f32,
+    _MF_b_b,
+    _MF_b_i32,
 )
 
 # NautilusFunction bindings
 from nautilus_native import (
-    _NautilusFunc_i32_i32,
-    _NautilusFunc_i32_i32_i32,
-    _NautilusFunc_i64_i64,
-    _NautilusFunc_f64_f64,
     _create_nautilus_func_i32_i32,
     _create_nautilus_func_i32_i32_i32,
     _create_nautilus_func_i64_i64,
+    _create_nautilus_func_i64_i64_i64,
     _create_nautilus_func_f64_f64,
+    _create_nautilus_func_f64_f64_f64,
+    _create_nautilus_func_f32_f32,
+    _create_nautilus_func_f32_f32_f32,
+    _create_nautilus_func_b_b,
+    _create_nautilus_func_b_i32,
 )
 
 import inspect
@@ -92,6 +99,7 @@ _REGISTRY = {
     ((ValFloat64,), ValFloat64): _register_f64_to_f64,
     ((ValFloat64, ValFloat64), ValFloat64): _register_f64_f64_to_f64,
     ((ValFloat32,), ValFloat32): _register_f32_to_f32,
+    ((ValFloat32, ValFloat32), ValFloat32): _register_f32_f32_to_f32,
     ((ValBool,), ValBool): _register_b_to_b,
     ((ValInt32,), ValBool): _register_i32_to_b,
 }
@@ -104,6 +112,10 @@ _MODULE_REGISTRY = {
     ((ValInt64, ValInt64), ValInt64): ("register_i64_i64_to_i64", "get_i64_i64_i64"),
     ((ValFloat64,), ValFloat64): ("register_f64_to_f64", "get_f64_f64"),
     ((ValFloat64, ValFloat64), ValFloat64): ("register_f64_f64_to_f64", "get_f64_f64_f64"),
+    ((ValFloat32,), ValFloat32): ("register_f32_to_f32", "get_f32_f32"),
+    ((ValFloat32, ValFloat32), ValFloat32): ("register_f32_f32_to_f32", "get_f32_f32_f32"),
+    ((ValBool,), ValBool): ("register_b_to_b", "get_b_b"),
+    ((ValInt32,), ValBool): ("register_i32_to_b", "get_b_i32"),
 }
 
 # NautilusFunction factory lookup: (arg_types, ret_type) -> create_fn
@@ -111,7 +123,13 @@ _NAUTILUS_FUNC_REGISTRY = {
     ((ValInt32,), ValInt32): _create_nautilus_func_i32_i32,
     ((ValInt32, ValInt32), ValInt32): _create_nautilus_func_i32_i32_i32,
     ((ValInt64,), ValInt64): _create_nautilus_func_i64_i64,
+    ((ValInt64, ValInt64), ValInt64): _create_nautilus_func_i64_i64_i64,
     ((ValFloat64,), ValFloat64): _create_nautilus_func_f64_f64,
+    ((ValFloat64, ValFloat64), ValFloat64): _create_nautilus_func_f64_f64_f64,
+    ((ValFloat32,), ValFloat32): _create_nautilus_func_f32_f32,
+    ((ValFloat32, ValFloat32), ValFloat32): _create_nautilus_func_f32_f32_f32,
+    ((ValBool,), ValBool): _create_nautilus_func_b_b,
+    ((ValInt32,), ValBool): _create_nautilus_func_b_i32,
 }
 
 

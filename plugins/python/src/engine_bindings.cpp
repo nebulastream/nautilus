@@ -124,6 +124,17 @@ static std::function<val<float>(val<float>)> makeCppFunc_f32_f32(py::function py
 	};
 }
 
+static std::function<val<float>(val<float>, val<float>)> makeCppFunc_f32_f32_f32(py::function py_func) {
+	return [py_func](val<float> a, val<float> b) -> val<float> {
+		py::gil_scoped_acquire gil;
+		try {
+			return py_func(a, b).cast<val<float>>();
+		} catch (py::error_already_set& e) {
+			rethrowIfTraceTermination(e);
+		}
+	};
+}
+
 static std::function<val<bool>(val<bool>)> makeCppFunc_b_b(py::function py_func) {
 	return [py_func](val<bool> a) -> val<bool> {
 		py::gil_scoped_acquire gil;
@@ -188,11 +199,65 @@ struct PyNautilusFunc_i64_i64 {
 	}
 };
 
+// For (val<int64_t>, val<int64_t>) -> val<int64_t>
+using NF_i64_i64_i64 = NautilusFunction<std::function<val<int64_t>(val<int64_t>, val<int64_t>)>>;
+struct PyNautilusFunc_i64_i64_i64 {
+	std::shared_ptr<NF_i64_i64_i64> nf;
+	val<int64_t> call(val<int64_t> a, val<int64_t> b) {
+		return (*nf)(a, b);
+	}
+};
+
 // For (val<double>) -> val<double>
 using NF_f64_f64 = NautilusFunction<std::function<val<double>(val<double>)>>;
 struct PyNautilusFunc_f64_f64 {
 	std::shared_ptr<NF_f64_f64> nf;
 	val<double> call(val<double> a) {
+		return (*nf)(a);
+	}
+};
+
+// For (val<double>, val<double>) -> val<double>
+using NF_f64_f64_f64 = NautilusFunction<std::function<val<double>(val<double>, val<double>)>>;
+struct PyNautilusFunc_f64_f64_f64 {
+	std::shared_ptr<NF_f64_f64_f64> nf;
+	val<double> call(val<double> a, val<double> b) {
+		return (*nf)(a, b);
+	}
+};
+
+// For (val<float>) -> val<float>
+using NF_f32_f32 = NautilusFunction<std::function<val<float>(val<float>)>>;
+struct PyNautilusFunc_f32_f32 {
+	std::shared_ptr<NF_f32_f32> nf;
+	val<float> call(val<float> a) {
+		return (*nf)(a);
+	}
+};
+
+// For (val<float>, val<float>) -> val<float>
+using NF_f32_f32_f32 = NautilusFunction<std::function<val<float>(val<float>, val<float>)>>;
+struct PyNautilusFunc_f32_f32_f32 {
+	std::shared_ptr<NF_f32_f32_f32> nf;
+	val<float> call(val<float> a, val<float> b) {
+		return (*nf)(a, b);
+	}
+};
+
+// For (val<bool>) -> val<bool>
+using NF_b_b = NautilusFunction<std::function<val<bool>(val<bool>)>>;
+struct PyNautilusFunc_b_b {
+	std::shared_ptr<NF_b_b> nf;
+	val<bool> call(val<bool> a) {
+		return (*nf)(a);
+	}
+};
+
+// For (val<int32_t>) -> val<bool>
+using NF_b_i32 = NautilusFunction<std::function<val<bool>(val<int32_t>)>>;
+struct PyNautilusFunc_b_i32 {
+	std::shared_ptr<NF_b_i32> nf;
+	val<bool> call(val<int32_t> a) {
 		return (*nf)(a);
 	}
 };
@@ -303,6 +368,18 @@ void bind_engine(py::module_& m) {
 		return eng.registerFunction(cpp_func);
 	});
 
+	// (float, float) -> float
+	using CF_f32_f32_f32 = engine::CallableFunction<val<float>, float, float>;
+	py::class_<CF_f32_f32_f32>(m, "_CF_f32_f32_f32").def("__call__", [](CF_f32_f32_f32& self, float a, float b) {
+		return self(a, b);
+	});
+
+	m.def("_register_f32_f32_to_f32", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc_f32_f32_f32(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
 	// (bool) -> bool
 	using CF_b_b = engine::CallableFunction<val<bool>, bool>;
 	py::class_<CF_b_b>(m, "_CF_b_b").def("__call__", [](CF_b_b& self, bool a) { return self(a); });
@@ -355,6 +432,26 @@ void bind_engine(py::module_& m) {
 		         auto cpp_func = makeCppFunc_f64_f64_f64(py_func);
 		         self.registerFunction(name, std::move(cpp_func));
 	         })
+	    .def("register_f32_to_f32",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_f32_f32(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_f32_f32_to_f32",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_f32_f32_f32(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_b_to_b",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_b_b(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_i32_to_b",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_b_i32(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
 	    .def("compile", [](engine::NautilusModule& self) {
 		    PositionHintGuard guard;
 		    return self.compile();
@@ -376,8 +473,16 @@ void bind_engine(py::module_& m) {
 	         })
 	    .def("get_f64_f64", [](engine::CompiledModule& self,
 	                           const std::string& name) { return self.getFunction<double(double)>(name); })
-	    .def("get_f64_f64_f64", [](engine::CompiledModule& self, const std::string& name) {
-		    return self.getFunction<double(double, double)>(name);
+	    .def("get_f64_f64_f64", [](engine::CompiledModule& self,
+	                               const std::string& name) { return self.getFunction<double(double, double)>(name); })
+	    .def("get_f32_f32",
+	         [](engine::CompiledModule& self, const std::string& name) { return self.getFunction<float(float)>(name); })
+	    .def("get_f32_f32_f32", [](engine::CompiledModule& self,
+	                               const std::string& name) { return self.getFunction<float(float, float)>(name); })
+	    .def("get_b_b",
+	         [](engine::CompiledModule& self, const std::string& name) { return self.getFunction<bool(bool)>(name); })
+	    .def("get_b_i32", [](engine::CompiledModule& self, const std::string& name) {
+		    return self.getFunction<bool(int32_t)>(name);
 	    });
 
 	// ── ModuleFunction bindings ───────────────────────────────────────────
@@ -401,6 +506,19 @@ void bind_engine(py::module_& m) {
 	py::class_<engine::ModuleFunction<double(double, double)>>(m, "_MF_f64_f64_f64")
 	    .def("__call__",
 	         [](engine::ModuleFunction<double(double, double)>& self, double a, double b) { return self(a, b); });
+
+	py::class_<engine::ModuleFunction<float(float)>>(m, "_MF_f32_f32")
+	    .def("__call__", [](engine::ModuleFunction<float(float)>& self, float a) { return self(a); });
+
+	py::class_<engine::ModuleFunction<float(float, float)>>(m, "_MF_f32_f32_f32")
+	    .def("__call__",
+	         [](engine::ModuleFunction<float(float, float)>& self, float a, float b) { return self(a, b); });
+
+	py::class_<engine::ModuleFunction<bool(bool)>>(m, "_MF_b_b")
+	    .def("__call__", [](engine::ModuleFunction<bool(bool)>& self, bool a) { return self(a); });
+
+	py::class_<engine::ModuleFunction<bool(int32_t)>>(m, "_MF_b_i32")
+	    .def("__call__", [](engine::ModuleFunction<bool(int32_t)>& self, int32_t a) { return self(a); });
 
 	// ── NautilusFunction wrappers ─────────────────────────────────────────
 
@@ -429,11 +547,62 @@ void bind_engine(py::module_& m) {
 		return PyNautilusFunc_i64_i64 {std::move(nf)};
 	});
 
+	py::class_<PyNautilusFunc_i64_i64_i64>(m, "_NautilusFunc_i64_i64_i64")
+	    .def("__call__", &PyNautilusFunc_i64_i64_i64::call);
+
+	m.def("_create_nautilus_func_i64_i64_i64", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_i64_i64_i64(py_func);
+		auto nf = std::make_shared<NF_i64_i64_i64>(name, std::move(cpp_func));
+		return PyNautilusFunc_i64_i64_i64 {std::move(nf)};
+	});
+
 	py::class_<PyNautilusFunc_f64_f64>(m, "_NautilusFunc_f64_f64").def("__call__", &PyNautilusFunc_f64_f64::call);
 
 	m.def("_create_nautilus_func_f64_f64", [](const std::string& name, py::function py_func) {
 		auto cpp_func = makeCppFunc_f64_f64(py_func);
 		auto nf = std::make_shared<NF_f64_f64>(name, std::move(cpp_func));
 		return PyNautilusFunc_f64_f64 {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_f64_f64_f64>(m, "_NautilusFunc_f64_f64_f64")
+	    .def("__call__", &PyNautilusFunc_f64_f64_f64::call);
+
+	m.def("_create_nautilus_func_f64_f64_f64", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_f64_f64_f64(py_func);
+		auto nf = std::make_shared<NF_f64_f64_f64>(name, std::move(cpp_func));
+		return PyNautilusFunc_f64_f64_f64 {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_f32_f32>(m, "_NautilusFunc_f32_f32").def("__call__", &PyNautilusFunc_f32_f32::call);
+
+	m.def("_create_nautilus_func_f32_f32", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_f32_f32(py_func);
+		auto nf = std::make_shared<NF_f32_f32>(name, std::move(cpp_func));
+		return PyNautilusFunc_f32_f32 {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_f32_f32_f32>(m, "_NautilusFunc_f32_f32_f32")
+	    .def("__call__", &PyNautilusFunc_f32_f32_f32::call);
+
+	m.def("_create_nautilus_func_f32_f32_f32", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_f32_f32_f32(py_func);
+		auto nf = std::make_shared<NF_f32_f32_f32>(name, std::move(cpp_func));
+		return PyNautilusFunc_f32_f32_f32 {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_b_b>(m, "_NautilusFunc_b_b").def("__call__", &PyNautilusFunc_b_b::call);
+
+	m.def("_create_nautilus_func_b_b", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_b_b(py_func);
+		auto nf = std::make_shared<NF_b_b>(name, std::move(cpp_func));
+		return PyNautilusFunc_b_b {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_b_i32>(m, "_NautilusFunc_b_i32").def("__call__", &PyNautilusFunc_b_i32::call);
+
+	m.def("_create_nautilus_func_b_i32", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_b_i32(py_func);
+		auto nf = std::make_shared<NF_b_i32>(name, std::move(cpp_func));
+		return PyNautilusFunc_b_i32 {std::move(nf)};
 	});
 }
