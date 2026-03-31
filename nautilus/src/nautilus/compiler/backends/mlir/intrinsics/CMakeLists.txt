@@ -1,4 +1,5 @@
  add_source_files(nautilus
+            MLIRAtomicIntrinsics.cpp
             MLIRBackendIntrinsic.cpp
             MLIRAssumeIntrinsics.cpp
             MLIRBitIntrinsics.cpp

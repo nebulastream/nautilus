@@ -1,6 +1,7 @@
 include(CTest)
 include(Catch)
 add_executable(nautilus-execution-tests
+        AtomicExecutionTest.cpp
         ExecutionTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
