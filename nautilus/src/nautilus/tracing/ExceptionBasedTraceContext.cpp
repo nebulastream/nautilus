@@ -1,5 +1,6 @@
 
 #include "ExceptionBasedTraceContext.hpp"
+#include "ExternalPositionHint.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -449,7 +450,8 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	uint64_t hint = externalPositionHintFn ? externalPositionHintFn() : 0;
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash() ^ hint};
 }
 
 } // namespace nautilus::tracing
