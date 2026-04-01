@@ -243,6 +243,36 @@ class TestEngineOptions:
         assert inc(10) == 11
 
 
+class TestEngineCompileThreeArgs:
+    def test_int_three_args(self):
+        engine = Engine()
+
+        @engine.compile
+        def weighted_sum(a: int, b: int, c: int) -> int:
+            return a * ValInt32(1) + b * ValInt32(2) + c * ValInt32(3)
+
+        assert weighted_sum(1, 2, 3) == 14  # 1*1 + 2*2 + 3*3
+
+    def test_float_three_args(self):
+        engine = Engine()
+
+        @engine.compile
+        def fma(a: float, b: float, c: float) -> float:
+            return a * b + c
+
+        result = fma(2.0, 3.0, 1.0)
+        assert abs(result - 7.0) < 1e-10
+
+    def test_int_three_args_arithmetic(self):
+        engine = Engine()
+
+        @engine.compile
+        def sum3(a: int, b: int, c: int) -> int:
+            return a + b + c
+
+        assert sum3(1, 2, 3) == 6
+
+
 class TestUnsupportedSignature:
     def test_raises_type_error(self):
         engine = Engine()

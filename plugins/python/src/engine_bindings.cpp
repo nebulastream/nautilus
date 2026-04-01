@@ -272,6 +272,69 @@ void bind_engine(py::module_& m) {
 		return eng.registerFunction(cpp_func);
 	});
 
+	// ── 3-argument signatures ─────────────────────────────────────────────
+
+	// (int32_t, int32_t, int32_t) -> int32_t
+	using CF_i32_i32_i32_i32 = engine::CallableFunction<val<int32_t>, int32_t, int32_t, int32_t>;
+	py::class_<CF_i32_i32_i32_i32>(m, "_CF_i32_i32_i32_i32")
+	    .def("__call__", [](CF_i32_i32_i32_i32& self, int32_t a, int32_t b, int32_t c) { return self(a, b, c); });
+
+	m.def("_register_i32_i32_i32_to_i32", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc<int32_t, int32_t, int32_t, int32_t>(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
+	// (int64_t, int64_t, int64_t) -> int64_t
+	using CF_i64_i64_i64_i64 = engine::CallableFunction<val<int64_t>, int64_t, int64_t, int64_t>;
+	py::class_<CF_i64_i64_i64_i64>(m, "_CF_i64_i64_i64_i64")
+	    .def("__call__", [](CF_i64_i64_i64_i64& self, int64_t a, int64_t b, int64_t c) { return self(a, b, c); });
+
+	m.def("_register_i64_i64_i64_to_i64", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc<int64_t, int64_t, int64_t, int64_t>(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
+	// (double, double, double) -> double
+	using CF_f64_f64_f64_f64 = engine::CallableFunction<val<double>, double, double, double>;
+	py::class_<CF_f64_f64_f64_f64>(m, "_CF_f64_f64_f64_f64")
+	    .def("__call__", [](CF_f64_f64_f64_f64& self, double a, double b, double c) { return self(a, b, c); });
+
+	m.def("_register_f64_f64_f64_to_f64", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc<double, double, double, double>(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
+	// (float, float, float) -> float
+	using CF_f32_f32_f32_f32 = engine::CallableFunction<val<float>, float, float, float>;
+	py::class_<CF_f32_f32_f32_f32>(m, "_CF_f32_f32_f32_f32")
+	    .def("__call__", [](CF_f32_f32_f32_f32& self, float a, float b, float c) { return self(a, b, c); });
+
+	m.def("_register_f32_f32_f32_to_f32", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc<float, float, float, float>(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
+	// (void*, void*, void*) -> void*  (generic object, ternary)
+	using CF_obj_obj_obj_obj = engine::CallableFunction<val<void*>, void*, void*, void*>;
+	py::class_<CF_obj_obj_obj_obj>(m, "_CF_obj_obj_obj_obj")
+	    .def("__call__", [](CF_obj_obj_obj_obj& self, py::object a, py::object b, py::object c) {
+		    arenaClear();
+		    void* result = self(static_cast<void*>(a.ptr()), static_cast<void*>(b.ptr()), static_cast<void*>(c.ptr()));
+		    Py_XINCREF(static_cast<PyObject*>(result));
+		    arenaClear();
+		    return py::reinterpret_steal<py::object>(static_cast<PyObject*>(result));
+	    });
+
+	m.def("_register_obj_obj_obj_to_obj", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc<void*, void*, void*, void*>(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
 	// ── NautilusModule ────────────────────────────────────────────────────
 	py::class_<engine::NautilusModule>(m, "_NautilusModule")
 	    .def("register_i32_to_i32",
@@ -334,6 +397,32 @@ void bind_engine(py::module_& m) {
 		         auto cpp_func = makeCppFunc<void*, void*, void*>(py_func);
 		         self.registerFunction(name, std::move(cpp_func));
 	         })
+	    // 3-argument register methods
+	    .def("register_i32_i32_i32_to_i32",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc<int32_t, int32_t, int32_t, int32_t>(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_i64_i64_i64_to_i64",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc<int64_t, int64_t, int64_t, int64_t>(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_f64_f64_f64_to_f64",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc<double, double, double, double>(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_f32_f32_f32_to_f32",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc<float, float, float, float>(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_obj_obj_obj_to_obj",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc<void*, void*, void*, void*>(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
 	    .def("compile", [](engine::NautilusModule& self) {
 		    PositionHintGuard guard;
 		    return self.compile();
@@ -367,8 +456,27 @@ void bind_engine(py::module_& m) {
 	                         const std::string& name) { return self.getFunction<bool(int32_t)>(name); })
 	    .def("get_obj_obj",
 	         [](engine::CompiledModule& self, const std::string& name) { return self.getFunction<void*(void*)>(name); })
-	    .def("get_obj_obj_obj", [](engine::CompiledModule& self, const std::string& name) {
-		    return self.getFunction<void*(void*, void*)>(name);
+	    .def("get_obj_obj_obj", [](engine::CompiledModule& self,
+	                               const std::string& name) { return self.getFunction<void*(void*, void*)>(name); })
+	    // 3-argument get methods
+	    .def("get_i32_i32_i32_i32",
+	         [](engine::CompiledModule& self, const std::string& name) {
+		         return self.getFunction<int32_t(int32_t, int32_t, int32_t)>(name);
+	         })
+	    .def("get_i64_i64_i64_i64",
+	         [](engine::CompiledModule& self, const std::string& name) {
+		         return self.getFunction<int64_t(int64_t, int64_t, int64_t)>(name);
+	         })
+	    .def("get_f64_f64_f64_f64",
+	         [](engine::CompiledModule& self, const std::string& name) {
+		         return self.getFunction<double(double, double, double)>(name);
+	         })
+	    .def("get_f32_f32_f32_f32",
+	         [](engine::CompiledModule& self, const std::string& name) {
+		         return self.getFunction<float(float, float, float)>(name);
+	         })
+	    .def("get_obj_obj_obj_obj", [](engine::CompiledModule& self, const std::string& name) {
+		    return self.getFunction<void*(void*, void*, void*)>(name);
 	    });
 
 	// ── ModuleFunction bindings ───────────────────────────────────────────
@@ -424,6 +532,34 @@ void bind_engine(py::module_& m) {
 		    return py::reinterpret_steal<py::object>(static_cast<PyObject*>(result));
 	    });
 
+	// 3-argument ModuleFunction bindings
+	py::class_<engine::ModuleFunction<int32_t(int32_t, int32_t, int32_t)>>(m, "_MF_i32_i32_i32_i32")
+	    .def("__call__", [](engine::ModuleFunction<int32_t(int32_t, int32_t, int32_t)>& self, int32_t a, int32_t b,
+	                        int32_t c) { return self(a, b, c); });
+
+	py::class_<engine::ModuleFunction<int64_t(int64_t, int64_t, int64_t)>>(m, "_MF_i64_i64_i64_i64")
+	    .def("__call__", [](engine::ModuleFunction<int64_t(int64_t, int64_t, int64_t)>& self, int64_t a, int64_t b,
+	                        int64_t c) { return self(a, b, c); });
+
+	py::class_<engine::ModuleFunction<double(double, double, double)>>(m, "_MF_f64_f64_f64_f64")
+	    .def("__call__", [](engine::ModuleFunction<double(double, double, double)>& self, double a, double b,
+	                        double c) { return self(a, b, c); });
+
+	py::class_<engine::ModuleFunction<float(float, float, float)>>(m, "_MF_f32_f32_f32_f32")
+	    .def("__call__", [](engine::ModuleFunction<float(float, float, float)>& self, float a, float b, float c) {
+		    return self(a, b, c);
+	    });
+
+	py::class_<engine::ModuleFunction<void*(void*, void*, void*)>>(m, "_MF_obj_obj_obj_obj")
+	    .def("__call__", [](engine::ModuleFunction<void*(void*, void*, void*)>& self, py::object a, py::object b,
+	                        py::object c) {
+		    arenaClear();
+		    void* result = self(static_cast<void*>(a.ptr()), static_cast<void*>(b.ptr()), static_cast<void*>(c.ptr()));
+		    Py_XINCREF(static_cast<PyObject*>(result));
+		    arenaClear();
+		    return py::reinterpret_steal<py::object>(static_cast<PyObject*>(result));
+	    });
+
 	// ── NautilusFunction wrappers ─────────────────────────────────────────
 	// Helper to register a PyNautilusFunc<Ret, Args...> and its factory.
 	// Each instantiation gets a unique pybind11 class with a string name.
@@ -449,6 +585,12 @@ void bind_engine(py::module_& m) {
 	REGISTER_NAUTILUS_FUNC(b_i32, bool, int32_t);
 	REGISTER_NAUTILUS_FUNC(obj_obj, void*, void*);
 	REGISTER_NAUTILUS_FUNC(obj_obj_obj, void*, void*, void*);
+	// 3-argument NautilusFunction wrappers
+	REGISTER_NAUTILUS_FUNC(i32_i32_i32_i32, int32_t, int32_t, int32_t, int32_t);
+	REGISTER_NAUTILUS_FUNC(i64_i64_i64_i64, int64_t, int64_t, int64_t, int64_t);
+	REGISTER_NAUTILUS_FUNC(f64_f64_f64_f64, double, double, double, double);
+	REGISTER_NAUTILUS_FUNC(f32_f32_f32_f32, float, float, float, float);
+	REGISTER_NAUTILUS_FUNC(obj_obj_obj_obj, void*, void*, void*, void*);
 
 #undef REGISTER_NAUTILUS_FUNC
 }
