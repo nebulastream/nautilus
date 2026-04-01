@@ -128,3 +128,73 @@ class TestValObjectCompileUnary:
             return -x
 
         assert abs(neg(3.14) - (-3.14)) < 1e-10
+
+
+class TestValObjectMethodCalls:
+    """Test calling member functions on generic objects via .call()."""
+
+    def test_string_upper(self):
+        engine = Engine()
+
+        @engine.compile
+        def to_upper(x: object) -> object:
+            return x.call("upper")
+
+        assert to_upper("hello") == "HELLO"
+
+    def test_string_lower(self):
+        engine = Engine()
+
+        @engine.compile
+        def to_lower(x: object) -> object:
+            return x.call("lower")
+
+        assert to_lower("HELLO") == "hello"
+
+    def test_string_strip(self):
+        engine = Engine()
+
+        @engine.compile
+        def strip_it(x: object) -> object:
+            return x.call("strip")
+
+        assert strip_it("  hello  ") == "hello"
+
+    def test_string_replace(self):
+        engine = Engine()
+
+        @engine.compile
+        def replace_it(x: object) -> object:
+            return x.call("replace", "world", "there")
+
+        assert replace_it("hello world") == "hello there"
+
+    def test_method_with_val_arg(self):
+        """Test calling a method with a ValObject argument."""
+        engine = Engine()
+
+        @engine.compile
+        def count_it(x: object, y: object) -> object:
+            return x.call("count", y)
+
+        assert count_it([1, 2, 3, 2, 2], 2) == 3
+
+    def test_string_startswith(self):
+        engine = Engine()
+
+        @engine.compile
+        def starts(x: object, y: object) -> object:
+            return x.call("startswith", y)
+
+        assert starts("hello world", "hello") is True
+        assert starts("hello world", "world") is False
+
+    def test_getattr(self):
+        """Test explicit attribute access via getattr."""
+        engine = Engine()
+
+        @engine.compile
+        def get_real(x: object) -> object:
+            return x.getattr("real")
+
+        assert get_real(42) == 42

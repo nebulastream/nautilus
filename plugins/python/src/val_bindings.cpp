@@ -701,6 +701,110 @@ void bind_val_types(py::module_& m) {
 		         return static_cast<bool>(result);
 	         })
 
+	    // ── Method calls: x.call("method", args...) ──────────────────────────
+	    .def("call",
+	         [](val<void*>& self, py::str name, py::args args) -> val<void*> {
+		         val<void*> name_val(static_cast<void*>(name.ptr()));
+
+		         auto toVal = [](py::handle arg) -> val<void*> {
+			         if (py::isinstance<val<void*>>(arg)) {
+				         return arg.cast<val<void*>>();
+			         }
+			         return val<void*>(static_cast<void*>(arg.ptr()));
+		         };
+
+		         switch (args.size()) {
+		         case 0:
+			         return invoke(
+			             +[](void* o, void* n) -> void* {
+				             auto gstate = PyGILState_Ensure();
+				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
+				             PyObject* r = nullptr;
+				             if (method) {
+					             r = PyObject_CallObject(method, nullptr);
+					             Py_DECREF(method);
+				             }
+				             PyGILState_Release(gstate);
+				             return arenaTrack(r);
+			             },
+			             self, name_val);
+		         case 1: {
+			         val<void*> a0 = toVal(args[0]);
+			         return invoke(
+			             +[](void* o, void* n, void* a) -> void* {
+				             auto gstate = PyGILState_Ensure();
+				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
+				             PyObject* r = nullptr;
+				             if (method) {
+					             auto* t = PyTuple_Pack(1, static_cast<PyObject*>(a));
+					             r = PyObject_Call(method, t, nullptr);
+					             Py_DECREF(t);
+					             Py_DECREF(method);
+				             }
+				             PyGILState_Release(gstate);
+				             return arenaTrack(r);
+			             },
+			             self, name_val, a0);
+		         }
+		         case 2: {
+			         val<void*> a0 = toVal(args[0]);
+			         val<void*> a1 = toVal(args[1]);
+			         return invoke(
+			             +[](void* o, void* n, void* a, void* b) -> void* {
+				             auto gstate = PyGILState_Ensure();
+				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
+				             PyObject* r = nullptr;
+				             if (method) {
+					             auto* t = PyTuple_Pack(2, static_cast<PyObject*>(a), static_cast<PyObject*>(b));
+					             r = PyObject_Call(method, t, nullptr);
+					             Py_DECREF(t);
+					             Py_DECREF(method);
+				             }
+				             PyGILState_Release(gstate);
+				             return arenaTrack(r);
+			             },
+			             self, name_val, a0, a1);
+		         }
+		         case 3: {
+			         val<void*> a0 = toVal(args[0]);
+			         val<void*> a1 = toVal(args[1]);
+			         val<void*> a2 = toVal(args[2]);
+			         return invoke(
+			             +[](void* o, void* n, void* a, void* b, void* c) -> void* {
+				             auto gstate = PyGILState_Ensure();
+				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
+				             PyObject* r = nullptr;
+				             if (method) {
+					             auto* t = PyTuple_Pack(3, static_cast<PyObject*>(a), static_cast<PyObject*>(b),
+					                                    static_cast<PyObject*>(c));
+					             r = PyObject_Call(method, t, nullptr);
+					             Py_DECREF(t);
+					             Py_DECREF(method);
+				             }
+				             PyGILState_Release(gstate);
+				             return arenaTrack(r);
+			             },
+			             self, name_val, a0, a1, a2);
+		         }
+		         default:
+			         throw std::runtime_error("call() supports at most 3 arguments");
+		         }
+	         })
+
+	    // Explicit attribute access: x.getattr("name") → val<void*>
+	    .def("getattr",
+	         [](val<void*>& self, py::str name) {
+		         val<void*> name_val(static_cast<void*>(name.ptr()));
+		         return invoke(
+		             +[](void* o, void* n) -> void* {
+			             auto gstate = PyGILState_Ensure();
+			             auto* r = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
+			             PyGILState_Release(gstate);
+			             return arenaTrack(r);
+		             },
+		             self, name_val);
+	         })
+
 	    // ── Assignment ──────────────────────────────────────────────────────
 	    .def("assign", [](val<void*>& self, const val<void*>& other) { self = other; })
 
