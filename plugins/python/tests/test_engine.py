@@ -1,6 +1,6 @@
 """Tests for Engine compilation and execution."""
 
-from nautilus import Engine, ValInt32, ValInt64, ValFloat64, ValBool, select
+from nautilus import Engine, ValInt32, ValInt64, ValFloat64, ValBool, select, Options
 import nautilus
 import pytest
 
@@ -189,6 +189,58 @@ class TestEngineCompilePythonTypes:
 
         result = identity_f32(3.14)
         assert abs(result - 3.14) < 0.01
+
+
+class TestEngineOptions:
+    """Test that compiler options can be passed to Engine."""
+
+    def test_kwargs_compile(self):
+        """Options via kwargs still produce working compiled functions."""
+        engine = Engine(backend="mlir", mlir_optimizationLevel=2)
+
+        @engine.compile
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        assert add(3, 4) == 7
+
+    def test_options_object(self):
+        """Options via an Options object work correctly."""
+        opts = Options()
+        opts.set("mlir.optimizationLevel", 2)
+        engine = Engine(options=opts)
+
+        @engine.compile
+        def double(x: int) -> int:
+            return x + x
+
+        assert double(21) == 42
+
+    def test_options_set_types(self):
+        """Options.set() auto-detects bool, int, float, str."""
+        opts = Options()
+        opts.set("engine.backend", "mlir")
+        opts.set("engine.compilation", True)
+        opts.set("mlir.optimizationLevel", 3)
+        # Should not raise
+        engine = Engine(options=opts)
+        assert engine.is_compiled
+
+    def test_options_set_rejects_invalid_type(self):
+        """Options.set() raises TypeError for unsupported value types."""
+        opts = Options()
+        with pytest.raises(TypeError):
+            opts.set("key", [1, 2, 3])
+
+    def test_dump_option_does_not_break_compilation(self):
+        """Dump options are accepted without breaking compilation."""
+        engine = Engine(dump_console=False, dump_after_tracing=False)
+
+        @engine.compile
+        def inc(x: int) -> int:
+            return x + ValInt32(1)
+
+        assert inc(10) == 11
 
 
 class TestUnsupportedSignature:

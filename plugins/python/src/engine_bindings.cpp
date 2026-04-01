@@ -97,7 +97,24 @@ void bind_engine(py::module_& m) {
 	        py::arg("key"), py::arg("value"))
 	    .def(
 	        "set_int", [](engine::Options& self, const std::string& key, int val) { self.setOption(key, val); },
-	        py::arg("key"), py::arg("value"));
+	        py::arg("key"), py::arg("value"))
+	    .def(
+	        "set_double", [](engine::Options& self, const std::string& key, double val) { self.setOption(key, val); },
+	        py::arg("key"), py::arg("value"))
+	    .def("set", [](engine::Options& self, const std::string& key, py::object value) {
+		    // Auto-detect type: bool must be checked before int (bool is a subclass of int in Python)
+		    if (py::isinstance<py::bool_>(value)) {
+			    self.setOption(key, value.cast<bool>());
+		    } else if (py::isinstance<py::int_>(value)) {
+			    self.setOption(key, value.cast<int>());
+		    } else if (py::isinstance<py::float_>(value)) {
+			    self.setOption(key, value.cast<double>());
+		    } else if (py::isinstance<py::str>(value)) {
+			    self.setOption(key, value.cast<std::string>());
+		    } else {
+			    throw py::type_error("Option value must be bool, int, float, or str");
+		    }
+	    });
 
 	// ── NautilusEngine ────────────────────────────────────────────────────
 	py::class_<engine::NautilusEngine>(m, "NautilusEngine")

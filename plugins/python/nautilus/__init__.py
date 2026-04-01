@@ -171,10 +171,36 @@ class Engine:
             return x + y
 
         result = add(5, 3)  # returns 8
+
+    Compiler options can be passed as keyword arguments using dotted names
+    or with dots replaced by underscores:
+
+        engine = Engine(backend="mlir", dump_console=True)
+        engine = Engine(backend="cpp", mlir_optimizationLevel=2)
+
+    Or via an Options object:
+
+        opts = Options()
+        opts.set("dump.console", True)
+        engine = Engine(options=opts)
+
+    See docs/options.md for the full list of available options.
     """
 
-    def __init__(self, backend="mlir"):
-        self._engine = NautilusEngine(backend)
+    def __init__(self, backend="mlir", options=None, **kwargs):
+        if options is not None:
+            options.set("engine.backend", backend)
+            self._engine = NautilusEngine(options)
+        elif kwargs:
+            opts = Options()
+            opts.set("engine.backend", backend)
+            for key, value in kwargs.items():
+                # Allow underscores as dot separators: dump_console -> dump.console
+                opt_key = key.replace("_", ".")
+                opts.set(opt_key, value)
+            self._engine = NautilusEngine(opts)
+        else:
+            self._engine = NautilusEngine(backend)
 
     @property
     def is_compiled(self):
