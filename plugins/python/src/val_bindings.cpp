@@ -348,194 +348,101 @@ void bind_val_types(py::module_& m) {
 	    "Select between two float64 values based on a boolean condition");
 
 	// --- ValObject (val<void*>) — wraps arbitrary Python objects ----------------
-	// All operations are forwarded to the Python runtime via invoke() trampolines.
-	// During tracing, invoke() records a CALL operation; during compiled execution,
-	// it calls the actual trampoline which performs the Python C-API operation.
+	// All operations are forwarded to the Python runtime via invoke() trampolines
+	// defined in py_object_helpers.hpp.  During tracing, invoke() records a CALL
+	// operation; during compiled execution, it calls the actual trampoline.
+
+	// Helper: convert py::object to val<void*>
+	auto toVoidVal = [](py::handle h) -> val<void*> {
+		if (py::isinstance<val<void*>>(h)) {
+			return h.cast<val<void*>>();
+		}
+		return val<void*>(static_cast<void*>(h.ptr()));
+	};
 
 	py::class_<val<void*>>(m, "ValObject")
 	    .def(py::init([](py::object obj) { return val<void*>(static_cast<void*>(obj.ptr())); }), py::arg("value"))
 
 	    // ── Arithmetic ──────────────────────────────────────────────────────
-	    .def("__add__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Add(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
-	         })
+	    .def("__add__", [](val<void*>& a, val<void*>& b) { return invoke(pyAdd, a, b); })
 	    .def("__add__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Add(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, bv);
+		         return invoke(pyAdd, a, bv);
 	         })
 	    .def("__radd__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Add(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             bv, a);
+		         return invoke(pyAdd, bv, a);
 	         })
 
-	    .def("__sub__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Subtract(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
-	         })
+	    .def("__sub__", [](val<void*>& a, val<void*>& b) { return invoke(pySub, a, b); })
 	    .def("__sub__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Subtract(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, bv);
+		         return invoke(pySub, a, bv);
 	         })
 	    .def("__rsub__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Subtract(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             bv, a);
+		         return invoke(pySub, bv, a);
 	         })
 
-	    .def("__mul__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Multiply(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
-	         })
+	    .def("__mul__", [](val<void*>& a, val<void*>& b) { return invoke(pyMul, a, b); })
 	    .def("__mul__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Multiply(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, bv);
+		         return invoke(pyMul, a, bv);
 	         })
 	    .def("__rmul__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Multiply(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             bv, a);
+		         return invoke(pyMul, bv, a);
 	         })
 
-	    .def("__truediv__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_TrueDivide(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
-	         })
+	    .def("__truediv__", [](val<void*>& a, val<void*>& b) { return invoke(pyTrueDiv, a, b); })
 	    .def("__truediv__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_TrueDivide(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, bv);
+		         return invoke(pyTrueDiv, a, bv);
+	         })
+	    .def("__rtruediv__",
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyTrueDiv, bv, a);
 	         })
 
+	    .def("__floordiv__", [](val<void*>& a, val<void*>& b) { return invoke(pyFloorDiv, a, b); })
 	    .def("__floordiv__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_FloorDivide(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyFloorDiv, a, bv);
+	         })
+	    .def("__rfloordiv__",
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyFloorDiv, bv, a);
 	         })
 
+	    .def("__mod__", [](val<void*>& a, val<void*>& b) { return invoke(pyMod, a, b); })
 	    .def("__mod__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Remainder(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a, b);
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyMod, a, bv);
+	         })
+	    .def("__rmod__",
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyMod, bv, a);
 	         })
 
-	    .def("__neg__",
-	         [](val<void*>& a) {
-		         return invoke(
-		             +[](void* x) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyNumber_Negative(static_cast<PyObject*>(x));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             a);
-	         })
+	    .def("__neg__", [](val<void*>& a) { return invoke(pyNeg, a); })
 
 	    // ── Compound assignment ─────────────────────────────────────────────
 	    .def(
 	        "__iadd__",
 	        [](val<void*>& a, val<void*>& b) -> val<void*>& {
-		        a = invoke(
-		            +[](void* x, void* y) -> void* {
-			            auto gstate = PyGILState_Ensure();
-			            auto* r = PyNumber_Add(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			            PyGILState_Release(gstate);
-			            return arenaTrack(r);
-		            },
-		            a, b);
+		        a = invoke(pyAdd, a, b);
 		        return a;
 	        },
 	        py::return_value_policy::reference_internal)
@@ -543,248 +450,108 @@ void bind_val_types(py::module_& m) {
 	        "__iadd__",
 	        [](val<void*>& a, py::object b) -> val<void*>& {
 		        val<void*> bv(static_cast<void*>(b.ptr()));
-		        a = invoke(
-		            +[](void* x, void* y) -> void* {
-			            auto gstate = PyGILState_Ensure();
-			            auto* r = PyNumber_Add(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			            PyGILState_Release(gstate);
-			            return arenaTrack(r);
-		            },
-		            a, bv);
+		        a = invoke(pyAdd, a, bv);
 		        return a;
 	        },
 	        py::return_value_policy::reference_internal)
 	    .def(
 	        "__isub__",
 	        [](val<void*>& a, val<void*>& b) -> val<void*>& {
-		        a = invoke(
-		            +[](void* x, void* y) -> void* {
-			            auto gstate = PyGILState_Ensure();
-			            auto* r = PyNumber_Subtract(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			            PyGILState_Release(gstate);
-			            return arenaTrack(r);
-		            },
-		            a, b);
+		        a = invoke(pySub, a, b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__isub__",
+	        [](val<void*>& a, py::object b) -> val<void*>& {
+		        val<void*> bv(static_cast<void*>(b.ptr()));
+		        a = invoke(pySub, a, bv);
 		        return a;
 	        },
 	        py::return_value_policy::reference_internal)
 	    .def(
 	        "__imul__",
 	        [](val<void*>& a, val<void*>& b) -> val<void*>& {
-		        a = invoke(
-		            +[](void* x, void* y) -> void* {
-			            auto gstate = PyGILState_Ensure();
-			            auto* r = PyNumber_Multiply(static_cast<PyObject*>(x), static_cast<PyObject*>(y));
-			            PyGILState_Release(gstate);
-			            return arenaTrack(r);
-		            },
-		            a, b);
+		        a = invoke(pyMul, a, b);
+		        return a;
+	        },
+	        py::return_value_policy::reference_internal)
+	    .def(
+	        "__imul__",
+	        [](val<void*>& a, py::object b) -> val<void*>& {
+		        val<void*> bv(static_cast<void*>(b.ptr()));
+		        a = invoke(pyMul, a, bv);
 		        return a;
 	        },
 	        py::return_value_policy::reference_internal)
 
-	    // ── Comparison → ValBool ────────────────────────────────────────────
-	    .def("__eq__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_EQ);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
-	         })
+	    // ── Comparison → val<bool> ─────────────────────────────────────────
+	    .def("__eq__", [](val<void*>& a, val<void*>& b) { return invoke(pyEq, a, b); })
 	    .def("__eq__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_EQ);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, bv);
+		         return invoke(pyEq, a, bv);
 	         })
+	    .def("__ne__", [](val<void*>& a, val<void*>& b) { return invoke(pyNe, a, b); })
 	    .def("__ne__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_NE);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyNe, a, bv);
 	         })
-	    .def("__lt__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_LT);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
-	         })
+	    .def("__lt__", [](val<void*>& a, val<void*>& b) { return invoke(pyLt, a, b); })
 	    .def("__lt__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_LT);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, bv);
+		         return invoke(pyLt, a, bv);
 	         })
+	    .def("__le__", [](val<void*>& a, val<void*>& b) { return invoke(pyLe, a, b); })
 	    .def("__le__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_LE);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyLe, a, bv);
 	         })
-	    .def("__gt__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_GT);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
-	         })
+	    .def("__gt__", [](val<void*>& a, val<void*>& b) { return invoke(pyGt, a, b); })
 	    .def("__gt__",
 	         [](val<void*>& a, py::object b) {
 		         val<void*> bv(static_cast<void*>(b.ptr()));
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_GT);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, bv);
+		         return invoke(pyGt, a, bv);
 	         })
+	    .def("__ge__", [](val<void*>& a, val<void*>& b) { return invoke(pyGe, a, b); })
 	    .def("__ge__",
-	         [](val<void*>& a, val<void*>& b) {
-		         return invoke(
-		             +[](void* x, void* y) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_RichCompareBool(static_cast<PyObject*>(x), static_cast<PyObject*>(y), Py_GE);
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a, b);
+	         [](val<void*>& a, py::object b) {
+		         val<void*> bv(static_cast<void*>(b.ptr()));
+		         return invoke(pyGe, a, bv);
 	         })
 
 	    // ── Bool conversion (triggers traceBool for if/while) ───────────────
 	    .def("__bool__",
 	         [](val<void*>& a) -> bool {
-		         auto result = invoke(
-		             +[](void* x) -> bool {
-			             auto gstate = PyGILState_Ensure();
-			             int r = PyObject_IsTrue(static_cast<PyObject*>(x));
-			             PyGILState_Release(gstate);
-			             return r == 1;
-		             },
-		             a);
+		         auto result = invoke(pyIsTrue, a);
 		         return static_cast<bool>(result);
 	         })
 
 	    // ── Method calls: x.call("method", args...) ──────────────────────────
 	    .def("call",
-	         [](val<void*>& self, py::str name, py::args args) -> val<void*> {
+	         [toVoidVal](val<void*>& self, py::str name, py::args args) -> val<void*> {
 		         val<void*> name_val(static_cast<void*>(name.ptr()));
-
-		         auto toVal = [](py::handle arg) -> val<void*> {
-			         if (py::isinstance<val<void*>>(arg)) {
-				         return arg.cast<val<void*>>();
-			         }
-			         return val<void*>(static_cast<void*>(arg.ptr()));
-		         };
 
 		         switch (args.size()) {
 		         case 0:
-			         return invoke(
-			             +[](void* o, void* n) -> void* {
-				             auto gstate = PyGILState_Ensure();
-				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
-				             PyObject* r = nullptr;
-				             if (method) {
-					             r = PyObject_CallObject(method, nullptr);
-					             Py_DECREF(method);
-				             }
-				             PyGILState_Release(gstate);
-				             return arenaTrack(r);
-			             },
-			             self, name_val);
+			         return invoke(pyCallMethod0, self, name_val);
 		         case 1: {
-			         val<void*> a0 = toVal(args[0]);
-			         return invoke(
-			             +[](void* o, void* n, void* a) -> void* {
-				             auto gstate = PyGILState_Ensure();
-				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
-				             PyObject* r = nullptr;
-				             if (method) {
-					             auto* t = PyTuple_Pack(1, static_cast<PyObject*>(a));
-					             r = PyObject_Call(method, t, nullptr);
-					             Py_DECREF(t);
-					             Py_DECREF(method);
-				             }
-				             PyGILState_Release(gstate);
-				             return arenaTrack(r);
-			             },
-			             self, name_val, a0);
+			         val<void*> a0 = toVoidVal(args[0]);
+			         return invoke(pyCallMethod1, self, name_val, a0);
 		         }
 		         case 2: {
-			         val<void*> a0 = toVal(args[0]);
-			         val<void*> a1 = toVal(args[1]);
-			         return invoke(
-			             +[](void* o, void* n, void* a, void* b) -> void* {
-				             auto gstate = PyGILState_Ensure();
-				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
-				             PyObject* r = nullptr;
-				             if (method) {
-					             auto* t = PyTuple_Pack(2, static_cast<PyObject*>(a), static_cast<PyObject*>(b));
-					             r = PyObject_Call(method, t, nullptr);
-					             Py_DECREF(t);
-					             Py_DECREF(method);
-				             }
-				             PyGILState_Release(gstate);
-				             return arenaTrack(r);
-			             },
-			             self, name_val, a0, a1);
+			         val<void*> a0 = toVoidVal(args[0]);
+			         val<void*> a1 = toVoidVal(args[1]);
+			         return invoke(pyCallMethod2, self, name_val, a0, a1);
 		         }
 		         case 3: {
-			         val<void*> a0 = toVal(args[0]);
-			         val<void*> a1 = toVal(args[1]);
-			         val<void*> a2 = toVal(args[2]);
-			         return invoke(
-			             +[](void* o, void* n, void* a, void* b, void* c) -> void* {
-				             auto gstate = PyGILState_Ensure();
-				             auto* method = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
-				             PyObject* r = nullptr;
-				             if (method) {
-					             auto* t = PyTuple_Pack(3, static_cast<PyObject*>(a), static_cast<PyObject*>(b),
-					                                    static_cast<PyObject*>(c));
-					             r = PyObject_Call(method, t, nullptr);
-					             Py_DECREF(t);
-					             Py_DECREF(method);
-				             }
-				             PyGILState_Release(gstate);
-				             return arenaTrack(r);
-			             },
-			             self, name_val, a0, a1, a2);
+			         val<void*> a0 = toVoidVal(args[0]);
+			         val<void*> a1 = toVoidVal(args[1]);
+			         val<void*> a2 = toVoidVal(args[2]);
+			         return invoke(pyCallMethod3, self, name_val, a0, a1, a2);
 		         }
 		         default:
 			         throw std::runtime_error("call() supports at most 3 arguments");
@@ -795,14 +562,7 @@ void bind_val_types(py::module_& m) {
 	    .def("getattr",
 	         [](val<void*>& self, py::str name) {
 		         val<void*> name_val(static_cast<void*>(name.ptr()));
-		         return invoke(
-		             +[](void* o, void* n) -> void* {
-			             auto gstate = PyGILState_Ensure();
-			             auto* r = PyObject_GetAttr(static_cast<PyObject*>(o), static_cast<PyObject*>(n));
-			             PyGILState_Release(gstate);
-			             return arenaTrack(r);
-		             },
-		             self, name_val);
+		         return invoke(pyGetAttr, self, name_val);
 	         })
 
 	    // ── Assignment ──────────────────────────────────────────────────────
