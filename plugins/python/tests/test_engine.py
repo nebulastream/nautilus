@@ -1,11 +1,5 @@
 """Tests for Engine compilation and execution."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import Engine, ValInt32, ValInt64, ValFloat64, ValBool, select
 import nautilus
 import pytest

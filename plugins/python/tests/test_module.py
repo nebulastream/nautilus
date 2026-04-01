@@ -1,11 +1,5 @@
 """Tests for NautilusModule batch compilation and multiple functions on the same engine."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import Engine, Module, ValInt32, ValInt64, ValFloat64
 import pytest
 

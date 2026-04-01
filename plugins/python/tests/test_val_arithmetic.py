@@ -1,12 +1,5 @@
 """Tests for val<T> arithmetic operations (non-traced, direct Python usage)."""
 
-import sys
-import os
-
-# Add the build directory to path so nautilus_native can be found
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import ValInt32, ValInt64, ValFloat64, ValFloat32, ValBool
 
 

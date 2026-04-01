@@ -1,11 +1,5 @@
 """Tests for NautilusFunction — first-class callable functions that are traced."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import Engine, ValInt32, ValInt64, ValFloat64, nautilus_function
 import pytest
 

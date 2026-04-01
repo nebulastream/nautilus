@@ -1,11 +1,5 @@
 """Tests for ValObject — generic Python object support via val<void*>."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import Engine, ValObject
 import pytest
 

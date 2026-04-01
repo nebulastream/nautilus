@@ -1,11 +1,5 @@
 """Tests for nested if/else and while-loop control flow through tracing."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "build", "nautilus", "plugins", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from nautilus import Engine, ValInt32
 
 
