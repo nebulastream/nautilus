@@ -98,12 +98,52 @@ def _normalize_type(t):
     return _PYTHON_TO_VAL.get(t, t)
 
 
+# Numeric type promotion rank (higher = wider).
+# When a signature mixes types, all args and return are promoted to the widest.
+_TYPE_RANK = {
+    ValBool: 0,
+    ValInt32: 1,
+    ValInt64: 2,
+    ValFloat32: 3,
+    ValFloat64: 4,
+}
+
+
+def _promote_signature(arg_types, ret_type):
+    """Promote a mixed-type numeric signature to a uniform type.
+
+    For example (ValInt32, ValFloat64) -> ValFloat64 becomes
+    (ValFloat64, ValFloat64) -> ValFloat64.  ValObject and ValBool-only
+    signatures are left unchanged.
+    """
+    all_types = list(arg_types)
+    if ret_type is not None:
+        all_types.append(ret_type)
+
+    # Don't promote if ValObject is involved
+    if ValObject in all_types:
+        return arg_types, ret_type
+
+    # All must be ranked numeric types
+    ranks = [_TYPE_RANK.get(t) for t in all_types]
+    if any(r is None for r in ranks):
+        return arg_types, ret_type
+
+    # Already uniform — no promotion needed
+    if len(set(all_types)) <= 1:
+        return arg_types, ret_type
+
+    widest = max(all_types, key=lambda t: _TYPE_RANK[t])
+    return tuple(widest for _ in arg_types), widest if ret_type is not None else None
+
+
 def _normalize_signature(arg_types, ret_type):
     """Normalize a full signature, converting Python types to Val types."""
-    return (
+    normalized = (
         tuple(_normalize_type(t) for t in arg_types),
         _normalize_type(ret_type) if ret_type is not None else None,
     )
+    return _promote_signature(*normalized)
 
 
 # Type aliases for explicit bit-width control in annotations.
@@ -423,6 +463,27 @@ def nautilus_function(name=None, *, arg_types=None, ret_type=None):
     return decorator
 
 
+def static_range(*args):
+    """Iterate with Val loop variables, unrolled at trace time.
+
+    Works like ``range()`` but yields ``ValInt32`` values so the loop
+    body is traced with proper Val operations.
+
+    Usage inside a compiled function::
+
+        for i in nautilus.static_range(5):
+            s += i          # i is ValInt32(0), ValInt32(1), ...
+
+        for i in nautilus.static_range(2, 8):
+            s += i
+
+        for i in nautilus.static_range(0, 10, 2):
+            s += i
+    """
+    for v in range(*args):
+        yield ValInt32(v)
+
+
 __all__ = [
     "ValBool",
     "ValInt32",
@@ -437,6 +498,7 @@ __all__ = [
     "Options",
     "select",
     "nautilus_function",
+    "static_range",
     "int32",
     "int64",
     "float32",

@@ -1,6 +1,6 @@
 """Tests for Engine compilation and execution."""
 
-from nautilus import Engine, ValInt32, ValInt64, ValFloat64, ValBool, select, Options
+from nautilus import Engine, ValInt32, ValInt64, ValFloat64, ValBool, select, Options, static_range
 import nautilus
 import pytest
 
@@ -271,6 +271,140 @@ class TestEngineCompileThreeArgs:
             return a + b + c
 
         assert sum3(1, 2, 3) == 6
+
+
+class TestMixedTypePromotion:
+    """Mixed-type signatures are auto-promoted to the widest type."""
+
+    def test_int_float_promoted(self):
+        engine = Engine()
+
+        @engine.compile
+        def add_if(x: int, y: float) -> float:
+            return x + y
+
+        result = add_if(3, 2.5)
+        assert abs(result - 5.5) < 1e-10
+
+    def test_int32_int64_promoted(self):
+        engine = Engine()
+
+        @engine.compile
+        def add_mixed(x: nautilus.int32, y: nautilus.int64) -> nautilus.int64:
+            return x + y
+
+        assert add_mixed(10, 20) == 30
+
+    def test_float32_float64_promoted(self):
+        engine = Engine()
+
+        @engine.compile
+        def mul_mixed(x: nautilus.float32, y: float) -> float:
+            return x * y
+
+        result = mul_mixed(2.0, 3.5)
+        assert abs(result - 7.0) < 1e-10
+
+    def test_three_arg_mixed(self):
+        engine = Engine()
+
+        @engine.compile
+        def fma(a: int, b: float, c: float) -> float:
+            return a * b + c
+
+        result = fma(2, 3.0, 1.0)
+        assert abs(result - 7.0) < 1e-10
+
+
+class TestWhileLoops:
+    """While loops work when loop variables use compound assignment (+=, -=)."""
+
+    def test_sum_to_n(self):
+        engine = Engine()
+
+        @engine.compile
+        def sum_to(n: int) -> int:
+            s = ValInt32(0)
+            i = ValInt32(0)
+            while i < n:
+                s += i
+                i += ValInt32(1)
+            return s
+
+        assert sum_to(5) == 10  # 0+1+2+3+4
+        assert sum_to(0) == 0
+        assert sum_to(1) == 0
+
+    def test_while_with_if(self):
+        engine = Engine()
+
+        @engine.compile
+        def count_even(n: int) -> int:
+            count = ValInt32(0)
+            i = ValInt32(0)
+            while i < n:
+                if i % ValInt32(2) == ValInt32(0):
+                    count += ValInt32(1)
+                i += ValInt32(1)
+            return count
+
+        assert count_even(6) == 3  # 0, 2, 4
+        assert count_even(1) == 1  # 0
+
+    def test_while_multiply(self):
+        engine = Engine()
+
+        @engine.compile
+        def factorial(n: int) -> int:
+            result = ValInt32(1)
+            i = ValInt32(1)
+            while i <= n:
+                result *= i
+                i += ValInt32(1)
+            return result
+
+        assert factorial(5) == 120
+        assert factorial(1) == 1
+
+
+class TestStaticRange:
+    """static_range() yields ValInt32 values for unrolled trace-time loops."""
+
+    def test_sum_static(self):
+        engine = Engine()
+
+        @engine.compile
+        def sum5(x: int) -> int:
+            s = ValInt32(0)
+            for i in static_range(5):
+                s += x
+            return s
+
+        assert sum5(3) == 15
+
+    def test_static_range_with_start_stop(self):
+        engine = Engine()
+
+        @engine.compile
+        def sum_range(x: int) -> int:
+            s = ValInt32(0)
+            for i in static_range(2, 5):
+                s += i
+            return s
+
+        assert sum_range(0) == 9  # 2 + 3 + 4
+
+    def test_static_range_accumulate(self):
+        engine = Engine()
+
+        @engine.compile
+        def dot(a: int, b: int) -> int:
+            s = ValInt32(0)
+            for _ in static_range(3):
+                s += a * b
+            return s
+
+        assert dot(2, 3) == 18  # 3 * (2*3)
 
 
 class TestUnsupportedSignature:
