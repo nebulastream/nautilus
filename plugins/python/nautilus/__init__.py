@@ -7,6 +7,7 @@ from nautilus_native import (
     ValInt64,
     ValFloat32,
     ValFloat64,
+    ValObject,
     # Engine
     NautilusEngine,
     Options,
@@ -26,6 +27,8 @@ from nautilus_native import (
     _register_f32_f32_to_f32,
     _register_b_to_b,
     _register_i32_to_b,
+    _register_obj_to_obj,
+    _register_obj_obj_to_obj,
 )
 
 # Module bindings
@@ -42,6 +45,8 @@ from nautilus_native import (
     _MF_f32_f32_f32,
     _MF_b_b,
     _MF_b_i32,
+    _MF_obj_obj,
+    _MF_obj_obj_obj,
 )
 
 # NautilusFunction bindings
@@ -56,6 +61,8 @@ from nautilus_native import (
     _create_nautilus_func_f32_f32_f32,
     _create_nautilus_func_b_b,
     _create_nautilus_func_b_i32,
+    _create_nautilus_func_obj_obj,
+    _create_nautilus_func_obj_obj_obj,
 )
 
 import inspect
@@ -67,6 +74,7 @@ _PYTHON_TO_VAL = {
     int: ValInt32,
     float: ValFloat64,
     bool: ValBool,
+    object: ValObject,
 }
 
 
@@ -102,6 +110,8 @@ _REGISTRY = {
     ((ValFloat32, ValFloat32), ValFloat32): _register_f32_f32_to_f32,
     ((ValBool,), ValBool): _register_b_to_b,
     ((ValInt32,), ValBool): _register_i32_to_b,
+    ((ValObject,), ValObject): _register_obj_to_obj,
+    ((ValObject, ValObject), ValObject): _register_obj_obj_to_obj,
 }
 
 # Module register/get method lookup: (arg_types, ret_type) -> (register_method_name, get_method_name)
@@ -116,6 +126,8 @@ _MODULE_REGISTRY = {
     ((ValFloat32, ValFloat32), ValFloat32): ("register_f32_f32_to_f32", "get_f32_f32_f32"),
     ((ValBool,), ValBool): ("register_b_to_b", "get_b_b"),
     ((ValInt32,), ValBool): ("register_i32_to_b", "get_b_i32"),
+    ((ValObject,), ValObject): ("register_obj_to_obj", "get_obj_obj"),
+    ((ValObject, ValObject), ValObject): ("register_obj_obj_to_obj", "get_obj_obj_obj"),
 }
 
 # NautilusFunction factory lookup: (arg_types, ret_type) -> create_fn
@@ -130,6 +142,8 @@ _NAUTILUS_FUNC_REGISTRY = {
     ((ValFloat32, ValFloat32), ValFloat32): _create_nautilus_func_f32_f32_f32,
     ((ValBool,), ValBool): _create_nautilus_func_b_b,
     ((ValInt32,), ValBool): _create_nautilus_func_b_i32,
+    ((ValObject,), ValObject): _create_nautilus_func_obj_obj,
+    ((ValObject, ValObject), ValObject): _create_nautilus_func_obj_obj_obj,
 }
 
 
@@ -359,6 +373,7 @@ __all__ = [
     "ValInt64",
     "ValFloat32",
     "ValFloat64",
+    "ValObject",
     "Engine",
     "Module",
     "CompiledModule",

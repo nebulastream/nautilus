@@ -2,6 +2,7 @@
 #include "nautilus/Module.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
+#include "py_object_helpers.hpp"
 #include <Python.h>
 #include <frameobject.h>
 #include <pybind11/functional.h>
@@ -157,6 +158,28 @@ static std::function<val<bool>(val<int32_t>)> makeCppFunc_b_i32(py::function py_
 	};
 }
 
+static std::function<val<void*>(val<void*>)> makeCppFunc_obj_obj(py::function py_func) {
+	return [py_func](val<void*> a) -> val<void*> {
+		py::gil_scoped_acquire gil;
+		try {
+			return py_func(a).cast<val<void*>>();
+		} catch (py::error_already_set& e) {
+			rethrowIfTraceTermination(e);
+		}
+	};
+}
+
+static std::function<val<void*>(val<void*>, val<void*>)> makeCppFunc_obj_obj_obj(py::function py_func) {
+	return [py_func](val<void*> a, val<void*> b) -> val<void*> {
+		py::gil_scoped_acquire gil;
+		try {
+			return py_func(a, b).cast<val<void*>>();
+		} catch (py::error_already_set& e) {
+			rethrowIfTraceTermination(e);
+		}
+	};
+}
+
 /// RAII guard that sets the external position hint for the duration of a scope.
 struct PositionHintGuard {
 	PositionHintGuard() {
@@ -259,6 +282,24 @@ struct PyNautilusFunc_b_i32 {
 	std::shared_ptr<NF_b_i32> nf;
 	val<bool> call(val<int32_t> a) {
 		return (*nf)(a);
+	}
+};
+
+// For (val<void*>) -> val<void*>
+using NF_obj_obj = NautilusFunction<std::function<val<void*>(val<void*>)>>;
+struct PyNautilusFunc_obj_obj {
+	std::shared_ptr<NF_obj_obj> nf;
+	val<void*> call(val<void*> a) {
+		return (*nf)(a);
+	}
+};
+
+// For (val<void*>, val<void*>) -> val<void*>
+using NF_obj_obj_obj = NautilusFunction<std::function<val<void*>(val<void*>, val<void*>)>>;
+struct PyNautilusFunc_obj_obj_obj {
+	std::shared_ptr<NF_obj_obj_obj> nf;
+	val<void*> call(val<void*> a, val<void*> b) {
+		return (*nf)(a, b);
 	}
 };
 
@@ -400,6 +441,39 @@ void bind_engine(py::module_& m) {
 		return eng.registerFunction(cpp_func);
 	});
 
+	// (void*) -> void*  (generic object, unary)
+	using CF_obj_obj = engine::CallableFunction<val<void*>, void*>;
+	py::class_<CF_obj_obj>(m, "_CF_obj_obj").def("__call__", [](CF_obj_obj& self, py::object a) {
+		g_py_ref_arena.clear();
+		void* result = self(static_cast<void*>(a.ptr()));
+		auto result_obj = py::reinterpret_borrow<py::object>(static_cast<PyObject*>(result));
+		arenaClear();
+		return result_obj;
+	});
+
+	m.def("_register_obj_to_obj", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc_obj_obj(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
+	// (void*, void*) -> void*  (generic object, binary)
+	using CF_obj_obj_obj = engine::CallableFunction<val<void*>, void*, void*>;
+	py::class_<CF_obj_obj_obj>(m, "_CF_obj_obj_obj")
+	    .def("__call__", [](CF_obj_obj_obj& self, py::object a, py::object b) {
+		    g_py_ref_arena.clear();
+		    void* result = self(static_cast<void*>(a.ptr()), static_cast<void*>(b.ptr()));
+		    auto result_obj = py::reinterpret_borrow<py::object>(static_cast<PyObject*>(result));
+		    arenaClear();
+		    return result_obj;
+	    });
+
+	m.def("_register_obj_obj_to_obj", [](const engine::NautilusEngine& eng, py::function py_func) {
+		auto cpp_func = makeCppFunc_obj_obj_obj(py_func);
+		PositionHintGuard guard;
+		return eng.registerFunction(cpp_func);
+	});
+
 	// ── NautilusModule ────────────────────────────────────────────────────
 	py::class_<engine::NautilusModule>(m, "_NautilusModule")
 	    .def("register_i32_to_i32",
@@ -452,6 +526,16 @@ void bind_engine(py::module_& m) {
 		         auto cpp_func = makeCppFunc_b_i32(py_func);
 		         self.registerFunction(name, std::move(cpp_func));
 	         })
+	    .def("register_obj_to_obj",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_obj_obj(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
+	    .def("register_obj_obj_to_obj",
+	         [](engine::NautilusModule& self, const std::string& name, py::function py_func) {
+		         auto cpp_func = makeCppFunc_obj_obj_obj(py_func);
+		         self.registerFunction(name, std::move(cpp_func));
+	         })
 	    .def("compile", [](engine::NautilusModule& self) {
 		    PositionHintGuard guard;
 		    return self.compile();
@@ -481,8 +565,12 @@ void bind_engine(py::module_& m) {
 	                               const std::string& name) { return self.getFunction<float(float, float)>(name); })
 	    .def("get_b_b",
 	         [](engine::CompiledModule& self, const std::string& name) { return self.getFunction<bool(bool)>(name); })
-	    .def("get_b_i32", [](engine::CompiledModule& self, const std::string& name) {
-		    return self.getFunction<bool(int32_t)>(name);
+	    .def("get_b_i32", [](engine::CompiledModule& self,
+	                         const std::string& name) { return self.getFunction<bool(int32_t)>(name); })
+	    .def("get_obj_obj",
+	         [](engine::CompiledModule& self, const std::string& name) { return self.getFunction<void*(void*)>(name); })
+	    .def("get_obj_obj_obj", [](engine::CompiledModule& self, const std::string& name) {
+		    return self.getFunction<void*(void*, void*)>(name);
 	    });
 
 	// ── ModuleFunction bindings ───────────────────────────────────────────
@@ -519,6 +607,24 @@ void bind_engine(py::module_& m) {
 
 	py::class_<engine::ModuleFunction<bool(int32_t)>>(m, "_MF_b_i32")
 	    .def("__call__", [](engine::ModuleFunction<bool(int32_t)>& self, int32_t a) { return self(a); });
+
+	py::class_<engine::ModuleFunction<void*(void*)>>(m, "_MF_obj_obj")
+	    .def("__call__", [](engine::ModuleFunction<void*(void*)>& self, py::object a) {
+		    g_py_ref_arena.clear();
+		    void* result = self(static_cast<void*>(a.ptr()));
+		    auto result_obj = py::reinterpret_borrow<py::object>(static_cast<PyObject*>(result));
+		    arenaClear();
+		    return result_obj;
+	    });
+
+	py::class_<engine::ModuleFunction<void*(void*, void*)>>(m, "_MF_obj_obj_obj")
+	    .def("__call__", [](engine::ModuleFunction<void*(void*, void*)>& self, py::object a, py::object b) {
+		    g_py_ref_arena.clear();
+		    void* result = self(static_cast<void*>(a.ptr()), static_cast<void*>(b.ptr()));
+		    auto result_obj = py::reinterpret_borrow<py::object>(static_cast<PyObject*>(result));
+		    arenaClear();
+		    return result_obj;
+	    });
 
 	// ── NautilusFunction wrappers ─────────────────────────────────────────
 
@@ -604,5 +710,22 @@ void bind_engine(py::module_& m) {
 		auto cpp_func = makeCppFunc_b_i32(py_func);
 		auto nf = std::make_shared<NF_b_i32>(name, std::move(cpp_func));
 		return PyNautilusFunc_b_i32 {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_obj_obj>(m, "_NautilusFunc_obj_obj").def("__call__", &PyNautilusFunc_obj_obj::call);
+
+	m.def("_create_nautilus_func_obj_obj", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_obj_obj(py_func);
+		auto nf = std::make_shared<NF_obj_obj>(name, std::move(cpp_func));
+		return PyNautilusFunc_obj_obj {std::move(nf)};
+	});
+
+	py::class_<PyNautilusFunc_obj_obj_obj>(m, "_NautilusFunc_obj_obj_obj")
+	    .def("__call__", &PyNautilusFunc_obj_obj_obj::call);
+
+	m.def("_create_nautilus_func_obj_obj_obj", [](const std::string& name, py::function py_func) {
+		auto cpp_func = makeCppFunc_obj_obj_obj(py_func);
+		auto nf = std::make_shared<NF_obj_obj_obj>(name, std::move(cpp_func));
+		return PyNautilusFunc_obj_obj_obj {std::move(nf)};
 	});
 }
