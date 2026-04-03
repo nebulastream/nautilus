@@ -12,7 +12,7 @@
 
 namespace nautilus::gpu::runtime {
 
-/// Load a compiled GPU module (PTX for CUDA, MSL source for Metal).
+/// Load a compiled GPU module (PTX for CUDA, pre-compiled metallib for Metal).
 /// @return Opaque handle to the loaded module.
 void* gpuLoadModule(const void* kernelData, size_t kernelSize);
 

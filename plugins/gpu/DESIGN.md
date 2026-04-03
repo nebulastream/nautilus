@@ -132,7 +132,7 @@ Scan the host function for the sentinel sequence:
 ### Step 2: Kernel Extraction & Compilation
 - Clone `@myKernel` into a **separate MLIR module**
 - Delegate to the appropriate **GPUKernelCompiler** (CUDA or Metal, selected by platform/options)
-- Receive compiled kernel binary (PTX or MSL source)
+- Receive compiled kernel binary (PTX or metallib)
 
 ### Step 3: Host Code Replacement
 Replace the sentinel sequence + kernel call in the host module with **GPURuntimeLib** calls:
@@ -163,7 +163,7 @@ public:
     virtual ~GPUKernelCompiler() = default;
 
     /// Compile a kernel function (as MLIR func.func) to a GPU binary blob.
-    /// Returns the binary data (PTX, MSL source, etc.)
+    /// Returns the binary data (PTX, metallib, etc.)
     virtual std::vector<uint8_t> compile(
         mlir::func::FuncOp kernelFunc,
         mlir::MLIRContext& context) = 0;
@@ -187,42 +187,43 @@ Takes a kernel `func::FuncOp`, produces PTX bytes.
 
 All stays within LLVM dialect -- NVVM intrinsics are just `llvm.call` ops to well-known LLVM intrinsic names.
 
-### 5b. Metal Kernel Compiler
+### 5b. Metal Kernel Compiler (AIR Approach)
 
 **Location:** `plugins/gpu/src/metal/MetalKernelCompiler.hpp/.cpp`
 
-Takes a kernel `func::FuncOp`, produces Metal Shading Language (MSL) source code.
+Takes a kernel `func::FuncOp`, produces a pre-compiled Metal library (`.metallib`) binary via the AIR (Apple Intermediate Representation) pipeline.
 
-**Why MSL source code (not AIR binary)?**
-- Apple's LLVM AIR backend is not open-source and not available in standard LLVM builds
-- Metal framework can compile MSL source at runtime via `MTLDevice::newLibraryWithSource:`
-- MSL is a C++-like language, making code generation straightforward from Nautilus MLIR
-- This mirrors the approach of the existing C++ backend (`nautilus/src/nautilus/compiler/backends/cpp/`)
+**Why AIR (not MSL source code generation)?**
+- Reuses the same MLIR → LLVM IR lowering pipeline as CUDA, avoiding a custom MSL code generator
+- Apple's `xcrun metal` toolchain can compile LLVM IR bitcode directly to AIR format
+- Pre-compiled metallib loads faster at runtime than runtime MSL compilation
+- Much simpler implementation: ~300 lines of LLVM IR post-processing vs ~600+ lines for a full MSL code generator
+- Only requires macOS with Xcode command-line tools (no private Apple headers needed)
 
 **Pipeline:**
 1. Clone kernel into fresh MLIR module
-2. Walk the MLIR operations and emit MSL source code
-3. The MSL code generator walks MLIR operations and emits corresponding MSL:
-   - `arith::AddIOp` -> `+`
-   - `arith::CmpIOp` -> comparison operators
-   - `LLVM::LoadOp` / `LLVM::StoreOp` -> pointer dereference
-   - `cf::BrOp` / `cf::CondBrOp` -> goto / if-else
-   - Control flow (if/else, loops) maps directly to MSL control flow
-4. Function signature is decorated with Metal kernel attributes:
-   ```metal
-   kernel void myKernel(
-       device uint32_t* a [[buffer(0)]],
-       device uint32_t* b [[buffer(1)]],
-       device uint32_t* c [[buffer(2)]],
-       uint3 threadIdx [[thread_position_in_threadgroup]],
-       uint3 blockIdx  [[threadgroup_position_in_grid]],
-       uint3 blockDim  [[threads_per_threadgroup]],
-       uint3 gridDim   [[threadgroups_per_grid]]
-   ) { ... }
-   ```
-5. Return MSL source as string (compiled at runtime by Metal framework)
+2. Run standard MLIR lowering passes (same as CPU): Math→LLVM, Func→LLVM, CF→LLVM, Arith→LLVM, ReconcileUnrealizedCasts
+3. Translate MLIR to LLVM IR
+4. Post-process LLVM IR for Metal/AIR (`postProcessLLVMForAIR()`):
+   - Set target triple to `air64-apple-macosx15.0.0` with AIR data layout
+   - Scan kernel for GPU intrinsic calls to determine which thread index params are needed
+   - Create new function with extra `i32` parameters for threadIdx/blockIdx/blockDim/gridDim
+   - Clone function body, replace GPU intrinsic calls with parameter references
+   - Replace `gpu_syncThreads` calls with `air.wg.barrier` (mem_flags=2 for mem_threadgroup)
+   - Add `air.kernel` metadata to mark function as compute kernel
+   - Add `air.arg_type_info` metadata for buffer parameters (address space 1, read_write)
+   - Add `air.thread_position_info` metadata for thread index parameters
+   - Remove old GPU stub function declarations
+5. Write LLVM IR bitcode to temp file
+6. Compile: `xcrun metal -c -x ir <input.bc> -o <output.air>`
+7. Package: `xcrun metallib <output.air> -o <output.metallib>`
+8. Read metallib bytes and return them
 
-**Alternative approach (future):** If Apple opens the AIR backend or MLIR gains official Metal/AIR support, the pipeline could switch to LLVM IR -> AIR -> metallib, similar to the CUDA path.
+The resulting metallib is loaded at runtime via `MTLDevice::newLibraryWithData:` (not `newLibraryWithSource:`), which is significantly faster than runtime MSL compilation.
+
+**Requirements:**
+- macOS with Xcode command-line tools installed
+- `xcrun metal` and `xcrun metallib` must be available in PATH
 
 ---
 
@@ -271,7 +272,7 @@ Wraps CUDA Driver API:
 
 | Runtime Function | Metal API |
 |---|---|
-| `gpuLoadModule` | `MTLDevice::newLibraryWithSource:` (compiles MSL at runtime) |
+| `gpuLoadModule` | `MTLDevice::newLibraryWithData:` (loads pre-compiled metallib) |
 | `gpuGetKernel` | `MTLLibrary::newFunctionWithName:` + `newComputePipelineStateWithFunction:` |
 | `gpuLaunchKernel` | `MTLComputeCommandEncoder` + `dispatchThreadgroups:threadsPerThreadgroup:` |
 | `gpuSynchronize` | `MTLCommandBuffer::waitUntilCompleted` |
@@ -302,7 +303,7 @@ plugins/
         CUDAKernelCompiler.hpp/.cpp          # MLIR -> PTX via LLVM NVPTX
         CUDARuntimeLib.cpp                   # CUDA Driver API wrappers
       metal/
-        MetalKernelCompiler.hpp/.cpp         # MLIR -> MSL source code generation
+        MetalKernelCompiler.hpp/.cpp         # MLIR -> LLVM IR -> AIR -> metallib
         MetalRuntimeLib.mm                   # Metal framework wrappers (Objective-C++)
     test/
       CMakeLists.txt
@@ -401,7 +402,7 @@ MLIR Lowering (unchanged -- MLIRLoweringProvider)
 |  2. Extract @myKernel -> separate MLIR module                 |
 |  3. Delegate to platform-specific kernel compiler:            |
 |     +-- CUDA: replace intrinsics w/ NVVM -> lower -> PTX     |
-|     +-- Metal: walk MLIR -> emit MSL source code              |
+|     +-- Metal: lower to LLVM IR -> post-process -> AIR -> metallib |
 |  4. Replace host pattern with runtime API calls               |
 |  5. Embed kernel binary/source as constant in host module     |
 +---------------------------------------------------------------+
@@ -415,7 +416,7 @@ LLVM IR Optimization + JIT (unchanged)
   v
 Executable
   +-- CUDA: host calls cuModuleLoadData(PTX) + cuLaunchKernel
-  +-- Metal: host calls MTLDevice.newLibraryWithSource(MSL) + dispatch
+  +-- Metal: host calls MTLDevice.newLibraryWithData(metallib) + dispatch
 ```
 
 ---
@@ -438,7 +439,7 @@ When GPU backend is disabled:
 | **Top-level `plugins/gpu/` directory** | Keeps GPU code fully separate from core nautilus. Clean boundary for optional feature. |
 | **Platform-agnostic user API** | Users write one kernel, it runs on CUDA, Metal, or CPU. No `#ifdef` in user code. |
 | **CUDA: LLVM dialect + NVVM intrinsics** | NVVM intrinsics are expressible as `llvm.call` to `llvm.nvvm.*`. No new MLIR dialects needed. |
-| **Metal: MSL source code generation** | Apple's AIR backend is not in open-source LLVM. MSL can be compiled at runtime by Metal framework. Similar to existing C++ backend approach. |
+| **Metal: AIR approach via xcrun** | Reuses MLIR → LLVM IR pipeline (same as CUDA), post-processes for AIR target, compiles via `xcrun metal` + `xcrun metallib`. Avoids writing a custom MSL code generator. |
 | **Unified runtime interface** | Same function signatures (`gpuLoadModule`, `gpuLaunchKernel`, etc.) for both platforms. GPU pass emits the same host code regardless of target. |
 | **Post-lowering MLIR pass** | Launch pattern spans multiple operations. Module-level pass is cleaner than stateful per-operation intrinsic handlers. |
 | **Stub functions as pointer identity** | Reuses existing `invoke<>` + `ProxyCallOperation` + intrinsic plugin infrastructure. No new IR operation types. |
@@ -487,7 +488,7 @@ All other files are **new** in `plugins/gpu/` -- no existing code is modified be
 3. **Unit test: MLIR generation** -- verify `func.func` operations for host and kernel.
 4. **Unit test: GPU pass pattern detection** -- verify kernel extraction and host rewrite.
 5. **Unit test: CUDA kernel compilation** -- compile simple kernel to PTX, verify valid PTX.
-6. **Unit test: Metal kernel compilation** -- compile simple kernel to MSL, verify valid MSL source.
+6. **Unit test: Metal kernel compilation** -- compile simple kernel to metallib via AIR pipeline, verify valid metallib binary.
 7. **Integration test (CUDA): Vector add** -- end-to-end on NVIDIA GPU.
 8. **Integration test (Metal): Vector add** -- end-to-end on Apple GPU.
 9. **Build matrix** -- verify all combinations build cleanly:

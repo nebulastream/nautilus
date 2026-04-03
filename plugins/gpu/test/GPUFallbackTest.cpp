@@ -21,11 +21,11 @@ static auto vecScaleKernel =
                       }};
 
 // Kernel using multiple indexing intrinsics
-static auto globalIdKernel =
-    NautilusFunction {"globalId", [](val<uint32_t*> out) {
-	                      auto globalId = gpu::threadIdx_x() + gpu::blockIdx_x() * gpu::blockDim_x();
-	                      out[globalId] = globalId;
-                      }};
+static auto globalIdKernel = NautilusFunction {"globalId", [](val<uint32_t*> out) {
+	                                               auto globalId =
+	                                                   gpu::threadIdx_x() + gpu::blockIdx_x() * gpu::blockDim_x();
+	                                               out[globalId] = globalId;
+                                               }};
 
 // Kernel with control flow
 static auto clampKernel =
