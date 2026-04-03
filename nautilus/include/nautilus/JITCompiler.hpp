@@ -11,31 +11,47 @@ class Executable;
 class CompilationBackendRegistry;
 class CompilableFunction;
 
+namespace ir {
+class IRGraph;
+}
+
 using CompilationUnitID = std::string;
 
+/**
+ * @brief Abstract interface for JIT compilers in Nautilus.
+ *
+ * Implementations provide different compilation strategies (single-tier, tiered, etc.)
+ * while presenting a uniform interface to the engine and module system.
+ */
 class JITCompiler {
 public:
 	using wrapper_function = std::function<void()>;
 
-	JITCompiler();
-	JITCompiler(engine::Options options);
-
-	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const;
+	virtual ~JITCompiler() = default;
 
 	/**
-	 * @brief Compiles multiple named functions together as one compilation unit.
+	 * @brief Compile a single wrapper function.
+	 * @param function The traced wrapper function to compile
+	 * @return Compiled executable
+	 */
+	[[nodiscard]] virtual std::unique_ptr<Executable> compile(wrapper_function function) const = 0;
+
+	/**
+	 * @brief Compile multiple named functions together as one compilation unit.
 	 * @param functions List of named compilable functions to trace and compile together
 	 * @return Executable containing all compiled functions, accessible by name
 	 */
-	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const;
+	[[nodiscard]] virtual std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const = 0;
 
-	virtual ~JITCompiler();
+	/**
+	 * @brief Get the name of the primary compilation backend.
+	 */
+	virtual std::string getName() const = 0;
 
-	std::string getName() const;
-
-private:
-	const engine::Options options;
-	const CompilationBackendRegistry* backends;
+	/**
+	 * @brief Get the engine options.
+	 */
+	virtual const engine::Options& getOptions() const = 0;
 };
 
 } // namespace nautilus::compiler
