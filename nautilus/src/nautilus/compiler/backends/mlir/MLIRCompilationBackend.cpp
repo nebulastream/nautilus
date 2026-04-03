@@ -76,10 +76,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 1.b GPU pass: detect kernel launch patterns, extract and compile kernels,
 	// replace launch sites with GPU runtime API calls.
 #ifdef ENABLE_GPU_BACKEND
-	{
-		gpu::MLIRGPUPass gpuPass;
-		gpuPass.run(mlirModule, dumpHandler, options);
-	}
+	gpu::MLIRGPUPass gpuPass;
+	gpuPass.run(mlirModule, dumpHandler, options);
 #endif
 
 	// 2.a dump MLIR to console or a file
@@ -102,8 +100,18 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 
 	// 4. JIT compile LLVM IR module and return engine that provides access
 	// compiled execute function.
-	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses(), options);
+	auto proxySymbols = loweringProvider->getJitProxyFunctionSymbols();
+	auto proxyAddresses = loweringProvider->getJitProxyTargetAddresses();
+
+#ifdef ENABLE_GPU_BACKEND
+	// Merge GPU runtime proxy functions for JIT linker registration
+	const auto& gpuSymbols = gpuPass.getProxySymbols();
+	const auto& gpuAddresses = gpuPass.getProxyAddresses();
+	proxySymbols.insert(proxySymbols.end(), gpuSymbols.begin(), gpuSymbols.end());
+	proxyAddresses.insert(proxyAddresses.end(), gpuAddresses.begin(), gpuAddresses.end());
+#endif
+
+	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, proxySymbols, proxyAddresses, options);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

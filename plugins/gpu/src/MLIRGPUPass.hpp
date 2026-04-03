@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace mlir {
 class ModuleOp;
@@ -33,13 +35,17 @@ class GPUKernelCompiler;
 /// 2. **Kernel Extraction:** Clones the kernel function into a separate MLIR module.
 ///
 /// 3. **Kernel Compilation:** Delegates to the platform-specific GPUKernelCompiler:
-///    - CUDA: replaces intrinsics with NVVM ops, lowers to PTX
-///    - Metal: walks MLIR operations, emits MSL source code
+///    - CUDA: replaces intrinsics with NVVM ops, lowers to PTX via libNVVM
+///    - Metal: lowers to LLVM IR, post-processes for AIR, compiles via xcrun metal/metallib
 ///
 /// 4. **Host Rewrite:** Replaces the sentinel sequence + kernel call with
-///    GPU runtime API calls (gpuLoadModule, gpuGetKernel, gpuLaunchKernel, etc.)
+///    GPU runtime API calls (gpuLoadModule, gpuGetKernel, gpuLaunchKernel, gpuSynchronize).
+///    Kernel binary data is embedded as LLVM global constants in the host module.
 ///
-/// 5. **Cleanup:** Removes the kernel function from the host module.
+/// 5. **Cleanup:** Removes kernel functions and unused GPU stub declarations from the module.
+///
+/// After the pass, getProxySymbols()/getProxyAddresses() return the GPU runtime
+/// function symbols that must be registered with the JIT linker.
 class MLIRGPUPass {
 public:
 	MLIRGPUPass();
@@ -51,8 +57,22 @@ public:
 	void run(mlir::OwningOpRef<mlir::ModuleOp>& module, const compiler::DumpHandler& dumpHandler,
 	         const engine::Options& options);
 
+	/// Returns the GPU runtime function symbols that need JIT linker registration.
+	/// Must be called after run().
+	const std::vector<std::string>& getProxySymbols() const {
+		return proxySymbols_;
+	}
+
+	/// Returns the GPU runtime function addresses corresponding to getProxySymbols().
+	/// Must be called after run().
+	const std::vector<void*>& getProxyAddresses() const {
+		return proxyAddresses_;
+	}
+
 private:
 	std::unique_ptr<GPUKernelCompiler> kernelCompiler_;
+	std::vector<std::string> proxySymbols_;
+	std::vector<void*> proxyAddresses_;
 };
 
 } // namespace nautilus::gpu

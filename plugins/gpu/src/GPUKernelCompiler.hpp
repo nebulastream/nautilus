@@ -16,8 +16,8 @@ namespace nautilus::gpu {
 /// Abstract interface for platform-specific GPU kernel compilers.
 ///
 /// Implementations:
-/// - CUDAKernelCompiler: MLIR -> NVVM LLVM intrinsics -> PTX via LLVM NVPTX backend
-/// - MetalKernelCompiler: MLIR -> MSL source code (compiled at runtime by Metal framework)
+/// - CUDAKernelCompiler: MLIR -> LLVM IR -> NVVM intrinsics -> PTX via libNVVM
+/// - MetalKernelCompiler: MLIR -> LLVM IR -> AIR -> metallib via xcrun metal/metallib
 class GPUKernelCompiler {
 public:
 	virtual ~GPUKernelCompiler() = default;

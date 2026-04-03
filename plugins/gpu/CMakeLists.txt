@@ -34,7 +34,29 @@ if (ENABLE_GPU_CUDA)
 			${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/CUDAKernelCompiler.cpp
 			${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/CUDARuntimeLib.cpp
 		)
-		message(STATUS "GPU Backend: CUDA enabled")
+
+		# Find libNVVM for compiling NVVM IR to PTX.
+		# libNVVM is part of the CUDA toolkit, located in the nvvm/ subdirectory.
+		find_library(NVVM_LIBRARY nvvm
+			HINTS
+			${CUDAToolkit_LIBRARY_DIR}/../nvvm/lib64
+			${CUDAToolkit_LIBRARY_DIR}/../nvvm/lib
+			${CUDAToolkit_LIBRARY_ROOT}/../nvvm/lib64
+		)
+		find_path(NVVM_INCLUDE_DIR nvvm.h
+			HINTS
+			${CUDAToolkit_LIBRARY_DIR}/../nvvm/include
+			${CUDAToolkit_INCLUDE_DIRS}/../nvvm/include
+		)
+		if (NVVM_LIBRARY AND NVVM_INCLUDE_DIR)
+			add_compile_definitions(HAVE_NVVM)
+			target_link_libraries(nautilus PRIVATE ${NVVM_LIBRARY})
+			target_include_directories(nautilus PRIVATE ${NVVM_INCLUDE_DIR})
+			message(STATUS "GPU Backend: CUDA enabled with libNVVM (${NVVM_LIBRARY})")
+		else ()
+			message(STATUS "GPU Backend: CUDA enabled without libNVVM (PTX compilation will not work)")
+			message(STATUS "GPU Backend: libNVVM searched in ${CUDAToolkit_LIBRARY_DIR}/../nvvm/")
+		endif ()
 	else ()
 		message(WARNING "GPU Backend: CUDA requested but CUDAToolkit not found. CUDA backend disabled.")
 		set(ENABLE_GPU_CUDA OFF)
