@@ -8,12 +8,13 @@ template <typename OpTy>
 class OwningOpRef;
 } // namespace mlir
 
-namespace nautilus {
+namespace nautilus::compiler {
 class DumpHandler;
-namespace engine {
+} // namespace nautilus::compiler
+
+namespace nautilus::engine {
 class Options;
-} // namespace engine
-} // namespace nautilus
+} // namespace nautilus::engine
 
 namespace nautilus::gpu {
 
@@ -47,7 +48,7 @@ public:
 	/// Run the GPU pass on the given MLIR module.
 	/// Modifies the module in-place: kernel functions are extracted and compiled,
 	/// launch patterns are replaced with runtime API calls.
-	void run(mlir::OwningOpRef<mlir::ModuleOp>& module, const DumpHandler& dumpHandler,
+	void run(mlir::OwningOpRef<mlir::ModuleOp>& module, const compiler::DumpHandler& dumpHandler,
 	         const engine::Options& options);
 
 private:

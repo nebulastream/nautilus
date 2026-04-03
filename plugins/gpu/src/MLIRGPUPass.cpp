@@ -23,13 +23,13 @@ MLIRGPUPass::MLIRGPUPass() {
 
 MLIRGPUPass::~MLIRGPUPass() = default;
 
-void MLIRGPUPass::run(mlir::OwningOpRef<mlir::ModuleOp>& module, const DumpHandler& dumpHandler,
-                      const engine::Options& options) {
+void MLIRGPUPass::run(mlir::OwningOpRef<mlir::ModuleOp>& /*module*/, const compiler::DumpHandler& /*dumpHandler*/,
+                      const engine::Options& /*options*/) {
 	if (!kernelCompiler_) {
-		return; // No GPU backend available
+		return; // No GPU backend available -- CPU fallback mode
 	}
 
-	// TODO: Implementation steps:
+	// TODO: Implementation steps (requires CUDA or Metal backend):
 	//
 	// 1. Walk the module to find the sentinel pattern:
 	//    - call @gpu_set_grid(gx, gy, gz)
