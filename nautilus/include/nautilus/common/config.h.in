@@ -12,3 +12,8 @@
 
 // Backends
 #cmakedefine NAUTILUS_ACTIVATE_MLIR_BACKEND
+
+// GPU backends
+#cmakedefine ENABLE_GPU_BACKEND
+#cmakedefine ENABLE_GPU_CUDA
+#cmakedefine ENABLE_GPU_METAL

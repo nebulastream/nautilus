@@ -18,6 +18,7 @@ cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries"
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_COMPILER" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_COMPILER" OFF)
+cmake_dependent_option(ENABLE_GPU_BACKEND "Enable GPU kernel compilation (CUDA/Metal)" OFF "ENABLE_MLIR_BACKEND" OFF)
 
 
 option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)
@@ -162,6 +163,11 @@ if (ENABLE_ASMJIT_BACKEND)
 endif ()
 
 add_subdirectory(nautilus)
+
+if (ENABLE_GPU_BACKEND)
+	add_subdirectory(plugins/gpu)
+endif ()
+
 add_make_format()
 
 

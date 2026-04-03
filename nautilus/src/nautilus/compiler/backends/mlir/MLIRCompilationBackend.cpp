@@ -11,6 +11,9 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBitIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
+#ifdef ENABLE_GPU_BACKEND
+#include "MLIRGPUPass.hpp"
+#endif
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -69,6 +72,15 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	if (*mlirModule == nullptr) {
 		throw RuntimeException("verification of MLIR module failed!");
 	};
+
+	// 1.b GPU pass: detect kernel launch patterns, extract and compile kernels,
+	// replace launch sites with GPU runtime API calls.
+#ifdef ENABLE_GPU_BACKEND
+	{
+		gpu::MLIRGPUPass gpuPass;
+		gpuPass.run(mlirModule, dumpHandler, options);
+	}
+#endif
 
 	// 2.a dump MLIR to console or a file
 	dumpHandler.dump("after_mlir_generation", "mlir", [&]() {
