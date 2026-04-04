@@ -69,7 +69,7 @@ struct TypeResolver<T> {
 			return Type::ui64;
 		} else if constexpr (std::is_same_v<type, float>) {
 			return Type::f32;
-		} else if constexpr (std::is_same_v<type, double>) {
+		} else if constexpr (std::is_same_v<type, double> || std::is_same_v<type, long double>) {
 			return Type::f64;
 		} else if constexpr (std::is_pointer_v<type>) {
 			return Type::ptr;
