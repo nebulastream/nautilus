@@ -1,459 +1,8 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775202182369,
+  "lastUpdate": 1775310531736,
   "repoUrl": "https://github.com/nebulastream/nautilus",
   "entries": {
     "Tracing Benchmark": [
-      {
-        "commit": {
-          "author": {
-            "email": "noreply@anthropic.com",
-            "name": "Claude",
-            "username": "claude"
-          },
-          "committer": {
-            "email": "philippgrulich@hotmail.de",
-            "name": "Philipp Grulich",
-            "username": "PhilippGrulich"
-          },
-          "distinct": true,
-          "id": "bc3ff4abeede13f9afa2ab7116ba3d770531e8e1",
-          "message": "Fix bc backend argument dispatch rejecting unsigned long / const void*\n\nOn macOS (and any platform where size_t == unsigned long != uint64_t),\ncalling a registered function with a size_t argument threw\n\"This type is not supported\" because BCInterpreter only tried\nstd::any_cast<uint64_t>. Since uint64_t is unsigned long long there,\nthe cast fails and the catch-all throw fires.\n\nAdd unsigned long and const void* branches to the any_cast chain so\nall pointer/integer variants accepted by the Nautilus type system are\ncovered.\n\nhttps://claude.ai/code/session_01JhefWS3GbXoU13aQZmzaUK",
-          "timestamp": "2026-03-11T22:54:47+01:00",
-          "tree_id": "f45371507cbf0686fc3b7ecdb65229fdb90f4be8",
-          "url": "https://github.com/nebulastream/nautilus/commit/bc3ff4abeede13f9afa2ab7116ba3d770531e8e1"
-        },
-        "date": 1773266356305,
-        "tool": "catch2",
-        "benches": [
-          {
-            "name": "trace_add",
-            "value": 2.25087,
-            "range": "± 253.335",
-            "unit": "us",
-            "extra": "100 samples\n14 iterations"
-          },
-          {
-            "name": "trace_ifThenElse",
-            "value": 10.8176,
-            "range": "± 1.41559",
-            "unit": "us",
-            "extra": "100 samples\n3 iterations"
-          },
-          {
-            "name": "trace_deeplyNestedIfElse",
-            "value": 33.1527,
-            "range": "± 5.23322",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "trace_loop",
-            "value": 10.8253,
-            "range": "± 1.48415",
-            "unit": "us",
-            "extra": "100 samples\n3 iterations"
-          },
-          {
-            "name": "trace_ifInsideLoop",
-            "value": 21.3058,
-            "range": "± 2.75566",
-            "unit": "us",
-            "extra": "100 samples\n2 iterations"
-          },
-          {
-            "name": "trace_loopDirectCall",
-            "value": 11.0173,
-            "range": "± 1.69326",
-            "unit": "us",
-            "extra": "100 samples\n3 iterations"
-          },
-          {
-            "name": "trace_pointerLoop",
-            "value": 16.2354,
-            "range": "± 2.92882",
-            "unit": "us",
-            "extra": "100 samples\n2 iterations"
-          },
-          {
-            "name": "trace_staticLoop",
-            "value": 9.10381,
-            "range": "± 1.12021",
-            "unit": "us",
-            "extra": "100 samples\n4 iterations"
-          },
-          {
-            "name": "trace_fibonacci",
-            "value": 12.2284,
-            "range": "± 2.14081",
-            "unit": "us",
-            "extra": "100 samples\n3 iterations"
-          },
-          {
-            "name": "trace_gcd",
-            "value": 10.4573,
-            "range": "± 1.96837",
-            "unit": "us",
-            "extra": "100 samples\n3 iterations"
-          },
-          {
-            "name": "trace_nestedIf10",
-            "value": 57.335,
-            "range": "± 6.30419",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "trace_nestedIf100",
-            "value": 1.6644,
-            "range": "± 63.3599",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "trace_chainedIf10",
-            "value": 134.001,
-            "range": "± 9.37555",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "trace_chainedIf100",
-            "value": 4.97144,
-            "range": "± 50.8256",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_add",
-            "value": 8.23421,
-            "range": "± 248.506",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_ifThenElse",
-            "value": 8.90391,
-            "range": "± 361.684",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_deeplyNestedIfElse",
-            "value": 7.77218,
-            "range": "± 228.519",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_loop",
-            "value": 9.80012,
-            "range": "± 397.363",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_ifInsideLoop",
-            "value": 31.2997,
-            "range": "± 656.745",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_loopDirectCall",
-            "value": 14.5366,
-            "range": "± 503.559",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_pointerLoop",
-            "value": 30.455,
-            "range": "± 663.301",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_staticLoop",
-            "value": 7.60352,
-            "range": "± 202.347",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_fibonacci",
-            "value": 13.258,
-            "range": "± 596.206",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_gcd",
-            "value": 12.1404,
-            "range": "± 410.733",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_nestedIf10",
-            "value": 13.112,
-            "range": "± 399.296",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_nestedIf100",
-            "value": 28.4038,
-            "range": "± 694.979",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_chainedIf10",
-            "value": 12.5916,
-            "range": "± 539.863",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "comp_mlir_chainedIf100",
-            "value": 23.7173,
-            "range": "± 634.107",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "exec_mlir_add",
-            "value": 3.16517,
-            "range": "± 0.380612",
-            "unit": "ns",
-            "extra": "100 samples\n9317 iterations"
-          },
-          {
-            "name": "exec_mlir_fibonacci",
-            "value": 4.84681,
-            "range": "± 381.303",
-            "unit": "us",
-            "extra": "100 samples\n6 iterations"
-          },
-          {
-            "name": "exec_mlir_sum",
-            "value": 756.848,
-            "range": "± 21.344",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "exec_cpp_add",
-            "value": 5.51979,
-            "range": "± 0.973819",
-            "unit": "ns",
-            "extra": "100 samples\n5483 iterations"
-          },
-          {
-            "name": "exec_cpp_fibonacci",
-            "value": 97.7109,
-            "range": "± 17.5171",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "exec_cpp_sum",
-            "value": 36.1768,
-            "range": "± 470.66",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "exec_bc_add",
-            "value": 42.4543,
-            "range": "± 4.3966",
-            "unit": "ns",
-            "extra": "100 samples\n714 iterations"
-          },
-          {
-            "name": "exec_bc_fibonacci",
-            "value": 918.488,
-            "range": "± 9.04364",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "exec_bc_sum",
-            "value": 198.191,
-            "range": "± 772.983",
-            "unit": "ms",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "ssa_add",
-            "value": 195.151,
-            "range": "± 22.8947",
-            "unit": "ns",
-            "extra": "100 samples\n158 iterations"
-          },
-          {
-            "name": "ssa_ifThenElse",
-            "value": 464.695,
-            "range": "± 66.9164",
-            "unit": "ns",
-            "extra": "100 samples\n70 iterations"
-          },
-          {
-            "name": "ssa_deeplyNestedIfElse",
-            "value": 1.12276,
-            "range": "± 123.25",
-            "unit": "us",
-            "extra": "100 samples\n31 iterations"
-          },
-          {
-            "name": "ssa_loop",
-            "value": 462.42,
-            "range": "± 26.2424",
-            "unit": "ns",
-            "extra": "100 samples\n66 iterations"
-          },
-          {
-            "name": "ssa_ifInsideLoop",
-            "value": 876.763,
-            "range": "± 93.907",
-            "unit": "ns",
-            "extra": "100 samples\n39 iterations"
-          },
-          {
-            "name": "ssa_loopDirectCall",
-            "value": 492.411,
-            "range": "± 54.5269",
-            "unit": "ns",
-            "extra": "100 samples\n67 iterations"
-          },
-          {
-            "name": "ssa_pointerLoop",
-            "value": 560.3,
-            "range": "± 38.942",
-            "unit": "ns",
-            "extra": "100 samples\n59 iterations"
-          },
-          {
-            "name": "ssa_staticLoop",
-            "value": 384.408,
-            "range": "± 43.3959",
-            "unit": "ns",
-            "extra": "100 samples\n80 iterations"
-          },
-          {
-            "name": "ssa_fibonacci",
-            "value": 507.005,
-            "range": "± 55.9363",
-            "unit": "ns",
-            "extra": "100 samples\n66 iterations"
-          },
-          {
-            "name": "ssa_gcd",
-            "value": 470.846,
-            "range": "± 74.8718",
-            "unit": "ns",
-            "extra": "100 samples\n69 iterations"
-          },
-          {
-            "name": "ir_add",
-            "value": 897.467,
-            "range": "± 88.0248",
-            "unit": "ns",
-            "extra": "100 samples\n35 iterations"
-          },
-          {
-            "name": "ir_ifThenElse",
-            "value": 2.4728,
-            "range": "± 226.825",
-            "unit": "us",
-            "extra": "100 samples\n13 iterations"
-          },
-          {
-            "name": "ir_deeplyNestedIfElse",
-            "value": 6.59651,
-            "range": "± 790.731",
-            "unit": "us",
-            "extra": "100 samples\n5 iterations"
-          },
-          {
-            "name": "ir_loop",
-            "value": 2.95247,
-            "range": "± 312.831",
-            "unit": "us",
-            "extra": "100 samples\n11 iterations"
-          },
-          {
-            "name": "ir_ifInsideLoop",
-            "value": 5.66317,
-            "range": "± 610.826",
-            "unit": "us",
-            "extra": "100 samples\n6 iterations"
-          },
-          {
-            "name": "ir_loopDirectCall",
-            "value": 3.11491,
-            "range": "± 285.106",
-            "unit": "us",
-            "extra": "100 samples\n10 iterations"
-          },
-          {
-            "name": "ir_pointerLoop",
-            "value": 3.77208,
-            "range": "± 445.117",
-            "unit": "us",
-            "extra": "100 samples\n9 iterations"
-          },
-          {
-            "name": "ir_staticLoop",
-            "value": 2.32257,
-            "range": "± 306.095",
-            "unit": "us",
-            "extra": "100 samples\n14 iterations"
-          },
-          {
-            "name": "ir_fibonacci",
-            "value": 3.14993,
-            "range": "± 286.603",
-            "unit": "us",
-            "extra": "100 samples\n10 iterations"
-          },
-          {
-            "name": "ir_gcd",
-            "value": 2.71428,
-            "range": "± 310.165",
-            "unit": "us",
-            "extra": "100 samples\n12 iterations"
-          },
-          {
-            "name": "ir_nestedIf10",
-            "value": 16.4894,
-            "range": "± 1.6747",
-            "unit": "us",
-            "extra": "100 samples\n2 iterations"
-          },
-          {
-            "name": "ir_nestedIf100",
-            "value": 185.444,
-            "range": "± 5.71041",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          },
-          {
-            "name": "ir_chainedIf10",
-            "value": 29.0826,
-            "range": "± 2.57493",
-            "unit": "us",
-            "extra": "100 samples\n2 iterations"
-          },
-          {
-            "name": "ir_chainedIf100",
-            "value": 353.99,
-            "range": "± 13.9044",
-            "unit": "us",
-            "extra": "100 samples\n1 iterations"
-          }
-        ]
-      },
       {
         "commit": {
           "author": {
@@ -15185,6 +14734,968 @@ window.BENCHMARK_DATA = {
             "name": "e2e_single_mlir",
             "value": 8.1792,
             "range": "± 214.586",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "philippgrulich@hotmail.de",
+            "name": "Philipp Grulich",
+            "username": "PhilippGrulich"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c01247b4b72cf75d04e2fcb4bd9c5607a902e5f2",
+          "message": "Add SIMD Vector API with hardware-auto-detected lane widths (#207)\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-04-04T15:41:30+02:00",
+          "tree_id": "ece608dcffe5ab5b899e653d471f7129485969d6",
+          "url": "https://github.com/nebulastream/nautilus/commit/c01247b4b72cf75d04e2fcb4bd9c5607a902e5f2"
+        },
+        "date": 1775310531164,
+        "tool": "catch2",
+        "benches": [
+          {
+            "name": "e2e_tiered_bc_to_mlir",
+            "value": 37.5093,
+            "range": "± 11.7494",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "e2e_single_mlir",
+            "value": 8.19571,
+            "range": "± 167.513",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "trace_add",
+            "value": 2.52067,
+            "range": "± 245.618",
+            "unit": "us",
+            "extra": "100 samples\n12 iterations"
+          },
+          {
+            "name": "completing_trace_add",
+            "value": 2.6538,
+            "range": "± 358.325",
+            "unit": "us",
+            "extra": "100 samples\n12 iterations"
+          },
+          {
+            "name": "trace_ifThenElse",
+            "value": 11.8139,
+            "range": "± 1.83892",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "completing_trace_ifThenElse",
+            "value": 5.51813,
+            "range": "± 747.257",
+            "unit": "us",
+            "extra": "100 samples\n6 iterations"
+          },
+          {
+            "name": "trace_deeplyNestedIfElse",
+            "value": 37.1472,
+            "range": "± 6.76066",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "completing_trace_deeplyNestedIfElse",
+            "value": 17.0804,
+            "range": "± 3.53069",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "trace_loop",
+            "value": 11.7774,
+            "range": "± 1.9669",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "completing_trace_loop",
+            "value": 5.66643,
+            "range": "± 1.08795",
+            "unit": "us",
+            "extra": "100 samples\n6 iterations"
+          },
+          {
+            "name": "trace_ifInsideLoop",
+            "value": 22.9594,
+            "range": "± 3.28725",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "completing_trace_ifInsideLoop",
+            "value": 10.6377,
+            "range": "± 1.71834",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "trace_loopDirectCall",
+            "value": 11.861,
+            "range": "± 1.96453",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "completing_trace_loopDirectCall",
+            "value": 5.53426,
+            "range": "± 799.207",
+            "unit": "us",
+            "extra": "100 samples\n6 iterations"
+          },
+          {
+            "name": "trace_pointerLoop",
+            "value": 18.179,
+            "range": "± 3.86525",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "completing_trace_pointerLoop",
+            "value": 11.9649,
+            "range": "± 2.0581",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "trace_staticLoop",
+            "value": 9.83869,
+            "range": "± 1.37239",
+            "unit": "us",
+            "extra": "100 samples\n4 iterations"
+          },
+          {
+            "name": "completing_trace_staticLoop",
+            "value": 9.32965,
+            "range": "± 1.35495",
+            "unit": "us",
+            "extra": "100 samples\n4 iterations"
+          },
+          {
+            "name": "trace_fibonacci",
+            "value": 13.0407,
+            "range": "± 1.88404",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "completing_trace_fibonacci",
+            "value": 7.10904,
+            "range": "± 961.419",
+            "unit": "us",
+            "extra": "100 samples\n5 iterations"
+          },
+          {
+            "name": "trace_gcd",
+            "value": 10.7828,
+            "range": "± 1.7374",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "completing_trace_gcd",
+            "value": 4.64365,
+            "range": "± 522.599",
+            "unit": "us",
+            "extra": "100 samples\n7 iterations"
+          },
+          {
+            "name": "trace_nestedIf10",
+            "value": 57.6997,
+            "range": "± 7.73545",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "completing_trace_nestedIf10",
+            "value": 58.0938,
+            "range": "± 8.82738",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "trace_nestedIf100",
+            "value": 1.80438,
+            "range": "± 39.6808",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "completing_trace_nestedIf100",
+            "value": 1.81009,
+            "range": "± 37.214",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "trace_chainedIf10",
+            "value": 140.21,
+            "range": "± 12.5902",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "completing_trace_chainedIf10",
+            "value": 71.212,
+            "range": "± 9.26146",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "trace_chainedIf100",
+            "value": 5.15008,
+            "range": "± 37.6043",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "completing_trace_chainedIf100",
+            "value": 2.86089,
+            "range": "± 51.0819",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_bc_addOne",
+            "value": 38.3849,
+            "range": "± 9.06161",
+            "unit": "ns",
+            "extra": "100 samples\n871 iterations"
+          },
+          {
+            "name": "exec_mlir_addOne",
+            "value": 282.268,
+            "range": "± 7.59911",
+            "unit": "ns",
+            "extra": "100 samples\n8265 iterations"
+          },
+          {
+            "name": "exec_cpp_addOne",
+            "value": 4.05985,
+            "range": "± 0.739266",
+            "unit": "ns",
+            "extra": "100 samples\n7746 iterations"
+          },
+          {
+            "name": "exec_interpreted_addOne",
+            "value": 39.3263,
+            "range": "± 2.05037",
+            "unit": "ns",
+            "extra": "100 samples\n739 iterations"
+          },
+          {
+            "name": "ssa_add",
+            "value": 206.987,
+            "range": "± 29.7624",
+            "unit": "ns",
+            "extra": "100 samples\n156 iterations"
+          },
+          {
+            "name": "ssa_ifThenElse",
+            "value": 507.968,
+            "range": "± 67.906",
+            "unit": "ns",
+            "extra": "100 samples\n65 iterations"
+          },
+          {
+            "name": "ssa_deeplyNestedIfElse",
+            "value": 1.2589,
+            "range": "± 139.2",
+            "unit": "us",
+            "extra": "100 samples\n27 iterations"
+          },
+          {
+            "name": "ssa_loop",
+            "value": 512.462,
+            "range": "± 42.9444",
+            "unit": "ns",
+            "extra": "100 samples\n62 iterations"
+          },
+          {
+            "name": "ssa_ifInsideLoop",
+            "value": 978.605,
+            "range": "± 90.4827",
+            "unit": "ns",
+            "extra": "100 samples\n34 iterations"
+          },
+          {
+            "name": "ssa_loopDirectCall",
+            "value": 528.28,
+            "range": "± 61.6351",
+            "unit": "ns",
+            "extra": "100 samples\n62 iterations"
+          },
+          {
+            "name": "ssa_pointerLoop",
+            "value": 636.582,
+            "range": "± 92.2697",
+            "unit": "ns",
+            "extra": "100 samples\n53 iterations"
+          },
+          {
+            "name": "ssa_staticLoop",
+            "value": 498.308,
+            "range": "± 51.1977",
+            "unit": "ns",
+            "extra": "100 samples\n60 iterations"
+          },
+          {
+            "name": "ssa_fibonacci",
+            "value": 537.388,
+            "range": "± 52.4788",
+            "unit": "ns",
+            "extra": "100 samples\n61 iterations"
+          },
+          {
+            "name": "ssa_gcd",
+            "value": 490.895,
+            "range": "± 82.9043",
+            "unit": "ns",
+            "extra": "100 samples\n67 iterations"
+          },
+          {
+            "name": "tiered_compile_addOne",
+            "value": 42.5661,
+            "range": "± 12.2529",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_mlir_addOne",
+            "value": 6.56363,
+            "range": "± 204.754",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_cpp_addOne",
+            "value": 25.3529,
+            "range": "± 376.871",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_bc_addOne",
+            "value": 42.2573,
+            "range": "± 11.3992",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "tiered_compile_sumLoop",
+            "value": 61.9797,
+            "range": "± 12.8559",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_mlir_sumLoop",
+            "value": 8.3116,
+            "range": "± 164.895",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_cpp_sumLoop",
+            "value": 26.3052,
+            "range": "± 333.381",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "single_compile_bc_sumLoop",
+            "value": 60.6621,
+            "range": "± 13.2576",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_mlir_add",
+            "value": 10.008,
+            "range": "± 1.2622",
+            "unit": "ns",
+            "extra": "100 samples\n9292 iterations"
+          },
+          {
+            "name": "exec_mlir_fibonacci",
+            "value": 14.7086,
+            "range": "± 2.13282",
+            "unit": "us",
+            "extra": "100 samples\n7 iterations"
+          },
+          {
+            "name": "exec_mlir_sum",
+            "value": 561.635,
+            "range": "± 24.7226",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_cpp_add",
+            "value": 4.70719,
+            "range": "± 0.588182",
+            "unit": "ns",
+            "extra": "100 samples\n6551 iterations"
+          },
+          {
+            "name": "exec_cpp_fibonacci",
+            "value": 94.611,
+            "range": "± 3.80368",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_cpp_sum",
+            "value": 36.1303,
+            "range": "± 533.696",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_bc_add",
+            "value": 55.5753,
+            "range": "± 15.5573",
+            "unit": "ns",
+            "extra": "100 samples\n667 iterations"
+          },
+          {
+            "name": "exec_bc_fibonacci",
+            "value": 932.445,
+            "range": "± 28.0037",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_bc_sum",
+            "value": 196.151,
+            "range": "± 1.34432",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "exec_asmjit_add",
+            "value": 3.23032,
+            "range": "± 0.307965",
+            "unit": "ns",
+            "extra": "100 samples\n9268 iterations"
+          },
+          {
+            "name": "exec_asmjit_fibonacci",
+            "value": 21.5547,
+            "range": "± 2.23995",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "exec_asmjit_sum",
+            "value": 4.61075,
+            "range": "± 40.9482",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "ir_add",
+            "value": 915.956,
+            "range": "± 119.273",
+            "unit": "ns",
+            "extra": "100 samples\n36 iterations"
+          },
+          {
+            "name": "ir_ifThenElse",
+            "value": 2.5734,
+            "range": "± 292.207",
+            "unit": "us",
+            "extra": "100 samples\n13 iterations"
+          },
+          {
+            "name": "ir_deeplyNestedIfElse",
+            "value": 6.87058,
+            "range": "± 634.436",
+            "unit": "us",
+            "extra": "100 samples\n5 iterations"
+          },
+          {
+            "name": "ir_loop",
+            "value": 3.06223,
+            "range": "± 361.375",
+            "unit": "us",
+            "extra": "100 samples\n11 iterations"
+          },
+          {
+            "name": "ir_ifInsideLoop",
+            "value": 5.91892,
+            "range": "± 738.714",
+            "unit": "us",
+            "extra": "100 samples\n6 iterations"
+          },
+          {
+            "name": "ir_loopDirectCall",
+            "value": 3.30114,
+            "range": "± 364.361",
+            "unit": "us",
+            "extra": "100 samples\n10 iterations"
+          },
+          {
+            "name": "ir_pointerLoop",
+            "value": 3.90241,
+            "range": "± 328.825",
+            "unit": "us",
+            "extra": "100 samples\n8 iterations"
+          },
+          {
+            "name": "ir_staticLoop",
+            "value": 2.30728,
+            "range": "± 272.394",
+            "unit": "us",
+            "extra": "100 samples\n14 iterations"
+          },
+          {
+            "name": "ir_fibonacci",
+            "value": 3.25706,
+            "range": "± 357.786",
+            "unit": "us",
+            "extra": "100 samples\n10 iterations"
+          },
+          {
+            "name": "ir_gcd",
+            "value": 2.75793,
+            "range": "± 297.114",
+            "unit": "us",
+            "extra": "100 samples\n12 iterations"
+          },
+          {
+            "name": "ir_nestedIf10",
+            "value": 16.4979,
+            "range": "± 1.85667",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "ir_nestedIf100",
+            "value": 196.116,
+            "range": "± 16.1689",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "ir_chainedIf10",
+            "value": 29.2126,
+            "range": "± 2.07206",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "ir_chainedIf100",
+            "value": 372.703,
+            "range": "± 10.9432",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_add",
+            "value": 8.25938,
+            "range": "± 184.393",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_ifThenElse",
+            "value": 8.83948,
+            "range": "± 177.957",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_deeplyNestedIfElse",
+            "value": 7.78595,
+            "range": "± 212.777",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_loop",
+            "value": 10.0365,
+            "range": "± 327.485",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_ifInsideLoop",
+            "value": 32.429,
+            "range": "± 343.986",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_loopDirectCall",
+            "value": 14.7347,
+            "range": "± 216.972",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_pointerLoop",
+            "value": 31.13,
+            "range": "± 294.021",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_staticLoop",
+            "value": 7.63437,
+            "range": "± 172.018",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_fibonacci",
+            "value": 13.6997,
+            "range": "± 354.395",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_gcd",
+            "value": 12.1509,
+            "range": "± 201.911",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_nestedIf10",
+            "value": 13.1972,
+            "range": "± 204.189",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_nestedIf100",
+            "value": 27.7343,
+            "range": "± 269.018",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_chainedIf10",
+            "value": 12.5453,
+            "range": "± 829.926",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_mlir_chainedIf100",
+            "value": 23.6239,
+            "range": "± 333.055",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_add",
+            "value": 25.866,
+            "range": "± 438.323",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_ifThenElse",
+            "value": 26.0439,
+            "range": "± 482.648",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_deeplyNestedIfElse",
+            "value": 27.2588,
+            "range": "± 426.676",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_loop",
+            "value": 26.1953,
+            "range": "± 282.785",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_ifInsideLoop",
+            "value": 27.2569,
+            "range": "± 493.711",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_loopDirectCall",
+            "value": 26.7647,
+            "range": "± 373.636",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_pointerLoop",
+            "value": 26.5196,
+            "range": "± 309.284",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_staticLoop",
+            "value": 26.3795,
+            "range": "± 521.078",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_fibonacci",
+            "value": 26.4091,
+            "range": "± 341.807",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_gcd",
+            "value": 26.2101,
+            "range": "± 367.548",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_nestedIf10",
+            "value": 29.4624,
+            "range": "± 394.264",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_nestedIf100",
+            "value": 62.783,
+            "range": "± 397.881",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_chainedIf10",
+            "value": 31.7236,
+            "range": "± 618.486",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_cpp_chainedIf100",
+            "value": 92.5733,
+            "range": "± 532.692",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_bc_add",
+            "value": 14.2352,
+            "range": "± 2.37181",
+            "unit": "us",
+            "extra": "100 samples\n3 iterations"
+          },
+          {
+            "name": "comp_bc_ifThenElse",
+            "value": 17.369,
+            "range": "± 2.88438",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_deeplyNestedIfElse",
+            "value": 22.1564,
+            "range": "± 3.70898",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_loop",
+            "value": 17.8152,
+            "range": "± 3.42614",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_ifInsideLoop",
+            "value": 20.6383,
+            "range": "± 4.07876",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_loopDirectCall",
+            "value": 18.9324,
+            "range": "± 3.463",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_pointerLoop",
+            "value": 19.8306,
+            "range": "± 4.67596",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_staticLoop",
+            "value": 17.2518,
+            "range": "± 4.40826",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_fibonacci",
+            "value": 18.3354,
+            "range": "± 4.51067",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_gcd",
+            "value": 17.6809,
+            "range": "± 3.31926",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_nestedIf10",
+            "value": 34.7376,
+            "range": "± 4.99439",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_bc_nestedIf100",
+            "value": 175.939,
+            "range": "± 11.7728",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_bc_chainedIf10",
+            "value": 48.2046,
+            "range": "± 7.65958",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_bc_chainedIf100",
+            "value": 279.616,
+            "range": "± 16.7199",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_add",
+            "value": 21.3334,
+            "range": "± 5.82024",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_asmjit_ifThenElse",
+            "value": 32.8085,
+            "range": "± 4.55905",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_asmjit_deeplyNestedIfElse",
+            "value": 58.1518,
+            "range": "± 10.5121",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_loop",
+            "value": 35.476,
+            "range": "± 5.10508",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_asmjit_ifInsideLoop",
+            "value": 57.8955,
+            "range": "± 9.42696",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_loopDirectCall",
+            "value": 45.666,
+            "range": "± 8.06252",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_pointerLoop",
+            "value": 48.0129,
+            "range": "± 8.49623",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_staticLoop",
+            "value": 27.6994,
+            "range": "± 4.60402",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_asmjit_fibonacci",
+            "value": 43.9836,
+            "range": "± 8.35777",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_gcd",
+            "value": 35.3579,
+            "range": "± 6.11817",
+            "unit": "us",
+            "extra": "100 samples\n2 iterations"
+          },
+          {
+            "name": "comp_asmjit_nestedIf10",
+            "value": 109.6,
+            "range": "± 13.0658",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_nestedIf100",
+            "value": 1.12905,
+            "range": "± 22.2548",
+            "unit": "ms",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_chainedIf10",
+            "value": 164.837,
+            "range": "± 19.0884",
+            "unit": "us",
+            "extra": "100 samples\n1 iterations"
+          },
+          {
+            "name": "comp_asmjit_chainedIf100",
+            "value": 2.27325,
+            "range": "± 47.0784",
             "unit": "ms",
             "extra": "100 samples\n1 iterations"
           }
