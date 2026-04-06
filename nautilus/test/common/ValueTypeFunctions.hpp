@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <nautilus/Engine.hpp>
 #include <nautilus/nautilus_function.hpp>
-#include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
+#include <nautilus/val_memcpy.hpp>
 #include <nautilus/val_ptr.hpp>
 #include <nautilus/val_std.hpp>
 

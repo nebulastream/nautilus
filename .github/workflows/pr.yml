@@ -110,6 +110,14 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/nautilus --output-on-failure
+      - name: test std plugin
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/std/test --output-on-failure
+      - name: test simd plugin
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/simd/test --output-on-failure
   llvm-ir-test:
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-21)
@@ -143,8 +151,12 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-llvm-ir-test
-      - name: test
+          cmake --build build --target nautilus-llvm-ir-test nautilus-std-llvm-ir-test
+      - name: test core LLVM IR
         shell: bash
         run: |
           ctest --test-dir build/nautilus/test/llvm-ir-test --output-on-failure
+      - name: test std plugin LLVM IR
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/std/test -L "llvm" --output-on-failure

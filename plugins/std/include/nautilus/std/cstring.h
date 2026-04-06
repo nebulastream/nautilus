@@ -1,28 +1,8 @@
 #pragma once
+#include <nautilus/val_memcpy.hpp>
 #include <nautilus/val_ptr.hpp>
 
 namespace nautilus {
-
-/**
- * Copies `count` bytes from memory area `src` to memory area `dest`.
- *
- * @param dest Destination memory area.
- * @param src Source memory area.
- * @param count Number of bytes to copy.
- * @return Pointer to the destination memory area `dest`.
- */
-val<void*> memcpy(val<void*> dest, val<const void*> src, val<size_t> count);
-
-/**
- * Moves `n` bytes from memory area `s2` to memory area `s1`.
- * Memory areas may overlap.
- *
- * @param s1 Destination memory area.
- * @param s2 Source memory area.
- * @param n Number of bytes to move.
- * @return Pointer to the destination memory area `s1`.
- */
-val<void*> memmove(val<void*> s1, val<const void*> s2, val<size_t> n);
 
 /**
  * Copies the C-string `s2` to `s1` (including the null terminator).
@@ -207,17 +187,6 @@ val<char*> strstr(val<char*> s1, val<const char*> s2);
  * @return A pointer to the next token, or nullptr if there are no more tokens.
  */
 val<char*> strtok(val<char*> s1, val<const char*> s2);
-
-/**
- * Fills the first `n` bytes of the memory area pointed to by `s` with the
- * constant byte `c`.
- *
- * @param s Memory area.
- * @param c Value to be set.
- * @param n Number of bytes to be set.
- * @return A pointer to the memory area `s`.
- */
-val<void*> memset(val<void*> s, val<int> c, val<size_t> n);
 
 /**
  * Returns a pointer to the textual representation of the error number `errnum`.

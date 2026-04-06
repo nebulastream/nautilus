@@ -3,13 +3,6 @@
 #include <nautilus/function.hpp>
 #include <nautilus/std/cstring.h>
 namespace nautilus {
-val<void*> memcpy(val<void*> dest, val<const void*> src, val<size_t> count) {
-	return invoke<void*, void*, const void*, size_t>(std::memcpy, dest, src, count);
-}
-
-val<void*> memmove(val<void*> s1, val<const void*> s2, val<size_t> n) {
-	return invoke<void*, void*, const void*, size_t>(std::memmove, s1, s2, n);
-}
 
 val<char*> strcpy(val<char*> s1, val<const char*> s2) {
 	return invoke<char*, char*, const char*>(std::strcpy, s1, s2);
@@ -76,9 +69,6 @@ val<char*> strstr(val<char*> s1, val<const char*> s2) {
 }
 val<char*> strtok(val<char*> s1, val<const char*> s2) {
 	return invoke<char*, char*, const char*>(std::strtok, s1, s2);
-}
-val<void*> memset(val<void*> s, val<int> c, val<size_t> n) {
-	return invoke<void*, void*, int, size_t>(std::memset, s, c, n);
 }
 val<char*> strerror(val<int> errnum) {
 	return invoke<char*, int>(std::strerror, errnum);
