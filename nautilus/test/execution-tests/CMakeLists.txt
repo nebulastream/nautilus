@@ -11,8 +11,6 @@ add_executable(nautilus-execution-tests
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
-        BitIntrinsicExecutionTest.cpp
-        MemoryIntrinsicExecutionTest.cpp
 )
 
 nautilus_inline(nautilus-execution-tests)
@@ -56,4 +54,3 @@ if (ENABLE_TRACING)
     endif ()
 endif ()
 
-add_subdirectory(std)

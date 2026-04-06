@@ -392,7 +392,6 @@ TEST_CASE("Pointer Trace Test") {
 	    {"castPtrAndGetValue_i8", details::createFunctionWrapper(castPtrAndGetValue<int8_t, int16_t>)},
 	    {"sumArray", details::createFunctionWrapper(sumArray)},
 	    {"addArray_i8", details::createFunctionWrapper(addArray<int8_t>)},
-	    {"callMemcpy", details::createFunctionWrapper(callMemcpy)},
 	    {"passCustomClass", details::createFunctionWrapper(passCustomClass)},
 	    {"castCustomClass", details::createFunctionWrapper(castCustomClass)},
 	    {"specializeType", details::createFunctionWrapper(specializeType)},

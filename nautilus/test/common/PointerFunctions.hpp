@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <nautilus/Engine.hpp>
-#include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
 
@@ -132,10 +131,6 @@ void addArray(val<T*> array, val<T*> array2, val<T> length) {
 		val<T> right = array2[i];
 		array[i] = left + right;
 	}
-}
-
-inline void callMemcpy(val<int32_t*> src, val<int32_t*> dest) {
-	memcpy(dest, src, 0);
 }
 
 inline val<int32_t> pointerAddNegativeOffset(val<int32_t*> ptr, val<int32_t> offset) {

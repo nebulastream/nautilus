@@ -108,7 +108,6 @@
 #pragma once
 
 #include "nautilus/function.hpp"
-#include "nautilus/std/cstring.h"
 #include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstring>
@@ -211,7 +210,7 @@ public:
 	// Trivially-copyable types use a traced memcpy; others use copy_construct via invoke().
 	val(const val<ValueType>& other) : value_ptr(details::nautilus_alloca<ValueType>()) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
-			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
+			invoke<void*, void*, const void*, size_t>(std::memcpy, value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
 			invoke(copy_construct, value_ptr, other.value_ptr);
 		}
@@ -232,7 +231,7 @@ public:
 	// Trivially-copyable types use a traced memcpy; others use copy_assign via invoke().
 	val<ValueType>& operator=(const val<ValueType>& other) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
-			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
+			invoke<void*, void*, const void*, size_t>(std::memcpy, value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
 			invoke(copy_assign, value_ptr, other.value_ptr);
 		}
@@ -252,7 +251,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	auto get(F T::* pm) {
+	auto get(F T::*pm) {
 		return value_ptr.get(pm);
 	}
 
@@ -264,7 +263,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::*pm, val<F> value) {
 		return value_ptr.set(pm, value);
 	}
 
@@ -279,7 +278,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, F value) {
+	void set(F T::*pm, F value) {
 		return value_ptr.set(pm, value);
 	}
 

@@ -36,7 +36,6 @@ using nautilus::isEnum;
 
 // Import pointer functions from nautilus namespace
 using nautilus::addArray;
-using nautilus::callMemcpy;
 using nautilus::castCustomClass;
 using nautilus::castPtrAndGetValue;
 using nautilus::castVoidPtr;

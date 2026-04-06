@@ -6,9 +6,9 @@
 #include <string>
 
 // Include test function headers
-#include "../common/CMathIntrinsicFunctions.hpp"
-#include "../common/MemoryIntrinsicFunctions.hpp"
-#include "../common/ProfileFunctions.hpp"
+#include "CMathIntrinsicFunctions.hpp"
+#include "MemoryIntrinsicFunctions.hpp"
+#include "ProfileFunctions.hpp"
 
 namespace nautilus::engine {
 

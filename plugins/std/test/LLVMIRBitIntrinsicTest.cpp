@@ -6,7 +6,7 @@
 #include <string>
 
 // Include test function headers
-#include "../common/BitIntrinsicFunctions.hpp"
+#include "BitIntrinsicFunctions.hpp"
 
 namespace nautilus::engine {
 
