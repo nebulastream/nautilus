@@ -25,24 +25,47 @@ public:
 
 	// Element access
 
-	val<T> at(val<size_type> pos) {
+	val<T> at(val<size_type> pos)
+	    requires(!std::is_class_v<T>)
+	{
 		return invoke(
 		    +[](base_type* ptr, size_type p) -> T { return ptr->at(p); }, data_ptr, pos);
 	}
 
-	val<T> operator[](val<size_type> pos) {
+	val<T> operator[](val<size_type> pos)
+	    requires(!std::is_class_v<T>)
+	{
 		return invoke(
 		    +[](base_type* ptr, size_type p) -> T { return ptr->operator[](p); }, data_ptr, pos);
 	}
 
-	val<T> front() {
+	val<T*> at_ptr(val<size_type> pos) {
+		return invoke(
+		    +[](base_type* ptr, size_type p) -> T* { return &ptr->at(p); }, data_ptr, pos);
+	}
+
+	val<T> front()
+	    requires(!std::is_class_v<T>)
+	{
 		return invoke(
 		    +[](base_type* ptr) -> T { return ptr->front(); }, data_ptr);
 	}
 
-	val<T> back() {
+	val<T> back()
+	    requires(!std::is_class_v<T>)
+	{
 		return invoke(
 		    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
+	}
+
+	val<T*> front_ptr() {
+		return invoke(
+		    +[](base_type* ptr) -> T* { return &ptr->front(); }, data_ptr);
+	}
+
+	val<T*> back_ptr() {
+		return invoke(
+		    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
 	}
 
 	val<T*> data() {
@@ -79,9 +102,18 @@ public:
 		    +[](base_type* ptr) -> void { ptr->clear(); }, data_ptr);
 	}
 
-	void push_back(val<T> value) {
+	void push_back(val<T> value)
+	    requires(!std::is_class_v<T>)
+	{
 		invoke(
 		    +[](base_type* ptr, T v) -> void { ptr->push_back(v); }, data_ptr, value);
+	}
+
+	void push_back(val<T*> value_ptr)
+	    requires(std::is_class_v<T>)
+	{
+		invoke(
+		    +[](base_type* ptr, T* v) -> void { ptr->push_back(*v); }, data_ptr, value_ptr);
 	}
 
 	void pop_back() {
@@ -94,7 +126,9 @@ public:
 		    +[](base_type* ptr, size_type c) -> void { ptr->resize(c); }, data_ptr, count);
 	}
 
-	void resize(val<size_type> count, val<T> value) {
+	void resize(val<size_type> count, val<T> value)
+	    requires(!std::is_class_v<T>)
+	{
 		invoke(
 		    +[](base_type* ptr, size_type c, T v) -> void { ptr->resize(c, v); }, data_ptr, count, value);
 	}
