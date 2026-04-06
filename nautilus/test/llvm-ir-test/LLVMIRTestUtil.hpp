@@ -62,6 +62,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 		                      "s/ captures\\([^)]*\\)//g; "
 		                      "s/, errnomem: [^,)]+//g; "
 		                      "s/ range\\([^)]+\\)//g; "
+		                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 		                      "/^attributes #[0-9]+ = \\{ \\}$/d"
 		                      "' " +
 		                      std::string(generatedLLVMFile) + " > " + referenceIRPath;
@@ -90,6 +91,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	                      "s/ captures\\([^)]*\\)//g; "
 	                      "s/, errnomem: [^,)]+//g; "
 	                      "s/ range\\([^)]+\\)//g; "
+	                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 	                      "/^attributes #[0-9]+ = \\{ \\}$/d"
 	                      "' ";
 

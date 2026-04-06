@@ -49,9 +49,22 @@ static size_t detect_simd_width() {
 #endif
 }
 
+static size_t simd_width_override = 0;
+
 size_t RuntimeSimdWidth() {
+	if (simd_width_override != 0) {
+		return simd_width_override;
+	}
 	static const size_t width = detect_simd_width();
 	return width;
+}
+
+void SetSimdWidth(size_t widthInBytes) {
+	simd_width_override = widthInBytes;
+}
+
+void ResetSimdWidth() {
+	simd_width_override = 0;
 }
 
 // ============================================================================

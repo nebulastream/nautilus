@@ -4,17 +4,17 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 define float @execute(ptr %0, ptr %1) local_unnamed_addr #0 {
-  %3 = tail call ptr @runtimeFunc0(ptr %1)
-  %4 = tail call ptr @runtimeFunc0(ptr %0)
-  %5 = tail call ptr @runtimeFunc1(ptr %4, ptr %3)
+  %3 = tail call ptr @runtimeFunc0(ptr %0)
+  %4 = tail call ptr @runtimeFunc0(ptr %1)
+  %5 = tail call ptr @runtimeFunc1(ptr %3, ptr %4)
   %6 = tail call float @runtimeFunc2(ptr %5)
   ret float %6
 }
 
 define float @_mlir_ciface_execute(ptr %0, ptr %1) local_unnamed_addr #0 {
-  %3 = tail call ptr @runtimeFunc0(ptr %1)
-  %4 = tail call ptr @runtimeFunc0(ptr %0)
-  %5 = tail call ptr @runtimeFunc1(ptr %4, ptr %3)
+  %3 = tail call ptr @runtimeFunc0(ptr %0)
+  %4 = tail call ptr @runtimeFunc0(ptr %1)
+  %5 = tail call ptr @runtimeFunc1(ptr %3, ptr %4)
   %6 = tail call float @runtimeFunc2(ptr %5)
   ret float %6
 }
@@ -34,9 +34,9 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = tail call ptr @runtimeFunc0(ptr %6)
-  %8 = tail call ptr @runtimeFunc0(ptr %3)
-  %9 = tail call ptr @runtimeFunc1(ptr %8, ptr %7)
+  %7 = tail call ptr @runtimeFunc0(ptr %3)
+  %8 = tail call ptr @runtimeFunc0(ptr %6)
+  %9 = tail call ptr @runtimeFunc1(ptr %7, ptr %8)
   %10 = tail call float @runtimeFunc2(ptr %9)
   %11 = getelementptr i8, ptr %0, i64 16
   %12 = load ptr, ptr %11, align 8
@@ -50,9 +50,9 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = tail call ptr @runtimeFunc0(ptr %6)
-  %8 = tail call ptr @runtimeFunc0(ptr %3)
-  %9 = tail call ptr @runtimeFunc1(ptr %8, ptr %7)
+  %7 = tail call ptr @runtimeFunc0(ptr %3)
+  %8 = tail call ptr @runtimeFunc0(ptr %6)
+  %9 = tail call ptr @runtimeFunc1(ptr %7, ptr %8)
   %10 = tail call float @runtimeFunc2(ptr %9)
   %11 = getelementptr i8, ptr %0, i64 16
   %12 = load ptr, ptr %11, align 8

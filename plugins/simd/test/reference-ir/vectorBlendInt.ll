@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly initializes((0, 64)) %3) local_unnamed_addr #0 {
+define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly %3) local_unnamed_addr #0 {
   %5 = load <16 x i32>, ptr %0, align 64
   %6 = load <16 x i32>, ptr %1, align 64
   %7 = load <16 x i32>, ptr %2, align 64
@@ -15,7 +15,7 @@ define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writ
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly initializes((0, 64)) %3) local_unnamed_addr #0 {
+define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly %3) local_unnamed_addr #0 {
   %5 = load <16 x i32>, ptr %0, align 64
   %6 = load <16 x i32>, ptr %1, align 64
   %7 = load <16 x i32>, ptr %2, align 64

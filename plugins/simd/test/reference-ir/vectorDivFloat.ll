@@ -4,19 +4,19 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @execute(ptr readonly %0, ptr readonly %1, ptr writeonly initializes((0, 64)) %2) local_unnamed_addr #0 {
-  %4 = load <16 x float>, ptr %1, align 64
-  %5 = load <16 x float>, ptr %0, align 64
-  %6 = fdiv <16 x float> %5, %4
+define void @execute(ptr readonly %0, ptr readonly %1, ptr writeonly %2) local_unnamed_addr #0 {
+  %4 = load <16 x float>, ptr %0, align 64
+  %5 = load <16 x float>, ptr %1, align 64
+  %6 = fdiv <16 x float> %4, %5
   store <16 x float> %6, ptr %2, align 64
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr writeonly initializes((0, 64)) %2) local_unnamed_addr #0 {
-  %4 = load <16 x float>, ptr %1, align 64
-  %5 = load <16 x float>, ptr %0, align 64
-  %6 = fdiv <16 x float> %5, %4
+define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr writeonly %2) local_unnamed_addr #0 {
+  %4 = load <16 x float>, ptr %0, align 64
+  %5 = load <16 x float>, ptr %1, align 64
+  %6 = fdiv <16 x float> %4, %5
   store <16 x float> %6, ptr %2, align 64
   ret void
 }
@@ -31,9 +31,9 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %7 = getelementptr i8, ptr %0, i64 16
   %8 = load ptr, ptr %7, align 8
   %9 = load ptr, ptr %8, align 8
-  %10 = load <16 x float>, ptr %6, align 64
-  %11 = load <16 x float>, ptr %3, align 64
-  %12 = fdiv <16 x float> %11, %10
+  %10 = load <16 x float>, ptr %3, align 64
+  %11 = load <16 x float>, ptr %6, align 64
+  %12 = fdiv <16 x float> %10, %11
   store <16 x float> %12, ptr %9, align 64
   ret void
 }
@@ -48,9 +48,9 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %7 = getelementptr i8, ptr %0, i64 16
   %8 = load ptr, ptr %7, align 8
   %9 = load ptr, ptr %8, align 8
-  %10 = load <16 x float>, ptr %6, align 64
-  %11 = load <16 x float>, ptr %3, align 64
-  %12 = fdiv <16 x float> %11, %10
+  %10 = load <16 x float>, ptr %3, align 64
+  %11 = load <16 x float>, ptr %6, align 64
+  %12 = fdiv <16 x float> %10, %11
   store <16 x float> %12, ptr %9, align 64
   ret void
 }

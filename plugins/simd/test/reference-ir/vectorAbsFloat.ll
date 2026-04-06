@@ -4,7 +4,7 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @execute(ptr readonly %0, ptr writeonly initializes((0, 64)) %1) local_unnamed_addr #0 {
+define void @execute(ptr readonly %0, ptr writeonly %1) local_unnamed_addr #0 {
   %3 = load <16 x float>, ptr %0, align 64
   %4 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %3)
   store <16 x float> %4, ptr %1, align 64
@@ -12,7 +12,7 @@ define void @execute(ptr readonly %0, ptr writeonly initializes((0, 64)) %1) loc
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
-define void @_mlir_ciface_execute(ptr readonly %0, ptr writeonly initializes((0, 64)) %1) local_unnamed_addr #0 {
+define void @_mlir_ciface_execute(ptr readonly %0, ptr writeonly %1) local_unnamed_addr #0 {
   %3 = load <16 x float>, ptr %0, align 64
   %4 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %3)
   store <16 x float> %4, ptr %1, align 64

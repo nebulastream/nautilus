@@ -144,6 +144,11 @@ jobs:
           sudo apt-get install -y clang-21 clang++-21 llvm-21
           # Create symlinks for llvm-diff
           sudo ln -sf /usr/bin/llvm-diff-21 /usr/local/bin/llvm-diff-19
+      - name: Cache MLIR binaries
+        uses: actions/cache@v4
+        with:
+          path: build/mlir-*
+          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
       - name: cmake
         shell: bash
         run: |
@@ -151,7 +156,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-llvm-ir-test nautilus-std-llvm-ir-test
+          cmake --build build --target nautilus-llvm-ir-test nautilus-std-llvm-ir-test nautilus-simd-llvm-ir-test
       - name: test core LLVM IR
         shell: bash
         run: |
@@ -160,3 +165,7 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/std/test -L "llvm" --output-on-failure
+      - name: test simd plugin LLVM IR
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/simd/test -L "llvm" --output-on-failure
