@@ -1,11 +1,142 @@
 ---
+# Hardened clang-format configuration for deterministic formatting across versions 17-22.
+# Every option that could differ between LLVM base style versions is explicitly set.
+# Only option names available in clang-format 17+ are used.
 BasedOnStyle: LLVM
+
+Language: Cpp
+Standard: Latest
+
+# === Indentation ===
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForIndentation
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
 AccessModifierOffset: -4
+IndentCaseLabels: false
+IndentCaseBlocks: false
+IndentExternBlock: AfterExternBlock
+IndentGotoLabels: true
+IndentPPDirectives: None
+IndentWrappedFunctionNames: false
+IndentAccessModifiers: false
+IndentRequiresClause: true
+LambdaBodyIndentation: Signature
+NamespaceIndentation: None
+PPIndentWidth: -1
+
+# === Column & Line Settings ===
+ColumnLimit: 120
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: true
+LineEnding: DeriveLF
+InsertBraces: false
+RemoveBracesLLVM: false
+RemoveSemicolon: false
+
+# === Alignment ===
+AlignAfterOpenBracket: Align
+AlignEscapedNewlines: Right
+AlignOperands: Align
+AlignTrailingComments: true
+AlignArrayOfStructures: None
+
+# === Pointer & Reference ===
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+DerivePointerAlignment: false
+QualifierAlignment: Left
+
+# === Short Forms ===
 AllowShortFunctionsOnASingleLine: false
 AllowShortLambdasOnASingleLine: Inline
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# === Breaking ===
+# Note: AlwaysBreakTemplateDeclarations is deprecated in 19+ (renamed to
+# BreakTemplateDeclarations) but the old name still works as an alias.
+# We keep the old name for compatibility with clang-format 17-18.
 AlwaysBreakTemplateDeclarations: Yes
-ColumnLimit: 120
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakAfterDefinitionReturnType: None
+BreakBeforeBraces: Attach
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakBeforeConceptDeclarations: Always
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: true
 CompactNamespaces: true
+
+# === Constructor Initializers ===
+# Replaces deprecated AllowAllConstructorInitializersOnNextLine.
+PackConstructorInitializers: BinPack
+
+# === Bin Packing ===
+BinPackArguments: true
+BinPackParameters: true
+
+# === Spacing ===
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceAroundPointerQualifiers: Default
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: Never
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInConditionalStatement: false
+SpacesInSquareBrackets: false
+BitFieldColonSpacing: Both
+
+# === C++20 Requires ===
+RequiresClausePosition: OwnLine
+RequiresExpressionIndentation: OuterScope
+
+# === Braces ===
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterExternBlock: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+
+# === Comments ===
+ReflowComments: true
+CommentPragmas: '^ IWYU pragma:'
+FixNamespaceComments: true
+
+# === Includes ===
+SortIncludes: CaseSensitive
 IncludeBlocks: Merge
 IncludeCategories:
   - Regex: ^"(llvm|llvm-c|clang|clang-c)/
@@ -15,14 +146,47 @@ IncludeCategories:
   - Regex: .*
     Priority: 1
 IncludeIsMainRegex: $
-IndentWidth: 4
-PointerAlignment: Left
-QualifierAlignment: Left
-SpaceAfterCStyleCast: true
-SpaceBeforeCpp11BracedList: true
-SpacesInAngles: false
-TabWidth: 4
-UseTab: ForIndentation
-AllowAllConstructorInitializersOnNextLine: true
-SpacesInCStyleCastParentheses: false
-SpacesInConditionalStatement: false
+SortUsingDeclarations: true
+
+# === Penalties ===
+# Explicitly set all penalty values to prevent drift between versions.
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakOpenParenthesis: 0
+PenaltyBreakString: 1000
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 1000000
+PenaltyIndentedWhitespace: 0
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# === Misc ===
+Cpp11BracedListStyle: true
+EmptyLineAfterAccessModifier: Never
+EmptyLineBeforeAccessModifier: LogicalBlock
+ExperimentalAutoDetectBinPacking: false
+SeparateDefinitionBlocks: Leave
+ShortNamespaceLines: 1
+DisableFormat: false
+
+# === Macros ===
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+AttributeMacros:
+  - __capability
+StatementAttributeLikeMacros:
+  - Q_EMIT
+StatementMacros:
+  - Q_UNUSED
+  - QT_REQUIRE_VERSION
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+WhitespaceSensitiveMacros:
+  - BOOST_PP_STRINGIZE
+  - CF_SWIFT_NAME
+  - NS_SWIFT_NAME
+  - PP_STRINGIZE
+  - STRINGIZE

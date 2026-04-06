@@ -16,11 +16,16 @@ EOF
     exit 1
 fi
 
+# Minimum and maximum supported clang-format versions.
+# The .clang-format config is hardened so that all options are explicitly set
+# for deterministic output across this version range.
+MIN_VERSION=17
+MAX_VERSION=22
 
 CLANG_FORMAT=""
 
-# Try versioned binaries from highest to lowest
-for version in 21 20 19 18 17 16 15; do
+# Try versioned binaries from highest to lowest within supported range
+for version in $(seq "$MAX_VERSION" -1 "$MIN_VERSION"); do
     if [ -x "$(command -v clang-format-${version})" ]; then
         CLANG_FORMAT="clang-format-${version}"
         break
@@ -33,11 +38,26 @@ if [ -z "$CLANG_FORMAT" ] && [ -x "$(command -v clang-format)" ]; then
 fi
 
 if [ -z "$CLANG_FORMAT" ]; then
-    echo "could not find clang-format in PATH, please install."
+    echo "Error: could not find clang-format in PATH."
+    echo "Please install clang-format version ${MIN_VERSION}-${MAX_VERSION}."
     exit 1
 fi
 
-echo "Using: $($CLANG_FORMAT --version)"
+# Extract and validate the major version number
+FULL_VERSION=$($CLANG_FORMAT --version)
+MAJOR_VERSION=$(echo "$FULL_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d. -f1)
+
+if [ -z "$MAJOR_VERSION" ]; then
+    echo "Warning: could not determine clang-format major version from: $FULL_VERSION"
+    echo "Proceeding anyway, but formatting may differ from expected output."
+elif [ "$MAJOR_VERSION" -lt "$MIN_VERSION" ] || [ "$MAJOR_VERSION" -gt "$MAX_VERSION" ]; then
+    echo "Error: clang-format version $MAJOR_VERSION is outside supported range ${MIN_VERSION}-${MAX_VERSION}."
+    echo "Detected: $FULL_VERSION"
+    echo "Please install a supported version."
+    exit 1
+fi
+
+echo "Using: $FULL_VERSION"
 
 # Cross-platform CPU count
 if command -v nproc > /dev/null 2>&1; then
