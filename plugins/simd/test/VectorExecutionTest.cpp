@@ -7,9 +7,14 @@
 
 namespace nautilus::engine {
 
-static constexpr size_t FL = val<vec<float>>::lanes;
-static constexpr size_t IL = val<vec<int32_t>>::lanes;
-static constexpr size_t DL = val<vec<double>>::lanes;
+// Lane counts are now determined at runtime via CPU feature detection.
+// Use max_lanes for stack array sizing (safe upper bound).
+static const size_t FL = vec<float>::Lanes();
+static const size_t IL = vec<int32_t>::Lanes();
+static const size_t DL = vec<double>::Lanes();
+static constexpr size_t FL_MAX = vec<float>::max_lanes;
+static constexpr size_t IL_MAX = vec<int32_t>::max_lanes;
+static constexpr size_t DL_MAX = vec<double>::max_lanes;
 
 void vectorTests(engine::NautilusEngine& engine) {
 
@@ -19,7 +24,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("add float") {
 		auto f = engine.registerFunction(vectorAddFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			b[i] = static_cast<float>(i + 5);
@@ -31,7 +36,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("sub float") {
 		auto f = engine.registerFunction(vectorSubFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>((i + 1) * 10);
 			b[i] = static_cast<float>(i + 1);
@@ -43,7 +48,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("mul float") {
 		auto f = engine.registerFunction(vectorMulFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 2);
 			b[i] = 10.0f;
@@ -55,7 +60,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("div float") {
 		auto f = engine.registerFunction(vectorDivFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>((i + 1) * 10);
 			b[i] = static_cast<float>(i + 1);
@@ -67,7 +72,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("neg float") {
 		auto f = engine.registerFunction(vectorNegFloat);
-		alignas(64) float a[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i + 1) * ((i % 2 == 0) ? 1.0f : -1.0f);
 		f(a, c);
@@ -77,7 +82,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("abs float") {
 		auto f = engine.registerFunction(vectorAbsFloat);
-		alignas(64) float a[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i + 1) * ((i % 2 == 0) ? 1.0f : -1.0f);
 		f(a, c);
@@ -87,7 +92,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("min float") {
 		auto f = engine.registerFunction(vectorMinFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL - 1 - i);
@@ -99,7 +104,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("max float") {
 		auto f = engine.registerFunction(vectorMaxFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL - 1 - i);
@@ -111,7 +116,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("fma float") {
 		auto f = engine.registerFunction(vectorFmaFloat);
-		alignas(64) float a[FL], b[FL], c[FL], d[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX], d[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			b[i] = static_cast<float>(i + 5);
@@ -124,7 +129,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("chained a*b - c float") {
 		auto f = engine.registerFunction(vectorMulSubFloat);
-		alignas(64) float a[FL], b[FL], c[FL], d[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX], d[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 2);
 			b[i] = 3.0f;
@@ -141,7 +146,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("compound += float") {
 		auto f = engine.registerFunction(vectorCompoundAddFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			b[i] = static_cast<float>(i + 5);
@@ -153,7 +158,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("compound *= float") {
 		auto f = engine.registerFunction(vectorCompoundMulFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 2);
 			b[i] = 10.0f;
@@ -169,7 +174,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_add float") {
 		auto f = engine.registerFunction(vectorReduceAddFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
@@ -180,7 +185,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_min float") {
 		auto f = engine.registerFunction(vectorReduceMinFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(FL - i);
 		a[FL / 2] = -42.0f;
@@ -189,7 +194,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_max float") {
 		auto f = engine.registerFunction(vectorReduceMaxFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i);
 		a[FL / 2] = 999.0f;
@@ -202,7 +207,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("lt float (operator<)") {
 		auto f = engine.registerFunction(vectorLtFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL / 2);
@@ -217,7 +222,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("ge float (operator>=)") {
 		auto f = engine.registerFunction(vectorGeFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL / 2);
@@ -232,7 +237,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("eq float (operator==)") {
 		auto f = engine.registerFunction(vectorEqFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(i % 2 == 0 ? i : i + 1);
@@ -247,7 +252,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("ne float (operator!=)") {
 		auto f = engine.registerFunction(vectorNeFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(i % 2 == 0 ? i : i + 1);
@@ -262,7 +267,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("le float (operator<=)") {
 		auto f = engine.registerFunction(vectorLeFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL / 2);
@@ -277,7 +282,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("gt float (operator>)") {
 		auto f = engine.registerFunction(vectorGtFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL / 2);
@@ -292,7 +297,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("eq int32 (operator==)") {
 		auto f = engine.registerFunction(vectorEqInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i);
 			b[i] = static_cast<int32_t>(i % 2 == 0 ? i : i + 1);
@@ -307,7 +312,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("ne int32 (operator!=)") {
 		auto f = engine.registerFunction(vectorNeInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i);
 			b[i] = static_cast<int32_t>(i % 2 == 0 ? i : i + 1);
@@ -322,7 +327,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("lt int32 (operator<)") {
 		auto f = engine.registerFunction(vectorLtInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i);
 			b[i] = static_cast<int32_t>(IL / 2);
@@ -337,7 +342,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("gt int32 (operator>)") {
 		auto f = engine.registerFunction(vectorGtInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i);
 			b[i] = static_cast<int32_t>(IL / 2);
@@ -356,7 +361,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("blend float") {
 		auto f = engine.registerFunction(vectorBlendFloat);
-		alignas(64) float a[FL], b[FL], mask[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], mask[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = 10.0f;
 			b[i] = 20.0f;
@@ -370,7 +375,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("blend int32") {
 		auto f = engine.registerFunction(vectorBlendInt);
-		alignas(64) int32_t a[IL], b[IL], mask[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], mask[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = 100;
 			b[i] = 200;
@@ -387,7 +392,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("and int32 (operator&)") {
 		auto f = engine.registerFunction(vectorAndInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = (int32_t) 0xFF00FF00;
 			b[i] = (int32_t) 0xFFFF0000;
@@ -399,7 +404,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("or int32 (operator|)") {
 		auto f = engine.registerFunction(vectorOrInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = (int32_t) 0x0F0F0000;
 			b[i] = (int32_t) 0x00F0F0F0;
@@ -411,7 +416,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("xor int32 (operator^)") {
 		auto f = engine.registerFunction(vectorXorInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = (int32_t) 0xFF00FF00;
 			b[i] = (int32_t) 0xFFFF0000;
@@ -423,7 +428,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("and float (operator&)") {
 		auto f = engine.registerFunction(vectorAndFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			uint32_t ai = 0xFF00FF00, bi = 0xFFFF0000;
 			std::memcpy(&a[i], &ai, sizeof(float));
@@ -439,7 +444,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("or float (operator|)") {
 		auto f = engine.registerFunction(vectorOrFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			uint32_t ai = 0x0F0F0000, bi = 0x00F0F0F0;
 			std::memcpy(&a[i], &ai, sizeof(float));
@@ -459,7 +464,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("compare-then-blend float (vector max via cmp+blend)") {
 		auto f = engine.registerFunction(vectorCmpBlendFloat);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i);
 			b[i] = static_cast<float>(FL - 1 - i);
@@ -475,7 +480,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("add int32") {
 		auto f = engine.registerFunction(vectorAddInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i + 1);
 			b[i] = static_cast<int32_t>((i + 1) * 10);
@@ -487,7 +492,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("mul int32") {
 		auto f = engine.registerFunction(vectorMulInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i + 2);
 			b[i] = 10;
@@ -499,7 +504,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_add int32") {
 		auto f = engine.registerFunction(vectorReduceAddInt);
-		alignas(64) int32_t a[IL];
+		alignas(64) int32_t a[IL_MAX];
 		int32_t expected = 0;
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i + 1);
@@ -510,7 +515,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_min int32") {
 		auto f = engine.registerFunction(vectorReduceMinInt);
-		alignas(64) int32_t a[IL];
+		alignas(64) int32_t a[IL_MAX];
 		for (size_t i = 0; i < IL; i++)
 			a[i] = static_cast<int32_t>(100 - i);
 		a[0] = -5;
@@ -519,7 +524,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("reduce_max int32") {
 		auto f = engine.registerFunction(vectorReduceMaxInt);
-		alignas(64) int32_t a[IL];
+		alignas(64) int32_t a[IL_MAX];
 		for (size_t i = 0; i < IL; i++)
 			a[i] = static_cast<int32_t>(i);
 		a[IL - 1] = 500;
@@ -532,7 +537,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("add double") {
 		auto f = engine.registerFunction(vectorAddDouble);
-		alignas(64) double a[DL], b[DL], c[DL] = {};
+		alignas(64) double a[DL_MAX], b[DL_MAX], c[DL_MAX] = {};
 		for (size_t i = 0; i < DL; i++) {
 			a[i] = static_cast<double>(i) + 1.5;
 			b[i] = static_cast<double>(i) + 3.5;
@@ -548,7 +553,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("dot product float") {
 		auto f = engine.registerFunction(vectorDotProductFloat);
-		alignas(64) float a[FL], b[FL];
+		alignas(64) float a[FL_MAX], b[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
@@ -560,7 +565,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("dot product int32") {
 		auto f = engine.registerFunction(vectorDotProductInt);
-		alignas(64) int32_t a[IL], b[IL];
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX];
 		int32_t expected = 0;
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i + 1);
@@ -572,7 +577,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("squared norm float") {
 		auto f = engine.registerFunction(vectorSquaredNormFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
@@ -583,14 +588,14 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("saxpy float (FMA-based)") {
 		auto f = engine.registerFunction(vectorSaxpyFloat);
-		alignas(64) float x[FL], y[FL], alpha_vec[FL];
+		alignas(64) float x[FL_MAX], y[FL_MAX], alpha_vec[FL_MAX];
 		float alpha = 2.5f;
 		for (size_t i = 0; i < FL; i++) {
 			x[i] = static_cast<float>(i + 1);
 			y[i] = static_cast<float>(i * 10);
 			alpha_vec[i] = alpha;
 		}
-		float expected[FL];
+		float expected[FL_MAX];
 		for (size_t i = 0; i < FL; i++)
 			expected[i] = std::fma(alpha, x[i], y[i]);
 		f(x, y, alpha_vec);
@@ -600,7 +605,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("clamp float") {
 		auto f = engine.registerFunction(vectorClampFloat);
-		alignas(64) float a[FL], lo[FL], hi[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], lo[FL_MAX], hi[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i) * 3.0f - 5.0f;
 			lo[i] = 0.0f;
@@ -613,7 +618,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("distance squared float") {
 		auto f = engine.registerFunction(vectorDistanceSquaredFloat);
-		alignas(64) float a[FL], b[FL];
+		alignas(64) float a[FL_MAX], b[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
@@ -626,7 +631,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("polynomial evaluation (Horner)") {
 		auto f = engine.registerFunction(vectorPolyEvalFloat);
-		alignas(64) float x[FL], c0[FL], c1[FL], c2[FL], c3[FL], out[FL] = {};
+		alignas(64) float x[FL_MAX], c0[FL_MAX], c1[FL_MAX], c2[FL_MAX], c3[FL_MAX], out[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			x[i] = static_cast<float>(i) * 0.5f;
 			c0[i] = 1.0f;
@@ -644,7 +649,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("conditional negate float") {
 		auto f = engine.registerFunction(vectorConditionalNegateFloat);
-		alignas(64) float a[FL], mask[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], mask[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			uint32_t m = (i % 2 == 0) ? 0xFFFFFFFF : 0x00000000;
@@ -659,7 +664,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("sum of absolute differences float") {
 		auto f = engine.registerFunction(vectorSadFloat);
-		alignas(64) float a[FL], b[FL];
+		alignas(64) float a[FL_MAX], b[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
@@ -671,7 +676,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("weighted sum parts") {
 		auto f = engine.registerFunction(vectorWeightedSumParts);
-		alignas(64) float a[FL], w[FL];
+		alignas(64) float a[FL_MAX], w[FL_MAX];
 		float numer = 0.0f, denom = 0.0f;
 		float numer_out = 0.0f, denom_out = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
@@ -687,7 +692,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("lerp float") {
 		auto f = engine.registerFunction(vectorLerpFloat);
-		alignas(64) float a[FL], b[FL], t[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], t[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = 0.0f;
 			b[i] = static_cast<float>((i + 1) * 10);
@@ -702,7 +707,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("range float (max - min)") {
 		auto f = engine.registerFunction(vectorRangeFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i * 3);
 		float expected = a[FL - 1] - a[0];
@@ -711,7 +716,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("relu float") {
 		auto f = engine.registerFunction(vectorReluFloat);
-		alignas(64) float a[FL], zeros[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], zeros[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i) - static_cast<float>(FL) / 2.0f;
 			zeros[i] = 0.0f;
@@ -723,7 +728,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("multi-accumulate a*b + c*d") {
 		auto f = engine.registerFunction(vectorMulAccFloat);
-		alignas(64) float a[FL], b[FL], c[FL], d[FL], out[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX], d[FL_MAX], out[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			b[i] = 2.0f;
@@ -737,7 +742,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("saturate float [0, max]") {
 		auto f = engine.registerFunction(vectorSaturateFloat);
-		alignas(64) float a[FL], max_arr[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], max_arr[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i) * 5.0f - 10.0f;
 			max_arr[i] = 8.0f;
@@ -755,7 +760,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("broadcast float") {
 		auto f = engine.registerFunction(vectorBroadcastFloat);
-		alignas(64) float out[FL] = {};
+		alignas(64) float out[FL_MAX] = {};
 		float scalar = 42.5f;
 		f(scalar, out);
 		for (size_t i = 0; i < FL; i++)
@@ -764,7 +769,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("broadcast int32") {
 		auto f = engine.registerFunction(vectorBroadcastInt);
-		alignas(64) int32_t out[IL] = {};
+		alignas(64) int32_t out[IL_MAX] = {};
 		int32_t scalar = 7;
 		f(scalar, out);
 		for (size_t i = 0; i < IL; i++)
@@ -773,7 +778,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("broadcast double") {
 		auto f = engine.registerFunction(vectorBroadcastDouble);
-		alignas(64) double out[DL] = {};
+		alignas(64) double out[DL_MAX] = {};
 		double scalar = 3.14;
 		f(scalar, out);
 		for (size_t i = 0; i < DL; i++)
@@ -782,7 +787,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("broadcast + multiply float") {
 		auto f = engine.registerFunction(vectorBroadcastMulFloat);
-		alignas(64) float a[FL], out[FL] = {};
+		alignas(64) float a[FL_MAX], out[FL_MAX] = {};
 		float scalar = 3.0f;
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i + 1);
@@ -799,8 +804,8 @@ void vectorTests(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(vectorGatherFloat);
 		float base[] = {10.0f, 20.0f,  30.0f,  40.0f,  50.0f,  60.0f,  70.0f,  80.0f,
 		                90.0f, 100.0f, 110.0f, 120.0f, 130.0f, 140.0f, 150.0f, 160.0f};
-		alignas(64) int32_t indices[FL];
-		alignas(64) float out[FL] = {};
+		alignas(64) int32_t indices[FL_MAX];
+		alignas(64) float out[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++)
 			indices[i] = static_cast<int32_t>(FL - 1 - i); // reverse order
 		f(base, indices, out);
@@ -811,8 +816,8 @@ void vectorTests(engine::NautilusEngine& engine) {
 	SECTION("gather int32") {
 		auto f = engine.registerFunction(vectorGatherInt);
 		int32_t base[] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600};
-		alignas(64) int32_t indices[IL];
-		alignas(64) int32_t out[IL] = {};
+		alignas(64) int32_t indices[IL_MAX];
+		alignas(64) int32_t out[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++)
 			indices[i] = static_cast<int32_t>(i * 2 % IL); // stride-2 access
 		f(base, indices, out);
@@ -824,7 +829,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(vectorGatherReduceFloat);
 		float base[] = {10.0f, 20.0f,  30.0f,  40.0f,  50.0f,  60.0f,  70.0f,  80.0f,
 		                90.0f, 100.0f, 110.0f, 120.0f, 130.0f, 140.0f, 150.0f, 160.0f};
-		alignas(64) int32_t indices[FL];
+		alignas(64) int32_t indices[FL_MAX];
 		float expected = 0.0f;
 		for (size_t i = 0; i < FL; i++) {
 			indices[i] = static_cast<int32_t>(i);
@@ -839,9 +844,9 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("scatter float") {
 		auto f = engine.registerFunction(vectorScatterFloat);
-		alignas(64) float src[FL];
+		alignas(64) float src[FL_MAX];
 		float base[16] = {};
-		alignas(64) int32_t indices[FL];
+		alignas(64) int32_t indices[FL_MAX];
 		for (size_t i = 0; i < FL; i++) {
 			src[i] = static_cast<float>((i + 1) * 10);
 			indices[i] = static_cast<int32_t>(FL - 1 - i); // reverse order
@@ -853,9 +858,9 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("scatter int32") {
 		auto f = engine.registerFunction(vectorScatterInt);
-		alignas(64) int32_t src[IL];
+		alignas(64) int32_t src[IL_MAX];
 		int32_t base[16] = {};
-		alignas(64) int32_t indices[IL];
+		alignas(64) int32_t indices[IL_MAX];
 		for (size_t i = 0; i < IL; i++) {
 			src[i] = static_cast<int32_t>((i + 1) * 100);
 			indices[i] = static_cast<int32_t>(IL - 1 - i);
@@ -871,7 +876,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("extract float") {
 		auto f = engine.registerFunction(vectorExtractFloat);
-		alignas(64) float a[FL];
+		alignas(64) float a[FL_MAX];
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>((i + 1) * 11);
 		for (size_t i = 0; i < FL; i++)
@@ -880,7 +885,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("extract int32") {
 		auto f = engine.registerFunction(vectorExtractInt);
-		alignas(64) int32_t a[IL];
+		alignas(64) int32_t a[IL_MAX];
 		for (size_t i = 0; i < IL; i++)
 			a[i] = static_cast<int32_t>((i + 1) * 7);
 		for (size_t i = 0; i < IL; i++)
@@ -893,7 +898,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("insert float") {
 		auto f = engine.registerFunction(vectorInsertFloat);
-		alignas(64) float a[FL], out[FL] = {};
+		alignas(64) float a[FL_MAX], out[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i + 1);
 		int32_t idx = 1;
@@ -909,7 +914,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("insert int32") {
 		auto f = engine.registerFunction(vectorInsertInt);
-		alignas(64) int32_t a[IL], out[IL] = {};
+		alignas(64) int32_t a[IL_MAX], out[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++)
 			a[i] = static_cast<int32_t>(i + 1);
 		int32_t idx = 0;
@@ -929,7 +934,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("shl int32") {
 		auto f = engine.registerFunction(vectorShlInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>(i + 1);
 			b[i] = 2; // shift left by 2 = multiply by 4
@@ -941,7 +946,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("shr int32") {
 		auto f = engine.registerFunction(vectorShrInt);
-		alignas(64) int32_t a[IL], b[IL], c[IL] = {};
+		alignas(64) int32_t a[IL_MAX], b[IL_MAX], c[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++) {
 			a[i] = static_cast<int32_t>((i + 1) * 16);
 			b[i] = 3; // shift right by 3 = divide by 8
@@ -953,8 +958,9 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("shl int64") {
 		auto f = engine.registerFunction(vectorShlInt64);
-		static constexpr size_t I64L = val<vec<int64_t>>::lanes;
-		alignas(64) int64_t a[I64L], b[I64L], c[I64L] = {};
+		const size_t I64L = vec<int64_t>::Lanes();
+		static constexpr size_t I64L_MAX = vec<int64_t>::max_lanes;
+		alignas(64) int64_t a[I64L_MAX], b[I64L_MAX], c[I64L_MAX] = {};
 		for (size_t i = 0; i < I64L; i++) {
 			a[i] = static_cast<int64_t>(i + 1);
 			b[i] = 4;
@@ -966,7 +972,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("compound shift int32 (shl then shr)") {
 		auto f = engine.registerFunction(vectorCompoundShiftInt);
-		alignas(64) int32_t a[IL], out[IL] = {};
+		alignas(64) int32_t a[IL_MAX], out[IL_MAX] = {};
 		for (size_t i = 0; i < IL; i++)
 			a[i] = static_cast<int32_t>(i + 1);
 		f(a, out);
@@ -980,7 +986,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("Vector<T> Load/Store round-trip") {
 		auto f = engine.registerFunction(vectorAliasLoadStore);
-		alignas(64) float a[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++)
 			a[i] = static_cast<float>(i * 3 + 7);
 		f(a, c);
@@ -994,7 +1000,7 @@ void vectorTests(engine::NautilusEngine& engine) {
 
 	SECTION("vector_load convenience") {
 		auto f = engine.registerFunction(vectorConvenienceLoad);
-		alignas(64) float a[FL], b[FL], c[FL] = {};
+		alignas(64) float a[FL_MAX], b[FL_MAX], c[FL_MAX] = {};
 		for (size_t i = 0; i < FL; i++) {
 			a[i] = static_cast<float>(i + 1);
 			b[i] = static_cast<float>(i + 5);

@@ -4,7 +4,7 @@
 
 Nautilus provides SIMD (Single Instruction, Multiple Data) support through the `val<vec<T>>` type. This is a specialization of `val<T>` that operates on fixed-width vectors of arithmetic values, allowing multiple elements to be processed in parallel with a single operation.
 
-The SIMD plugin automatically selects the optimal vector width for the current hardware (SSE2, AVX, AVX-512, or ARM NEON). All vector operations integrate with the Nautilus tracing and compilation pipeline, so functions using SIMD vectors are traced, optimized, and compiled just like scalar code.
+The SIMD plugin automatically selects the optimal vector width for the current hardware at **runtime** using CPU feature detection (SSE2, AVX, AVX-512, or ARM NEON). Since Nautilus is a JIT compiler, this means the generated code always uses the widest SIMD registers available on the actual CPU, even if the Nautilus library itself was compiled without specific ISA flags. All vector operations integrate with the Nautilus tracing and compilation pipeline, so functions using SIMD vectors are traced, optimized, and compiled just like scalar code.
 
 ```cpp
 #include <nautilus/vector.hpp>
@@ -35,7 +35,7 @@ Vector<float> v = Vector<float>::Load(ptr);  // same as val<vec<float>>
 
 ### Lane Count
 
-The number of lanes per vector is determined at compile time based on the widest SIMD instruction set available on the target CPU:
+The number of lanes per vector is determined at **runtime** based on the widest SIMD instruction set supported by the current CPU:
 
 | Instruction Set | Register Width | `float` Lanes | `double` Lanes | `int32_t` Lanes | `int64_t` Lanes |
 |-----------------|---------------|---------------|----------------|-----------------|-----------------|
@@ -43,10 +43,16 @@ The number of lanes per vector is determined at compile time based on the widest
 | AVX / AVX2 | 256-bit | 8 | 4 | 8 | 4 |
 | SSE2 / NEON | 128-bit | 4 | 2 | 4 | 2 |
 
-You can query the lane count at compile time:
+You can query the lane count at runtime:
 
 ```cpp
-constexpr size_t lanes = vec<float>::lanes;  // e.g. 8 on AVX
+size_t lanes = vec<float>::Lanes();  // e.g. 16 on AVX-512
+```
+
+The maximum possible lane count (AVX-512 width) is available as a compile-time constant, useful for sizing stack arrays:
+
+```cpp
+constexpr size_t max_lanes = vec<float>::max_lanes;  // always 16
 ```
 
 ## Loading and Storing
@@ -260,6 +266,8 @@ val<float> gatherSum(val<const float*> base, val<const int32_t*> indices) {
 ## How It Works
 
 When the MLIR backend is enabled, vector operations are compiled to native SIMD instructions (SSE, AVX, AVX-512, or NEON) through the MLIR and LLVM compilation pipeline. The SIMD plugin registers an intrinsic handler that replaces traced vector operations with the corresponding LLVM vector dialect operations during code generation.
+
+The lane count is detected at runtime via CPU feature detection (cpuid on x86, feature registers on ARM). This means the JIT compiler always generates code for the widest available SIMD width, regardless of which ISA flags were used when compiling Nautilus itself.
 
 When the MLIR backend is not available, all vector operations fall back to portable scalar C++ implementations that produce correct results on any platform, without requiring hardware SIMD support.
 

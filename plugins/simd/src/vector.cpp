@@ -6,7 +6,53 @@
 #include <nautilus/function.hpp>
 #include <nautilus/vector.hpp>
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <cpuid.h>
+#define NAUTILUS_X86 1
+#else
+#define NAUTILUS_X86 0
+#endif
+
 namespace nautilus {
+
+// ============================================================================
+// Runtime SIMD width detection.
+// Detects the widest SIMD register supported by the current CPU at runtime.
+// Result is cached after first call.
+// ============================================================================
+
+static size_t detect_simd_width() {
+#if NAUTILUS_X86
+	// Check for AVX-512F support (CPUID leaf 7, ECX=0, bit 16 of EBX)
+	unsigned int eax, ebx, ecx, edx;
+	if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
+		if (ebx & (1u << 16)) { // AVX-512F
+			return 64;
+		}
+	}
+	// Check for AVX2 (CPUID leaf 7, ECX=0, bit 5 of EBX) or AVX (leaf 1, bit 28 of ECX)
+	if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
+		if (ebx & (1u << 5)) { // AVX2
+			return 32;
+		}
+	}
+	if (__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
+		if (ecx & (1u << 28)) { // AVX
+			return 32;
+		}
+	}
+	return 16; // SSE2 (baseline for x86-64)
+#elif defined(__aarch64__) || defined(_M_ARM64)
+	return 16; // NEON is always 128-bit on AArch64
+#else
+	return 16; // conservative fallback
+#endif
+}
+
+size_t RuntimeSimdWidth() {
+	static const size_t width = detect_simd_width();
+	return width;
+}
 
 // ============================================================================
 // Scalar default implementations (extern "C" for stable function pointers)
