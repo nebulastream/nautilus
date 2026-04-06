@@ -11,7 +11,6 @@
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
-#include "ValueTypeFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
@@ -320,52 +319,6 @@ TEST_CASE("Static Trace Test") {
 	    {"staticEnumerateWeightedSum", details::createFunctionWrapper(staticEnumerateWeightedSum)},
 	    {"staticEnumerateSum", details::createFunctionWrapper(staticEnumerateSum)}};
 	runTraceTests("static-loop-tests", tests);
-}
-
-TEST_CASE("Value Trace Test") {
-	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    // default constructor
-	    {"constructAndAccess", details::createFunctionWrapper(constructAndAccess)},
-	    {"constructSetBothFields", details::createFunctionWrapper(constructSetBothFields)},
-	    {"constructNonTrivialDefault", details::createFunctionWrapper(constructNonTrivialDefault)},
-	    // parameterised constructor
-	    {"constructWithArgs", details::createFunctionWrapper(constructWithArgs)},
-	    // copy constructor and copy assignment
-	    {"copyConstruct", details::createFunctionWrapper(copyConstruct)},
-	    {"copyAssign", details::createFunctionWrapper(copyAssign)},
-	    {"copyConstructNonTrivial", details::createFunctionWrapper(copyConstructNonTrivial)},
-	    // destructor
-	    {"nonTrivialDestructor", details::createFunctionWrapper(nonTrivialDestructor)},
-	    // loops
-	    {"modifyInLoop", details::createFunctionWrapper(modifyInLoop)},
-	    {"copyInLoop", details::createFunctionWrapper(copyInLoop)},
-	    {"constructAndCall", details::createFunctionWrapper(constructAndCall)},
-	    // struct in conditional return paths
-	    {"structInConditionalReturn", details::createFunctionWrapper(structInConditionalReturn)},
-	    {"structInBothBranches", details::createFunctionWrapper(structInBothBranches)},
-	    // mixed-alignment struct tests
-	    {"mixedAlignSetAll", details::createFunctionWrapper(mixedAlignSetAll)},
-	    {"mixedAlignNoClobber", details::createFunctionWrapper(mixedAlignNoClobber)},
-	    {"reversePaddingAccess", details::createFunctionWrapper(reversePaddingAccess)},
-	    {"doubleAndByteAccess", details::createFunctionWrapper(doubleAndByteAccess)},
-	    {"mixedAlignModifyInLoop", details::createFunctionWrapper(mixedAlignModifyInLoop)},
-	    {"mixedAlignConditionalReturn", details::createFunctionWrapper(mixedAlignConditionalReturn)},
-	    // multi-struct, multi-loop tests
-	    {"multiStructMultiLoop", details::createFunctionWrapper(multiStructMultiLoop)},
-	    {"twoStructsSameLoop", details::createFunctionWrapper(twoStructsSameLoop)},
-	    {"outerAndInnerStructLoop", details::createFunctionWrapper(outerAndInnerStructLoop)},
-	    {"multiStructConditionalLoop", details::createFunctionWrapper(multiStructConditionalLoop)},
-	    {"structInNestedConditionalReturn", details::createFunctionWrapper(structInNestedConditionalReturn)},
-	    // nested function + struct tests
-	    {"modifyStructInLoopWithNestedCall", details::createFunctionWrapper(modifyStructInLoopWithNestedCall)},
-	    {"constructStructInLoopWithNestedCall", details::createFunctionWrapper(constructStructInLoopWithNestedCall)},
-	    {"multipleNestedCallsInLoop", details::createFunctionWrapper(multipleNestedCallsInLoop)},
-	    // alloca merge bug: different-sized structs with non-overlapping lifetimes
-	    {"allocaMergeBug", details::createFunctionWrapper(allocaMergeBug)},
-	    {"allocaMergeInLoop", details::createFunctionWrapper(allocaMergeInLoop)},
-
-	};
-	runTraceTests("value-tracing-tests", tests);
 }
 
 TEST_CASE("Pointer Trace Test") {

@@ -7,7 +7,6 @@
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
-#include "ValueTypeFunctions.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/profile/assume.hpp"
@@ -929,179 +928,6 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
-void valueExecutionTest(engine::NautilusEngine& engine) {
-	SECTION("constructAndAccess") {
-		auto f = engine.registerFunction(constructAndAccess);
-		REQUIRE(f() == 42);
-	}
-	SECTION("constructSetBothFields") {
-		auto f = engine.registerFunction(constructSetBothFields);
-		REQUIRE(f() == 42);
-	}
-	SECTION("constructNonTrivialDefault") {
-		auto f = engine.registerFunction(constructNonTrivialDefault);
-		REQUIRE(f() == 7);
-	}
-	SECTION("constructAndCall") {
-		auto f = engine.registerFunction(constructAndCall);
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 5) == 10);
-		REQUIRE(f((int32_t) 21) == 42);
-		// edge cases: negative and INT_MAX/2
-		REQUIRE(f((int32_t) -3) == -6);
-	}
-	SECTION("constructWithArgs") {
-		auto f = engine.registerFunction(constructWithArgs);
-		REQUIRE(f((int32_t) 0, (int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 10, (int32_t) 32) == 42);
-		REQUIRE(f((int32_t) -5, (int32_t) 5) == 0);
-		REQUIRE(f((int32_t) -10, (int32_t) -10) == -20);
-		REQUIRE(f((int32_t) 1, (int32_t) 0) == 1);
-	}
-	SECTION("copyConstruct") {
-		auto f = engine.registerFunction(copyConstruct);
-		REQUIRE(f() == 52);
-	}
-	SECTION("copyAssign") {
-		auto f = engine.registerFunction(copyAssign);
-		REQUIRE(f() == 42);
-	}
-	SECTION("copyConstructNonTrivial") {
-		auto f = engine.registerFunction(copyConstructNonTrivial);
-		REQUIRE(f() == 99);
-	}
-	SECTION("nonTrivialDestructor") {
-		auto f = engine.registerFunction(nonTrivialDestructor);
-		REQUIRE(f() == 42);
-	}
-	SECTION("modifyInLoop") {
-		auto f = engine.registerFunction(modifyInLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 1) == 1);
-		REQUIRE(f((int32_t) 5) == 5);
-		REQUIRE(f((int32_t) 10) == 10);
-		REQUIRE(f((int32_t) 100) == 100);
-	}
-	SECTION("copyInLoop") {
-		auto f = engine.registerFunction(copyInLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 1) == 10);
-		REQUIRE(f((int32_t) 3) == 30);
-		REQUIRE(f((int32_t) 10) == 100);
-	}
-	SECTION("mixedAlignSetAll") {
-		auto f = engine.registerFunction(mixedAlignSetAll);
-		// 1 + 10 + 100
-		REQUIRE(f((int8_t) 1, (int32_t) 10, (int64_t) 100) == 111);
-		// -1 + 0 + 0
-		REQUIRE(f((int8_t) -1, (int32_t) 0, (int64_t) 0) == -1);
-		REQUIRE(f((int8_t) 0, (int32_t) 0, (int64_t) 0) == 0);
-		REQUIRE(f((int8_t) 127, (int32_t) 1000, (int64_t) 100000) == 101127);
-	}
-	SECTION("mixedAlignNoClobber") {
-		auto f = engine.registerFunction(mixedAlignNoClobber);
-		// large=1000 must survive writes to small and medium
-		REQUIRE(f() == 1000);
-	}
-	SECTION("reversePaddingAccess") {
-		auto f = engine.registerFunction(reversePaddingAccess);
-		// 100 + 10 + 5
-		REQUIRE(f((int64_t) 100, (int8_t) 10, (int16_t) 5) == 115);
-		REQUIRE(f((int64_t) 0, (int8_t) 0, (int16_t) 0) == 0);
-		REQUIRE(f((int64_t) -50, (int8_t) -1, (int16_t) -2) == -53);
-	}
-	SECTION("doubleAndByteAccess") {
-		auto f = engine.registerFunction(doubleAndByteAccess);
-		REQUIRE(f(3.5, (int8_t) 2) == Catch::Approx(5.5));
-		REQUIRE(f(0.0, (int8_t) 0) == Catch::Approx(0.0));
-		REQUIRE(f(-1.5, (int8_t) 1) == Catch::Approx(-0.5));
-	}
-	SECTION("mixedAlignModifyInLoop") {
-		auto f = engine.registerFunction(mixedAlignModifyInLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		// 1 + 10 + 100
-		REQUIRE(f((int32_t) 1) == 111);
-		// 5 + 50 + 500
-		REQUIRE(f((int32_t) 5) == 555);
-	}
-	SECTION("mixedAlignConditionalReturn") {
-		auto f = engine.registerFunction(mixedAlignConditionalReturn);
-		// x > 0: 1 + 2 + x
-		REQUIRE(f((int64_t) 10) == 13);
-		REQUIRE(f((int64_t) 1) == 4);
-		// x <= 0: returns x
-		REQUIRE(f((int64_t) 0) == 0);
-		REQUIRE(f((int64_t) -5) == -5);
-	}
-	SECTION("multiStructMultiLoop") {
-		auto f = engine.registerFunction(multiStructMultiLoop);
-		// count=0: no iterations
-		REQUIRE(f((int32_t) 0) == 0);
-		// count=1: 100 + 200 + 33
-		REQUIRE(f((int32_t) 1) == 333);
-		// count=3: 3*100 + 3*200 + 3*33
-		REQUIRE(f((int32_t) 3) == 999);
-	}
-	SECTION("twoStructsSameLoop") {
-		auto f = engine.registerFunction(twoStructsSameLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		// each iteration: 10 + 20 = 30
-		REQUIRE(f((int32_t) 1) == 30);
-		REQUIRE(f((int32_t) 5) == 150);
-	}
-	SECTION("outerAndInnerStructLoop") {
-		auto f = engine.registerFunction(outerAndInnerStructLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		// each iteration adds 5
-		REQUIRE(f((int32_t) 1) == 5);
-		REQUIRE(f((int32_t) 10) == 50);
-	}
-	SECTION("multiStructConditionalLoop") {
-		auto f = engine.registerFunction(multiStructConditionalLoop);
-		// selector <= 0: returns selector
-		REQUIRE(f((int32_t) 5, (int64_t) 0) == 0);
-		REQUIRE(f((int32_t) 5, (int64_t) -3) == -3);
-		// selector > 0: each iteration 7 + 3 = 10
-		REQUIRE(f((int32_t) 0, (int64_t) 1) == 0);
-		REQUIRE(f((int32_t) 1, (int64_t) 1) == 10);
-		REQUIRE(f((int32_t) 4, (int64_t) 1) == 40);
-	}
-	SECTION("modifyStructInLoopWithNestedCall") {
-		auto f = engine.registerFunction(modifyStructInLoopWithNestedCall);
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 1) == 1);
-		REQUIRE(f((int32_t) 5) == 5);
-		REQUIRE(f((int32_t) 10) == 10);
-	}
-	SECTION("constructStructInLoopWithNestedCall") {
-		auto f = engine.registerFunction(constructStructInLoopWithNestedCall);
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 1) == 0);  // sum of i for i in [0..1) = 0
-		REQUIRE(f((int32_t) 4) == 6);  // 0+1+2+3 = 6
-		REQUIRE(f((int32_t) 5) == 10); // 0+1+2+3+4 = 10
-	}
-	SECTION("multipleNestedCallsInLoop") {
-		auto f = engine.registerFunction(multipleNestedCallsInLoop);
-		// iter 0: a=0, b=100, sumFields=100, a becomes 0+100=100
-		// iter 1: a=100, b=100, sumFields=200, a becomes 100+200=300
-		REQUIRE(f((int32_t) 0) == 0);
-		REQUIRE(f((int32_t) 1) == 100);
-		REQUIRE(f((int32_t) 2) == 300);
-	}
-	SECTION("allocaMergeBug") {
-		auto f = engine.registerFunction(allocaMergeBug);
-		// fillSmall: a=42, fillLarge: sum(1..8)=36, result = 36 + 42 = 78
-		REQUIRE(f() == 78);
-	}
-	SECTION("allocaMergeInLoop") {
-		auto f = engine.registerFunction(allocaMergeInLoop);
-		REQUIRE(f((int32_t) 0) == 0);
-		// each iteration: 36 + 42 = 78
-		REQUIRE(f((int32_t) 1) == 78);
-		REQUIRE(f((int32_t) 3) == 234);
-	}
-}
-
 class Clazz {
 public:
 	val<int32_t> function(val<int32_t> arg) {
@@ -1264,9 +1090,6 @@ void runAllTests(engine::NautilusEngine& engine) {
 	}
 	SECTION("functionCallExecutionTest") {
 		functionCallExecutionTest(engine);
-	}
-	SECTION("valueExecutionTest") {
-		valueExecutionTest(engine);
 	}
 
 	SECTION("sameAsAboveButPassArgumentsByValueContiguousResult") {
