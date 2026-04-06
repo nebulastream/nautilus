@@ -8,6 +8,7 @@ set(STD_SOURCES
         src/cstring.cpp
         src/string.cpp
         src/string_view.cpp
+        src/vector.cpp
         src/iostream.cpp
 )
 

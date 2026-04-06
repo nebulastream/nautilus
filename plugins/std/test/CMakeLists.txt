@@ -5,6 +5,7 @@ add_executable(nautilus-std-tests
         STDProxyTest.cpp
         OstreamTest.cpp
         StringTest.cpp
+        VectorTest.cpp
         BitIntrinsicExecutionTest.cpp
         MemoryIntrinsicExecutionTest.cpp
 )
