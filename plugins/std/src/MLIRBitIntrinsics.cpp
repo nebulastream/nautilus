@@ -1,5 +1,5 @@
 
-#include "nautilus/compiler/backends/mlir/intrinsics/MLIRBitIntrinsics.hpp"
+#include "MLIRBitIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include <bit>
 #include <cstdint>

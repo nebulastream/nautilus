@@ -1,7 +1,7 @@
 #pragma once
 
 #include <nautilus/Engine.hpp>
-#include <nautilus/val_memcpy.hpp>
+#include <nautilus/std/cstring.h>
 
 namespace nautilus::engine {
 

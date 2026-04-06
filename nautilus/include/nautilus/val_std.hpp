@@ -108,9 +108,9 @@
 #pragma once
 
 #include "nautilus/function.hpp"
-#include "nautilus/std/cstring.h"
 #include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
+#include "nautilus/val_memcpy.hpp"
 #include <cstring>
 #include <type_traits>
 

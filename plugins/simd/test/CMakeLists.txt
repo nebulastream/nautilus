@@ -19,7 +19,7 @@ list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 catch_discover_tests(nautilus-simd-tests EXTRA_ARGS --allow-running-no-tests)
 
 # LLVM IR comparison tests for SIMD vector operations
-if (ENABLE_MLIR_BACKEND)
+if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
     add_executable(nautilus-simd-llvm-ir-test
             VectorLLVMIRTest.cpp
     )

@@ -1,5 +1,5 @@
 
-#include "nautilus/compiler/backends/mlir/intrinsics/MLIRMathIntrinsics.hpp"
+#include "MLIRMathIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include <cmath>
 #include <mlir/Dialect/Arith/IR/Arith.h>
