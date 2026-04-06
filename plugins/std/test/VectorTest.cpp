@@ -326,7 +326,7 @@ val<double> vectorOfPairPtrs(val<Pair*> a, val<Pair*> b) {
 	return first.get(&Pair::first) + second.get(&Pair::second);
 }
 
-// --- Struct value types (via at_ptr / front_ptr / back_ptr) ---
+// --- Struct value types (operator[], at, front, back return val<T*> for class types) ---
 
 val<int32_t> vectorOfStructValues(val<int32_t> x, val<int32_t> y) {
 	val<std::vector<Point>> vec;
@@ -334,7 +334,17 @@ val<int32_t> vectorOfStructValues(val<int32_t> x, val<int32_t> y) {
 	p.set(&Point::x, x);
 	p.set(&Point::y, y);
 	vec.push_back(&p);
-	auto elem = vec.at_ptr(val<size_t>(0));
+	auto elem = vec[val<size_t>(0)];
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
+val<int32_t> vectorOfStructValuesAt(val<int32_t> x, val<int32_t> y) {
+	val<std::vector<Point>> vec;
+	val<Point> p;
+	p.set(&Point::x, x);
+	p.set(&Point::y, y);
+	vec.push_back(&p);
+	auto elem = vec.at(val<size_t>(0));
 	return elem.get(&Point::x) + elem.get(&Point::y);
 }
 
@@ -361,9 +371,7 @@ val<int32_t> vectorOfStructValuesFrontBack(val<int32_t> x, val<int32_t> y) {
 	p2.set(&Point::x, val<int32_t>(0));
 	p2.set(&Point::y, y);
 	vec.push_back(&p2);
-	auto front = vec.front_ptr();
-	auto back = vec.back_ptr();
-	return front.get(&Point::x) + back.get(&Point::y);
+	return vec.front().get(&Point::x) + vec.back().get(&Point::y);
 }
 
 val<int32_t> vectorOfStructValuesClear(val<int32_t> x) {
@@ -376,7 +384,7 @@ val<int32_t> vectorOfStructValuesClear(val<int32_t> x) {
 	p.set(&Point::x, x);
 	p.set(&Point::y, x);
 	vec.push_back(&p);
-	auto elem = vec.at_ptr(val<size_t>(0));
+	auto elem = vec[val<size_t>(0)];
 	return elem.get(&Point::x) + elem.get(&Point::y);
 }
 
@@ -384,7 +392,7 @@ val<double> vectorOfPairValues(val<double> f, val<double> s) {
 	val<std::vector<Pair>> vec;
 	val<Pair> p(f, s);
 	vec.push_back(&p);
-	auto elem = vec.at_ptr(val<size_t>(0));
+	auto elem = vec[val<size_t>(0)];
 	return elem.get(&Pair::first) + elem.get(&Pair::second);
 }
 
@@ -398,8 +406,8 @@ val<int32_t> vectorOfStructValuesMultiple(val<int32_t> x) {
 	p2.set(&Point::x, x + val<int32_t>(2));
 	p2.set(&Point::y, x + val<int32_t>(3));
 	vec.push_back(&p2);
-	auto e0 = vec.at_ptr(val<size_t>(0));
-	auto e1 = vec.at_ptr(val<size_t>(1));
+	auto e0 = vec[val<size_t>(0)];
+	auto e1 = vec[val<size_t>(1)];
 	return e0.get(&Point::x) + e0.get(&Point::y) + e1.get(&Point::x) + e1.get(&Point::y);
 }
 
@@ -585,6 +593,10 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	// Struct value element types
 	SECTION("vectorOfStructValues") {
 		auto f = engine.registerFunction(vectorOfStructValues);
+		REQUIRE(f(10, 20) == 30);
+	}
+	SECTION("vectorOfStructValuesAt") {
+		auto f = engine.registerFunction(vectorOfStructValuesAt);
 		REQUIRE(f(10, 20) == 30);
 	}
 	SECTION("vectorOfStructValuesSize") {
