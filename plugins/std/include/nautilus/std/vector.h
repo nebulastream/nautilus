@@ -23,49 +23,46 @@ public:
 		return *this;
 	}
 
-	// Element access
+	// Element access — returns val<T> for fundamental/pointer types, val<T*> for class types
 
-	val<T> at(val<size_type> pos)
-	    requires(!std::is_class_v<T>)
-	{
-		return invoke(
-		    +[](base_type* ptr, size_type p) -> T { return ptr->at(p); }, data_ptr, pos);
+	auto at(val<size_type> pos) {
+		if constexpr (std::is_class_v<T>) {
+			return invoke(
+			    +[](base_type* ptr, size_type p) -> T* { return &ptr->at(p); }, data_ptr, pos);
+		} else {
+			return invoke(
+			    +[](base_type* ptr, size_type p) -> T { return ptr->at(p); }, data_ptr, pos);
+		}
 	}
 
-	val<T> operator[](val<size_type> pos)
-	    requires(!std::is_class_v<T>)
-	{
-		return invoke(
-		    +[](base_type* ptr, size_type p) -> T { return ptr->operator[](p); }, data_ptr, pos);
+	auto operator[](val<size_type> pos) {
+		if constexpr (std::is_class_v<T>) {
+			return invoke(
+			    +[](base_type* ptr, size_type p) -> T* { return &ptr->operator[](p); }, data_ptr, pos);
+		} else {
+			return invoke(
+			    +[](base_type* ptr, size_type p) -> T { return ptr->operator[](p); }, data_ptr, pos);
+		}
 	}
 
-	val<T*> at_ptr(val<size_type> pos) {
-		return invoke(
-		    +[](base_type* ptr, size_type p) -> T* { return &ptr->at(p); }, data_ptr, pos);
+	auto front() {
+		if constexpr (std::is_class_v<T>) {
+			return invoke(
+			    +[](base_type* ptr) -> T* { return &ptr->front(); }, data_ptr);
+		} else {
+			return invoke(
+			    +[](base_type* ptr) -> T { return ptr->front(); }, data_ptr);
+		}
 	}
 
-	val<T> front()
-	    requires(!std::is_class_v<T>)
-	{
-		return invoke(
-		    +[](base_type* ptr) -> T { return ptr->front(); }, data_ptr);
-	}
-
-	val<T> back()
-	    requires(!std::is_class_v<T>)
-	{
-		return invoke(
-		    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
-	}
-
-	val<T*> front_ptr() {
-		return invoke(
-		    +[](base_type* ptr) -> T* { return &ptr->front(); }, data_ptr);
-	}
-
-	val<T*> back_ptr() {
-		return invoke(
-		    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
+	auto back() {
+		if constexpr (std::is_class_v<T>) {
+			return invoke(
+			    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
+		} else {
+			return invoke(
+			    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
+		}
 	}
 
 	val<T*> data() {
