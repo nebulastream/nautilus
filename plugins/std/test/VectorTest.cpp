@@ -1,11 +1,28 @@
 
 #include "nautilus/Engine.hpp"
 #include "nautilus/std/vector.h"
+#include "nautilus/val_std.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
 
-// --- Element access ---
+// --- Test structs ---
+
+struct Point {
+	int32_t x;
+	int32_t y;
+};
+
+struct Pair {
+	double first;
+	double second;
+	Pair() : first(0), second(0) {
+	}
+	Pair(double f, double s) : first(f), second(s) {
+	}
+};
+
+// --- Element access (fundamental) ---
 
 val<int32_t> vectorPushBackAndRead(val<int32_t> x) {
 	val<std::vector<int32_t>> vec;
@@ -72,7 +89,6 @@ val<bool> vectorReserveCapacity() {
 	val<std::vector<int32_t>> vec;
 	vec.reserve(val<size_t>(100));
 	auto cap = vec.capacity();
-	// capacity should be at least 100 after reserve
 	return cap >= val<size_t>(100);
 }
 
@@ -106,7 +122,6 @@ val<int32_t> vectorResizeGrowReadsDefault() {
 	val<std::vector<int32_t>> vec;
 	vec.push_back(val<int32_t>(42));
 	vec.resize(val<size_t>(3));
-	// new elements should be value-initialized (0 for int32_t)
 	return vec[val<size_t>(1)] + vec[val<size_t>(2)];
 }
 
@@ -138,7 +153,6 @@ val<std::vector<int32_t>*> vectorReturnPtr(val<int32_t> x) {
 val<int32_t> vectorFromPtr(val<std::vector<int32_t>*> vec_ptr) {
 	val<std::vector<int32_t>> vec(vec_ptr);
 	auto result = vec[val<size_t>(0)] + vec[val<size_t>(1)];
-	// release ownership since the caller owns the vector
 	vec.release();
 	return result;
 }
@@ -152,12 +166,11 @@ val<int32_t> vectorAssign(val<int32_t> x) {
 	val<std::vector<int32_t>> vec2;
 	vec2 = vec;
 	auto result = vec2[val<size_t>(0)] + vec2[val<size_t>(1)];
-	// release one since assignment shares the underlying pointer
 	vec.release();
 	return result;
 }
 
-// --- Different element types ---
+// --- Fundamental element types ---
 
 val<double> vectorDouble(val<double> x) {
 	val<std::vector<double>> vec;
@@ -217,8 +230,181 @@ val<int32_t> vectorClearAndRefill(val<int32_t> x) {
 	return vec.front();
 }
 
+// --- Pointer element types ---
+
+val<int32_t> vectorOfPtrsReadThrough(val<int32_t*> a, val<int32_t*> b) {
+	val<std::vector<int32_t*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	auto first = vec[val<size_t>(0)];
+	auto second = vec[val<size_t>(1)];
+	return *first + *second;
+}
+
+val<size_t> vectorOfPtrsSize(val<int32_t*> a) {
+	val<std::vector<int32_t*>> vec;
+	vec.push_back(a);
+	vec.push_back(a);
+	vec.push_back(a);
+	return vec.size();
+}
+
+val<int32_t> vectorOfPtrsFrontBack(val<int32_t*> a, val<int32_t*> b, val<int32_t*> c) {
+	val<std::vector<int32_t*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	vec.push_back(c);
+	return *vec.front() + *vec.back();
+}
+
+val<int32_t> vectorOfPtrsPopBack(val<int32_t*> a, val<int32_t*> b) {
+	val<std::vector<int32_t*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	vec.pop_back();
+	return *vec.back();
+}
+
+val<double> vectorOfDoublePtrs(val<double*> a, val<double*> b) {
+	val<std::vector<double*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	return *vec[val<size_t>(0)] + *vec[val<size_t>(1)];
+}
+
+// --- Struct pointer element types ---
+
+val<int32_t> vectorOfStructPtrs(val<Point*> a, val<Point*> b) {
+	val<std::vector<Point*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	auto first = vec[val<size_t>(0)];
+	auto second = vec[val<size_t>(1)];
+	return first.get(&Point::x) + second.get(&Point::y);
+}
+
+val<size_t> vectorOfStructPtrsSize(val<Point*> a) {
+	val<std::vector<Point*>> vec;
+	vec.push_back(a);
+	vec.push_back(a);
+	return vec.size();
+}
+
+val<int32_t> vectorOfStructPtrsFrontBack(val<Point*> a, val<Point*> b, val<Point*> c) {
+	val<std::vector<Point*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	vec.push_back(c);
+	auto front = vec.front();
+	auto back = vec.back();
+	return front.get(&Point::x) + back.get(&Point::y);
+}
+
+val<int32_t> vectorOfStructPtrsAt(val<Point*> a, val<Point*> b) {
+	val<std::vector<Point*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	auto elem = vec.at(val<size_t>(1));
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
+val<int32_t> vectorOfStructPtrsPopBack(val<Point*> a, val<Point*> b) {
+	val<std::vector<Point*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	vec.pop_back();
+	auto elem = vec.back();
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
+val<double> vectorOfPairPtrs(val<Pair*> a, val<Pair*> b) {
+	val<std::vector<Pair*>> vec;
+	vec.push_back(a);
+	vec.push_back(b);
+	auto first = vec[val<size_t>(0)];
+	auto second = vec[val<size_t>(1)];
+	return first.get(&Pair::first) + second.get(&Pair::second);
+}
+
+// --- Struct value types (via at_ptr / front_ptr / back_ptr) ---
+
+val<int32_t> vectorOfStructValues(val<int32_t> x, val<int32_t> y) {
+	val<std::vector<Point>> vec;
+	val<Point> p;
+	p.set(&Point::x, x);
+	p.set(&Point::y, y);
+	vec.push_back(&p);
+	auto elem = vec.at_ptr(val<size_t>(0));
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
+val<size_t> vectorOfStructValuesSize(val<int32_t> x) {
+	val<std::vector<Point>> vec;
+	val<Point> p1;
+	p1.set(&Point::x, x);
+	p1.set(&Point::y, val<int32_t>(0));
+	vec.push_back(&p1);
+	val<Point> p2;
+	p2.set(&Point::x, val<int32_t>(0));
+	p2.set(&Point::y, x);
+	vec.push_back(&p2);
+	return vec.size();
+}
+
+val<int32_t> vectorOfStructValuesFrontBack(val<int32_t> x, val<int32_t> y) {
+	val<std::vector<Point>> vec;
+	val<Point> p1;
+	p1.set(&Point::x, x);
+	p1.set(&Point::y, val<int32_t>(0));
+	vec.push_back(&p1);
+	val<Point> p2;
+	p2.set(&Point::x, val<int32_t>(0));
+	p2.set(&Point::y, y);
+	vec.push_back(&p2);
+	auto front = vec.front_ptr();
+	auto back = vec.back_ptr();
+	return front.get(&Point::x) + back.get(&Point::y);
+}
+
+val<int32_t> vectorOfStructValuesClear(val<int32_t> x) {
+	val<std::vector<Point>> vec;
+	val<Point> p;
+	p.set(&Point::x, val<int32_t>(999));
+	p.set(&Point::y, val<int32_t>(999));
+	vec.push_back(&p);
+	vec.clear();
+	p.set(&Point::x, x);
+	p.set(&Point::y, x);
+	vec.push_back(&p);
+	auto elem = vec.at_ptr(val<size_t>(0));
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
+val<double> vectorOfPairValues(val<double> f, val<double> s) {
+	val<std::vector<Pair>> vec;
+	val<Pair> p(f, s);
+	vec.push_back(&p);
+	auto elem = vec.at_ptr(val<size_t>(0));
+	return elem.get(&Pair::first) + elem.get(&Pair::second);
+}
+
+val<int32_t> vectorOfStructValuesMultiple(val<int32_t> x) {
+	val<std::vector<Point>> vec;
+	val<Point> p1;
+	p1.set(&Point::x, x);
+	p1.set(&Point::y, x + val<int32_t>(1));
+	vec.push_back(&p1);
+	val<Point> p2;
+	p2.set(&Point::x, x + val<int32_t>(2));
+	p2.set(&Point::y, x + val<int32_t>(3));
+	vec.push_back(&p2);
+	auto e0 = vec.at_ptr(val<size_t>(0));
+	auto e1 = vec.at_ptr(val<size_t>(1));
+	return e0.get(&Point::x) + e0.get(&Point::y) + e1.get(&Point::x) + e1.get(&Point::y);
+}
+
 void runVectorTest(engine::NautilusEngine& engine) {
-	// Element access
+	// Element access (fundamental)
 	SECTION("vectorPushBackAndRead") {
 		auto f = engine.registerFunction(vectorPushBackAndRead);
 		REQUIRE(f(10) == 52);
@@ -305,7 +491,7 @@ void runVectorTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(10) == 30);
 	}
 
-	// Different element types
+	// Fundamental element types
 	SECTION("vectorDouble") {
 		auto f = engine.registerFunction(vectorDouble);
 		REQUIRE(f(1.0) == Catch::Approx(4.14));
@@ -326,7 +512,6 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	// Combined operations
 	SECTION("vectorBuildAndSum") {
 		auto f = engine.registerFunction(vectorBuildAndSum);
-		// x=10: 10+11+12+13 = 46
 		REQUIRE(f(10) == 46);
 	}
 	SECTION("vectorPopToEmpty") {
@@ -336,6 +521,92 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	SECTION("vectorClearAndRefill") {
 		auto f = engine.registerFunction(vectorClearAndRefill);
 		REQUIRE(f(55) == 55);
+	}
+
+	// Pointer element types
+	SECTION("vectorOfPtrsReadThrough") {
+		auto f = engine.registerFunction(vectorOfPtrsReadThrough);
+		int32_t a = 10, b = 20;
+		REQUIRE(f(&a, &b) == 30);
+	}
+	SECTION("vectorOfPtrsSize") {
+		auto f = engine.registerFunction(vectorOfPtrsSize);
+		int32_t a = 1;
+		REQUIRE(f(&a) == 3);
+	}
+	SECTION("vectorOfPtrsFrontBack") {
+		auto f = engine.registerFunction(vectorOfPtrsFrontBack);
+		int32_t a = 10, b = 20, c = 30;
+		REQUIRE(f(&a, &b, &c) == 40);
+	}
+	SECTION("vectorOfPtrsPopBack") {
+		auto f = engine.registerFunction(vectorOfPtrsPopBack);
+		int32_t a = 100, b = 200;
+		REQUIRE(f(&a, &b) == 100);
+	}
+	SECTION("vectorOfDoublePtrs") {
+		auto f = engine.registerFunction(vectorOfDoublePtrs);
+		double a = 1.5, b = 2.5;
+		REQUIRE(f(&a, &b) == Catch::Approx(4.0));
+	}
+
+	// Struct pointer element types
+	SECTION("vectorOfStructPtrs") {
+		auto f = engine.registerFunction(vectorOfStructPtrs);
+		Point a = {10, 20}, b = {30, 40};
+		REQUIRE(f(&a, &b) == 50);
+	}
+	SECTION("vectorOfStructPtrsSize") {
+		auto f = engine.registerFunction(vectorOfStructPtrsSize);
+		Point a = {1, 2};
+		REQUIRE(f(&a) == 2);
+	}
+	SECTION("vectorOfStructPtrsFrontBack") {
+		auto f = engine.registerFunction(vectorOfStructPtrsFrontBack);
+		Point a = {10, 20}, b = {30, 40}, c = {50, 60};
+		REQUIRE(f(&a, &b, &c) == 70);
+	}
+	SECTION("vectorOfStructPtrsAt") {
+		auto f = engine.registerFunction(vectorOfStructPtrsAt);
+		Point a = {1, 2}, b = {30, 40};
+		REQUIRE(f(&a, &b) == 70);
+	}
+	SECTION("vectorOfStructPtrsPopBack") {
+		auto f = engine.registerFunction(vectorOfStructPtrsPopBack);
+		Point a = {10, 20}, b = {30, 40};
+		REQUIRE(f(&a, &b) == 30);
+	}
+	SECTION("vectorOfPairPtrs") {
+		auto f = engine.registerFunction(vectorOfPairPtrs);
+		Pair a = {1.5, 2.5}, b = {3.5, 4.5};
+		REQUIRE(f(&a, &b) == Catch::Approx(6.0));
+	}
+
+	// Struct value element types
+	SECTION("vectorOfStructValues") {
+		auto f = engine.registerFunction(vectorOfStructValues);
+		REQUIRE(f(10, 20) == 30);
+	}
+	SECTION("vectorOfStructValuesSize") {
+		auto f = engine.registerFunction(vectorOfStructValuesSize);
+		REQUIRE(f(5) == 2);
+	}
+	SECTION("vectorOfStructValuesFrontBack") {
+		auto f = engine.registerFunction(vectorOfStructValuesFrontBack);
+		REQUIRE(f(10, 20) == 30);
+	}
+	SECTION("vectorOfStructValuesClear") {
+		auto f = engine.registerFunction(vectorOfStructValuesClear);
+		REQUIRE(f(7) == 14);
+	}
+	SECTION("vectorOfPairValues") {
+		auto f = engine.registerFunction(vectorOfPairValues);
+		REQUIRE(f(1.5, 2.5) == Catch::Approx(4.0));
+	}
+	SECTION("vectorOfStructValuesMultiple") {
+		auto f = engine.registerFunction(vectorOfStructValuesMultiple);
+		// x=10: 10+11+12+13 = 46
+		REQUIRE(f(10) == 46);
 	}
 }
 
