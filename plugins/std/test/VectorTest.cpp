@@ -257,6 +257,27 @@ val<bool> vectorShrinkToFitActual() {
 	return cap_after < cap_before;
 }
 
+// --- equals returning false ---
+
+val<bool> vectorEqualsFalse() {
+	val<std::vector<int32_t>> a;
+	a.push_back(val<int32_t>(1));
+	a.push_back(val<int32_t>(2));
+	val<std::vector<int32_t>> b;
+	b.push_back(val<int32_t>(1));
+	b.push_back(val<int32_t>(3));
+	return a.equals(b);
+}
+
+val<bool> vectorEqualsDifferentSize() {
+	val<std::vector<int32_t>> a;
+	a.push_back(val<int32_t>(1));
+	val<std::vector<int32_t>> b;
+	b.push_back(val<int32_t>(1));
+	b.push_back(val<int32_t>(2));
+	return a.equals(b);
+}
+
 // --- swap with pointer element type ---
 
 val<int32_t> vectorSwapPtrs(val<int32_t*> a, val<int32_t*> b) {
@@ -575,7 +596,7 @@ val<int32_t> vectorOfStructValuesMultiple(val<int32_t> x) {
 	return e0.get(&Point::x) + e0.get(&Point::y) + e1.get(&Point::x) + e1.get(&Point::y);
 }
 
-void runVectorTest(engine::NautilusEngine& engine) {
+void runVectorTest(engine::NautilusEngine& engine, const std::string& backend = "") {
 	// Element access (fundamental)
 	SECTION("vectorPushBackAndRead") {
 		auto f = engine.registerFunction(vectorPushBackAndRead);
@@ -701,6 +722,16 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	SECTION("vectorShrinkToFitActual") {
 		auto f = engine.registerFunction(vectorShrinkToFitActual);
 		REQUIRE(f() == true);
+	}
+	if (backend != "bc") {
+		SECTION("vectorEqualsFalse") {
+			auto f = engine.registerFunction(vectorEqualsFalse);
+			REQUIRE(f() == false);
+		}
+		SECTION("vectorEqualsDifferentSize") {
+			auto f = engine.registerFunction(vectorEqualsDifferentSize);
+			REQUIRE(f() == false);
+		}
 	}
 	SECTION("vectorSwapPtrs") {
 		auto f = engine.registerFunction(vectorSwapPtrs);
@@ -910,7 +941,7 @@ TEST_CASE("VectorTest - Compiler") {
 				options.setOption("engine.backend", backend);
 				options.setOption("engine.traceMode", traceMode);
 				auto engine = engine::NautilusEngine(options);
-				runVectorTest(engine);
+				runVectorTest(engine, backend);
 			}
 		}
 	}
