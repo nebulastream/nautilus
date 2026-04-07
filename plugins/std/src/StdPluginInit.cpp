@@ -1,5 +1,6 @@
 
 #ifdef ENABLE_MLIR_BACKEND
+#include "MLIRAtomicIntrinsics.hpp"
 #include "MLIRBitIntrinsics.hpp"
 #include "MLIRMathIntrinsics.hpp"
 
@@ -9,6 +10,7 @@ struct StdIntrinsicRegistrar {
 	StdIntrinsicRegistrar() {
 		nautilus::compiler::mlir::RegisterMLIRMathIntrinsicPlugin();
 		nautilus::compiler::mlir::RegisterMLIRBitIntrinsicPlugin();
+		nautilus::compiler::mlir::RegisterMLIRAtomicIntrinsicPlugin();
 	}
 };
 static StdIntrinsicRegistrar registrar_;
