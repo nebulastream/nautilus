@@ -35,6 +35,36 @@ val<int32_t> cfWithAssume(val<int32_t> a) {
 	}
 }
 
+val<int64_t> cfWithAssumeConstant(val<int64_t> a) {
+	nautilus_assume_constant(a, 7);
+	if (a == 7) {
+		return a * 3;
+	} else {
+		invoke<void>(throwExceptions);
+		return 42;
+	}
+}
+
+val<int64_t> cfWithAssumeRange(val<int64_t> a) {
+	nautilus_assume_range(a, 0, 100);
+	if (a >= 0 && a <= 100) {
+		return a + 1;
+	} else {
+		invoke<void>(throwExceptions);
+		return 42;
+	}
+}
+
+val<int64_t> cfWithAssumeNonzero(val<int64_t> a) {
+	nautilus_assume_nonzero(a);
+	if (a != 0) {
+		return a + 5;
+	} else {
+		invoke<void>(throwExceptions);
+		return 42;
+	}
+}
+
 val<int> cfWithAssumeAlignment(val<int32_t*> a) {
 	nautilus_assume_aligned(a, 256);
 	return *a + 10;
@@ -58,6 +88,38 @@ TEST_CASE("MLIR Intrinsic Function Test") {
 					REQUIRE(f(0) == 10);
 				} else {
 					REQUIRE(f(42) == 52);
+					REQUIRE_THROWS(f(0));
+				}
+			}
+			SECTION("cfWithAssumeConstant") {
+				auto f = engine.registerFunction(cfWithAssumeConstant);
+				if (useIntrinsics) {
+					REQUIRE(f(7) == 21);
+					// with intrinsics, the optimizer folds `a` to the asserted constant 7,
+					// so even passing 0 returns 7 * 3 = 21 (undefined behavior is exploited)
+					REQUIRE(f(0) == 21);
+				} else {
+					REQUIRE(f(7) == 21);
+					REQUIRE_THROWS(f(0));
+				}
+			}
+			SECTION("cfWithAssumeRange") {
+				auto f = engine.registerFunction(cfWithAssumeRange);
+				if (useIntrinsics) {
+					REQUIRE(f(50) == 51);
+					REQUIRE(f(-1) == 0);
+				} else {
+					REQUIRE(f(50) == 51);
+					REQUIRE_THROWS(f(-1));
+				}
+			}
+			SECTION("cfWithAssumeNonzero") {
+				auto f = engine.registerFunction(cfWithAssumeNonzero);
+				if (useIntrinsics) {
+					REQUIRE(f(3) == 8);
+					REQUIRE(f(0) == 5);
+				} else {
+					REQUIRE(f(3) == 8);
 					REQUIRE_THROWS(f(0));
 				}
 			}
