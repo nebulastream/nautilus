@@ -10,10 +10,11 @@ set(STD_SOURCES
         src/string_view.cpp
         src/vector.cpp
         src/iostream.cpp
+        src/atomic.cpp
 )
 
 if (ENABLE_MLIR_BACKEND)
-    list(APPEND STD_SOURCES src/MLIRMathIntrinsics.cpp src/MLIRBitIntrinsics.cpp src/StdPluginInit.cpp)
+    list(APPEND STD_SOURCES src/MLIRMathIntrinsics.cpp src/MLIRBitIntrinsics.cpp src/MLIRAtomicIntrinsics.cpp src/StdPluginInit.cpp)
 endif ()
 
 target_sources(nautilus-std PRIVATE ${STD_SOURCES})
