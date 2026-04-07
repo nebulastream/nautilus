@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
@@ -21,9 +22,7 @@ val<int64_t> sumUpTo(val<int64_t> n) {
 }
 
 TEST_CASE("BC Backend Concurrent Execution") {
-	engine::Options options;
-	options.setOption("engine.backend", "bc");
-	auto engine = engine::NautilusEngine(options);
+	auto engine = nautilus::testing::makeEngine("bc");
 
 	SECTION("concurrent arithmetic") {
 		auto f = engine.registerFunction(squarePlusSeven);
