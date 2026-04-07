@@ -42,6 +42,10 @@ struct VectorIntrinsicRegistrar {
 #ifdef ENABLE_MLIR_BACKEND
 		nautilus::compiler::mlir::RegisterMLIRVectorIntrinsicPlugin();
 #endif
+		// Force a fixed SIMD width so generated IR is deterministic
+		// regardless of the host CPU's actual SIMD capabilities.
+		// 64 bytes (AVX-512 width) matches the checked-in reference IR.
+		nautilus::SetSimdWidth(64);
 	}
 };
 static VectorIntrinsicRegistrar registrar_;

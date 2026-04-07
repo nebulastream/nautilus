@@ -9,7 +9,16 @@ namespace nautilus {
 /// Returns the SIMD register width in bytes for the current CPU, detected at runtime.
 /// Uses cpuid on x86, feature registers on ARM. Result is cached after first call.
 /// Possible return values: 16 (SSE2/NEON), 32 (AVX/AVX2), 64 (AVX-512).
+/// If an override has been set via SetSimdWidth(), returns that value instead.
 size_t RuntimeSimdWidth();
+
+/// Override the SIMD width returned by RuntimeSimdWidth().
+/// Accepts 16, 32, or 64. Useful for testing with a fixed lane count
+/// independent of the host CPU's actual SIMD capabilities.
+void SetSimdWidth(size_t widthInBytes);
+
+/// Clear any override set by SetSimdWidth(), reverting to hardware detection.
+void ResetSimdWidth();
 
 /// Fixed-size aligned SIMD storage (internal).
 template <typename T, size_t N>
