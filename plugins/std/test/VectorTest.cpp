@@ -597,7 +597,328 @@ val<int32_t> vectorOfStructValuesMultiple(val<int32_t> x) {
 	return e0.get(&Point::x) + e0.get(&Point::y) + e1.get(&Point::x) + e1.get(&Point::y);
 }
 
+// --- Iterator tests ---
+
+val<int32_t> vectorIteratorSum(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(val<int32_t>(3));
+	vec.push_back(val<int32_t>(4));
+	val<int32_t> sum = val<int32_t>(0);
+	auto end_it = vec.end();
+	for (auto it = vec.begin(); it != end_it; ++it) {
+		sum = sum + *it;
+	}
+	return sum;
+}
+
+val<int32_t> vectorIteratorWrite(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	auto end_it = vec.end();
+	for (auto it = vec.begin(); it != end_it; ++it) {
+		*it = x;
+	}
+	return vec[val<size_t>(0)] + vec[val<size_t>(1)] + vec[val<size_t>(2)];
+}
+
+val<size_t> vectorIteratorDistance(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(val<int32_t>(3));
+	vec.push_back(val<int32_t>(4));
+	return vec.end() - vec.begin();
+}
+
+val<int32_t> vectorIteratorRandomAccess(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(10));
+	vec.push_back(val<int32_t>(20));
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(40));
+	auto it = vec.begin();
+	it += val<size_t>(2);
+	return *it;
+}
+
+// --- Non-loop iterator coverage (safe for all backends) ---
+
+val<size_t> vectorIteratorEmptyDistance() {
+	val<std::vector<int32_t>> vec;
+	return vec.end() - vec.begin();
+}
+
+val<bool> vectorIteratorEmptyEqual() {
+	val<std::vector<int32_t>> vec;
+	return vec.begin() == vec.end();
+}
+
+val<int32_t> vectorIteratorPlusOperator(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(10));
+	vec.push_back(val<int32_t>(20));
+	vec.push_back(val<int32_t>(30));
+	vec.push_back(x);
+	auto it = vec.begin() + val<size_t>(3);
+	return *it;
+}
+
+val<int32_t> vectorIteratorMinusOperator(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(10));
+	vec.push_back(val<int32_t>(20));
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(40));
+	auto it = vec.end() - val<size_t>(2);
+	return *it;
+}
+
+val<int32_t> vectorIteratorMinusEqual(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(4));
+	auto it = vec.end();
+	it -= val<size_t>(2);
+	return *it;
+}
+
+val<int32_t> vectorIteratorPostIncrement(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(99));
+	auto it = vec.begin();
+	auto prev = it++;
+	return *prev + *it;
+}
+
+val<int32_t> vectorIteratorPreDecrement(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(7));
+	vec.push_back(x);
+	auto it = vec.end();
+	--it;
+	return *it;
+}
+
+val<int32_t> vectorIteratorPostDecrement(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(11));
+	vec.push_back(x);
+	auto it = vec.end();
+	auto prev = it--;
+	(void) prev;
+	--it;
+	return *it;
+}
+
+val<int32_t> vectorIteratorSubscript(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(10));
+	vec.push_back(val<int32_t>(20));
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(40));
+	auto it = vec.begin();
+	return it[val<size_t>(2)];
+}
+
+val<size_t> vectorIteratorPartialDistance(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(val<int32_t>(3));
+	vec.push_back(val<int32_t>(4));
+	auto begin = vec.begin();
+	auto mid = begin + val<size_t>(3);
+	return mid - begin;
+}
+
+val<bool> vectorIteratorLess(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(val<int32_t>(3));
+	return vec.begin() < vec.end();
+}
+
+val<bool> vectorIteratorLessEqualSelf(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	auto a = vec.begin();
+	auto b = vec.begin();
+	return a <= b;
+}
+
+val<bool> vectorIteratorGreater(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(2));
+	return vec.end() > vec.begin();
+}
+
+val<bool> vectorIteratorGreaterEqual(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(2));
+	auto a = vec.begin() + val<size_t>(1);
+	auto b = vec.begin() + val<size_t>(1);
+	return a >= b;
+}
+
+val<bool> vectorIteratorNotEqual(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(2));
+	return vec.begin() != vec.end();
+}
+
+val<int32_t> vectorIteratorWriteSingle(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	auto it = vec.begin() + val<size_t>(1);
+	*it = x;
+	return vec[val<size_t>(0)] + vec[val<size_t>(1)] + vec[val<size_t>(2)];
+}
+
+val<double> vectorIteratorDouble(val<double> x) {
+	val<std::vector<double>> vec;
+	vec.push_back(val<double>(1.5));
+	vec.push_back(x);
+	vec.push_back(val<double>(0.5));
+	auto it = vec.begin() + val<size_t>(1);
+	return *it;
+}
+
+val<int32_t> vectorIteratorBeginIsFront(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(x);
+	vec.push_back(val<int32_t>(99));
+	return *vec.begin();
+}
+
+val<int32_t> vectorIteratorBackViaEnd(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(11));
+	vec.push_back(val<int32_t>(22));
+	vec.push_back(x);
+	auto it = vec.end() - val<size_t>(1);
+	return *it;
+}
+
+val<int32_t> vectorIteratorStruct(val<int32_t> x, val<int32_t> y) {
+	val<std::vector<Point>> vec;
+	val<Point> p;
+	p.set(&Point::x, x);
+	p.set(&Point::y, y);
+	vec.push_back(&p);
+	// iterator over class T returns val<T*>
+	auto it = vec.begin();
+	auto elem = *it;
+	return elem.get(&Point::x) + elem.get(&Point::y);
+}
+
 void runVectorTest(engine::NautilusEngine& engine, const std::string& /*backend*/ = "") {
+	// Iterator (loop-based iterator tests live outside runVectorTest because
+	// pointer-based loops are not supported under exceptionBasedTracing yet;
+	// only the non-loop iterator operations are exercised across all backends).
+	SECTION("vectorIteratorDistance") {
+		auto f = engine.registerFunction(vectorIteratorDistance);
+		REQUIRE(f(0) == 5);
+	}
+	SECTION("vectorIteratorRandomAccess") {
+		auto f = engine.registerFunction(vectorIteratorRandomAccess);
+		REQUIRE(f(99) == 99);
+	}
+	SECTION("vectorIteratorEmptyDistance") {
+		auto f = engine.registerFunction(vectorIteratorEmptyDistance);
+		REQUIRE(f() == 0);
+	}
+	SECTION("vectorIteratorEmptyEqual") {
+		auto f = engine.registerFunction(vectorIteratorEmptyEqual);
+		REQUIRE(f() == true);
+	}
+	SECTION("vectorIteratorPlusOperator") {
+		auto f = engine.registerFunction(vectorIteratorPlusOperator);
+		REQUIRE(f(77) == 77);
+	}
+	SECTION("vectorIteratorMinusOperator") {
+		auto f = engine.registerFunction(vectorIteratorMinusOperator);
+		REQUIRE(f(55) == 55);
+	}
+	SECTION("vectorIteratorMinusEqual") {
+		auto f = engine.registerFunction(vectorIteratorMinusEqual);
+		REQUIRE(f(33) == 33);
+	}
+	SECTION("vectorIteratorPostIncrement") {
+		auto f = engine.registerFunction(vectorIteratorPostIncrement);
+		REQUIRE(f(1) == 100);
+	}
+	SECTION("vectorIteratorPreDecrement") {
+		auto f = engine.registerFunction(vectorIteratorPreDecrement);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("vectorIteratorPostDecrement") {
+		auto f = engine.registerFunction(vectorIteratorPostDecrement);
+		REQUIRE(f(99) == 11);
+	}
+	SECTION("vectorIteratorSubscript") {
+		auto f = engine.registerFunction(vectorIteratorSubscript);
+		REQUIRE(f(88) == 88);
+	}
+	SECTION("vectorIteratorPartialDistance") {
+		auto f = engine.registerFunction(vectorIteratorPartialDistance);
+		REQUIRE(f(0) == 3);
+	}
+	SECTION("vectorIteratorLess") {
+		auto f = engine.registerFunction(vectorIteratorLess);
+		REQUIRE(f(0) == true);
+	}
+	SECTION("vectorIteratorLessEqualSelf") {
+		auto f = engine.registerFunction(vectorIteratorLessEqualSelf);
+		REQUIRE(f(0) == true);
+	}
+	SECTION("vectorIteratorGreater") {
+		auto f = engine.registerFunction(vectorIteratorGreater);
+		REQUIRE(f(0) == true);
+	}
+	SECTION("vectorIteratorGreaterEqual") {
+		auto f = engine.registerFunction(vectorIteratorGreaterEqual);
+		REQUIRE(f(0) == true);
+	}
+	SECTION("vectorIteratorNotEqual") {
+		auto f = engine.registerFunction(vectorIteratorNotEqual);
+		REQUIRE(f(0) == true);
+	}
+	SECTION("vectorIteratorWriteSingle") {
+		auto f = engine.registerFunction(vectorIteratorWriteSingle);
+		REQUIRE(f(5) == 5);
+	}
+	SECTION("vectorIteratorDouble") {
+		auto f = engine.registerFunction(vectorIteratorDouble);
+		REQUIRE(f(2.25) == Catch::Approx(2.25));
+	}
+	SECTION("vectorIteratorBeginIsFront") {
+		auto f = engine.registerFunction(vectorIteratorBeginIsFront);
+		REQUIRE(f(13) == 13);
+	}
+	SECTION("vectorIteratorBackViaEnd") {
+		auto f = engine.registerFunction(vectorIteratorBackViaEnd);
+		REQUIRE(f(77) == 77);
+	}
+	SECTION("vectorIteratorStruct") {
+		auto f = engine.registerFunction(vectorIteratorStruct);
+		REQUIRE(f(10, 20) == 30);
+	}
+
 	// Element access (fundamental)
 	SECTION("vectorPushBackAndRead") {
 		auto f = engine.registerFunction(vectorPushBackAndRead);
@@ -912,6 +1233,14 @@ TEST_CASE("VectorTest - Interpreter") {
 		REQUIRE(f(0) == 1);
 		REQUIRE(f(1) == 2);
 		REQUIRE_THROWS_AS(f(5), std::out_of_range);
+	}
+	SECTION("vectorIteratorSum") {
+		auto f = engine.registerFunction(vectorIteratorSum);
+		REQUIRE(f(1) == 10);
+	}
+	SECTION("vectorIteratorWrite") {
+		auto f = engine.registerFunction(vectorIteratorWrite);
+		REQUIRE(f(7) == 21);
 	}
 }
 

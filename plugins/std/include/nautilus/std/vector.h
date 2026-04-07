@@ -267,6 +267,122 @@ public:
 		return ptr;
 	}
 
+	// --- Iterator support ---
+	//
+	// A random-access iterator that wraps a `val<T*>` cursor into the
+	// vector's contiguous storage. It mirrors the semantics of a normal C++
+	// `std::vector<T>::iterator`: increment, decrement, random-access
+	// arithmetic, dereference, and comparison are all supported, so it can be
+	// used in ordinary `for (auto it = v.begin(); it != v.end(); ++it)` style
+	// loops as well as range-for.
+	//
+	// Dereference mirrors `operator[]`:
+	//   - arithmetic T  -> val<T&> (load + store)
+	//   - class T       -> val<T*>
+	//   - pointer T     -> val<T> (load only)
+	class iterator {
+	public:
+		iterator(val<T*> cursor) : cursor_(cursor) {
+		}
+
+		auto operator*() {
+			if constexpr (std::is_class_v<T>) {
+				return cursor_;
+			} else if constexpr (std::is_arithmetic_v<T>) {
+				return cursor_[val<size_type>(0)];
+			} else {
+				return val<T>(cursor_[val<size_type>(0)]);
+			}
+		}
+
+		auto operator[](val<size_type> n) {
+			auto tmp = *this + n;
+			return *tmp;
+		}
+
+		iterator& operator++() {
+			cursor_ += val<size_type>(1);
+			return *this;
+		}
+
+		iterator operator++(int) {
+			iterator tmp = *this;
+			++(*this);
+			return tmp;
+		}
+
+		iterator& operator--() {
+			cursor_ = cursor_ - val<size_type>(1);
+			return *this;
+		}
+
+		iterator operator--(int) {
+			iterator tmp = *this;
+			--(*this);
+			return tmp;
+		}
+
+		iterator operator+(val<size_type> n) {
+			val<T*> tmp = cursor_;
+			return iterator(tmp + n);
+		}
+
+		iterator operator-(val<size_type> n) {
+			val<T*> tmp = cursor_;
+			return iterator(tmp - n);
+		}
+
+		iterator& operator+=(val<size_type> n) {
+			cursor_ = cursor_ + n;
+			return *this;
+		}
+
+		iterator& operator-=(val<size_type> n) {
+			cursor_ = cursor_ - n;
+			return *this;
+		}
+
+		val<size_type> operator-(const iterator& other) const {
+			auto a = static_cast<val<uint64_t>>(cursor_);
+			auto b = static_cast<val<uint64_t>>(other.cursor_);
+			return val<size_type>((a - b) / val<uint64_t>(sizeof(T)));
+		}
+
+		val<bool> operator==(const iterator& other) const {
+			return cursor_ == other.cursor_;
+		}
+		val<bool> operator!=(const iterator& other) const {
+			return cursor_ != other.cursor_;
+		}
+		val<bool> operator<(const iterator& other) const {
+			return static_cast<val<uint64_t>>(cursor_) < static_cast<val<uint64_t>>(other.cursor_);
+		}
+		val<bool> operator>(const iterator& other) const {
+			return static_cast<val<uint64_t>>(cursor_) > static_cast<val<uint64_t>>(other.cursor_);
+		}
+		val<bool> operator<=(const iterator& other) const {
+			return static_cast<val<uint64_t>>(cursor_) <= static_cast<val<uint64_t>>(other.cursor_);
+		}
+		val<bool> operator>=(const iterator& other) const {
+			return static_cast<val<uint64_t>>(cursor_) >= static_cast<val<uint64_t>>(other.cursor_);
+		}
+
+		val<T*> base() const {
+			return cursor_;
+		}
+
+	private:
+		val<T*> cursor_;
+	};
+
+	iterator begin() {
+		return iterator(load_data_ptr());
+	}
+
+	iterator end() {
+		return iterator(load_finish_ptr());
+	}
+
 private:
 	val<base_type*> data_ptr;
 };
