@@ -9,43 +9,29 @@ namespace nautilus {
 
 namespace detail {
 
-/// Layout of a std::vector's three internal pointer fields
-/// (`_M_start`, `_M_finish`, `_M_end_of_storage` in libstdc++).
-/// All major standard library implementations (libstdc++, libc++, MSVC STL)
-/// store these as the first three pointer-sized members. We probe the byte
-/// offsets at static-init time to avoid hard-coding the layout.
-struct vector_layout_offsets {
-	std::size_t start_offset = 0;
-	std::size_t finish_offset = sizeof(void*);
-	std::size_t end_offset = 2 * sizeof(void*);
-};
-
+/// Byte offset of the data pointer (`_M_start` / `__begin_` / `_Myfirst`)
+/// inside a std::vector. All major standard libraries store the data
+/// pointer as one of the first pointer-sized members; we probe the offset
+/// at static-init time to avoid hard-coding the layout.
 template <typename T, typename Allocator>
-inline vector_layout_offsets probe_vector_layout() {
-	vector_layout_offsets layout;
+inline std::size_t probe_vector_data_offset() {
 	std::vector<T, Allocator> v;
-	v.reserve(4);
+	v.reserve(1);
 	v.push_back(T {});
-	const auto* start_p = static_cast<const void*>(v.data());
-	const auto* finish_p = static_cast<const void*>(v.data() + 1);
-	const auto* end_p = static_cast<const void*>(v.data() + 4);
+	const auto* data = static_cast<const void*>(v.data());
 	const auto* base = reinterpret_cast<const std::byte*>(&v);
 	for (std::size_t i = 0; i + sizeof(void*) <= sizeof(v); i += alignof(void*)) {
 		void* slot;
 		std::memcpy(&slot, base + i, sizeof(void*));
-		if (slot == start_p) {
-			layout.start_offset = i;
-		} else if (slot == finish_p) {
-			layout.finish_offset = i;
-		} else if (slot == end_p) {
-			layout.end_offset = i;
+		if (slot == data) {
+			return i;
 		}
 	}
-	return layout;
+	return 0;
 }
 
 template <typename T, typename Allocator>
-inline const vector_layout_offsets vector_layout = probe_vector_layout<T, Allocator>();
+inline const std::size_t vector_data_offset = probe_vector_data_offset<T, Allocator>();
 
 } // namespace detail
 
@@ -55,26 +41,15 @@ class val<std::vector<T, Allocator>> {
 	using value_type = typename base_type::value_type;
 	using size_type = typename base_type::size_type;
 
-	/// Loads one of the vector's internal pointer fields via direct memory
-	/// access at the probed byte offset. The result is a single traced LOAD
-	/// op that the JIT can optimize, instead of an opaque invoke() call.
-	val<T*> load_field_ptr(std::size_t offset) {
-		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
-		auto field_byte_ptr = byte_ptr + val<uint64_t>(offset);
-		auto field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(field_byte_ptr));
-		return *field_ptr;
-	}
-
+	/// Loads the vector's internal data pointer via direct memory access at
+	/// the probed byte offset. Emits a LOAD op instead of an opaque invoke()
+	/// call. Goes through `val<void*>` intermediates because some backends
+	/// (bc on macOS) reject direct ptr→ptr casts between unrelated types.
 	val<T*> load_data_ptr() {
-		return load_field_ptr(detail::vector_layout<T, Allocator>.start_offset);
-	}
-
-	val<T*> load_finish_ptr() {
-		return load_field_ptr(detail::vector_layout<T, Allocator>.finish_offset);
-	}
-
-	val<T*> load_end_ptr() {
-		return load_field_ptr(detail::vector_layout<T, Allocator>.end_offset);
+		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
+		auto data_field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_data_offset<T, Allocator>);
+		auto data_field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(data_field_byte_ptr));
+		return *data_field_ptr;
 	}
 
 public:
@@ -131,16 +106,12 @@ public:
 	}
 
 	auto back() {
-		auto data = load_data_ptr();
-		auto last_index = size() - val<size_type>(1);
 		if constexpr (std::is_class_v<T>) {
-			auto byte_data = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data));
-			auto elem_byte_ptr = byte_data + last_index * val<uint64_t>(sizeof(T));
-			return static_cast<val<T*>>(static_cast<val<void*>>(elem_byte_ptr));
-		} else if constexpr (std::is_arithmetic_v<T>) {
-			return data[last_index];
+			return invoke(
+			    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
 		} else {
-			return val<T>(data[last_index]);
+			return invoke(
+			    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
 		}
 	}
 
@@ -164,19 +135,18 @@ public:
 	// distance between the internal pointers; empty is a pointer compare.
 
 	val<bool> empty() {
-		return load_data_ptr() == load_finish_ptr();
+		return invoke(
+		    +[](base_type* ptr) -> bool { return ptr->empty(); }, data_ptr);
 	}
 
 	val<size_type> size() {
-		auto start = static_cast<val<uint64_t>>(load_data_ptr());
-		auto finish = static_cast<val<uint64_t>>(load_finish_ptr());
-		return val<size_type>((finish - start) / val<uint64_t>(sizeof(T)));
+		return invoke(
+		    +[](base_type* ptr) -> size_type { return ptr->size(); }, data_ptr);
 	}
 
 	val<size_type> capacity() {
-		auto start = static_cast<val<uint64_t>>(load_data_ptr());
-		auto end = static_cast<val<uint64_t>>(load_end_ptr());
-		return val<size_type>((end - start) / val<uint64_t>(sizeof(T)));
+		return invoke(
+		    +[](base_type* ptr) -> size_type { return ptr->capacity(); }, data_ptr);
 	}
 
 	val<size_type> max_size() const {
