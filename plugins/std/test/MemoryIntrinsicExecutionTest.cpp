@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include "common/MemoryIntrinsicFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
@@ -105,36 +106,7 @@ void memoryIntrinsicTest(engine::NautilusEngine& engine) {
 	}
 }
 
-TEST_CASE("Memory Intrinsic Interpreter Test") {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	auto engine = engine::NautilusEngine(options);
-	memoryIntrinsicTest(engine);
+TEST_CASE("Memory Intrinsic Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { memoryIntrinsicTest(engine); });
 }
-
-#ifdef ENABLE_TRACING
-TEST_CASE("Memory Intrinsic Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			memoryIntrinsicTest(engine);
-		}
-	}
-}
-#endif
 } // namespace nautilus::engine

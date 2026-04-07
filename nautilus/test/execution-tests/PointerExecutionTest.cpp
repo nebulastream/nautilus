@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include "PointerFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/val.hpp"
@@ -304,36 +305,7 @@ void pointerTest(engine::NautilusEngine& engine) {
 	}
 }
 
-TEST_CASE("Pointer Interpreter Test") {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	auto engine = engine::NautilusEngine(options);
-	pointerTest(engine);
+TEST_CASE("Pointer Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { pointerTest(engine); });
 }
-
-#ifdef ENABLE_TRACING
-TEST_CASE("Pointer Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			pointerTest(engine);
-		}
-	}
-}
-#endif
 } // namespace nautilus::engine

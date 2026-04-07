@@ -1,4 +1,5 @@
 
+#include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/std/vector.h"
 #include "nautilus/val_std.hpp"
@@ -903,9 +904,7 @@ val<int32_t> vectorAtOutOfRange(val<size_t> idx) {
 }
 
 TEST_CASE("VectorTest - Interpreter") {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	auto engine = engine::NautilusEngine(options);
+	auto engine = nautilus::testing::makeEngine("interpreter");
 	runVectorTest(engine);
 
 	SECTION("vectorAtOutOfRange") {
@@ -918,27 +917,12 @@ TEST_CASE("VectorTest - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("VectorTest - Compiler") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
-#endif
-	std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
-	for (auto& backend : backends) {
-		for (auto& traceMode : traceModes) {
+	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	for (const auto& backend : nautilus::testing::availableBackends()) {
+		for (const auto& traceMode : traceModes) {
 			DYNAMIC_SECTION(backend + "_" + traceMode) {
-				engine::Options options;
-				options.setOption("engine.backend", backend);
-				options.setOption("engine.traceMode", traceMode);
-				auto engine = engine::NautilusEngine(options);
+				auto engine = nautilus::testing::makeEngine(
+				    backend, [&](engine::Options& options) { options.setOption("engine.traceMode", traceMode); });
 				runVectorTest(engine, backend);
 			}
 		}

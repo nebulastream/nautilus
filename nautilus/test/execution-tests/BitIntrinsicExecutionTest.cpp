@@ -1,4 +1,5 @@
 #include "BitIntrinsicFunctions.hpp"
+#include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include <bit>
 #include <catch2/catch_all.hpp>
@@ -118,36 +119,7 @@ void bitIntrinsicTest(engine::NautilusEngine& engine) {
 	}
 }
 
-TEST_CASE("Bit Intrinsic Interpreter Test") {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	auto engine = engine::NautilusEngine(options);
-	bitIntrinsicTest(engine);
+TEST_CASE("Bit Intrinsic Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { bitIntrinsicTest(engine); });
 }
-
-#ifdef ENABLE_TRACING
-TEST_CASE("Bit Intrinsic Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			bitIntrinsicTest(engine);
-		}
-	}
-}
-#endif
 } // namespace nautilus::engine

@@ -20,7 +20,8 @@ endif ()
 
 target_include_directories(nautilus-std-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/test/common>)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 catch_discover_tests(nautilus-std-tests EXTRA_ARGS --allow-running-no-tests)

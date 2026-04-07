@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include "VectorFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include <algorithm>
@@ -1012,32 +1013,15 @@ void vectorTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Vector Interpreter Test") {
-	engine::Options options;
-	options.setOption("engine.Compilation", false);
-	auto engine = engine::NautilusEngine(options);
+	auto engine = nautilus::testing::makeEngine("interpreter");
 	vectorTests(engine);
 }
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Vector Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			vectorTests(engine);
-		}
-	}
+	// asmjit is intentionally excluded here.
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { vectorTests(engine); },
+	                                  /*include_interpreter=*/false, {}, /*include_asmjit=*/false);
 }
 #endif
 
