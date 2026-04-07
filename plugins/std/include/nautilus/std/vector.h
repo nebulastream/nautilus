@@ -9,29 +9,47 @@ namespace nautilus {
 
 namespace detail {
 
-/// Byte offset of the data pointer (`_M_start` / `__begin_` / `_Myfirst`)
-/// inside a std::vector. All major standard libraries store the data
-/// pointer as one of the first pointer-sized members; we probe the offset
-/// at static-init time to avoid hard-coding the layout.
+/// Layout of std::vector's three internal pointer fields. All major
+/// standard libraries (libstdc++, libc++, MSVC STL) store the data
+/// pointer, finish pointer, and end-of-storage pointer as the first three
+/// pointer-sized members. We probe the byte offsets at static-init time to
+/// avoid hard-coding the layout.
+struct vector_layout_offsets {
+	std::size_t start_offset = 0;
+	std::size_t finish_offset = sizeof(void*);
+	std::size_t end_offset = 2 * sizeof(void*);
+};
+
 template <typename T, typename Allocator>
-inline std::size_t probe_vector_data_offset() {
+inline vector_layout_offsets probe_vector_layout() {
+	vector_layout_offsets layout;
 	std::vector<T, Allocator> v;
-	v.reserve(1);
+	v.reserve(4);
 	v.push_back(T {});
-	const auto* data = static_cast<const void*>(v.data());
+	const auto* start_p = static_cast<const void*>(v.data());
+	const auto* finish_p = static_cast<const void*>(v.data() + 1);
+	const auto* end_p = static_cast<const void*>(v.data() + 4);
 	const auto* base = reinterpret_cast<const std::byte*>(&v);
 	for (std::size_t i = 0; i + sizeof(void*) <= sizeof(v); i += alignof(void*)) {
 		void* slot;
 		std::memcpy(&slot, base + i, sizeof(void*));
-		if (slot == data) {
-			return i;
+		if (slot == start_p) {
+			layout.start_offset = i;
+		} else if (slot == finish_p) {
+			layout.finish_offset = i;
+		} else if (slot == end_p) {
+			layout.end_offset = i;
 		}
 	}
-	return 0;
+	return layout;
 }
 
 template <typename T, typename Allocator>
-inline const std::size_t vector_data_offset = probe_vector_data_offset<T, Allocator>();
+inline const vector_layout_offsets vector_layout = probe_vector_layout<T, Allocator>();
+
+/// Backwards-compatible alias for the data-pointer offset.
+template <typename T, typename Allocator>
+inline const std::size_t vector_data_offset = vector_layout<T, Allocator>.start_offset;
 
 } // namespace detail
 
@@ -47,9 +65,21 @@ class val<std::vector<T, Allocator>> {
 	/// (bc on macOS) reject direct ptr→ptr casts between unrelated types.
 	val<T*> load_data_ptr() {
 		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
-		auto data_field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_data_offset<T, Allocator>);
+		auto data_field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_layout<T, Allocator>.start_offset);
 		auto data_field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(data_field_byte_ptr));
 		return *data_field_ptr;
+	}
+
+	/// Loads one of the vector's three internal pointer fields *as a raw
+	/// `uint64_t`*. This sidesteps the `val<T*>` → `val<uint64_t>` cast
+	/// (which the bc backend rejects on macOS) by reading the bytes through
+	/// a `uint64_t*` directly. Used by `size`/`capacity`/`empty` to compute
+	/// pointer differences as integer arithmetic.
+	val<uint64_t> load_field_as_u64(std::size_t offset) {
+		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
+		auto field_byte_ptr = byte_ptr + val<uint64_t>(offset);
+		auto field_ptr = static_cast<val<uint64_t*>>(static_cast<val<void*>>(field_byte_ptr));
+		return *field_ptr;
 	}
 
 public:
@@ -106,12 +136,16 @@ public:
 	}
 
 	auto back() {
+		auto data = load_data_ptr();
+		auto last_index = size() - val<size_type>(1);
 		if constexpr (std::is_class_v<T>) {
-			return invoke(
-			    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
+			auto byte_data = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data));
+			auto elem_byte_ptr = byte_data + last_index * val<uint64_t>(sizeof(T));
+			return static_cast<val<T*>>(static_cast<val<void*>>(elem_byte_ptr));
+		} else if constexpr (std::is_arithmetic_v<T>) {
+			return data[last_index];
 		} else {
-			return invoke(
-			    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
+			return val<T>(data[last_index]);
 		}
 	}
 
@@ -135,18 +169,21 @@ public:
 	// distance between the internal pointers; empty is a pointer compare.
 
 	val<bool> empty() {
-		return invoke(
-		    +[](base_type* ptr) -> bool { return ptr->empty(); }, data_ptr);
+		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
+		auto finish = load_field_as_u64(detail::vector_layout<T, Allocator>.finish_offset);
+		return start == finish;
 	}
 
 	val<size_type> size() {
-		return invoke(
-		    +[](base_type* ptr) -> size_type { return ptr->size(); }, data_ptr);
+		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
+		auto finish = load_field_as_u64(detail::vector_layout<T, Allocator>.finish_offset);
+		return val<size_type>((finish - start) / val<uint64_t>(sizeof(T)));
 	}
 
 	val<size_type> capacity() {
-		return invoke(
-		    +[](base_type* ptr) -> size_type { return ptr->capacity(); }, data_ptr);
+		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
+		auto end = load_field_as_u64(detail::vector_layout<T, Allocator>.end_offset);
+		return val<size_type>((end - start) / val<uint64_t>(sizeof(T)));
 	}
 
 	val<size_type> max_size() const {
