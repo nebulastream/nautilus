@@ -494,7 +494,9 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 		auto reg = code.arguments[i];
 		switch (argTypes[i]) {
 		case Type::b:
-			writeReg<bool>(regs, reg, static_cast<bool>(dcbArgBool(args)));
+			// dyncall's dcbArgBool returns DCbool (int); mask to the low
+			// byte before converting to bool — see Dyncall::callB.
+			writeReg<bool>(regs, reg, (dcbArgBool(args) & 0xFF) != 0);
 			break;
 		case Type::i8:
 			writeReg<int8_t>(regs, reg, static_cast<int8_t>(dcbArgChar(args)));

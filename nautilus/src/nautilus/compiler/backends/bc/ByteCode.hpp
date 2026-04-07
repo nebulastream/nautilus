@@ -3,7 +3,9 @@
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstdint>
+#include <cstring>
 #include <ostream>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -379,12 +381,29 @@ typedef void Operation(const OpCode&, RegisterFile& regs);
 
 template <class RegisterType>
 auto inline readReg(RegisterFile& regs, short reg) {
-	return *reinterpret_cast<RegisterType*>(&regs[reg]);
+	RegisterType value;
+	std::memcpy(&value, &regs[reg], sizeof(RegisterType));
+	return value;
 }
 
 template <class RegisterType>
 void inline writeReg(RegisterFile& regs, short reg, RegisterType value) {
-	*reinterpret_cast<RegisterType*>(&regs[reg]) = value;
+	// Zero-extend narrow integral / bool writes into the full 64-bit register slot.
+	// Without this, only the low sizeof(RegisterType) bytes are written and the
+	// upper bytes retain stale data from previous use of the register. That stale
+	// data leaks out whenever the slot is later read as a wider type — most
+	// observably when a bool/narrow value is returned from a JIT'd function and
+	// the callback handler reads the full int64_t register.
+	if constexpr (std::is_same_v<RegisterType, bool>) {
+		regs[reg] = value ? int64_t {1} : int64_t {0};
+	} else if constexpr (std::is_integral_v<RegisterType>) {
+		using Unsigned = std::make_unsigned_t<RegisterType>;
+		regs[reg] = static_cast<int64_t>(static_cast<uint64_t>(static_cast<Unsigned>(value)));
+	} else {
+		// Floats / pointers occupy the full slot already; preserve bit pattern.
+		regs[reg] = 0;
+		std::memcpy(&regs[reg], &value, sizeof(RegisterType));
+	}
 }
 
 void regMov(const OpCode& c, RegisterFile& regs);
