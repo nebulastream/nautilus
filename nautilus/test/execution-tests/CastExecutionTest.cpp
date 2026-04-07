@@ -159,9 +159,7 @@ TEST_CASE("Cast Compiler Test") {
 }
 
 TEST_CASE("Pointer Cast Compiler Test") {
-	// asmjit is intentionally excluded here.
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { ptrCastTest(engine); }, {},
-	                                               /*include_asmjit=*/false);
+	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { ptrCastTest(engine); });
 }
 #endif
 } // namespace nautilus::engine

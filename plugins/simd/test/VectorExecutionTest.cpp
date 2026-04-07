@@ -1019,9 +1019,8 @@ TEST_CASE("Vector Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Vector Compiler Test") {
-	// asmjit is intentionally excluded here.
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { vectorTests(engine); },
-	                                  /*include_interpreter=*/false, {}, /*include_asmjit=*/false);
+	                                  /*include_interpreter=*/false);
 }
 #endif
 
