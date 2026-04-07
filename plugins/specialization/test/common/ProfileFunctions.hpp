@@ -1,7 +1,7 @@
 #pragma once
 
 #include <nautilus/Engine.hpp>
-#include <nautilus/profile/assume.hpp>
+#include <nautilus/specialization/assume.hpp>
 
 namespace nautilus::engine {
 
