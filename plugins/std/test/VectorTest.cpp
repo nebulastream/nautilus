@@ -596,7 +596,7 @@ val<int32_t> vectorOfStructValuesMultiple(val<int32_t> x) {
 	return e0.get(&Point::x) + e0.get(&Point::y) + e1.get(&Point::x) + e1.get(&Point::y);
 }
 
-void runVectorTest(engine::NautilusEngine& engine, const std::string& backend = "") {
+void runVectorTest(engine::NautilusEngine& engine, const std::string& /*backend*/ = "") {
 	// Element access (fundamental)
 	SECTION("vectorPushBackAndRead") {
 		auto f = engine.registerFunction(vectorPushBackAndRead);
@@ -723,15 +723,13 @@ void runVectorTest(engine::NautilusEngine& engine, const std::string& backend = 
 		auto f = engine.registerFunction(vectorShrinkToFitActual);
 		REQUIRE(f() == true);
 	}
-	if (backend != "bc") {
-		SECTION("vectorEqualsFalse") {
-			auto f = engine.registerFunction(vectorEqualsFalse);
-			REQUIRE(f() == false);
-		}
-		SECTION("vectorEqualsDifferentSize") {
-			auto f = engine.registerFunction(vectorEqualsDifferentSize);
-			REQUIRE(f() == false);
-		}
+	SECTION("vectorEqualsFalse") {
+		auto f = engine.registerFunction(vectorEqualsFalse);
+		REQUIRE(f() == false);
+	}
+	SECTION("vectorEqualsDifferentSize") {
+		auto f = engine.registerFunction(vectorEqualsDifferentSize);
+		REQUIRE(f() == false);
 	}
 	SECTION("vectorSwapPtrs") {
 		auto f = engine.registerFunction(vectorSwapPtrs);

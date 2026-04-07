@@ -45,7 +45,12 @@ void Dyncall::callVoid(void* value) {
 }
 
 bool Dyncall::callB(void* value) {
-	return dcCallBool(vm, value);
+	// dyncall's DCbool is `int`. On SysV x86-64 a callee returning C++ `bool`
+	// is only required to set the low byte of the return register; the upper
+	// bytes are caller-defined and may contain garbage (e.g. GCC's
+	// std::vector::operator==). An implicit `int -> bool` conversion would
+	// then turn a logically-false return into `true`. Mask to the low byte.
+	return (dcCallBool(vm, value) & 0xFF) != 0;
 }
 
 int8_t Dyncall::callI8(void* value) {
