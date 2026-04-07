@@ -70,15 +70,19 @@ class val<std::vector<T, Allocator>> {
 		return *data_field_ptr;
 	}
 
-	/// Loads one of the vector's three internal pointer fields *as a raw
-	/// `uint64_t`*. This sidesteps the `val<T*>` → `val<uint64_t>` cast
-	/// (which the bc backend rejects on macOS) by reading the bytes through
-	/// a `uint64_t*` directly. Used by `size`/`capacity`/`empty` to compute
-	/// pointer differences as integer arithmetic.
-	val<uint64_t> load_field_as_u64(std::size_t offset) {
+	/// Loads the vector's `_M_finish` pointer at the probed byte offset.
+	val<T*> load_finish_ptr() {
 		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
-		auto field_byte_ptr = byte_ptr + val<uint64_t>(offset);
-		auto field_ptr = static_cast<val<uint64_t*>>(static_cast<val<void*>>(field_byte_ptr));
+		auto field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_layout<T, Allocator>.finish_offset);
+		auto field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(field_byte_ptr));
+		return *field_ptr;
+	}
+
+	/// Loads the vector's `_M_end_of_storage` pointer at the probed byte offset.
+	val<T*> load_end_ptr() {
+		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
+		auto field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_layout<T, Allocator>.end_offset);
+		auto field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(field_byte_ptr));
 		return *field_ptr;
 	}
 
@@ -169,20 +173,18 @@ public:
 	// distance between the internal pointers; empty is a pointer compare.
 
 	val<bool> empty() {
-		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
-		auto finish = load_field_as_u64(detail::vector_layout<T, Allocator>.finish_offset);
-		return start == finish;
+		return load_data_ptr() == load_finish_ptr();
 	}
 
 	val<size_type> size() {
-		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
-		auto finish = load_field_as_u64(detail::vector_layout<T, Allocator>.finish_offset);
+		auto start = static_cast<val<uint64_t>>(load_data_ptr());
+		auto finish = static_cast<val<uint64_t>>(load_finish_ptr());
 		return val<size_type>((finish - start) / val<uint64_t>(sizeof(T)));
 	}
 
 	val<size_type> capacity() {
-		auto start = load_field_as_u64(detail::vector_layout<T, Allocator>.start_offset);
-		auto end = load_field_as_u64(detail::vector_layout<T, Allocator>.end_offset);
+		auto start = static_cast<val<uint64_t>>(load_data_ptr());
+		auto end = static_cast<val<uint64_t>>(load_end_ptr());
 		return val<size_type>((end - start) / val<uint64_t>(sizeof(T)));
 	}
 
