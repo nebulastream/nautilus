@@ -1519,7 +1519,13 @@ void BCLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sho
 	auto srcType = (castOp->getInput()->getStamp());
 	auto tar = (castOp->getStamp());
 	ByteCode bc;
-	if (srcType == Type::i8) {
+	// Identity casts (e.g. ui64 → ui64) can occur when two distinct C++ types
+	// map to the same nautilus Type — for example on macOS, where size_t is
+	// `unsigned long` and uint64_t is `unsigned long long`, both lowering to
+	// Type::ui64. Treat them as a register move regardless of source type.
+	if (srcType == tar) {
+		bc = ByteCode::REG_MOV;
+	} else if (srcType == Type::i8) {
 		switch (tar) {
 		case Type::i16:
 			bc = ByteCode::CAST_i8_i16;
