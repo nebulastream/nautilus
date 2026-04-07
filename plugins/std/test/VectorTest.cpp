@@ -196,6 +196,94 @@ val<double> vectorAssignDouble(val<double> x) {
 
 // --- Optimized capacity ops ---
 
+val<int32_t> vectorAssignFront(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.front() = x;
+	return vec[val<size_t>(0)];
+}
+
+val<int32_t> vectorAssignBack(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.back() = x;
+	return vec[val<size_t>(1)];
+}
+
+val<int32_t> vectorAssignViaData(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	vec.push_back(val<int32_t>(0));
+	auto ptr = vec.data();
+	ptr[val<size_t>(0)] = x;
+	ptr[val<size_t>(1)] = x + val<int32_t>(1);
+	ptr[val<size_t>(2)] = x + val<int32_t>(2);
+	return vec[val<size_t>(0)] + vec[val<size_t>(1)] + vec[val<size_t>(2)];
+}
+
+val<int8_t> vectorAssignInt8(val<int8_t> x) {
+	val<std::vector<int8_t>> vec;
+	vec.push_back(val<int8_t>(0));
+	vec[val<size_t>(0)] = x;
+	return vec[val<size_t>(0)];
+}
+
+val<int64_t> vectorAssignInt64(val<int64_t> x) {
+	val<std::vector<int64_t>> vec;
+	vec.push_back(val<int64_t>(0));
+	vec[val<size_t>(0)] = x;
+	return vec[val<size_t>(0)];
+}
+
+val<float> vectorAssignFloat(val<float> x) {
+	val<std::vector<float>> vec;
+	vec.push_back(val<float>(0.0f));
+	vec[val<size_t>(0)] = x;
+	return vec[val<size_t>(0)];
+}
+
+// --- shrink_to_fit verification (capacity actually shrinks) ---
+
+val<bool> vectorShrinkToFitActual() {
+	val<std::vector<int32_t>> vec;
+	vec.reserve(val<size_t>(1000));
+	vec.push_back(val<int32_t>(1));
+	auto cap_before = vec.capacity();
+	vec.shrink_to_fit();
+	auto cap_after = vec.capacity();
+	return cap_after < cap_before;
+}
+
+// --- swap with pointer element type ---
+
+val<int32_t> vectorSwapPtrs(val<int32_t*> a, val<int32_t*> b) {
+	val<std::vector<int32_t*>> v1;
+	v1.push_back(a);
+	val<std::vector<int32_t*>> v2;
+	v2.push_back(b);
+	v1.swap(v2);
+	return *v1[val<size_t>(0)] + *v2[val<size_t>(0)];
+}
+
+// --- Boundary sizes ---
+
+val<size_t> vectorReserveZero() {
+	val<std::vector<int32_t>> vec;
+	vec.reserve(val<size_t>(0));
+	return vec.size();
+}
+
+val<size_t> vectorResizeZero() {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.resize(val<size_t>(0));
+	return vec.size();
+}
+
 val<size_t> vectorSizeAfterPushPop() {
 	val<std::vector<int32_t>> vec;
 	vec.push_back(val<int32_t>(1));
@@ -586,7 +674,47 @@ void runVectorTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(vectorAssignDouble);
 		REQUIRE(f(1.5) == Catch::Approx(4.0));
 	}
-
+	SECTION("vectorAssignFront") {
+		auto f = engine.registerFunction(vectorAssignFront);
+		REQUIRE(f(99) == 99);
+	}
+	SECTION("vectorAssignBack") {
+		auto f = engine.registerFunction(vectorAssignBack);
+		REQUIRE(f(99) == 99);
+	}
+	SECTION("vectorAssignViaData") {
+		auto f = engine.registerFunction(vectorAssignViaData);
+		REQUIRE(f(10) == 33);
+	}
+	SECTION("vectorAssignInt8") {
+		auto f = engine.registerFunction(vectorAssignInt8);
+		REQUIRE(f(static_cast<int8_t>(42)) == 42);
+	}
+	SECTION("vectorAssignInt64") {
+		auto f = engine.registerFunction(vectorAssignInt64);
+		REQUIRE(f(1234567890123LL) == 1234567890123LL);
+	}
+	SECTION("vectorAssignFloat") {
+		auto f = engine.registerFunction(vectorAssignFloat);
+		REQUIRE(f(2.5f) == Catch::Approx(2.5f));
+	}
+	SECTION("vectorShrinkToFitActual") {
+		auto f = engine.registerFunction(vectorShrinkToFitActual);
+		REQUIRE(f() == true);
+	}
+	SECTION("vectorSwapPtrs") {
+		auto f = engine.registerFunction(vectorSwapPtrs);
+		int32_t a = 10, b = 20;
+		REQUIRE(f(&a, &b) == 30);
+	}
+	SECTION("vectorReserveZero") {
+		auto f = engine.registerFunction(vectorReserveZero);
+		REQUIRE(f() == 0);
+	}
+	SECTION("vectorResizeZero") {
+		auto f = engine.registerFunction(vectorResizeZero);
+		REQUIRE(f() == 0);
+	}
 	// Optimized capacity
 	SECTION("vectorSizeAfterPushPop") {
 		auto f = engine.registerFunction(vectorSizeAfterPushPop);
@@ -738,11 +866,25 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	}
 }
 
+val<int32_t> vectorAtOutOfRange(val<size_t> idx) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	return vec.at(idx);
+}
+
 TEST_CASE("VectorTest - Interpreter") {
 	engine::Options options;
 	options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
 	runVectorTest(engine);
+
+	SECTION("vectorAtOutOfRange") {
+		auto f = engine.registerFunction(vectorAtOutOfRange);
+		REQUIRE(f(0) == 1);
+		REQUIRE(f(1) == 2);
+		REQUIRE_THROWS_AS(f(5), std::out_of_range);
+	}
 }
 
 #ifdef ENABLE_TRACING
