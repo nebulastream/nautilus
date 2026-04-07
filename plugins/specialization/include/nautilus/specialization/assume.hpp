@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nautilus/val.hpp"
 namespace nautilus {
 

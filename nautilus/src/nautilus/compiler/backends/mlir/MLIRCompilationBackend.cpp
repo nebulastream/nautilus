@@ -6,7 +6,6 @@
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
-#include "nautilus/compiler/backends/mlir/intrinsics/MLIRAssumeIntrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
@@ -30,7 +29,6 @@ MLIRCompilationBackend::MLIRCompilationBackend() {
 	LLVMInitializeNativeAsmPrinter();
 
 	// Register default MLIR intrinsics
-	RegisterMLIRAssumeIntrinsicPlugin();
 	RegisterMLIRMemoryIntrinsicPlugin();
 }
 

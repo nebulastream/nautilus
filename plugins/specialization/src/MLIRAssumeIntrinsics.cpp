@@ -1,7 +1,7 @@
-#include "nautilus/compiler/backends/mlir/intrinsics/MLIRAssumeIntrinsics.hpp"
-#include "nautilus/api/profile/assume_stubs.hpp"
+#include "MLIRAssumeIntrinsics.hpp"
+#include "assume_stubs.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
-#include "nautilus/profile/assume.hpp"
+#include "nautilus/specialization/assume.hpp"
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>

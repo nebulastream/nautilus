@@ -1,3 +1,4 @@
+#pragma once
 
 #include "nautilus/val.hpp"
 #include <cstdint>

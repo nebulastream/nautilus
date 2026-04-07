@@ -1,4 +1,4 @@
-#include "nautilus/profile/assume.hpp"
+#include "nautilus/specialization/assume.hpp"
 #include "nautilus/function.hpp"
 
 namespace nautilus {

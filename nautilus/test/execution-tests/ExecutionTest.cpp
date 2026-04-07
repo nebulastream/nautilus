@@ -11,7 +11,6 @@
 #include "ValueTypeFunctions.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/profile/assume.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
 namespace nautilus::engine {
@@ -1202,51 +1201,6 @@ void registerFunctionTest(engine::NautilusEngine& engine) {
 	}
 }
 
-void throwExceptions() {
-	throw std::runtime_error("error");
-}
-
-val<int32_t> cfWithAssume(val<int32_t> a) {
-	nautilus_assume(a > 10);
-	if (a > 10) {
-		return a + 10;
-	} else {
-		invoke<void>(throwExceptions);
-		return 42;
-	}
-}
-val<int> cfWithAssumeAlignment(val<int32_t*> a) {
-	nautilus_assume_aligned(a, 256);
-	return *a + 10;
-}
-
-void intrinsicFunctionTest() {
-
-	for (auto useIntrinsics : {false, true}) {
-		DYNAMIC_SECTION("useIntrinsics:" << useIntrinsics) {
-			engine::Options options;
-			options.setOption("engine.backend", "mlir");
-			options.setOption("dump.after_mlir_generation", true);
-			options.setOption("dump.console", true);
-			options.setOption("mlir.enableIntrinsics", useIntrinsics);
-			options.setOption("mlir.enableMultithreading", false);
-			auto engine = engine::NautilusEngine(options);
-
-			SECTION("cfWithAssume") {
-				auto f = engine.registerFunction(cfWithAssume);
-				if (useIntrinsics) {
-					REQUIRE(f(42) == 52);
-					// the compiled version with intrinsics should optimize away the else branch
-					REQUIRE(f(0) == 10);
-				} else {
-					REQUIRE(f(42) == 52);
-					REQUIRE_THROWS(f(0));
-				}
-			}
-		}
-	}
-}
-
 void runAllTests(engine::NautilusEngine& engine) {
 	SECTION("registerFunctionTest") {
 		registerFunctionTest(engine);
@@ -1429,11 +1383,6 @@ TEST_CASE("Engine Compiler Test") {
 			    options.setOption("mlir.inline_invoke_calls", true);
 		    }
 	    });
-#if not defined(__APPLE__)
-	SECTION("MLIR Intrinsic Function Test") {
-		intrinsicFunctionTest();
-	}
-#endif
 }
 #endif
 

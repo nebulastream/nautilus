@@ -1,4 +1,4 @@
-#include "nautilus/profile/profile.hpp"
+#include "nautilus/specialization/profile.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/val_ptr.hpp"
 namespace nautilus {
