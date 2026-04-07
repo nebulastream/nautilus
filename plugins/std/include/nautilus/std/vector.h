@@ -1,14 +1,58 @@
 #pragma once
 
 #include "nautilus/val_ptr.hpp"
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace nautilus {
+
+namespace detail {
+
+/// Probes the byte offset of the data pointer field within std::vector<T>.
+///
+/// All major standard library implementations (libstdc++, libc++, MSVC STL)
+/// store the data pointer as the first member of the vector layout, so this
+/// is typically 0. We probe at static-init time to avoid hard-coding the
+/// assumption.
+template <typename T, typename Allocator>
+inline std::size_t probe_vector_data_offset() {
+	std::vector<T, Allocator> v;
+	v.reserve(1);
+	v.push_back(T {});
+	const auto* data = static_cast<const void*>(v.data());
+	const auto* base = reinterpret_cast<const std::byte*>(&v);
+	for (std::size_t i = 0; i + sizeof(void*) <= sizeof(v); i += alignof(void*)) {
+		void* slot;
+		std::memcpy(&slot, base + i, sizeof(void*));
+		if (slot == data) {
+			return i;
+		}
+	}
+	// Fall back to 0 — all known stdlib implementations match this.
+	return 0;
+}
+
+template <typename T, typename Allocator>
+inline const std::size_t vector_data_offset = probe_vector_data_offset<T, Allocator>();
+
+} // namespace detail
+
 template <class T, class Allocator>
 class val<std::vector<T, Allocator>> {
 	using base_type = std::vector<T, Allocator>;
 	using value_type = typename base_type::value_type;
 	using size_type = typename base_type::size_type;
+
+	/// Loads the underlying data pointer of the vector via direct memory access
+	/// at the probed layout offset. This becomes a single traced load operation
+	/// that the JIT can optimize, instead of an opaque invoke() call to data().
+	val<T*> load_data_ptr() {
+		auto byte_ptr = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data_ptr));
+		auto data_field_byte_ptr = byte_ptr + val<uint64_t>(detail::vector_data_offset<T, Allocator>);
+		auto data_field_ptr = static_cast<val<T**>>(static_cast<val<void*>>(data_field_byte_ptr));
+		return *data_field_ptr;
+	}
 
 public:
 	val() : data_ptr(nullptr) {
@@ -23,7 +67,44 @@ public:
 		return *this;
 	}
 
-	// Element access — returns val<T> for fundamental/pointer types, val<T*> for class types
+	// Element access — direct memory access (no invoke).
+	// Returns val<T> for fundamental/pointer types, val<T*> for class types.
+
+	auto operator[](val<size_type> pos) {
+		auto data = load_data_ptr();
+		if constexpr (std::is_class_v<T>) {
+			// Byte arithmetic for struct element access (val<Struct*>::operator[] is not provided).
+			auto byte_data = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data));
+			auto elem_byte_ptr = byte_data + pos * val<uint64_t>(sizeof(T));
+			return static_cast<val<T*>>(static_cast<val<void*>>(elem_byte_ptr));
+		} else {
+			// data[pos] returns val<T&>; convert to val<T> to perform a load.
+			return val<T>(data[pos]);
+		}
+	}
+
+	auto front() {
+		auto data = load_data_ptr();
+		if constexpr (std::is_class_v<T>) {
+			return data;
+		} else {
+			return val<T>(*data);
+		}
+	}
+
+	auto back() {
+		auto data = load_data_ptr();
+		auto last_index = size() - val<size_type>(1);
+		if constexpr (std::is_class_v<T>) {
+			auto byte_data = static_cast<val<uint8_t*>>(static_cast<val<void*>>(data));
+			auto elem_byte_ptr = byte_data + last_index * val<uint64_t>(sizeof(T));
+			return static_cast<val<T*>>(static_cast<val<void*>>(elem_byte_ptr));
+		} else {
+			return val<T>(data[last_index]);
+		}
+	}
+
+	// at() is bounds-checked — keep the invoke() call so std::out_of_range is thrown correctly.
 
 	auto at(val<size_type> pos) {
 		if constexpr (std::is_class_v<T>) {
@@ -35,39 +116,8 @@ public:
 		}
 	}
 
-	auto operator[](val<size_type> pos) {
-		if constexpr (std::is_class_v<T>) {
-			return invoke(
-			    +[](base_type* ptr, size_type p) -> T* { return &ptr->operator[](p); }, data_ptr, pos);
-		} else {
-			return invoke(
-			    +[](base_type* ptr, size_type p) -> T { return ptr->operator[](p); }, data_ptr, pos);
-		}
-	}
-
-	auto front() {
-		if constexpr (std::is_class_v<T>) {
-			return invoke(
-			    +[](base_type* ptr) -> T* { return &ptr->front(); }, data_ptr);
-		} else {
-			return invoke(
-			    +[](base_type* ptr) -> T { return ptr->front(); }, data_ptr);
-		}
-	}
-
-	auto back() {
-		if constexpr (std::is_class_v<T>) {
-			return invoke(
-			    +[](base_type* ptr) -> T* { return &ptr->back(); }, data_ptr);
-		} else {
-			return invoke(
-			    +[](base_type* ptr) -> T { return ptr->back(); }, data_ptr);
-		}
-	}
-
 	val<T*> data() {
-		return invoke(
-		    +[](base_type* ptr) -> T* { return ptr->data(); }, data_ptr);
+		return load_data_ptr();
 	}
 
 	// Capacity
