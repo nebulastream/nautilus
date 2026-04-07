@@ -165,9 +165,85 @@ val<int32_t> vectorAssign(val<int32_t> x) {
 	vec.push_back(val<int32_t>(20));
 	val<std::vector<int32_t>> vec2;
 	vec2 = vec;
-	auto result = vec2[val<size_t>(0)] + vec2[val<size_t>(1)];
-	vec.release();
-	return result;
+	return vec2[val<size_t>(0)] + vec2[val<size_t>(1)];
+}
+
+// --- Subscript assignment (val<T&>) ---
+
+val<int32_t> vectorAssignElement(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec[val<size_t>(1)] = x;
+	return vec[val<size_t>(1)];
+}
+
+val<int32_t> vectorAssignOverwrite(val<int32_t> x) {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(99));
+	vec[val<size_t>(0)] = x;
+	return vec.front();
+}
+
+val<double> vectorAssignDouble(val<double> x) {
+	val<std::vector<double>> vec;
+	vec.push_back(val<double>(0.0));
+	vec.push_back(val<double>(0.0));
+	vec[val<size_t>(0)] = x;
+	vec[val<size_t>(1)] = x + val<double>(1.0);
+	return vec[val<size_t>(0)] + vec[val<size_t>(1)];
+}
+
+// --- Optimized capacity ops ---
+
+val<size_t> vectorSizeAfterPushPop() {
+	val<std::vector<int32_t>> vec;
+	vec.push_back(val<int32_t>(1));
+	vec.push_back(val<int32_t>(2));
+	vec.push_back(val<int32_t>(3));
+	vec.pop_back();
+	return vec.size();
+}
+
+val<bool> vectorCapacityAfterReserve() {
+	val<std::vector<int32_t>> vec;
+	vec.reserve(val<size_t>(50));
+	return vec.capacity() >= val<size_t>(50);
+}
+
+// --- New methods ---
+
+val<bool> vectorMaxSize() {
+	val<std::vector<int32_t>> vec;
+	return vec.max_size() > val<size_t>(0);
+}
+
+val<bool> vectorShrinkToFit() {
+	val<std::vector<int32_t>> vec;
+	vec.reserve(val<size_t>(100));
+	vec.push_back(val<int32_t>(1));
+	vec.shrink_to_fit();
+	return vec.capacity() < val<size_t>(100);
+}
+
+val<int32_t> vectorSwap(val<int32_t> x) {
+	val<std::vector<int32_t>> a;
+	a.push_back(x);
+	a.push_back(val<int32_t>(2));
+	val<std::vector<int32_t>> b;
+	b.push_back(val<int32_t>(100));
+	a.swap(b);
+	return a[val<size_t>(0)] + b[val<size_t>(0)];
+}
+
+val<bool> vectorEquals() {
+	val<std::vector<int32_t>> a;
+	a.push_back(val<int32_t>(1));
+	a.push_back(val<int32_t>(2));
+	val<std::vector<int32_t>> b;
+	b.push_back(val<int32_t>(1));
+	b.push_back(val<int32_t>(2));
+	return a.equals(b);
 }
 
 // --- Fundamental element types ---
@@ -497,6 +573,46 @@ void runVectorTest(engine::NautilusEngine& engine) {
 	SECTION("vectorAssign") {
 		auto f = engine.registerFunction(vectorAssign);
 		REQUIRE(f(10) == 30);
+	}
+	SECTION("vectorAssignElement") {
+		auto f = engine.registerFunction(vectorAssignElement);
+		REQUIRE(f(77) == 77);
+	}
+	SECTION("vectorAssignOverwrite") {
+		auto f = engine.registerFunction(vectorAssignOverwrite);
+		REQUIRE(f(42) == 42);
+	}
+	SECTION("vectorAssignDouble") {
+		auto f = engine.registerFunction(vectorAssignDouble);
+		REQUIRE(f(1.5) == Catch::Approx(4.0));
+	}
+
+	// Optimized capacity
+	SECTION("vectorSizeAfterPushPop") {
+		auto f = engine.registerFunction(vectorSizeAfterPushPop);
+		REQUIRE(f() == 2);
+	}
+	SECTION("vectorCapacityAfterReserve") {
+		auto f = engine.registerFunction(vectorCapacityAfterReserve);
+		REQUIRE(f() == true);
+	}
+
+	// New methods
+	SECTION("vectorMaxSize") {
+		auto f = engine.registerFunction(vectorMaxSize);
+		REQUIRE(f() == true);
+	}
+	SECTION("vectorShrinkToFit") {
+		auto f = engine.registerFunction(vectorShrinkToFit);
+		REQUIRE(f() == true);
+	}
+	SECTION("vectorSwap") {
+		auto f = engine.registerFunction(vectorSwap);
+		REQUIRE(f(5) == 105);
+	}
+	SECTION("vectorEquals") {
+		auto f = engine.registerFunction(vectorEquals);
+		REQUIRE(f() == true);
 	}
 
 	// Fundamental element types
