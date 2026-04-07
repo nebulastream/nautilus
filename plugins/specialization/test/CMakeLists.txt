@@ -3,6 +3,8 @@ include(Catch)
 
 add_executable(nautilus-specialization-tests
         AssumeExecutionTest.cpp
+        SpecializationTest.cpp
+        SpecializedNautilusFunctionBackendTest.cpp
 )
 
 nautilus_inline(nautilus-specialization-tests)
@@ -43,6 +45,7 @@ if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
             $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/test/llvm-ir-test>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/plugins/specialization/src>
     )
 
     catch_discover_tests(nautilus-specialization-llvm-ir-test

@@ -531,6 +531,13 @@ void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFra
 void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& functionOp,
                                             ValueFrame& frame) {
 
+	// Block identifiers (Block_0, Block_1, ...) are only unique *within* a
+	// function, so the mapping must be reset between functions. Otherwise
+	// control-flow ops in a later function would resolve their successor
+	// blocks to blocks defined in an earlier function's region, which MLIR
+	// verification rejects as "reference to block defined in another region".
+	blockMapping.clear();
+
 	// add entry block for the function
 	mlirFunction.addEntryBlock();
 
