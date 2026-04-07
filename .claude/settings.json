@@ -36,8 +36,12 @@
 	"hooks": {
 		"SessionStart": [
 			{
-				"type": "command",
-				"command": ".claude/setup.sh"
+				"hooks": [
+					{
+						"type": "command",
+						"command": "$CLAUDE_PROJECT_DIR/.claude/setup.sh"
+					}
+				]
 			}
 		]
 	}
