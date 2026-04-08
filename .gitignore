@@ -6,3 +6,5 @@
 .vscode/
 compile_commands.json
 Testing/
+.claude/setup.log
+.claude/settings.local.json

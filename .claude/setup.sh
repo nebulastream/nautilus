@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# SessionStart hook for Claude Code on the web
-# Ensures Clang 21 is installed and the project is configured for building.
+# SessionStart hook for Claude Code on the web.
+# Ensures Clang 21 and basic build tools are available, then configures CMake.
+# The actual `cmake --build` is intentionally NOT run here — it would blow past
+# the SessionStart hook timeout. Let Claude run the build on demand instead.
 set -euo pipefail
 
+LOG_FILE="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/setup.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "==> $(date -u +%Y-%m-%dT%H:%M:%SZ) setup.sh starting"
+
+# Only run the apt-get install path on Debian/Ubuntu (i.e. the web sandbox).
+# On macOS and other hosts, assume the developer has clang-21 installed already.
+if [ ! -f /etc/debian_version ]; then
+	echo "==> Not a Debian/Ubuntu host, skipping apt install."
+	exit 0
+fi
+
 NEED_INSTALL=false
-
-# Check if clang-21 is available
-if ! command -v clang++-21 &>/dev/null; then
-	NEED_INSTALL=true
-fi
-
-# Check if clang-format-21 is available
-if ! command -v clang-format-21 &>/dev/null; then
-	NEED_INSTALL=true
-fi
+if ! command -v clang++-21 &>/dev/null; then NEED_INSTALL=true; fi
+if ! command -v clang-format-21 &>/dev/null; then NEED_INSTALL=true; fi
 
 if [ "$NEED_INSTALL" = true ]; then
 	echo "==> Installing Clang 21 toolchain..."
@@ -50,7 +56,7 @@ if ! dpkg -s binutils-dev &>/dev/null 2>&1; then
 	sudo apt-get install -y -qq binutils-dev libdw-dev
 fi
 
-# Configure and build if no build directory exists
+# Configure CMake once; skip if a build dir already exists.
 if [ ! -f build/build.ninja ]; then
 	echo "==> Configuring CMake build..."
 	mkdir -p build
@@ -61,10 +67,9 @@ if [ ! -f build/build.ninja ]; then
 		-G Ninja \
 		..
 	cd ..
+else
+	echo "==> build/build.ninja already present, skipping CMake configure."
 fi
-
-echo "==> Building nautilus..."
-cmake --build build --target nautilus -j"$(nproc)"
 
 echo "==> Setup complete. Clang 21 is the default compiler."
 clang++-21 --version | head -1
