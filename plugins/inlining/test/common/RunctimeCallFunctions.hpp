@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <nautilus/Engine.hpp>
+#include <nautilus/inline.hpp>
 #include <nautilus/val_ptr.hpp>
 
 namespace nautilus {
@@ -32,7 +33,7 @@ public:
 
 namespace nautilus::engine {
 
-void voidFunc(int32_t x, int32_t y) {
+NAUTILUS_INLINE void voidFunc(int32_t x, int32_t y) {
 	[[maybe_unused]] auto z = x + y;
 }
 
@@ -57,27 +58,27 @@ void multipleVoidReturnsFunction(val<int32_t*> x) {
 	*x = 42;
 }
 
-int32_t add(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t add(int32_t x, int32_t y) {
 	return x + y;
 }
 
-int32_t sub(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t sub(int32_t x, int32_t y) {
 	return x - y;
 }
 
-int32_t addAndSub(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t addAndSub(int32_t x, int32_t y) {
 	return add(x, y) + sub(x, y);
 }
 
-__attribute__((noinline)) double helper1(double val) {
+NAUTILUS_INLINE __attribute__((noinline)) double helper1(double val) {
 	return val * val + 3.14;
 }
 
-__attribute__((noinline)) double helper2(double val) {
+NAUTILUS_INLINE __attribute__((noinline)) double helper2(double val) {
 	return std::cos(val) / (1.0 + std::abs(val));
 }
 
-double complexCalc(int32_t a, int32_t b) {
+NAUTILUS_INLINE double complexCalc(int32_t a, int32_t b) {
 	double acc = 0.0;
 	std::vector<double> data;
 	data.reserve(a);
@@ -105,7 +106,7 @@ struct Derived : Base {
 	}
 };
 
-int32_t testDynamicCast(Base* b) {
+NAUTILUS_INLINE int32_t testDynamicCast(Base* b) {
 	if (dynamic_cast<Derived*>(b)) {
 		return 0;
 	}

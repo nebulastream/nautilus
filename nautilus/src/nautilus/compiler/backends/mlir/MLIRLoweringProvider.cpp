@@ -1,11 +1,11 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
+#include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
-#include "nautilus/inline.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <fmt/format.h>
 #include <llvm/ADT/ArrayRef.h>
@@ -275,13 +275,18 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
 	builder->restoreInsertionPoint(*globalInsertPoint);
 
-	// Create function name (potentially using pointer address for inline optimization)
+	// Create function name (potentially using pointer address for inline optimization).
+	// A plugin may install a hook that provides an alternative name for
+	// external proxy calls given the runtime address (e.g. the inlining
+	// plugin returns the hex-formatted pointer so the JIT-time inliner can
+	// match it against registered bitcode).
 	std::string functionName = name;
-	if (options->getOptionOrDefault("mlir.inline_invoke_calls", false) &&
-	    InlineFunctionRegistry::instance().containsFunctionBitcode(functionPtr)) {
-		std::stringstream ss;
-		ss << functionPtr;
-		functionName = ss.str();
+	if (options->getOptionOrDefault("mlir.inline_invoke_calls", false)) {
+		if (const auto& hook = getLLVMBackendHooks().proxyCallNameOverride) {
+			if (auto overridden = hook(functionPtr)) {
+				functionName = *overridden;
+			}
+		}
 	}
 
 	// Use func dialect for external functions to enable better optimization
@@ -719,13 +724,15 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 		}
 	}
 
-	// Determine the final function name (may use pointer address for inlining)
+	// Determine the final function name (may use pointer address for inlining
+	// when a plugin installs a name-override hook; see insertExternalFunction).
 	const std::string functionName = [&]() {
-		if (options->getOptionOrDefault("mlir.inline_invoke_calls", false) &&
-		    InlineFunctionRegistry::instance().containsFunctionBitcode(proxyCallOp->getFunctionPtr())) {
-			std::stringstream ss;
-			ss << proxyCallOp->getFunctionPtr();
-			return ss.str();
+		if (options->getOptionOrDefault("mlir.inline_invoke_calls", false)) {
+			if (const auto& hook = getLLVMBackendHooks().proxyCallNameOverride) {
+				if (auto overridden = hook(proxyCallOp->getFunctionPtr())) {
+					return *overridden;
+				}
+			}
 		}
 		return proxyCallOp->getFunctionName();
 	}();

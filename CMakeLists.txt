@@ -29,6 +29,7 @@ option(ENABLE_LLVM_IR_TEST "Enable LLVM IR comparison tests (requires llvm-diff-
 option(ENABLE_SIMD_PLUGIN "Enable the SIMD vector plugin" ON)
 option(ENABLE_STD_PLUGIN "Enable the standard library wrapper plugin" ON)
 option(ENABLE_SPECIALIZATION_PLUGIN "Enable the code specialization hint plugin (profile + assume)" ON)
+option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -168,6 +169,11 @@ if (ENABLE_ASMJIT_BACKEND)
     endif ()
 endif ()
 
+# Define nautilus_inline() globally so callers can use it regardless of
+# whether the inlining plugin is actually being built. When the plugin is
+# disabled, the function degrades to a warning-only no-op.
+include(${CMAKE_CURRENT_SOURCE_DIR}/plugins/inlining/cmake/NautilusInline.cmake)
+
 add_subdirectory(nautilus)
 if (ENABLE_SIMD_PLUGIN)
     add_subdirectory(plugins/simd)
@@ -177,6 +183,9 @@ if (ENABLE_STD_PLUGIN)
 endif ()
 if (ENABLE_SPECIALIZATION_PLUGIN)
     add_subdirectory(plugins/specialization)
+endif ()
+if (ENABLE_INLINING_PLUGIN)
+    add_subdirectory(plugins/inlining)
 endif ()
 add_make_format()
 

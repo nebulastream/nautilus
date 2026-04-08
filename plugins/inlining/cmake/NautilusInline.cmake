@@ -1,4 +1,17 @@
-set(NAUTILUS_INLINE_SUPPORTED FALSE)
+# NautilusInline.cmake
+#
+# Provides the globally-available `is_inlining_supported()` detector and the
+# `nautilus_inline(target)` helper. Both are defined unconditionally when this
+# file is included, so downstream CMake code can call `nautilus_inline()`
+# regardless of whether the inlining plugin is actually being built.
+#
+# When the plugin is enabled (see plugins/inlining/CMakeLists.txt) and the
+# current host/toolchain supports it, `InliningPass` is created as a SHARED
+# library in plugins/inlining/pass/ and `nautilus_inline()` attaches it via
+# `-fpass-plugin`. Otherwise `nautilus_inline()` degrades to a warning-only
+# no-op so callers do not need to special-case plugin enablement.
+
+include_guard(GLOBAL)
 
 option(ENABLE_INLINING_PASS "Enable building inlining llvm pass" ON)
 
@@ -33,44 +46,18 @@ endfunction()
 
 
 is_inlining_supported(NAUTILUS_INLINE_SUPPORTED)
-if (NAUTILUS_INLINE_SUPPORTED)
-    # Match llvm to the clang version
-    find_package(LLVM ${CMAKE_CXX_COMPILER_VERSION} CONFIG REQUIRED)
-    add_library(InliningPass SHARED FunctionInliningPass.cpp InliningUtils.cpp)
-
-    target_include_directories(InliningPass PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-            $<INSTALL_INTERFACE:src/nautilus/>)
-
-    target_include_directories(InliningPass PRIVATE ${LLVM_INCLUDE_DIRS})
-    target_compile_definitions(InliningPass PRIVATE ${LLVM_DEFINITIONS})
-    set_target_properties(InliningPass PROPERTIES
-            COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-variable;-Wno-extra-semi;-Wno-deprecated-copy-with-dtor;-stdlib=libstdc++;-fno-sanitize=all"
-            LINK_OPTIONS "-stdlib=libstdc++;-fno-sanitize=all"
-    ) #override global compile and link flags for the pass
-
-    target_link_libraries(InliningPass
-            "$<$<PLATFORM_ID:Darwin>:-undefined dynamic_lookup>")
-
-    set_target_properties(InliningPass PROPERTIES
-            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    )
-
-    add_custom_target(InliningPassDependency
-            DEPENDS $<TARGET_FILE:InliningPass>
-    )
-    set_target_properties(InliningPass PROPERTIES
-            INTERFACE_ ${ENABLE_INLINING_PASS}
-    )
-endif ()
 
 function(nautilus_inline target)
     is_inlining_supported(NAUTILUS_INLINE_SUPPORTED)
     if (NAUTILUS_INLINE_SUPPORTED)
-        add_dependencies(${target} InliningPassDependency)
-        target_compile_options(${target} PRIVATE
-                "-fpass-plugin=$<TARGET_FILE:InliningPass>"
-        )
+        if (TARGET InliningPassDependency)
+            add_dependencies(${target} InliningPassDependency)
+            target_compile_options(${target} PRIVATE
+                    "-fpass-plugin=$<TARGET_FILE:InliningPass>"
+            )
+        else ()
+            message(WARNING "nautilus_inline(${target}) called but the InliningPass target is not available. Enable ENABLE_INLINING_PLUGIN to build it. Skipping.")
+        endif ()
     else ()
         message(WARNING "Function inlining requires clang 19 during compilation. Probably also works with other clang versions. Adjust the version-check in CMake and find out")
     endif ()
