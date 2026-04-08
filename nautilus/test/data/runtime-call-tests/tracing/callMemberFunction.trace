@@ -1,0 +1,5 @@
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr
+	CONST	$3	*	:ptr
+	CALL	$4	func_*($3,$2)	:i32
+	RETURN	$0	$4	:i32

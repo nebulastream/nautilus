@@ -1,0 +1,9 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr):
+	$2 = 16 :i8
+	func_*($1,$2) :void
+	$6 = load($1) :i32
+	return ($6) :i32
+}
+} //NESIR

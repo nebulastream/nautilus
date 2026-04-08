@@ -263,4 +263,120 @@ val<int32_t> prefixDecrementReturnValue(val<int32_t> x) {
 	return (--x) + 1;
 }
 
+// ============================================================================
+// Standalone Arithmetic Operator Tests
+// ============================================================================
+
+val<int32_t> int32SubExpression(val<int32_t> x) {
+	val<int32_t> y = 5;
+	return x - y;
+}
+
+val<int32_t> int32MulExpression(val<int32_t> x) {
+	val<int32_t> y = 5;
+	return x * y;
+}
+
+val<int32_t> int32DivExpression(val<int32_t> x) {
+	val<int32_t> y = 5;
+	return x / y;
+}
+
+val<int32_t> int32ModExpression(val<int32_t> x) {
+	val<int32_t> y = 5;
+	return x % y;
+}
+
+// ============================================================================
+// Bitwise Operator Tests (wider type coverage)
+// ============================================================================
+
+val<int32_t> bitwiseAnd(val<int32_t> x, val<int32_t> y) {
+	return x & y;
+}
+
+val<int32_t> bitwiseOr(val<int32_t> x, val<int32_t> y) {
+	return x | y;
+}
+
+val<int32_t> bitwiseXor(val<int32_t> x, val<int32_t> y) {
+	return x ^ y;
+}
+
+// ============================================================================
+// Comparison Operator Tests
+// ============================================================================
+
+val<bool> cmpEqual(val<int32_t> x, val<int32_t> y) {
+	return x == y;
+}
+
+val<bool> cmpNotEqual(val<int32_t> x, val<int32_t> y) {
+	return x != y;
+}
+
+val<bool> cmpLessThan(val<int32_t> x, val<int32_t> y) {
+	return x < y;
+}
+
+val<bool> cmpLessThanOrEqual(val<int32_t> x, val<int32_t> y) {
+	return x <= y;
+}
+
+val<bool> cmpGreaterThan(val<int32_t> x, val<int32_t> y) {
+	return x > y;
+}
+
+val<bool> cmpGreaterThanOrEqual(val<int32_t> x, val<int32_t> y) {
+	return x >= y;
+}
+
+// ============================================================================
+// Unsigned Arithmetic Tests
+// ============================================================================
+
+val<uint32_t> uint32AddExpression(val<uint32_t> x) {
+	val<uint32_t> y = (uint32_t) 5;
+	return x + y;
+}
+
+val<uint32_t> uint32SubExpression(val<uint32_t> x) {
+	val<uint32_t> y = (uint32_t) 3;
+	return x - y;
+}
+
+val<uint32_t> uint32MulExpression(val<uint32_t> x) {
+	val<uint32_t> y = (uint32_t) 4;
+	return x * y;
+}
+
+val<uint32_t> uint32DivExpression(val<uint32_t> x) {
+	val<uint32_t> y = (uint32_t) 3;
+	return x / y;
+}
+
+val<uint64_t> uint64AddExpression(val<uint64_t> x) {
+	val<uint64_t> y = (uint64_t) 10;
+	return x + y;
+}
+
+// ============================================================================
+// Multi-operation Expression Tests
+// ============================================================================
+
+val<int32_t> complexArithmetic(val<int32_t> x, val<int32_t> y) {
+	return (x + y) * (x - y);
+}
+
+val<int32_t> multipleAssignments(val<int32_t> x) {
+	val<int32_t> a = x + 1;
+	val<int32_t> b = a + 2;
+	val<int32_t> c = b + 3;
+	return c;
+}
+
+val<int32_t> expressionWithConstants(val<int32_t> x) {
+	return x * 2 + 10 - 3;
+}
+
 } // namespace nautilus::engine
