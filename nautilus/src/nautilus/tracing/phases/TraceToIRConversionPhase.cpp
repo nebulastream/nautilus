@@ -200,6 +200,14 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 		processLoad(frame, currentIrBlock, operation);
 		return;
 	};
+	case Op::LOAD_INVARIANT: {
+		processHintedLoad(frame, currentIrBlock, operation, LoadHints {LOAD_HINT_INVARIANT});
+		return;
+	};
+	case Op::LOAD_NONNULL: {
+		processHintedLoad(frame, currentIrBlock, operation, LoadHints {LOAD_HINT_NONNULL});
+		return;
+	};
 	case Op::STORE: {
 		processStore(frame, currentIrBlock, operation);
 		return;
@@ -364,6 +372,16 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = operation.resultType;
 	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType);
+	frame.setValue(resultIdentifier, loadOperation.get());
+	currentBlock->addOperation(std::move(loadOperation));
+}
+
+void TraceToIRConversionPhase::IRConversionContext::processHintedLoad(ValueFrame& frame, BasicBlock* currentBlock,
+                                                                      TraceOperation& operation, LoadHints hints) {
+	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
+	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto resultType = operation.resultType;
+	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType, hints);
 	frame.setValue(resultIdentifier, loadOperation.get());
 	currentBlock->addOperation(std::move(loadOperation));
 }

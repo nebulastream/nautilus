@@ -553,6 +553,15 @@ void MLIRLoweringProvider::generateMLIR(ir::LoadOperation* loadOp, ValueFrame& f
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
 	auto mlirLoadOp =
 	    builder->create<mlir::LLVM::LoadOp>(getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
+
+	// Apply load hint metadata attributes
+	const auto& hints = loadOp->getLoadHints();
+	if (hints.hasHint(ir::LOAD_HINT_INVARIANT)) {
+		mlirLoadOp.setInvariant(true);
+	}
+	// Note: LOAD_HINT_NONNULL and LOAD_HINT_RANGE require a custom LLVM pass
+	// as MLIR LLVM dialect LoadOp does not support these metadata attributes directly.
+
 	frame.setValue(loadOp->getIdentifier(), mlirLoadOp);
 }
 
