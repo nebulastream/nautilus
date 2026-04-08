@@ -2,6 +2,7 @@
 
 #include <nautilus/Engine.hpp>
 #include <nautilus/function.hpp>
+#include <nautilus/inline.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_func.hpp>
 #include <nautilus/val_ptr.hpp>
@@ -12,33 +13,33 @@ namespace nautilus::engine {
 // Plain runtime helper functions used as callback targets in tests
 // ---------------------------------------------------------------------------
 
-int32_t addFn(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t addFn(int32_t x, int32_t y) {
 	return x + y;
 }
 
-int32_t mulFn(int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t mulFn(int32_t x, int32_t y) {
 	return x * y;
 }
 
-int32_t negFn(int32_t x) {
+NAUTILUS_INLINE int32_t negFn(int32_t x) {
 	return -x;
 }
 
-void voidFn(int32_t, int32_t) {
+NAUTILUS_INLINE void voidFn(int32_t, int32_t) {
 }
 
 // A runtime function that calls a typed function pointer passed from traced code
-int32_t applyBinaryFn(int32_t (*fn)(int32_t, int32_t), int32_t x, int32_t y) {
+NAUTILUS_INLINE int32_t applyBinaryFn(int32_t (*fn)(int32_t, int32_t), int32_t x, int32_t y) {
 	return fn(x, y);
 }
 
 // A runtime function that accepts an opaque callback as void*
-void registerCb(void* fn) {
+NAUTILUS_INLINE void registerCb(void* fn) {
 	(void) fn;
 }
 
 // A runtime function that returns a function pointer
-int32_t (*getAddFn())(int32_t, int32_t) {
+NAUTILUS_INLINE int32_t (*getAddFn())(int32_t, int32_t) {
 	return addFn;
 }
 

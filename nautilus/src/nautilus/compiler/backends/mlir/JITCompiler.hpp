@@ -22,6 +22,6 @@ public:
 	jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	                 const llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
 	                 const std::vector<std::string>& jitProxyFunctionSymbols,
-	                 const std::vector<void*>& jitProxyFunctionTargetAddresses, const engine::Options& nautilusOptions);
+	                 const std::vector<void*>& jitProxyFunctionTargetAddresses);
 };
 } // namespace nautilus::compiler::mlir

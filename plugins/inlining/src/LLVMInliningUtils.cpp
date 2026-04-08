@@ -1,4 +1,4 @@
-#include "nautilus/compiler/backends/mlir/LLVMInliningUtils.hpp"
+#include "LLVMInliningUtils.hpp"
 #include "fmt/format.h"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/inline.hpp"

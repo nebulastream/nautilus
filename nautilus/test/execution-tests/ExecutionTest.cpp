@@ -1380,7 +1380,6 @@ TEST_CASE("Engine Compiler Test") {
 		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
 			    options.setOption("engine.Compilation", true);
 			    options.setOption("mlir.enableMultithreading", false);
-			    options.setOption("mlir.inline_invoke_calls", true);
 		    }
 	    });
 }
@@ -1399,7 +1398,6 @@ TEST_CASE("NautilusFunction Compiled Execution Test") {
 		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
 			    options.setOption("engine.Compilation", true);
 			    options.setOption("mlir.enableMultithreading", false);
-			    options.setOption("mlir.inline_invoke_calls", true);
 		    }
 	    });
 }

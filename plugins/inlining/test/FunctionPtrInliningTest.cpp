@@ -7,7 +7,10 @@
 
 namespace nautilus::engine {
 
-void functionPtrTests(engine::NautilusEngine& engine) {
+// Mirrors FunctionPtrExecutionTest.cpp from the core test tree, but drives
+// the tests against the plugin-local annotated `FunctionPtrFunctions.hpp`
+// and toggles `mlir.inline_invoke_calls=true` so the JIT-time inliner runs.
+static void functionPtrTests(engine::NautilusEngine& engine) {
 	SECTION("fnPtrIsNull-null") {
 		auto f = engine.registerFunction(fnPtrIsNull);
 		REQUIRE(f(nullptr) == true);
@@ -66,7 +69,6 @@ void functionPtrTests(engine::NautilusEngine& engine) {
 
 	SECTION("callVoidFnPtr") {
 		auto f = engine.registerFunction(callVoidFnPtr);
-		// returns first argument unchanged
 		REQUIRE(f(voidFn, (int32_t) 7, (int32_t) 8) == 7);
 		REQUIRE(f(voidFn, (int32_t) 0, (int32_t) 99) == 0);
 	}
@@ -91,7 +93,6 @@ void functionPtrTests(engine::NautilusEngine& engine) {
 
 	SECTION("fnPtrAssignAndCall") {
 		auto f = engine.registerFunction(fnPtrAssignAndCall);
-		// second fn ptr wins
 		REQUIRE(f(addFn, mulFn, (int32_t) 3, (int32_t) 4) == 12);
 		REQUIRE(f(mulFn, addFn, (int32_t) 3, (int32_t) 4) == 7);
 	}
@@ -108,7 +109,6 @@ void functionPtrTests(engine::NautilusEngine& engine) {
 
 	SECTION("fnPtrInLoop") {
 		auto f = engine.registerFunction(fnPtrInLoop);
-		// sum = 0 + x + x + x + x  for n=4 iterations using add
 		REQUIRE(f(addFn, (int32_t) 5, (int32_t) 4) == 20);
 		REQUIRE(f(addFn, (int32_t) 1, (int32_t) 10) == 10);
 		REQUIRE(f(addFn, (int32_t) 0, (int32_t) 100) == 0);
@@ -153,19 +153,15 @@ void functionPtrTests(engine::NautilusEngine& engine) {
 	}
 }
 
-TEST_CASE("Function Ptr Interpreter Test") {
-	auto engine = nautilus::testing::makeEngine("interpreter");
-	functionPtrTests(engine);
-}
-
-#ifdef ENABLE_TRACING
-TEST_CASE("Function Ptr Compiler Test") {
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+TEST_CASE("Function Ptr Inlining Test") {
 	nautilus::testing::forEachBackendWithTraceMode(
 	    [](engine::NautilusEngine& engine) { functionPtrTests(engine); },
 	    [](engine::Options& options) {
 		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
 			    options.setOption("engine.Compilation", true);
 			    options.setOption("mlir.enableMultithreading", false);
+			    options.setOption("mlir.inline_invoke_calls", true);
 		    }
 	    });
 }

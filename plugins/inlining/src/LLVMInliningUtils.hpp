@@ -1,7 +1,9 @@
 #pragma once
 
-#include "LLVMInliningUtils.hpp"
+#include <llvm/ADT/StringRef.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <string>
 
 namespace nautilus::compiler::mlir {
 

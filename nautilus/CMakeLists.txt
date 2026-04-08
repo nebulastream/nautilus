@@ -54,10 +54,6 @@ endif ()
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)
 
-if (TARGET InliningPass)
-    list(APPEND EXPORT_TARGETS InliningPass)
-endif ()
-
 if (ENABLE_BC_BACKEND AND TARGET dyncallback_s)
     list(APPEND EXPORT_TARGETS dyncallback_s)
 endif ()

@@ -21,6 +21,12 @@
 int registerBitcodePleaseIgnoreThisThanks(void* fn, const char* bitcodePtr, uint64_t bitcodeLen);
 int registerSymbolPleaseIgnoreThisThanks(const char* symbolStringPtr, uint64_t symbolNameLength, void* ptr);
 
+// Anchor function defined in InliningPluginInit.cpp. Taking its address from
+// the static below forces that TU (and hence its file-scope static registrar
+// that installs the LLVMBackendHooks) to be pulled out of the nautilus-inlining
+// static archive whenever a consumer TU includes this header.
+int registerInliningHooksPleaseIgnoreThisThanks();
+
 // static registry for storing LLVM-IR bitstrings + symbol addresses for LLVM inlining
 // the static registry pattern makes it available during program initialization
 class InlineFunctionRegistry {
@@ -57,3 +63,9 @@ __attribute__((used)) static const auto bitcodeRegistrationFuncPtrDummyPleaseIgn
 // target module
 __attribute__((used)) static const auto symbolRegistrationFuncPtrDummyPleaseIgnoreThisThanks =
     &registerSymbolPleaseIgnoreThisThanks;
+
+// Forces InliningPluginInit.cpp to be linked out of the static archive so its
+// file-scope registrar runs and installs the LLVM backend hooks. See the
+// comment on `registerInliningHooksPleaseIgnoreThisThanks` above.
+__attribute__((used)) static const auto inliningHookRegistrationDummyPleaseIgnoreThisThanks =
+    &registerInliningHooksPleaseIgnoreThisThanks;
