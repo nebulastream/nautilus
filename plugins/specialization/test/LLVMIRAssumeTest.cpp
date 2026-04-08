@@ -6,6 +6,22 @@
 #include <filesystem>
 #include <string>
 
+// Register MLIR assume intrinsics so the compiler emits llvm.assume instead
+// of generic runtime calls. The static initializer in
+// SpecializationPluginInit.cpp lives in its own TU with no externally
+// referenced symbols, so the linker drops it from the static archive — we
+// must therefore force the registration from inside the test executable.
+#include "MLIRAssumeIntrinsics.hpp"
+
+namespace {
+struct SpecializationIntrinsicRegistrar {
+	SpecializationIntrinsicRegistrar() {
+		nautilus::compiler::mlir::RegisterMLIRAssumeIntrinsicPlugin();
+	}
+};
+static SpecializationIntrinsicRegistrar registrar_;
+} // namespace
+
 namespace nautilus::engine {
 
 using nautilus::engine::assumeAlignedFunction;
