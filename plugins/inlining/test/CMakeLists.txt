@@ -28,3 +28,39 @@ target_include_directories(nautilus-inlining-tests PRIVATE
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 catch_discover_tests(nautilus-inlining-tests EXTRA_ARGS --allow-running-no-tests)
+
+# LLVM IR comparison tests for the inlining plugin. Gated on the same switch
+# as the core nautilus-llvm-ir-test and the other plugin LLVM IR tests.
+# The reference IR under `inlining-ir/` must diverge from the non-inlined
+# reference IR under `nautilus/test/llvm-ir-test/reference-ir/`: if any of
+# these tests starts matching the non-inlined core reference, the JIT-time
+# inliner has silently regressed.
+if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
+    add_executable(nautilus-inlining-llvm-ir-test
+            LLVMIRInliningTest.cpp
+    )
+
+    nautilus_inline(nautilus-inlining-llvm-ir-test)
+
+    target_link_libraries(nautilus-inlining-llvm-ir-test
+            PRIVATE
+            nautilus-inlining
+            Catch2::Catch2WithMain
+            nautilus-sanitizer-suppressions
+    )
+    if (ENABLE_LOGGING)
+        target_link_libraries(nautilus-inlining-llvm-ir-test PRIVATE spdlog::spdlog)
+    endif ()
+
+    target_include_directories(nautilus-inlining-llvm-ir-test PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/test/llvm-ir-test>
+    )
+
+    catch_discover_tests(nautilus-inlining-llvm-ir-test
+            TEST_PREFIX "inlining-llvm-ir:"
+            EXTRA_ARGS --allow-running-no-tests
+            PROPERTIES LABELS "llvm;ir;inlining"
+    )
+endif ()

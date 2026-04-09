@@ -4,6 +4,7 @@
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace nautilus::engine {
@@ -22,10 +23,15 @@ namespace nautilus::engine {
  * @param func The function to compile and test
  * @param enableIntrinsics Whether to enable MLIR intrinsics (default: true)
  * @param referenceIRDir Directory containing reference IR files
+ * @param extraOptions Optional callback for setting additional engine options
+ *                     (e.g. to toggle plugin-specific knobs like
+ *                     `mlir.inline_invoke_calls`). Invoked after the default
+ *                     options have been set so callers can override them.
  */
 template <typename Func>
 void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsics,
-                const std::filesystem::path& referenceIRDir) {
+                const std::filesystem::path& referenceIRDir,
+                const std::function<void(engine::Options&)>& extraOptions = {}) {
 	std::string dumpPath = (std::filesystem::temp_directory_path() / ("nautilus-ir-test-" + functionName)).string();
 	std::filesystem::remove_all(dumpPath);
 	std::filesystem::create_directories(dumpPath);
@@ -38,6 +44,10 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	options.setOption("dump.path", dumpPath);
 	options.setOption("engine.normalizeFunctionNames", true);
 	options.setOption("mlir.enableIntrinsics", enableIntrinsics);
+
+	if (extraOptions) {
+		extraOptions(options);
+	}
 
 	auto engine = engine::NautilusEngine(options);
 	auto function = engine.registerFunction(func);
