@@ -7,8 +7,6 @@
 
 namespace nautilus::engine {
 
-#if defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
-
 val<int64_t> squarePlusSeven(val<int64_t> x) {
 	return x * x + 7;
 }
@@ -21,9 +19,7 @@ val<int64_t> sumUpTo(val<int64_t> n) {
 	return result;
 }
 
-TEST_CASE("BC Backend Concurrent Execution") {
-	auto engine = nautilus::testing::makeEngine("bc");
-
+void concurrentExecutionTest(engine::NautilusEngine& engine) {
 	SECTION("concurrent arithmetic") {
 		auto f = engine.registerFunction(squarePlusSeven);
 		constexpr int numThreads = 8;
@@ -33,7 +29,6 @@ TEST_CASE("BC Backend Concurrent Execution") {
 
 		for (int t = 0; t < numThreads; t++) {
 			threads.emplace_back([&f, &results, t]() {
-				// Each thread calls the function many times with its own input.
 				for (int iter = 0; iter < 1000; iter++) {
 					auto val = static_cast<int64_t>(t + 1);
 					auto r = f(val);
@@ -81,6 +76,8 @@ TEST_CASE("BC Backend Concurrent Execution") {
 	}
 }
 
-#endif
+TEST_CASE("Concurrent Execution Test") {
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { concurrentExecutionTest(engine); });
+}
 
 } // namespace nautilus::engine
