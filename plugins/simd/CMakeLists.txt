@@ -6,7 +6,7 @@ set(SIMD_SOURCES
 )
 
 if (ENABLE_MLIR_BACKEND)
-    list(APPEND SIMD_SOURCES src/MLIRVectorIntrinsics.cpp)
+    list(APPEND SIMD_SOURCES src/MLIRVectorIntrinsics.cpp src/SimdPluginInit.cpp)
 endif ()
 
 target_sources(nautilus-simd PRIVATE ${SIMD_SOURCES})
@@ -24,7 +24,7 @@ if (ENABLE_MLIR_BACKEND)
     find_package(MLIR REQUIRED CONFIG)
     # MLIR intrinsics need access to nautilus internal headers and MLIR/LLVM
     target_include_directories(nautilus-simd PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/src>)
+            $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/src>)
     target_include_directories(nautilus-simd SYSTEM PRIVATE
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>)
     # Link MLIR libraries needed by MLIRVectorIntrinsics.cpp

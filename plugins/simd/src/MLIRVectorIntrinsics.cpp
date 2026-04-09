@@ -171,8 +171,12 @@ bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 	}
 	auto vecTy = getVecType(elemTy, N);
 
-	// Load vector directly from the source pointer (treat as vector pointer)
-	auto vec = builder->create<::mlir::LLVM::LoadOp>(builder->getUnknownLoc(), vecTy, srcPtr);
+	// Load vector directly from the source pointer (treat as vector pointer).
+	// Use element alignment (not natural vector alignment) so LLVM emits an
+	// unaligned vector load (e.g. vmovdqu instead of vmovdqa on x86). User
+	// data from std::vector::data() or new[] is typically only aligned to
+	// alignof(T), not to the full SIMD register width.
+	auto vec = builder->create<::mlir::LLVM::LoadOp>(builder->getUnknownLoc(), vecTy, srcPtr, sizeof(ElemT));
 	auto resultPtr = storeVecToAlloca(builder, vec, vecTy);
 	frame.setValue(call->getIdentifier(), resultPtr);
 	return true;
@@ -198,7 +202,10 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 	auto vecTy = getVecType(elemTy, N);
 
 	auto vec = loadVecFromPtr(builder, vecPtr, vecTy);
-	builder->create<::mlir::LLVM::StoreOp>(builder->getUnknownLoc(), vec, destPtr);
+	// Use element alignment for the store to user memory (same rationale as
+	// the load intrinsic above — user buffers are not guaranteed to be
+	// aligned to the full vector width).
+	builder->create<::mlir::LLVM::StoreOp>(builder->getUnknownLoc(), vec, destPtr, sizeof(ElemT));
 	// Store returns void, but we still need to set a value for the frame.
 	// The store_impl returns void, so the ProxyCallOp result may not be used.
 	// We pass destPtr as the output so the frame has something valid.

@@ -118,6 +118,94 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/simd/test --output-on-failure
+  example-demos:
+    runs-on: ubuntu-24.04
+    name: Example demos (clang-18)
+    env:
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: Cache MLIR binaries
+        uses: actions/cache@v4
+        with:
+          path: example/build/mlir-*
+          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}-example
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-example-demos
+      - name: cmake
+        shell: bash
+        working-directory: example
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -G Ninja -S . -B build
+      - name: build demos
+        shell: bash
+        working-directory: example
+        run: |
+          cmake --build build --target demo demo_modules demo_backends demo_runtime_calls demo_std_plugin demo_simd_plugin demo_specialization_plugin
+      - name: run demo (baseline conditionalSum)
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo)
+          echo "$out"
+          echo "$out" | grep -q "Result: 7"
+      - name: run demo_modules
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_modules)
+          echo "$out"
+          echo "$out" | grep -q "add(3, 4)      = 7"
+          echo "$out" | grep -q "mul(3, 4)      = 12"
+          echo "$out" | grep -q "factorial(5)   = 120"
+          echo "$out" | grep -q "factorial(10)  = 3628800"
+      - name: run demo_backends
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_backends)
+          echo "$out"
+          echo "$out" | grep -q "result=333283335000"
+      - name: run demo_runtime_calls
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_runtime_calls)
+          echo "$out"
+          echo "$out" | grep -q "sumOfPrimesBelow(20)        = 77"
+          echo "$out" | grep -q "quadrupleIt(5)              = 20"
+          echo "$out" | grep -q "factorial(10)               = 3628800"
+          echo "$out" | grep -q "applyDoubleFromRuntime(3)   = 12"
+      - name: run demo_std_plugin
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_std_plugin)
+          echo "$out"
+          echo "$out" | grep -qF "conditionalSumVec([1,2,3,4], [1,1,0,1]) = 7"
+          echo "$out" | grep -qF "rmsError(...)                            = 0.5"
+      - name: run demo_simd_plugin
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_simd_plugin)
+          echo "$out"
+          echo "$out" | grep -qF "mask=[1,1,0,1]) = 7"
+          echo "$out" | grep -qF "evens in [0,32)) = 240"
+      - name: run demo_specialization_plugin
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_specialization_plugin)
+          echo "$out"
+          echo "$out" | grep -q "conditionalSumPlain  = 7"
+          echo "$out" | grep -q "conditionalSumHinted = 7"
   llvm-ir-test:
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-21)

@@ -1,11 +1,54 @@
-# Nautilus: Demo JIT example
+# Nautilus: Example walkthrough
 
-This example project illustrates how Nautilus can be integrated into a C++ project using CMAKE.
+This directory is a small, self-contained tour of Nautilus. It shows how to
+integrate Nautilus into a C++ project with CMake and walks through the core
+API, the multi-function module API, backend selection, and each of the three
+shipped plugins.
 
-## Integrate as sub project
+## Building
+
+```bash
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . -j
+```
+
+The top-level CMakeLists.txt in this directory forces
+`ENABLE_STD_PLUGIN`, `ENABLE_SIMD_PLUGIN`, and `ENABLE_SPECIALIZATION_PLUGIN`
+to `ON` so that the plugin targets (`nautilus-std`, `nautilus-simd`,
+`nautilus-specialization`) are built and available for the demos below.
+
+## Demos
+
+| Executable | Source | What it shows |
+|---|---|---|
+| `./demo` | [src/DemoJit.cpp](src/DemoJit.cpp) | Baseline `conditionalSum` with raw C pointers. Runs on the default engine configuration — the **tiered JIT compiler** (see `nautilus/src/nautilus/compiler/Engine.cpp`), which is the production-recommended path. |
+| `./demo_modules` | [src/DemoModules.cpp](src/DemoModules.cpp) | The `NautilusModule` API: register several functions (`add`, `mul`, `factorial`) into one compilation unit and fetch typed handles by name. |
+| `./demo_backends` | [src/DemoBackends.cpp](src/DemoBackends.cpp) | Compiles the same `sumOfSquares` with every backend enabled at configure time (`mlir`, `cpp`, `bc`, `asmjit`) and prints a short wall-clock comparison. |
+| `./demo_runtime_calls` | [src/DemoRuntimeCalls.cpp](src/DemoRuntimeCalls.cpp) | Four function-call patterns: (1) opaque `invoke()` into a C++ helper, (2) one `NautilusFunction` calling another, (3) recursive `NautilusFunction`, (4) `getFuncPtr()` to pass a compiled function pointer to a runtime callback. |
+| `./demo_std_plugin` | [src/DemoStdPlugin.cpp](src/DemoStdPlugin.cpp) | The `nautilus-std` plugin. `conditionalSum` reimplemented over `val<std::vector<int32_t>>` plus an `rmsError` function that combines vector iteration with `nautilus::sqrt` from `<nautilus/std/cmath.h>`. |
+| `./demo_simd_plugin` | [src/DemoSimdPlugin.cpp](src/DemoSimdPlugin.cpp) | The `nautilus-simd` plugin. SIMD-vectorised `conditionalSum` using `val<vec<int32_t>>::Load`, element-wise multiply by the mask, and `ReduceAdd`, with a scalar tail loop. |
+| `./demo_specialization_plugin` | [src/DemoSpecializationPlugin.cpp](src/DemoSpecializationPlugin.cpp) | The `nautilus-specialization` plugin. Scalar `conditionalSum` in two flavours — plain and annotated with `nautilus_assume` / `nautilus_assume_aligned`. Dumps the generated LLVM IR so the two can be diffed side-by-side. |
+
+The three plugin demos all solve the **same `conditionalSum` aggregation**,
+so you can read them back-to-back and see how the same problem is expressed
+through containers, through SIMD intrinsics, and through optimizer hints.
+
+## Plugins used
+
+- [`plugins/std`](../plugins/std) — traced wrappers around the C++ standard
+  library: `<nautilus/std/vector.h>`, `<nautilus/std/cmath.h>`,
+  `<nautilus/std/string.h>`, `<nautilus/std/bit.h>`, `<nautilus/std/cstring.h>`.
+- [`plugins/simd`](../plugins/simd) — runtime-width `val<vec<T>>` SIMD
+  specialization that lowers to MLIR's vector dialect or a scalar fallback.
+- [`plugins/specialization`](../plugins/specialization) — `nautilus_assume`
+  and `nautilus_assume_aligned` optimizer hints (active on the MLIR backend
+  with `mlir.enableIntrinsics = true`).
+
+## Integrate as a sub project
 
 Nautilus is self-contained and requires no external pre-installed dependencies.
-In this example, integrate nautilus as a subproject:
+In this example, nautilus is pulled in as a subproject:
 
 ```cmake
 # add the nautilus source dir as a subdirectory to the main cmake project.
@@ -15,12 +58,12 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_BINARY_DIR}/naut
 target_link_libraries(myTarget PRIVATE nautilus)
 ```
 
-## Example
+## The baseline conditionalSum walkthrough
 
-The following [example](./example/) illustrates Nautilus on a simplified aggregation operator.
-`conditionalSum` iterates over an array and only aggregates the values for, which mask is true.
-Nautilus traces the function and generates efficient code using one of its compilation backend.
-These produce either byte code, [mlir](), or[c++]() code.
+The following example illustrates Nautilus on a simplified aggregation operator.
+`conditionalSum` iterates over an array and only aggregates the values for which the mask is true.
+Nautilus traces the function and generates efficient code using one of its compilation backends.
+These produce either byte code, [mlir](), or [c++]() code.
 
 ```c++
 val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> array) {
