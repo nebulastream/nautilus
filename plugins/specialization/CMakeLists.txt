@@ -27,7 +27,7 @@ if (ENABLE_MLIR_BACKEND)
     find_package(MLIR REQUIRED CONFIG)
     # MLIR intrinsics need access to nautilus internal headers and MLIR/LLVM
     target_include_directories(nautilus-specialization PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/src>)
+            $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/src>)
     target_include_directories(nautilus-specialization SYSTEM PRIVATE
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>)
     target_link_libraries(nautilus-specialization PRIVATE

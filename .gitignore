@@ -1,6 +1,7 @@
 /cmake-build*
 *cmake-build*
 /build*
+/example/build*
 .idea/*
 .cache/
 .vscode/

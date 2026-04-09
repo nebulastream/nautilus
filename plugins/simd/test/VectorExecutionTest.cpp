@@ -6,6 +6,10 @@
 #include <cmath>
 #include <cstring>
 
+#ifdef ENABLE_MLIR_BACKEND
+#include "MLIRVectorIntrinsics.hpp"
+#endif
+
 namespace nautilus::engine {
 
 // Lane counts are now determined at runtime via CPU feature detection.
@@ -1012,6 +1016,125 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 }
 
+// ============================================================================
+// Unaligned-buffer tests
+//
+// Regression tests for the MLIR vector intrinsic alignment bug: the load/store
+// intrinsics must use element-level alignment (not natural vector alignment)
+// so the generated code works with buffers that are not aligned to the full
+// SIMD register width. std::vector::data() and malloc'd memory typically only
+// guarantee alignof(T), not 64-byte alignment required by AVX-512.
+//
+// These tests deliberately offset the data pointer by one element so the
+// buffers are guaranteed to be misaligned w.r.t. any vector width > sizeof(T).
+// ============================================================================
+
+void unalignedVectorTests(engine::NautilusEngine& engine) {
+
+	// Float: load from unaligned pointer, add, store to unaligned pointer.
+	SECTION("unaligned add float") {
+		auto f = engine.registerFunction(vectorAddFloat);
+		// Allocate extra element so we can offset by 1 to force misalignment.
+		alignas(64) float a_aligned[FL_MAX + 1], b_aligned[FL_MAX + 1], c_aligned[FL_MAX + 1];
+		float* a = a_aligned + 1; // misaligned by sizeof(float) = 4 bytes
+		float* b = b_aligned + 1;
+		float* c = c_aligned + 1;
+		std::memset(c, 0, FL * sizeof(float));
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 1);
+			b[i] = static_cast<float>(i + 5);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < FL; i++) {
+			REQUIRE(c[i] == a[i] + b[i]);
+		}
+	}
+
+	// Int32: load from unaligned pointer, add, store to unaligned pointer.
+	SECTION("unaligned add int") {
+		auto f = engine.registerFunction(vectorAddInt);
+		alignas(64) int32_t a_aligned[IL_MAX + 1], b_aligned[IL_MAX + 1], c_aligned[IL_MAX + 1];
+		int32_t* a = a_aligned + 1;
+		int32_t* b = b_aligned + 1;
+		int32_t* c = c_aligned + 1;
+		std::memset(c, 0, IL * sizeof(int32_t));
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(i + 1);
+			b[i] = static_cast<int32_t>(i + 10);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < IL; i++) {
+			REQUIRE(c[i] == a[i] + b[i]);
+		}
+	}
+
+	// Float: mul + sub chain with unaligned pointers.
+	SECTION("unaligned mul-sub float") {
+		auto f = engine.registerFunction(vectorMulSubFloat);
+		alignas(64) float a_al[FL_MAX + 1], b_al[FL_MAX + 1], c_al[FL_MAX + 1], d_al[FL_MAX + 1];
+		float* a = a_al + 1;
+		float* b = b_al + 1;
+		float* c = c_al + 1;
+		float* d = d_al + 1;
+		std::memset(d, 0, FL * sizeof(float));
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 1);
+			b[i] = 2.0f;
+			c[i] = static_cast<float>(i);
+		}
+		f(a, b, c, d);
+		for (size_t i = 0; i < FL; i++) {
+			REQUIRE(d[i] == a[i] * b[i] - c[i]);
+		}
+	}
+
+	// Float: reduce-add from unaligned pointer.
+	SECTION("unaligned reduce-add float") {
+		auto f = engine.registerFunction(vectorReduceAddFloat);
+		alignas(64) float a_aligned[FL_MAX + 1];
+		float* a = a_aligned + 1;
+		float expected = 0.0f;
+		for (size_t i = 0; i < FL; i++) {
+			a[i] = static_cast<float>(i + 1);
+			expected += a[i];
+		}
+		REQUIRE(f(a) == expected);
+	}
+
+	// Double: add with unaligned pointers.
+	SECTION("unaligned add double") {
+		auto f = engine.registerFunction(vectorAddDouble);
+		alignas(64) double a_aligned[DL_MAX + 1], b_aligned[DL_MAX + 1], c_aligned[DL_MAX + 1];
+		double* a = a_aligned + 1;
+		double* b = b_aligned + 1;
+		double* c = c_aligned + 1;
+		std::memset(c, 0, DL * sizeof(double));
+		for (size_t i = 0; i < DL; i++) {
+			a[i] = static_cast<double>(i + 1);
+			b[i] = static_cast<double>(i + 100);
+		}
+		f(a, b, c);
+		for (size_t i = 0; i < DL; i++) {
+			REQUIRE(c[i] == a[i] + b[i]);
+		}
+	}
+
+	// Int32: dot product from unaligned pointers (mul + reduce-add chain).
+	SECTION("unaligned dot-product int") {
+		auto f = engine.registerFunction(vectorDotProductInt);
+		alignas(64) int32_t a_aligned[IL_MAX + 1], b_aligned[IL_MAX + 1];
+		int32_t* a = a_aligned + 1;
+		int32_t* b = b_aligned + 1;
+		int32_t expected = 0;
+		for (size_t i = 0; i < IL; i++) {
+			a[i] = static_cast<int32_t>(i + 1);
+			b[i] = 2;
+			expected += a[i] * b[i];
+		}
+		REQUIRE(f(a, b) == expected);
+	}
+}
+
 TEST_CASE("Vector Interpreter Test") {
 	auto engine = nautilus::testing::makeEngine("interpreter");
 	vectorTests(engine);
@@ -1022,6 +1145,19 @@ TEST_CASE("Vector Compiler Test") {
 	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { vectorTests(engine); },
 	                                  /*include_interpreter=*/false);
 }
-#endif
+
+// Regression test for the MLIR vector intrinsic alignment bug.  Only runs on
+// the MLIR backend with intrinsics explicitly registered, because without the
+// intrinsic plugin, vector ops fall back to scalar invoke() calls where
+// alignment is irrelevant.
+#ifdef ENABLE_MLIR_BACKEND
+TEST_CASE("Vector Unaligned Buffer Test") {
+	nautilus::compiler::mlir::RegisterMLIRVectorIntrinsicPlugin();
+	auto engine = nautilus::testing::makeEngine(
+	    "mlir", [](engine::Options& options) { options.setOption("mlir.enableIntrinsics", true); });
+	unalignedVectorTests(engine);
+}
+#endif // ENABLE_MLIR_BACKEND
+#endif // ENABLE_TRACING
 
 } // namespace nautilus::engine
