@@ -1,14 +1,11 @@
 #include "ExecutionTest.hpp"
 #include "VectorFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/simd/plugin.hpp"
 #include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cmath>
 #include <cstring>
-
-#ifdef ENABLE_MLIR_BACKEND
-#include "MLIRVectorIntrinsics.hpp"
-#endif
 
 namespace nautilus::engine {
 
@@ -1147,12 +1144,11 @@ TEST_CASE("Vector Compiler Test") {
 }
 
 // Regression test for the MLIR vector intrinsic alignment bug.  Only runs on
-// the MLIR backend with intrinsics explicitly registered, because without the
-// intrinsic plugin, vector ops fall back to scalar invoke() calls where
-// alignment is irrelevant.
+// the MLIR backend with intrinsics enabled, because without the intrinsic
+// plugin, vector ops fall back to scalar invoke() calls where alignment is
+// irrelevant. Plugin registration is handled by nautilus/simd/plugin.hpp.
 #ifdef ENABLE_MLIR_BACKEND
 TEST_CASE("Vector Unaligned Buffer Test") {
-	nautilus::compiler::mlir::RegisterMLIRVectorIntrinsicPlugin();
 	auto engine = nautilus::testing::makeEngine(
 	    "mlir", [](engine::Options& options) { options.setOption("mlir.enableIntrinsics", true); });
 	unalignedVectorTests(engine);

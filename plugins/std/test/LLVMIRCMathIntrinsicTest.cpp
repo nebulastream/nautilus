@@ -8,19 +8,9 @@
 // Include test function headers
 #include "common/CMathIntrinsicFunctions.hpp"
 
-// Register MLIR intrinsics so that the compiler emits intrinsic calls instead of generic runtime calls.
-#include "MLIRBitIntrinsics.hpp"
-#include "MLIRMathIntrinsics.hpp"
-
-namespace {
-struct StdIntrinsicRegistrar {
-	StdIntrinsicRegistrar() {
-		nautilus::compiler::mlir::RegisterMLIRMathIntrinsicPlugin();
-		nautilus::compiler::mlir::RegisterMLIRBitIntrinsicPlugin();
-	}
-};
-static StdIntrinsicRegistrar registrar_;
-} // namespace
+// Force-link the std MLIR plugin — ensures StdPluginInit.o is not stripped
+// from the static archive and the math/bit/atomic intrinsic registrar runs.
+#include "nautilus/std/plugin.hpp"
 
 namespace nautilus::engine {
 
