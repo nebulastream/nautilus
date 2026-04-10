@@ -7,6 +7,8 @@
 
 namespace nautilus::engine {
 
+#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
+
 // Mirrors FunctionPtrExecutionTest.cpp from the core test tree, but drives
 // the tests against the plugin-local annotated `FunctionPtrFunctions.hpp`
 // and toggles `mlir.inline_invoke_calls=true` so the JIT-time inliner runs.
@@ -153,7 +155,6 @@ static void functionPtrTests(engine::NautilusEngine& engine) {
 	}
 }
 
-#if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 TEST_CASE("Function Ptr Inlining Test") {
 	nautilus::testing::forEachBackendWithTraceMode(
 	    [](engine::NautilusEngine& engine) { functionPtrTests(engine); },
