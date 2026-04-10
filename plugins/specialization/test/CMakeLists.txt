@@ -43,6 +43,7 @@ if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
             $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/test/llvm-ir-test>
+            $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/plugins/specialization/src>
     )
 
     catch_discover_tests(nautilus-specialization-llvm-ir-test

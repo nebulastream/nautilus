@@ -1,5 +1,3 @@
-
-#ifdef ENABLE_MLIR_BACKEND
 #include "MLIRAtomicIntrinsics.hpp"
 #include "MLIRBitIntrinsics.hpp"
 #include "MLIRMathIntrinsics.hpp"
@@ -15,4 +13,3 @@ struct StdIntrinsicRegistrar {
 };
 static StdIntrinsicRegistrar registrar_;
 } // namespace
-#endif

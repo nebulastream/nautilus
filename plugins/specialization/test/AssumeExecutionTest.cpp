@@ -1,5 +1,6 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/specialization/plugin.hpp"
 #include <catch2/catch_all.hpp>
 
 TEST_CASE("Specialization plugin: linkable", "[specialization][smoke]") {
@@ -7,17 +8,7 @@ TEST_CASE("Specialization plugin: linkable", "[specialization][smoke]") {
 }
 
 #if defined(ENABLE_MLIR_BACKEND) && !defined(__APPLE__)
-#include "MLIRAssumeIntrinsics.hpp"
 #include "nautilus/specialization/assume.hpp"
-
-namespace {
-struct SpecializationIntrinsicRegistrar {
-	SpecializationIntrinsicRegistrar() {
-		nautilus::compiler::mlir::RegisterMLIRAssumeIntrinsicPlugin();
-	}
-};
-static SpecializationIntrinsicRegistrar registrar_;
-} // namespace
 
 namespace nautilus::engine {
 
