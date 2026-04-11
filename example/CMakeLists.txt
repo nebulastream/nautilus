@@ -16,6 +16,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_INLINING_PLUGIN ON CACHE BOOL "" FORCE)
 # Enable the AsmJit backend so demo_backends can include it in its comparison.
 # This is OFF by default in the top-level nautilus build but is safe on
 # x86-64 Linux / macOS and ARM64 Linux.
@@ -63,3 +64,22 @@ target_link_libraries(demo_simd_plugin PRIVATE
 add_executable(demo_specialization_plugin src/DemoSpecializationPlugin.cpp)
 target_link_libraries(demo_specialization_plugin PRIVATE
         nautilus ${WHOLE_ARCHIVE_PREFIX} nautilus-specialization ${WHOLE_ARCHIVE_SUFFIX})
+
+# Inlining plugin demo — needs both the plugin library AND the Clang pass
+# plugin attached to this TU so NAUTILUS_INLINE-annotated helpers get their
+# bitcode extracted at compile time. `is_inlining_supported()` gates builds
+# on compiler/host support (Clang 19-21 on non-ARM, non-AppleClang); on
+# unsupported toolchains the demo is silently skipped. Unlike the other
+# plugin demos, `nautilus-inlining` does not need `--whole-archive` because
+# `<nautilus/inline.hpp>` uses an anchor trick to force its init TU to be
+# pulled out of the static archive.
+if (ENABLE_INLINING_PLUGIN)
+    is_inlining_supported(NAUTILUS_INLINE_SUPPORTED)
+    if (NAUTILUS_INLINE_SUPPORTED)
+        add_executable(demo_inlining_plugin src/DemoInliningPlugin.cpp)
+        nautilus_inline(demo_inlining_plugin)
+        target_link_libraries(demo_inlining_plugin PRIVATE nautilus nautilus-inlining)
+    else ()
+        message(STATUS "Skipping demo_inlining_plugin: inlining plugin is not supported on this toolchain.")
+    endif ()
+endif ()

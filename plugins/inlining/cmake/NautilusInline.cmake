@@ -22,11 +22,11 @@ function(is_inlining_supported result_var)
     endif ()
 
     # Check clang version
-    # right now, inlining is restricted to clang-19, but it can probably also support other clang versions without changes to the source code
-    # however, this should be validated first, as the llvm pass API changes sometimes
+    # Inlining is supported for clang 19 through 21.
+    # The LLVM pass API can change between major versions, so new versions should be validated before adding them here.
     if (NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"
             AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "19.0.0"
-            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "20"))
+            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "22"))
         message(WARNING "Nautilus function inlining is not supported for the active compiler version and will not be applied. You can safely ignore this warning.")
         set(${result_var} FALSE PARENT_SCOPE)
         return()
@@ -59,6 +59,6 @@ function(nautilus_inline target)
             message(WARNING "nautilus_inline(${target}) called but the InliningPass target is not available. Enable ENABLE_INLINING_PLUGIN to build it. Skipping.")
         endif ()
     else ()
-        message(WARNING "Function inlining requires clang 19 during compilation. Probably also works with other clang versions. Adjust the version-check in CMake and find out")
+        message(WARNING "Function inlining requires clang 19-21 during compilation.")
     endif ()
 endfunction()
