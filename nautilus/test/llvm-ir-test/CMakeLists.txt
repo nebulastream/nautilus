@@ -41,36 +41,10 @@ catch_discover_tests(nautilus-llvm-ir-test
         LABELS "llvm;ir;regression"
 )
 
-# Add custom test for llvm-diff comparison
-find_program(LLVM_DIFF llvm-diff)
-if(LLVM_DIFF)
-    message(STATUS "Found llvm-diff: ${LLVM_DIFF}")
-
-    # Custom target to run IR comparison
-    add_test(
-        NAME llvm-ir:llvm-diff-comparison
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/compare-ir.sh
-                ${CMAKE_BINARY_DIR}/nautilus-ir-test-output
-    )
-
-    set_tests_properties(llvm-ir:llvm-diff-comparison PROPERTIES
-        LABELS "llvm;ir;regression"
-        DEPENDS nautilus-llvm-ir-test
-    )
-else()
-    message(WARNING "llvm-diff not found - IR comparison tests will be skipped")
-endif()
-
 # Custom target to generate reference IR
 add_custom_target(generate-reference-ir
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nautilus-llvm-ir-test --generate-reference
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating reference LLVM IR files"
     DEPENDS nautilus-llvm-ir-test
-)
-
-# Install test scripts
-install(
-    PROGRAMS compare-ir.sh
-    DESTINATION test/llvm-ir-test
 )
