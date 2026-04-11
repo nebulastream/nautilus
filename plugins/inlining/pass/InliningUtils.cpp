@@ -125,8 +125,7 @@ void insertBitcodeRegistryCall(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 	llvm::ArrayRef<uint8_t> bitcode((const uint8_t*) bitcodeStr.data(), bitcodeStr.size());
 
 	// Create types
-	auto* int8Ty = llvm::IntegerType::get(ctx, 8);
-	auto* int8PtrTy = llvm::PointerType::get(int8Ty, 0);
+	auto* ptrTy = llvm::PointerType::get(ctx, 0);
 
 	// Create LLVM constant that holds the bitcode string
 	auto* bitcodeConstant = llvm::ConstantDataArray::get(ctx, bitcode);
@@ -134,12 +133,11 @@ void insertBitcodeRegistryCall(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 	                                           llvm::GlobalValue::PrivateLinkage, bitcodeConstant,
 	                                           targetFunction.getName() + ".bitcode");
 	bitcodeGV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-	auto* bitcodePtr =
-	    builder->CreateBitCast(builder->CreateConstGEP2_32(bitcodeConstant->getType(), bitcodeGV, 0, 0), int8PtrTy);
+	auto* bitcodePtr = builder->CreateConstGEP2_32(bitcodeConstant->getType(), bitcodeGV, 0, 0);
 	auto* bitcodeLen = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), bitcode.size());
 
 	// Insert call to registration function
-	auto* funcPtr = llvm::ConstantExpr::getBitCast(&targetFunction, int8PtrTy);
+	auto* funcPtr = llvm::ConstantExpr::getBitCast(&targetFunction, ptrTy);
 	builder->CreateCall(bitcodeRegistrationFunction, {funcPtr, bitcodePtr, bitcodeLen});
 }
 
@@ -149,8 +147,7 @@ void insertSymbolRegistryCalls(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 	llvm::LLVMContext& ctx = builder->getContext();
 
 	// Create types
-	auto* int8Ty = llvm::IntegerType::get(ctx, 8);
-	auto* int8PtrTy = llvm::PointerType::get(int8Ty, 0);
+	auto* ptrTy = llvm::PointerType::get(ctx, 0);
 
 	for (auto& symbol : symbols) {
 		auto val = symbol.first;
@@ -163,12 +160,11 @@ void insertSymbolRegistryCalls(std::shared_ptr<llvm::IRBuilder<>> builder, llvm:
 		    new llvm::GlobalVariable(*symbolRegistrationFunction->getParent(), symbolNameConstant->getType(), true,
 		                             llvm::GlobalValue::PrivateLinkage, symbolNameConstant, name);
 		symbolNameGV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-		auto* symbolNamePtr = builder->CreateBitCast(
-		    builder->CreateConstGEP2_32(symbolNameConstant->getType(), symbolNameGV, 0, 0), int8PtrTy);
+		auto* symbolNamePtr = builder->CreateConstGEP2_32(symbolNameConstant->getType(), symbolNameGV, 0, 0);
 		auto* symbolNameLen = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), name.size());
 
 		// Insert call to registration function
-		auto* symbolPtr = builder->CreateBitCast(val, int8PtrTy);
+		auto* symbolPtr = llvm::ConstantExpr::getBitCast(val, ptrTy);
 		builder->CreateCall(symbolRegistrationFunction, {symbolNamePtr, symbolNameLen, symbolPtr});
 	}
 }

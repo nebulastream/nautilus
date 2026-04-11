@@ -71,6 +71,10 @@ jobs:
             cc: 'clang-18'
             cxx: 'clang++-18'
             flags: '-DENABLE_ASMJIT_BACKEND=ON'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: ''
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -98,6 +102,16 @@ jobs:
           echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-19 main" | sudo tee /etc/apt/sources.list.d/llvm-19.list
           sudo apt-get update
           sudo apt-get install -y clang-19 clang++-19
+      - name: Install clang 21
+        if: startsWith(matrix.cc, 'clang-21') && startsWith(matrix.os, 'ubuntu')
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 clang++-21
       - name: cmake
         shell: bash
         run: |
@@ -118,6 +132,11 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/simd/test --output-on-failure
+      - name: test inlining plugin
+        if: startsWith(matrix.cc, 'clang-19') || startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-21')
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/inlining/test --output-on-failure
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)
@@ -244,7 +263,7 @@ jobs:
       - name: build
         shell: bash
         run: |
-          cmake --build build --target nautilus-llvm-ir-test nautilus-std-llvm-ir-test nautilus-simd-llvm-ir-test
+          cmake --build build --target nautilus-llvm-ir-test nautilus-std-llvm-ir-test nautilus-simd-llvm-ir-test nautilus-inlining-llvm-ir-test
       - name: test core LLVM IR
         shell: bash
         run: |
@@ -257,3 +276,7 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/simd/test -L "llvm" --output-on-failure
+      - name: test inlining plugin LLVM IR
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/inlining/test -L "llvm" --output-on-failure

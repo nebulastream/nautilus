@@ -156,15 +156,12 @@ static void functionPtrTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Function Ptr Inlining Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { functionPtrTests(engine); },
-	    [](engine::Options& options) {
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-			    options.setOption("mlir.inline_invoke_calls", true);
-		    }
-	    });
+	auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
+		opts.setOption("engine.Compilation", true);
+		opts.setOption("mlir.enableMultithreading", false);
+		opts.setOption("mlir.inline_invoke_calls", true);
+	});
+	functionPtrTests(engine);
 }
 #endif
 

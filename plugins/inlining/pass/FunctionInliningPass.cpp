@@ -129,7 +129,7 @@ private:
 
 extern "C" LLVM_ATTRIBUTE_WEAK LLVM_ATTRIBUTE_VISIBILITY_DEFAULT llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
 	return {LLVM_PLUGIN_API_VERSION, "NautilusInlineRegistrationPass", "0.0.1", [](llvm::PassBuilder& PB) {
-		        PB.registerOptimizerLastEPCallback([](llvm::ModulePassManager& MPM, auto) {
+		        PB.registerOptimizerLastEPCallback([](llvm::ModulePassManager& MPM, auto&&...) {
 			        MPM.addPass(nautilus::passes::NautilusInlineRegistrationPass {});
 		        });
 	        }};
