@@ -38,6 +38,8 @@ static void runWith(const std::string& backendName, int32_t n) {
 	// Force single-tier compilation so each run uses exactly the requested
 	// backend, instead of the tiered strategy switching between them.
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
+	// Enable per-phase compilation stats logging.
+	options.setOption("engine.compilationStats", true);
 	auto engine = engine::NautilusEngine(options);
 
 	// Measure compile time + first call separately from warm calls.
@@ -78,6 +80,7 @@ int main(int, char*[]) {
 	runWith("asmjit", N);
 #endif
 
+	std::cout << "\n(Per-phase compilation stats are logged above by the nautilus library)\n";
 	std::cout << "\nExpected result: " << ([] {
 		int64_t s = 0;
 		for (int64_t i = 0; i < N; i++)

@@ -79,7 +79,11 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 			auto compilationId = createPromotionUnitID();
 			auto dumpHandler = DumpHandler(options, compilationId);
 
+			auto statsLogger = log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false),
+			                                               compilationId);
+			auto t0 = log::now();
 			auto tier1Executable = backend->compile(ir, dumpHandler, options);
+			statsLogger.logTiming(t0, "Tier 1 promotion ({}) completed", config.tier1.backend);
 			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 
 			if (auto s = weakState.lock()) {
