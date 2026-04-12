@@ -23,8 +23,8 @@ endif ()
 target_include_directories(nautilus-inlining-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/test/common>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/src>)
+        $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/test/common>
+        $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/src>)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 catch_discover_tests(nautilus-inlining-tests EXTRA_ARGS --allow-running-no-tests)
@@ -55,7 +55,7 @@ if (ENABLE_MLIR_BACKEND AND ENABLE_LLVM_IR_TEST)
     target_include_directories(nautilus-inlining-llvm-ir-test PRIVATE
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
-            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/test/llvm-ir-test>
+            $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/test/llvm-ir-test>
     )
 
     catch_discover_tests(nautilus-inlining-llvm-ir-test
