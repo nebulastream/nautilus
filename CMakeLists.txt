@@ -17,7 +17,7 @@ cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
-cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_TRACING" OFF)
+cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 
 
 option(ENABLE_TEST_COVERAGE "Enable the collection of test coverage." OFF)

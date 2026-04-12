@@ -19,58 +19,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: 'ubuntu-22.04'
-            cc: 'gcc-10'
-            cxx: 'g++-10'
-            flags: ''
-          - os: 'ubuntu-22.04'
-            cc: 'gcc-10'
-            cxx: 'g++-10'
-            flags: '-DENABLE_TRACING=OFF'
-          - os: 'ubuntu-22.04'
-            cc: 'gcc-10'
-            cxx: 'g++-10'
-            flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
-          - os: 'ubuntu-22.04'
-            cc: 'clang-15'
-            cxx: 'clang++-15'
-            flags: ''
-          - os: 'ubuntu-24.04'
-            cc: 'clang-18'
-            cxx: 'clang++-18'
-            flags: ''
-          - os: 'ubuntu-24.04'
-            cc: 'gcc-12'
-            cxx: 'g++-12'
-            flags: ''
           - os: 'ubuntu-24.04'
             cc: 'gcc-14'
             cxx: 'g++-14'
             flags: ''
-          - os: 'macos-15'
-            cc: 'clang'
-            cxx: 'clang++'
-            flags: '-DENABLE_ASMJIT_BACKEND=ON'
           - os: 'ubuntu-24.04'
-            cc: 'gcc-12'
-            cxx: 'g++-12'
-            flags: '-DENABLE_ADDRESS_SANITIZER=ON'
-          - os: 'ubuntu-24.04'
-            cc: 'clang-18'
-            cxx: 'clang++-18'
-            flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+            cc: 'gcc-14'
+            cxx: 'g++-14'
+            flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
           - os: 'ubuntu-24.04'
             cc: 'clang-19'
             cxx: 'clang++-19'
             flags: ''
-          - os: 'ubuntu-24.04-arm'
-            cc: 'clang-19'
-            cxx: 'clang++-19'
-            flags: '-DENABLE_ASMJIT_BACKEND=ON'
           - os: 'ubuntu-24.04'
-            cc: 'clang-18'
-            cxx: 'clang++-18'
-            flags: '-DENABLE_ASMJIT_BACKEND=ON'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: ''
+          - os: 'macos-15'
+            cc: 'clang'
+            cxx: 'clang++'
+            flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'gcc-14'
+            cxx: 'g++-14'
+            flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_ADDRESS_SANITIZER=ON'
+          - os: 'ubuntu-24.04-arm'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: ''
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -88,16 +68,17 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt') }}
-      - name: Install clang 19
-        if: startsWith(matrix.cc, 'clang-19') && startsWith(matrix.os, 'ubuntu')
+      - name: Install clang from LLVM apt repo
+        if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
         run: |
+          CLANG_VERSION=$(echo "${{ matrix.cc }}" | sed 's/clang-//')
           UBUNTU_CODENAME=$(lsb_release -cs)
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release software-properties-common
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-19 main" | sudo tee /etc/apt/sources.list.d/llvm-19.list
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-${CLANG_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm-${CLANG_VERSION}.list
           sudo apt-get update
-          sudo apt-get install -y clang-19 clang++-19
+          sudo apt-get install -y clang-${CLANG_VERSION} clang++-${CLANG_VERSION}
       - name: cmake
         shell: bash
         run: |
