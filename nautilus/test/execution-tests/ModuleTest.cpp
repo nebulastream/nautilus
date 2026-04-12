@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
@@ -202,26 +203,7 @@ TEST_CASE("Module Interpreter Test") {
 }
 
 TEST_CASE("Module Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_TRACING
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			moduleTests(engine);
-		}
-	}
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { moduleTests(engine); }, false);
 }
 
 TEST_CASE("Module Runtime Swap Test") {
@@ -528,26 +510,7 @@ TEST_CASE("Module Loop Functions Interpreter Test") {
 }
 
 TEST_CASE("Module Loop Functions Compiler Test") {
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_TRACING
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#endif
-	for (auto& backend : backends) {
-		DYNAMIC_SECTION(backend) {
-			engine::Options options;
-			options.setOption("engine.backend", backend);
-			auto engine = engine::NautilusEngine(options);
-			moduleLoopTests(engine);
-		}
-	}
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { moduleLoopTests(engine); }, false);
 }
 
 } // namespace nautilus::engine
