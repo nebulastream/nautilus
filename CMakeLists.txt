@@ -161,7 +161,7 @@ if (ENABLE_ASMJIT_BACKEND)
     set(ASMJIT_NO_FOREIGN ON)
     set(ASMJIT_NO_DEPRECATED ON)
     add_subdirectory(${THIRD_PARTY_DIR}/asmjit)
-    target_compile_options(asmjit PUBLIC -Wno-deprecated-anon-enum-enum-conversion -Wno-nested-anon-types -Wno-gnu-anonymous-struct -Wno-extra-semi)
+    disable_target_warnings(asmjit)
 endif ()
 
 add_subdirectory(nautilus)
