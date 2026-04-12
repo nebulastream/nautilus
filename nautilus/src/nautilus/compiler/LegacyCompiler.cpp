@@ -85,24 +85,34 @@ std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_functio
 std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
+	auto statsLogger =
+	    log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false), compilationId);
+	auto tTotal = log::now();
 
+	auto t0 = log::now();
 	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
 	std::shared_ptr<tracing::TraceModule> traceModule =
 	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options)
 	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options);
+	statsLogger.logTiming(t0, "Tracing completed");
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 
+	auto t1 = log::now();
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
+	statsLogger.logTiming(t1, "SSA creation completed");
 	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
 
+	auto t2 = log::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(afterSSAModule, compilationId);
+	statsLogger.logTiming(t2, "IR generation completed");
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
+	statsLogger.logTiming(tTotal, "Frontend (trace + SSA + IR) completed");
 	return ir;
 }
 
@@ -110,9 +120,13 @@ std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::
                                                       const std::string& backendName) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
+	auto statsLogger =
+	    log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false), compilationId);
 
+	auto t0 = log::now();
 	const auto backend = backends->getBackend(backendName);
 	auto executable = backend->compile(ir, dumpHandler, options);
+	statsLogger.logTiming(t0, "Backend compilation ({}) completed", backendName);
 	executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	return executable;
 }

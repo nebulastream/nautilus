@@ -22,6 +22,7 @@ val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> ar
 int main(int, char*[]) {
 	engine::Options options;
 	options.setOption("engine.backend", "cpp");
+	options.setOption("engine.compilationStats", true);
 	// options.setOption("engine.Compilation", false);
 	auto engine = engine::NautilusEngine(options);
 	auto function = engine.registerFunction(conditionalSum);
