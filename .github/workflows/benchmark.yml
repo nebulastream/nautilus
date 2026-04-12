@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   benchmark:
-    name: Run tracing benchmark
+    name: Run benchmarks
     runs-on: ubuntu-24.04
     env:
       CC: clang
@@ -40,19 +40,128 @@ jobs:
         shell: bash
         run: |
           cmake --build . --target all
-      - name: test
+
+      # Run each benchmark category separately via Catch2 tag filtering.
+      - name: Run tracing benchmarks
         shell: bash
         run: |
-          ./nautilus/test/benchmark/nautilus-benchmarks | tee benchmark_result.txt
-      - name: Store benchmark result
+          ./nautilus/test/benchmark/nautilus-benchmarks "[tracing]" | tee bench_tracing.txt
+      - name: Run pipeline benchmarks
+        shell: bash
+        run: |
+          ./nautilus/test/benchmark/nautilus-benchmarks "[pipeline]" | tee bench_pipeline.txt
+      - name: Run execution benchmarks
+        shell: bash
+        run: |
+          ./nautilus/test/benchmark/nautilus-benchmarks "[execution]" | tee bench_execution.txt
+      - name: Run tiered benchmarks
+        shell: bash
+        run: |
+          ./nautilus/test/benchmark/nautilus-benchmarks "[tiered]" | tee bench_tiered.txt
+      - name: Run plugin benchmarks
+        shell: bash
+        run: |
+          ./nautilus/test/benchmark/nautilus-plugin-benchmarks "[plugins]" | tee bench_plugins.txt
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: bench_*.txt
+
+      # Each named suite gets its own chart on GitHub Pages.
+      # Only the first step fetches the pages branch; the rest reuse the
+      # local checkout.  Only the last step pushes everything at once.
+      - name: Store tracing benchmarks
         uses: benchmark-action/github-action-benchmark@v1.20.7
         with:
-          name: Tracing Benchmark
+          name: Tracing Overhead
           tool: 'catch2'
-          output-file-path: benchmark_result.txt
+          output-file-path: bench_tracing.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          auto-push: false
           comment-always: true
           save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           gh-pages-branch: 'pages'
-          max-items-in-chart: 20
+          max-items-in-chart: 50
+          alert-threshold: '150%'
+          comment-on-alert: true
+
+      - name: Store pipeline benchmarks
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: Compilation Pipeline
+          tool: 'catch2'
+          output-file-path: bench_pipeline.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          skip-fetch-gh-pages: true
+          comment-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          gh-pages-branch: 'pages'
+          max-items-in-chart: 50
+          alert-threshold: '150%'
+          comment-on-alert: true
+
+      - name: Store execution benchmarks
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: Execution Throughput
+          tool: 'catch2'
+          output-file-path: bench_execution.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          skip-fetch-gh-pages: true
+          comment-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          gh-pages-branch: 'pages'
+          max-items-in-chart: 50
+          alert-threshold: '150%'
+          comment-on-alert: true
+
+      - name: Store tiered benchmarks
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: Tiered Compilation
+          tool: 'catch2'
+          output-file-path: bench_tiered.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          skip-fetch-gh-pages: true
+          comment-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          gh-pages-branch: 'pages'
+          max-items-in-chart: 50
+          alert-threshold: '150%'
+          comment-on-alert: true
+
+      - name: Store plugin benchmarks
+        uses: benchmark-action/github-action-benchmark@v1.20.7
+        with:
+          name: Plugin Intrinsics
+          tool: 'catch2'
+          output-file-path: bench_plugins.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          skip-fetch-gh-pages: true
+          comment-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          gh-pages-branch: 'pages'
+          max-items-in-chart: 50
+          alert-threshold: '150%'
+          comment-on-alert: true
+
+      # Push all accumulated benchmark data + custom dashboard in one go.
+      - name: Push benchmark data and dashboard to pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cp docs/benchmark/dashboard.html /tmp/dashboard.html
+          git checkout pages
+          mkdir -p dev/bench
+          cp /tmp/dashboard.html dev/bench/dashboard.html
+          git add dev/bench
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update benchmark data and dashboard" --allow-empty
+          git push origin pages

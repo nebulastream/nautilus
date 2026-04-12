@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nautilus Benchmark Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root {
+	--bg: #0d1117;
+	--surface: #161b22;
+	--border: #30363d;
+	--text: #e6edf3;
+	--text-muted: #8b949e;
+	--accent: #58a6ff;
+	--green: #3fb950;
+	--orange: #d29922;
+	--red: #f85149;
+	--purple: #bc8cff;
+	--pink: #f778ba;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+	background: var(--bg);
+	color: var(--text);
+	line-height: 1.5;
+}
+
+.header {
+	border-bottom: 1px solid var(--border);
+	padding: 16px 24px;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.header h1 {
+	font-size: 20px;
+	font-weight: 600;
+}
+
+.header .subtitle {
+	color: var(--text-muted);
+	font-size: 14px;
+}
+
+.nav {
+	display: flex;
+	gap: 4px;
+	padding: 8px 24px;
+	border-bottom: 1px solid var(--border);
+	background: var(--surface);
+	overflow-x: auto;
+}
+
+.nav button {
+	padding: 8px 16px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 13px;
+	white-space: nowrap;
+	transition: all 0.15s;
+}
+
+.nav button:hover { color: var(--text); border-color: var(--text-muted); }
+.nav button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+.section { display: none; }
+.section.active { display: block; }
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 20px;
+	margin-bottom: 20px;
+}
+
+.card h2 {
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 16px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.card h3 {
+	font-size: 14px;
+	font-weight: 600;
+	margin: 16px 0 8px;
+	color: var(--text-muted);
+}
+
+.chart-container {
+	position: relative;
+	height: 350px;
+	margin-bottom: 8px;
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+th, td {
+	padding: 8px 12px;
+	text-align: left;
+	border-bottom: 1px solid var(--border);
+}
+
+th {
+	color: var(--text-muted);
+	font-weight: 600;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 12px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.badge-fast { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge-ok { background: rgba(210,153,34,0.15); color: var(--orange); }
+.badge-slow { background: rgba(248,81,73,0.15); color: var(--red); }
+
+.status-bar {
+	display: flex;
+	gap: 24px;
+	padding: 12px 24px;
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.status-bar strong { color: var(--text); }
+
+.empty-state {
+	text-align: center;
+	padding: 60px 20px;
+	color: var(--text-muted);
+}
+
+.empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+.empty-state p { max-width: 500px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<div class="header">
+	<h1>Nautilus Benchmark Dashboard</h1>
+	<span class="subtitle">Backend comparison &middot; Compilation pipeline &middot; Execution throughput</span>
+</div>
+
+<div class="status-bar" id="statusBar">
+	<span>Loading benchmark data...</span>
+</div>
+
+<div class="nav" id="nav">
+	<button class="active" data-section="overview">Overview</button>
+	<button data-section="execution">Execution Throughput</button>
+	<button data-section="pipeline">Compilation Pipeline</button>
+	<button data-section="tracing">Tracing Overhead</button>
+	<button data-section="tiered">Tiered Compilation</button>
+	<button data-section="plugins">Plugin Intrinsics</button>
+	<button data-section="history">History</button>
+</div>
+
+<div class="content">
+
+<!-- Overview -->
+<div class="section active" id="sec-overview">
+	<div class="card">
+		<h2>Backend Execution Comparison (Latest)</h2>
+		<div class="chart-container"><canvas id="overviewExecChart"></canvas></div>
+	</div>
+	<div class="grid-2">
+		<div class="card">
+			<h2>Speedup vs Native Baseline</h2>
+			<table id="speedupTable">
+				<thead><tr><th>Workload</th><th>Backend</th><th class="num">Time</th><th class="num">vs Native</th><th>Rating</th></tr></thead>
+				<tbody></tbody>
+			</table>
+		</div>
+		<div class="card">
+			<h2>Compilation Latency by Backend</h2>
+			<div class="chart-container"><canvas id="overviewCompileChart"></canvas></div>
+		</div>
+	</div>
+</div>
+
+<!-- Execution -->
+<div class="section" id="sec-execution">
+	<div class="card">
+		<h2>Execution Time by Backend (Latest Run)</h2>
+		<div class="chart-container"><canvas id="execBarChart"></canvas></div>
+	</div>
+	<div class="card">
+		<h2>Execution Time Trend</h2>
+		<div class="chart-container"><canvas id="execTrendChart"></canvas></div>
+	</div>
+</div>
+
+<!-- Pipeline -->
+<div class="section" id="sec-pipeline">
+	<div class="grid-2">
+		<div class="card">
+			<h2>SSA Creation Time</h2>
+			<div class="chart-container"><canvas id="ssaChart"></canvas></div>
+		</div>
+		<div class="card">
+			<h2>IR Conversion Time</h2>
+			<div class="chart-container"><canvas id="irChart"></canvas></div>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Backend Compilation Time</h2>
+		<div class="chart-container"><canvas id="compileChart"></canvas></div>
+	</div>
+	<div class="card">
+		<h2>Full Pipeline Breakdown (Latest)</h2>
+		<table id="pipelineTable">
+			<thead><tr><th>Stage</th><th>Function</th><th class="num">Mean (us)</th></tr></thead>
+			<tbody></tbody>
+		</table>
+	</div>
+</div>
+
+<!-- Tracing -->
+<div class="section" id="sec-tracing">
+	<div class="card">
+		<h2>Tracing Context Comparison (Latest)</h2>
+		<div class="chart-container"><canvas id="tracingBarChart"></canvas></div>
+	</div>
+	<div class="card">
+		<h2>Tracing Overhead Trend</h2>
+		<div class="chart-container"><canvas id="tracingTrendChart"></canvas></div>
+	</div>
+</div>
+
+<!-- Tiered -->
+<div class="section" id="sec-tiered">
+	<div class="grid-2">
+		<div class="card">
+			<h2>Compilation Latency: Tiered vs Single-Tier</h2>
+			<div class="chart-container"><canvas id="tieredCompileChart"></canvas></div>
+		</div>
+		<div class="card">
+			<h2>Execution Throughput by Mode</h2>
+			<div class="chart-container"><canvas id="tieredExecChart"></canvas></div>
+		</div>
+	</div>
+</div>
+
+<!-- Plugins -->
+<div class="section" id="sec-plugins">
+	<div class="card">
+		<h2>Math Intrinsics by Backend</h2>
+		<div class="chart-container"><canvas id="mathChart"></canvas></div>
+	</div>
+	<div class="grid-2">
+		<div class="card">
+			<h2>Bit Intrinsics by Backend</h2>
+			<div class="chart-container"><canvas id="bitChart"></canvas></div>
+		</div>
+		<div class="card">
+			<h2>SIMD Operations by Backend</h2>
+			<div class="chart-container"><canvas id="simdChart"></canvas></div>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Memory Intrinsics by Backend</h2>
+		<div class="chart-container"><canvas id="memoryChart"></canvas></div>
+	</div>
+	<div class="card">
+		<h2>Intrinsic Speedup vs Native</h2>
+		<table id="pluginSpeedupTable">
+			<thead><tr><th>Category</th><th>Intrinsic</th><th>Backend</th><th class="num">Time</th><th class="num">vs Native</th><th>Rating</th></tr></thead>
+			<tbody></tbody>
+		</table>
+	</div>
+</div>
+
+<!-- History -->
+<div class="section" id="sec-history">
+	<div class="card">
+		<h2>All Metrics Over Time</h2>
+		<p style="color:var(--text-muted);margin-bottom:12px;font-size:13px">
+			Select metrics to compare. Click legend items to toggle visibility.
+		</p>
+		<div class="chart-container" style="height:500px"><canvas id="historyChart"></canvas></div>
+	</div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+// =========================================================================
+// Nautilus Benchmark Dashboard
+// Reads data.js produced by benchmark-action/github-action-benchmark.
+// data.js sets window.BENCHMARK_DATA = { entries: { "Suite Name": [...] } }
+// =========================================================================
+
+const BACKEND_COLORS = {
+	mlir:        'rgba(88,166,255,0.85)',
+	cpp:         'rgba(63,185,80,0.85)',
+	bc:          'rgba(210,153,34,0.85)',
+	asmjit:      'rgba(188,140,255,0.85)',
+	native:      'rgba(248,81,73,0.85)',
+	interpreted: 'rgba(139,148,158,0.6)',
+};
+
+const BACKEND_BORDERS = {
+	mlir:        'rgb(88,166,255)',
+	cpp:         'rgb(63,185,80)',
+	bc:          'rgb(210,153,34)',
+	asmjit:      'rgb(188,140,255)',
+	native:      'rgb(248,81,73)',
+	interpreted: 'rgb(139,148,158)',
+};
+
+const CHART_DEFAULTS = {
+	color: '#8b949e',
+	borderColor: '#30363d',
+	responsive: true,
+	maintainAspectRatio: false,
+};
+
+Chart.defaults.color = CHART_DEFAULTS.color;
+Chart.defaults.borderColor = CHART_DEFAULTS.borderColor;
+
+// ---- Navigation ----
+document.getElementById('nav').addEventListener('click', (e) => {
+	if (e.target.tagName !== 'BUTTON') return;
+	document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+	document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+	e.target.classList.add('active');
+	document.getElementById('sec-' + e.target.dataset.section).classList.add('active');
+});
+
+// ---- Data loading ----
+// benchmark-action stores data at dev/bench/data.js on the pages branch.
+// When viewing locally, fall back to demo data.
+
+function loadData() {
+	// Try loading data.js from the same directory (GitHub Pages layout).
+	const script = document.createElement('script');
+	script.src = 'data.js';
+	script.onload = () => {
+		if (window.BENCHMARK_DATA) {
+			renderAll(window.BENCHMARK_DATA);
+		} else {
+			showEmpty();
+		}
+	};
+	script.onerror = () => {
+		showEmpty();
+	};
+	document.head.appendChild(script);
+}
+
+function showEmpty() {
+	document.getElementById('statusBar').innerHTML =
+		'<span>No benchmark data found. Data will appear after the first CI run on main.</span>';
+	document.querySelectorAll('.section').forEach(s => {
+		if (s.id === 'sec-overview') {
+			s.innerHTML = '<div class="empty-state">' +
+				'<h2>No benchmark data yet</h2>' +
+				'<p>This dashboard reads data.js generated by benchmark-action on the pages branch. ' +
+				'Push to main to trigger the first benchmark run, then visit this page again.</p></div>';
+		}
+	});
+}
+
+// ---- Helpers ----
+function getLatestRun(entries, suiteName) {
+	const runs = entries[suiteName];
+	return runs && runs.length > 0 ? runs[runs.length - 1] : null;
+}
+
+function parseBenchName(name) {
+	// "execution/mlir/fibonacci" -> { category: "execution", backend: "mlir", workload: "fibonacci" }
+	// "pipeline/compile/mlir/add" -> { category: "pipeline", stage: "compile", backend: "mlir", workload: "add" }
+	// "tracing/exception/add" -> { category: "tracing", context: "exception", workload: "add" }
+	const parts = name.split('/');
+	return { parts, full: name };
+}
+
+function groupByBackendAndWorkload(benches, prefix) {
+	// Group benches matching prefix into { backend -> { workload -> value } }
+	const result = {};
+	for (const b of benches) {
+		const parts = b.name.split('/');
+		if (parts[0] !== prefix) continue;
+		const backend = parts[1];
+		const workload = parts.slice(2).join('/');
+		if (!result[backend]) result[backend] = {};
+		result[backend][workload] = b.value;
+	}
+	return result;
+}
+
+function groupByPrefix(benches, prefix, depth) {
+	// Group benches with given prefix, keyed by element at depth
+	const result = {};
+	for (const b of benches) {
+		const parts = b.name.split('/');
+		if (!parts[0].startsWith(prefix.split('/')[0])) continue;
+		if (parts.length <= depth) continue;
+		const prefixMatch = prefix.split('/').every((p, i) => parts[i] === p);
+		if (!prefixMatch) continue;
+		const key = parts[depth];
+		const rest = parts.slice(depth + 1).join('/');
+		if (!result[key]) result[key] = {};
+		result[key][rest] = b.value;
+	}
+	return result;
+}
+
+function makeBarChart(canvasId, labels, datasets, opts = {}) {
+	const ctx = document.getElementById(canvasId);
+	if (!ctx) return null;
+	return new Chart(ctx, {
+		type: 'bar',
+		data: { labels, datasets },
+		options: {
+			...CHART_DEFAULTS,
+			plugins: {
+				legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'rect' } },
+				tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw.toFixed(2)} ${opts.unit || 'ns'}` } },
+			},
+			scales: {
+				x: { grid: { display: false } },
+				y: { title: { display: true, text: opts.yLabel || 'Time (ns)' }, beginAtZero: true },
+			},
+		},
+	});
+}
+
+function makeLineChart(canvasId, labels, datasets, opts = {}) {
+	const ctx = document.getElementById(canvasId);
+	if (!ctx) return null;
+	return new Chart(ctx, {
+		type: 'line',
+		data: { labels, datasets },
+		options: {
+			...CHART_DEFAULTS,
+			plugins: {
+				legend: { position: 'top', labels: { usePointStyle: true } },
+			},
+			scales: {
+				x: { grid: { display: false } },
+				y: { title: { display: true, text: opts.yLabel || 'Time (ns)' }, beginAtZero: true },
+			},
+			elements: { point: { radius: 3 }, line: { tension: 0.2, borderWidth: 2 } },
+		},
+	});
+}
+
+// ---- Rendering ----
+function renderAll(data) {
+	const entries = data.entries;
+	const suiteNames = Object.keys(entries);
+
+	// Count total benchmarks and find latest date.
+	let totalBenches = 0;
+	let latestDate = '';
+	for (const name of suiteNames) {
+		const latest = getLatestRun(entries, name);
+		if (latest) {
+			totalBenches += latest.benches.length;
+			const d = new Date(latest.date * 1000).toLocaleDateString();
+			if (d > latestDate) latestDate = d;
+		}
+	}
+
+	document.getElementById('statusBar').innerHTML =
+		`<span><strong>${suiteNames.length}</strong> suites</span>` +
+		`<span><strong>${totalBenches}</strong> benchmarks</span>` +
+		`<span>Last run: <strong>${latestDate || 'N/A'}</strong></span>` +
+		`<span><a href="index.html" style="color:var(--accent)">Default charts &rarr;</a></span>`;
+
+	renderOverview(entries);
+	renderExecution(entries);
+	renderPipeline(entries);
+	renderTracing(entries);
+	renderTiered(entries);
+	renderPlugins(entries);
+	renderHistory(entries);
+}
+
+function renderOverview(entries) {
+	// --- Execution bar chart ---
+	const execRun = getLatestRun(entries, 'Execution Throughput');
+	if (execRun) {
+		const grouped = groupByBackendAndWorkload(execRun.benches, 'execution');
+		const backends = Object.keys(grouped).filter(b => b !== 'interpreted');
+		const workloads = [...new Set(backends.flatMap(b => Object.keys(grouped[b])))].sort();
+
+		const datasets = backends.map(backend => ({
+			label: backend,
+			data: workloads.map(w => grouped[backend]?.[w] || 0),
+			backgroundColor: BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)',
+			borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+			borderWidth: 1,
+		}));
+		makeBarChart('overviewExecChart', workloads, datasets);
+
+		// --- Speedup table ---
+		const nativeData = grouped['native'] || {};
+		const tbody = document.querySelector('#speedupTable tbody');
+		const jitBackends = backends.filter(b => b !== 'native');
+
+		for (const workload of workloads) {
+			const nativeTime = nativeData[workload];
+			if (!nativeTime) continue;
+			for (const backend of jitBackends) {
+				const time = grouped[backend]?.[workload];
+				if (!time) continue;
+				const ratio = time / nativeTime;
+				let badge, cls;
+				if (ratio < 1.5) { badge = 'fast'; cls = 'badge-fast'; }
+				else if (ratio < 5) { badge = 'ok'; cls = 'badge-ok'; }
+				else { badge = 'slow'; cls = 'badge-slow'; }
+
+				const tr = document.createElement('tr');
+				tr.innerHTML =
+					`<td>${workload}</td>` +
+					`<td>${backend}</td>` +
+					`<td class="num">${time.toFixed(1)} ns</td>` +
+					`<td class="num">${ratio.toFixed(2)}x</td>` +
+					`<td><span class="badge ${cls}">${badge}</span></td>`;
+				tbody.appendChild(tr);
+			}
+		}
+	}
+
+	// --- Compilation bar chart ---
+	const pipeRun = getLatestRun(entries, 'Compilation Pipeline');
+	if (pipeRun) {
+		const compBenches = pipeRun.benches.filter(b => b.name.startsWith('pipeline/compile/'));
+		const grouped = {};
+		for (const b of compBenches) {
+			const parts = b.name.split('/');
+			const backend = parts[2];
+			const workload = parts.slice(3).join('/');
+			if (!grouped[backend]) grouped[backend] = {};
+			grouped[backend][workload] = b.value;
+		}
+		const backends = Object.keys(grouped);
+		const workloads = [...new Set(backends.flatMap(b => Object.keys(grouped[b])))].sort();
+
+		const datasets = backends.map(backend => ({
+			label: backend,
+			data: workloads.map(w => grouped[backend]?.[w] || 0),
+			backgroundColor: BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)',
+			borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+			borderWidth: 1,
+		}));
+		makeBarChart('overviewCompileChart', workloads, datasets, { yLabel: 'Compilation Time (ns)' });
+	}
+}
+
+function renderExecution(entries) {
+	const execRun = getLatestRun(entries, 'Execution Throughput');
+	if (!execRun) return;
+
+	// Bar chart (same as overview but in dedicated section)
+	const grouped = groupByBackendAndWorkload(execRun.benches, 'execution');
+	const backends = Object.keys(grouped).sort();
+	const workloads = [...new Set(backends.flatMap(b => Object.keys(grouped[b])))].sort();
+
+	const datasets = backends.map(backend => ({
+		label: backend,
+		data: workloads.map(w => grouped[backend]?.[w] || 0),
+		backgroundColor: BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)',
+		borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+		borderWidth: 1,
+	}));
+	makeBarChart('execBarChart', workloads, datasets);
+
+	// Trend chart - pick a representative workload per backend over time
+	const allRuns = entries['Execution Throughput'];
+	if (!allRuns || allRuns.length < 2) return;
+
+	const trendLabels = allRuns.map(r => new Date(r.date * 1000).toLocaleDateString());
+	// Track "fibonacci" for each backend as representative
+	const trendWorkload = 'fibonacci';
+	const trendDatasets = backends.filter(b => b !== 'interpreted').map(backend => ({
+		label: `${backend}/${trendWorkload}`,
+		data: allRuns.map(r => {
+			const bench = r.benches.find(b => b.name === `execution/${backend}/${trendWorkload}`);
+			return bench ? bench.value : null;
+		}),
+		borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+		fill: false,
+	}));
+	makeLineChart('execTrendChart', trendLabels, trendDatasets);
+}
+
+function renderPipeline(entries) {
+	const run = getLatestRun(entries, 'Compilation Pipeline');
+	if (!run) return;
+
+	// SSA chart
+	const ssaBenches = run.benches.filter(b => b.name.startsWith('pipeline/ssa/'));
+	const ssaLabels = ssaBenches.map(b => b.name.replace('pipeline/ssa/', ''));
+	makeBarChart('ssaChart', ssaLabels, [{
+		label: 'SSA Creation',
+		data: ssaBenches.map(b => b.value),
+		backgroundColor: 'rgba(88,166,255,0.6)',
+		borderColor: 'rgb(88,166,255)',
+		borderWidth: 1,
+	}]);
+
+	// IR chart
+	const irBenches = run.benches.filter(b => b.name.startsWith('pipeline/ir/'));
+	const irLabels = irBenches.map(b => b.name.replace('pipeline/ir/', ''));
+	makeBarChart('irChart', irLabels, [{
+		label: 'IR Conversion',
+		data: irBenches.map(b => b.value),
+		backgroundColor: 'rgba(63,185,80,0.6)',
+		borderColor: 'rgb(63,185,80)',
+		borderWidth: 1,
+	}]);
+
+	// Backend compilation chart (grouped by backend)
+	const compBenches = run.benches.filter(b => b.name.startsWith('pipeline/compile/'));
+	const grouped = {};
+	for (const b of compBenches) {
+		const parts = b.name.split('/');
+		const backend = parts[2];
+		const workload = parts.slice(3).join('/');
+		if (!grouped[backend]) grouped[backend] = {};
+		grouped[backend][workload] = b.value;
+	}
+	const backends = Object.keys(grouped);
+	const workloads = [...new Set(backends.flatMap(b => Object.keys(grouped[b])))].sort();
+	const compDatasets = backends.map(backend => ({
+		label: backend,
+		data: workloads.map(w => grouped[backend]?.[w] || 0),
+		backgroundColor: BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)',
+		borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+		borderWidth: 1,
+	}));
+	makeBarChart('compileChart', workloads, compDatasets, { yLabel: 'Compilation Time (ns)' });
+
+	// Pipeline table
+	const tbody = document.querySelector('#pipelineTable tbody');
+	for (const b of run.benches) {
+		const tr = document.createElement('tr');
+		const parts = b.name.split('/');
+		const stage = parts[1];
+		const rest = parts.slice(2).join('/');
+		tr.innerHTML =
+			`<td>${stage}</td>` +
+			`<td>${rest}</td>` +
+			`<td class="num">${(b.value / 1000).toFixed(2)}</td>`;
+		tbody.appendChild(tr);
+	}
+}
+
+function renderTracing(entries) {
+	const run = getLatestRun(entries, 'Tracing Overhead');
+	if (!run) return;
+
+	// Group by context
+	const grouped = {};
+	for (const b of run.benches) {
+		const parts = b.name.split('/');
+		if (parts[0] !== 'tracing') continue;
+		const context = parts[1];
+		const workload = parts.slice(2).join('/');
+		if (!grouped[context]) grouped[context] = {};
+		grouped[context][workload] = b.value;
+	}
+
+	const contexts = Object.keys(grouped);
+	const workloads = [...new Set(contexts.flatMap(c => Object.keys(grouped[c])))].sort();
+	const ctxColors = { exception: 'rgba(88,166,255,0.7)', lazy: 'rgba(63,185,80,0.7)' };
+	const ctxBorders = { exception: 'rgb(88,166,255)', lazy: 'rgb(63,185,80)' };
+
+	const datasets = contexts.map(ctx => ({
+		label: ctx,
+		data: workloads.map(w => grouped[ctx]?.[w] || 0),
+		backgroundColor: ctxColors[ctx] || 'rgba(150,150,150,0.7)',
+		borderColor: ctxBorders[ctx] || 'rgb(150,150,150)',
+		borderWidth: 1,
+	}));
+	makeBarChart('tracingBarChart', workloads, datasets, { yLabel: 'Tracing Time (ns)' });
+
+	// Trend
+	const allRuns = entries['Tracing Overhead'];
+	if (!allRuns || allRuns.length < 2) return;
+	const trendLabels = allRuns.map(r => new Date(r.date * 1000).toLocaleDateString());
+	const trendDatasets = contexts.map(ctx => ({
+		label: `${ctx}/add`,
+		data: allRuns.map(r => {
+			const bench = r.benches.find(b => b.name === `tracing/${ctx}/add`);
+			return bench ? bench.value : null;
+		}),
+		borderColor: ctxBorders[ctx] || 'rgb(150,150,150)',
+		fill: false,
+	}));
+	makeLineChart('tracingTrendChart', trendLabels, trendDatasets);
+}
+
+function renderTiered(entries) {
+	const run = getLatestRun(entries, 'Tiered Compilation');
+	if (!run) return;
+
+	// Compilation latency
+	const compileBenches = run.benches.filter(b => b.name.startsWith('tiered/compile/'));
+	const compileLabels = compileBenches.map(b => b.name.replace('tiered/compile/', ''));
+	makeBarChart('tieredCompileChart', compileLabels, [{
+		label: 'Compilation Time',
+		data: compileBenches.map(b => b.value),
+		backgroundColor: compileBenches.map(b =>
+			b.name.includes('bc_to_mlir') ? BACKEND_COLORS.mlir :
+			BACKEND_COLORS[b.name.split('/')[3]] || 'rgba(150,150,150,0.7)'
+		),
+		borderWidth: 1,
+	}]);
+
+	// Execution throughput
+	const execBenches = run.benches.filter(b => b.name.startsWith('tiered/exec/'));
+	const execLabels = execBenches.map(b => b.name.replace('tiered/exec/', ''));
+	makeBarChart('tieredExecChart', execLabels, [{
+		label: 'Execution Time',
+		data: execBenches.map(b => b.value),
+		backgroundColor: execBenches.map(b => {
+			const backend = b.name.split('/')[2];
+			return BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)';
+		}),
+		borderWidth: 1,
+	}]);
+}
+
+function renderPlugins(entries) {
+	const run = getLatestRun(entries, 'Plugin Intrinsics');
+	if (!run) return;
+
+	// Helper: build grouped bar chart for a plugin category prefix.
+	function renderPluginChart(canvasId, prefix) {
+		const grouped = {};
+		for (const b of run.benches) {
+			const parts = b.name.split('/');
+			if (parts[0] !== 'plugins' || parts[1] !== prefix) continue;
+			const backend = parts[2];
+			const workload = parts.slice(3).join('/');
+			if (!grouped[backend]) grouped[backend] = {};
+			grouped[backend][workload] = b.value;
+		}
+		const backends = Object.keys(grouped).sort();
+		const workloads = [...new Set(backends.flatMap(b => Object.keys(grouped[b])))].sort();
+		if (workloads.length === 0) return;
+
+		const datasets = backends.map(backend => ({
+			label: backend,
+			data: workloads.map(w => grouped[backend]?.[w] || 0),
+			backgroundColor: BACKEND_COLORS[backend] || 'rgba(150,150,150,0.7)',
+			borderColor: BACKEND_BORDERS[backend] || 'rgb(150,150,150)',
+			borderWidth: 1,
+		}));
+		makeBarChart(canvasId, workloads, datasets);
+		return grouped;
+	}
+
+	const mathGrouped = renderPluginChart('mathChart', 'math');
+	renderPluginChart('bitChart', 'bit');
+	renderPluginChart('simdChart', 'simd');
+	renderPluginChart('memoryChart', 'memory');
+
+	// Speedup table across all plugin categories.
+	const tbody = document.querySelector('#pluginSpeedupTable tbody');
+	const categories = ['math', 'bit', 'simd', 'memory'];
+
+	for (const category of categories) {
+		const grouped = {};
+		for (const b of run.benches) {
+			const parts = b.name.split('/');
+			if (parts[0] !== 'plugins' || parts[1] !== category) continue;
+			const backend = parts[2];
+			const workload = parts.slice(3).join('/');
+			if (!grouped[backend]) grouped[backend] = {};
+			grouped[backend][workload] = b.value;
+		}
+		const nativeData = grouped['native'] || {};
+		const jitBackends = Object.keys(grouped).filter(b => b !== 'native' && b !== 'interpreted');
+		const workloads = Object.keys(nativeData);
+
+		for (const workload of workloads) {
+			const nativeTime = nativeData[workload];
+			if (!nativeTime) continue;
+			for (const backend of jitBackends) {
+				const time = grouped[backend]?.[workload];
+				if (!time) continue;
+				const ratio = time / nativeTime;
+				let badge, cls;
+				if (ratio < 1.5) { badge = 'fast'; cls = 'badge-fast'; }
+				else if (ratio < 5) { badge = 'ok'; cls = 'badge-ok'; }
+				else { badge = 'slow'; cls = 'badge-slow'; }
+
+				const tr = document.createElement('tr');
+				tr.innerHTML =
+					`<td>${category}</td>` +
+					`<td>${workload}</td>` +
+					`<td>${backend}</td>` +
+					`<td class="num">${time.toFixed(1)} ns</td>` +
+					`<td class="num">${ratio.toFixed(2)}x</td>` +
+					`<td><span class="badge ${cls}">${badge}</span></td>`;
+				tbody.appendChild(tr);
+			}
+		}
+	}
+}
+
+function renderHistory(entries) {
+	const allDatasets = [];
+	let allLabels = [];
+	const colorPalette = [
+		'#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f85149',
+		'#f778ba', '#79c0ff', '#56d364', '#e3b341', '#d2a8ff',
+	];
+	let colorIdx = 0;
+
+	for (const [suiteName, runs] of Object.entries(entries)) {
+		if (!runs || runs.length < 2) continue;
+		const labels = runs.map(r => new Date(r.date * 1000).toLocaleDateString());
+		if (labels.length > allLabels.length) allLabels = labels;
+
+		// Pick up to 3 representative benchmarks per suite.
+		const latestBenches = runs[runs.length - 1].benches;
+		const sampledNames = latestBenches.slice(0, 3).map(b => b.name);
+
+		for (const benchName of sampledNames) {
+			allDatasets.push({
+				label: benchName,
+				data: runs.map(r => {
+					const b = r.benches.find(x => x.name === benchName);
+					return b ? b.value : null;
+				}),
+				borderColor: colorPalette[colorIdx % colorPalette.length],
+				fill: false,
+				hidden: colorIdx > 5,
+			});
+			colorIdx++;
+		}
+	}
+
+	if (allDatasets.length > 0) {
+		makeLineChart('historyChart', allLabels, allDatasets);
+	}
+}
+
+// ---- Init ----
+loadData();
+</script>
+</body>
+</html>

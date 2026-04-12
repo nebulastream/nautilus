@@ -1,3 +1,4 @@
+#include "BenchmarkUtil.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/config.hpp"
@@ -18,7 +19,7 @@ static val<int32_t> benchSumLoop(val<int32_t> upperLimit) {
 	return sum;
 }
 
-TEST_CASE("Tiered Compilation Latency Benchmark") {
+TEST_CASE("Tiered Compilation Latency Benchmark", "[tiered]") {
 	// Measures compilation latency: tiered vs single-tier backends.
 
 	using BenchFunc = std::pair<std::string, std::function<void(NautilusModule&)>>;
@@ -29,7 +30,7 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 
 	for (auto& [name, registerFn] : testFuncs) {
 #if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-		Catch::Benchmark::Benchmark("tiered_compile_" + name)
+		Catch::Benchmark::Benchmark("tiered/compile/bc_to_mlir/" + name)
 		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
 			    meter.measure([&registerFn] {
 				    TieredCompilationConfig config;
@@ -43,19 +44,9 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 		    });
 #endif
 
-		std::vector<std::string> backends;
-#ifdef ENABLE_MLIR_BACKEND
-		backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-		backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-		backends.emplace_back("bc");
-#endif
-
+		auto backends = benchmark::getEnabledBackends();
 		for (auto& backend : backends) {
-			Catch::Benchmark::Benchmark("single_compile_" + backend + "_" + name)
+			Catch::Benchmark::Benchmark("tiered/compile/single/" + backend + "/" + name)
 			    .operator=([&registerFn, &backend](Catch::Benchmark::Chronometer meter) {
 				    meter.measure([&registerFn, &backend] {
 					    Options opts;
@@ -70,20 +61,11 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 	}
 }
 
-TEST_CASE("Tiered Execution Throughput Benchmark") {
-	std::vector<std::string> backends;
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
+TEST_CASE("Tiered Execution Throughput Benchmark", "[tiered]") {
+	auto backends = benchmark::getEnabledBackends();
 
 	for (auto& backend : backends) {
-		Catch::Benchmark::Benchmark("exec_" + backend + "_addOne")
+		Catch::Benchmark::Benchmark("tiered/exec/" + backend + "/addOne")
 		    .operator=([&backend](Catch::Benchmark::Chronometer meter) {
 			    Options opts;
 			    opts.setOption("engine.backend", backend);
@@ -96,7 +78,7 @@ TEST_CASE("Tiered Execution Throughput Benchmark") {
 		    });
 	}
 
-	Catch::Benchmark::Benchmark("exec_interpreted_addOne").operator=([](Catch::Benchmark::Chronometer meter) {
+	Catch::Benchmark::Benchmark("tiered/exec/interpreted/addOne").operator=([](Catch::Benchmark::Chronometer meter) {
 		Options opts;
 		opts.setOption("engine.Compilation", false);
 		auto engine = NautilusEngine(opts);
@@ -108,9 +90,9 @@ TEST_CASE("Tiered Execution Throughput Benchmark") {
 	});
 }
 
-TEST_CASE("Tiered End-to-End Benchmark") {
+TEST_CASE("Tiered End-to-End Benchmark", "[tiered]") {
 #if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-	Catch::Benchmark::Benchmark("e2e_tiered_bc_to_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
+	Catch::Benchmark::Benchmark("tiered/e2e/bc_to_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
 		meter.measure([] {
 			TieredCompilationConfig config;
 			config.tier0.backend = "bc";
@@ -128,7 +110,7 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 		});
 	});
 
-	Catch::Benchmark::Benchmark("e2e_single_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
+	Catch::Benchmark::Benchmark("tiered/e2e/single_mlir").operator=([](Catch::Benchmark::Chronometer meter) {
 		meter.measure([] {
 			Options opts;
 			opts.setOption("engine.backend", "mlir");
