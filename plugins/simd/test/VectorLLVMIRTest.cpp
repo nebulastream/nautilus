@@ -8,10 +8,9 @@
 // Re-use the shared LLVM IR test utility from the main test suite
 #include "LLVMIRTestUtil.hpp"
 
-// Vector intrinsic plugin registration
-#ifdef ENABLE_MLIR_BACKEND
-#include "MLIRVectorIntrinsics.hpp"
-#endif
+// Force-link the SIMD MLIR plugin — ensures SimdPluginInit.o is not stripped
+// from the static archive and the vector intrinsic registrar runs.
+#include "nautilus/simd/plugin.hpp"
 
 namespace nautilus::engine {
 
@@ -34,21 +33,20 @@ void testVectorLLVMIR_NoIntrinsics(const std::string& functionName, Func func) {
 }
 
 // ============================================================================
-// Register vector intrinsics once before any test case runs
+// Fix SIMD width once before any test case runs so generated IR is
+// deterministic regardless of the host CPU's actual SIMD capabilities.
+// 64 bytes (AVX-512 width) matches the checked-in reference IR.
+// (Plugin registration is handled by nautilus/simd/plugin.hpp above.)
 // ============================================================================
 
-struct VectorIntrinsicRegistrar {
-	VectorIntrinsicRegistrar() {
-#ifdef ENABLE_MLIR_BACKEND
-		nautilus::compiler::mlir::RegisterMLIRVectorIntrinsicPlugin();
-#endif
-		// Force a fixed SIMD width so generated IR is deterministic
-		// regardless of the host CPU's actual SIMD capabilities.
-		// 64 bytes (AVX-512 width) matches the checked-in reference IR.
+namespace {
+struct VectorTestSetup {
+	VectorTestSetup() {
 		nautilus::SetSimdWidth(64);
 	}
 };
-static VectorIntrinsicRegistrar registrar_;
+static VectorTestSetup setup_;
+} // namespace
 
 // ============================================================================
 // Float arithmetic — with intrinsics

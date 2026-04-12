@@ -1,6 +1,7 @@
 #include "LLVMIRTestUtil.hpp"
 #include "common/ProfileFunctions.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/specialization/plugin.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <filesystem>
