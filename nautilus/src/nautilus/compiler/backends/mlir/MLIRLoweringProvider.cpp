@@ -530,6 +530,13 @@ void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFra
 
 void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& functionOp,
                                             ValueFrame& frame) {
+	// Clear per-function state so that basic block identifiers from a previous
+	// function are not incorrectly reused.  Block identifiers are simple numeric
+	// strings that restart at 0 for every function, so stale entries would cause
+	// the new function's control-flow blocks to alias blocks from the previous
+	// function.
+	blockMapping.clear();
+	inductionVars.clear();
 
 	// add entry block for the function
 	mlirFunction.addEntryBlock();
