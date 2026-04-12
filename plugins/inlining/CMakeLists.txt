@@ -40,7 +40,7 @@ if (ENABLE_MLIR_BACKEND)
     # The plugin needs to see LLVMBackendHooks.hpp from the core nautilus src
     # directory, plus the MLIR/LLVM headers to operate on llvm::Module.
     target_include_directories(nautilus-inlining PRIVATE
-            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/nautilus/src>)
+            $<BUILD_INTERFACE:${nautilus_SOURCE_DIR}/nautilus/src>)
     target_include_directories(nautilus-inlining SYSTEM PRIVATE
             $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>)
     target_link_libraries(nautilus-inlining PRIVATE
