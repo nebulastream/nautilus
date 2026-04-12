@@ -7,6 +7,72 @@
 
 namespace nautilus::engine {
 
+// -- Loop and control-flow functions used by multi-function module tests -------
+
+val<int32_t> moduleSumLoop(val<int32_t> n) {
+	val<int32_t> agg = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		agg = agg + 10;
+	}
+	return agg;
+}
+
+val<int32_t> moduleFibonacci(val<int32_t> n) {
+	val<int32_t> a = 0, b = 1;
+	for (val<int32_t> i = 2; i <= n; i = i + 1) {
+		val<int32_t> c = a + b;
+		a = b;
+		b = c;
+	}
+	return b;
+}
+
+val<int32_t> moduleCollatz(val<int32_t> n) {
+	val<int32_t> steps = 0;
+	while (n != 1) {
+		if (n % 2 == 0) {
+			n = n / 2;
+		} else {
+			n = 3 * n + 1;
+		}
+		steps = steps + 1;
+	}
+	return steps;
+}
+
+val<int32_t> moduleNestedIfLoop(val<int32_t> n) {
+	val<int32_t> result = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		if (i % 3 == 0) {
+			result = result + 1;
+		} else if (i % 3 == 1) {
+			result = result + 2;
+		} else {
+			result = result + 3;
+		}
+	}
+	return result;
+}
+
+val<int32_t> moduleNestedLoop(val<int32_t> n) {
+	val<int32_t> agg = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		for (val<int32_t> j = 0; j < n; j = j + 1) {
+			agg = agg + 1;
+		}
+	}
+	return agg;
+}
+
+val<int32_t> moduleFactorial(val<int32_t> n) {
+	val<int32_t> result = 1;
+	while (n > 1) {
+		result = result * n;
+		n = n - 1;
+	}
+	return result;
+}
+
 val<int32_t> addOne(val<int32_t> x) {
 	return x + 1;
 }
@@ -365,6 +431,123 @@ TEST_CASE("Module Concurrent Readers Test") {
 	}
 
 	REQUIRE(errors.load() == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Module tests with multiple loop-based / complex-control-flow functions
+// ---------------------------------------------------------------------------
+
+void moduleLoopTests(engine::NautilusEngine& engine) {
+	SECTION("twoLoopFunctions") {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("sumLoop", moduleSumLoop);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("fibonacci", moduleFibonacci);
+		auto compiled = module.compile();
+
+		auto sumFn = compiled.getFunction<int32_t(int32_t)>("sumLoop");
+		auto fibFn = compiled.getFunction<int32_t(int32_t)>("fibonacci");
+
+		REQUIRE(sumFn(0) == 0);
+		REQUIRE(sumFn(1) == 10);
+		REQUIRE(sumFn(5) == 50);
+		REQUIRE(fibFn(2) == 1);
+		REQUIRE(fibFn(6) == 8);
+		REQUIRE(fibFn(10) == 55);
+	}
+
+	SECTION("threeLoopFunctionsWithNestedControlFlow") {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("collatz", moduleCollatz);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("nestedIfLoop", moduleNestedIfLoop);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("nestedLoop", moduleNestedLoop);
+		auto compiled = module.compile();
+
+		auto collatzFn = compiled.getFunction<int32_t(int32_t)>("collatz");
+		auto nestedIfFn = compiled.getFunction<int32_t(int32_t)>("nestedIfLoop");
+		auto nestedLoopFn = compiled.getFunction<int32_t(int32_t)>("nestedLoop");
+
+		// collatz(6) -> 6,3,10,5,16,8,4,2,1 = 8 steps
+		REQUIRE(collatzFn(6) == 8);
+		REQUIRE(collatzFn(1) == 0);
+		// nestedIfLoop(6): i=0 +1, i=1 +2, i=2 +3, i=3 +1, i=4 +2, i=5 +3 = 12
+		REQUIRE(nestedIfFn(6) == 12);
+		REQUIRE(nestedIfFn(0) == 0);
+		// nestedLoop(4) = 4*4 = 16
+		REQUIRE(nestedLoopFn(4) == 16);
+		REQUIRE(nestedLoopFn(0) == 0);
+	}
+
+	SECTION("mixOfSimpleAndLoopFunctions") {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("addOne", addOne);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("sumLoop", moduleSumLoop);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("factorial", moduleFactorial);
+		auto compiled = module.compile();
+
+		auto addOneFn = compiled.getFunction<int32_t(int32_t)>("addOne");
+		auto sumFn = compiled.getFunction<int32_t(int32_t)>("sumLoop");
+		auto factFn = compiled.getFunction<int32_t(int32_t)>("factorial");
+
+		REQUIRE(addOneFn(5) == 6);
+		REQUIRE(sumFn(3) == 30);
+		REQUIRE(factFn(5) == 120);
+		REQUIRE(factFn(1) == 1);
+	}
+
+	SECTION("allSixFunctionsTogether") {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("addOne", addOne);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("sumLoop", moduleSumLoop);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("fibonacci", moduleFibonacci);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("collatz", moduleCollatz);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("nestedIfLoop", moduleNestedIfLoop);
+		module.registerFunction<val<int32_t>(val<int32_t>)>("factorial", moduleFactorial);
+		auto compiled = module.compile();
+
+		auto addOneFn = compiled.getFunction<int32_t(int32_t)>("addOne");
+		auto sumFn = compiled.getFunction<int32_t(int32_t)>("sumLoop");
+		auto fibFn = compiled.getFunction<int32_t(int32_t)>("fibonacci");
+		auto collatzFn = compiled.getFunction<int32_t(int32_t)>("collatz");
+		auto nestedIfFn = compiled.getFunction<int32_t(int32_t)>("nestedIfLoop");
+		auto factFn = compiled.getFunction<int32_t(int32_t)>("factorial");
+
+		REQUIRE(addOneFn(99) == 100);
+		REQUIRE(sumFn(10) == 100);
+		REQUIRE(fibFn(10) == 55);
+		REQUIRE(collatzFn(6) == 8);
+		REQUIRE(nestedIfFn(9) == 18);
+		REQUIRE(factFn(6) == 720);
+	}
+}
+
+TEST_CASE("Module Loop Functions Interpreter Test") {
+	engine::Options options;
+	options.setOption("engine.Compilation", false);
+	auto engine = engine::NautilusEngine(options);
+	moduleLoopTests(engine);
+}
+
+TEST_CASE("Module Loop Functions Compiler Test") {
+	std::vector<std::string> backends = {};
+#ifdef ENABLE_TRACING
+#ifdef ENABLE_MLIR_BACKEND
+	backends.emplace_back("mlir");
+#endif
+#ifdef ENABLE_C_BACKEND
+	backends.emplace_back("cpp");
+#endif
+#ifdef ENABLE_BC_BACKEND
+	backends.emplace_back("bc");
+#endif
+#endif
+	for (auto& backend : backends) {
+		DYNAMIC_SECTION(backend) {
+			engine::Options options;
+			options.setOption("engine.backend", backend);
+			auto engine = engine::NautilusEngine(options);
+			moduleLoopTests(engine);
+		}
+	}
 }
 
 } // namespace nautilus::engine
