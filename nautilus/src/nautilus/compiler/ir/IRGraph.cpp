@@ -143,8 +143,7 @@ struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::s
 
 template <>
 struct formatter<nautilus::compiler::ir::BlockIdentifier> : formatter<std::string_view> {
-	static auto format(nautilus::compiler::ir::BlockIdentifier id,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(nautilus::compiler::ir::BlockIdentifier id, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}", id.getId());
 		return out;
