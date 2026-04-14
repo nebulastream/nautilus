@@ -4,6 +4,7 @@ include(Catch)
 add_executable(nautilus-inlining-tests
         InliningExecutionTest.cpp
         FunctionPtrInliningTest.cpp
+        RegistryThreadSafetyTest.cpp
 )
 
 nautilus_inline(nautilus-inlining-tests)

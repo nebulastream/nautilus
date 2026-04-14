@@ -13,6 +13,13 @@
 
 namespace nautilus::passes {
 
+// Lowest allowed ctor priority (65535): ensures the generated
+// `M.ir_ctor` that populates `InlineFunctionRegistry` runs AFTER the
+// function-local static inside `InlineFunctionRegistry::instance()` has been
+// initialized in any reachable TU ordering. Do not lower without first
+// switching `instance()` to use an explicit `std::call_once` guard.
+constexpr uint32_t NAUTILUS_INLINE_CTOR_PRIORITY = 65535;
+
 class NautilusInlineRegistrationPass : public llvm::PassInfoMixin<NautilusInlineRegistrationPass> {
 public:
 	static llvm::PreservedAnalyses run(llvm::Module& M, llvm::ModuleAnalysisManager& MAM) {
@@ -43,21 +50,25 @@ public:
 					}
 				}
 				if (toInline) {
-					// catch errors so that non-inlinable functions dont completely break compilation
+					// Catch errors so that non-inlinable functions don't completely
+					// break compilation. Two orthogonal failure modes are tracked:
+					//   crashFree:  RunSafely returns false if the lambda SIGSEGVs
+					//               (malformed bitcode, etc). We just log and skip.
+					//   serialized: set inside the lambda iff the result was stored
+					//               into `bitcodes`. A missing optional result is a
+					//               soft failure — we log but don't abort compilation.
+					bool serialized = false;
 					llvm::CrashRecoveryContext CRC;
-					bool success = CRC.RunSafely([&] {
-						// Serialize function to LLVM IR bitcode
+					const bool crashFree = CRC.RunSafely([&] {
 						auto result = serializeFunctionWithDependencySymbols(F, symbolMap);
-						if (!result.has_value()) {
-							CRC.HandleExit(1);
+						if (result.has_value()) {
+							bitcodes.insert({&F, std::move(*result)});
+							serialized = true;
 						}
-						bitcodes.insert({&F, *result});
-						success = true;
 					});
-					if (!success) {
+					if (!crashFree || !serialized) {
 						llvm::errs() << "Failed to serialize inline function. To get rid of this warning, remove the "
-						                "NAUT_INLINE "
-						                "tag from this function: "
+						                "NAUTILUS_INLINE tag from this function: "
 						             << F.getName() << "\n";
 					}
 				}
@@ -79,7 +90,7 @@ public:
 			insertSymbolRegistryCalls(ctorBuilder, symbolRegistrationFunction, symbolMap);
 
 			ctorBuilder->CreateRetVoid();
-			appendToGlobalCtors(M, ctor, 65535);
+			appendToGlobalCtors(M, ctor, NAUTILUS_INLINE_CTOR_PRIORITY);
 		}
 		return llvm::PreservedAnalyses::all();
 	}

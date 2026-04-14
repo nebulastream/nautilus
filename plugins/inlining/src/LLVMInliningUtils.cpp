@@ -1,7 +1,7 @@
 #include "LLVMInliningUtils.hpp"
 #include "fmt/format.h"
-#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/inline.hpp"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Linker/Linker.h"
@@ -29,62 +29,61 @@ std::string ptrToHex(const void* ptr) {
 }
 
 // look up invoked function in the bitcode registry and retrieve if available
-std::optional<std::unique_ptr<llvm::Module>> loadBitcodeIfAvailable(void* fnPtr, llvm::LLVMContext& ctx) {
+std::optional<std::unique_ptr<llvm::Module>>
+loadBitcodeIfAvailable(void* fnPtr, llvm::LLVMContext& ctx, const std::unordered_map<std::string, void*>& symbolTable) {
 	// look up the function pointer in the bitcode registry
 	auto bitcodeStr = InlineFunctionRegistry::instance().getBitcode(fnPtr);
-	if (bitcodeStr.empty()) {
+	if (!bitcodeStr.has_value()) {
 		return std::nullopt; // function not found in registry, cant inline
 	}
 
 	// deserialize bitcode module
-	auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcodeStr.data(), bitcodeStr.size()), "", false);
+	auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcodeStr->data(), bitcodeStr->size()), "", false);
 	llvm::Expected<std::unique_ptr<llvm::Module>> moduleOrErr = llvm::parseBitcodeFile(buffer->getMemBufferRef(), ctx);
 	if (!moduleOrErr) {
 		logAllUnhandledErrors(moduleOrErr.takeError(), llvm::errs(), "Bitcode parse error: ");
 		return std::nullopt; // if deserialization fails, fall back to regular invocation
 	}
 
-	// rewrite names of function dependencies to runtime addresses for linkage + recursive inlining
-	for (auto& func : *moduleOrErr.get()) {
-		if (func.isDeclaration() && !func.isIntrinsic()) {
-			auto it = InlineFunctionRegistry::instance().getSymbolTable().find(func.getName().str());
-			if (it != InlineFunctionRegistry::instance().getSymbolTable().end()) {
-				auto hexStr = ptrToHex(it->second);
+	auto& inlineModule = **moduleOrErr;
 
-				auto* existingFunc = moduleOrErr.get()->getFunction(hexStr);
-				if (!existingFunc) {
-					func.setName(hexStr);
-				} else {
-					func.replaceAllUsesWith(existingFunc);
-					func.removeFromParent();
-				}
-			} else {
-				llvm::errs() << "Symbol registry error. Undefined function " << func.getName()
-				             << " not contained in symbol registry.\n";
-				return std::nullopt;
-			}
+	// rewrite names of function dependencies to runtime addresses for linkage + recursive inlining
+	for (auto& func : inlineModule) {
+		if (!func.isDeclaration() || func.isIntrinsic()) {
+			continue;
+		}
+		auto it = symbolTable.find(func.getName().str());
+		if (it == symbolTable.end()) {
+			llvm::errs() << "Symbol registry error. Undefined function " << func.getName()
+			             << " not contained in symbol registry.\n";
+			return std::nullopt;
+		}
+		auto hexStr = ptrToHex(it->second);
+		if (auto* existingFunc = inlineModule.getFunction(hexStr)) {
+			func.replaceAllUsesWith(existingFunc);
+			func.removeFromParent();
+		} else {
+			func.setName(hexStr);
 		}
 	}
 
 	// same for external global variables
-	for (auto& globalVar : moduleOrErr.get()->globals()) {
-		if (globalVar.isDeclaration()) {
-			auto it = InlineFunctionRegistry::instance().getSymbolTable().find(globalVar.getName().str());
-			if (it != InlineFunctionRegistry::instance().getSymbolTable().end()) {
-				auto hexStr = ptrToHex(it->second);
-
-				auto* existingGV = moduleOrErr.get()->getGlobalVariable(hexStr);
-				if (!existingGV) {
-					globalVar.setName(hexStr);
-				} else {
-					globalVar.replaceAllUsesWith(existingGV);
-					globalVar.removeFromParent();
-				}
-			} else {
-				llvm::errs() << "Symbol registry error. Global variable " << globalVar.getName()
-				             << " not contained in symbol registry.\n";
-				return std::nullopt;
-			}
+	for (auto& globalVar : inlineModule.globals()) {
+		if (!globalVar.isDeclaration()) {
+			continue;
+		}
+		auto it = symbolTable.find(globalVar.getName().str());
+		if (it == symbolTable.end()) {
+			llvm::errs() << "Symbol registry error. Global variable " << globalVar.getName()
+			             << " not contained in symbol registry.\n";
+			return std::nullopt;
+		}
+		auto hexStr = ptrToHex(it->second);
+		if (auto* existingGV = inlineModule.getGlobalVariable(hexStr)) {
+			globalVar.replaceAllUsesWith(existingGV);
+			globalVar.removeFromParent();
+		} else {
+			globalVar.setName(hexStr);
 		}
 	}
 
@@ -97,25 +96,56 @@ void fixFunctionNameConflicts(const llvm::Module& moduleToOptimize, llvm::Module
 	 * If that's the case, we need to update function names to avoid conflicts
 	 * target functions that refer to the same host function are correctly deduplicated before using the function ptr
 	 */
+	// Snapshot the host module's function names once. Each subsequent rename
+	// checks the set in O(1); with n `is_target` functions this replaces the
+	// previous O(n * hostFnCount) scan.
+	llvm::StringSet<> hostFunctionNames;
+	for (const auto& func : moduleToOptimize) {
+		hostFunctionNames.insert(func.getName());
+	}
+
 	for (auto& func1 : inlineModule) {
 		if (!func1.hasFnAttribute("is_target")) {
 			continue;
 		}
-		int i = 0;
+		if (!hostFunctionNames.contains(func1.getName())) {
+			continue;
+		}
 		auto originalName = func1.getName().str();
-		while (moduleToOptimize.getFunction(func1.getName())) {
-			auto newName = originalName + "_" + std::to_string(i++);
-			func1.setName(newName);
+		for (int i = 0;; ++i) {
+			auto newName = originalName + "_" + std::to_string(i);
+			if (!hostFunctionNames.contains(newName)) {
+				func1.setName(newName);
+				break;
+			}
 		}
 	}
 }
 
+// Safety cap for the fixed-point inlining loop below. Recursive inlining
+// converges in practice well under this bound; if it doesn't, we prefer to
+// emit a diagnostic and fall back to the partially-inlined state rather
+// than hang the JIT.
+constexpr int MAX_INLINE_ITERATIONS = 32;
+
 void inlineFunctions(llvm::Module& moduleToOptimize) {
+	// Snapshot the symbol table once per inlining call: the table is
+	// populated by static initializers at program startup and by
+	// `dlopen`-loaded shared object ctors; snapshotting avoids holding the
+	// registry mutex across llvm::Linker and keeps repeated lookups cheap.
+	const auto symbolTable = InlineFunctionRegistry::instance().getSymbolTable();
+
 	// repeat until module wasnt modified during an iteration
 	// this is key for recursive inlining, where inlinable candidates may appear later during processing
 	std::unordered_map<void*, llvm::Function*> inlinedFunctions {};
 	bool doAnotherIteration; // true if there could still be inlinable functions
+	int iteration = 0;
 	do {
+		if (++iteration > MAX_INLINE_ITERATIONS) {
+			llvm::errs() << "inlineFunctions: fixed-point iteration cap (" << MAX_INLINE_ITERATIONS
+			             << ") reached; aborting further inlining\n";
+			break;
+		}
 		doAnotherIteration = false;
 		std::vector<llvm::Function*> functionListView;
 		for (auto& F : moduleToOptimize) {
@@ -143,7 +173,7 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 			}
 
 			// try to load bitcode for the current function
-			auto optInlineModule = loadBitcodeIfAvailable(fnPtr, moduleToOptimize.getContext());
+			auto optInlineModule = loadBitcodeIfAvailable(fnPtr, moduleToOptimize.getContext(), symbolTable);
 			if (!optInlineModule.has_value()) {
 				continue;
 			}
@@ -165,8 +195,12 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 			inlineModule->setDataLayout(moduleToOptimize.getDataLayout().getStringRepresentation());
 
 			if (moduleToOptimize.getFunction(inlinableFunctionFName) != nullptr) {
-				// this should never happen if the deduplication logic works correctly
-				throw RuntimeException("Inlining error: symbol '" + inlinableFunctionFName + "' doubly defined");
+				// Should not happen if fixFunctionNameConflicts did its job,
+				// but if it does we prefer to skip this candidate (falling
+				// back to the non-inlined proxy-call path) rather than abort
+				// the entire JIT compile by throwing out of this hook.
+				llvm::errs() << "Inlining skipped: symbol '" << inlinableFunctionFName << "' doubly defined.\n";
+				continue;
 			}
 
 			// link original module with the inline function module (merges two llvm modules)
