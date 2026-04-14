@@ -1,4 +1,5 @@
 
+#include "BenchmarkUtil.hpp"
 #include "BoolOperations.hpp"
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
@@ -12,7 +13,7 @@
 #include "TracingUtil.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
+#include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
@@ -44,15 +45,15 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
 };
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"trace", tracing::ExceptionBasedTraceContext::trace},
-    {"completing_trace", tracing::LazyTraceContext::trace},
+    {"exception", tracing::ExceptionBasedTraceContext::trace},
+    {"lazy", tracing::LazyTraceContext::trace},
 };
 
-TEST_CASE("Tracing Benchmark") {
+TEST_CASE("Tracing Benchmark", "[tracing]") {
 
 	for (auto& [name, func] : tests) {
 		for (auto& [ctxName, traceFn] : traceContexts) {
-			auto benchName = ctxName + "_" + name;
+			auto benchName = "tracing/" + ctxName + "/" + name;
 			auto fn = traceFn;
 			Catch::Benchmark::Benchmark(std::string(benchName))
 			    .operator=([&func, fn](Catch::Benchmark::Chronometer meter) {
@@ -62,7 +63,7 @@ TEST_CASE("Tracing Benchmark") {
 	}
 }
 
-TEST_CASE("SSA Creation Benchmark") {
+TEST_CASE("SSA Creation Benchmark", "[pipeline]") {
 
 	for (auto& test : tests) {
 		auto func = std::get<1>(test);
@@ -74,8 +75,9 @@ TEST_CASE("SSA Creation Benchmark") {
 			continue;
 		}
 
-		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
+		// Pre-compute the trace ONCE, then benchmark only SSA creation.
+		std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
+		Catch::Benchmark::Benchmark("pipeline/ssa/" + name).operator=([trace](Catch::Benchmark::Chronometer meter) {
 			meter.measure([&] {
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				return ssaCreationPhase.apply(trace);
@@ -84,62 +86,61 @@ TEST_CASE("SSA Creation Benchmark") {
 	}
 }
 
-TEST_CASE("IR Creation Benchmark") {
+TEST_CASE("IR Creation Benchmark", "[pipeline]") {
 
 	for (auto& test : tests) {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 
-		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
-			auto ssaCreationPhase = tracing::SSACreationPhase();
-			auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
+		// Pre-compute trace + SSA ONCE, then benchmark only IR conversion.
+		std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
+		auto ssaCreationPhase = tracing::SSACreationPhase();
+		auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
 
-			meter.measure([&] {
-				auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				return irConversionPhase.apply(afterSSAModule);
-			});
-		});
+		Catch::Benchmark::Benchmark("pipeline/ir/" + name)
+		    .operator=([afterSSAModule](Catch::Benchmark::Chronometer meter) {
+			    meter.measure([&] {
+				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
+				    return irConversionPhase.apply(afterSSAModule);
+			    });
+		    });
 	}
 }
 
-TEST_CASE("Backend Compilation Benchmark") {
+TEST_CASE("Backend Compilation Benchmark", "[pipeline]") {
 
 	auto registry = compiler::CompilationBackendRegistry::getInstance();
+	auto backends = benchmark::getEnabledBackends();
 
-	std::vector<std::string> backends = {};
-#ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
-#endif
-#ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
-#endif
-#ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
-#endif
+	// Pre-compute IR for each function ONCE (IR is backend-independent).
+	struct PrecompiledIR {
+		std::string name;
+		std::shared_ptr<compiler::ir::IRGraph> ir;
+	};
+	std::vector<PrecompiledIR> irCache;
+	for (auto& test : tests) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+
+		std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
+		auto ssaCreationPhase = tracing::SSACreationPhase();
+		auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
+		auto irConversionPhase = tracing::TraceToIRConversionPhase();
+		auto ir = irConversionPhase.apply(afterSSAModule);
+		irCache.push_back({name, std::move(ir)});
+	}
+
+	// Benchmark only backend compilation.
 	for (auto& backend : backends) {
-		for (auto& test : tests) {
-			auto func = std::get<1>(test);
-			auto name = std::get<0>(test);
-
-			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name)
-			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
-				    std::shared_ptr<tracing::ExecutionTrace> trace = tracing::ExceptionBasedTraceContext::trace(func);
-				    auto ssaCreationPhase = tracing::SSACreationPhase();
-				    auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
-
-				    auto backendBackend = registry->getBackend(backend);
-				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
-				    auto ir = irConversionPhase.apply(afterSSAModule);
+		for (auto& [name, ir] : irCache) {
+			auto backendImpl = registry->getBackend(backend);
+			Catch::Benchmark::Benchmark("pipeline/compile/" + backend + "/" + name)
+			    .operator=([ir, backendImpl, backend](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    // force compilation for the MLIR backend.
 				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", backend);
 				    auto dh = compiler::DumpHandler(op, "");
-				    meter.measure([&] { return backendBackend->compile(ir, dh, op); });
+				    meter.measure([&] { return backendImpl->compile(ir, dh, op); });
 			    });
 		}
 	}
