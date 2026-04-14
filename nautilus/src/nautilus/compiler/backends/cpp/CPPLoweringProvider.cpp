@@ -161,7 +161,7 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 		currentBlock << blockName << ":\n";
 		activeBlocks.emplace(block->getIdentifier(), blockName);
 		for (auto& opt : block->getOperations()) {
-			this->process(opt, blockIndex, frame);
+			this->dispatch(opt, blockIndex, frame);
 		}
 		return blockName;
 	} else {
@@ -169,8 +169,8 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* cmpOp, short blockIndex,
+                                                        RegisterFrame& frame) {
 	auto leftInput = frame.getValue(cmpOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(cmpOp->getRightInput()->getIdentifier());
 	auto resultVar = getVariable(cmpOp->getIdentifier());
@@ -208,7 +208,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::CompareOperation* cmpOp, 
 	blocks[blockIndex] << resultVar << " = " << leftInput << comperator << rightInput << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::LoadOperation* loadOp, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* loadOp, short blockIndex,
+                                                     RegisterFrame& frame) {
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
 	auto resultVar = getVariable(loadOp->getIdentifier());
 	if (!frame.contains(loadOp->getIdentifier())) {
@@ -219,8 +220,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::LoadOperation* loadOp, sh
 	blocks[blockIndex] << resultVar << " = *reinterpret_cast<" << type << "*>(" << address << ");\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::StoreOperation* storeOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* storeOp, short blockIndex,
+                                                      RegisterFrame& frame) {
 	auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
 	auto value = frame.getValue(storeOp->getValue()->getIdentifier());
 	auto type = getType(storeOp->getValue()->getStamp());
@@ -252,7 +253,7 @@ void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocatio
 	blocks[blockIndex] << "}\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::IfOperation* ifOpt, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitIf(ir::IfOperation* ifOpt, short blockIndex, RegisterFrame& frame) {
 	auto conditionalReg = frame.getValue(ifOpt->getValue()->getIdentifier());
 	auto trueBlock = process(ifOpt->getTrueBlockInvocation().getBlock(), frame);
 	auto falseBlock = process(ifOpt->getFalseBlockInvocation().getBlock(), frame);
@@ -264,171 +265,102 @@ void CPPLoweringProvider::LoweringContext::process(ir::IfOperation* ifOpt, short
 	blocks[blockIndex] << "goto " << falseBlock << ";}\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::BranchOperation* branchOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* branchOp, short blockIndex,
+                                                       RegisterFrame& frame) {
 	process(branchOp->getNextBlockInvocation(), blockIndex, frame);
 	auto nextBlock = process(branchOp->getNextBlockInvocation().getBlock(), frame);
 	blocks[blockIndex] << "goto " << nextBlock << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(const std::unique_ptr<ir::Operation>& opt, short blockIndex,
-                                                   RegisterFrame& frame) {
-	switch (opt->getOperationType()) {
-	case ir::Operation::OperationType::ConstBooleanOp: {
-		processConst<ir::ConstBooleanOperation>(opt, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ConstIntOp: {
-		processConst<ir::ConstIntOperation>(opt, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ConstFloatOp: {
-		processConst<ir::ConstFloatOperation>(opt, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ConstPtrOp: {
-		processConst<ir::ConstPtrOperation>(opt, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::AddOp: {
-		processBinary<ir::AddOperation>(opt, "+", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::MulOp: {
-		processBinary<ir::MulOperation>(opt, "*", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::SubOp: {
-		processBinary<ir::SubOperation>(opt, "-", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::DivOp: {
-		processBinary<ir::DivOperation>(opt, "/", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ModOp: {
-		processBinary<ir::ModOperation>(opt, "%", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ShiftOp: {
-		auto op = static_cast<ir::ShiftOperation*>(opt.get());
-		if (op->getType() == ir::ShiftOperation::LS) {
-			processBinary<ir::ShiftOperation>(opt, "<<", blockIndex, frame);
-		} else {
-			processBinary<ir::ShiftOperation>(opt, ">>", blockIndex, frame);
-		}
-		return;
-	}
-	case ir::Operation::OperationType::BinaryComp: {
-		auto op = static_cast<ir::BinaryCompOperation*>(opt.get());
-		switch (op->getType()) {
-		case ir::BinaryCompOperation::BAND:
-			processBinary<ir::BinaryCompOperation>(opt, "&", blockIndex, frame);
-			break;
-		case ir::BinaryCompOperation::BOR:
-			processBinary<ir::BinaryCompOperation>(opt, "|", blockIndex, frame);
-			break;
-		case ir::BinaryCompOperation::XOR:
-			processBinary<ir::BinaryCompOperation>(opt, "^", blockIndex, frame);
-			break;
-		}
-		return;
-	}
-	case ir::Operation::OperationType::ReturnOp: {
-		auto returnOpt = static_cast<ir::ReturnOperation*>(opt.get());
-		if (returnOpt->hasReturnValue()) {
-			auto returnFOp = frame.getValue(returnOpt->getReturnValue()->getIdentifier());
-			blocks[blockIndex] << "return " << returnFOp << ";\n";
+// Thin wrappers that turn a typed op into the matching C operator and delegate
+// to processBinary / processConst. All other per-op handlers keep their dedicated
+// definitions below (renamed from `process` to `visitXxx`).
+void CPPLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::AddOperation>(op, "+", blockIndex, frame);
+}
 
-			this->returnType = getType(returnOpt->getStamp());
-		} else {
-			blocks[blockIndex] << "return;\n";
-			this->returnType = "void";
-		}
-		return;
-	}
-	case ir::Operation::OperationType::CompareOp: {
-		auto compOpt = as<ir::CompareOperation>(opt);
-		process(compOpt, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::IfOp: {
-		auto ifOpt = as<ir::IfOperation>(opt);
-		process(ifOpt, blockIndex, frame);
-		return;
-	}
+void CPPLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::SubOperation>(op, "-", blockIndex, frame);
+}
 
-	case ir::Operation::OperationType::BranchOp: {
-		auto branchOp = as<ir::BranchOperation>(opt);
-		process(branchOp, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::LoadOp: {
-		auto load = as<ir::LoadOperation>(opt);
-		process(load, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::StoreOp: {
-		auto store = as<ir::StoreOperation>(opt);
-		process(store, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::ProxyCallOp: {
-		auto call = as<ir::ProxyCallOperation>(opt);
-		process(call, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::IndirectCallOp: {
-		auto call = as<ir::IndirectCallOperation>(opt);
-		process(call, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::OrOp: {
-		processBinary<ir::OrOperation>(opt, "||", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::AndOp: {
-		processBinary<ir::AndOperation>(opt, "&&", blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::NegateOp: {
-		auto call = as<ir::NegateOperation>(opt);
-		process(call, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::NotOp: {
-		auto call = as<ir::NotOperation>(opt);
-		process(call, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::CastOp: {
-		auto cast = as<ir::CastOperation>(opt);
-		process(cast, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::SelectOp: {
-		auto select = as<ir::SelectOperation>(opt);
-		process(select, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::AllocaOp: {
-		auto alloca = as<ir::AllocaOperation>(opt);
-		process(alloca, blockIndex, frame);
-		return;
-	}
-	case ir::Operation::OperationType::FunctionAddressOfOp: {
-		auto funcAddr = as<ir::FunctionAddressOfOperation>(opt);
-		process(funcAddr, blockIndex, frame);
-		return;
-	}
-	default: {
-		throw NotImplementedException("Operation is not implemented");
-	}
+void CPPLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::MulOperation>(op, "*", blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::DivOperation>(op, "/", blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::ModOperation>(op, "%", blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::OrOperation>(op, "||", blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, short blockIndex, RegisterFrame& frame) {
+	processBinary<ir::AndOperation>(op, "&&", blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op, short blockIndex, RegisterFrame& frame) {
+	if (op->getType() == ir::ShiftOperation::LS) {
+		processBinary<ir::ShiftOperation>(op, "<<", blockIndex, frame);
+	} else {
+		processBinary<ir::ShiftOperation>(op, ">>", blockIndex, frame);
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, short blockIndex,
+                                                           RegisterFrame& frame) {
+	switch (op->getType()) {
+	case ir::BinaryCompOperation::BAND:
+		processBinary<ir::BinaryCompOperation>(op, "&", blockIndex, frame);
+		break;
+	case ir::BinaryCompOperation::BOR:
+		processBinary<ir::BinaryCompOperation>(op, "|", blockIndex, frame);
+		break;
+	case ir::BinaryCompOperation::XOR:
+		processBinary<ir::BinaryCompOperation>(op, "^", blockIndex, frame);
+		break;
+	}
+}
+
+void CPPLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, short blockIndex,
+                                                         RegisterFrame& frame) {
+	processConst<ir::ConstIntOperation>(op, blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* op, short blockIndex,
+                                                           RegisterFrame& frame) {
+	processConst<ir::ConstFloatOperation>(op, blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* op, short blockIndex,
+                                                             RegisterFrame& frame) {
+	processConst<ir::ConstBooleanOperation>(op, blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, short blockIndex,
+                                                         RegisterFrame& frame) {
+	processConst<ir::ConstPtrOperation>(op, blockIndex, frame);
+}
+
+void CPPLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* returnOpt, short blockIndex,
+                                                       RegisterFrame& frame) {
+	if (returnOpt->hasReturnValue()) {
+		auto returnFOp = frame.getValue(returnOpt->getReturnValue()->getIdentifier());
+		blocks[blockIndex] << "return " << returnFOp << ";\n";
+
+		this->returnType = getType(returnOpt->getStamp());
+	} else {
+		blocks[blockIndex] << "return;\n";
+		this->returnType = "void";
+	}
+}
+
+void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
+                                                          RegisterFrame& frame) {
 
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
@@ -468,8 +400,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::ProxyCallOperation* opt, 
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::IndirectCallOperation* opt, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* opt, short blockIndex,
+                                                             RegisterFrame& frame) {
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
 	std::stringstream args;
@@ -498,8 +430,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::IndirectCallOperation* op
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOperation, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* negateOperation, short blockIndex,
+                                                       RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(negateOperation->getIdentifier());
 	if (!frame.contains(negateOperation->getIdentifier())) {
@@ -509,8 +441,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::NegateOperation* negateOp
 	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperation, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitNot(ir::NotOperation* notOperation, short blockIndex,
+                                                    RegisterFrame& frame) {
 	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
 	auto resultVar = getVariable(notOperation->getIdentifier());
 	if (!frame.contains(notOperation->getIdentifier())) {
@@ -520,7 +452,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::NotOperation* notOperatio
 	blocks[blockIndex] << resultVar << "= !" << input << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, short blockIndex, RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitCast(ir::CastOperation* castOp, short blockIndex,
+                                                     RegisterFrame& frame) {
 	auto input = frame.getValue(castOp->getInput()->getIdentifier());
 	auto var = getVariable(castOp->getIdentifier());
 	auto inputStamp = castOp->getInput()->getStamp();
@@ -539,8 +472,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::CastOperation* castOp, sh
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selectOp, short blockIndex,
+                                                       RegisterFrame& frame) {
 	auto condition = frame.getValue(selectOp->getCondition()->getIdentifier());
 	auto trueValue = frame.getValue(selectOp->getTrueValue()->getIdentifier());
 	auto falseValue = frame.getValue(selectOp->getFalseValue()->getIdentifier());
@@ -552,8 +485,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp
 	blocks[blockIndex] << resultVar << " = " << condition << " ? " << trueValue << " : " << falseValue << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short blockIndex,
+                                                       RegisterFrame& frame) {
 	auto resultVar = getVariable(allocaOp->getIdentifier());
 	auto bufVar = "alloca_buf_" + allocaOp->getIdentifier().toString();
 	if (!frame.contains(allocaOp->getIdentifier())) {
@@ -564,8 +497,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp
 	blocks[blockIndex] << resultVar << " = " << bufVar << ";\n";
 }
 
-void CPPLoweringProvider::LoweringContext::process(ir::FunctionAddressOfOperation* funcAddrOp, short blockIndex,
-                                                   RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,
+                                                                  short blockIndex, RegisterFrame& frame) {
 	auto resultVar = getVariable(funcAddrOp->getIdentifier());
 	if (!frame.contains(funcAddrOp->getIdentifier())) {
 		blockArguments << "uint8_t* " << resultVar << ";\n";

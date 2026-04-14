@@ -3,36 +3,9 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
-#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
-#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
-#include "nautilus/compiler/ir/operations/CastOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
-#include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <asmjit/x86.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -65,7 +38,7 @@ private:
 	using AsmReg = std::variant<::asmjit::x86::Gp, ::asmjit::x86::Xmm>;
 	using RegisterFrame = Frame<ir::OperationIdentifier, AsmReg>;
 
-	class LoweringContext {
+	class LoweringContext : public ir::OperationDispatcher<LoweringContext> {
 	public:
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code);
 
@@ -78,6 +51,9 @@ private:
 		}
 
 	private:
+		// Allow the CRTP dispatcher to call our private visitXxx hooks.
+		friend class ir::OperationDispatcher<LoweringContext>;
+
 		::asmjit::x86::Compiler cc;
 		std::shared_ptr<ir::IRGraph> ir;
 		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
@@ -99,39 +75,39 @@ private:
 
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
-		void processOperation(const std::unique_ptr<ir::Operation>& op, RegisterFrame& frame);
 
-		void processConstBool(ir::ConstBooleanOperation* op, RegisterFrame& frame);
-		void processConstInt(ir::ConstIntOperation* op, RegisterFrame& frame);
-		void processConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame);
-		void processConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame);
+		// Per-operation hooks invoked by OperationDispatcher::dispatch.
+		void visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame);
+		void visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame);
+		void visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame);
+		void visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame);
 
-		void processAdd(ir::AddOperation* op, RegisterFrame& frame);
-		void processSub(ir::SubOperation* op, RegisterFrame& frame);
-		void processMul(ir::MulOperation* op, RegisterFrame& frame);
-		void processDiv(ir::DivOperation* op, RegisterFrame& frame);
-		void processMod(ir::ModOperation* op, RegisterFrame& frame);
+		void visitAdd(ir::AddOperation* op, RegisterFrame& frame);
+		void visitSub(ir::SubOperation* op, RegisterFrame& frame);
+		void visitMul(ir::MulOperation* op, RegisterFrame& frame);
+		void visitDiv(ir::DivOperation* op, RegisterFrame& frame);
+		void visitMod(ir::ModOperation* op, RegisterFrame& frame);
 
-		void processCompare(ir::CompareOperation* op, RegisterFrame& frame);
-		void processAnd(ir::AndOperation* op, RegisterFrame& frame);
-		void processOr(ir::OrOperation* op, RegisterFrame& frame);
-		void processNot(ir::NotOperation* op, RegisterFrame& frame);
-		void processNegate(ir::NegateOperation* op, RegisterFrame& frame);
-		void processShift(ir::ShiftOperation* op, RegisterFrame& frame);
-		void processBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame);
+		void visitCompare(ir::CompareOperation* op, RegisterFrame& frame);
+		void visitAnd(ir::AndOperation* op, RegisterFrame& frame);
+		void visitOr(ir::OrOperation* op, RegisterFrame& frame);
+		void visitNot(ir::NotOperation* op, RegisterFrame& frame);
+		void visitNegate(ir::NegateOperation* op, RegisterFrame& frame);
+		void visitShift(ir::ShiftOperation* op, RegisterFrame& frame);
+		void visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame);
 
-		void processIf(ir::IfOperation* op, RegisterFrame& frame);
-		void processBranch(ir::BranchOperation* op, RegisterFrame& frame);
-		void processReturn(ir::ReturnOperation* op, RegisterFrame& frame);
-		void processSelect(ir::SelectOperation* op, RegisterFrame& frame);
+		void visitIf(ir::IfOperation* op, RegisterFrame& frame);
+		void visitBranch(ir::BranchOperation* op, RegisterFrame& frame);
+		void visitReturn(ir::ReturnOperation* op, RegisterFrame& frame);
+		void visitSelect(ir::SelectOperation* op, RegisterFrame& frame);
 
-		void processLoad(ir::LoadOperation* op, RegisterFrame& frame);
-		void processStore(ir::StoreOperation* op, RegisterFrame& frame);
-		void processAlloca(ir::AllocaOperation* op, RegisterFrame& frame);
-		void processProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame);
-		void processIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
-		void processFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
-		void processCast(ir::CastOperation* op, RegisterFrame& frame);
+		void visitLoad(ir::LoadOperation* op, RegisterFrame& frame);
+		void visitStore(ir::StoreOperation* op, RegisterFrame& frame);
+		void visitAlloca(ir::AllocaOperation* op, RegisterFrame& frame);
+		void visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame);
+		void visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
+		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
+		void visitCast(ir::CastOperation* op, RegisterFrame& frame);
 	};
 };
 

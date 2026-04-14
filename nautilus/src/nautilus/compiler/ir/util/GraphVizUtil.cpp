@@ -233,11 +233,13 @@ protected:
 					auto ifOp = as<IfOperation>(op);
 					auto trueBlock = std::to_string(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier().getId());
 					writeEdge(fromId, trueBlock, "control", "true");
-					auto falseBlock = std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
+					auto falseBlock =
+					    std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
 					writeEdge(fromId, falseBlock, "control", "false");
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					auto branchOp = as<BranchOperation>(op);
-					auto falseBlock = std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
+					auto falseBlock =
+					    std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
 					writeEdge(fromId, falseBlock, "control", "");
 				}
 			} else {
@@ -280,15 +282,18 @@ protected:
 					if (op->getOperationType() == Operation::OperationType::IfOp) {
 						auto ifOp = as<IfOperation>(op);
 						std::string toTrue =
-						    "start_" + std::to_string(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier().getId());
+						    "start_" +
+						    std::to_string(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, toTrue, "control", "true");
 						std::string toFalse =
-						    "start_" + std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
+						    "start_" +
+						    std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, toFalse, "control", "false");
 					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 						auto branchOp = as<BranchOperation>(op);
 						std::string to =
-						    "start_" + std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
+						    "start_" +
+						    std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, to, "control", "");
 					}
 				}
