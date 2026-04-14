@@ -2,35 +2,8 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
-#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
-#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
-#include "nautilus/compiler/ir/operations/CastOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
-#include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <sstream>
 #include <unordered_set>
 #include <vector>
@@ -50,13 +23,16 @@ private:
 	using RegisterFrame = Frame<ir::OperationIdentifier, std::string>;
 	using Code = std::stringstream;
 
-	class LoweringContext {
+	class LoweringContext : public ir::OperationDispatcher<LoweringContext> {
 	public:
 		explicit LoweringContext(std::shared_ptr<ir::IRGraph> ir);
 
 		Code process();
 
 	private:
+		// Allow the CRTP dispatcher to call our private visitXxx hooks.
+		friend class ir::OperationDispatcher<LoweringContext>;
+
 		Code blockArguments;
 		Code functions;
 		std::vector<Code> blocks;
@@ -69,39 +45,41 @@ private:
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
-		void process(const std::unique_ptr<ir::Operation>& operation, short block, RegisterFrame& frame);
-
-		void process(ir::IfOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::CompareOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::BranchOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::LoadOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::StoreOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::NegateOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::NotOperation* opt, short block, RegisterFrame& frame);
-
-		void process(ir::AllocaOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::CastOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::SelectOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
-		void process(ir::FunctionAddressOfOperation* opt, short block, RegisterFrame& frame);
+		// Per-operation hooks invoked by OperationDispatcher::dispatch.
+		void visitAdd(ir::AddOperation* opt, short block, RegisterFrame& frame);
+		void visitSub(ir::SubOperation* opt, short block, RegisterFrame& frame);
+		void visitMul(ir::MulOperation* opt, short block, RegisterFrame& frame);
+		void visitDiv(ir::DivOperation* opt, short block, RegisterFrame& frame);
+		void visitMod(ir::ModOperation* opt, short block, RegisterFrame& frame);
+		void visitAnd(ir::AndOperation* opt, short block, RegisterFrame& frame);
+		void visitOr(ir::OrOperation* opt, short block, RegisterFrame& frame);
+		void visitShift(ir::ShiftOperation* opt, short block, RegisterFrame& frame);
+		void visitBinaryComp(ir::BinaryCompOperation* opt, short block, RegisterFrame& frame);
+		void visitConstInt(ir::ConstIntOperation* opt, short block, RegisterFrame& frame);
+		void visitConstFloat(ir::ConstFloatOperation* opt, short block, RegisterFrame& frame);
+		void visitConstBoolean(ir::ConstBooleanOperation* opt, short block, RegisterFrame& frame);
+		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
+		void visitReturn(ir::ReturnOperation* opt, short block, RegisterFrame& frame);
+		void visitIf(ir::IfOperation* opt, short block, RegisterFrame& frame);
+		void visitCompare(ir::CompareOperation* opt, short block, RegisterFrame& frame);
+		void visitBranch(ir::BranchOperation* opt, short block, RegisterFrame& frame);
+		void visitLoad(ir::LoadOperation* opt, short block, RegisterFrame& frame);
+		void visitStore(ir::StoreOperation* opt, short block, RegisterFrame& frame);
+		void visitProxyCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void visitIndirectCall(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
+		void visitNegate(ir::NegateOperation* opt, short block, RegisterFrame& frame);
+		void visitNot(ir::NotOperation* opt, short block, RegisterFrame& frame);
+		void visitAlloca(ir::AllocaOperation* opt, short block, RegisterFrame& frame);
+		void visitCast(ir::CastOperation* opt, short block, RegisterFrame& frame);
+		void visitSelect(ir::SelectOperation* opt, short block, RegisterFrame& frame);
+		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* opt, short block, RegisterFrame& frame);
 
 		static std::string getVariable(const ir::OperationIdentifier& id);
 
 		static std::string getType(const Type& stamp);
 
 		template <class Type>
-		void processConst(const std::unique_ptr<ir::Operation>& opt, short blockIndex, RegisterFrame& frame) {
-			auto constValue = static_cast<Type*>(opt.get());
+		void processConst(Type* constValue, short blockIndex, RegisterFrame& frame) {
 			auto var = getVariable(constValue->getIdentifier());
 			if (!frame.contains(constValue->getIdentifier())) {
 				blockArguments << getType(constValue->getStamp()) << " " << var << ";\n";
@@ -119,9 +97,7 @@ private:
 		}
 
 		template <class Type>
-		void processBinary(const std::unique_ptr<ir::Operation>& o, const std::string& operation, short blockIndex,
-		                   RegisterFrame& frame) {
-			auto op = static_cast<Type*>(o.get());
+		void processBinary(Type* op, const std::string& operation, short blockIndex, RegisterFrame& frame) {
 			auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 			auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());
 			auto resultVar = getVariable(op->getIdentifier());

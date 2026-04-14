@@ -364,102 +364,11 @@ mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std
 
 void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueFrame& frame) {
 	for (const auto& operation : basicBlock->getOperations()) {
-		generateMLIR(operation, frame);
+		dispatch(operation, frame);
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame) {
-	switch (operation->getOperationType()) {
-	case ir::Operation::OperationType::FunctionOp:
-		break;
-	case ir::Operation::OperationType::ConstIntOp:
-		generateMLIR(as<ir::ConstIntOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ConstFloatOp:
-		generateMLIR(as<ir::ConstFloatOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ConstPtrOp:
-		generateMLIR(as<ir::ConstPtrOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::AddOp:
-		generateMLIR(as<ir::AddOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::SubOp:
-		generateMLIR(as<ir::SubOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::MulOp:
-		generateMLIR(as<ir::MulOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::DivOp:
-		generateMLIR(as<ir::DivOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ModOp:
-		generateMLIR(as<ir::ModOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::LoadOp:
-		generateMLIR(as<ir::LoadOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::StoreOp:
-		generateMLIR(as<ir::StoreOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::BranchOp:
-		generateMLIR(as<ir::BranchOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::IfOp:
-		generateMLIR(as<ir::IfOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::CompareOp:
-		generateMLIR(as<ir::CompareOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ProxyCallOp:
-		generateMLIR(as<ir::ProxyCallOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::IndirectCallOp:
-		generateMLIR(as<ir::IndirectCallOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ReturnOp:
-		generateMLIR(as<ir::ReturnOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::OrOp:
-		generateMLIR(as<ir::OrOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::AndOp:
-		generateMLIR(as<ir::AndOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::NegateOp:
-		generateMLIR(as<ir::NegateOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::NotOp:
-		generateMLIR(as<ir::NotOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::CastOp:
-		generateMLIR(as<ir::CastOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ConstBooleanOp:
-		generateMLIR(as<ir::ConstBooleanOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::BinaryComp:
-		generateMLIR(as<ir::BinaryCompOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::ShiftOp:
-		generateMLIR(as<ir::ShiftOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::AllocaOp:
-		generateMLIR(as<ir::AllocaOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::SelectOp:
-		generateMLIR(as<ir::SelectOperation>(operation), frame);
-		break;
-	case ir::Operation::OperationType::FunctionAddressOfOp:
-		generateMLIR(as<ir::FunctionAddressOfOperation>(operation), frame);
-		break;
-	default: {
-		throw NotImplementedException("");
-	}
-	}
-}
-
-void MLIRLoweringProvider::generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitNegate(ir::NegateOperation* negateOperation, ValueFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
 	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
 	                                                         builder->getIntegerAttr(input.getType(), ~0));
@@ -467,14 +376,14 @@ void MLIRLoweringProvider::generateMLIR(ir::NegateOperation* negateOperation, Va
 	frame.setValue(negateOperation->getIdentifier(), negate);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitNot(ir::NotOperation* notOperation, ValueFrame& frame) {
 	auto input = frame.getValue(notOperation->getInput()->getIdentifier());
 	auto constInt = getConstBool("loc", true);
 	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
 	frame.setValue(notOperation->getIdentifier(), negate);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::SelectOperation* selectOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitSelect(ir::SelectOperation* selectOperation, ValueFrame& frame) {
 	auto condition = frame.getValue(selectOperation->getCondition()->getIdentifier());
 	auto trueValue = frame.getValue(selectOperation->getTrueValue()->getIdentifier());
 	auto falseValue = frame.getValue(selectOperation->getFalseValue()->getIdentifier());
@@ -483,14 +392,14 @@ void MLIRLoweringProvider::generateMLIR(ir::SelectOperation* selectOperation, Va
 	frame.setValue(selectOperation->getIdentifier(), mlirSelectOp);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitOr(ir::OrOperation* orOperation, ValueFrame& frame) {
 	auto leftInput = frame.getValue(orOperation->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(orOperation->getRightInput()->getIdentifier());
 	auto mlirOrOp = builder->create<mlir::LLVM::OrOp>(getNameLoc("binOpResult"), leftInput, rightInput);
 	frame.setValue(orOperation->getIdentifier(), mlirOrOp);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::AndOperation* andOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& frame) {
 	auto leftInput = frame.getValue(andOperation->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(andOperation->getRightInput()->getIdentifier());
 	auto mlirAndOp = builder->create<mlir::LLVM::AndOp>(getNameLoc("binOpResult"), leftInput, rightInput);
@@ -561,19 +470,19 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	// Don't add the function again - it's already been added in generateFunctionDefinitions
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::LoadOperation* loadOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitLoad(ir::LoadOperation* loadOp, ValueFrame& frame) {
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
 	auto mlirLoadOp =
 	    builder->create<mlir::LLVM::LoadOp>(getNameLoc("loadedValue"), getMLIRType(loadOp->getStamp()), address);
 	frame.setValue(loadOp->getIdentifier(), mlirLoadOp);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitConstInt(ir::ConstIntOperation* constIntOp, ValueFrame& frame) {
 	frame.setValue(constIntOp->getIdentifier(),
 	               getConstInt("ConstantOp", constIntOp->getStamp(), constIntOp->getValue()));
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* constPtr, ValueFrame& frame) {
+void MLIRLoweringProvider::visitConstPtr(ir::ConstPtrOperation* constPtr, ValueFrame& frame) {
 	auto val = (int64_t) constPtr->getValue();
 	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), builder->getI64Type(),
 	                                                         builder->getIntegerAttr(builder->getI64Type(), val));
@@ -583,7 +492,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ConstPtrOperation* constPtr, ValueFr
 	frame.setValue(constPtr->getIdentifier(), elementAddress);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitConstFloat(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame) {
 	if (isFloat(constFloatOp->getStamp())) {
 		auto floatType = (constFloatOp->getStamp() == Type::f32) ? builder->getF32Type() : builder->getF64Type();
 		frame.setValue(constFloatOp->getIdentifier(), builder->create<mlir::LLVM::ConstantOp>(
@@ -595,7 +504,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ConstFloatOperation* constFloatOp, V
 //==---------------------------==//
 //==-- ARITHMETIC OPERATIONS --==//
 //==---------------------------==//
-void MLIRLoweringProvider::generateMLIR(ir::AddOperation* addOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(addOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(addOp->getRightInput()->getIdentifier());
 	if (addOp->getLeftInput()->getStamp() == Type::ptr) {
@@ -621,7 +530,7 @@ void MLIRLoweringProvider::generateMLIR(ir::AddOperation* addOp, ValueFrame& fra
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::SubOperation* subIntOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(subIntOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(subIntOp->getRightInput()->getIdentifier());
 	if (subIntOp->getLeftInput()->getStamp() == Type::ptr) {
@@ -641,7 +550,7 @@ void MLIRLoweringProvider::generateMLIR(ir::SubOperation* subIntOp, ValueFrame& 
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::MulOperation* mulOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitMul(ir::MulOperation* mulOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(mulOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(mulOp->getRightInput()->getIdentifier());
 	auto resultType = leftInput.getType();
@@ -656,7 +565,7 @@ void MLIRLoweringProvider::generateMLIR(ir::MulOperation* mulOp, ValueFrame& fra
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::DivOperation* divIntOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitDiv(ir::DivOperation* divIntOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(divIntOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(divIntOp->getRightInput()->getIdentifier());
 	auto resultType = leftInput.getType();
@@ -677,7 +586,7 @@ void MLIRLoweringProvider::generateMLIR(ir::DivOperation* divIntOp, ValueFrame& 
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ModOperation* modIntOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitMod(ir::ModOperation* modIntOp, ValueFrame& frame) {
 	auto leftInput = frame.getValue(modIntOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(modIntOp->getRightInput()->getIdentifier());
 	auto resultType = leftInput.getType();
@@ -698,13 +607,13 @@ void MLIRLoweringProvider::generateMLIR(ir::ModOperation* modIntOp, ValueFrame& 
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::StoreOperation* storeOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitStore(ir::StoreOperation* storeOp, ValueFrame& frame) {
 	auto value = frame.getValue(storeOp->getValue()->getIdentifier());
 	auto address = frame.getValue(storeOp->getAddress()->getIdentifier());
 	builder->create<mlir::LLVM::StoreOp>(getNameLoc("outputStore"), value, address);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame) {
 	// Insert return into function block.
 	// Use func::ReturnOp for func::FuncOp functions (not LLVM::ReturnOp)
 	if (!returnOp->hasReturnValue()) {
@@ -715,7 +624,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ReturnOperation* returnOp, ValueFram
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
 	// First check if this is handled by an intrinsic
 	if (auto intrinsic = intrinsicManager.getIntrinsic(proxyCallOp->getFunctionPtr())) {
 		const auto& intrinsicFunction = *intrinsic;
@@ -769,7 +678,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ProxyCallOperation* proxyCallOp, Val
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame) {
 	auto calleePtr = frame.getValue(indirectCallOp->getFunctionPtrOperand()->getIdentifier());
 	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
 	std::vector<mlir::Value> allOperands;
@@ -789,7 +698,7 @@ void MLIRLoweringProvider::generateMLIR(ir::IndirectCallOperation* indirectCallO
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame) {
 	auto functionName = funcAddrOp->getFunctionName();
 	auto ptrType = mlir::LLVM::LLVMPointerType::get(builder->getContext());
 
@@ -829,7 +738,7 @@ void MLIRLoweringProvider::generateMLIR(ir::FunctionAddressOfOperation* funcAddr
 	frame.setValue(funcAddrOp->getIdentifier(), castOp.getResult(0));
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitCompare(ir::CompareOperation* compareOp, ValueFrame& frame) {
 	auto leftStamp = compareOp->getLeftInput()->getStamp();
 	auto rightStamp = compareOp->getRightInput()->getStamp();
 
@@ -869,7 +778,7 @@ void MLIRLoweringProvider::generateMLIR(ir::CompareOperation* compareOp, ValueFr
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitIf(ir::IfOperation* ifOp, ValueFrame& frame) {
 	auto parentBlockInsertionPoint = builder->saveInsertionPoint();
 
 	// create true block and set block arguments
@@ -904,7 +813,7 @@ void MLIRLoweringProvider::generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame
 	}
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame) {
+void MLIRLoweringProvider::visitBranch(ir::BranchOperation* branchOp, ValueFrame& frame) {
 	std::vector<mlir::Value> mlirTargetBlockArguments;
 	for (auto targetBlockArgument : branchOp->getNextBlockInvocation().getArguments()) {
 		mlirTargetBlockArguments.push_back(frame.getValue(targetBlockArgument->getIdentifier()));
@@ -962,7 +871,7 @@ MLIRLoweringProvider::createFrameFromParentBlock(MLIRLoweringProvider::ValueFram
 	return childFrame;
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLoweringProvider::ValueFrame& frame) {
+void MLIRLoweringProvider::visitCast(ir::CastOperation* castOperation, MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputStamp = castOperation->getInput()->getStamp();
 	auto outputStamp = castOperation->getStamp();
 	auto mlirInput = frame.getValue(castOperation->getInput()->getIdentifier());
@@ -1083,8 +992,8 @@ void MLIRLoweringProvider::generateMLIR(ir::CastOperation* castOperation, MLIRLo
 	    fmt::format("Cast from {} to {} is not supported.", toString(inputStamp), toString(outputStamp)));
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::BinaryCompOperation* binaryCompOperation,
-                                        nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
+void MLIRLoweringProvider::visitBinaryComp(ir::BinaryCompOperation* binaryCompOperation,
+                                           nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
 	auto leftInput = frame.getValue(binaryCompOperation->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(binaryCompOperation->getRightInput()->getIdentifier());
 	mlir::Value op;
@@ -1102,8 +1011,8 @@ void MLIRLoweringProvider::generateMLIR(ir::BinaryCompOperation* binaryCompOpera
 	frame.setValue(binaryCompOperation->getIdentifier(), op);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ShiftOperation* shiftOperation,
-                                        nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
+void MLIRLoweringProvider::visitShift(ir::ShiftOperation* shiftOperation,
+                                      nautilus::compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) {
 	auto leftInput = frame.getValue(shiftOperation->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(shiftOperation->getRightInput()->getIdentifier());
 	mlir::Value op;
@@ -1118,7 +1027,7 @@ void MLIRLoweringProvider::generateMLIR(ir::ShiftOperation* shiftOperation,
 	frame.setValue(shiftOperation->getIdentifier(), op);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame) {
+void MLIRLoweringProvider::visitAlloca(ir::AllocaOperation* allocaOperation, ValueFrame& frame) {
 	auto i8Type = builder->getI8Type();
 	auto ptrTy = LLVM::LLVMPointerType::get(context);
 	auto i64Ty = IntegerType::get(context, 64);
@@ -1129,8 +1038,8 @@ void MLIRLoweringProvider::generateMLIR(ir::AllocaOperation* allocaOperation, Va
 	frame.setValue(allocaOperation->getIdentifier(), alloca);
 }
 
-void MLIRLoweringProvider::generateMLIR(ir::ConstBooleanOperation* constBooleanOp,
-                                        MLIRLoweringProvider::ValueFrame& frame) {
+void MLIRLoweringProvider::visitConstBoolean(ir::ConstBooleanOperation* constBooleanOp,
+                                             MLIRLoweringProvider::ValueFrame& frame) {
 	auto constOp = builder->create<mlir::arith::ConstantOp>(
 	    getNameLoc("location"), builder->getI1Type(),
 	    builder->getIntegerAttr(builder->getI1Type(), constBooleanOp->getValue()));

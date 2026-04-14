@@ -220,7 +220,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 	cc.bind(getOrCreateLabel(id));
 
 	for (auto& op : block->getOperations()) {
-		processOperation(op, frame);
+		dispatch(op, frame);
 	}
 }
 
@@ -256,118 +256,21 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 	}
 }
 
-// ── Main dispatch ─────────────────────────────────────────────────────────────
-
-void AsmJitLoweringProvider::LoweringContext::processOperation(const std::unique_ptr<ir::Operation>& op,
-                                                               RegisterFrame& frame) {
-	using OT = ir::Operation::OperationType;
-	switch (op->getOperationType()) {
-	case OT::ConstBooleanOp:
-		processConstBool(as<ir::ConstBooleanOperation>(op), frame);
-		return;
-	case OT::ConstIntOp:
-		processConstInt(as<ir::ConstIntOperation>(op), frame);
-		return;
-	case OT::ConstFloatOp:
-		processConstFloat(as<ir::ConstFloatOperation>(op), frame);
-		return;
-	case OT::ConstPtrOp:
-		processConstPtr(as<ir::ConstPtrOperation>(op), frame);
-		return;
-	case OT::AddOp:
-		processAdd(as<ir::AddOperation>(op), frame);
-		return;
-	case OT::SubOp:
-		processSub(as<ir::SubOperation>(op), frame);
-		return;
-	case OT::MulOp:
-		processMul(as<ir::MulOperation>(op), frame);
-		return;
-	case OT::DivOp:
-		processDiv(as<ir::DivOperation>(op), frame);
-		return;
-	case OT::ModOp:
-		processMod(as<ir::ModOperation>(op), frame);
-		return;
-	case OT::CompareOp:
-		processCompare(as<ir::CompareOperation>(op), frame);
-		return;
-	case OT::AndOp:
-		processAnd(as<ir::AndOperation>(op), frame);
-		return;
-	case OT::OrOp:
-		processOr(as<ir::OrOperation>(op), frame);
-		return;
-	case OT::NotOp:
-		processNot(as<ir::NotOperation>(op), frame);
-		return;
-	case OT::NegateOp:
-		processNegate(as<ir::NegateOperation>(op), frame);
-		return;
-	case OT::ShiftOp:
-		processShift(as<ir::ShiftOperation>(op), frame);
-		return;
-	case OT::BinaryComp:
-		processBinaryComp(as<ir::BinaryCompOperation>(op), frame);
-		return;
-	case OT::IfOp:
-		processIf(as<ir::IfOperation>(op), frame);
-		return;
-	case OT::BranchOp:
-		processBranch(as<ir::BranchOperation>(op), frame);
-		return;
-	case OT::ReturnOp:
-		processReturn(as<ir::ReturnOperation>(op), frame);
-		return;
-	case OT::SelectOp:
-		processSelect(as<ir::SelectOperation>(op), frame);
-		return;
-	case OT::LoadOp:
-		processLoad(as<ir::LoadOperation>(op), frame);
-		return;
-	case OT::StoreOp:
-		processStore(as<ir::StoreOperation>(op), frame);
-		return;
-	case OT::AllocaOp:
-		processAlloca(as<ir::AllocaOperation>(op), frame);
-		return;
-	case OT::ProxyCallOp:
-		processProxyCall(as<ir::ProxyCallOperation>(op), frame);
-		return;
-	case OT::IndirectCallOp:
-		processIndirectCall(as<ir::IndirectCallOperation>(op), frame);
-		return;
-	case OT::FunctionAddressOfOp:
-		processFunctionAddressOf(as<ir::FunctionAddressOfOperation>(op), frame);
-		return;
-	case OT::CastOp:
-		processCast(as<ir::CastOperation>(op), frame);
-		return;
-	case OT::BasicBlockArgument:
-	case OT::BlockInvocation:
-	case OT::FunctionOp:
-	case OT::MLIR_YIELD:
-		return;
-	default:
-		throw NotImplementedException("AsmJit/A64: operation not implemented");
-	}
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processConstBool(ir::ConstBooleanOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::b);
 	cc.mov(toGp(reg), static_cast<int64_t>(op->getValue() ? 1 : 0));
 	frame.setValue(op->getIdentifier(), reg);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(op->getStamp());
 	cc.mov(toGp(reg), op->getValue());
 	frame.setValue(op->getIdentifier(), reg);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(op->getStamp());
 	auto vecReg = toVec(reg);
 	if (op->getStamp() == Type::f32) {
@@ -388,7 +291,7 @@ void AsmJitLoweringProvider::LoweringContext::processConstFloat(ir::ConstFloatOp
 	frame.setValue(op->getIdentifier(), reg);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::ptr);
 	cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getValue()));
 	frame.setValue(op->getIdentifier(), reg);
@@ -396,7 +299,7 @@ void AsmJitLoweringProvider::LoweringContext::processConstPtr(ir::ConstPtrOperat
 
 // ── Arithmetic ────────────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processAdd(ir::AddOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -408,7 +311,7 @@ void AsmJitLoweringProvider::LoweringContext::processAdd(ir::AddOperation* op, R
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processSub(ir::SubOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -420,7 +323,7 @@ void AsmJitLoweringProvider::LoweringContext::processSub(ir::SubOperation* op, R
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processMul(ir::MulOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -432,7 +335,7 @@ void AsmJitLoweringProvider::LoweringContext::processMul(ir::MulOperation* op, R
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processDiv(ir::DivOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -446,7 +349,7 @@ void AsmJitLoweringProvider::LoweringContext::processDiv(ir::DivOperation* op, R
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processMod(ir::ModOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -464,7 +367,7 @@ void AsmJitLoweringProvider::LoweringContext::processMod(ir::ModOperation* op, R
 
 // ── Logical / compare ─────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processCompare(ir::CompareOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(Type::b);
@@ -558,7 +461,7 @@ void AsmJitLoweringProvider::LoweringContext::processCompare(ir::CompareOperatio
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processAnd(ir::AndOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, RegisterFrame& frame) {
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
@@ -566,7 +469,7 @@ void AsmJitLoweringProvider::LoweringContext::processAnd(ir::AndOperation* op, R
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processOr(ir::OrOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, RegisterFrame& frame) {
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
@@ -574,14 +477,14 @@ void AsmJitLoweringProvider::LoweringContext::processOr(ir::OrOperation* op, Reg
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processNot(ir::NotOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, RegisterFrame& frame) {
 	auto input = toGp(frame.getValue(op->getInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 	cc.eor(toGp(result), input, Imm(1));
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processNegate(ir::NegateOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* op, RegisterFrame& frame) {
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	cc.mvn(toGp(result), toGp(src));
@@ -590,7 +493,7 @@ void AsmJitLoweringProvider::LoweringContext::processNegate(ir::NegateOperation*
 
 // ── Binary bit operations ─────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processShift(ir::ShiftOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op, RegisterFrame& frame) {
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
@@ -604,7 +507,7 @@ void AsmJitLoweringProvider::LoweringContext::processShift(ir::ShiftOperation* o
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
@@ -624,7 +527,7 @@ void AsmJitLoweringProvider::LoweringContext::processBinaryComp(ir::BinaryCompOp
 
 // ── Control flow ──────────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processIf(ir::IfOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, RegisterFrame& frame) {
 	auto condGp = toGp(frame.getValue(op->getValue()->getIdentifier()));
 	auto trueLabel = getOrCreateLabel(op->getTrueBlockInvocation().getBlock()->getIdentifier());
 	auto falseLabel = getOrCreateLabel(op->getFalseBlockInvocation().getBlock()->getIdentifier());
@@ -646,14 +549,14 @@ void AsmJitLoweringProvider::LoweringContext::processIf(ir::IfOperation* op, Reg
 	processBlock(op->getFalseBlockInvocation().getBlock(), frame);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processBranch(ir::BranchOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* op, RegisterFrame& frame) {
 	const auto& bi = op->getNextBlockInvocation();
 	processBlockInvocation(bi, frame);
 	cc.b(getOrCreateLabel(bi.getBlock()->getIdentifier()));
 	processBlock(bi.getBlock(), frame);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
 	if (op->hasReturnValue()) {
 		auto retReg = frame.getValue(op->getReturnValue()->getIdentifier());
 		if (std::holds_alternative<Vec>(retReg)) {
@@ -687,7 +590,7 @@ void AsmJitLoweringProvider::LoweringContext::processReturn(ir::ReturnOperation*
 	}
 }
 
-void AsmJitLoweringProvider::LoweringContext::processSelect(ir::SelectOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* op, RegisterFrame& frame) {
 	auto condGp = toGp(frame.getValue(op->getCondition()->getIdentifier()));
 	auto trueVal = frame.getValue(op->getTrueValue()->getIdentifier());
 	auto falseVal = frame.getValue(op->getFalseValue()->getIdentifier());
@@ -709,7 +612,7 @@ void AsmJitLoweringProvider::LoweringContext::processSelect(ir::SelectOperation*
 
 // ── Memory ────────────────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processLoad(ir::LoadOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, RegisterFrame& frame) {
 	auto addrGp = toGp(frame.getValue(op->getAddress()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 
@@ -752,7 +655,7 @@ void AsmJitLoweringProvider::LoweringContext::processLoad(ir::LoadOperation* op,
 	frame.setValue(op->getIdentifier(), result);
 }
 
-void AsmJitLoweringProvider::LoweringContext::processStore(ir::StoreOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op, RegisterFrame& frame) {
 	auto addrGp = toGp(frame.getValue(op->getAddress()->getIdentifier()));
 	auto valReg = frame.getValue(op->getValue()->getIdentifier());
 
@@ -782,7 +685,7 @@ void AsmJitLoweringProvider::LoweringContext::processStore(ir::StoreOperation* o
 	}
 }
 
-void AsmJitLoweringProvider::LoweringContext::processAlloca(ir::AllocaOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* op, RegisterFrame& frame) {
 	auto stackMem = cc.newStack(static_cast<uint32_t>(op->getSize()), 8 /*align*/);
 	auto ptrReg = cc.newIntPtr();
 	cc.loadAddressOf(ptrReg, stackMem);
@@ -791,7 +694,7 @@ void AsmJitLoweringProvider::LoweringContext::processAlloca(ir::AllocaOperation*
 
 // ── External function calls ───────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	for (auto* arg : op->getInputArguments()) {
@@ -832,7 +735,7 @@ void AsmJitLoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOper
 	}
 }
 
-void AsmJitLoweringProvider::LoweringContext::processIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	for (auto* arg : op->getInputArguments()) {
@@ -863,8 +766,8 @@ void AsmJitLoweringProvider::LoweringContext::processIndirectCall(ir::IndirectCa
 	}
 }
 
-void AsmJitLoweringProvider::LoweringContext::processFunctionAddressOf(ir::FunctionAddressOfOperation* op,
-                                                                       RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* op,
+                                                                     RegisterFrame& frame) {
 	auto reg = allocReg(Type::ptr);
 	auto it = funcNodes_.find(op->getFunctionName());
 	if (it != funcNodes_.end()) {
@@ -877,7 +780,7 @@ void AsmJitLoweringProvider::LoweringContext::processFunctionAddressOf(ir::Funct
 
 // ── Type conversion ───────────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processCast(ir::CastOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, RegisterFrame& frame) {
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	const Type srcType = op->getInput()->getStamp();
 	const Type dstType = op->getStamp();

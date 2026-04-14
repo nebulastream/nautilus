@@ -4,36 +4,8 @@
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
-#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
-#include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
-#include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
-#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
-#include "nautilus/compiler/ir/operations/CastOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
-#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
-#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
-#include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
-#include "nautilus/compiler/ir/operations/SelectOperation.hpp"
-#include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
 #include <unordered_set>
@@ -45,7 +17,7 @@ class FuncOp;
 namespace nautilus::compiler::mlir {
 
 class MLIRIntrinsicManager;
-class MLIRLoweringProvider {
+class MLIRLoweringProvider : public ir::OperationDispatcher<MLIRLoweringProvider> {
 public:
 	// A ValueFrame is hashmap that binds operation names to MLIR values.
 	// It is used to 'pass' values between mlir operations.
@@ -80,6 +52,9 @@ public:
 	std::vector<void*> getJitProxyTargetAddresses();
 
 private:
+	// Allow the CRTP dispatcher to call our private visitXxx hooks.
+	friend class ir::OperationDispatcher<MLIRLoweringProvider>;
+
 	MLIRIntrinsicManager& intrinsicManager;
 	// MLIR variables
 	::mlir::MLIRContext* context;
@@ -106,46 +81,38 @@ private:
 	 */
 	void generateMLIR(const ir::BasicBlock* basicBlock, ValueFrame& frame);
 
-	/**
-	 * @brief Calls the specific generate function based on currentNode's type.
-	 * @param Operation:  operation that the MLIRLoweringProvider generates MLIR code for.
-	 * @param frame: An unordered map that MLIR operations insert their resulting values, and identifiers in.
-	 */
-	void generateMLIR(const std::unique_ptr<ir::Operation>& operation, ValueFrame& frame);
-
 	void generateFunction(::mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& funcOp, ValueFrame& frame);
 	::mlir::func::FuncOp generateFunctionDefinitions(const ir::FunctionOperation& funcOp);
 
-	void generateMLIR(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
+	// Per-operation hooks invoked by OperationDispatcher::dispatch.
+	void visitConstInt(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
+	void visitConstFloat(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame);
+	void visitConstBoolean(ir::ConstBooleanOperation* constBooleanOp, ValueFrame& frame);
+	void visitConstPtr(ir::ConstPtrOperation* constPtrOperation, ValueFrame& frame);
 
-	void generateMLIR(ir::ConstFloatOperation* constFloatOp, ValueFrame& frame);
-
-	void generateMLIR(ir::ConstBooleanOperation* constBooleanOp, ValueFrame& frame);
-	void generateMLIR(ir::ConstPtrOperation* constPtrOperation, ValueFrame& frame);
-
-	void generateMLIR(ir::AddOperation* addIntOp, ValueFrame& frame);
-	void generateMLIR(ir::SubOperation* subIntOp, ValueFrame& frame);
-	void generateMLIR(ir::MulOperation* mulIntOp, ValueFrame& frame);
-	void generateMLIR(ir::DivOperation* divFloatOp, ValueFrame& frame);
-	void generateMLIR(ir::ModOperation* divFloatOp, ValueFrame& frame);
-	void generateMLIR(ir::StoreOperation* storeOp, ValueFrame& frame);
-	void generateMLIR(ir::LoadOperation* loadOp, ValueFrame& frame);
-	void generateMLIR(ir::IfOperation* ifOp, ValueFrame& frame);
-	void generateMLIR(ir::CompareOperation* compareOp, ValueFrame& frame);
-	void generateMLIR(ir::BranchOperation* branchOp, ValueFrame& frame);
-	void generateMLIR(ir::ReturnOperation* returnOp, ValueFrame& frame);
-	void generateMLIR(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame);
-	void generateMLIR(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame);
-	void generateMLIR(ir::OrOperation* orOperation, ValueFrame& frame);
-	void generateMLIR(ir::AndOperation* andOperation, ValueFrame& frame);
-	void generateMLIR(ir::NegateOperation* negateOperation, ValueFrame& frame);
-	void generateMLIR(ir::NotOperation* notOperation, ValueFrame& frame);
-	void generateMLIR(ir::SelectOperation* selectOperation, ValueFrame& frame);
-	void generateMLIR(ir::CastOperation* castOperation, ValueFrame& frame);
-	void generateMLIR(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
-	void generateMLIR(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
-	void generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame);
-	void generateMLIR(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame);
+	void visitAdd(ir::AddOperation* addIntOp, ValueFrame& frame);
+	void visitSub(ir::SubOperation* subIntOp, ValueFrame& frame);
+	void visitMul(ir::MulOperation* mulIntOp, ValueFrame& frame);
+	void visitDiv(ir::DivOperation* divFloatOp, ValueFrame& frame);
+	void visitMod(ir::ModOperation* divFloatOp, ValueFrame& frame);
+	void visitStore(ir::StoreOperation* storeOp, ValueFrame& frame);
+	void visitLoad(ir::LoadOperation* loadOp, ValueFrame& frame);
+	void visitIf(ir::IfOperation* ifOp, ValueFrame& frame);
+	void visitCompare(ir::CompareOperation* compareOp, ValueFrame& frame);
+	void visitBranch(ir::BranchOperation* branchOp, ValueFrame& frame);
+	void visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame);
+	void visitProxyCall(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame);
+	void visitIndirectCall(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame);
+	void visitOr(ir::OrOperation* orOperation, ValueFrame& frame);
+	void visitAnd(ir::AndOperation* andOperation, ValueFrame& frame);
+	void visitNegate(ir::NegateOperation* negateOperation, ValueFrame& frame);
+	void visitNot(ir::NotOperation* notOperation, ValueFrame& frame);
+	void visitSelect(ir::SelectOperation* selectOperation, ValueFrame& frame);
+	void visitCast(ir::CastOperation* castOperation, ValueFrame& frame);
+	void visitBinaryComp(ir::BinaryCompOperation* binaryCompOperation, ValueFrame& frame);
+	void visitShift(ir::ShiftOperation* shiftOperation, ValueFrame& frame);
+	void visitAlloca(ir::AllocaOperation* allocaOperation, ValueFrame& frame);
+	void visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp, ValueFrame& frame);
 	/**
 	 * @brief Generates a basic block inside of the current MLIR module. Used for control flow (if,loop).
 	 * @param blockInvocation:  basic block that is invocated.
