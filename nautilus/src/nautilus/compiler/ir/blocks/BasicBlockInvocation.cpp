@@ -16,24 +16,24 @@ const BasicBlock* BasicBlockInvocation::getBlock() const {
 }
 
 void BasicBlockInvocation::addArgument(Operation* argument) {
-	this->operations.emplace_back(argument);
+	inputs.emplace_back(argument);
 }
 
 void BasicBlockInvocation::removeArgument(uint64_t argumentIndex) {
-	operations.erase(operations.begin() + argumentIndex);
+	inputs.erase(inputs.begin() + argumentIndex);
 }
 
 void BasicBlockInvocation::replaceArgument(Operation* toReplace, Operation* replaceWith) {
-	std::replace(operations.begin(), operations.end(), toReplace, replaceWith);
+	std::replace(inputs.begin(), inputs.end(), toReplace, replaceWith);
 }
 
 void BasicBlockInvocation::replaceArgument(const Operation* toReplace, Operation* replaceWith) {
-	std::replace(operations.begin(), operations.end(), const_cast<Operation*>(toReplace), replaceWith);
+	std::replace(inputs.begin(), inputs.end(), const_cast<Operation*>(toReplace), replaceWith);
 }
 
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
-	for (uint64_t i = 0; i < operations.size(); i++) {
-		if (operations[i] == arg) {
+	for (uint64_t i = 0; i < inputs.size(); i++) {
+		if (inputs[i] == arg) {
 			return i;
 		}
 	}
@@ -41,7 +41,11 @@ int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
 }
 
 const std::vector<Operation*>& BasicBlockInvocation::getArguments() const {
-	return operations;
+	return inputs;
+}
+
+bool BasicBlockInvocation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::BlockInvocation;
 }
 
 } // namespace nautilus::compiler::ir

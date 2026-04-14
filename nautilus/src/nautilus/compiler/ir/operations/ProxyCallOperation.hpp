@@ -25,6 +25,8 @@ public:
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 
+	static bool classof(const Operation* op);
+
 private:
 	const std::string mangedFunctionSymbol;
 	const std::string functionName;

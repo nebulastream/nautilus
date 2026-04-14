@@ -14,6 +14,8 @@ public:
 	~BasicBlockArgument() override = default;
 
 	friend std::ostream& operator<<(std::ostream& os, const BasicBlockArgument& argument);
+
+	static bool classof(const Operation* op);
 };
 
 } // namespace nautilus::compiler::ir

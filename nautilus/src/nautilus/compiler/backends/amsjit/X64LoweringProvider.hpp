@@ -82,8 +82,8 @@ private:
 		std::shared_ptr<ir::IRGraph> ir;
 		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
-		std::unordered_map<std::string, ::asmjit::Label> blockLabels;
-		std::unordered_set<std::string> processedBlocks;
+		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
+		std::unordered_set<ir::BlockIdentifier> processedBlocks;
 
 		static ::asmjit::TypeId getTypeId(Type t);
 		static bool isFloatType(Type t);
@@ -94,7 +94,7 @@ private:
 		static ::asmjit::x86::Gp toGp(const AsmReg& r);
 		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
 
-		::asmjit::Label getOrCreateLabel(const std::string& blockId);
+		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
 
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);

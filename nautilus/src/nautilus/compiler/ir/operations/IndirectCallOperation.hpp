@@ -27,6 +27,8 @@ public:
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 
+	static bool classof(const Operation* op);
+
 private:
 	FunctionAttributes fnAttrs;
 };

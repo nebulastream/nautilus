@@ -31,4 +31,8 @@ void SelectOperation::setFalseValue(Operation* newFalseValue) {
 	inputs[2] = newFalseValue;
 }
 
+bool SelectOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::SelectOp;
+}
+
 } // namespace nautilus::compiler::ir

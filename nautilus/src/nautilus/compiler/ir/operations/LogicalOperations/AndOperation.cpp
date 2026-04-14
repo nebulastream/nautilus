@@ -8,7 +8,7 @@ AndOperation::AndOperation(OperationIdentifier identifier, Operation* leftInput,
 }
 
 bool AndOperation::classof(const Operation* Op) {
-	return Op->getOperationType() == OperationType::AddOp;
+	return Op->getOperationType() == OperationType::AndOp;
 }
 
 } // namespace nautilus::compiler::ir

@@ -38,6 +38,8 @@ public:
 
 	std::string getComparatorAsString();
 
+	static bool classof(const Operation* op);
+
 private:
 	Comparator comparator;
 };

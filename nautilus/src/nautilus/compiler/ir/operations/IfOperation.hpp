@@ -34,6 +34,8 @@ public:
 
 	double getProbability() const;
 
+	static bool classof(const Operation* op);
+
 private:
 	BasicBlockInvocation trueBlockInvocation;
 	BasicBlockInvocation falseBlockInvocation;

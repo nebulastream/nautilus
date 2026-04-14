@@ -3,10 +3,38 @@
 
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <compare>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 namespace nautilus::compiler::ir {
+
+/**
+ * @brief Strong typedef for a BasicBlock id.
+ *
+ * Mirrors `OperationIdentifier`: a `constexpr` value type wrapping a
+ * `uint32_t`, so passing it by value is trivial and raw integer ids
+ * cannot be accidentally mixed with op ids in containers or function
+ * signatures. Implicit construction from `uint32_t` is allowed so
+ * call sites that already hold a raw block-id (e.g. the tracing layer)
+ * don't need per-site conversions.
+ */
+class BlockIdentifier {
+public:
+	constexpr BlockIdentifier(uint32_t id) : id(id) {
+	}
+
+	constexpr auto operator<=>(const BlockIdentifier&) const = default;
+	constexpr bool operator==(const BlockIdentifier&) const = default;
+
+	[[nodiscard]] constexpr uint32_t getId() const {
+		return id;
+	}
+
+private:
+	uint32_t id;
+};
 
 class BasicBlock {
 public:
@@ -15,11 +43,11 @@ public:
 	 * @param Operations: A list of Operations that are executed in the BasicBlock.
 	 * @param nextBlocks : The BasicBlock that is next in the control flow of the execution.
 	 */
-	explicit BasicBlock(uint32_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments);
+	explicit BasicBlock(BlockIdentifier identifier, std::vector<std::unique_ptr<BasicBlockArgument>> arguments);
 
 	virtual ~BasicBlock();
 
-	[[nodiscard]] const std::string getIdentifier() const;
+	[[nodiscard]] BlockIdentifier getIdentifier() const;
 
 	[[nodiscard]] const std::vector<std::unique_ptr<Operation>>& getOperations() const;
 
@@ -54,10 +82,6 @@ public:
 
 	void addOperationBefore(Operation* before, std::unique_ptr<Operation>& operation);
 
-	void addPredecessor(BasicBlock* predecessor);
-
-	std::vector<BasicBlock*>& getPredecessors();
-
 	uint64_t getIndexOfArgument(Operation* arg);
 
 	void replaceTerminatorOperation(Operation* newTerminatorOperation);
@@ -65,12 +89,20 @@ public:
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();
 
 private:
-	uint32_t identifier;
+	BlockIdentifier identifier;
 	std::vector<std::unique_ptr<Operation>> operations;
 	std::vector<std::unique_ptr<BasicBlockArgument>> arguments;
-	std::vector<BasicBlock*> predecessors;
 };
 
 using BasicBlockPtr = std::shared_ptr<BasicBlock>;
 
 } // namespace nautilus::compiler::ir
+
+namespace std {
+template <>
+struct hash<nautilus::compiler::ir::BlockIdentifier> {
+	std::size_t operator()(nautilus::compiler::ir::BlockIdentifier k) const noexcept {
+		return std::hash<uint32_t> {}(k.getId());
+	}
+};
+} // namespace std

@@ -40,4 +40,8 @@ const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
 }
 
+bool ProxyCallOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::ProxyCallOp;
+}
+
 } // namespace nautilus::compiler::ir

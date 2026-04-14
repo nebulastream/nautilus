@@ -13,7 +13,7 @@ public:
 
 	~ShiftOperation() override = default;
 
-	bool classof(const Operation* Op);
+	static bool classof(const Operation* Op);
 
 	ShiftType getType() const;
 

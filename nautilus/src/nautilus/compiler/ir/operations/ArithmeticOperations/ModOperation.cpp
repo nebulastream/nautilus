@@ -9,7 +9,7 @@ ModOperation::ModOperation(OperationIdentifier identifier, Operation* leftInput,
 }
 
 bool ModOperation::classof(const Operation* Op) {
-	return Op->getOperationType() == OperationType::DivOp;
+	return Op->getOperationType() == OperationType::ModOp;
 }
 
 } // namespace nautilus::compiler::ir

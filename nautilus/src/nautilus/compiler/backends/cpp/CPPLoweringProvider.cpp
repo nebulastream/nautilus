@@ -155,7 +155,7 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 			}
 		}
 		// create bytecode block;
-		auto blockName = "Block_" + block->getIdentifier();
+		auto blockName = "Block_" + std::to_string(block->getIdentifier().getId());
 		short blockIndex = blocks.size();
 		auto& currentBlock = blocks.emplace_back();
 		currentBlock << blockName << ":\n";

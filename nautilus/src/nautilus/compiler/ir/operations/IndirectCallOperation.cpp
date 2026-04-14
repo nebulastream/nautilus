@@ -26,4 +26,8 @@ const FunctionAttributes& IndirectCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
 }
 
+bool IndirectCallOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::IndirectCallOp;
+}
+
 } // namespace nautilus::compiler::ir

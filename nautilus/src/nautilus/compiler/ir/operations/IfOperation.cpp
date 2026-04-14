@@ -58,4 +58,8 @@ bool IfOperation::hasFalseCase() {
 double IfOperation::getProbability() const {
 	return this->probability;
 }
+
+bool IfOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::IfOp;
+}
 } // namespace nautilus::compiler::ir

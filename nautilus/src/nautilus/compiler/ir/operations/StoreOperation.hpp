@@ -17,5 +17,7 @@ public:
 	void setValue(Operation* newValue);
 
 	void setAddress(Operation* newAddress);
+
+	static bool classof(const Operation* op);
 };
 } // namespace nautilus::compiler::ir

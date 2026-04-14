@@ -14,8 +14,8 @@ void* ConstPtrOperation::getValue() const {
 	return constantValue;
 }
 
-bool ConstPtrOperation::classof(const Operation*) {
-	return false;
+bool ConstPtrOperation::classof(const Operation* Op) {
+	return Op->getOperationType() == OperationType::ConstPtrOp;
 }
 
 } // namespace nautilus::compiler::ir
