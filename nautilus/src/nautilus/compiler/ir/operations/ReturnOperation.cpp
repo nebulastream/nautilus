@@ -23,4 +23,8 @@ bool ReturnOperation::hasReturnValue() const {
 	return stamp != Type::v;
 }
 
+bool ReturnOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::ReturnOp;
+}
+
 } // namespace nautilus::compiler::ir

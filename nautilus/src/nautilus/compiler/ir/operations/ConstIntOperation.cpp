@@ -14,8 +14,8 @@ int64_t ConstIntOperation::getValue() const {
 	return constantValue;
 }
 
-bool ConstIntOperation::classof(const Operation*) {
-	return false;
+bool ConstIntOperation::classof(const Operation* Op) {
+	return Op->getOperationType() == OperationType::ConstIntOp;
 }
 
 } // namespace nautilus::compiler::ir

@@ -14,7 +14,7 @@ double ConstFloatOperation::getValue() const {
 }
 
 bool ConstFloatOperation::classof(const Operation* Op) {
-	return Op->getOperationType() == OperationType::ConstIntOp;
+	return Op->getOperationType() == OperationType::ConstFloatOp;
 }
 
 } // namespace nautilus::compiler::ir

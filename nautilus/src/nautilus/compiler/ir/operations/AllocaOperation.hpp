@@ -12,6 +12,8 @@ public:
 
 	size_t getSize() const;
 
+	static bool classof(const Operation* op);
+
 private:
 	size_t allocationSize;
 };

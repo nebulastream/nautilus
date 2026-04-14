@@ -7,7 +7,7 @@
 #include <utility>
 
 namespace nautilus::compiler::ir {
-BasicBlock::BasicBlock(uint32_t identifier, std::vector<std::unique_ptr<BasicBlockArgument>>& arguments)
+BasicBlock::BasicBlock(BlockIdentifier identifier, std::vector<std::unique_ptr<BasicBlockArgument>> arguments)
     : identifier(identifier), operations(), arguments(std::move(arguments)) {
 }
 
@@ -19,16 +19,12 @@ void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation
 		nextBlockIn.addArgument(op);
 	}
 	addOperation(std::move(branchOp));
-	// add this block as a predecessor to the next block
-	// Todo #3167 : can we use this to replace the addPredecessor pass? (also:
-	// addTrueBlock, and addFalseBlock)
-	// nextBlock->addPredecessor(shared_from_this());
 }
 
 BasicBlock::~BasicBlock() = default;
 
-const std::string BasicBlock::getIdentifier() const {
-	return std::to_string(identifier);
+BlockIdentifier BasicBlock::getIdentifier() const {
+	return identifier;
 }
 
 const std::vector<std::unique_ptr<Operation>>& BasicBlock::getOperations() const {
@@ -64,14 +60,6 @@ void BasicBlock::replaceTerminatorOperation(Operation* loopOperation) {
 BasicBlock* BasicBlock::addOperation(std::unique_ptr<Operation> operation) {
 	operations.emplace_back(std::move(operation));
 	return this;
-}
-
-void BasicBlock::addPredecessor(BasicBlock* predecessor) {
-	this->predecessors.emplace_back(predecessor);
-}
-
-std::vector<BasicBlock*>& BasicBlock::getPredecessors() {
-	return predecessors;
 }
 
 /* void BasicBlock::replaceOperation(size_t operationIndex, Operation

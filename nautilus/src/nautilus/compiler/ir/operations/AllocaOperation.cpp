@@ -13,4 +13,8 @@ size_t AllocaOperation::getSize() const {
 	return allocationSize;
 }
 
+bool AllocaOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::AllocaOp;
+}
+
 } // namespace nautilus::compiler::ir

@@ -19,6 +19,8 @@ public:
 	const std::string& getFunctionName() const;
 	void* getFunctionPtr();
 
+	static bool classof(const Operation* op);
+
 private:
 	const std::string functionSymbol;
 	const std::string functionName;

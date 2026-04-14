@@ -31,6 +31,8 @@ public:
 	void setCondition(Operation* newCondition);
 	void setTrueValue(Operation* newTrueValue);
 	void setFalseValue(Operation* newFalseValue);
+
+	static bool classof(const Operation* op);
 };
 
 } // namespace nautilus::compiler::ir

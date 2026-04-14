@@ -3,12 +3,16 @@
 
 namespace nautilus::compiler::ir {
 
-LoadOperation::LoadOperation(const OperationIdentifier& identifier, Operation* address, Type type)
+LoadOperation::LoadOperation(OperationIdentifier identifier, Operation* address, Type type)
     : Operation(OperationType::LoadOp, identifier, type, {address}) {
 }
 
 const Operation* LoadOperation::getAddress() const {
 	return inputs[0];
+}
+
+bool LoadOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::LoadOp;
 }
 
 } // namespace nautilus::compiler::ir

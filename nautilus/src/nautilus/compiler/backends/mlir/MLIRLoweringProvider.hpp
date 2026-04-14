@@ -94,7 +94,8 @@ private:
 	::mlir::Value globalString;
 	::mlir::FlatSymbolRefAttr printfReference;
 	llvm::StringMap<::mlir::Value> printfStrings;
-	std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
+	std::unordered_map<ir::BlockIdentifier, ::mlir::Block*>
+	    blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
 
 	/**

@@ -4,6 +4,8 @@
 #include "nautilus/JITCompiler.hpp"
 #include <memory>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace nautilus::compiler::ir {
 
@@ -17,8 +19,6 @@ public:
 	IRGraph(const CompilationUnitID& id);
 
 	~IRGraph() = default;
-
-	std::unique_ptr<FunctionOperation>& addRootOperation(std::unique_ptr<FunctionOperation> rootOperation);
 
 	/**
 	 * @brief Adds a function operation to the IR graph
@@ -34,7 +34,7 @@ public:
 	const std::vector<std::unique_ptr<FunctionOperation>>& getFunctionOperations() const;
 
 	/**
-	 * @brief Gets a specific function operation by name
+	 * @brief Gets a specific function operation by name in O(1) via an internal index.
 	 * @param name The name of the function
 	 * @return Pointer to the function operation if found, nullptr otherwise
 	 */
@@ -45,8 +45,10 @@ public:
 	[[nodiscard]] const CompilationUnitID& getId() const;
 
 private:
-	std::unique_ptr<FunctionOperation> rootOperation;
 	std::vector<std::unique_ptr<FunctionOperation>> functionOperations;
+	// Name -> function index. The string_view is backed by the name field owned
+	// by FunctionOperation, which is stable for the lifetime of the graph.
+	std::unordered_map<std::string_view, FunctionOperation*> functionOperationsByName;
 	const CompilationUnitID id;
 };
 

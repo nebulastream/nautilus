@@ -98,7 +98,7 @@ private:
 		std::unordered_map<std::string, void*> internalFunctionPtrs;
 		std::string targetFunctionName = "execute";
 		RegisterProvider registerProvider;
-		std::unordered_map<std::string, short> activeBlocks;
+		std::unordered_map<ir::BlockIdentifier, short> activeBlocks;
 		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 		std::unordered_set<ir::OperationIdentifier> functionArgs;
 

@@ -8,6 +8,6 @@ OrOperation::OrOperation(OperationIdentifier identifier, Operation* leftInput, O
 }
 
 bool OrOperation::classof(const Operation* Op) {
-	return Op->getOperationType() == OperationType::AddOp;
+	return Op->getOperationType() == OperationType::OrOp;
 }
 } // namespace nautilus::compiler::ir

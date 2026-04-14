@@ -63,4 +63,8 @@ std::string CompareOperation::getComparatorAsString() {
 	return "";
 }
 
+bool CompareOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::CompareOp;
+}
+
 } // namespace nautilus::compiler::ir

@@ -22,4 +22,8 @@ void* FunctionAddressOfOperation::getFunctionPtr() {
 	return functionPtr;
 }
 
+bool FunctionAddressOfOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::FunctionAddressOfOp;
+}
+
 } // namespace nautilus::compiler::ir

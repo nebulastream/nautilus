@@ -14,6 +14,8 @@ public:
 	Operation* getInput() const;
 
 	void setInput(Operation* newInput);
+
+	static bool classof(const Operation* op);
 };
 
 } // namespace nautilus::compiler::ir

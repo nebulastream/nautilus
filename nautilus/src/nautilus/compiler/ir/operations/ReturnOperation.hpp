@@ -17,5 +17,7 @@ public:
 	void setReturnValue(Operation* newReturnValue);
 
 	bool hasReturnValue() const;
+
+	static bool classof(const Operation* op);
 };
 } // namespace nautilus::compiler::ir

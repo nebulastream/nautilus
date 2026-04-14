@@ -24,4 +24,8 @@ void StoreOperation::setAddress(Operation* newAddress) {
 	inputs[1] = newAddress;
 }
 
+bool StoreOperation::classof(const Operation* op) {
+	return op->getOperationType() == OperationType::StoreOp;
+}
+
 } // namespace nautilus::compiler::ir

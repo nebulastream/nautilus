@@ -1,8 +1,9 @@
 
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 
 namespace nautilus::compiler::ir {
-Operation::Operation(OperationType opType, const OperationIdentifier& identifier, Type stamp,
+Operation::Operation(OperationType opType, OperationIdentifier identifier, Type stamp,
                      const std::vector<Operation*>& inputs)
     : opType(opType), identifier(identifier), stamp(stamp), inputs(inputs) {
 }
@@ -29,51 +30,38 @@ const Type& Operation::getStamp() const {
 	return stamp;
 }
 
-OperationIdentifier::OperationIdentifier(uint32_t ir) : id(ir) {
-}
-
-uint32_t OperationIdentifier::getId() const {
-	return id;
-}
-
-bool OperationIdentifier::operator==(const OperationIdentifier& rhs) const {
-	return id == rhs.id;
-}
-
-bool OperationIdentifier::operator!=(const OperationIdentifier& rhs) const {
-	return !(rhs == *this);
-}
-
 std::string OperationIdentifier::toString() const {
 	return "$" + std::to_string(id);
 }
 
-bool OperationIdentifier::operator<(const OperationIdentifier& rhs) const {
-	if (id < rhs.id)
-		return true;
-	return false;
-}
-
-bool OperationIdentifier::operator>(const OperationIdentifier& rhs) const {
-	return rhs < *this;
-}
-
-bool OperationIdentifier::operator<=(const OperationIdentifier& rhs) const {
-	return !(rhs < *this);
-}
-
-bool OperationIdentifier::operator>=(const OperationIdentifier& rhs) const {
-	return !(*this < rhs);
-}
-
 bool Operation::isConstOperation() const {
-	return opType == OperationType::ConstBooleanOp || opType == OperationType::ConstFloatOp ||
-	       opType == OperationType::ConstIntOp;
+	// Note: historically only the int/float/bool const ops were considered
+	// "const" — ConstPtrOp was not. The property table reports ConstPtrOp as
+	// Constant too, so gate that out here to preserve behavior.
+	return opType != OperationType::ConstPtrOp && isConstantOp(opType);
 }
 
-BinaryOperation::BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type,
-                                 Operation* left, Operation* right)
+BinaryOperation::BinaryOperation(OperationType opType, OperationIdentifier identifier, Type type, Operation* left,
+                                 Operation* right)
     : Operation(opType, identifier, type, {left, right}) {
+}
+
+bool BinaryOperation::classof(const Operation* op) {
+	switch (op->getOperationType()) {
+	case OperationType::AddOp:
+	case OperationType::SubOp:
+	case OperationType::MulOp:
+	case OperationType::DivOp:
+	case OperationType::ModOp:
+	case OperationType::AndOp:
+	case OperationType::OrOp:
+	case OperationType::ShiftOp:
+	case OperationType::CompareOp:
+	case OperationType::BinaryComp:
+		return true;
+	default:
+		return false;
+	}
 }
 
 Operation* BinaryOperation::getLeftInput() const {

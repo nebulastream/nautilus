@@ -228,16 +228,17 @@ protected:
 		for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 			if (writeBlocksOnly) {
 				auto& op = block->getOperations().back();
+				const auto fromId = std::to_string(block->getIdentifier().getId());
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
 					auto ifOp = as<IfOperation>(op);
-					auto trueBlock = ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
-					writeEdge(block->getIdentifier(), trueBlock, "control", "true");
-					auto falseBlock = ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
-					writeEdge(block->getIdentifier(), falseBlock, "control", "false");
+					auto trueBlock = std::to_string(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier().getId());
+					writeEdge(fromId, trueBlock, "control", "true");
+					auto falseBlock = std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
+					writeEdge(fromId, falseBlock, "control", "false");
 				} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 					auto branchOp = as<BranchOperation>(op);
-					auto falseBlock = branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
-					writeEdge(block->getIdentifier(), falseBlock, "control", "");
+					auto falseBlock = std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
+					writeEdge(fromId, falseBlock, "control", "");
 				}
 			} else {
 				for (const auto& op : block->getOperations()) {
@@ -268,7 +269,7 @@ protected:
 
 			// create control-flow edges
 			for (const auto& blocks : graph->getFunctionOperations()[0]->getBasicBlocks()) {
-				std::string from = "start_" + blocks->getIdentifier();
+				std::string from = "start_" + std::to_string(blocks->getIdentifier().getId());
 				for (const auto& op : blocks->getOperations()) {
 					if (isControlFlowOp(op.get())) {
 						const auto& to = nodeIdMap[op.get()];
@@ -278,13 +279,16 @@ protected:
 
 					if (op->getOperationType() == Operation::OperationType::IfOp) {
 						auto ifOp = as<IfOperation>(op);
-						std::string toTrue = "start_" + ifOp->getTrueBlockInvocation().getBlock()->getIdentifier();
+						std::string toTrue =
+						    "start_" + std::to_string(ifOp->getTrueBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, toTrue, "control", "true");
-						std::string toFalse = "start_" + ifOp->getFalseBlockInvocation().getBlock()->getIdentifier();
+						std::string toFalse =
+						    "start_" + std::to_string(ifOp->getFalseBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, toFalse, "control", "false");
 					} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 						auto branchOp = as<BranchOperation>(op);
-						std::string to = "start_" + branchOp->getNextBlockInvocation().getBlock()->getIdentifier();
+						std::string to =
+						    "start_" + std::to_string(branchOp->getNextBlockInvocation().getBlock()->getIdentifier().getId());
 						writeEdge(from, to, "control", "");
 					}
 				}
@@ -365,23 +369,24 @@ protected:
 	}
 
 	void writeNodesForBlock(const std::unique_ptr<BasicBlock>& block) {
-		writeNode("  ", "Start", "start_" + block->getIdentifier(), "control");
+		const auto blockIdStr = std::to_string(block->getIdentifier().getId());
+		writeNode("  ", "Start", "start_" + blockIdStr, "control");
 		for (const auto& op : block->getArguments()) {
 			std::string indent = "  ";
-			writeNodeForOp(indent, block->getIdentifier(), op.get());
+			writeNodeForOp(indent, blockIdStr, op.get());
 		}
 
 		for (const auto& op : block->getOperations()) {
 			std::string indent = "  ";
-			writeNodeForOp(indent, block->getIdentifier(), op.get());
+			writeNodeForOp(indent, blockIdStr, op.get());
 
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
-				writeNodeForOutputOp(indent, block->getIdentifier(), &ifOp->getTrueBlockInvocation());
-				writeNodeForOutputOp(indent, block->getIdentifier(), &ifOp->getFalseBlockInvocation());
+				writeNodeForOutputOp(indent, blockIdStr, &ifOp->getTrueBlockInvocation());
+				writeNodeForOutputOp(indent, blockIdStr, &ifOp->getFalseBlockInvocation());
 			} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 				auto branchOp = as<BranchOperation>(op);
-				writeNodeForOutputOp(indent, block->getIdentifier(), &branchOp->getNextBlockInvocation());
+				writeNodeForOutputOp(indent, blockIdStr, &branchOp->getNextBlockInvocation());
 			}
 		}
 	}
@@ -390,12 +395,13 @@ protected:
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
 			for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+				const auto blockIdStr = std::to_string(block->getIdentifier().getId());
 				if (!drawBlocksOnly) {
-					startSubgraph(block->getIdentifier());
+					startSubgraph(blockIdStr);
 					writeNodesForBlock(block);
 					endSubgraph();
 				} else {
-					writeNode("  ", "Block" + block->getIdentifier(), block->getIdentifier(), "control");
+					writeNode("  ", "Block" + blockIdStr, blockIdStr, "control");
 				}
 			}
 		} else {

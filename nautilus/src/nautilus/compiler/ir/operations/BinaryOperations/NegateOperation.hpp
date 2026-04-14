@@ -13,6 +13,6 @@ public:
 
 	void setInput(Operation* newInput);
 
-	bool classof(const Operation* Op);
+	static bool classof(const Operation* Op);
 };
 } // namespace nautilus::compiler::ir

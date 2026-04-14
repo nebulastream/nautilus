@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/tracing/Types.hpp"
+#include <compare>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -11,25 +12,17 @@ namespace nautilus::compiler::ir {
 
 class OperationIdentifier {
 public:
-	OperationIdentifier(uint32_t id);
+	constexpr OperationIdentifier(uint32_t id) : id(id) {
+	}
 
-	bool operator==(const OperationIdentifier& rhs) const;
+	constexpr auto operator<=>(const OperationIdentifier&) const = default;
+	constexpr bool operator==(const OperationIdentifier&) const = default;
 
-	bool operator!=(const OperationIdentifier& rhs) const;
+	[[nodiscard]] std::string toString() const;
 
-	friend std::hash<OperationIdentifier>;
-
-	std::string toString() const;
-
-	bool operator<(const OperationIdentifier& rhs) const;
-
-	bool operator>(const OperationIdentifier& rhs) const;
-
-	bool operator<=(const OperationIdentifier& rhs) const;
-
-	bool operator>=(const OperationIdentifier& rhs) const;
-
-	uint32_t getId() const;
+	[[nodiscard]] constexpr uint32_t getId() const {
+		return id;
+	}
 
 private:
 	uint32_t id;
@@ -71,7 +64,7 @@ public:
 		FunctionAddressOfOp,
 	};
 
-	explicit Operation(OperationType opType, const OperationIdentifier& identifier, Type type,
+	explicit Operation(OperationType opType, OperationIdentifier identifier, Type type,
 	                   const std::vector<Operation*>& inputs = {});
 
 	explicit Operation(OperationType opType, Type type, const std::vector<Operation*>& inputs = {});
@@ -93,7 +86,7 @@ public:
 
 	template <typename OP>
 	const OP* dynCast() const {
-		return dynamic_cast<const OP*>(this);
+		return OP::classof(this) ? static_cast<const OP*>(this) : nullptr;
 	}
 
 protected:
@@ -102,6 +95,36 @@ protected:
 	const Type stamp;
 	std::vector<Operation*> inputs;
 };
+
+/**
+ * @brief LLVM-style tag-based type tests. Every Operation subclass must expose
+ * `static bool classof(const Operation*)` returning true for the op types it
+ * represents. These helpers then avoid RTTI / dynamic_cast entirely.
+ */
+template <typename T>
+bool isa(const Operation* op) {
+	return op != nullptr && T::classof(op);
+}
+
+template <typename T>
+const T* dyn_cast(const Operation* op) {
+	return isa<T>(op) ? static_cast<const T*>(op) : nullptr;
+}
+
+template <typename T>
+T* dyn_cast(Operation* op) {
+	return isa<T>(op) ? static_cast<T*>(op) : nullptr;
+}
+
+template <typename T>
+const T* cast(const Operation* op) {
+	return static_cast<const T*>(op);
+}
+
+template <typename T>
+T* cast(Operation* op) {
+	return static_cast<T*>(op);
+}
 
 template <typename T>
 T* as(const Operation* op) {
@@ -115,8 +138,7 @@ T* as(const std::unique_ptr<Operation>& op) {
 
 class BinaryOperation : public Operation {
 public:
-	BinaryOperation(OperationType opType, const OperationIdentifier& identifier, Type type, Operation* left,
-	                Operation* right);
+	BinaryOperation(OperationType opType, OperationIdentifier identifier, Type type, Operation* left, Operation* right);
 
 	Operation* getLeftInput() const;
 
@@ -125,6 +147,8 @@ public:
 	void setLeftInput(Operation* newLeftInput);
 
 	void setRightInput(Operation* newRightInput);
+
+	static bool classof(const Operation* op);
 };
 
 } // namespace nautilus::compiler::ir
@@ -132,10 +156,8 @@ public:
 namespace std {
 template <>
 struct hash<nautilus::compiler::ir::OperationIdentifier> {
-	std::size_t operator()(const nautilus::compiler::ir::OperationIdentifier& k) const {
-		using std::hash;
-		using std::size_t;
-		return hash<uint32_t>()(k.id);
+	std::size_t operator()(nautilus::compiler::ir::OperationIdentifier k) const noexcept {
+		return std::hash<uint32_t> {}(k.getId());
 	}
 };
 } // namespace std

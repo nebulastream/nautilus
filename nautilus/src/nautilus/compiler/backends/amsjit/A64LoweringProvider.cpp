@@ -117,7 +117,7 @@ Vec AsmJitLoweringProvider::LoweringContext::toVec(const AsmReg& r) {
 
 // ── Label management ──────────────────────────────────────────────────────────
 
-Label AsmJitLoweringProvider::LoweringContext::getOrCreateLabel(const std::string& blockId) {
+Label AsmJitLoweringProvider::LoweringContext::getOrCreateLabel(ir::BlockIdentifier blockId) {
 	auto it = blockLabels.find(blockId);
 	if (it != blockLabels.end())
 		return it->second;

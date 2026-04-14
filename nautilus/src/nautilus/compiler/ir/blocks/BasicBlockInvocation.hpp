@@ -30,9 +30,13 @@ public:
 	 */
 	int getOperationArgIndex(Operation*);
 
+	static bool classof(const Operation* op);
+
 private:
+	// Arguments are stored in the base Operation::inputs vector — block-argument
+	// edges are real SSA value edges, so generic passes that walk getInputs()
+	// see them automatically without a special case.
 	BasicBlock* basicBlock;
-	std::vector<Operation*> operations;
 };
 
 } // namespace nautilus::compiler::ir

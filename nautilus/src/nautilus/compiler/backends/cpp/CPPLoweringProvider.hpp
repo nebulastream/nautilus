@@ -61,7 +61,7 @@ private:
 		Code functions;
 		std::vector<Code> blocks;
 		std::shared_ptr<ir::IRGraph> ir;
-		std::unordered_map<std::string, std::string> activeBlocks;
+		std::unordered_map<ir::BlockIdentifier, std::string> activeBlocks;
 		std::unordered_set<std::string> functionNames;
 		std::string returnType;
 

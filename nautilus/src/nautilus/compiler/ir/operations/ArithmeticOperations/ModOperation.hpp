@@ -11,6 +11,6 @@ public:
 
 	~ModOperation() override = default;
 
-	bool classof(const Operation* Op);
+	static bool classof(const Operation* Op);
 };
 } // namespace nautilus::compiler::ir

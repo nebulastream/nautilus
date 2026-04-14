@@ -66,9 +66,9 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(trace->getBlocks().front());
-	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {},
-	                                                             std::vector<std::string> {}, returnType);
-	ir->addRootOperation(std::move(functionOperation));
+	auto functionOperation = std::make_unique<FunctionOperation>(
+	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
+	ir->addFunctionOperation(std::move(functionOperation));
 	return ir;
 }
 
@@ -83,8 +83,8 @@ TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string
 	processBlock(trace->getBlocks().front());
 
 	// Create and return the function operation
-	auto functionOperation = std::make_unique<FunctionOperation>(functionName, currentBasicBlocks, std::vector<Type> {},
-	                                                             std::vector<std::string> {}, returnType);
+	auto functionOperation = std::make_unique<FunctionOperation>(
+	    functionName, std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
 	return functionOperation;
 }
 
@@ -98,7 +98,8 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 		blockFrame.setValue(argumentIdentifier, blockArgument.get());
 		blockArguments.emplace_back(std::move(blockArgument));
 	}
-	auto& irBasicBlock = currentBasicBlocks.emplace_back(std::make_unique<BasicBlock>(block.blockId, blockArguments));
+	auto& irBasicBlock =
+	    currentBasicBlocks.emplace_back(std::make_unique<BasicBlock>(block.blockId, std::move(blockArguments)));
 	auto irBasicBlockPtr = irBasicBlock.get();
 
 	blockMap[block.blockId] = irBasicBlockPtr;
