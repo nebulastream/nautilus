@@ -34,13 +34,22 @@ private:
 /**
  * @brief Base class for all IR operations.
  *
- * Operation inputs are stored as a raw pointer / count pair into an
- * Operation* array that is allocated from the surrounding `common::Arena`.
- * The pointer is stable for the lifetime of the arena (the same lifetime
- * the Operation itself enjoys), so storing inputs out-of-line costs the
- * IR no extra cache pressure compared to a `std::vector` while removing
+ * Operation inputs are stored as a `std::span<Operation*>` that points
+ * into a buffer allocated from the surrounding `common::Arena`. The
+ * buffer is stable for the arena's lifetime (the same lifetime the
+ * Operation itself enjoys), so storing inputs out-of-line costs the IR
+ * no extra cache pressure compared to a `std::vector` while removing
  * the per-operation heap allocation, capacity word, and dynamic
  * destruction the vector previously required.
+ *
+ * The vast majority of IR operations have a fixed arity — `AddOp` is
+ * always binary, `CastOp` is always unary, `SelectOp` is always
+ * ternary. The span is assigned once in the constructor and then only
+ * the individual `Operation*` slots are mutated (by `setLeftInput` and
+ * friends). Only `BasicBlockInvocation` (which grows via `addArgument`)
+ * and `ProxyCallOperation::setInputArguments` ever re-seat the span
+ * itself; they do so by re-assigning the protected `inputs` member to
+ * a span over a freshly allocated arena buffer.
  *
  * Operation has a non-virtual destructor: every derived type knows its
  * own static type at construction time (the arena's `create<T>` call
@@ -89,7 +98,7 @@ public:
 
 	/// Constructs an Operation that has no SSA inputs.
 	Operation(OperationType opType, OperationIdentifier identifier, Type type) noexcept
-	    : opType(opType), identifier(identifier), stamp(type), inputs(nullptr), numInputs(0) {
+	    : opType(opType), identifier(identifier), stamp(type), inputs() {
 	}
 
 	/// Convenience constructor (no identifier, no inputs).
@@ -100,17 +109,13 @@ public:
 	/// arena-allocated array.
 	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
 	          std::initializer_list<Operation*> ins)
-	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins.size())),
-	      numInputs(static_cast<uint32_t>(ins.size())) {
-		std::copy(ins.begin(), ins.end(), inputs);
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins)) {
 	}
 
 	/// Variable-length input constructor (used by call-like operations).
 	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
 	          std::span<Operation* const> ins)
-	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins.size())),
-	      numInputs(static_cast<uint32_t>(ins.size())) {
-		std::copy(ins.begin(), ins.end(), inputs);
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins)) {
 	}
 
 	/// Non-virtual destructor (see class comment).
@@ -132,7 +137,7 @@ public:
 
 	/// Returns a non-owning view over the SSA inputs of this operation.
 	std::span<Operation* const> getInputs() const noexcept {
-		return {inputs, numInputs};
+		return inputs;
 	}
 
 	template <typename OP>
@@ -141,29 +146,29 @@ public:
 	}
 
 protected:
-	/// Allocates a fresh, uninitialised Operation* array of the requested
-	/// size from @p arena.  Returns nullptr when @p count is zero so the
-	/// arena does not get hit with an empty allocation.
-	static Operation** allocateInputs(common::Arena& arena, std::size_t count) {
+	/// Copies @p ins into a fresh arena-allocated buffer and returns a
+	/// span over it.  Returns an empty span when @p ins is empty so the
+	/// arena is not hit with a zero-length allocation.
+	template <typename Range>
+	static std::span<Operation*> allocateInputs(common::Arena& arena, const Range& ins) {
+		const std::size_t count = std::size(ins);
 		if (count == 0) {
-			return nullptr;
+			return {};
 		}
-		return static_cast<Operation**>(arena.allocate(sizeof(Operation*) * count, alignof(Operation*)));
-	}
-
-	Operation* getInput(std::size_t i) const {
-		return inputs[i];
-	}
-
-	void setInput(std::size_t i, Operation* op) {
-		inputs[i] = op;
+		auto* buf = static_cast<Operation**>(arena.allocate(sizeof(Operation*) * count, alignof(Operation*)));
+		std::copy(std::begin(ins), std::end(ins), buf);
+		return {buf, count};
 	}
 
 	const OperationType opType;
 	const OperationIdentifier identifier;
 	const Type stamp;
-	Operation** inputs;
-	uint32_t numInputs;
+	/// View into the arena-allocated inputs buffer. Fixed-arity ops leave
+	/// this span untouched after construction and only mutate the pointers
+	/// it refers to; the two re-sizing ops (BasicBlockInvocation,
+	/// ProxyCallOperation::setInputArguments) re-seat it onto a fresh
+	/// arena buffer.
+	std::span<Operation*> inputs;
 };
 
 /**

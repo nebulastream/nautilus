@@ -16,32 +16,37 @@ const BasicBlock* BasicBlockInvocation::getBlock() const {
 }
 
 void BasicBlockInvocation::addArgument(common::Arena& arena, Operation* argument) {
-	if (numInputs == capacity_) {
+	const std::size_t size = inputs.size();
+	if (size == capacity_) {
 		// Grow geometrically so back-to-back appends amortise to O(1).
 		// Block invocations very rarely exceed a handful of arguments, so
 		// the initial small bucket avoids allocating a chunk for the
 		// common case where only one or two arguments are added.
 		uint32_t newCap = capacity_ == 0 ? 4u : capacity_ * 2u;
 		auto* newInputs = static_cast<Operation**>(arena.allocate(sizeof(Operation*) * newCap, alignof(Operation*)));
-		if (numInputs > 0) {
-			std::copy(inputs, inputs + numInputs, newInputs);
+		if (size > 0) {
+			std::copy(inputs.begin(), inputs.end(), newInputs);
 		}
-		inputs = newInputs;
+		inputs = std::span<Operation*>(newInputs, size);
 		capacity_ = newCap;
 	}
-	inputs[numInputs++] = argument;
+	// Extend the span by one slot and fill it. The underlying buffer has
+	// `capacity_` elements, so widening the view is always in-bounds.
+	Operation** data = inputs.data();
+	inputs = std::span<Operation*>(data, size + 1);
+	data[size] = argument;
 }
 
 void BasicBlockInvocation::replaceArgument(Operation* toReplace, Operation* replaceWith) {
-	std::replace(inputs, inputs + numInputs, toReplace, replaceWith);
+	std::replace(inputs.begin(), inputs.end(), toReplace, replaceWith);
 }
 
 void BasicBlockInvocation::replaceArgument(const Operation* toReplace, Operation* replaceWith) {
-	std::replace(inputs, inputs + numInputs, const_cast<Operation*>(toReplace), replaceWith);
+	std::replace(inputs.begin(), inputs.end(), const_cast<Operation*>(toReplace), replaceWith);
 }
 
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
-	for (uint32_t i = 0; i < numInputs; i++) {
+	for (std::size_t i = 0; i < inputs.size(); i++) {
 		if (inputs[i] == arg) {
 			return static_cast<int>(i);
 		}
