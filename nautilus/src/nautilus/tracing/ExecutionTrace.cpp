@@ -9,8 +9,8 @@
 
 namespace nautilus::tracing {
 
-ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName) {
-	auto trace = std::make_unique<ExecutionTrace>();
+ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
+	auto trace = std::make_unique<ExecutionTrace>(arena);
 	auto& traceRef = *trace;
 	functions[std::string(functionName)] = std::move(trace);
 	return traceRef;
@@ -55,15 +55,28 @@ std::vector<std::string> TraceModule::getFunctionNames() const {
 	return names;
 }
 
-ExecutionTrace::ExecutionTrace() : currentBlockIndex(0), currentOperationIndex(0), blocks() {
+ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks() {
+	// A typical short trace has only a handful of blocks; reserving a small
+	// initial capacity eliminates the first few reallocations of the pointer
+	// vector in the tracing hot path.
+	blocks.reserve(8);
 	createBlock();
+}
+
+ExecutionTrace::~ExecutionTrace() {
+	// Blocks and TraceOperations are arena-allocated via Arena::create
+	// (which registers their destructors with the arena).  The arena runs
+	// those destructors when it is softReset() or destroyed, so there is
+	// nothing to do here.  Doing it explicitly would double-destruct any
+	// operations that the SSA phase removed from a block (e.g. ASSIGN ops
+	// erased from block.operations whose objects still live in the arena).
 }
 
 Block& ExecutionTrace::getBlock(uint32_t blockIndex) {
 	if (blockIndex >= blocks.size()) {
 		throw RuntimeException("Block index out of bounds: " + std::to_string(blockIndex));
 	}
-	return blocks[blockIndex];
+	return *blocks[blockIndex];
 }
 
 uint32_t ExecutionTrace::getCurrentBlockIndex() const {
@@ -74,7 +87,7 @@ Block& ExecutionTrace::getCurrentBlock() {
 	if (currentBlockIndex >= blocks.size()) {
 		throw RuntimeException("Current block index out of bounds: " + std::to_string(currentBlockIndex));
 	}
-	return blocks[currentBlockIndex];
+	return *blocks[currentBlockIndex];
 }
 
 void ExecutionTrace::setCurrentBlock(uint32_t index) {
@@ -85,8 +98,12 @@ void ExecutionTrace::setCurrentBlock(uint32_t index) {
 	currentBlockIndex = index;
 }
 
-std::vector<Block>& ExecutionTrace::getBlocks() {
+std::vector<Block*>& ExecutionTrace::getBlocks() {
 	return blocks;
+}
+
+Arena& ExecutionTrace::getArena() {
+	return *arena;
 }
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
@@ -113,13 +130,17 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& operations = blocks[currentBlockIndex]->operations;
 	auto op = Op::RETURN;
+	TraceOperation* newOp;
 	if (ref.type == Type::v) {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {});
+		newOp = arena->create<TraceOperation>(snapshot, op, resultType, TypedValueRef(0, Type::v),
+		                                      std::vector<InputVariant> {});
 	} else {
-		operations.emplace_back(snapshot, op, resultType, TypedValueRef(0, Type::v), std::vector<InputVariant> {ref});
+		newOp = arena->create<TraceOperation>(snapshot, op, resultType, TypedValueRef(0, Type::v),
+		                                      std::vector<InputVariant> {ref});
 	}
+	operations.push_back(newOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 
@@ -131,20 +152,24 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
+	auto& operations = blocks[currentBlockIndex]->operations;
 	auto op = ASSIGN;
-	auto& operation = operations.emplace_back(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	auto* operation =
+	    arena->create<TraceOperation>(snapshot, op, resultType, targetRef, std::vector<InputVariant> {srcRef});
+	operations.push_back(operation);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return operation.resultRef;
+	return operation->resultRef;
 }
 
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
 	}
-	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto* newOp =
+	    arena->create<TraceOperation>(snapshot, operation, Type::v, TypedValueRef(0, Type::v), std::move(inputs));
+	operations.push_back(newOp);
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
@@ -153,13 +178,14 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 		createBlock();
 	}
 
-	auto& operations = blocks[currentBlockIndex].operations;
-	auto& to = operations.emplace_back(snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
-	                                   std::move(inputs));
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto* to = arena->create<TraceOperation>(snapshot, operation, resultType,
+	                                         TypedValueRef(getNextValueRef(), resultType), std::move(inputs));
+	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-	return to.resultRef;
+	return to->resultRef;
 }
 
 // Adds a comparison operation to the execution trace
@@ -174,10 +200,11 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
 	auto falseBlock = createBlock();
 	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
-	auto& operations = blocks[currentBlockIndex].operations;
-	operations.emplace_back(
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto* cmpOp = arena->create<TraceOperation>(
 	    snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v),
 	    std::vector<InputVariant> {condition, BlockRef(trueBlock), BlockRef(falseBlock), probability});
+	operations.push_back(cmpOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -188,9 +215,9 @@ void ExecutionTrace::nextOperation() {
 	if (currentOperationIndex >= block.operations.size()) {
 		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	auto& currentOp = block.operations[currentOperationIndex];
-	if (currentOp.op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(currentOp.input[0]);
+	auto* currentOp = block.operations[currentOperationIndex];
+	if (currentOp->op == JMP) {
+		auto& nextBlock = std::get<BlockRef>(currentOp->input[0]);
 		setCurrentBlock(nextBlock.block);
 	}
 }
@@ -199,20 +226,22 @@ TraceOperation& ExecutionTrace::getCurrentOperation() {
 	if (currentOperationIndex >= getCurrentBlock().operations.size()) {
 		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
 	}
-	while (getCurrentBlock().operations[currentOperationIndex].op == JMP) {
-		auto& nextBlock = std::get<BlockRef>(getCurrentBlock().operations[currentOperationIndex].input[0]);
+	while (getCurrentBlock().operations[currentOperationIndex]->op == JMP) {
+		auto& nextBlock = std::get<BlockRef>(getCurrentBlock().operations[currentOperationIndex]->input[0]);
 		setCurrentBlock(nextBlock.block);
 		if (currentOperationIndex >= getCurrentBlock().operations.size()) {
 			throw RuntimeException("Current operation index out of bounds after JMP: " +
 			                       std::to_string(currentOperationIndex));
 		}
 	}
-	return getCurrentBlock().operations[currentOperationIndex];
+	return *getCurrentBlock().operations[currentOperationIndex];
 }
 
 uint32_t ExecutionTrace::createBlock() {
-	auto& block = blocks.emplace_back(blocks.size());
-	return block.blockId;
+	auto blockId = static_cast<uint32_t>(blocks.size());
+	auto* block = arena->create<Block>(blockId);
+	blocks.push_back(block);
+	return block->blockId;
 }
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
@@ -224,20 +253,20 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	auto mergedBlockId = createBlock();
 	// perform a control flow merge and merge the current block with operations in
 	// some other block.
-	auto& referenceBlock = blocks[oi.blockIndex];
-	auto& currentBlock = blocks[currentBlockIndex];
+	auto& referenceBlock = *blocks[oi.blockIndex];
+	auto& currentBlock = *blocks[currentBlockIndex];
 
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
-	// 1. move operation to new block
-	// move everything from the reference block between opId and end to merge block
+	// 1. move operation pointers to new block
+	// Pointers are stable (arena-allocated), so we only move the entries in
+	// the operations vector; the TraceOperation objects themselves stay put.
 	for (uint32_t opIndex = oi.operationIndex; opIndex < referenceBlock.operations.size(); opIndex++) {
-		auto& sourceOperation = referenceBlock.operations[opIndex];
-		// Save values needed after move
-		auto opType = sourceOperation.op;
-		auto opTag = sourceOperation.tag;
-		auto operationReference = mergeBlock.addOperation(std::move(sourceOperation));
+		auto* sourceOperation = referenceBlock.operations[opIndex];
+		auto opType = sourceOperation->op;
+		auto opTag = sourceOperation->tag;
+		auto operationReference = mergeBlock.addOperation(sourceOperation);
 		// update in global and local tag map
 
 		if (opType == RETURN) {
@@ -258,19 +287,19 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 	// add jump from referenced block to merge block
 	auto mergeBlockRef = BlockRef(mergedBlockId);
-	referenceBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	referenceBlock.addOperation(arena->create<TraceOperation>(Op::JMP, std::vector<InputVariant> {mergeBlockRef}));
 
 	// add jump from current block to merge block
-	currentBlock.addOperation({Op::JMP, {mergeBlockRef}});
+	currentBlock.addOperation(arena->create<TraceOperation>(Op::JMP, std::vector<InputVariant> {mergeBlockRef}));
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
 	setCurrentBlock(mergedBlockId);
 
 	// update predecessors of merge merge block
-	auto& lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
-	if (lastMergeOperation.op == Op::CMP || lastMergeOperation.op == Op::JMP) {
-		for (auto& input : lastMergeOperation.input) {
+	auto* lastMergeOperation = mergeBlock.operations[mergeBlock.operations.size() - 1];
+	if (lastMergeOperation->op == Op::CMP || lastMergeOperation->op == Op::JMP) {
+		for (auto& input : lastMergeOperation->input) {
 			if (auto blockRef = std::get_if<BlockRef>(&input)) {
 				auto& blockPredecessor = getBlock(blockRef->block).predecessors;
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), oi.blockIndex, mergedBlockId);
@@ -284,7 +313,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	ValueRef argRef = index + 1;
-	auto& arguments = blocks[0].arguments;
+	auto& arguments = blocks[0]->arguments;
 	if (arguments.size() < argRef) {
 		arguments.resize(argRef);
 	}
@@ -313,7 +342,7 @@ void ExecutionTrace::resetExecution() {
 }
 
 const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
-	return blocks[0].arguments;
+	return blocks[0]->arguments;
 }
 
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
@@ -347,7 +376,7 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
                                                           fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
-		fmt::format_to(out, "B{}{}", i, trace.blocks[i]);
+		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}
 	return out;
 }
@@ -367,8 +396,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 		fmt::format_to(out, " ControlFlowMerge");
 	}
 	fmt::format_to(out, "\n");
-	for (const auto& operation : block.operations) {
-		fmt::format_to(out, "{}\n", operation);
+	for (const auto* operation : block.operations) {
+		fmt::format_to(out, "{}\n", *operation);
 	}
 	return out;
 }

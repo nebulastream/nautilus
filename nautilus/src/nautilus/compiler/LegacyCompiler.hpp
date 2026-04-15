@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/JITCompiler.hpp"
+#include "nautilus/common/Arena.hpp"
 #include <functional>
 #include <list>
 #include <memory>
@@ -12,11 +13,21 @@ namespace nautilus::compiler {
  *
  * Compiles functions using a single backend (selected via options).
  * This is the original Nautilus compilation strategy.
+ *
+ * The compiler never owns an Arena; callers must supply one that
+ * outlives the compiler.  The same Arena is reused across every
+ * compile() invocation: softReset() is called at the start of each
+ * compilation so chunk memory from the previous compile is recycled
+ * instead of being freed and reallocated.  This amortises allocation
+ * cost over many compilations and is the reason compile() is not
+ * thread-safe (callers that need concurrent compilation should hold
+ * one LegacyCompiler per thread, each with its own Arena).
  */
 class LegacyCompiler : public JITCompiler {
 public:
-	LegacyCompiler();
-	LegacyCompiler(engine::Options options);
+	/// Construct a compiler that uses the supplied Arena for every trace.
+	/// The arena must outlive the compiler.
+	LegacyCompiler(engine::Options options, common::Arena& arena);
 	~LegacyCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
@@ -45,5 +56,10 @@ public:
 private:
 	const engine::Options options;
 	const CompilationBackendRegistry* backends;
+
+	/// Non-owning pointer to the externally supplied Arena.  softReset()'d
+	/// at the start of each compile() invocation.  Marked mutable because
+	/// compile() is const but needs to recycle the arena between calls.
+	mutable common::Arena* arena_;
 };
 } // namespace nautilus::compiler

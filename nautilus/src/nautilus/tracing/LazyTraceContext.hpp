@@ -80,27 +80,30 @@ public:
 	                                    const engine::Options& options);
 
 	/**
-	 * @brief Main tracing entry point - allocates all objects on stack and executes symbolic tracing.
-	 * Unlike ExceptionBasedTraceContext::trace(), this method never uses try/catch - the traced function always
-	 * returns normally.
-	 * @param traceFunction The function to trace
-	 * @param options Engine options for configuration
-	 * @return unique_ptr to ExecutionTrace containing the complete trace
+	 * @brief Main tracing entry point.  Unlike ExceptionBasedTraceContext::trace(),
+	 * this method never uses try/catch - the traced function always returns normally.
+	 * @param traceFunction The function to trace.
+	 * @param options Engine options for configuration.
+	 * @param arena Arena used to allocate the trace's Blocks and TraceOperations;
+	 *              must outlive the returned trace.
+	 * @return unique_ptr to ExecutionTrace containing the complete trace.
 	 */
-	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction,
-	                                             const engine::Options& options = engine::Options());
+	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction, const engine::Options& options,
+	                                             Arena& arena);
 
 	/**
 	 * @brief Multi-function tracing entry point. Traces all functions in the work-list,
 	 * including nested Nautilus functions discovered during tracing.
-	 * @param functions Initial list of functions to trace
-	 * @param options Engine options for configuration
-	 * @return unique_ptr to TraceModule containing all function traces
+	 * @param functions Initial list of functions to trace.
+	 * @param options Engine options for configuration.
+	 * @param arena Arena backing all traces in the returned module; must
+	 *              outlive the returned module.
+	 * @return unique_ptr to TraceModule containing all function traces.
 	 */
 	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functions,
-	                                        const engine::Options& options);
+	                                        const engine::Options& options, Arena& arena);
 	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
-	                                          const engine::Options& options);
+	                                          const engine::Options& options, Arena& arena);
 
 	LazyTraceContext() = default;
 

@@ -65,7 +65,7 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
-	processBlock(trace->getBlocks().front());
+	processBlock(*trace->getBlocks().front());
 	auto functionOperation = std::make_unique<FunctionOperation>(
 	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
 	ir->addFunctionOperation(std::move(functionOperation));
@@ -80,7 +80,7 @@ TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string
 	returnType = Type::v;
 
 	// Process all blocks starting from the first block
-	processBlock(trace->getBlocks().front());
+	processBlock(*trace->getBlocks().front());
 
 	// Create and return the function operation
 	auto functionOperation = std::make_unique<FunctionOperation>(
@@ -103,8 +103,8 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 	auto irBasicBlockPtr = irBasicBlock.get();
 
 	blockMap[block.blockId] = irBasicBlockPtr;
-	for (auto& operation : block.operations) {
-		processOperation(blockFrame, block, irBasicBlockPtr, operation);
+	for (auto* operation : block.operations) {
+		processOperation(blockFrame, block, irBasicBlockPtr, *operation);
 	}
 	return irBasicBlockPtr;
 }

@@ -82,10 +82,10 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
+		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
-		return originalRef.resultRef;
+		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
+		return originalRef->resultRef;
 	} else {
 		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
@@ -279,18 +279,19 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 }
 
 std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<void()>& traceFunction,
-                                                                  const engine::Options& options) {
+                                                                  const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 
-	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
-	// This is the key optimization: no heap allocations for these large objects
-	ExecutionTrace executionTrace;
+	// The ExecutionTrace borrows the caller-provided arena for all Block
+	// and TraceOperation allocations.  The arena must outlive the returned
+	// trace.
+	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
 	SymbolicExecutionContext symbolicExecutionContext;
 
-	// Initialize ExceptionBasedTraceContext with references to our stack objects
-	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
+	// Initialize ExceptionBasedTraceContext with references to our objects
+	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
 	auto traceIteration = 0;
 
 	// Symbolic execution loop: explore all execution paths
@@ -298,11 +299,11 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 		try {
 			traceIteration = traceIteration + 1;
 			log::trace("Trace Iteration {}", traceIteration);
-			log::trace("{}", executionTrace);
+			log::trace("{}", *executionTrace);
 
 			// Prepare for next iteration
 			symbolicExecutionContext.next();
-			executionTrace.resetExecution();
+			executionTrace->resetExecution();
 			tc->resume(); // Reset persistent state (staticVars, aliveVars)
 
 			// Execute the traced function
@@ -320,20 +321,18 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 	tc->state.reset();
 
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", executionTrace);
+	log::trace("Final trace: {}", *executionTrace);
 
-	// Move stack-allocated executionTrace into a unique_ptr for return
-	// The caller gets ownership of the trace
-	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
+	return executionTrace;
 }
 
 std::unique_ptr<TraceModule> ExceptionBasedTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                               const engine::Options& options) {
-	return traceContext.startTrace(functions, options);
+                                                               const engine::Options& options, Arena& arena) {
+	return traceContext.startTrace(functions, options, arena);
 }
 
 std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                                    const engine::Options& options) {
+                                                                    const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
@@ -348,7 +347,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 			continue;
 		}
 
-		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName());
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

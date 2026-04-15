@@ -14,10 +14,11 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 	// Build a map from blockId to index for quick lookup
 	std::unordered_map<uint16_t, size_t> blockIdToIndex;
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
-		blockIdToIndex[trace.blocks[i].blockId] = i;
+		blockIdToIndex[trace.blocks[i]->blockId] = i;
 	}
 
-	for (const auto& block : trace.blocks) {
+	for (const auto* blockPtr : trace.blocks) {
+		const auto& block = *blockPtr;
 		// Collect the set of value refs defined in this block:
 		// block arguments + operation results (in order)
 		std::unordered_set<uint16_t> definedRefs;
@@ -30,7 +31,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 		}
 
 		for (size_t opIdx = 0; opIdx < block.operations.size(); opIdx++) {
-			const auto& operation = block.operations[opIdx];
+			const auto& operation = *block.operations[opIdx];
 
 			// Check 1: No ASSIGN operations should remain
 			if (operation.op == Op::ASSIGN) {
@@ -61,7 +62,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 					                                    opIdx, blockRef.block));
 					return;
 				}
-				const auto& targetBlock = trace.blocks[it->second];
+				const auto& targetBlock = *trace.blocks[it->second];
 				if (blockRef.arguments.size() != targetBlock.arguments.size()) {
 					result.valid = false;
 					result.errors.push_back(
@@ -103,7 +104,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 
 		// Check 4: Every non-empty block must end with a terminator
 		if (!block.operations.empty()) {
-			auto lastOp = block.operations.back().op;
+			auto lastOp = block.operations.back()->op;
 			if (lastOp != Op::JMP && lastOp != Op::CMP && lastOp != Op::RETURN) {
 				result.valid = false;
 				result.errors.push_back(

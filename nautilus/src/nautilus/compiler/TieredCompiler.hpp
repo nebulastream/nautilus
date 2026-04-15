@@ -51,8 +51,11 @@ namespace nautilus::compiler {
  */
 class TieredJITCompiler : public JITCompiler {
 public:
-	TieredJITCompiler(engine::Options options);
-	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config);
+	/// Construct a tiered compiler that borrows the supplied Arena for
+	/// every tier-0 trace-and-compile cycle.  The arena must outlive the
+	/// compiler.
+	TieredJITCompiler(engine::Options options, common::Arena& arena);
+	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config, common::Arena& arena);
 	~TieredJITCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;

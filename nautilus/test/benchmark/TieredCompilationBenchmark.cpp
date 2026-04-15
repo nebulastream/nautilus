@@ -1,4 +1,5 @@
 #include "nautilus/Engine.hpp"
+#include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
@@ -41,7 +42,9 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 				    TieredCompilationConfig config;
 				    config.tier0.backend = "bc";
 				    config.tier1.backend = "mlir";
-				    auto engine = NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config));
+				    common::Arena arena;
+				    auto engine =
+				        NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena));
 				    auto module = engine.createModule();
 				    registerFn(module);
 				    return module.compile();
@@ -121,7 +124,8 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 			TieredCompilationConfig config;
 			config.tier0.backend = "bc";
 			config.tier1.backend = "mlir";
-			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config);
+			common::Arena arena;
+			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
 			auto* jit = tieredJit.get();
 			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();

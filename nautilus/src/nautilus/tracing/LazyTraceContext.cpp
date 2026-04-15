@@ -69,10 +69,10 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
-		auto& originalRef = state->executionTrace.getBlocks()[ref.blockIndex].operations[ref.operationIndex];
+		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		state->executionTrace.addAssignmentOperation(tag, originalRef.resultRef, resultRef, resultRef.type);
-		return originalRef.resultRef;
+		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
+		return originalRef->resultRef;
 	} else {
 		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
@@ -297,17 +297,18 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 }
 
 std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& traceFunction,
-                                                        const engine::Options& options) {
+                                                        const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Completing Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 
-	// Allocate ExecutionTrace and SymbolicExecutionContext on the stack
-	ExecutionTrace executionTrace;
+	// The ExecutionTrace borrows the caller-provided arena for all
+	// allocations; the arena must outlive the returned trace.
+	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
 	SymbolicExecutionContext symbolicExecutionContext;
 
-	// Initialize LazyTraceContext with references to our stack objects
-	auto tc = initialize(tr, executionTrace, symbolicExecutionContext, options);
+	// Initialize LazyTraceContext with references to our objects
+	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
 	auto traceIteration = 0;
 
 	// Symbolic execution loop: explore all execution paths
@@ -315,11 +316,11 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	while (symbolicExecutionContext.shouldContinue()) {
 		traceIteration = traceIteration + 1;
 		log::trace("Completing Trace Iteration {}", traceIteration);
-		log::trace("{}", executionTrace);
+		log::trace("{}", *executionTrace);
 
 		// Prepare for next iteration
 		symbolicExecutionContext.next();
-		executionTrace.resetExecution();
+		executionTrace->resetExecution();
 		tc->resume(); // Reset persistent state (staticVars, aliveVars, paused_)
 
 		// Execute the traced function - it always returns normally
@@ -335,18 +336,18 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	tc->state.reset();
 
 	log::debug("Completing Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", executionTrace);
+	log::trace("Final trace: {}", *executionTrace);
 
-	return std::make_unique<ExecutionTrace>(std::move(executionTrace));
+	return executionTrace;
 }
 
 std::unique_ptr<TraceModule> LazyTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                     const engine::Options& options) {
-	return completingTraceContext.startTrace(functions, options);
+                                                     const engine::Options& options, Arena& arena) {
+	return completingTraceContext.startTrace(functions, options, arena);
 }
 
 std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                          const engine::Options& options) {
+                                                          const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Lazy Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
@@ -361,7 +362,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 			continue;
 		}
 
-		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName());
+		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

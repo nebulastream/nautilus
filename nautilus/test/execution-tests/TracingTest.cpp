@@ -80,7 +80,7 @@ bool checkTestFile(std::string actual, const std::string category, const std::st
 }
 
 using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&);
+                                                          const engine::Options&, common::Arena&);
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
@@ -100,7 +100,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 
 					// Trace all functions (initially just "execute", but may include nested functions)
 
-					auto executionTrace = traceFn(functionsToTrace, engine::Options());
+					common::Arena arena;
+					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
 					DYNAMIC_SECTION("tracing") {
 						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 					}
