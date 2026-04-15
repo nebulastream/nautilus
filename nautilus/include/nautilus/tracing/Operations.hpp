@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/tracing/Types.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <cstdint>
 #include <iosfwd>
@@ -128,6 +129,63 @@ constexpr const char* toString(Op type) {
 	default:
 		__builtin_unreachable();
 	}
+}
+
+/**
+ * @brief Returns the number of inputs a TraceOperation of the given op/resultType has.
+ *
+ * For every op except RETURN the count is statically fixed by the op code.  RETURN
+ * carries the returned value as a single input when the traced function is non-void
+ * and no inputs for a void return; this mirrors the invariant enforced by
+ * ExecutionTrace::addReturn, which is the only site that creates RETURN ops.
+ */
+constexpr uint8_t inputCountFor(Op op, Type resultType) noexcept {
+	switch (op) {
+	case RETURN:
+		return resultType == Type::v ? 0 : 1;
+	case ALLOCA_TOMBSTONE:
+		return 0;
+	case CMP:
+		return 4;
+	case SELECT:
+		return 3;
+	case STORE:
+	case EQ:
+	case NEQ:
+	case LT:
+	case LTE:
+	case GT:
+	case GTE:
+	case AND:
+	case OR:
+	case ADD:
+	case MUL:
+	case DIV:
+	case SUB:
+	case MOD:
+	case LSH:
+	case RSH:
+	case BOR:
+	case BXOR:
+	case BAND:
+		return 2;
+	// Single-input ops: JMP, CALL, INDIRECT_CALL, ASSIGN, CONST, CAST, FREE,
+	// LOAD, NOT, NEGATE, ALLOCA, FUNC_ADDR.
+	case JMP:
+	case CALL:
+	case INDIRECT_CALL:
+	case ASSIGN:
+	case CONST:
+	case CAST:
+	case FREE:
+	case LOAD:
+	case NOT:
+	case NEGATE:
+	case ALLOCA:
+	case FUNC_ADDR:
+		return 1;
+	}
+	__builtin_unreachable();
 }
 
 } // namespace nautilus::tracing

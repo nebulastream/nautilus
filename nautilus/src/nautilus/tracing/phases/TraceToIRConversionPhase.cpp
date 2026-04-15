@@ -28,12 +28,12 @@
 namespace nautilus::tracing {
 using namespace compiler::ir;
 
-OperationIdentifier createValueIdentifier(TypedValueRef& val) {
+OperationIdentifier createValueIdentifier(const TypedValueRef& val) {
 	return {val.ref};
 }
 
-OperationIdentifier createValueIdentifier(InputVariant& val) {
-	if (auto* valRef = std::get_if<TypedValueRef>(&val)) {
+OperationIdentifier createValueIdentifier(const InputVariant& val) {
+	if (const auto* valRef = std::get_if<TypedValueRef>(&val)) {
 		return {valRef->ref};
 	}
 	throw NotImplementedException("wrong input variant");
@@ -281,7 +281,7 @@ void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(Value
 
 void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame, BasicBlock* block,
                                                                TraceOperation& operation) {
-	auto blockRef = get<BlockRef>(operation.input[0]);
+	const BlockRef& blockRef = *get<BlockRef*>(operation.input[0]);
 	BasicBlockInvocation blockInvocation;
 	createBlockArguments(frame, blockInvocation, blockRef);
 
@@ -300,8 +300,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
                                                                TraceOperation& operation) {
 	assert(operation.input.size() == 4);
 	auto valueRef = get<TypedValueRef>(operation.input[0]);
-	auto trueCaseBlockRef = get<BlockRef>(operation.input[1]);
-	auto falseCaseBlockRef = get<BlockRef>(operation.input[2]);
+	const BlockRef& trueCaseBlockRef = *get<BlockRef*>(operation.input[1]);
+	const BlockRef& falseCaseBlockRef = *get<BlockRef*>(operation.input[2]);
 	auto probability = get<BranchProbability>(operation.input[3]);
 
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
@@ -319,8 +319,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 
 void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
                                                                          BasicBlockInvocation& blockInvocation,
-                                                                         BlockRef val) {
-	for (auto& arg : val.arguments) {
+                                                                         const BlockRef& val) {
+	for (const auto& arg : val.arguments) {
 		auto valueIdentifier = createValueIdentifier(arg);
 		blockInvocation.addArgument(frame.getValue(valueIdentifier));
 	}
@@ -378,9 +378,9 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& fra
 
 void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
                                                                 TraceOperation& operation) {
-	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
 	auto inputArguments = std::vector<Operation*> {};
-	for (auto& argument : functionCallTarget.arguments) {
+	for (const auto& argument : functionCallTarget.arguments) {
 		auto input = frame.getValue(createValueIdentifier(argument));
 		inputArguments.emplace_back(input);
 	}
@@ -397,10 +397,10 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFrame& frame, BasicBlock* currentBlock,
                                                                         TraceOperation& operation) {
-	auto indirectCall = std::get<IndirectFunctionCall>(operation.input[0]);
+	const IndirectFunctionCall& indirectCall = *std::get<IndirectFunctionCall*>(operation.input[0]);
 	auto fnPtrOperand = frame.getValue(createValueIdentifier(indirectCall.fnPtr));
 	auto inputArguments = std::vector<Operation*> {};
-	for (auto& argument : indirectCall.arguments) {
+	for (const auto& argument : indirectCall.arguments) {
 		inputArguments.emplace_back(frame.getValue(createValueIdentifier(argument)));
 	}
 	auto resultType = operation.resultType;
@@ -414,7 +414,7 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 
 void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& frame, BasicBlock* currentBlock,
                                                                     TraceOperation& operation) {
-	auto functionCallTarget = std::get<FunctionCall>(operation.input[0]);
+	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto funcAddrOp = currentBlock->addOperation<FunctionAddressOfOperation>(
 	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier);

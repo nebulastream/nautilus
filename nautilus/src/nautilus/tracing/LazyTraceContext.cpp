@@ -101,7 +101,7 @@ TypedValueRef& LazyTraceContext::traceAlloca(size_t allocSize) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&, allocSize](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {allocSize});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {AllocSize {allocSize}});
 	});
 }
 
@@ -126,11 +126,12 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = mangledName,
-		                                       .ptr = fptn,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = mangledName,
+		                                                                        .ptr = fptn,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -143,7 +144,8 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 	}
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
+		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
@@ -164,11 +166,12 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 	}
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = functionName,
-		                                       .ptr = (void*) definition,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = functionName,
+		                                                                        .ptr = (void*) definition,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -187,11 +190,12 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = functionName,
-		                                       .ptr = (void*) definition,
-		                                       .arguments = {},
-		                                       .fnAttrs = {}};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = functionName,
+		                                                                        .ptr = (void*) definition,
+		                                                                        .arguments = {},
+		                                                                        .fnAttrs = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -222,18 +226,17 @@ TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const Typ
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(
-	    op, [&, inputs = std::vector<InputVariant> {left, right}](Snapshot& tag) mutable -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
-	    });
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
+	});
 }
 
 TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&, inputs = std::vector<InputVariant> {input}](Snapshot& tag) mutable -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
 	});
 }
 
@@ -242,10 +245,9 @@ TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const Ty
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(
-	    op, [&, inputs = std::vector<InputVariant> {first, second, third}](Snapshot& tag) mutable -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
-	    });
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
+	});
 }
 
 bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probability) {
@@ -288,9 +290,9 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 
 	uint32_t nextBlock;
 	if (result) {
-		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
+		nextBlock = std::get<BlockRef*>(currentOperation.input[1])->block;
 	} else {
-		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
+		nextBlock = std::get<BlockRef*>(currentOperation.input[2])->block;
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;

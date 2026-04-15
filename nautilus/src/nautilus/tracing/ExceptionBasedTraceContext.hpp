@@ -282,9 +282,6 @@ public:
 	static std::unique_ptr<ExecutionTrace> trace(std::function<void()>& traceFunction, const engine::Options& options,
 	                                             Arena& arena);
 
-	/// Low-level entry point used by the internal tracing loop.
-	TypedValueRef& traceOperation(Op op, Type resultType, std::vector<InputVariant> inputRef);
-
 	/**
 	 * @brief Default constructor - public to allow thread_local storage.
 	 * Initializes with empty state (state == nullptr means not initialized).

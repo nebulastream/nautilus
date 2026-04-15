@@ -78,10 +78,10 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 			for (const auto& input : operation.input) {
 				if (const auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					checkRef(*valueRef, "input");
-				} else if (const auto* blockRef = std::get_if<BlockRef>(&input)) {
-					checkBlockRef(*blockRef);
-				} else if (const auto* fcall = std::get_if<FunctionCall>(&input)) {
-					for (const auto& arg : fcall->arguments) {
+				} else if (const auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+					checkBlockRef(**blockRefPtr);
+				} else if (const auto* fcallPtr = std::get_if<FunctionCall*>(&input)) {
+					for (const auto& arg : (*fcallPtr)->arguments) {
 						checkRef(arg, "function call argument");
 					}
 				}
