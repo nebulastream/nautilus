@@ -59,7 +59,7 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	// Allocate a copy of the default return op in the arena so that both
 	// the return block and any subsequent in-place modifications of the
 	// original operation stay independent.
-	returnBlock.operations.push_back(trace->getArena().create<TraceOperation>(*defaultReturnOp));
+	returnBlock.operations.push_back(cloneTraceOp(trace->getArena(), *defaultReturnOp));
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
 		auto* returnValue = returnOpBlock.operations[returnOp.operationIndex];
@@ -68,12 +68,12 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] = trace->getArena().create<TraceOperation>(
-			    snap, ASSIGN, defaultReturnOp->resultType, std::get<TypedValueRef>(defaultReturnOp->input[0]),
-			    std::vector<InputVariant> {returnValue->input[0]});
+			returnOpBlock.operations[returnOp.operationIndex] =
+			    makeTraceOp(trace->getArena(), snap, ASSIGN, defaultReturnOp->resultType,
+			                std::get<TypedValueRef>(defaultReturnOp->input[0]), returnValue->input[0]);
 		}
-		returnOpBlock.addOperation(trace->getArena().create<TraceOperation>(
-		    Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}));
+		returnOpBlock.addOperation(
+		    makeTraceOp(trace->getArena(), Op::JMP, trace->getArena().create<BlockRef>(returnBlock.blockId)));
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
 
@@ -95,7 +95,7 @@ void SSACreationPhase::SSACreationPhaseContext::hoistAllocaOperations() {
 	for (auto* block : blocks) {
 		for (auto* op : block->operations) {
 			if (op->op == Op::ALLOCA) {
-				allocaOps.push_back(trace->getArena().create<TraceOperation>(*op));
+				allocaOps.push_back(cloneTraceOp(trace->getArena(), *op));
 				op->op = Op::ALLOCA_TOMBSTONE;
 			}
 		}
@@ -178,15 +178,16 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					processValueRef(block, *valueRef, operation.resultType, i);
-				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-					processBlockRef(block, *blockRef, i);
-				} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-					for (auto valueRef : fcallRef->arguments) {
+				} else if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+					processBlockRef(block, **blockRefPtr, i);
+				} else if (auto* fcallRefPtr = std::get_if<FunctionCall*>(&input)) {
+					for (auto valueRef : (*fcallRefPtr)->arguments) {
 						processValueRef(block, valueRef, valueRef.type, i);
 					}
-				} else if (auto* indirectCallRef = std::get_if<IndirectFunctionCall>(&input)) {
-					processValueRef(block, indirectCallRef->fnPtr, indirectCallRef->fnPtr.type, i);
-					for (auto& valueRef : indirectCallRef->arguments) {
+				} else if (auto* indirectCallRefPtr = std::get_if<IndirectFunctionCall*>(&input)) {
+					IndirectFunctionCall& indirectCallRef = **indirectCallRefPtr;
+					processValueRef(block, indirectCallRef.fnPtr, indirectCallRef.fnPtr.type, i);
+					for (auto& valueRef : indirectCallRef.arguments) {
 						processValueRef(block, valueRef, valueRef.type, i);
 					}
 				}
@@ -253,11 +254,12 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 			auto& lastOperation = *predBlock.operations.back();
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				for (auto& input : lastOperation.input) {
-					if (auto blockRef = std::get_if<BlockRef>(&input)) {
-						if (blockRef->block == curBlockId) {
-							if (std::find(blockRef->arguments.begin(), blockRef->arguments.end(), ref) ==
-							    blockRef->arguments.end()) {
-								blockRef->arguments.emplace_back(ref);
+					if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+						BlockRef& blockRef = **blockRefPtr;
+						if (blockRef.block == curBlockId) {
+							if (std::find(blockRef.arguments.begin(), blockRef.arguments.end(), ref) ==
+							    blockRef.arguments.end()) {
+								blockRef.arguments.emplace_back(ref);
 							}
 						}
 					}
@@ -321,26 +323,27 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 						if (foundAssignment != assignmentMap.end()) {
 							valueRef->ref = foundAssignment->second;
 						}
-					} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-						for (auto& blockArgument : blockRef->arguments) {
+					} else if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+						for (auto& blockArgument : (*blockRefPtr)->arguments) {
 							auto foundAssignment = assignmentMap.find(blockArgument.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								blockArgument.ref = foundAssignment->second;
 							}
 						}
-					} else if (auto* fcallRef = std::get_if<FunctionCall>(&input)) {
-						for (auto& funcArg : fcallRef->arguments) {
+					} else if (auto* fcallRefPtr = std::get_if<FunctionCall*>(&input)) {
+						for (auto& funcArg : (*fcallRefPtr)->arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								funcArg.ref = foundAssignment->second;
 							}
 						}
-					} else if (auto* indirectCallRef = std::get_if<IndirectFunctionCall>(&input)) {
-						auto foundFnPtr = assignmentMap.find(indirectCallRef->fnPtr.ref);
+					} else if (auto* indirectCallRefPtr = std::get_if<IndirectFunctionCall*>(&input)) {
+						IndirectFunctionCall& indirectCallRef = **indirectCallRefPtr;
+						auto foundFnPtr = assignmentMap.find(indirectCallRef.fnPtr.ref);
 						if (foundFnPtr != assignmentMap.end()) {
-							indirectCallRef->fnPtr.ref = foundFnPtr->second;
+							indirectCallRef.fnPtr.ref = foundFnPtr->second;
 						}
-						for (auto& funcArg : indirectCallRef->arguments) {
+						for (auto& funcArg : indirectCallRef.arguments) {
 							auto foundAssignment = assignmentMap.find(funcArg.ref);
 							if (foundAssignment != assignmentMap.end()) {
 								funcArg.ref = foundAssignment->second;
@@ -386,8 +389,8 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 						// valueRef->blockId = foundAssignment->second.blockId;
 						// valueRef->operationId = foundAssignment->second.operationId;
 					}
-				} else if (auto* blockRef = std::get_if<BlockRef>(&input)) {
-					for (auto& blockArgument : blockRef->arguments) {
+				} else if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+					for (auto& blockArgument : (*blockRefPtr)->arguments) {
 						auto foundAssignment = blockArgumentMap.find(blockArgument.ref);
 						if (foundAssignment != blockArgumentMap.end()) {
 							// valueRef = &foundAssignment->second;

@@ -107,7 +107,11 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t allocSize) {
-	return traceOperation(ALLOCA, Type::ptr, {allocSize});
+	auto op = Op::ALLOCA;
+	auto resultType = Type::ptr;
+	return traceOperation(op, [&, allocSize](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {AllocSize {allocSize}});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -125,11 +129,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = mangledName,
-		                                       .ptr = fptn,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = mangledName,
+		                                                                        .ptr = fptn,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -139,7 +144,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef
                                                              FunctionAttributes fnAttrs) {
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto indirectCall = IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs};
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
+		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
@@ -157,11 +163,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 	}
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = functionName,
-		                                       .ptr = (void*) definition,
-		                                       .arguments = arguments,
-		                                       .fnAttrs = fnAttrs};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = functionName,
+		                                                                        .ptr = (void*) definition,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -177,11 +184,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto functionArguments = FunctionCall {.functionName = functionName,
-		                                       .mangledName = functionName,
-		                                       .ptr = (void*) definition,
-		                                       .arguments = {},
-		                                       .fnAttrs = {}};
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = functionName,
+		                                                                        .ptr = (void*) definition,
+		                                                                        .arguments = {},
+		                                                                        .fnAttrs = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -202,24 +210,24 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 	}
 }
 
-TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, Type resultType, std::vector<InputVariant> inputs) {
-	return traceOperation(op, [&, inputs = std::move(inputs)](Snapshot& tag) mutable -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, std::move(inputs));
+TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                                         const TypedValueRef& right) {
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 }
 
-TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
-                                                         const TypedValueRef& right) {
-	return traceOperation(op, resultType, {left, right});
-}
-
 TypedValueRef& ExceptionBasedTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
-	return traceOperation(op, resultType, {input});
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
                                                           const TypedValueRef& second, const TypedValueRef& third) {
-	return traceOperation(op, resultType, {first, second, third});
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
+	});
 }
 
 std::string ExceptionBasedTraceContext::formatStaticVars() const {
@@ -270,9 +278,9 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 
 	uint16_t nextBlock;
 	if (result) {
-		nextBlock = std::get<BlockRef>(currentOperation.input[1]).block;
+		nextBlock = std::get<BlockRef*>(currentOperation.input[1])->block;
 	} else {
-		nextBlock = std::get<BlockRef>(currentOperation.input[2]).block;
+		nextBlock = std::get<BlockRef*>(currentOperation.input[2])->block;
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;

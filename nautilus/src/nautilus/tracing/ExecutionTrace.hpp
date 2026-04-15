@@ -5,6 +5,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "tag/TagRecorder.hpp"
+#include <initializer_list>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -170,7 +171,7 @@ public:
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::vector<InputVariant> inputs);
+	                                      std::initializer_list<InputVariant> inputs);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -271,7 +272,7 @@ public:
 	 * @param operation The operation to add
 	 * @param inputs The input operands for the operation
 	 */
-	void addOperation(Snapshot& snapshot, Op& operation, std::vector<InputVariant> inputs);
+	void addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs);
 
 	/**
 	 * @brief Returns the current block

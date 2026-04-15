@@ -105,7 +105,8 @@ private:
 
 		void processCast(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
-		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation, BlockRef val);
+		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation,
+		                          const BlockRef& val);
 
 		template <typename OpType>
 		void processBinaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
