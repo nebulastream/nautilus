@@ -12,6 +12,7 @@ add_library(nautilus-sanitizer-suppressions OBJECT
 
 add_subdirectory(benchmark)
 add_subdirectory(execution-tests)
+add_subdirectory(ir-pass-tests)
 add_subdirectory(val-tests)
 
 if(ENABLE_LLVM_IR_TEST)

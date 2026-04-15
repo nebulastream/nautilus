@@ -1,0 +1,19 @@
+NautilusIr {
+execute() {
+Block_0($1:i32):
+	$2 = true :bool
+	$3 = 42 :i64
+	$4 = $1 cast_to i64 :i64
+	$5 = $4 == $3 :bool
+	$6 = $2 and $5 :bool
+	$7 = 42 :i64
+	$8 = $1 cast_to i64 :i64
+	$9 = $8 == $7 :bool
+	$10 = $6 and $9 :bool
+	$11 = 42 :i64
+	$12 = $1 cast_to i64 :i64
+	$13 = $12 == $11 :bool
+	$14 = $10 and $13 :bool
+	return ($14) :bool
+}
+} //NESIR

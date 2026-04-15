@@ -1,0 +1,14 @@
+NautilusIr {
+add() {
+Block_0($1:i32, $2:i32):
+	$3 = $1 + $2 :i32
+	return ($3) :i32
+}
+execute() {
+Block_0($1:i32, $2:i32):
+	$3 = func_*($1,$2) :i32
+	$4 = func_*($3,$2) :i32
+	$5 = func_*($1,$2) :i32
+	return ($5) :i32
+}
+} //NESIR
