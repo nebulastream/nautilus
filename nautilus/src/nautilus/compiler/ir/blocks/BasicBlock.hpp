@@ -80,22 +80,16 @@ public:
 	/// Allocates a new operation of type T in the arena and appends it to
 	/// this block. Returns the freshly created operation.
 	///
-	/// When T's constructor accepts an Arena& as its first argument, the
-	/// owning arena is injected automatically so the operation can allocate
-	/// its inputs array from it; constructors that don't need it (the
-	/// no-input operations such as BranchOp / Const*) keep their original
-	/// signature.
+	/// The owning arena is always injected as the first constructor
+	/// argument so operations that need it (to allocate their inputs
+	/// buffer) have it and those that don't simply ignore the reference.
+	/// This keeps the factory uniform and makes the call site the
+	/// single source of truth for where the arena comes from.
 	template <typename T, typename... Args>
 	T* addOperation(Args&&... args) {
-		if constexpr (std::is_constructible_v<T, common::Arena&, Args&&...>) {
-			auto* op = arena_->create<T>(*arena_, std::forward<Args>(args)...);
-			operations.push_back(op);
-			return op;
-		} else {
-			auto* op = arena_->create<T>(std::forward<Args>(args)...);
-			operations.push_back(op);
-			return op;
-		}
+		auto* op = arena_->create<T>(*arena_, std::forward<Args>(args)...);
+		operations.push_back(op);
+		return op;
 	}
 
 	/// Appends an already-arena-allocated operation to this block.

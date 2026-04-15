@@ -5,7 +5,7 @@
 
 namespace nautilus::compiler::ir {
 
-AllocaOperation::AllocaOperation(OperationIdentifier id, size_t allocationSize)
+AllocaOperation::AllocaOperation(common::Arena& /*arena*/, OperationIdentifier id, size_t allocationSize)
     : Operation(OperationType::AllocaOp, id, Type::ptr), allocationSize(allocationSize) {
 }
 

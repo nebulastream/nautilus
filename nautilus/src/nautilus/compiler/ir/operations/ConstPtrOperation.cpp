@@ -6,7 +6,7 @@
 
 namespace nautilus::compiler::ir {
 
-ConstPtrOperation::ConstPtrOperation(OperationIdentifier identifier, void* constantValue)
+ConstPtrOperation::ConstPtrOperation(common::Arena& /*arena*/, OperationIdentifier identifier, void* constantValue)
     : Operation(OperationType::ConstPtrOp, identifier, Type::ptr), constantValue(constantValue) {
 }
 

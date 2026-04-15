@@ -3,7 +3,7 @@
 
 namespace nautilus::compiler::ir {
 
-FunctionAddressOfOperation::FunctionAddressOfOperation(const std::string& functionSymbol,
+FunctionAddressOfOperation::FunctionAddressOfOperation(common::Arena& /*arena*/, const std::string& functionSymbol,
                                                        const std::string& functionName, void* functionPtr,
                                                        OperationIdentifier identifier)
     : Operation(Operation::OperationType::FunctionAddressOfOp, identifier, Type::ptr), functionSymbol(functionSymbol),

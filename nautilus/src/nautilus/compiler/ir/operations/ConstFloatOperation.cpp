@@ -5,7 +5,8 @@
 
 namespace nautilus::compiler::ir {
 
-ConstFloatOperation::ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp)
+ConstFloatOperation::ConstFloatOperation(common::Arena& /*arena*/, OperationIdentifier identifier, double constantValue,
+                                         Type stamp)
     : Operation(OperationType::ConstFloatOp, identifier, stamp), constantValue(constantValue) {
 }
 

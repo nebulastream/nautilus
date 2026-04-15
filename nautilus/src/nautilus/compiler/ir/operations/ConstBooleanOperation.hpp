@@ -7,7 +7,7 @@ namespace nautilus::compiler::ir {
 
 class ConstBooleanOperation : public Operation {
 public:
-	explicit ConstBooleanOperation(OperationIdentifier identifier, bool value);
+	explicit ConstBooleanOperation(common::Arena& arena, OperationIdentifier identifier, bool value);
 
 	~ConstBooleanOperation() = default;
 

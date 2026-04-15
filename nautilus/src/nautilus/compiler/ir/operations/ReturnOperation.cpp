@@ -4,7 +4,7 @@
 #include <string>
 
 namespace nautilus::compiler::ir {
-ReturnOperation::ReturnOperation() : Operation(Operation::OperationType::ReturnOp, Type::v) {
+ReturnOperation::ReturnOperation(common::Arena& /*arena*/) : Operation(Operation::OperationType::ReturnOp, Type::v) {
 }
 
 ReturnOperation::ReturnOperation(common::Arena& arena, Operation* returnValue)

@@ -6,7 +6,8 @@
 
 namespace nautilus::compiler::ir {
 
-ConstIntOperation::ConstIntOperation(OperationIdentifier identifier, int64_t constantValue, Type stamp)
+ConstIntOperation::ConstIntOperation(common::Arena& /*arena*/, OperationIdentifier identifier, int64_t constantValue,
+                                     Type stamp)
     : Operation(OperationType::ConstIntOp, identifier, stamp), constantValue(constantValue) {
 }
 
