@@ -5,7 +5,8 @@
 
 namespace nautilus::compiler::ir {
 
-ConstBooleanOperation::ConstBooleanOperation(OperationIdentifier identifier, bool constantValue)
+ConstBooleanOperation::ConstBooleanOperation(common::Arena& /*arena*/, OperationIdentifier identifier,
+                                             bool constantValue)
     : Operation(OperationType::ConstBooleanOp, identifier, Type::b), constantValue(constantValue) {
 }
 

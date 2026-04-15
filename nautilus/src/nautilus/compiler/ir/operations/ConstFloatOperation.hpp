@@ -7,7 +7,8 @@ namespace nautilus::compiler::ir {
 
 class ConstFloatOperation : public Operation {
 public:
-	explicit ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp);
+	explicit ConstFloatOperation(common::Arena& arena, OperationIdentifier identifier, double constantValue,
+	                             Type stamp);
 
 	~ConstFloatOperation() = default;
 

@@ -6,7 +6,7 @@ namespace nautilus::compiler::ir {
 
 class ConstIntOperation : public Operation {
 public:
-	explicit ConstIntOperation(OperationIdentifier identifier, int64_t constantValue, Type stamp);
+	explicit ConstIntOperation(common::Arena& arena, OperationIdentifier identifier, int64_t constantValue, Type stamp);
 
 	~ConstIntOperation() = default;
 

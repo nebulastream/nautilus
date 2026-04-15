@@ -10,8 +10,8 @@ namespace nautilus::compiler::ir {
 /// Used to get function pointers for Nautilus functions that can be passed to runtime calls.
 class FunctionAddressOfOperation : public Operation {
 public:
-	FunctionAddressOfOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr,
-	                           OperationIdentifier identifier);
+	FunctionAddressOfOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
+	                           void* functionPtr, OperationIdentifier identifier);
 
 	~FunctionAddressOfOperation() = default;
 

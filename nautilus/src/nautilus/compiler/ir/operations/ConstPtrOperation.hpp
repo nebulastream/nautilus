@@ -7,7 +7,7 @@ namespace nautilus::compiler::ir {
 
 class ConstPtrOperation : public Operation {
 public:
-	explicit ConstPtrOperation(OperationIdentifier identifier, void* value);
+	explicit ConstPtrOperation(common::Arena& arena, OperationIdentifier identifier, void* value);
 
 	~ConstPtrOperation() = default;
 
