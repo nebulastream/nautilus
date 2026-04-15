@@ -50,41 +50,20 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
 };
 
 TEST_CASE("Tracing Benchmark") {
-
+	// Always reuse a single arena across all samples and iterations of every
+	// benchmark by softResetting between calls.  This matches the intended
+	// Engine/JIT integration where a long-lived arena serves many compilations.
 	for (auto& [name, func] : tests) {
 		for (auto& [ctxName, traceFn] : traceContexts) {
 			auto benchName = ctxName + "_" + name;
 			auto fn = traceFn;
-			// A fresh arena per iteration matches the previous behaviour where
-			// each trace managed its own arena.  Engine/JIT consumers that
-			// want to amortise allocation across many compiles can hoist the
-			// arena out of the measured block and softReset() between uses.
+			common::Arena arena;
 			Catch::Benchmark::Benchmark(std::string(benchName))
-			    .operator=([&func, fn](Catch::Benchmark::Chronometer meter) {
-				    meter.measure([&func, fn] {
-					    common::Arena arena;
-					    return fn(func, engine::Options(), arena);
-				    });
-			    });
-		}
-	}
-}
-
-TEST_CASE("Tracing Benchmark (reused arena)") {
-	// Reuses a single arena across all 100 iterations per sample by softResetting
-	// between calls.  This matches the intended Engine/JIT integration where a
-	// long-lived arena serves many compilations.
-	for (auto& [name, func] : tests) {
-		for (auto& [ctxName, traceFn] : traceContexts) {
-			auto benchName = ctxName + "_reused_" + name;
-			auto fn = traceFn;
-			Catch::Benchmark::Benchmark(std::string(benchName))
-			    .operator=([&func, fn](Catch::Benchmark::Chronometer meter) {
-				    common::Arena arena;
+			    .operator=([&func, fn, &arena](Catch::Benchmark::Chronometer meter) {
 				    meter.measure([&func, fn, &arena] {
 					    auto trace = fn(func, engine::Options(), arena);
 					    // Drop the trace here so its destructors run; then
-					    // softReset recycles the arena for the next sample.
+					    // softReset recycles the arena for the next iteration.
 					    trace.reset();
 					    arena.softReset();
 					    return 0;
@@ -106,14 +85,19 @@ TEST_CASE("SSA Creation Benchmark") {
 			continue;
 		}
 
-		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			common::Arena arena;
+		// Reuse a single arena across all samples of this benchmark.  A fresh
+		// trace is built per sample and the arena is softReset between samples.
+		common::Arena arena;
+		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func, &arena](Catch::Benchmark::Chronometer meter) {
 			std::shared_ptr<tracing::ExecutionTrace> trace =
 			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), arena);
 			meter.measure([&] {
 				auto ssaCreationPhase = tracing::SSACreationPhase();
 				return ssaCreationPhase.apply(trace);
 			});
+			// Drop the trace before recycling the arena for the next sample.
+			trace.reset();
+			arena.softReset();
 		});
 	}
 }
@@ -124,8 +108,9 @@ TEST_CASE("IR Creation Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 
-		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
-			common::Arena arena;
+		// Reuse a single arena across all samples of this benchmark.
+		common::Arena arena;
+		Catch::Benchmark::Benchmark("ir_" + name).operator=([&func, &arena](Catch::Benchmark::Chronometer meter) {
 			std::shared_ptr<tracing::ExecutionTrace> trace =
 			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), arena);
 			auto ssaCreationPhase = tracing::SSACreationPhase();
@@ -135,6 +120,9 @@ TEST_CASE("IR Creation Benchmark") {
 				auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				return irConversionPhase.apply(afterSSAModule);
 			});
+			// Drop trace state before recycling the arena for the next sample.
+			afterSSAModule.reset();
+			arena.softReset();
 		});
 	}
 }
@@ -161,9 +149,10 @@ TEST_CASE("Backend Compilation Benchmark") {
 			auto func = std::get<1>(test);
 			auto name = std::get<0>(test);
 
+			// Reuse a single arena across all samples of this benchmark.
+			common::Arena arena;
 			Catch::Benchmark::Benchmark("comp_" + backend + "_" + name)
-			    .operator=([&func, &registry, backend](Catch::Benchmark::Chronometer meter) {
-				    common::Arena arena;
+			    .operator=([&func, &registry, backend, &arena](Catch::Benchmark::Chronometer meter) {
 				    std::shared_ptr<tracing::ExecutionTrace> trace =
 				        tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), arena);
 				    auto ssaCreationPhase = tracing::SSACreationPhase();
@@ -178,6 +167,10 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    op.setOption("engine.backend", backend);
 				    auto dh = compiler::DumpHandler(op, "");
 				    meter.measure([&] { return backendBackend->compile(ir, dh, op); });
+				    // Drop trace state before recycling the arena for the next sample.
+				    ir.reset();
+				    afterSSAModule.reset();
+				    arena.softReset();
 			    });
 		}
 	}
