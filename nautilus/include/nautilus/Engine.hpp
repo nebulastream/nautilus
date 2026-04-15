@@ -15,6 +15,10 @@
 #include "nautilus/CompilableFunction.hpp"
 #endif
 
+namespace nautilus::common {
+class Arena;
+} // namespace nautilus::common
+
 namespace nautilus::engine {
 namespace details {
 
@@ -155,6 +159,15 @@ public:
 	 */
 	NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const Options& options = Options());
 
+	~NautilusEngine();
+
+	// The const Options member makes assignment impossible; allow move
+	// construction so the engine can still be transferred.
+	NautilusEngine(const NautilusEngine&) = delete;
+	NautilusEngine& operator=(const NautilusEngine&) = delete;
+	NautilusEngine(NautilusEngine&&) noexcept;
+	NautilusEngine& operator=(NautilusEngine&&) noexcept = delete;
+
 	/// Register and compile a single function pointer. Defined after NautilusModule.
 	template <typename R, is_val... FunctionArguments>
 	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const;
@@ -178,6 +191,18 @@ public:
 	}
 
 private:
+	/**
+	 * @brief Arena owned by the engine and reused across every compilation.
+	 *
+	 * The JIT compiler holds a non-owning reference to this arena and
+	 * softReset()s it at the start of each compile().  Keeping the arena
+	 * on the engine (rather than inside the compiler) matches the intent
+	 * that it is an engine-level resource that can be shared with other
+	 * engine-scoped infrastructure in the future.  Declared before
+	 * @ref jit_ so the compiler's reference remains valid throughout its
+	 * lifetime.
+	 */
+	std::unique_ptr<common::Arena> arena_;
 	std::unique_ptr<compiler::JITCompiler> jit_;
 	const Options options;
 };

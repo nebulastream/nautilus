@@ -52,24 +52,28 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 		return trace->getBlock(firstReturnOp.blockIndex);
 	}
 
-	auto defaultReturnOp = trace->getBlock(returns.front().blockIndex).operations[firstReturnOp.operationIndex];
+	auto* defaultReturnOp = trace->getBlock(returns.front().blockIndex).operations[firstReturnOp.operationIndex];
 
 	// add return block
 	auto& returnBlock = trace->getBlock(trace->createBlock());
-	returnBlock.operations.emplace_back(defaultReturnOp);
+	// Allocate a copy of the default return op in the arena so that both
+	// the return block and any subsequent in-place modifications of the
+	// original operation stay independent.
+	returnBlock.operations.push_back(trace->getArena().create<TraceOperation>(*defaultReturnOp));
 	for (auto returnOp : returns) {
 		auto& returnOpBlock = trace->getBlock(returnOp.blockIndex);
-		auto returnValue = returnOpBlock.operations[returnOp.operationIndex];
+		auto* returnValue = returnOpBlock.operations[returnOp.operationIndex];
 		// check if we have return values
-		if (returnValue.input.empty()) {
+		if (returnValue->input.empty()) {
 			returnOpBlock.operations.erase(returnOpBlock.operations.cbegin() + returnOp.operationIndex);
 		} else {
 			auto snap = Snapshot();
-			returnOpBlock.operations[returnOp.operationIndex] =
-			    TraceOperation(snap, ASSIGN, defaultReturnOp.resultType,
-			                   std::get<TypedValueRef>(defaultReturnOp.input[0]), {returnValue.input[0]});
+			returnOpBlock.operations[returnOp.operationIndex] = trace->getArena().create<TraceOperation>(
+			    snap, ASSIGN, defaultReturnOp->resultType, std::get<TypedValueRef>(defaultReturnOp->input[0]),
+			    std::vector<InputVariant> {returnValue->input[0]});
 		}
-		returnOpBlock.addOperation({Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}});
+		returnOpBlock.addOperation(trace->getArena().create<TraceOperation>(
+		    Op::JMP, std::vector<InputVariant> {BlockRef(returnBlock.blockId)}));
 		returnBlock.predecessors.emplace_back(returnOp.blockIndex);
 	}
 
@@ -82,22 +86,25 @@ void SSACreationPhase::SSACreationPhaseContext::hoistAllocaOperations() {
 	// order.  Instead of erasing the original operation (which would invalidate
 	// every operationIndex stored in returnRefs and elsewhere), we replace it
 	// with an ALLOCA_TOMBSTONE that later phases simply skip.
-	std::vector<TraceOperation> allocaOps;
+	//
+	// Because operations live in the trace's arena, we allocate independent
+	// copies there so that tombstoning the originals does not affect the
+	// hoisted copies we prepend to the initial block.
+	std::vector<TraceOperation*> allocaOps;
 	auto& blocks = trace->getBlocks();
-	for (auto& block : blocks) {
-		for (auto& op : block.operations) {
-			if (op.op == Op::ALLOCA) {
-				allocaOps.push_back(op);
-				op.op = Op::ALLOCA_TOMBSTONE;
+	for (auto* block : blocks) {
+		for (auto* op : block->operations) {
+			if (op->op == Op::ALLOCA) {
+				allocaOps.push_back(trace->getArena().create<TraceOperation>(*op));
+				op->op = Op::ALLOCA_TOMBSTONE;
 			}
 		}
 	}
 
 	// Prepend the collected ALLOCA operations to the head of the initial block.
 	if (!allocaOps.empty()) {
-		auto& initialBlock = blocks.front();
-		initialBlock.operations.insert(initialBlock.operations.begin(), std::make_move_iterator(allocaOps.begin()),
-		                               std::make_move_iterator(allocaOps.end()));
+		auto* initialBlock = blocks.front();
+		initialBlock->operations.insert(initialBlock->operations.begin(), allocaOps.begin(), allocaOps.end());
 	}
 }
 
@@ -118,12 +125,12 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	removeAssignOperations();
 
 	// check arguments
-	if (rootBlockNumberOfArguments != trace->getBlocks().front().arguments.size()) {
+	if (rootBlockNumberOfArguments != trace->getBlocks().front()->arguments.size()) {
 		throw RuntimeException(fmt::format("Wrong number of arguments in trace: expected {}, got {}\n",
-		                                   rootBlockNumberOfArguments, trace->getBlocks().front().arguments.size()));
+		                                   rootBlockNumberOfArguments, trace->getBlocks().front()->arguments.size()));
 	}
 	// sort arguments
-	std::sort(trace->getBlocks().front().arguments.begin(), trace->getBlocks().front().arguments.end());
+	std::sort(trace->getBlocks().front()->arguments.begin(), trace->getBlocks().front()->arguments.end());
 
 	return std::move(trace);
 }
@@ -133,11 +140,11 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 	// A value ref is defined in the local scope, if it is the result of an
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto& resOperation = block.operations[i];
-		if (resOperation.op == Op::ALLOCA_TOMBSTONE) {
+		auto* resOperation = block.operations[i];
+		if (resOperation->op == Op::ALLOCA_TOMBSTONE) {
 			continue;
 		}
-		if (resOperation.resultRef == ref) {
+		if (resOperation->resultRef == ref) {
 			return true;
 		}
 	}
@@ -166,7 +173,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 
 		// Process the inputs of all operations in the current block
 		for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
-			auto& operation = block.operations[i];
+			auto& operation = *block.operations[i];
 			// process input for each variable
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
@@ -218,11 +225,11 @@ const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::g
 		return it->second;
 	}
 	auto& defined = blockDefinitions[blockId];
-	for (auto& op : trace->getBlock(blockId).operations) {
-		if (op.op == Op::ALLOCA_TOMBSTONE) {
+	for (auto* op : trace->getBlock(blockId).operations) {
+		if (op->op == Op::ALLOCA_TOMBSTONE) {
 			continue;
 		}
-		defined.insert(op.resultRef.ref);
+		defined.insert(op->resultRef.ref);
 	}
 	return defined;
 }
@@ -243,7 +250,7 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 		for (auto& predecessor : curBlock.predecessors) {
 			auto& predBlock = trace->getBlock(predecessor);
-			auto& lastOperation = predBlock.operations.back();
+			auto& lastOperation = *predBlock.operations.back();
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				for (auto& input : lastOperation.input) {
 					if (auto blockRef = std::get_if<BlockRef>(&input)) {
@@ -294,9 +301,11 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 
 void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 	// Iterate over all block and eliminate the ASSIGN operation.
-	for (Block& block : trace->getBlocks()) {
+	for (Block* blockPtr : trace->getBlocks()) {
+		Block& block = *blockPtr;
 		std::unordered_map<ValueRef, ValueRef> assignmentMap;
-		for (auto& operation : block.operations) {
+		for (auto* operationPtr : block.operations) {
+			auto& operation = *operationPtr;
 			if (operation.op == Op::ASSIGN) {
 				auto& valueRef = get<TypedValueRef>(operation.input[0]);
 				auto foundAssignment = assignmentMap.find(valueRef.ref);
@@ -342,12 +351,13 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 			}
 		}
 		std::erase_if(block.operations,
-		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
+		              [&](const auto* item) { return item->op == Op::ASSIGN || item->op == Op::ALLOCA_TOMBSTONE; });
 	}
 }
 
 void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
-	for (Block& block : trace->getBlocks()) {
+	for (Block* blockPtr : trace->getBlocks()) {
+		Block& block = *blockPtr;
 		std::unordered_map<ValueRef, ValueRef> blockArgumentMap;
 
 		// iterate over all arguments of this block and create new ValRefs if the
@@ -366,7 +376,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 
 		// set the new ValRefs to all depending on operations.
 		for (uint64_t i = 0; i < block.operations.size(); i++) {
-			auto& operation = block.operations[i];
+			auto& operation = *block.operations[i];
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
 					auto foundAssignment = blockArgumentMap.find(valueRef->ref);
@@ -392,7 +402,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 		}
 
 		std::erase_if(block.operations,
-		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
+		              [&](const auto* item) { return item->op == Op::ASSIGN || item->op == Op::ALLOCA_TOMBSTONE; });
 	}
 }
 

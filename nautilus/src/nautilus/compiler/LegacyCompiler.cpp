@@ -26,11 +26,8 @@
 
 namespace nautilus::compiler {
 
-LegacyCompiler::LegacyCompiler() : options(), backends(CompilationBackendRegistry::getInstance()) {
-}
-
-LegacyCompiler::LegacyCompiler(engine::Options options)
-    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()) {
+LegacyCompiler::LegacyCompiler(engine::Options options, common::Arena& arena)
+    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()), arena_(&arena) {
 }
 
 LegacyCompiler::~LegacyCompiler() = default;
@@ -91,9 +88,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	auto t0 = log::now();
 	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
+	// Recycle the chunks from the previous compile before this one starts.
+	// Any TraceModule from a previous compilation has already been
+	// destroyed by the time we get here, so no live pointers remain.
+	arena_->softReset();
 	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options);
+	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options, *arena_)
+	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options, *arena_);
 	statsLogger.logTiming(t0, "Tracing completed");
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 

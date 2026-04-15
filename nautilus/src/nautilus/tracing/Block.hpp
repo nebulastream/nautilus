@@ -14,7 +14,20 @@ struct operation_identifier {
 };
 
 /**
- * @brief Represents a basic block in a trace
+ * @brief Represents a basic block in a trace.
+ *
+ * Operations are stored as pointers that are owned by an Arena living in the
+ * enclosing ExecutionTrace.  Keeping operations in the arena (rather than by
+ * value inside a std::vector) delivers two benefits:
+ *
+ *   - pointer stability: addresses of operations are never invalidated when
+ *     the operations vector or the blocks vector grows,
+ *   - lower allocator pressure: TraceOperations (and their input vectors)
+ *     are allocated from pre-allocated arena chunks instead of going through
+ *     the general purpose allocator on every trace step.
+ *
+ * Moving operations between blocks is O(1) and never touches the heap: only
+ * the pointer moves, the TraceOperation object itself stays put in the arena.
  */
 class Block {
 public:
@@ -29,7 +42,10 @@ public:
 	 */
 	explicit Block(uint32_t blockId);
 
-	operation_identifier addOperation(TraceOperation&& operation);
+	/**
+	 * @brief Appends an (already arena-allocated) operation to this block.
+	 */
+	operation_identifier addOperation(TraceOperation* operation);
 
 	/**
 	 * @brief Adds a argument to the block
@@ -54,8 +70,11 @@ public:
 
 	/**
 	 * @brief Defines a list of operations this block contains.
+	 *
+	 * Pointers are non-owning; the referenced TraceOperations are owned by
+	 * the ExecutionTrace's Arena.
 	 */
-	std::vector<TraceOperation> operations;
+	std::vector<TraceOperation*> operations;
 
 	/**
 	 * @brief Indicates successors of this block.

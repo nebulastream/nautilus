@@ -3,12 +3,15 @@
 
 #include "Block.hpp"
 #include "TraceOperation.hpp"
+#include "nautilus/common/Arena.hpp"
 #include "tag/TagRecorder.hpp"
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
 namespace nautilus::tracing {
+
+using Arena = common::Arena;
 
 class ExecutionTrace;
 
@@ -43,14 +46,16 @@ public:
 	/**
 	 * @brief Creates and adds a new function trace to the module.
 	 *
-	 * Creates a new ExecutionTrace for the given function name and stores it in the module.
+	 * Creates a new ExecutionTrace for the given function name that
+	 * allocates its Blocks and TraceOperations from the supplied Arena.
 	 * If a function with the same name already exists, it will be replaced.
 	 *
-	 * @param functionName Name of the function to trace (e.g., "execute", "helper_function")
-	 * @return Reference to the newly created ExecutionTrace
-	 * @note The returned reference remains valid until the TraceModule is destroyed or moved
+	 * @param functionName Name of the function to trace.
+	 * @param arena Arena backing the trace's allocations; must outlive
+	 *              the returned trace and the enclosing TraceModule.
+	 * @return Reference to the newly created ExecutionTrace.
 	 */
-	ExecutionTrace& addNewFunction(std::string_view functionName);
+	ExecutionTrace& addNewFunction(std::string_view functionName, Arena& arena);
 
 	/**
 	 * @brief Retrieves the execution trace for a specific function.
@@ -116,24 +121,45 @@ private:
 };
 
 /**
- * @brief The execution trace captures the trace of a program
+ * @brief The execution trace captures the trace of a program.
+ *
+ * An ExecutionTrace allocates all of its Blocks and TraceOperations from an
+ * externally provided Arena.  Callers (the trace contexts, the engine, etc.)
+ * are responsible for the Arena's lifetime and may reuse a single Arena
+ * across multiple trace/compile cycles to amortise allocation costs.
  */
 class ExecutionTrace {
 public:
 	/**
-	 * @brief Constructs a new execution trace
+	 * @brief Constructs a new execution trace that allocates its Blocks and
+	 * TraceOperations from the supplied Arena.
+	 *
+	 * The Arena must outlive the ExecutionTrace.  Long-lived components
+	 * (e.g. a JIT compiler or Engine) can keep a single Arena alive across
+	 * many trace/compile cycles and call Arena::softReset() between them
+	 * to reuse the memory.
+	 *
+	 * @param arena Non-owning reference to the Arena to allocate from.
 	 */
-	ExecutionTrace();
+	explicit ExecutionTrace(Arena& arena);
 
-	~ExecutionTrace() = default;
+	/**
+	 * Destroys the trace, including explicit destruction of all
+	 * arena-allocated Blocks and TraceOperations.  The Arena itself is left
+	 * untouched so the caller can softReset() and reuse it for the next
+	 * trace.
+	 */
+	~ExecutionTrace();
 
-	// Delete copy operations (ExecutionTrace is move-only)
+	// ExecutionTrace is neither copyable nor movable: Block and TraceOperation
+	// instances hold pointers into the Arena, and moving them would leave
+	// those pointers dangling.  Callers that need ownership transfer should
+	// heap-allocate the trace via std::unique_ptr<ExecutionTrace>, which
+	// moves the pointer rather than the object.
 	ExecutionTrace(const ExecutionTrace&) = delete;
 	ExecutionTrace& operator=(const ExecutionTrace&) = delete;
-
-	// Default move operations
-	ExecutionTrace(ExecutionTrace&&) = default;
-	ExecutionTrace& operator=(ExecutionTrace&&) = default;
+	ExecutionTrace(ExecutionTrace&&) = delete;
+	ExecutionTrace& operator=(ExecutionTrace&&) = delete;
 
 	/**
 	 * @brief Adds an operation with a result to the trace
@@ -216,10 +242,22 @@ public:
 	Block& getBlock(uint32_t blockIndex);
 
 	/**
-	 * @brief Returns a reference to all blocks
-	 * @return std::vector<Block>&
+	 * @brief Returns a reference to all blocks.
+	 *
+	 * Blocks are owned by the trace's Arena; the vector stores non-owning
+	 * pointers whose target addresses are stable for the lifetime of the
+	 * trace.
+	 * @return std::vector<Block*>&
 	 */
-	std::vector<Block>& getBlocks();
+	std::vector<Block*>& getBlocks();
+
+	/**
+	 * @brief Returns a reference to the underlying arena used to allocate
+	 * blocks and operations.  Phases that need to mint new TraceOperation /
+	 * Block instances (e.g. during SSA construction) should use this arena
+	 * instead of allocating on the heap directly.
+	 */
+	Arena& getArena();
 
 	/**
 	 * @brief Returns the index to the current block.
@@ -288,9 +326,16 @@ private:
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
 
 public:
+	/**
+	 * @brief Non-owning pointer to the arena supplied at construction time
+	 * that backs all Block and TraceOperation allocations for this trace.
+	 * The pointed-to arena must outlive the ExecutionTrace.
+	 */
+	Arena* arena;
 	uint32_t currentBlockIndex;
 	ValueRef currentOperationIndex;
-	std::vector<Block> blocks;
+	/// Non-owning pointers to arena-allocated Block instances.
+	std::vector<Block*> blocks;
 	std::vector<operation_identifier> returnRefs;
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;

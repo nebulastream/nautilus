@@ -7,11 +7,15 @@
 namespace nautilus::tracing {
 
 Block::Block(uint32_t blockId) : blockId(blockId), type(Type::Default) {
+	// Most blocks contain only a handful of operations; reserve a small
+	// initial capacity to avoid reallocating the operations pointer vector
+	// in the common case.
+	operations.reserve(4);
 }
 
-operation_identifier Block::addOperation(nautilus::tracing::TraceOperation&& operation) {
+operation_identifier Block::addOperation(TraceOperation* operation) {
 	uint32_t operationIndex = operations.size();
-	operations.emplace_back(std::move(operation));
+	operations.push_back(operation);
 	return {blockId, operationIndex};
 }
 

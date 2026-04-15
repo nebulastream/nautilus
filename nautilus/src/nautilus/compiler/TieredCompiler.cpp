@@ -26,7 +26,7 @@ static std::string createPromotionUnitID() {
 
 // --- TieredJITCompiler ---
 
-TieredJITCompiler::TieredJITCompiler(engine::Options options) : baseCompiler_(options) {
+TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& arena) : baseCompiler_(options, arena) {
 	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
 	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
 	if (!tier0.empty() && !tier1.empty()) {
@@ -35,8 +35,9 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options) : baseCompiler_(op
 	}
 }
 
-TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config)
-    : baseCompiler_(options), config_(std::move(config)) {
+TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
+                                     common::Arena& arena)
+    : baseCompiler_(options, arena), config_(std::move(config)) {
 }
 
 TieredJITCompiler::~TieredJITCompiler() {
@@ -129,9 +130,10 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-TieredJITCompiler::TieredJITCompiler(engine::Options) : baseCompiler_() {
+TieredJITCompiler::TieredJITCompiler(engine::Options, common::Arena& arena) : baseCompiler_(engine::Options(), arena) {
 }
-TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig) : baseCompiler_() {
+TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig, common::Arena& arena)
+    : baseCompiler_(engine::Options(), arena) {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function) const {
