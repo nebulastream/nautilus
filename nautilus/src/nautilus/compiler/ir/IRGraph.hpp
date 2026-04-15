@@ -16,23 +16,28 @@ class FunctionOperation;
  * @brief The IRGraph represents a fragment of nautilus ir.
  *
  * All IR nodes (FunctionOperation, BasicBlock, Operation subclasses,
- * BasicBlockArgument) referenced by this graph are allocated from an
- * internal `common::Arena` that the graph owns for its full lifetime.
- * The graph itself owns no IR node directly: it only stores raw pointers
- * into the arena. When the IRGraph is destroyed the arena is destroyed
- * along with it, freeing every IR node in bulk.
+ * BasicBlockArgument) referenced by this graph are allocated from a
+ * `common::Arena` that the graph owns through a `common::ArenaPool::Handle`
+ * for its full lifetime.  The graph itself owns no IR node directly: it
+ * only stores raw pointers into the arena.  When the IRGraph is destroyed
+ * the Handle is destroyed; depending on whether the Handle is pool-backed
+ * the Arena is either recycled into its pool (typical, engine path) or
+ * deleted outright (standalone path, used by tests and benchmarks).
  *
- * Each IRGraph gets its own Arena — distinct from the engine-scoped trace
+ * Each IRGraph holds its own Arena — distinct from the engine-scoped trace
  * Arena — so the IR survives across `compile()` cycles (e.g. while the
  * tiered compiler caches it for asynchronous tier-1 promotion) without
  * being invalidated by the trace arena's `softReset()`.
- *
- * Arena is non-movable, so the graph stores it through a `unique_ptr`
- * to keep its address stable.
  */
 class IRGraph {
 public:
+	/// Constructs an IR graph backed by a freshly heap-allocated standalone
+	/// Arena (no pool).  Used by tests and benchmarks.
 	explicit IRGraph(const CompilationUnitID& id);
+
+	/// Constructs an IR graph backed by the supplied Arena Handle.  When
+	/// the Handle is pool-backed the Arena is recycled on destruction.
+	IRGraph(common::ArenaPool::Handle arena, const CompilationUnitID& id);
 
 	~IRGraph() = default;
 
@@ -68,7 +73,7 @@ public:
 	}
 
 private:
-	std::unique_ptr<common::Arena> arena_;
+	common::ArenaPool::Handle arena_;
 	std::vector<FunctionOperation*> functionOperations;
 	// Name -> function pointer. The string_view is backed by the name field
 	// owned by FunctionOperation, which is stable for the lifetime of the

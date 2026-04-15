@@ -24,7 +24,11 @@
 
 namespace nautilus::compiler::ir {
 
-IRGraph::IRGraph(const compiler::CompilationUnitID& id) : arena_(std::make_unique<common::Arena>()), id(id) {
+IRGraph::IRGraph(const compiler::CompilationUnitID& id) : arena_(common::ArenaPool::makeStandalone()), id(id) {
+}
+
+IRGraph::IRGraph(common::ArenaPool::Handle arena, const compiler::CompilationUnitID& id)
+    : arena_(std::move(arena)), id(id) {
 }
 
 FunctionOperation* IRGraph::addFunctionOperation(FunctionOperation* functionOperation) {

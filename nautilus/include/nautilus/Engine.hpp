@@ -17,6 +17,7 @@
 
 namespace nautilus::common {
 class Arena;
+class ArenaPool;
 } // namespace nautilus::common
 
 namespace nautilus::engine {
@@ -203,6 +204,17 @@ private:
 	 * lifetime.
 	 */
 	std::unique_ptr<common::Arena> arena_;
+	/**
+	 * @brief Pool of IR-graph arenas owned by the engine.
+	 *
+	 * Each IRGraph created during compilation acquires its arena from
+	 * here and returns it on destruction (including async tier-1
+	 * promotion paths in TieredJITCompiler).  Recycling chunk memory
+	 * across IR graphs amortises the per-IRGraph heap allocation that
+	 * would otherwise dominate compile times for tiny IRs.  Declared
+	 * before @ref jit_ so the compiler's reference outlives every IR.
+	 */
+	std::unique_ptr<common::ArenaPool> irArenaPool_;
 	std::unique_ptr<compiler::JITCompiler> jit_;
 	const Options options;
 };

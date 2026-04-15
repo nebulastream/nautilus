@@ -44,7 +44,8 @@ TEST_CASE("Tiered Compilation - Tier 0 Executes Correctly") {
 	config.tier1.backend = tier1Backend;
 
 	common::Arena arena;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -82,7 +83,8 @@ TEST_CASE("Tiered Compilation - Background Promotion Completes") {
 	config.tier1.backend = tier1Backend;
 
 	common::Arena arena;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -115,7 +117,8 @@ TEST_CASE("Tiered Compilation - Results Correct After Promotion") {
 	config.tier1.backend = tier1Backend;
 
 	common::Arena arena;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -164,7 +167,8 @@ TEST_CASE("Tiered Compilation - Custom Backend Per Tier") {
 			config.tier1.backend = t1;
 
 			common::Arena arena;
-			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+			common::ArenaPool irArenaPool;
+			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 			auto* jit = tieredJit.get();
 			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();
@@ -222,7 +226,8 @@ TEST_CASE("Tiered Compilation - Multiple Functions In Module") {
 	config.tier1.backend = tier1Backend;
 
 	common::Arena arena;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();

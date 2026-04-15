@@ -26,8 +26,9 @@
 
 namespace nautilus::compiler {
 
-LegacyCompiler::LegacyCompiler(engine::Options options, common::Arena& arena)
-    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()), arena_(&arena) {
+LegacyCompiler::LegacyCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool)
+    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()), arena_(&arena),
+      irArenaPool_(&irArenaPool) {
 }
 
 LegacyCompiler::~LegacyCompiler() = default;
@@ -106,7 +107,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	auto t2 = log::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	auto ir = irGenerationPhase.apply(afterSSAModule, compilationId);
+	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
 	statsLogger.logTiming(t2, "IR generation completed");
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {

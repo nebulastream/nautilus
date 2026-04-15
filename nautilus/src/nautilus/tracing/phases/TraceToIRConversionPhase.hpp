@@ -41,11 +41,25 @@ public:
 	                                             const compiler::CompilationUnitID& id = "");
 
 	/**
+	 * @brief Pool-backed variant of @ref apply.  The IR graph's arena is
+	 * acquired from @p pool and recycled into it when the IR graph dies,
+	 * amortising the per-IRGraph heap allocation across many compiles.
+	 */
+	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule, common::ArenaPool& pool,
+	                                             const compiler::CompilationUnitID& id = "");
+
+	/**
 	 * @brief Performs the conversion and returns a IR fragment for the given trace (legacy method)
 	 * @param trace Single execution trace
 	 * @return IR graph containing a single function
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace,
+	                                             const compiler::CompilationUnitID& id = "");
+
+	/**
+	 * @brief Pool-backed variant of the single-trace @ref apply.
+	 */
+	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
 	                                             const compiler::CompilationUnitID& id = "");
 
 private:

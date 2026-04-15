@@ -43,8 +43,9 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 				    config.tier0.backend = "bc";
 				    config.tier1.backend = "mlir";
 				    common::Arena arena;
-				    auto engine =
-				        NautilusEngine(std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena));
+				    common::ArenaPool irArenaPool;
+				    auto engine = NautilusEngine(
+				        std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool));
 				    auto module = engine.createModule();
 				    registerFn(module);
 				    return module.compile();
@@ -125,7 +126,8 @@ TEST_CASE("Tiered End-to-End Benchmark") {
 			config.tier0.backend = "bc";
 			config.tier1.backend = "mlir";
 			common::Arena arena;
-			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena);
+			common::ArenaPool irArenaPool;
+			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
 			auto* jit = tieredJit.get();
 			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();
