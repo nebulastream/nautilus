@@ -53,9 +53,31 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 	return ir;
 }
 
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
+                                                         common::ArenaPool& pool,
+                                                         const compiler::CompilationUnitID& id) {
+	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
+
+	for (const auto& functionName : traceModule->getFunctionNames()) {
+		auto* trace = traceModule->getFunction(functionName);
+		auto phaseContext = IRConversionContext(trace, ir, id);
+		ir->addFunctionOperation(phaseContext.processFunction(functionName));
+	}
+
+	return ir;
+}
+
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
+	auto phaseContext = IRConversionContext(trace.get(), ir, id);
+	return phaseContext.process();
+}
+
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
+                                                         common::ArenaPool& pool,
+                                                         const compiler::CompilationUnitID& id) {
+	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
 	auto phaseContext = IRConversionContext(trace.get(), ir, id);
 	return phaseContext.process();
 }

@@ -127,6 +127,32 @@ TEST_CASE("IR Creation Benchmark") {
 	}
 }
 
+TEST_CASE("IR Creation Benchmark (pooled arena)") {
+	// Mirrors the IR Creation Benchmark but routes every IRGraph's arena
+	// through a single ArenaPool.  The first sample pays the usual heap
+	// allocation; subsequent samples reuse the recycled Arena (chunks and
+	// inline buffer already sized), isolating the pool's amortisation
+	// benefit from the one-shot arena-construction cost.
+	for (auto& test : tests) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+
+		Catch::Benchmark::Benchmark("ir_pooled_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
+			common::Arena traceArena;
+			std::shared_ptr<tracing::ExecutionTrace> trace =
+			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), traceArena);
+			auto ssaCreationPhase = tracing::SSACreationPhase();
+			auto afterSSAModule = ssaCreationPhase.apply(std::move(trace));
+
+			common::ArenaPool irArenaPool;
+			meter.measure([&] {
+				auto irConversionPhase = tracing::TraceToIRConversionPhase();
+				return irConversionPhase.apply(afterSSAModule, irArenaPool);
+			});
+		});
+	}
+}
+
 TEST_CASE("Backend Compilation Benchmark") {
 
 	auto registry = compiler::CompilationBackendRegistry::getInstance();

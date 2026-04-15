@@ -25,9 +25,10 @@ namespace nautilus::compiler {
  */
 class LegacyCompiler : public JITCompiler {
 public:
-	/// Construct a compiler that uses the supplied Arena for every trace.
-	/// The arena must outlive the compiler.
-	LegacyCompiler(engine::Options options, common::Arena& arena);
+	/// Construct a compiler that uses the supplied Arena for every trace
+	/// and the supplied ArenaPool for IR-graph arenas.  Both must outlive
+	/// the compiler.
+	LegacyCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool);
 	~LegacyCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
@@ -61,5 +62,9 @@ private:
 	/// at the start of each compile() invocation.  Marked mutable because
 	/// compile() is const but needs to recycle the arena between calls.
 	mutable common::Arena* arena_;
+	/// Non-owning pointer to the externally supplied IR-arena pool.  Each
+	/// IRGraph created during compileToIR acquires its arena from here, so
+	/// successive compiles reuse heap chunks across IR graphs.
+	mutable common::ArenaPool* irArenaPool_;
 };
 } // namespace nautilus::compiler

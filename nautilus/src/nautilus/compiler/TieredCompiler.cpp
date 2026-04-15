@@ -26,7 +26,8 @@ static std::string createPromotionUnitID() {
 
 // --- TieredJITCompiler ---
 
-TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& arena) : baseCompiler_(options, arena) {
+TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool)
+    : baseCompiler_(options, arena, irArenaPool) {
 	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
 	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
 	if (!tier0.empty() && !tier1.empty()) {
@@ -36,8 +37,8 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& are
 }
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
-                                     common::Arena& arena)
-    : baseCompiler_(options, arena), config_(std::move(config)) {
+                                     common::Arena& arena, common::ArenaPool& irArenaPool)
+    : baseCompiler_(options, arena, irArenaPool), config_(std::move(config)) {
 }
 
 TieredJITCompiler::~TieredJITCompiler() {
@@ -130,10 +131,12 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-TieredJITCompiler::TieredJITCompiler(engine::Options, common::Arena& arena) : baseCompiler_(engine::Options(), arena) {
+TieredJITCompiler::TieredJITCompiler(engine::Options, common::Arena& arena, common::ArenaPool& irArenaPool)
+    : baseCompiler_(engine::Options(), arena, irArenaPool) {
 }
-TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig, common::Arena& arena)
-    : baseCompiler_(engine::Options(), arena) {
+TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig, common::Arena& arena,
+                                     common::ArenaPool& irArenaPool)
+    : baseCompiler_(engine::Options(), arena, irArenaPool) {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function) const {

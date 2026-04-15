@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
+#include <mutex>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -256,5 +258,117 @@ private:
 	std::vector<Chunk> chunks;
 	std::vector<DtorEntry> dtors;
 };
+
+/**
+ * @brief A pool of independent Arenas with recycled storage.
+ *
+ * Hands out @ref Handle objects that own an Arena for some scope (e.g. one
+ * IRGraph, one compile cycle).  When a Handle is destroyed the Arena is
+ * @ref Arena::softReset reset and pushed back into the pool, so the next
+ * call to @ref acquire reuses that Arena's already-allocated heap chunks
+ * instead of going through @c malloc again.  This amortises the per-Arena
+ * heap-allocation cost across many compiles, which is the main reason
+ * to use the pool over per-call standalone Arenas.
+ *
+ * The pool itself is internally synchronized with a mutex so callers from
+ * different threads (e.g. main compile thread and tiered-promotion thread)
+ * may share a single pool.  Acquired Handles are not thread-safe and must
+ * not be shared across threads concurrently.
+ *
+ * Standalone use is supported: a default-constructed @ref Handle (or one
+ * created without a backing pool, for example in tests) just deletes its
+ * Arena on destruction instead of recycling it.  This means @ref Handle
+ * is the universal Arena-owning smart pointer in the codebase.
+ */
+class ArenaPool {
+public:
+	/// Default cap on the number of spare Arenas held in the pool.  Excess
+	/// released Arenas are freed instead of pushed back.
+	static constexpr std::size_t DEFAULT_MAX_SPARES = 8;
+
+	/// Custom deleter used by @ref Handle.  When @c pool is non-null the
+	/// Arena is recycled into the pool; otherwise the Arena is deleted.
+	struct Returner {
+		ArenaPool* pool = nullptr;
+		void operator()(Arena* arena) const noexcept;
+	};
+
+	/// Owning, RAII handle to an Arena.  When destroyed it either returns
+	/// the Arena to its pool (if backed by one) or deletes it.
+	using Handle = std::unique_ptr<Arena, Returner>;
+
+	/// Constructs a Handle that owns a freshly heap-allocated Arena and is
+	/// not backed by any pool.  Use this when you need an Arena outside
+	/// the engine context (tests, benchmarks, ad-hoc compilations).
+	static Handle makeStandalone() {
+		return Handle(new Arena, Returner {});
+	}
+
+	explicit ArenaPool(std::size_t maxSpares = DEFAULT_MAX_SPARES) noexcept : maxSpares_(maxSpares) {
+	}
+
+	~ArenaPool() = default;
+
+	ArenaPool(const ArenaPool&) = delete;
+	ArenaPool& operator=(const ArenaPool&) = delete;
+	ArenaPool(ArenaPool&&) = delete;
+	ArenaPool& operator=(ArenaPool&&) = delete;
+
+	/**
+	 * @brief Acquires an Arena.  Returns a recycled Arena (with its chunks
+	 * intact, ready to be bumped into) if one is available, or allocates a
+	 * fresh one if the pool is empty.  The returned Handle returns the
+	 * Arena to this pool when destroyed.
+	 */
+	Handle acquire() {
+		std::unique_ptr<Arena> arena;
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			if (!spares_.empty()) {
+				arena = std::move(spares_.back());
+				spares_.pop_back();
+			}
+		}
+		if (!arena) {
+			arena = std::make_unique<Arena>();
+		}
+		return Handle(arena.release(), Returner {this});
+	}
+
+	/// Returns the current number of spare Arenas held in the pool.
+	std::size_t spareCount() const noexcept {
+		std::lock_guard<std::mutex> lock(mutex_);
+		return spares_.size();
+	}
+
+private:
+	friend struct Returner;
+
+	void release(Arena* arena) noexcept {
+		// Reset before pushing so the next acquirer sees an empty arena.
+		arena->softReset();
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (spares_.size() < maxSpares_) {
+			spares_.emplace_back(arena);
+		} else {
+			delete arena;
+		}
+	}
+
+	mutable std::mutex mutex_;
+	std::vector<std::unique_ptr<Arena>> spares_;
+	std::size_t maxSpares_;
+};
+
+inline void ArenaPool::Returner::operator()(Arena* arena) const noexcept {
+	if (arena == nullptr) {
+		return;
+	}
+	if (pool != nullptr) {
+		pool->release(arena);
+	} else {
+		delete arena;
+	}
+}
 
 } // namespace nautilus::common
