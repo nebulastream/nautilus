@@ -6,11 +6,15 @@
 namespace nautilus::compiler::ir {
 class ReturnOperation : public Operation {
 public:
+	/// Void return: no SSA value to thread back, no inputs to allocate, so
+	/// the no-input Operation constructor is used and no Arena is required.
 	ReturnOperation();
 
-	ReturnOperation(Operation* returnValue);
+	/// Value return: the returned value is stored as the single input,
+	/// allocated from @p arena.
+	ReturnOperation(common::Arena& arena, Operation* returnValue);
 
-	~ReturnOperation() override = default;
+	~ReturnOperation() = default;
 
 	Operation* getReturnValue() const;
 

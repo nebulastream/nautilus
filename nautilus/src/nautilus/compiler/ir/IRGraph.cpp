@@ -159,12 +159,12 @@ struct formatter<nautilus::compiler::ir::BasicBlockInvocation> : formatter<std::
 	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "Block_{}(", op.getBlock()->getIdentifier());
-		const auto& args = op.getArguments();
+		const auto args = op.getArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
 				fmt::format_to(out, ", ");
 			}
-			fmt::format_to(out, "{}", args.at(i)->getIdentifier());
+			fmt::format_to(out, "{}", args[i]->getIdentifier());
 		}
 		fmt::format_to(out, ")");
 		return out;
@@ -195,12 +195,12 @@ struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::st
 		} else {
 			fmt::format_to(out, "func_*(");
 		}
-		const auto& args = op.getInputArguments();
+		const auto args = op.getInputArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
 				fmt::format_to(out, ",");
 			}
-			fmt::format_to(out, "{}", args.at(i)->getIdentifier());
+			fmt::format_to(out, "{}", args[i]->getIdentifier());
 		}
 		fmt::format_to(out, ")");
 		return out;

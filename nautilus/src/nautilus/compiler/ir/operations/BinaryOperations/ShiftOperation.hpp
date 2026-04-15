@@ -9,9 +9,10 @@ class ShiftOperation final : public BinaryOperation {
 public:
 	enum ShiftType { LS, RS };
 
-	ShiftOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput, ShiftType type);
+	ShiftOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
+	               ShiftType type);
 
-	~ShiftOperation() override = default;
+	~ShiftOperation() = default;
 
 	static bool classof(const Operation* Op);
 

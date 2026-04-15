@@ -10,7 +10,7 @@ public:
 	explicit FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
 	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
 
-	~FunctionOperation() override = default;
+	~FunctionOperation() = default;
 
 	[[nodiscard]] const std::string& getName() const;
 

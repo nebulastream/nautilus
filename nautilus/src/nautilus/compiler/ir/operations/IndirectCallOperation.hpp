@@ -3,6 +3,7 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <span>
 #include <vector>
 
 namespace nautilus::compiler::ir {
@@ -14,16 +15,16 @@ namespace nautilus::compiler::ir {
 /// first element of inputs[] — followed by the call arguments.
 class IndirectCallOperation : public Operation {
 public:
-	IndirectCallOperation(OperationIdentifier identifier, Operation* functionPtrOperand,
-	                      std::vector<Operation*> inputArguments, Type resultType, FunctionAttributes fnAttrs);
+	IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier, Operation* functionPtrOperand,
+	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs);
 
-	~IndirectCallOperation() override = default;
+	~IndirectCallOperation() = default;
 
 	/// The SSA operand that holds the runtime function pointer (inputs[0]).
 	Operation* getFunctionPtrOperand() const;
 
 	/// The call arguments (inputs[1..]).
-	std::vector<Operation*> getInputArguments() const;
+	std::span<Operation* const> getInputArguments() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 

@@ -5,9 +5,9 @@
 namespace nautilus::compiler::ir {
 class LoadOperation : public Operation {
 public:
-	explicit LoadOperation(OperationIdentifier identifier, Operation* address, Type stamp);
+	explicit LoadOperation(common::Arena& arena, OperationIdentifier identifier, Operation* address, Type stamp);
 
-	~LoadOperation() override = default;
+	~LoadOperation() = default;
 
 	const Operation* getAddress() const;
 

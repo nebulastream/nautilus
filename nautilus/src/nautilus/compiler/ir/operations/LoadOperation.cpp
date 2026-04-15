@@ -3,8 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-LoadOperation::LoadOperation(OperationIdentifier identifier, Operation* address, Type type)
-    : Operation(OperationType::LoadOp, identifier, type, {address}) {
+LoadOperation::LoadOperation(common::Arena& arena, OperationIdentifier identifier, Operation* address, Type type)
+    : Operation(arena, OperationType::LoadOp, identifier, type, {address}) {
 }
 
 const Operation* LoadOperation::getAddress() const {

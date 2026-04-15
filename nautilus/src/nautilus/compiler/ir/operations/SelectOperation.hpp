@@ -19,10 +19,10 @@ namespace nautilus::compiler::ir {
  */
 class SelectOperation : public Operation {
 public:
-	explicit SelectOperation(OperationIdentifier identifier, Operation* condition, Operation* trueValue,
-	                         Operation* falseValue, Type resultStamp);
+	explicit SelectOperation(common::Arena& arena, OperationIdentifier identifier, Operation* condition,
+	                         Operation* trueValue, Operation* falseValue, Type resultStamp);
 
-	~SelectOperation() override = default;
+	~SelectOperation() = default;
 
 	Operation* getCondition() const;
 	Operation* getTrueValue() const;

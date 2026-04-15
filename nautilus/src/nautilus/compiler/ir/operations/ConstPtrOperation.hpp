@@ -9,7 +9,7 @@ class ConstPtrOperation : public Operation {
 public:
 	explicit ConstPtrOperation(OperationIdentifier identifier, void* value);
 
-	~ConstPtrOperation() override = default;
+	~ConstPtrOperation() = default;
 
 	void* getValue() const;
 

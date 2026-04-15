@@ -4,8 +4,9 @@
 #include <string>
 
 namespace nautilus::compiler::ir {
-MulOperation::MulOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput)
-    : BinaryOperation(OperationType::MulOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
+MulOperation::MulOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput,
+                           Operation* rightInput)
+    : BinaryOperation(arena, OperationType::MulOp, identifier, leftInput->getStamp(), leftInput, rightInput) {
 }
 
 bool MulOperation::classof(const Operation* Op) {

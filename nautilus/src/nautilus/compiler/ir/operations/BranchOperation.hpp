@@ -11,7 +11,7 @@ class BranchOperation : public Operation {
 public:
 	explicit BranchOperation();
 
-	~BranchOperation() override = default;
+	~BranchOperation() = default;
 
 	const BasicBlockInvocation& getNextBlockInvocation() const;
 	BasicBlockInvocation& getNextBlockInvocation();

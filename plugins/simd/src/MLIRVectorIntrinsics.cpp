@@ -76,8 +76,8 @@ static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builde
 template <typename MLIROp, typename ElemT, int64_t N>
 bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -103,7 +103,7 @@ bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 template <typename MLIROp, typename ElemT, int64_t N>
 bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -128,9 +128,9 @@ bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 template <typename MLIROp, typename ElemT, int64_t N>
 bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto ptrC = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto ptrC = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -157,7 +157,7 @@ bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 template <typename ElemT, int64_t N>
 bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto srcPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto srcPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -186,8 +186,8 @@ bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 template <typename ElemT, int64_t N>
 bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto destPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto vecPtr = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto destPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto vecPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -217,7 +217,7 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 template <typename ElemT, int64_t N>
 bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                              MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -238,7 +238,7 @@ bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const 
 template <typename ElemT, int64_t N>
 bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -263,7 +263,7 @@ template <typename ElemT, int64_t N>
 bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                    const compiler::ir::ProxyCallOperation* call,
                                    MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -288,7 +288,7 @@ template <typename ElemT, int64_t N>
 bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                  const compiler::ir::ProxyCallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -308,7 +308,7 @@ bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 template <typename ReduceOp, typename ElemT, int64_t N>
 bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                 const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -328,7 +328,7 @@ bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 template <typename ReduceOp, typename ElemT, int64_t N>
 bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -348,8 +348,8 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 template <::mlir::LLVM::FCmpPredicate Pred, typename ElemT, int64_t N>
 bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -382,8 +382,8 @@ bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 template <::mlir::LLVM::ICmpPredicate Pred, typename ElemT, int64_t N>
 bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, int32_t>) {
@@ -412,8 +412,8 @@ template <typename MLIROp, typename ElemT, int64_t N>
 bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                  const compiler::ir::ProxyCallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrA = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -447,9 +447,9 @@ bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 template <typename ElemT, int64_t N>
 bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
-	auto ptrMask = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto ptrA = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto ptrB = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto ptrMask = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto ptrA = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto ptrB = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	::mlir::Type elemTy;
 	if constexpr (std::is_same_v<ElemT, float>) {
@@ -518,7 +518,7 @@ static ::mlir::Type getElemType(::mlir::OpBuilder& builder) {
 template <typename ElemT, int64_t N>
 bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto scalar = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto scalar = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -545,8 +545,8 @@ bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 template <typename ElemT, int64_t N>
 bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto basePtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto idxPtr = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -581,9 +581,9 @@ bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 template <typename ElemT, int64_t N>
 bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
-	auto basePtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto idxPtr = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto dataPtr = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto dataPtr = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -617,8 +617,8 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 template <typename ElemT, int64_t N>
 bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
-	auto vecPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto idx = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto idx = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);
@@ -638,9 +638,9 @@ bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 template <typename ElemT, int64_t N>
 bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
-	auto vecPtr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto idx = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto idx = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
 
 	auto elemTy = getElemType<ElemT>(*builder);

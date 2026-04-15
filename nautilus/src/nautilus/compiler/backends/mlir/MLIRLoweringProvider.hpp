@@ -8,6 +8,7 @@
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <mlir/IR/PatternMatch.h>
+#include <span>
 #include <unordered_set>
 
 namespace mlir { namespace func {
@@ -152,7 +153,7 @@ private:
 	 * @param types: Vector of basic  types.
 	 * @return mlir::Type: Vector of MLIR types.
 	 */
-	std::vector<::mlir::Type> getMLIRType(const std::vector<ir::Operation*>& types);
+	std::vector<::mlir::Type> getMLIRType(std::span<ir::Operation* const> types);
 
 	/**
 	 * @brief Get a constant MLIR Integer.

@@ -63,9 +63,10 @@ using namespace ::mlir;
 	throw NotImplementedException("No matching type for stamp ");
 }
 
-std::vector<mlir::Type> MLIRLoweringProvider::getMLIRType(const std::vector<ir::Operation*>& types) {
+std::vector<mlir::Type> MLIRLoweringProvider::getMLIRType(std::span<ir::Operation* const> types) {
 	std::vector<mlir::Type> resultTypes;
-	for (auto& type : types) {
+	resultTypes.reserve(types.size());
+	for (auto* type : types) {
 		resultTypes.push_back(getMLIRType(type->getStamp()));
 	}
 	return resultTypes;

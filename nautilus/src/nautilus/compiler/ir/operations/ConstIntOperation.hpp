@@ -8,7 +8,7 @@ class ConstIntOperation : public Operation {
 public:
 	explicit ConstIntOperation(OperationIdentifier identifier, int64_t constantValue, Type stamp);
 
-	~ConstIntOperation() override = default;
+	~ConstIntOperation() = default;
 
 	int64_t getValue() const;
 

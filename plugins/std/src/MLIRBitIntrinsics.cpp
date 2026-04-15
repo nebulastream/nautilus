@@ -56,7 +56,7 @@ template <typename MLIROp>
 bool replaceWithUnaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                   const compiler::ir::ProxyCallOperation* call,
                                   MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto result = builder->create<MLIROp>(builder->getUnknownLoc(), inputArg.getType(), inputArg);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
@@ -67,8 +67,8 @@ template <typename MLIROp>
 bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                    const compiler::ir::ProxyCallOperation* call,
                                    MLIRLoweringProvider::ValueFrame& frame) {
-	auto arg1 = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto arg2 = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto result = builder->create<MLIROp>(builder->getUnknownLoc(), arg1.getType(), arg1, arg2);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
@@ -78,7 +78,7 @@ bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 /// LLVM CTLZ takes a second boolean argument indicating if zero is undefined
 bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	// Second argument: is_zero_undef = false (zero is defined)
 	auto isZeroUndefAttr = builder->getBoolAttr(false);
 	auto result = builder->create<::mlir::LLVM::CountLeadingZerosOp>(builder->getUnknownLoc(), inputArg.getType(),
@@ -91,7 +91,7 @@ bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 /// LLVM CTTZ takes a second boolean argument indicating if zero is undefined
 bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto inputArg = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	// Second argument: is_zero_undef = false (zero is defined)
 	auto isZeroUndefAttr = builder->getBoolAttr(false);
 	auto result = builder->create<::mlir::LLVM::CountTrailingZerosOp>(builder->getUnknownLoc(), inputArg.getType(),
@@ -104,8 +104,8 @@ bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 /// rotl(x, s) = fshl(x, x, s)
 bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto x = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto s = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	// fshl(x, x, s) performs a rotate left
 	auto result = builder->create<::mlir::LLVM::FshlOp>(builder->getUnknownLoc(), x.getType(), x, x, s);
 	frame.setValue(call->getIdentifier(), result);
@@ -116,8 +116,8 @@ bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 /// rotr(x, s) = fshr(x, x, s)
 bool replaceWithRotrIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
-	auto x = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto s = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	// fshr(x, x, s) performs a rotate right
 	auto result = builder->create<::mlir::LLVM::FshrOp>(builder->getUnknownLoc(), x.getType(), x, x, s);
 	frame.setValue(call->getIdentifier(), result);

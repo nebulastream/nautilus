@@ -10,9 +10,10 @@ class BinaryCompOperation final : public BinaryOperation {
 public:
 	enum Type { BAND, BOR, XOR };
 
-	BinaryCompOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput, Type type);
+	BinaryCompOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput,
+	                    Operation* rightInput, Type type);
 
-	~BinaryCompOperation() override = default;
+	~BinaryCompOperation() = default;
 
 	static bool classof(const Operation* Op);
 

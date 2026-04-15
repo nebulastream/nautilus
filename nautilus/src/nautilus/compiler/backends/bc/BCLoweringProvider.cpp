@@ -1859,48 +1859,48 @@ void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* bloc
 		case ir::Operation::OperationType::DivOp:
 		case ir::Operation::OperationType::ModOp: {
 			auto binOp = static_cast<ir::Operation*>(opt);
-			if (auto addOp = dynamic_cast<ir::AddOperation*>(binOp)) {
+			if (auto addOp = ir::dyn_cast<ir::AddOperation>(binOp)) {
 				countInput(addOp->getLeftInput());
 				countInput(addOp->getRightInput());
-			} else if (auto subOp = dynamic_cast<ir::SubOperation*>(binOp)) {
+			} else if (auto subOp = ir::dyn_cast<ir::SubOperation>(binOp)) {
 				countInput(subOp->getLeftInput());
 				countInput(subOp->getRightInput());
-			} else if (auto mulOp = dynamic_cast<ir::MulOperation*>(binOp)) {
+			} else if (auto mulOp = ir::dyn_cast<ir::MulOperation>(binOp)) {
 				countInput(mulOp->getLeftInput());
 				countInput(mulOp->getRightInput());
-			} else if (auto divOp = dynamic_cast<ir::DivOperation*>(binOp)) {
+			} else if (auto divOp = ir::dyn_cast<ir::DivOperation>(binOp)) {
 				countInput(divOp->getLeftInput());
 				countInput(divOp->getRightInput());
-			} else if (auto modOp = dynamic_cast<ir::ModOperation*>(binOp)) {
+			} else if (auto modOp = ir::dyn_cast<ir::ModOperation>(binOp)) {
 				countInput(modOp->getLeftInput());
 				countInput(modOp->getRightInput());
 			}
 			break;
 		}
 		case ir::Operation::OperationType::CompareOp: {
-			auto cmpOp = dynamic_cast<ir::CompareOperation*>(opt);
+			auto cmpOp = ir::cast<ir::CompareOperation>(opt);
 			countInput(cmpOp->getLeftInput());
 			countInput(cmpOp->getRightInput());
 			break;
 		}
 		case ir::Operation::OperationType::LoadOp: {
-			auto loadOp = dynamic_cast<ir::LoadOperation*>(opt);
+			auto loadOp = ir::cast<ir::LoadOperation>(opt);
 			countInput(loadOp->getAddress());
 			break;
 		}
 		case ir::Operation::OperationType::StoreOp: {
-			auto storeOp = dynamic_cast<ir::StoreOperation*>(opt);
+			auto storeOp = ir::cast<ir::StoreOperation>(opt);
 			countInput(storeOp->getAddress());
 			countInput(storeOp->getValue());
 			break;
 		}
 		case ir::Operation::OperationType::CastOp: {
-			auto castOp = dynamic_cast<ir::CastOperation*>(opt);
+			auto castOp = ir::cast<ir::CastOperation>(opt);
 			countInput(castOp->getInput());
 			break;
 		}
 		case ir::Operation::OperationType::ReturnOp: {
-			auto retOp = dynamic_cast<ir::ReturnOperation*>(opt);
+			auto retOp = ir::cast<ir::ReturnOperation>(opt);
 			if (retOp->hasReturnValue()) {
 				countInput(retOp->getReturnValue());
 			}

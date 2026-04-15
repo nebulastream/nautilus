@@ -13,7 +13,7 @@ public:
 	FunctionAddressOfOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr,
 	                           OperationIdentifier identifier);
 
-	~FunctionAddressOfOperation() override = default;
+	~FunctionAddressOfOperation() = default;
 
 	const std::string& getFunctionSymbol() const;
 	const std::string& getFunctionName() const;

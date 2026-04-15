@@ -2,9 +2,9 @@
 
 namespace nautilus::compiler::ir {
 
-SelectOperation::SelectOperation(OperationIdentifier identifier, Operation* condition, Operation* trueValue,
-                                 Operation* falseValue, Type resultStamp)
-    : Operation(OperationType::SelectOp, identifier, resultStamp, {condition, trueValue, falseValue}) {
+SelectOperation::SelectOperation(common::Arena& arena, OperationIdentifier identifier, Operation* condition,
+                                 Operation* trueValue, Operation* falseValue, Type resultStamp)
+    : Operation(arena, OperationType::SelectOp, identifier, resultStamp, {condition, trueValue, falseValue}) {
 }
 
 Operation* SelectOperation::getCondition() const {
