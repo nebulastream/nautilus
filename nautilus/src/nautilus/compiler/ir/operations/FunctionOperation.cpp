@@ -4,7 +4,7 @@
 
 namespace nautilus::compiler::ir {
 
-FunctionOperation::FunctionOperation(std::string name, std::vector<std::unique_ptr<BasicBlock>> functionBasicBlocks,
+FunctionOperation::FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
                                      std::vector<Type> inputArgs, std::vector<std::string> inputArgNames,
                                      Type outputArg)
     : Operation(OperationType::FunctionOp, outputArg), name(std::move(name)),
@@ -24,7 +24,7 @@ const std::vector<Type>& FunctionOperation::getInputArgs() const {
 	return inputArgs;
 }
 
-const std::vector<std::unique_ptr<BasicBlock>>& FunctionOperation::getBasicBlocks() const {
+const std::vector<BasicBlock*>& FunctionOperation::getBasicBlocks() const {
 	return functionBasicBlocks;
 }
 

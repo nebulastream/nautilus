@@ -80,20 +80,20 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 
 	// Find the target function by name, or use the first function as fallback
 	const ir::FunctionOperation* targetFunction = nullptr;
-	for (const auto& funcOp : functionOperations) {
+	for (auto* funcOp : functionOperations) {
 		if (funcOp->getName() == targetFunctionName) {
-			targetFunction = funcOp.get();
+			targetFunction = funcOp;
 			break;
 		}
 	}
 	if (targetFunction == nullptr) {
-		targetFunction = functionOperations.front().get();
+		targetFunction = functionOperations.front();
 	}
 
 	RegisterFrame rootFrame;
 	const auto& functionBasicBlock = targetFunction->getFunctionBasicBlock();
 	for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
-		auto& argument = functionBasicBlock.getArguments()[i];
+		auto* argument = functionBasicBlock.getArguments()[i];
 		auto argumentRegister = registerProvider.allocRegister();
 		rootFrame.setValue(argument->getIdentifier(), argumentRegister);
 		program.arguments.emplace_back(argumentRegister);
@@ -116,7 +116,7 @@ short BCLoweringProvider::LoweringContext::process(const ir::BasicBlock* block, 
 		countUsages(block);
 		// create bytecode block;
 		program.blocks.emplace_back();
-		for (auto& opt : block->getOperations()) {
+		for (auto* opt : block->getOperations()) {
 			this->dispatch(opt, blockIndex, frame);
 		}
 		return blockIndex;
@@ -1844,7 +1844,7 @@ short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, Reg
 
 void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* block) {
 	// Count how many times each value is used in this block
-	for (const auto& opt : block->getOperations()) {
+	for (auto* opt : block->getOperations()) {
 		// Count inputs to this operation
 		auto countInput = [this](const ir::Operation* input) {
 			if (input) {
@@ -1858,7 +1858,7 @@ void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* bloc
 		case ir::Operation::OperationType::MulOp:
 		case ir::Operation::OperationType::DivOp:
 		case ir::Operation::OperationType::ModOp: {
-			auto binOp = dynamic_cast<ir::Operation*>(opt.get());
+			auto binOp = static_cast<ir::Operation*>(opt);
 			if (auto addOp = dynamic_cast<ir::AddOperation*>(binOp)) {
 				countInput(addOp->getLeftInput());
 				countInput(addOp->getRightInput());
@@ -1878,29 +1878,29 @@ void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* bloc
 			break;
 		}
 		case ir::Operation::OperationType::CompareOp: {
-			auto cmpOp = dynamic_cast<ir::CompareOperation*>(opt.get());
+			auto cmpOp = dynamic_cast<ir::CompareOperation*>(opt);
 			countInput(cmpOp->getLeftInput());
 			countInput(cmpOp->getRightInput());
 			break;
 		}
 		case ir::Operation::OperationType::LoadOp: {
-			auto loadOp = dynamic_cast<ir::LoadOperation*>(opt.get());
+			auto loadOp = dynamic_cast<ir::LoadOperation*>(opt);
 			countInput(loadOp->getAddress());
 			break;
 		}
 		case ir::Operation::OperationType::StoreOp: {
-			auto storeOp = dynamic_cast<ir::StoreOperation*>(opt.get());
+			auto storeOp = dynamic_cast<ir::StoreOperation*>(opt);
 			countInput(storeOp->getAddress());
 			countInput(storeOp->getValue());
 			break;
 		}
 		case ir::Operation::OperationType::CastOp: {
-			auto castOp = dynamic_cast<ir::CastOperation*>(opt.get());
+			auto castOp = dynamic_cast<ir::CastOperation*>(opt);
 			countInput(castOp->getInput());
 			break;
 		}
 		case ir::Operation::OperationType::ReturnOp: {
-			auto retOp = dynamic_cast<ir::ReturnOperation*>(opt.get());
+			auto retOp = dynamic_cast<ir::ReturnOperation*>(opt);
 			if (retOp->hasReturnValue()) {
 				countInput(retOp->getReturnValue());
 			}

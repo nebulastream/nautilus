@@ -82,8 +82,6 @@ public:
 
 	const std::vector<Operation*>& getInputs() const;
 
-	void replaceInput(Operation* toReplace, std::shared_ptr<Operation> replaceWith);
-
 	template <typename OP>
 	const OP* dynCast() const {
 		return OP::classof(this) ? static_cast<const OP*>(this) : nullptr;
@@ -127,13 +125,13 @@ T* cast(Operation* op) {
 }
 
 template <typename T>
-T* as(const Operation* op) {
+T* as(Operation* op) {
 	return static_cast<T*>(op);
 }
 
 template <typename T>
-T* as(const std::unique_ptr<Operation>& op) {
-	return static_cast<T*>(op.get());
+const T* as(const Operation* op) {
+	return static_cast<const T*>(op);
 }
 
 class BinaryOperation : public Operation {

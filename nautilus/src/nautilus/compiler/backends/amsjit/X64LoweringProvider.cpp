@@ -182,7 +182,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 		processedBlocks.clear();
 
 		// Pre-create labels for all blocks in this function so forward jumps resolve.
-		for (auto& block : funcOp->getBasicBlocks()) {
+		for (auto* block : funcOp->getBasicBlocks()) {
 			getOrCreateLabel(block->getIdentifier());
 		}
 
@@ -234,7 +234,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 	// Bind the pre-created label for this block.
 	cc.bind(getOrCreateLabel(id));
 
-	for (auto& op : block->getOperations()) {
+	for (auto* op : block->getOperations()) {
 		dispatch(op, frame);
 	}
 }

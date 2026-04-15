@@ -56,16 +56,17 @@ private:
 	 */
 	class IRConversionContext {
 	public:
-		IRConversionContext(ExecutionTrace* trace, const compiler::CompilationUnitID& id);
+		IRConversionContext(ExecutionTrace* trace, std::shared_ptr<compiler::ir::IRGraph> ir,
+		                    const compiler::CompilationUnitID& id);
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
 
 		/**
 		 * @brief Processes a single function trace and returns a FunctionOperation
 		 * @param functionName The name of the function being processed
-		 * @return Unique pointer to the generated FunctionOperation
+		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
-		std::unique_ptr<compiler::ir::FunctionOperation> processFunction(const std::string& functionName);
+		compiler::ir::FunctionOperation* processFunction(const std::string& functionName);
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
@@ -122,7 +123,7 @@ private:
 		Type returnType;
 		std::shared_ptr<compiler::ir::IRGraph> ir;
 		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;
-		std::vector<std::unique_ptr<compiler::ir::BasicBlock>> currentBasicBlocks;
+		std::vector<compiler::ir::BasicBlock*> currentBasicBlocks;
 	};
 };
 

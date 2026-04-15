@@ -122,26 +122,20 @@ protected:
 	std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>>
 	getPredecessorBlocks(const std::shared_ptr<IRGraph>& graph, const BasicBlock* targetBlock) {
 		std::vector<std::tuple<BasicBlock*, BasicBlockInvocation*>> predeccessor;
-		for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
-			auto& op = block->getOperations().back();
+		for (auto* block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+			auto* op = block->getOperations().back();
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
 				if (ifOp->getFalseBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
-					                                                               &ifOp->getFalseBlockInvocation());
-					predeccessor.emplace_back(tup);
+					predeccessor.emplace_back(block, &ifOp->getFalseBlockInvocation());
 				}
 				if (ifOp->getTrueBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
-					                                                               &ifOp->getTrueBlockInvocation());
-					predeccessor.emplace_back(tup);
+					predeccessor.emplace_back(block, &ifOp->getTrueBlockInvocation());
 				}
 			} else if (op->getOperationType() == Operation::OperationType::BranchOp) {
 				auto branchOp = as<BranchOperation>(op);
 				if (branchOp->getNextBlockInvocation().getBlock() == targetBlock) {
-					auto tup = std::make_tuple<BasicBlock*, BasicBlockInvocation*>(block.get(),
-					                                                               &branchOp->getNextBlockInvocation());
-					predeccessor.emplace_back(tup);
+					predeccessor.emplace_back(block, &branchOp->getNextBlockInvocation());
 				}
 			}
 		}
@@ -157,7 +151,7 @@ protected:
 			[[maybe_unused]] const auto* arg = as<const BasicBlockArgument>(input);
 			size_t index = 0;
 			for (size_t i = 0; i < block->getArguments().size(); i++) {
-				if (block->getArguments()[i].get() == input) {
+				if (block->getArguments()[i] == input) {
 					index = i;
 					break;
 				}
@@ -178,7 +172,7 @@ protected:
 	void addToBlockArgumentMap(const BasicBlockInvocation* bi, std::map<Operation*, std::vector<Operation*>>& map) {
 		for (size_t i = 0; i < bi->getArguments().size(); i++) {
 			const auto& from = bi->getArguments()[i];
-			const auto& to = bi->getBlock()->getArguments()[i].get();
+			Operation* const to = bi->getBlock()->getArguments()[i];
 			std::vector<Operation*> inputs;
 			if (map.contains(to)) {
 				auto srcInput = map[to];
@@ -206,7 +200,7 @@ protected:
 		}
 		visitedBlocks.emplace(block);
 
-		auto& op = block->getOperations().back();
+		auto* op = block->getOperations().back();
 		if (op->getOperationType() == Operation::OperationType::IfOp) {
 			auto ifOp = as<IfOperation>(op);
 			addToBlockArgumentMap(&ifOp->getTrueBlockInvocation(), map);
@@ -221,13 +215,13 @@ protected:
 	}
 	void writeEdges(const std::shared_ptr<IRGraph>& graph, bool hideIntermediateBlockArguments, bool writeBlocksOnly) {
 		std::map<Operation*, std::vector<Operation*>> operatorDataflowMapping;
-		auto& rootBlock = graph->getFunctionOperations()[0]->getBasicBlocks()[0];
+		auto* rootBlock = graph->getFunctionOperations()[0]->getBasicBlocks()[0];
 		std::set<const BasicBlock*> vistedBlocks;
-		getBlockArgumentMap(rootBlock.get(), vistedBlocks, operatorDataflowMapping);
+		getBlockArgumentMap(rootBlock, vistedBlocks, operatorDataflowMapping);
 		// crate dataflow edges
-		for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+		for (auto* block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 			if (writeBlocksOnly) {
-				auto& op = block->getOperations().back();
+				auto* op = block->getOperations().back();
 				const auto fromId = std::to_string(block->getIdentifier().getId());
 				if (op->getOperationType() == Operation::OperationType::IfOp) {
 					auto ifOp = as<IfOperation>(op);
@@ -243,8 +237,8 @@ protected:
 					writeEdge(fromId, falseBlock, "control", "");
 				}
 			} else {
-				for (const auto& op : block->getOperations()) {
-					const auto& to = nodeIdMap[op.get()];
+				for (auto* op : block->getOperations()) {
+					const auto& to = nodeIdMap[op];
 					// process inputs of node
 					for (const auto* input : op->getInputs()) {
 						const auto& from = nodeIdMap[input];
@@ -270,11 +264,11 @@ protected:
 		if (!writeBlocksOnly) {
 
 			// create control-flow edges
-			for (const auto& blocks : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+			for (auto* blocks : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				std::string from = "start_" + std::to_string(blocks->getIdentifier().getId());
-				for (const auto& op : blocks->getOperations()) {
-					if (isControlFlowOp(op.get())) {
-						const auto& to = nodeIdMap[op.get()];
+				for (auto* op : blocks->getOperations()) {
+					if (isControlFlowOp(op)) {
+						const auto& to = nodeIdMap[op];
 						writeEdge(from, to, "control", "");
 						from = to;
 					}
@@ -356,7 +350,7 @@ protected:
 		std::string id = block + "_o" + std::to_string(nodeIdMap.size());
 		nodeIdMap[bi] = id;
 		for (size_t i = 0; i < bi->getArguments().size(); i++) {
-			auto& targetArg = bi->getBlock()->getArguments()[i];
+			auto* targetArg = bi->getBlock()->getArguments()[i];
 			auto lable = "Output(" + targetArg->getIdentifier().toString() + ")";
 			writeNode(indent, lable, id + "_" + std::to_string(i), "input");
 		}
@@ -373,17 +367,17 @@ protected:
 		stream << "    fillcolor=\"" << LIGHT_YELLOW << "\";" << std::endl;
 	}
 
-	void writeNodesForBlock(const std::unique_ptr<BasicBlock>& block) {
+	void writeNodesForBlock(BasicBlock* block) {
 		const auto blockIdStr = std::to_string(block->getIdentifier().getId());
 		writeNode("  ", "Start", "start_" + blockIdStr, "control");
-		for (const auto& op : block->getArguments()) {
+		for (auto* op : block->getArguments()) {
 			std::string indent = "  ";
-			writeNodeForOp(indent, blockIdStr, op.get());
+			writeNodeForOp(indent, blockIdStr, op);
 		}
 
-		for (const auto& op : block->getOperations()) {
+		for (auto* op : block->getOperations()) {
 			std::string indent = "  ";
-			writeNodeForOp(indent, blockIdStr, op.get());
+			writeNodeForOp(indent, blockIdStr, op);
 
 			if (op->getOperationType() == Operation::OperationType::IfOp) {
 				auto ifOp = as<IfOperation>(op);
@@ -399,7 +393,7 @@ protected:
 
 		if (draw_blocks) {
 			// Assuming you have a way to divide nodes into blocks
-			for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+			for (auto* block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				const auto blockIdStr = std::to_string(block->getIdentifier().getId());
 				if (!drawBlocksOnly) {
 					startSubgraph(blockIdStr);
@@ -410,7 +404,7 @@ protected:
 				}
 			}
 		} else {
-			for (const auto& block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
+			for (auto* block : graph->getFunctionOperations()[0]->getBasicBlocks()) {
 				writeNodesForBlock(block);
 			}
 		}
