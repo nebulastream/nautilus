@@ -24,17 +24,16 @@
 
 namespace nautilus::compiler::ir {
 
-IRGraph::IRGraph(const compiler::CompilationUnitID& id) : id(id) {
+IRGraph::IRGraph(const compiler::CompilationUnitID& id) : arena_(std::make_unique<common::Arena>()), id(id) {
 }
 
-std::unique_ptr<FunctionOperation>&
-IRGraph::addFunctionOperation(std::unique_ptr<FunctionOperation> functionOperation) {
-	auto& slot = functionOperations.emplace_back(std::move(functionOperation));
-	functionOperationsByName.emplace(std::string_view {slot->getName()}, slot.get());
-	return slot;
+FunctionOperation* IRGraph::addFunctionOperation(FunctionOperation* functionOperation) {
+	functionOperations.emplace_back(functionOperation);
+	functionOperationsByName.emplace(std::string_view {functionOperation->getName()}, functionOperation);
+	return functionOperation;
 }
 
-const std::vector<std::unique_ptr<FunctionOperation>>& IRGraph::getFunctionOperations() const {
+const std::vector<FunctionOperation*>& IRGraph::getFunctionOperations() const {
 	return functionOperations;
 }
 
@@ -326,7 +325,7 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 			}
 		}
 		fmt::format_to(out, "):\n");
-		for (auto& operation : block.getOperations()) {
+		for (auto* operation : block.getOperations()) {
 			fmt::format_to(out, "\t{}\n", *operation);
 		}
 		return out;
@@ -343,7 +342,7 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 			fmt::format_to(out, "{} ", arg);
 		}
 		fmt::format_to(out, ") {{");
-		for (const auto& block : func.getBasicBlocks()) {
+		for (const auto* block : func.getBasicBlocks()) {
 			fmt::format_to(out, "{}", *block);
 		}
 		fmt::format_to(out, "}}\n");
@@ -358,7 +357,7 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 	fmt::format_to(out, "NautilusIr {{\n");
 
 	// Print all function operations
-	for (const auto& func : graph.getFunctionOperations()) {
+	for (const auto* func : graph.getFunctionOperations()) {
 		fmt::format_to(out, "{}", *func);
 	}
 

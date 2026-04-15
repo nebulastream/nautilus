@@ -13,13 +13,13 @@ public:
 
 	Operation* getValue() const;
 
-	BasicBlockPtr getMergeBlock();
+	BasicBlock* getMergeBlock();
 
 	Operation* getBooleanValue();
 
 	void setBooleanValue(Operation* newBooleanValue);
 
-	void setMergeBlock(BasicBlockPtr mergeBlock);
+	void setMergeBlock(BasicBlock* mergeBlock);
 
 	BasicBlockInvocation& getTrueBlockInvocation();
 	const BasicBlockInvocation& getTrueBlockInvocation() const;
@@ -39,7 +39,7 @@ public:
 private:
 	BasicBlockInvocation trueBlockInvocation;
 	BasicBlockInvocation falseBlockInvocation;
-	std::weak_ptr<BasicBlock> mergeBlock;
+	BasicBlock* mergeBlock = nullptr;
 	double probability;
 };
 } // namespace nautilus::compiler::ir

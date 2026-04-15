@@ -35,8 +35,8 @@ void IfOperation::setFalseBlockInvocation(BasicBlock* falseBlockInvocation) {
 	this->falseBlockInvocation.setBlock(falseBlockInvocation);
 }
 
-BasicBlockPtr IfOperation::getMergeBlock() {
-	return mergeBlock.lock();
+BasicBlock* IfOperation::getMergeBlock() {
+	return mergeBlock;
 }
 
 Operation* IfOperation::getBooleanValue() {
@@ -47,7 +47,7 @@ void IfOperation::setBooleanValue(Operation* newBooleanValue) {
 	this->inputs[0] = newBooleanValue;
 }
 
-void IfOperation::setMergeBlock(BasicBlockPtr mergeBlock) {
+void IfOperation::setMergeBlock(BasicBlock* mergeBlock) {
 	this->mergeBlock = mergeBlock;
 }
 

@@ -168,7 +168,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 		blockLabels.clear();
 		processedBlocks.clear();
 
-		for (auto& block : funcOp->getBasicBlocks()) {
+		for (auto* block : funcOp->getBasicBlocks()) {
 			getOrCreateLabel(block->getIdentifier());
 		}
 
@@ -219,7 +219,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 
 	cc.bind(getOrCreateLabel(id));
 
-	for (auto& op : block->getOperations()) {
+	for (auto* op : block->getOperations()) {
 		dispatch(op, frame);
 	}
 }

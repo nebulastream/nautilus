@@ -46,7 +46,7 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 	// Process all functions in sorted order for deterministic IR output.
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
-		auto phaseContext = IRConversionContext(trace, id);
+		auto phaseContext = IRConversionContext(trace, ir, id);
 		ir->addFunctionOperation(phaseContext.processFunction(functionName));
 	}
 
@@ -55,25 +55,26 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
                                                          const compiler::CompilationUnitID& id) {
-	auto phaseContext = IRConversionContext(trace.get(), id);
+	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
+	auto phaseContext = IRConversionContext(trace.get(), ir, id);
 	return phaseContext.process();
 }
 
 TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrace* trace,
-                                                                   const compiler::CompilationUnitID& id)
-    : trace(trace), ir(std::make_shared<compiler::ir::IRGraph>(id)) {
+                                                                   std::shared_ptr<compiler::ir::IRGraph> ir,
+                                                                   const compiler::CompilationUnitID&)
+    : trace(trace), ir(std::move(ir)) {
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(*trace->getBlocks().front());
-	auto functionOperation = std::make_unique<FunctionOperation>(
+	auto* functionOperation = ir->getArena().create<FunctionOperation>(
 	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
-	ir->addFunctionOperation(std::move(functionOperation));
+	ir->addFunctionOperation(functionOperation);
 	return ir;
 }
 
-std::unique_ptr<FunctionOperation>
-TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string& functionName) {
+FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string& functionName) {
 	// Clear state for this function
 	currentBasicBlocks.clear();
 	blockMap.clear();
@@ -83,24 +84,24 @@ TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string
 	processBlock(*trace->getBlocks().front());
 
 	// Create and return the function operation
-	auto functionOperation = std::make_unique<FunctionOperation>(
-	    functionName, std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
-	return functionOperation;
+	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
+	                                                std::vector<std::string> {}, returnType);
 }
 
 BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {
 	// create new frame and block
+	auto& arena = ir->getArena();
 	ValueFrame blockFrame;
-	std::vector<std::unique_ptr<BasicBlockArgument>> blockArguments;
+	std::vector<BasicBlockArgument*> blockArguments;
+	blockArguments.reserve(block.arguments.size());
 	for (auto& arg : block.arguments) {
 		auto argumentIdentifier = createValueIdentifier(arg);
-		auto blockArgument = std::make_unique<BasicBlockArgument>(argumentIdentifier, arg.type);
-		blockFrame.setValue(argumentIdentifier, blockArgument.get());
-		blockArguments.emplace_back(std::move(blockArgument));
+		auto* blockArgument = arena.create<BasicBlockArgument>(argumentIdentifier, arg.type);
+		blockFrame.setValue(argumentIdentifier, blockArgument);
+		blockArguments.emplace_back(blockArgument);
 	}
-	auto& irBasicBlock =
-	    currentBasicBlocks.emplace_back(std::make_unique<BasicBlock>(block.blockId, std::move(blockArguments)));
-	auto irBasicBlockPtr = irBasicBlock.get();
+	auto* irBasicBlockPtr = arena.create<BasicBlock>(arena, block.blockId, std::move(blockArguments));
+	currentBasicBlocks.emplace_back(irBasicBlockPtr);
 
 	blockMap[block.blockId] = irBasicBlockPtr;
 	for (auto* operation : block.operations) {
@@ -305,7 +306,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 	auto probability = get<BranchProbability>(operation.input[3]);
 
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
-	auto ifOperation = std::make_unique<IfOperation>(booleanValue, probability);
+	auto* ifOperation = ir->getArena().create<IfOperation>(booleanValue, probability);
 	auto trueCaseBlock = processBlock(trace->getBlock(trueCaseBlockRef.block));
 
 	ifOperation->getTrueBlockInvocation().setBlock(trueCaseBlock);
@@ -314,7 +315,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 	auto falseCaseBlock = processBlock(trace->getBlock(falseCaseBlockRef.block));
 	ifOperation->getFalseBlockInvocation().setBlock(falseCaseBlock);
 	createBlockArguments(frame, ifOperation->getFalseBlockInvocation(), falseCaseBlockRef);
-	currentIrBlock->addOperation(std::move(ifOperation));
+	currentIrBlock->addOperation(ifOperation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
@@ -364,9 +365,9 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = operation.resultType;
-	auto loadOperation = std::make_unique<LoadOperation>(resultIdentifier, address, resultType);
-	frame.setValue(resultIdentifier, loadOperation.get());
-	currentBlock->addOperation(std::move(loadOperation));
+	auto* loadOperation = ir->getArena().create<LoadOperation>(resultIdentifier, address, resultType);
+	frame.setValue(resultIdentifier, loadOperation);
+	currentBlock->addOperation(loadOperation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& frame, BasicBlock* currentBlock,

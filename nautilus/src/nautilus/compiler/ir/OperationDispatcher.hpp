@@ -68,7 +68,7 @@ class OperationDispatcher {
 public:
 	/// Dispatch a single operation to the matching `visitXxx` hook on Derived.
 	template <typename... Args>
-	void dispatch(const std::unique_ptr<Operation>& op, Args&&... args) {
+	void dispatch(Operation* op, Args&&... args) {
 		using OT = Operation::OperationType;
 		auto& d = static_cast<Derived&>(*this);
 		switch (op->getOperationType()) {
@@ -172,13 +172,13 @@ public:
 			d.visitFunction(as<FunctionOperation>(op), std::forward<Args>(args)...);
 			return;
 		case OT::BasicBlockArgument:
-			d.visitBasicBlockArgument(op.get(), std::forward<Args>(args)...);
+			d.visitBasicBlockArgument(op, std::forward<Args>(args)...);
 			return;
 		case OT::BlockInvocation:
-			d.visitBlockInvocation(op.get(), std::forward<Args>(args)...);
+			d.visitBlockInvocation(op, std::forward<Args>(args)...);
 			return;
 		case OT::MLIR_YIELD:
-			d.visitMlirYield(op.get(), std::forward<Args>(args)...);
+			d.visitMlirYield(op, std::forward<Args>(args)...);
 			return;
 		}
 		// No default: adding an enumerator to OperationType is a compile error

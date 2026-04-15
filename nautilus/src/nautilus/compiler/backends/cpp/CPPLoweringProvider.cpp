@@ -88,7 +88,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		const auto& functionBasicBlock = functionOperation.getFunctionBasicBlock();
 
 		for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
-			auto argument = functionBasicBlock.getArguments()[i].get();
+			auto* argument = functionBasicBlock.getArguments()[i];
 			auto var = getVariable(argument->getIdentifier());
 			rootFrame.setValue(argument->getIdentifier(), var);
 			arguments.emplace_back(getType(argument->getStamp()) + " " + var);
@@ -147,7 +147,7 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 	auto entry = activeBlocks.find(block->getIdentifier());
 	if (entry == activeBlocks.end()) {
 
-		for (auto& arg : block->getArguments()) {
+		for (auto* arg : block->getArguments()) {
 			if (!frame.contains(arg->getIdentifier())) {
 				auto var = getVariable(arg->getIdentifier());
 				blockArguments << getType(arg->getStamp()) << " " << var << ";\n";
@@ -160,7 +160,7 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 		auto& currentBlock = blocks.emplace_back();
 		currentBlock << blockName << ":\n";
 		activeBlocks.emplace(block->getIdentifier(), blockName);
-		for (auto& opt : block->getOperations()) {
+		for (auto* opt : block->getOperations()) {
 			this->dispatch(opt, blockIndex, frame);
 		}
 		return blockName;

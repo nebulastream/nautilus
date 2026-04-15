@@ -363,7 +363,7 @@ mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std
 }
 
 void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueFrame& frame) {
-	for (const auto& operation : basicBlock->getOperations()) {
+	for (auto* operation : basicBlock->getOperations()) {
 		dispatch(operation, frame);
 	}
 }
