@@ -22,17 +22,9 @@ std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
 
 void ProxyCallOperation::setInputArguments(common::Arena& arena, std::span<Operation* const> newInputArguments) {
 	// Re-allocate a new buffer of the requested size from the arena and
-	// rebind the inputs view. The previous buffer is left in the arena
+	// rebind the inputs span. The previous buffer is left in the arena
 	// (it is reclaimed in bulk on the next reset).
-	if (newInputArguments.empty()) {
-		this->inputs = nullptr;
-		this->numInputs = 0;
-		return;
-	}
-	auto* newInputs = allocateInputs(arena, newInputArguments.size());
-	std::copy(newInputArguments.begin(), newInputArguments.end(), newInputs);
-	this->inputs = newInputs;
-	this->numInputs = static_cast<uint32_t>(newInputArguments.size());
+	this->inputs = allocateInputs(arena, newInputArguments);
 }
 
 const std::string& ProxyCallOperation::getFunctionName() const {
