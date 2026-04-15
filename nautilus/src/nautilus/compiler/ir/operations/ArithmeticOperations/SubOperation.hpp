@@ -7,9 +7,9 @@ namespace nautilus::compiler::ir {
 
 class SubOperation final : public BinaryOperation {
 public:
-	SubOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
+	SubOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
 
-	~SubOperation() override = default;
+	~SubOperation() = default;
 
 	static bool classof(const Operation* Op);
 };

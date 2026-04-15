@@ -7,9 +7,9 @@
 namespace nautilus::compiler::ir {
 class IfOperation : public Operation {
 public:
-	IfOperation(Operation* booleanValue, double probability);
+	IfOperation(common::Arena& arena, Operation* booleanValue, double probability);
 
-	~IfOperation() override = default;
+	~IfOperation() = default;
 
 	Operation* getValue() const;
 

@@ -4,9 +4,10 @@
 
 namespace nautilus::compiler::ir {
 
-BinaryCompOperation::BinaryCompOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
-                                         Type type)
-    : BinaryOperation(OperationType::BinaryComp, identifier, leftInput->getStamp(), leftInput, rightInput), type(type) {
+BinaryCompOperation::BinaryCompOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput,
+                                         Operation* rightInput, Type type)
+    : BinaryOperation(arena, OperationType::BinaryComp, identifier, leftInput->getStamp(), leftInput, rightInput),
+      type(type) {
 }
 
 BinaryCompOperation::Type BinaryCompOperation::getType() const {

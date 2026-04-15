@@ -6,9 +6,9 @@ namespace nautilus::compiler::ir {
 
 class MulOperation final : public BinaryOperation {
 public:
-	MulOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
+	MulOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
 
-	~MulOperation() override = default;
+	~MulOperation() = default;
 
 	static bool classof(const Operation* Op);
 };

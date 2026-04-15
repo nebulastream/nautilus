@@ -1,12 +1,15 @@
 
 #pragma once
 
+#include "nautilus/common/Arena.hpp"
 #include "nautilus/tracing/Types.hpp"
+#include <algorithm>
 #include <compare>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
-#include <vector>
 
 namespace nautilus::compiler::ir {
 
@@ -28,6 +31,26 @@ private:
 	uint32_t id;
 };
 
+/**
+ * @brief Base class for all IR operations.
+ *
+ * Operation inputs are stored as a raw pointer / count pair into an
+ * Operation* array that is allocated from the surrounding `common::Arena`.
+ * The pointer is stable for the lifetime of the arena (the same lifetime
+ * the Operation itself enjoys), so storing inputs out-of-line costs the
+ * IR no extra cache pressure compared to a `std::vector` while removing
+ * the per-operation heap allocation, capacity word, and dynamic
+ * destruction the vector previously required.
+ *
+ * Operation has a non-virtual destructor: every derived type knows its
+ * own static type at construction time (the arena's `create<T>` call
+ * captures it via the destroyThunk), so polymorphic deletion through
+ * `Operation*` is never needed. Removing the virtual destructor lets
+ * the simple, fixed-arity Operation subclasses (the vast majority:
+ * Add, Sub, Cast, Load, Store, Const*, ...) become trivially
+ * destructible — the arena then skips registering destructors for
+ * them entirely, which both saves memory and accelerates `softReset`.
+ */
 class Operation {
 public:
 	enum class OperationType : uint8_t {
@@ -64,23 +87,53 @@ public:
 		FunctionAddressOfOp,
 	};
 
-	explicit Operation(OperationType opType, OperationIdentifier identifier, Type type,
-	                   const std::vector<Operation*>& inputs = {});
+	/// Constructs an Operation that has no SSA inputs.
+	Operation(OperationType opType, OperationIdentifier identifier, Type type) noexcept
+	    : opType(opType), identifier(identifier), stamp(type), inputs(nullptr), numInputs(0) {
+	}
 
-	explicit Operation(OperationType opType, Type type, const std::vector<Operation*>& inputs = {});
+	/// Convenience constructor (no identifier, no inputs).
+	Operation(OperationType opType, Type type) noexcept : Operation(opType, OperationIdentifier {0}, type) {
+	}
 
-	virtual ~Operation() noexcept;
+	/// Constructs an Operation whose inputs are copied into a freshly
+	/// arena-allocated array.
+	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
+	          std::initializer_list<Operation*> ins)
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins.size())),
+	      numInputs(static_cast<uint32_t>(ins.size())) {
+		std::copy(ins.begin(), ins.end(), inputs);
+	}
 
-	const OperationIdentifier& getIdentifier() const;
+	/// Variable-length input constructor (used by call-like operations).
+	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
+	          std::span<Operation* const> ins)
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins.size())),
+	      numInputs(static_cast<uint32_t>(ins.size())) {
+		std::copy(ins.begin(), ins.end(), inputs);
+	}
 
-	OperationType getOperationType() const;
+	/// Non-virtual destructor (see class comment).
+	~Operation() = default;
 
-	// std::string getOperationTypeAsString() const;
-	const Type& getStamp() const;
+	const OperationIdentifier& getIdentifier() const {
+		return identifier;
+	}
+
+	OperationType getOperationType() const {
+		return opType;
+	}
+
+	const Type& getStamp() const {
+		return stamp;
+	}
 
 	bool isConstOperation() const;
 
-	const std::vector<Operation*>& getInputs() const;
+	/// Returns a non-owning view over the SSA inputs of this operation.
+	std::span<Operation* const> getInputs() const noexcept {
+		return {inputs, numInputs};
+	}
 
 	template <typename OP>
 	const OP* dynCast() const {
@@ -88,10 +141,29 @@ public:
 	}
 
 protected:
+	/// Allocates a fresh, uninitialised Operation* array of the requested
+	/// size from @p arena.  Returns nullptr when @p count is zero so the
+	/// arena does not get hit with an empty allocation.
+	static Operation** allocateInputs(common::Arena& arena, std::size_t count) {
+		if (count == 0) {
+			return nullptr;
+		}
+		return static_cast<Operation**>(arena.allocate(sizeof(Operation*) * count, alignof(Operation*)));
+	}
+
+	Operation* getInput(std::size_t i) const {
+		return inputs[i];
+	}
+
+	void setInput(std::size_t i, Operation* op) {
+		inputs[i] = op;
+	}
+
 	const OperationType opType;
 	const OperationIdentifier identifier;
 	const Type stamp;
-	std::vector<Operation*> inputs;
+	Operation** inputs;
+	uint32_t numInputs;
 };
 
 /**
@@ -136,7 +208,8 @@ const T* as(const Operation* op) {
 
 class BinaryOperation : public Operation {
 public:
-	BinaryOperation(OperationType opType, OperationIdentifier identifier, Type type, Operation* left, Operation* right);
+	BinaryOperation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
+	                Operation* left, Operation* right);
 
 	Operation* getLeftInput() const;
 

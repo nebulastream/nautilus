@@ -5,9 +5,9 @@ namespace nautilus::compiler::ir {
 
 class NotOperation : public Operation {
 public:
-	NotOperation(OperationIdentifier identifier, Operation* input);
+	NotOperation(common::Arena& arena, OperationIdentifier identifier, Operation* input);
 
-	~NotOperation() override = default;
+	~NotOperation() = default;
 
 	Operation* getInput() const;
 

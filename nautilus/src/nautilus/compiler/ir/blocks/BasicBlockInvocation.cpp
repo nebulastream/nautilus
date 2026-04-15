@@ -15,33 +15,42 @@ const BasicBlock* BasicBlockInvocation::getBlock() const {
 	return basicBlock;
 }
 
-void BasicBlockInvocation::addArgument(Operation* argument) {
-	inputs.emplace_back(argument);
-}
-
-void BasicBlockInvocation::removeArgument(uint64_t argumentIndex) {
-	inputs.erase(inputs.begin() + argumentIndex);
+void BasicBlockInvocation::addArgument(common::Arena& arena, Operation* argument) {
+	if (numInputs == capacity_) {
+		// Grow geometrically so back-to-back appends amortise to O(1).
+		// Block invocations very rarely exceed a handful of arguments, so
+		// the initial small bucket avoids allocating a chunk for the
+		// common case where only one or two arguments are added.
+		uint32_t newCap = capacity_ == 0 ? 4u : capacity_ * 2u;
+		auto* newInputs = static_cast<Operation**>(arena.allocate(sizeof(Operation*) * newCap, alignof(Operation*)));
+		if (numInputs > 0) {
+			std::copy(inputs, inputs + numInputs, newInputs);
+		}
+		inputs = newInputs;
+		capacity_ = newCap;
+	}
+	inputs[numInputs++] = argument;
 }
 
 void BasicBlockInvocation::replaceArgument(Operation* toReplace, Operation* replaceWith) {
-	std::replace(inputs.begin(), inputs.end(), toReplace, replaceWith);
+	std::replace(inputs, inputs + numInputs, toReplace, replaceWith);
 }
 
 void BasicBlockInvocation::replaceArgument(const Operation* toReplace, Operation* replaceWith) {
-	std::replace(inputs.begin(), inputs.end(), const_cast<Operation*>(toReplace), replaceWith);
+	std::replace(inputs, inputs + numInputs, const_cast<Operation*>(toReplace), replaceWith);
 }
 
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
-	for (uint64_t i = 0; i < inputs.size(); i++) {
+	for (uint32_t i = 0; i < numInputs; i++) {
 		if (inputs[i] == arg) {
-			return i;
+			return static_cast<int>(i);
 		}
 	}
 	return -1;
 }
 
-const std::vector<Operation*>& BasicBlockInvocation::getArguments() const {
-	return inputs;
+std::span<Operation* const> BasicBlockInvocation::getArguments() const {
+	return getInputs();
 }
 
 bool BasicBlockInvocation::classof(const Operation* op) {

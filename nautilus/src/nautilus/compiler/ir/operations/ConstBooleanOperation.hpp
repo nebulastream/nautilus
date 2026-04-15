@@ -9,7 +9,7 @@ class ConstBooleanOperation : public Operation {
 public:
 	explicit ConstBooleanOperation(OperationIdentifier identifier, bool value);
 
-	~ConstBooleanOperation() override = default;
+	~ConstBooleanOperation() = default;
 
 	bool getValue() const;
 

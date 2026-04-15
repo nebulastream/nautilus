@@ -9,7 +9,7 @@ class ConstFloatOperation : public Operation {
 public:
 	explicit ConstFloatOperation(OperationIdentifier identifier, double constantValue, Type stamp);
 
-	~ConstFloatOperation() override = default;
+	~ConstFloatOperation() = default;
 
 	double getValue() const;
 

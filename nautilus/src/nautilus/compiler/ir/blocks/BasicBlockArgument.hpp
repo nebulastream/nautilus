@@ -11,7 +11,7 @@ class BasicBlockArgument : public Operation {
 public:
 	explicit BasicBlockArgument(const OperationIdentifier identifier, Type stamp);
 
-	~BasicBlockArgument() override = default;
+	~BasicBlockArgument() = default;
 
 	friend std::ostream& operator<<(std::ostream& os, const BasicBlockArgument& argument);
 

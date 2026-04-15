@@ -21,9 +21,9 @@ public:
 /// Helper for memcpy intrinsic (3 arguments: dest, src, count)
 bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                 const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto src = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	// Create memcpy intrinsic: llvm.memcpy(dest, src, len, isVolatile)
 	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
@@ -40,9 +40,9 @@ bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                  const compiler::ir::ProxyCallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto src = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	// Create memmove intrinsic: llvm.memmove(dest, src, len, isVolatile)
 	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
@@ -58,9 +58,9 @@ bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 /// Helper for memset intrinsic (3 arguments: dest, value, count)
 bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                 const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
-	auto dest = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-	auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
-	auto count = frame.getValue(call->getInputArguments().at(2)->getIdentifier());
+	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	// LLVM memset intrinsic requires the value to be i8, so truncate from i32 to i8
 	auto i8Type = builder->getIntegerType(8);

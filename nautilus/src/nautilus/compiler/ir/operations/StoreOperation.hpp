@@ -6,9 +6,9 @@
 namespace nautilus::compiler::ir {
 class StoreOperation : public Operation {
 public:
-	explicit StoreOperation(Operation* value, Operation* address);
+	explicit StoreOperation(common::Arena& arena, Operation* value, Operation* address);
 
-	~StoreOperation() override = default;
+	~StoreOperation() = default;
 
 	Operation* getValue() const;
 

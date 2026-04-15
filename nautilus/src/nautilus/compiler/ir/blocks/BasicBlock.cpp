@@ -10,12 +10,12 @@ BasicBlock::BasicBlock(common::Arena& arena, BlockIdentifier identifier, std::ve
     : arena_(&arena), identifier(identifier), operations(), arguments(std::move(arguments)) {
 }
 
-void BasicBlock::addNextBlock(BasicBlock* nextBlock, const std::vector<Operation*>& ops) {
+void BasicBlock::addNextBlock(BasicBlock* nextBlock, std::span<Operation* const> ops) {
 	auto* branchOp = arena_->create<BranchOperation>();
 	auto& nextBlockIn = branchOp->getNextBlockInvocation();
 	nextBlockIn.setBlock(nextBlock);
-	for (auto op : ops) {
-		nextBlockIn.addArgument(op);
+	for (auto* op : ops) {
+		nextBlockIn.addArgument(*arena_, op);
 	}
 	addOperation(branchOp);
 }

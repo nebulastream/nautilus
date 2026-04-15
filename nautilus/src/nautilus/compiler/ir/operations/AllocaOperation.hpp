@@ -8,7 +8,7 @@ class AllocaOperation : public Operation {
 public:
 	AllocaOperation(OperationIdentifier id, size_t allocationSize);
 
-	~AllocaOperation() override = default;
+	~AllocaOperation() = default;
 
 	size_t getSize() const;
 

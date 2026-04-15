@@ -74,8 +74,7 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<Executi
 	return phaseContext.process();
 }
 
-std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
-                                                         common::ArenaPool& pool,
+std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
 	auto phaseContext = IRConversionContext(trace.get(), ir, id);
@@ -328,7 +327,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 	auto probability = get<BranchProbability>(operation.input[3]);
 
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
-	auto* ifOperation = ir->getArena().create<IfOperation>(booleanValue, probability);
+	auto& arena = ir->getArena();
+	auto* ifOperation = arena.create<IfOperation>(arena, booleanValue, probability);
 	auto trueCaseBlock = processBlock(trace->getBlock(trueCaseBlockRef.block));
 
 	ifOperation->getTrueBlockInvocation().setBlock(trueCaseBlock);
@@ -343,9 +343,10 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
                                                                          BasicBlockInvocation& blockInvocation,
                                                                          const BlockRef& val) {
+	auto& arena = ir->getArena();
 	for (const auto& arg : val.arguments) {
 		auto valueIdentifier = createValueIdentifier(arg);
-		blockInvocation.addArgument(frame.getValue(valueIdentifier));
+		blockInvocation.addArgument(arena, frame.getValue(valueIdentifier));
 	}
 }
 
@@ -387,7 +388,8 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto resultType = operation.resultType;
-	auto* loadOperation = ir->getArena().create<LoadOperation>(resultIdentifier, address, resultType);
+	auto& arena = ir->getArena();
+	auto* loadOperation = arena.create<LoadOperation>(arena, resultIdentifier, address, resultType);
 	frame.setValue(resultIdentifier, loadOperation);
 	currentBlock->addOperation(loadOperation);
 }

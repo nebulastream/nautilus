@@ -7,9 +7,9 @@ namespace nautilus::compiler::ir {
 
 class ModOperation final : public BinaryOperation {
 public:
-	ModOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
+	ModOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
 
-	~ModOperation() override = default;
+	~ModOperation() = default;
 
 	static bool classof(const Operation* Op);
 };

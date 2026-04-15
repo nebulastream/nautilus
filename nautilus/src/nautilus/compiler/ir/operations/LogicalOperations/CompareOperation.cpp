@@ -3,9 +3,9 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 
 namespace nautilus::compiler::ir {
-CompareOperation::CompareOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
-                                   Comparator comparator)
-    : BinaryOperation(Operation::OperationType::CompareOp, identifier, Type::b, leftInput, rightInput),
+CompareOperation::CompareOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput,
+                                   Operation* rightInput, Comparator comparator)
+    : BinaryOperation(arena, Operation::OperationType::CompareOp, identifier, Type::b, leftInput, rightInput),
       comparator(comparator) {
 }
 

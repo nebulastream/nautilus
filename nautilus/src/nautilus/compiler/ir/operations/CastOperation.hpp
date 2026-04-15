@@ -7,9 +7,9 @@ namespace nautilus::compiler::ir {
 
 class CastOperation : public Operation {
 public:
-	explicit CastOperation(OperationIdentifier identifier, Operation* input, Type targetStamp);
+	explicit CastOperation(common::Arena& arena, OperationIdentifier identifier, Operation* input, Type targetStamp);
 
-	~CastOperation() override = default;
+	~CastOperation() = default;
 
 	Operation* getInput() const;
 

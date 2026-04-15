@@ -3,8 +3,8 @@
 
 namespace nautilus::compiler::ir {
 
-NotOperation::NotOperation(OperationIdentifier identifier, Operation* input)
-    : Operation(OperationType::NotOp, identifier, Type::b, {input}) {
+NotOperation::NotOperation(common::Arena& arena, OperationIdentifier identifier, Operation* input)
+    : Operation(arena, OperationType::NotOp, identifier, Type::b, {input}) {
 }
 
 bool NotOperation::classof(const Operation* Op) {

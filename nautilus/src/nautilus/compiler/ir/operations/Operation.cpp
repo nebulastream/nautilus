@@ -3,32 +3,6 @@
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 
 namespace nautilus::compiler::ir {
-Operation::Operation(OperationType opType, OperationIdentifier identifier, Type stamp,
-                     const std::vector<Operation*>& inputs)
-    : opType(opType), identifier(identifier), stamp(stamp), inputs(inputs) {
-}
-
-Operation::Operation(OperationType opType, Type stamp, const std::vector<Operation*>& inputs)
-    : opType(opType), identifier(0), stamp(stamp), inputs(inputs) {
-}
-
-Operation::~Operation() noexcept = default;
-
-Operation::OperationType Operation::getOperationType() const {
-	return opType;
-}
-
-const std::vector<Operation*>& Operation::getInputs() const {
-	return inputs;
-}
-
-const OperationIdentifier& Operation::getIdentifier() const {
-	return identifier;
-}
-
-const Type& Operation::getStamp() const {
-	return stamp;
-}
 
 std::string OperationIdentifier::toString() const {
 	return "$" + std::to_string(id);
@@ -41,9 +15,9 @@ bool Operation::isConstOperation() const {
 	return opType != OperationType::ConstPtrOp && isConstantOp(opType);
 }
 
-BinaryOperation::BinaryOperation(OperationType opType, OperationIdentifier identifier, Type type, Operation* left,
-                                 Operation* right)
-    : Operation(opType, identifier, type, {left, right}) {
+BinaryOperation::BinaryOperation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
+                                 Operation* left, Operation* right)
+    : Operation(arena, opType, identifier, type, {left, right}) {
 }
 
 bool BinaryOperation::classof(const Operation* op) {

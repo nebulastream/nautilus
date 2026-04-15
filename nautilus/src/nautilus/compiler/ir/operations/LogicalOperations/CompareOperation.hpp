@@ -13,10 +13,10 @@ public:
 		GE = 5,
 	};
 
-	CompareOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
+	CompareOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
 	                 Comparator comparator);
 
-	~CompareOperation() override = default;
+	~CompareOperation() = default;
 
 	Comparator getComparator() const;
 

@@ -5,9 +5,9 @@ namespace nautilus::compiler::ir {
 
 class DivOperation final : public BinaryOperation {
 public:
-	DivOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
+	DivOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
 
-	~DivOperation() override = default;
+	~DivOperation() = default;
 
 	static bool classof(const Operation* Op);
 };

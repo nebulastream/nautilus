@@ -5,9 +5,9 @@ namespace nautilus::compiler::ir {
 
 class AddOperation final : public BinaryOperation {
 public:
-	AddOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
+	AddOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput, Operation* rightInput);
 
-	~AddOperation() override = default;
+	~AddOperation() = default;
 
 	static bool classof(const Operation* Op);
 };

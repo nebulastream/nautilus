@@ -4,9 +4,10 @@
 
 namespace nautilus::compiler::ir {
 
-ShiftOperation::ShiftOperation(OperationIdentifier identifier, Operation* leftInput, Operation* rightInput,
-                               ShiftType type)
-    : BinaryOperation(OperationType::ShiftOp, identifier, leftInput->getStamp(), leftInput, rightInput), type(type) {
+ShiftOperation::ShiftOperation(common::Arena& arena, OperationIdentifier identifier, Operation* leftInput,
+                               Operation* rightInput, ShiftType type)
+    : BinaryOperation(arena, OperationType::ShiftOp, identifier, leftInput->getStamp(), leftInput, rightInput),
+      type(type) {
 }
 
 ShiftOperation::ShiftType ShiftOperation::getType() const {

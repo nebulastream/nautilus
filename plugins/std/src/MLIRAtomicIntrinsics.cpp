@@ -84,7 +84,7 @@ using TypeFactory = std::function<::mlir::Type(::mlir::OpBuilder&)>;
 IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
 	                   MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
+		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto resultTy = tyFn(*b);
 		auto op = b->create<::mlir::LLVM::LoadOp>(b->getUnknownLoc(), resultTy, ptr,
 		                                          /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
@@ -97,8 +97,8 @@ IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
 	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-		auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 		b->create<::mlir::LLVM::StoreOp>(b->getUnknownLoc(), value, ptr,
 		                                 /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
 		                                 /*isInvariantGroup=*/false, ord);
@@ -109,8 +109,8 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
 	                    MLIRLoweringProvider::ValueFrame& frame) -> bool {
-		auto ptr = frame.getValue(call->getInputArguments().at(0)->getIdentifier());
-		auto value = frame.getValue(call->getInputArguments().at(1)->getIdentifier());
+		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 		auto op = b->create<::mlir::LLVM::AtomicRMWOp>(b->getUnknownLoc(), binOp, ptr, value, ord);
 		frame.setValue(call->getIdentifier(), op);
 		return true;

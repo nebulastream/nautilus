@@ -1,23 +1,25 @@
 
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <span>
 #include <string>
 #include <vector>
 
 namespace nautilus::compiler::ir {
 class ProxyCallOperation : public Operation {
 public:
-	ProxyCallOperation(OperationIdentifier identifier, const std::vector<Operation*>& inputArguments, Type resultType);
+	ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
+	                   Type resultType);
 
-	ProxyCallOperation(const std::string& functionSymbol, const std::string& functionName, void* functionPtr,
-	                   OperationIdentifier identifier, std::vector<Operation*> inputArguments, Type resultType,
-	                   FunctionAttributes fnAttrs);
+	ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
+	                   void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
+	                   Type resultType, FunctionAttributes fnAttrs);
 
-	~ProxyCallOperation() override = default;
+	~ProxyCallOperation() = default;
 
-	const std::vector<Operation*>& getInputArguments() const;
+	std::span<Operation* const> getInputArguments() const;
 
-	void setInputArguments(std::vector<Operation*>& newInputArguments);
+	void setInputArguments(common::Arena& arena, std::span<Operation* const> newInputArguments);
 
 	const std::string& getFunctionSymbol() const;
 	const std::string& getFunctionName() const;
