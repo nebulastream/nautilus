@@ -13,21 +13,30 @@ BCLoweringProvider::BCLoweringProvider() {
 
 BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(),
-      targetFunctionName(std::move(targetFunctionName)), registerProvider(), activeBlocks(), usageCounts(),
-      functionArgs() {
+      targetFunctionName(std::move(targetFunctionName)), loweringOptions(), registerProvider(), activeBlocks(),
+      usageCounts(), functionArgs() {
 }
 
 BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir,
                                                      const std::unordered_map<std::string, void*>& internalFunctionPtrs)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
-      targetFunctionName("execute"), registerProvider(), activeBlocks(), usageCounts(), functionArgs() {
+      targetFunctionName("execute"), loweringOptions(), registerProvider(), activeBlocks(), usageCounts(),
+      functionArgs() {
 }
 
 BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
                                                      const std::unordered_map<std::string, void*>& internalFunctionPtrs)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
-      targetFunctionName(std::move(targetFunctionName)), registerProvider(), activeBlocks(), usageCounts(),
-      functionArgs() {
+      targetFunctionName(std::move(targetFunctionName)), loweringOptions(), registerProvider(), activeBlocks(),
+      usageCounts(), functionArgs() {
+}
+
+BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
+                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs,
+                                                     LoweringOptions options)
+    : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
+      targetFunctionName(std::move(targetFunctionName)), loweringOptions(options), registerProvider(), activeBlocks(),
+      usageCounts(), functionArgs() {
 }
 
 std::tuple<Code, RegisterFile> BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir) {
@@ -55,6 +64,13 @@ BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& fu
 	return ctx.process();
 }
 
+std::tuple<Code, RegisterFile>
+BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
+                          const std::unordered_map<std::string, void*>& internalFunctionPtrs, LoweringOptions options) {
+	auto ctx = LoweringContext(std::move(ir), std::string(functionName), internalFunctionPtrs, options);
+	return ctx.process();
+}
+
 short BCLoweringProvider::RegisterProvider::allocRegister() {
 	// Reuse freed registers if available
 	if (!freeList.empty()) {
@@ -66,7 +82,24 @@ short BCLoweringProvider::RegisterProvider::allocRegister() {
 	return currentRegister++;
 }
 
+short BCLoweringProvider::RegisterProvider::allocPinnedRegister() {
+	// Always allocate a fresh slot: a pinned register's contents are
+	// pre-initialised from the default register file on every
+	// invocation and must never be clobbered by another operation
+	// during the run, so the slot cannot be taken from the free list.
+	short reg = currentRegister++;
+	pinned.insert(reg);
+	return reg;
+}
+
+short BCLoweringProvider::RegisterProvider::allocFreshRegister() {
+	return currentRegister++;
+}
+
 void BCLoweringProvider::RegisterProvider::freeRegister(short reg) {
+	if (pinned.count(reg) > 0) {
+		return;
+	}
 	freeList.push_back(reg);
 }
 
@@ -100,6 +133,16 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		// Mark function arguments so they're never freed
 		functionArgs.insert(argument->getIdentifier());
 	}
+	// Linear register allocator: compute global static use counts once
+	// over the entire reachable CFG. During lowering, each visitXxx hook
+	// decrements the counter for every value it reads; when a counter
+	// hits zero the physical register is handed back to the free list.
+	// The pre-pass is skipped when the allocator is disabled — the
+	// useValue() path short-circuits anyway, but skipping the walk
+	// saves its linear-in-CFG-size overhead.
+	if (loweringOptions.enableRegisterAllocator) {
+		countAllUsages(&functionBasicBlock);
+	}
 	this->process(&functionBasicBlock, rootFrame);
 	// Resize register file to actual number of registers used
 	defaultRegisterFile.resize(registerProvider.getRegisterCount(), 0);
@@ -112,8 +155,7 @@ short BCLoweringProvider::LoweringContext::process(const ir::BasicBlock* block, 
 	if (entry == activeBlocks.end()) {
 		short blockIndex = program.blocks.size();
 		activeBlocks.emplace(block->getIdentifier(), blockIndex);
-		// Count usages in this block for register reuse
-		countUsages(block);
+		// Usage counts are computed once, up-front, in countAllUsages().
 		// create bytecode block;
 		program.blocks.emplace_back();
 		for (auto* opt : block->getOperations()) {
@@ -128,6 +170,8 @@ short BCLoweringProvider::LoweringContext::process(const ir::BasicBlock* block, 
 void BCLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* addOpt, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(addOpt->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(addOpt->getRightInput()->getIdentifier());
+	useValue(addOpt->getLeftInput()->getIdentifier(), frame);
+	useValue(addOpt->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(addOpt, frame);
 	frame.setValue(addOpt->getIdentifier(), resultReg);
 	ByteCode bc = ByteCode::AND_b;
@@ -138,6 +182,8 @@ void BCLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* addOpt, sho
 void BCLoweringProvider::LoweringContext::visitOr(ir::OrOperation* addOpt, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(addOpt->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(addOpt->getRightInput()->getIdentifier());
+	useValue(addOpt->getLeftInput()->getIdentifier(), frame);
+	useValue(addOpt->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(addOpt, frame);
 	frame.setValue(addOpt->getIdentifier(), resultReg);
 	ByteCode bc = ByteCode::OR_b;
@@ -148,6 +194,8 @@ void BCLoweringProvider::LoweringContext::visitOr(ir::OrOperation* addOpt, short
 void BCLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* addOpt, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(addOpt->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(addOpt->getRightInput()->getIdentifier());
+	useValue(addOpt->getLeftInput()->getIdentifier(), frame);
+	useValue(addOpt->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(addOpt, frame);
 	frame.setValue(addOpt->getIdentifier(), resultReg);
 	auto type = addOpt->getStamp();
@@ -197,6 +245,8 @@ void BCLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* addOpt, sho
 void BCLoweringProvider::LoweringContext::visitSub(ir::SubOperation* subOpt, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(subOpt->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(subOpt->getRightInput()->getIdentifier());
+	useValue(subOpt->getLeftInput()->getIdentifier(), frame);
+	useValue(subOpt->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(subOpt, frame);
 	frame.setValue(subOpt->getIdentifier(), resultReg);
 	ByteCode bc;
@@ -245,6 +295,8 @@ void BCLoweringProvider::LoweringContext::visitSub(ir::SubOperation* subOpt, sho
 void BCLoweringProvider::LoweringContext::visitMul(ir::MulOperation* mulOpt, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(mulOpt->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(mulOpt->getRightInput()->getIdentifier());
+	useValue(mulOpt->getLeftInput()->getIdentifier(), frame);
+	useValue(mulOpt->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(mulOpt, frame);
 	frame.setValue(mulOpt->getIdentifier(), resultReg);
 
@@ -294,6 +346,8 @@ void BCLoweringProvider::LoweringContext::visitMul(ir::MulOperation* mulOpt, sho
 void BCLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* divOp, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(divOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(divOp->getRightInput()->getIdentifier());
+	useValue(divOp->getLeftInput()->getIdentifier(), frame);
+	useValue(divOp->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(divOp, frame);
 	frame.setValue(divOp->getIdentifier(), resultReg);
 	ByteCode bc;
@@ -342,6 +396,8 @@ void BCLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* divOp, shor
 void BCLoweringProvider::LoweringContext::visitMod(ir::ModOperation* divOp, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(divOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(divOp->getRightInput()->getIdentifier());
+	useValue(divOp->getLeftInput()->getIdentifier(), frame);
+	useValue(divOp->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(divOp, frame);
 	frame.setValue(divOp->getIdentifier(), resultReg);
 	ByteCode bc;
@@ -381,6 +437,8 @@ void BCLoweringProvider::LoweringContext::visitMod(ir::ModOperation* divOp, shor
 void BCLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* cmpOp, short block, RegisterFrame& frame) {
 	auto leftInput = frame.getValue(cmpOp->getLeftInput()->getIdentifier());
 	auto rightInput = frame.getValue(cmpOp->getRightInput()->getIdentifier());
+	useValue(cmpOp->getLeftInput()->getIdentifier(), frame);
+	useValue(cmpOp->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(cmpOp, frame);
 	frame.setValue(cmpOp->getIdentifier(), resultReg);
 
@@ -687,6 +745,7 @@ void BCLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* cmp
 
 void BCLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* loadOp, short block, RegisterFrame& frame) {
 	auto address = frame.getValue(loadOp->getAddress()->getIdentifier());
+	useValue(loadOp->getAddress()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(loadOp, frame);
 	frame.setValue(loadOp->getIdentifier(), resultReg);
 	auto type = loadOp->getStamp();
@@ -740,6 +799,8 @@ void BCLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* loadOp, s
 void BCLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* storeOp, short block, RegisterFrame& frame) {
 	auto addressReg = frame.getValue(storeOp->getAddress()->getIdentifier());
 	auto valueReg = frame.getValue(storeOp->getValue()->getIdentifier());
+	useValue(storeOp->getAddress()->getIdentifier(), frame);
+	useValue(storeOp->getValue()->getIdentifier(), frame);
 	auto type = storeOp->getValue()->getStamp();
 	ByteCode bc;
 	switch ((type)) {
@@ -791,6 +852,8 @@ void BCLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperatio
                                                           RegisterFrame& frame) {
 	auto leftReg = frame.getValue(binaryCompOperation->getLeftInput()->getIdentifier());
 	auto rightReg = frame.getValue(binaryCompOperation->getRightInput()->getIdentifier());
+	useValue(binaryCompOperation->getLeftInput()->getIdentifier(), frame);
+	useValue(binaryCompOperation->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(binaryCompOperation, frame);
 	frame.setValue(binaryCompOperation->getIdentifier(), resultReg);
 	auto type = binaryCompOperation->getStamp();
@@ -914,6 +977,8 @@ void BCLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* shiftOp
                                                      RegisterFrame& frame) {
 	auto leftReg = frame.getValue(shiftOperation->getLeftInput()->getIdentifier());
 	auto rightReg = frame.getValue(shiftOperation->getRightInput()->getIdentifier());
+	useValue(shiftOperation->getLeftInput()->getIdentifier(), frame);
+	useValue(shiftOperation->getRightInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(shiftOperation, frame);
 	frame.setValue(shiftOperation->getIdentifier(), resultReg);
 	auto type = shiftOperation->getStamp();
@@ -1019,15 +1084,30 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 	// from the temp into the already-bound target register, also into
 	// `block`. For unconditional branches both phases live in the same
 	// BC block, which is what the original implementation did.
+	//
+	// Phase-2 then emits a sequence of parallel-copy MOVs
+	// (tempArg -> bound target). If any tempArg aliased a bound target
+	// register a later MOV in the same phase would read a value that an
+	// earlier MOV already overwrote, silently corrupting the edge. The
+	// free list holds exactly the registers that previous ops released
+	// — a set that can include already-bound target slots — so tempArgs
+	// must come from a *fresh* counter to guarantee no aliasing. The
+	// cost is two or three extra register slots per block invocation;
+	// all other operations still enjoy the full benefit of free-list
+	// reuse.
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	std::vector<short> tempArgs;
 	tempArgs.reserve(blockInputArguments.size());
 	for (auto* input : blockInputArguments) {
 		auto sourceReg = parentFrame.getValue(input->getIdentifier());
-		auto tempReg = registerProvider.allocRegister();
+		auto tempReg = registerProvider.allocFreshRegister();
 		tempArgs.push_back(tempReg);
 		program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
+		// The block-invocation REG_MOV is the final consumer of the
+		// value for this edge, so release its register once it has
+		// been copied into the successor's temporary slot.
+		useValue(input->getIdentifier(), parentFrame);
 	}
 	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
 		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
@@ -1040,12 +1120,28 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 			if (targetReg != tempArgs[i]) {
 				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
 			}
+			// The tempArg was only a parallel-copy staging slot; once
+			// MOVed into the bound target it is never read again, so
+			// hand it back to the free list for future normal ops to
+			// reuse. Skipped when the allocator is disabled so the
+			// baseline behaviour (no register reuse at all) is
+			// reproduced faithfully.
+			if (loweringOptions.enableRegisterAllocator) {
+				registerProvider.freeRegister(tempArgs[i]);
+			}
 		}
 	}
 }
 
 void BCLoweringProvider::LoweringContext::visitIf(ir::IfOperation* ifOpt, short block, RegisterFrame& frame) {
 	auto conditionalReg = frame.getValue(ifOpt->getValue()->getIdentifier());
+	// The conditional jump is this block's terminator, so no further
+	// operation in `block` will read the condition once we have
+	// captured its register number. The landing pads created below
+	// emit into separate blocks that execute strictly after the jump,
+	// so reuse of the condition's physical slot there cannot disturb
+	// the read.
+	useValue(ifOpt->getValue()->getIdentifier(), frame);
 
 	// The two arms of an IfOp can write the same physical target
 	// register, because distinct target blocks may share block-arg
@@ -1092,10 +1188,15 @@ void BCLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* branc
 	program.blocks[block].terminatorOp = BranchOp {blockIndex};
 }
 
-// Constant-operation hooks: emit a REG_MOV from a preloaded default register.
+// Constant-operation hooks: emit a REG_MOV from a preloaded default
+// register. The "default" register is pinned because its slot holds a
+// pre-initialised value that must survive the entire function — if the
+// linear allocator reused that slot for some other operation's output,
+// a subsequent loop iteration would read the clobbered value instead of
+// the constant.
 void BCLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* constPtr, short block,
                                                         RegisterFrame& frame) {
-	auto defaultRegister = registerProvider.allocRegister();
+	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
@@ -1107,7 +1208,7 @@ void BCLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* c
 
 void BCLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* constInt, short block,
                                                             RegisterFrame& frame) {
-	auto defaultRegister = registerProvider.allocRegister();
+	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
 
@@ -1119,7 +1220,7 @@ void BCLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOper
 
 void BCLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* constInt, short block,
                                                         RegisterFrame& frame) {
-	auto defaultRegister = registerProvider.allocRegister();
+	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
 	auto targetRegister = registerProvider.allocRegister();
@@ -1130,7 +1231,7 @@ void BCLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* c
 
 void BCLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* constInt, short block,
                                                           RegisterFrame& frame) {
-	auto defaultRegister = registerProvider.allocRegister();
+	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	if (constInt->getStamp() == Type::f32) {
 		auto floatValue = (float) constInt->getValue();
@@ -1152,6 +1253,7 @@ void BCLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* retur
                                                       RegisterFrame& frame) {
 	if (returnOpt->hasReturnValue()) {
 		auto returnFOp = frame.getValue(returnOpt->getReturnValue()->getIdentifier());
+		useValue(returnOpt->getReturnValue()->getIdentifier(), frame);
 		program.blocks[block].terminatorOp = ReturnOp {returnFOp};
 		program.returnType = returnOpt->getReturnValue()->getStamp();
 	} else {
@@ -1173,7 +1275,11 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 	// 1. reset dyncall stack
 	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
 
-	// 2. set dyncall arguments
+	// 2. set dyncall arguments. Capture each argument's register *and*
+	// decrement its remaining-use counter — the DYNCALL_arg_* bytecode
+	// reads it once and never again. We decrement per argument after
+	// the corresponding DYNCALL_arg_* has been emitted so the emit
+	// order cannot observe a stale (freed) slot for the current arg.
 	for (auto& arg : arguments) {
 		auto argType = (arg->getStamp());
 		ByteCode bc;
@@ -1219,6 +1325,7 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 		}
 		auto registerSlot = frame.getValue(arg->getIdentifier());
 		code.emplace_back(bc, registerSlot, -1, -1);
+		useValue(arg->getIdentifier(), frame);
 	}
 
 	// 3. call through the function pointer held in the register frame
@@ -1271,6 +1378,7 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 
 	// The function pointer SSA value is already in the register frame.
 	auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
+	useValue(opt->getFunctionPtrOperand()->getIdentifier(), frame);
 
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
@@ -1337,6 +1445,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 		}
 		auto registerSlot = frame.getValue(arg->getIdentifier());
 		code.emplace_back(bc, registerSlot, -1, -1);
+		useValue(arg->getIdentifier(), frame);
 	}
 
 	// 3. call function
@@ -1387,7 +1496,10 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 	}
 
-	auto funcInfoRegister = registerProvider.allocRegister();
+	// The function pointer lives in the default register file and is
+	// read on every call site, potentially across loop iterations —
+	// pin to keep reuse from clobbering it.
+	auto funcInfoRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(funcInfoRegister);
 	// For internal NautilusFunction calls, use the pre-compiled callback pointer
 	auto it = internalFunctionPtrs.find(opt->getFunctionName());
@@ -1409,6 +1521,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 void BCLoweringProvider::LoweringContext::visitNot(ir::NotOperation* negateOperation, short block,
                                                    RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
+	useValue(negateOperation->getInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
 	ByteCode bc = ByteCode::NOT_b;
@@ -1419,6 +1532,7 @@ void BCLoweringProvider::LoweringContext::visitNot(ir::NotOperation* negateOpera
 void BCLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* negateOperation, short block,
                                                       RegisterFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
+	useValue(negateOperation->getInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
 	ByteCode bc = ByteCode::BNEGATE_I64;
@@ -1428,6 +1542,7 @@ void BCLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* negat
 
 void BCLoweringProvider::LoweringContext::visitCast(ir::CastOperation* castOp, short block, RegisterFrame& frame) {
 	auto input = frame.getValue(castOp->getInput()->getIdentifier());
+	useValue(castOp->getInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(castOp, frame);
 	frame.setValue(castOp->getIdentifier(), resultReg);
 	auto srcType = (castOp->getInput()->getStamp());
@@ -1877,78 +1992,65 @@ short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, Reg
 	return registerProvider.allocRegister();
 }
 
-void BCLoweringProvider::LoweringContext::countUsages(const ir::BasicBlock* block) {
-	// Count how many times each value is used in this block
-	for (auto* opt : block->getOperations()) {
-		// Count inputs to this operation
-		auto countInput = [this](const ir::Operation* input) {
-			if (input) {
-				usageCounts[input->getIdentifier()]++;
-			}
-		};
+void BCLoweringProvider::LoweringContext::countAllUsages(const ir::BasicBlock* entryBlock) {
+	// Breadth-first walk of every reachable block, accumulating one use
+	// per static reference. Operation::getInputs() gives us the SSA
+	// operand span uniformly — the only values that live outside that
+	// span are the arguments attached to the BasicBlockInvocations
+	// embedded in IfOp and BranchOp terminators, so we visit those
+	// explicitly.
+	std::unordered_set<ir::BlockIdentifier> visited;
+	std::vector<const ir::BasicBlock*> worklist;
+	worklist.push_back(entryBlock);
+	visited.insert(entryBlock->getIdentifier());
 
-		switch (opt->getOperationType()) {
-		case ir::Operation::OperationType::AddOp:
-		case ir::Operation::OperationType::SubOp:
-		case ir::Operation::OperationType::MulOp:
-		case ir::Operation::OperationType::DivOp:
-		case ir::Operation::OperationType::ModOp: {
-			auto binOp = static_cast<ir::Operation*>(opt);
-			if (auto addOp = ir::dyn_cast<ir::AddOperation>(binOp)) {
-				countInput(addOp->getLeftInput());
-				countInput(addOp->getRightInput());
-			} else if (auto subOp = ir::dyn_cast<ir::SubOperation>(binOp)) {
-				countInput(subOp->getLeftInput());
-				countInput(subOp->getRightInput());
-			} else if (auto mulOp = ir::dyn_cast<ir::MulOperation>(binOp)) {
-				countInput(mulOp->getLeftInput());
-				countInput(mulOp->getRightInput());
-			} else if (auto divOp = ir::dyn_cast<ir::DivOperation>(binOp)) {
-				countInput(divOp->getLeftInput());
-				countInput(divOp->getRightInput());
-			} else if (auto modOp = ir::dyn_cast<ir::ModOperation>(binOp)) {
-				countInput(modOp->getLeftInput());
-				countInput(modOp->getRightInput());
+	auto countInput = [this](const ir::Operation* input) {
+		if (input != nullptr) {
+			usageCounts[input->getIdentifier()]++;
+		}
+	};
+
+	while (!worklist.empty()) {
+		const auto* block = worklist.back();
+		worklist.pop_back();
+		for (auto* opt : block->getOperations()) {
+			for (auto* input : opt->getInputs()) {
+				countInput(input);
 			}
-			break;
-		}
-		case ir::Operation::OperationType::CompareOp: {
-			auto cmpOp = ir::cast<ir::CompareOperation>(opt);
-			countInput(cmpOp->getLeftInput());
-			countInput(cmpOp->getRightInput());
-			break;
-		}
-		case ir::Operation::OperationType::LoadOp: {
-			auto loadOp = ir::cast<ir::LoadOperation>(opt);
-			countInput(loadOp->getAddress());
-			break;
-		}
-		case ir::Operation::OperationType::StoreOp: {
-			auto storeOp = ir::cast<ir::StoreOperation>(opt);
-			countInput(storeOp->getAddress());
-			countInput(storeOp->getValue());
-			break;
-		}
-		case ir::Operation::OperationType::CastOp: {
-			auto castOp = ir::cast<ir::CastOperation>(opt);
-			countInput(castOp->getInput());
-			break;
-		}
-		case ir::Operation::OperationType::ReturnOp: {
-			auto retOp = ir::cast<ir::ReturnOperation>(opt);
-			if (retOp->hasReturnValue()) {
-				countInput(retOp->getReturnValue());
+			if (auto* ifOp = ir::dyn_cast<ir::IfOperation>(opt)) {
+				for (auto* input : ifOp->getTrueBlockInvocation().getInputs()) {
+					countInput(input);
+				}
+				for (auto* input : ifOp->getFalseBlockInvocation().getInputs()) {
+					countInput(input);
+				}
+				auto* trueBlk = ifOp->getTrueBlockInvocation().getBlock();
+				auto* falseBlk = ifOp->getFalseBlockInvocation().getBlock();
+				if (trueBlk != nullptr && visited.insert(trueBlk->getIdentifier()).second) {
+					worklist.push_back(trueBlk);
+				}
+				if (falseBlk != nullptr && visited.insert(falseBlk->getIdentifier()).second) {
+					worklist.push_back(falseBlk);
+				}
+			} else if (auto* brOp = ir::dyn_cast<ir::BranchOperation>(opt)) {
+				for (auto* input : brOp->getNextBlockInvocation().getInputs()) {
+					countInput(input);
+				}
+				auto* next = brOp->getNextBlockInvocation().getBlock();
+				if (next != nullptr && visited.insert(next->getIdentifier()).second) {
+					worklist.push_back(next);
+				}
 			}
-			break;
-		}
-		default:
-			// Other operations not critical for basic register reuse
-			break;
 		}
 	}
 }
 
 void BCLoweringProvider::LoweringContext::useValue(const ir::OperationIdentifier& identifier, RegisterFrame& frame) {
+	// Allocator disabled: every register stays live for the whole
+	// function, reproducing the pre-allocator behaviour.
+	if (!loweringOptions.enableRegisterAllocator) {
+		return;
+	}
 	// Skip if this is a function argument
 	if (functionArgs.count(identifier) > 0) {
 		return;
@@ -1971,6 +2073,9 @@ void BCLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selec
 	auto conditionReg = frame.getValue(selectOp->getCondition()->getIdentifier());
 	auto trueValueReg = frame.getValue(selectOp->getTrueValue()->getIdentifier());
 	auto falseValueReg = frame.getValue(selectOp->getFalseValue()->getIdentifier());
+	useValue(selectOp->getCondition()->getIdentifier(), frame);
+	useValue(selectOp->getTrueValue()->getIdentifier(), frame);
+	useValue(selectOp->getFalseValue()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(selectOp, frame);
 	frame.setValue(selectOp->getIdentifier(), resultReg);
 
@@ -2025,7 +2130,11 @@ void BCLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selec
 
 void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short /*block*/,
                                                       RegisterFrame& frame) {
-	auto resultRegister = registerProvider.allocRegister();
+	// The alloca's register is restored from the default register file
+	// (via allocaRegisterMap) at the start of every invocation and must
+	// hold the same buffer pointer across every loop iteration, so we
+	// pin it against reuse by the linear allocator.
+	auto resultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(resultRegister);
 	auto bufferIndex = program.allocaBuffers.size();
 	program.allocaBuffers.emplace_back(allocaOp->getSize(), uint8_t {0});
@@ -2037,7 +2146,7 @@ void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* alloc
 void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,
                                                                  short block, RegisterFrame& frame) {
 	// Store the function pointer constant into a register, same pattern as ConstPtrOperation.
-	auto defaultRegister = registerProvider.allocRegister();
+	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	// For internal NautilusFunction calls, use the pre-compiled callback pointer
 	auto it = internalFunctionPtrs.find(funcAddrOp->getFunctionName());
