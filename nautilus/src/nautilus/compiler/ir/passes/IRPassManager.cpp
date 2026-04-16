@@ -10,8 +10,7 @@
 namespace nautilus::compiler::ir {
 
 IRPassManager::IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler)
-    : options(options), dumpHandler(dumpHandler),
-      verifyBeforePipeline(options.getOptionOrDefault("ir.verifyBeforePipeline", false)),
+    : dumpHandler(dumpHandler), verifyBeforePipeline(options.getOptionOrDefault("ir.verifyBeforePipeline", false)),
       verifyAfterEachPass(options.getOptionOrDefault("ir.verifyAfterEachPass", false)),
       failOnVerifyError(options.getOptionOrDefault("ir.failOnVerifyError", false)),
       logStatistics(options.getOptionOrDefault("ir.logPassStatistics", false)),

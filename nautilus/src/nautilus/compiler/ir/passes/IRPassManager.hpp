@@ -48,7 +48,6 @@ public:
 
 private:
 	std::vector<std::unique_ptr<IRPass>> passes;
-	const engine::Options& options;
 	compiler::DumpHandler* dumpHandler;
 	bool verifyBeforePipeline;
 	bool verifyAfterEachPass;
