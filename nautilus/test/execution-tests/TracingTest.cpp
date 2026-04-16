@@ -8,12 +8,15 @@
 #include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
 #include "PointerFunctions.hpp"
+#include "ReferenceDumpHelper.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
 #include "ValueTypeFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -25,10 +28,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <sstream>
-#include <unistd.h>
 
 namespace nautilus::log::options {
 
@@ -38,45 +38,11 @@ void setLogAddresses(bool);
 } // namespace nautilus::log::options
 namespace nautilus::engine {
 
-bool checkTestFile(std::string actual, const std::string category, const std::string group, const std::string& name) {
-	auto groupDir = std::string(TEST_DATA_FOLDER) + category + "/" + group + "/";
-	if (!std::filesystem::exists(groupDir)) {
-		std::filesystem::create_directories(groupDir);
-	}
-
-	// Check if the file exists
-	std::string filePath = groupDir + name + ".trace";
-	if (!std::filesystem::exists(filePath)) {
-		std::cerr << "File does not exist: " << filePath << " Initializing with current trace. Please Rerun.\n";
-		std::ofstream file {filePath};
-		file << actual;
-		// fail here so that CI fails if testdata is missing.
-		return false;
-	}
-
-	std::ifstream file(filePath);
-	if (!file.is_open()) {
-		std::cerr << "Unable to open file " << filePath << std::endl;
-		return false;
-	}
-
-	std::stringstream expect;
-	expect << file.rdbuf();
-
-	if (expect.str() == actual) {
-		return true;
-	}
-
-	char tmpName[] = "/tmp/actual_trace_XXXXXX";
-	int tmpFd = mkstemp(tmpName);
-	close(tmpFd);
-	std::ofstream tmpfile {tmpName};
-	tmpfile << actual;
-	std::cerr << "Trace mismatch: (exp vs act) " << filePath << " " << tmpName << std::endl;
-	std::cerr << "=== Expected (" << filePath << ") ===\n"
-	          << expect.str() << "\n=== Actual ===\n"
-	          << actual << "\n=== End ===\n";
-	return false;
+/// Thin alias over the shared `testing::checkReferenceDump` helper so the
+/// existing call sites keep compiling unchanged.
+inline bool checkTestFile(std::string actual, const std::string category, const std::string group,
+                          const std::string& name) {
+	return testing::checkReferenceDump(actual, category, group, name);
 }
 
 using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
@@ -125,6 +91,26 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
 						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+					}
+					DYNAMIC_SECTION("after_empty_block_elim") {
+						// Re-run the tracing pipeline: the previous section
+						// moved `afterSSA` into its IR conversion, so we
+						// need a fresh IR here.
+						auto rootFunction2 = compiler::CompilableFunction("execute", func);
+						std::list<compiler::CompilableFunction> functionsToTrace2;
+						functionsToTrace2.push_back(rootFunction2);
+						common::Arena arena2;
+						auto executionTrace2 = traceFn(functionsToTrace2, engine::Options(), arena2);
+						auto ssaCreationPhase2 = tracing::SSACreationPhase();
+						auto afterSSA2 =
+						    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
+						auto irGenerationPhase2 = tracing::TraceToIRConversionPhase();
+						auto ir2 = irGenerationPhase2.apply(std::move(afterSSA2));
+						engine::Options passOpts;
+						compiler::ir::IRPassManager passManager(passOpts);
+						passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
+						passManager.run(*ir2);
+						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name));
 					}
 				}
 			}

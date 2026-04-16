@@ -1011,31 +1011,34 @@ void BCLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* shiftOp
 
 void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation& bi, short block,
                                                   RegisterFrame& parentFrame) {
+	// Two-phase emission so the callers can route the writes into a
+	// different block than the reads when needed (see `visitIf`).
+	// Phase-1 (reads) snapshots every input value into a fresh temp
+	// register inside `block`; phase-2 either binds the target
+	// identifier to that temp (first invocation wins) or emits a MOV
+	// from the temp into the already-bound target register, also into
+	// `block`. For unconditional branches both phases live in the same
+	// BC block, which is what the original implementation did.
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
 	std::vector<short> tempArgs;
-	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
-		auto blockArgument = blockInputArguments[i]->getIdentifier();
-		auto parentFrameReg = parentFrame.getValue(blockArgument);
-		auto tempArg = tempArgs.emplace_back(registerProvider.allocRegister());
-		OpCode oc = {ByteCode::REG_MOV, parentFrameReg, -1, tempArg};
-		program.blocks[block].code.emplace_back(oc);
+	tempArgs.reserve(blockInputArguments.size());
+	for (auto* input : blockInputArguments) {
+		auto sourceReg = parentFrame.getValue(input->getIdentifier());
+		auto tempReg = registerProvider.allocRegister();
+		tempArgs.push_back(tempReg);
+		program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
 	}
-	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
+	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
 		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
-		// auto parentFrameReg = parentFrame.getValue(blockArgument);
 		if (!parentFrame.contains(blockTargetArgument)) {
-			// auto resultReg = registerProvider.allocRegister();
-			//  TODO use child frame
+			// First invocation to target this block-arg id wins the
+			// register; subsequent invocations MOV into it.
 			parentFrame.setValue(blockTargetArgument, tempArgs[i]);
-			// OpCode oc = {ByteCode::REG_MOV, parentFrameReg, -1, resultReg};
-			// program.blocks[block].code.emplace_back(oc);
 		} else {
-			// TODO use child frame
-			auto resultReg = parentFrame.getValue(blockTargetArgument);
-			if (resultReg != tempArgs[i]) {
-				OpCode oc = {ByteCode::REG_MOV, tempArgs[i], -1, resultReg};
-				program.blocks[block].code.emplace_back(oc);
+			auto targetReg = parentFrame.getValue(blockTargetArgument);
+			if (targetReg != tempArgs[i]) {
+				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
 			}
 		}
 	}
@@ -1043,11 +1046,43 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 
 void BCLoweringProvider::LoweringContext::visitIf(ir::IfOperation* ifOpt, short block, RegisterFrame& frame) {
 	auto conditionalReg = frame.getValue(ifOpt->getValue()->getIdentifier());
-	process(ifOpt->getTrueBlockInvocation(), block, frame);
-	process(ifOpt->getFalseBlockInvocation(), block, frame);
+
+	// The two arms of an IfOp can write the same physical target
+	// register, because distinct target blocks may share block-arg
+	// identifiers with the same SSA id (Frame is keyed by identifier).
+	// Emitting both invocations' moves into the current block before
+	// the CMP would mean the second write always clobbers the first,
+	// and then either arm of the conditional could observe the other
+	// arm's value.
+	//
+	// We avoid this by routing each invocation through a per-arm
+	// landing-pad block. The landing pad does both the read-into-temp
+	// MOVs and the temp-into-target MOVs; the current block holds only
+	// the conditional jump. The two arms can no longer clobber each
+	// other because their MOVs live in mutually exclusive blocks.
+	//
+	// Ordering note: we process the target block *between* creating its
+	// landing pad and creating the next pad. Doing it in that order
+	// lets `visitAdd` (and the other value-producing visitors) bind
+	// SSA identifiers inside the target block's body *before* the
+	// other arm's landing pad is emitted. The other arm's
+	// `process(invocation, …)` will then see the body's binding and
+	// emit a MOV into the body's chosen register, instead of locking
+	// the target id to a temp register where the body's later
+	// `frame.setValue` (an `emplace`) would silently fail to update it.
+	short trueLandingPad = static_cast<short>(program.blocks.size());
+	program.blocks.emplace_back();
+	process(ifOpt->getTrueBlockInvocation(), trueLandingPad, frame);
 	auto trueBlockIndex = process(ifOpt->getTrueBlockInvocation().getBlock(), frame);
+	program.blocks[trueLandingPad].terminatorOp = BranchOp {trueBlockIndex};
+
+	short falseLandingPad = static_cast<short>(program.blocks.size());
+	program.blocks.emplace_back();
+	process(ifOpt->getFalseBlockInvocation(), falseLandingPad, frame);
 	auto falseBlockIndex = process(ifOpt->getFalseBlockInvocation().getBlock(), frame);
-	program.blocks[block].terminatorOp = ConditionalJumpOp {conditionalReg, trueBlockIndex, falseBlockIndex};
+	program.blocks[falseLandingPad].terminatorOp = BranchOp {falseBlockIndex};
+
+	program.blocks[block].terminatorOp = ConditionalJumpOp {conditionalReg, trueLandingPad, falseLandingPad};
 }
 
 void BCLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* branchOp, short block,

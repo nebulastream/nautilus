@@ -17,6 +17,8 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -112,6 +114,17 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
+	}
+
+	if (options.getOptionOrDefault("ir.runPasses", true)) {
+		auto tPasses = log::now();
+		ir::IRPassManager passManager(options, &dumpHandler);
+		if (!options.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
+			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
+		}
+		passManager.run(*ir);
+		statsLogger.logTiming(tPasses, "IR pass pipeline completed");
+		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(); });
 	}
 
 	statsLogger.logTiming(tTotal, "Frontend (trace + SSA + IR) completed");

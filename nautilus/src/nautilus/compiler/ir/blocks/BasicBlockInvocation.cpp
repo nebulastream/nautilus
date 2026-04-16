@@ -8,6 +8,12 @@ BasicBlockInvocation::BasicBlockInvocation() : Operation(OperationType::BlockInv
 }
 
 void BasicBlockInvocation::setBlock(BasicBlock* block) {
+	// Pure setter: predecessor bookkeeping is the responsibility of the
+	// enclosing `BasicBlock` helpers that know which block owns this
+	// invocation (`BasicBlock::addNextBlock`, `replaceTerminatorOperation`,
+	// `replaceSuccessor`). An invocation sub-object does not have a stable
+	// pointer back to its enclosing block, and adding one would bloat the
+	// hot path for every IR op.
 	this->basicBlock = block;
 }
 
@@ -35,6 +41,15 @@ void BasicBlockInvocation::addArgument(common::Arena& arena, Operation* argument
 	Operation** data = inputs.data();
 	inputs = std::span<Operation*>(data, size + 1);
 	data[size] = argument;
+}
+
+void BasicBlockInvocation::clearArguments() {
+	// Reset the span and capacity so the invocation looks empty. The
+	// previous arena buffer (if any) stays live in the arena until the
+	// enclosing IR is destroyed; its slot is simply unreferenced, which
+	// is the normal arena ownership model.
+	inputs = std::span<Operation*>();
+	capacity_ = 0;
 }
 
 void BasicBlockInvocation::replaceArgument(Operation* toReplace, Operation* replaceWith) {

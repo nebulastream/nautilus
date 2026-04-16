@@ -115,11 +115,49 @@ public:
 
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();
 
+	/// Returns the blocks whose terminator targets this block. The list is
+	/// maintained as an invariant by the CFG-wiring helpers
+	/// (`addNextBlock`, `replaceTerminatorOperation`, `replaceSuccessor`,
+	/// `BasicBlockInvocation::setBlock`). It is a plain heap `std::vector`,
+	/// not arena-backed, because predecessors are a derived cache that
+	/// grows and shrinks during transformation.
+	[[nodiscard]] const std::vector<BasicBlock*>& getPredecessors() const;
+
+	/// Returns the target blocks of this block's terminator. Delegates to
+	/// `ir::getSuccessors` on the terminator op.
+	[[nodiscard]] std::vector<BasicBlock*> getSuccessors();
+
+	/// Redirects every edge from this block to @p from into @p to.
+	///
+	/// Walks the terminator's outgoing invocations; for each whose target
+	/// is @p from, retargets it to @p to. Keeps the predecessor lists of
+	/// both @p from and @p to consistent. The arity of every invocation's
+	/// argument list is unchanged.
+	void replaceSuccessor(BasicBlock* from, BasicBlock* to);
+
+	// ── Predecessor-invariant maintenance (called by BasicBlockInvocation) ──
+	/// Appends @p predecessor to this block's predecessor list. Intended
+	/// for internal use by the CFG-wiring helpers — callers at the pass
+	/// level should go through the high-level APIs (`addNextBlock`,
+	/// `replaceSuccessor`, `BasicBlockInvocation::setBlock`).
+	void addPredecessor(BasicBlock* predecessor);
+
+	/// Removes one occurrence of @p predecessor from the predecessor list.
+	/// A block may appear more than once (e.g. both arms of an `if` that
+	/// target the same block); callers must invoke this once per edge they
+	/// are removing, matching the number of invocations they tear down.
+	void removePredecessor(BasicBlock* predecessor);
+
+	/// Clears the predecessor list. Used by the pass manager to rebuild
+	/// the predecessor invariant from the CFG at the start of a run.
+	void clearPredecessors();
+
 private:
 	common::Arena* arena_;
 	BlockIdentifier identifier;
 	std::vector<Operation*> operations;
 	std::vector<BasicBlockArgument*> arguments;
+	std::vector<BasicBlock*> predecessors;
 };
 
 } // namespace nautilus::compiler::ir

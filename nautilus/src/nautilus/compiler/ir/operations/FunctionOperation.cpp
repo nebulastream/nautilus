@@ -1,5 +1,7 @@
 
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include <algorithm>
+#include <cassert>
 #include <utility>
 
 namespace nautilus::compiler::ir {
@@ -38,6 +40,20 @@ bool FunctionOperation::classof(const Operation* Op) {
 
 const std::vector<std::string>& FunctionOperation::getInputArgNames() const {
 	return inputArgNames;
+}
+
+BasicBlock* FunctionOperation::getEntryBlock() const {
+	return functionBasicBlocks.empty() ? nullptr : functionBasicBlocks.front();
+}
+
+void FunctionOperation::detachBasicBlock(BasicBlock* block) {
+	assert(block != nullptr && "cannot detach null block");
+	assert(block != getEntryBlock() && "cannot detach the function's entry block");
+	assert(block->getPredecessors().empty() && "cannot detach a block that still has predecessors");
+	auto it = std::find(functionBasicBlocks.begin(), functionBasicBlocks.end(), block);
+	assert(it != functionBasicBlocks.end() && "block is not owned by this function");
+	functionBasicBlocks.erase(it);
+	// The BasicBlock's storage stays live in the arena; not freed here.
 }
 
 } // namespace nautilus::compiler::ir

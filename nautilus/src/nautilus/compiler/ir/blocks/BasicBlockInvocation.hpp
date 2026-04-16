@@ -38,6 +38,16 @@ public:
 	/// @p arena when the current one is full.
 	void addArgument(common::Arena& arena, Operation* argument);
 
+	/// Drops every argument in this invocation. The underlying arena
+	/// buffer is *not* freed (the arena owns it); the span is reset so
+	/// subsequent `addArgument` calls start from an empty state and will
+	/// allocate a fresh buffer when the first argument is appended.
+	///
+	/// Used by CFG-rewriting passes that need to change an invocation's
+	/// arity (e.g. when collapsing an empty intermediate block whose
+	/// outgoing arity differs from its block-argument count).
+	void clearArguments();
+
 	void replaceArgument(Operation* toReplace, Operation* replaceWith);
 
 	void replaceArgument(const Operation* toReplace, Operation* replaceWith);
