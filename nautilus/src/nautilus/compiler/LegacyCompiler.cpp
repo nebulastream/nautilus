@@ -18,6 +18,7 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
@@ -149,6 +150,9 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	if (options.getOptionOrDefault("ir.runPasses", true)) {
 		ir::IRPassManager passManager(options, &dumpHandler, statistics);
+		if (!options.getOptionOrDefault("ir.disableConstantFolding", false)) {
+			passManager.addPass(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+		}
 		if (!options.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}

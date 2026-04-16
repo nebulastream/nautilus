@@ -84,6 +84,17 @@ BasicBlock* BasicBlock::addOperation(Operation* operation) {
 	return this;
 }
 
+void BasicBlock::replaceOperation(size_t operationIndex, Operation* operation) {
+	// Replacing the terminator goes through `replaceTerminatorOperation` so
+	// predecessor-list invariants stay in sync; intermediate operations are
+	// plain SSA values with no CFG bookkeeping, so a pointer swap is enough.
+	if (!operations.empty() && operationIndex == operations.size() - 1) {
+		replaceTerminatorOperation(operation);
+		return;
+	}
+	operations.at(operationIndex) = operation;
+}
+
 const std::vector<BasicBlock*>& BasicBlock::getPredecessors() const {
 	return predecessors;
 }

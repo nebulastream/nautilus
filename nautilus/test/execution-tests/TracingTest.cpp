@@ -15,6 +15,7 @@
 #include "ValueTypeFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/config.hpp"
@@ -91,6 +92,25 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
 						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+					}
+					DYNAMIC_SECTION("after_constant_folding") {
+						// Re-run the tracing pipeline for this section since
+						// earlier ones consumed their IR.
+						auto rootFunction3 = compiler::CompilableFunction("execute", func);
+						std::list<compiler::CompilableFunction> functionsToTrace3;
+						functionsToTrace3.push_back(rootFunction3);
+						common::Arena arena3;
+						auto executionTrace3 = traceFn(functionsToTrace3, engine::Options(), arena3);
+						auto ssaCreationPhase3 = tracing::SSACreationPhase();
+						auto afterSSA3 =
+						    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
+						auto irGenerationPhase3 = tracing::TraceToIRConversionPhase();
+						auto ir3 = irGenerationPhase3.apply(std::move(afterSSA3));
+						engine::Options passOpts;
+						compiler::ir::IRPassManager passManager(passOpts);
+						passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
+						passManager.run(*ir3);
+						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name));
 					}
 					DYNAMIC_SECTION("after_empty_block_elim") {
 						// Re-run the tracing pipeline: the previous section
