@@ -16,13 +16,10 @@ Block_5($2:i32):
 Block_2($1:i32, $2:i32):
 	$8 = 10 :i32
 	$9 = $1 < $8 :bool
-	if $9 ? Block_3() : Block_4($2) :void
+	if $9 ? Block_3() : Block_5($2) :void
 
 Block_3():
 	$11 = 2 :i32
 	br Block_5($11) :void
-
-Block_4($2:i32):
-	br Block_5($2) :void
 }
 } //NESIR

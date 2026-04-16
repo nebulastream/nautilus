@@ -36,9 +36,9 @@ public:
 		                                                     std::vector<compiler::ir::BasicBlockArgument*> {});
 		entry->addOperation<compiler::ir::ReturnOperation>();
 
-		auto* fn = arena.create<compiler::ir::FunctionOperation>(
-		    "execute", std::vector<compiler::ir::BasicBlock*> {entry}, std::vector<Type> {}, std::vector<std::string> {},
-		    Type::v);
+		auto* fn =
+		    arena.create<compiler::ir::FunctionOperation>("execute", std::vector<compiler::ir::BasicBlock*> {entry},
+		                                                  std::vector<Type> {}, std::vector<std::string> {}, Type::v);
 		ir->addFunctionOperation(fn);
 		return ir;
 	}
@@ -75,8 +75,7 @@ public:
 		auto ir = std::make_shared<compiler::ir::IRGraph>("chain-empty-test");
 		auto& arena = ir->getArena();
 
-		auto* retBlock = arena.create<compiler::ir::BasicBlock>(arena,
-		                                                        compiler::ir::BlockIdentifier {uint32_t(n + 1)},
+		auto* retBlock = arena.create<compiler::ir::BasicBlock>(arena, compiler::ir::BlockIdentifier {uint32_t(n + 1)},
 		                                                        std::vector<compiler::ir::BasicBlockArgument*> {});
 		retBlock->addOperation<compiler::ir::ReturnOperation>();
 
@@ -117,9 +116,9 @@ public:
 		// this as the block's last op not being a terminator.
 		entry->addOperation<compiler::ir::ConstIntOperation>(compiler::ir::OperationIdentifier {1}, 42, Type::i32);
 
-		auto* fn = arena.create<compiler::ir::FunctionOperation>(
-		    "execute", std::vector<compiler::ir::BasicBlock*> {entry}, std::vector<Type> {}, std::vector<std::string> {},
-		    Type::v);
+		auto* fn =
+		    arena.create<compiler::ir::FunctionOperation>("execute", std::vector<compiler::ir::BasicBlock*> {entry},
+		                                                  std::vector<Type> {}, std::vector<std::string> {}, Type::v);
 		ir->addFunctionOperation(fn);
 		return ir;
 	}
@@ -137,9 +136,9 @@ public:
 		                                                  std::vector<compiler::ir::BasicBlockArgument*> {});
 		b2->addOperation<compiler::ir::ReturnOperation>();
 
-		auto* fn = arena.create<compiler::ir::FunctionOperation>(
-		    "execute", std::vector<compiler::ir::BasicBlock*> {b1, b2}, std::vector<Type> {}, std::vector<std::string> {},
-		    Type::v);
+		auto* fn =
+		    arena.create<compiler::ir::FunctionOperation>("execute", std::vector<compiler::ir::BasicBlock*> {b1, b2},
+		                                                  std::vector<Type> {}, std::vector<std::string> {}, Type::v);
 		ir->addFunctionOperation(fn);
 		return ir;
 	}

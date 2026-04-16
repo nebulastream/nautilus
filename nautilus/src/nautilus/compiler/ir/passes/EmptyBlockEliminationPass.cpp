@@ -12,22 +12,8 @@ namespace nautilus::compiler::ir {
 namespace {
 
 /// Returns true iff @p block contains exactly one op, an unconditional
-/// branch to a target distinct from @p block itself, @p block is not the
-/// entry block of @p fn, and every predecessor's terminator is itself an
-/// unconditional branch (not an `IfOp`).
-///
-/// The `IfOp` predecessor restriction is a pragmatic concession to the
-/// bytecode backend, which lowers an `IfOp` by emitting the
-/// argument-passing moves for *both* arms before the conditional jump.
-/// That scheme assumes the two successor blocks' argument registers do
-/// not alias, an invariant the trace→IR translator happens to preserve
-/// because intermediate empty blocks decouple the register layout. Once
-/// this pass short-circuits those intermediaries, the two arms can end
-/// up writing to overlapping registers and clobber each other.
-///
-/// Skipping elimination in that case keeps the pass correct on every
-/// backend without requiring changes to BC lowering; the common case of
-/// chains of unconditional-branch empty blocks is still fully handled.
+/// branch to a target distinct from @p block itself, and @p block is not
+/// the entry block of @p fn.
 bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
 	if (&block == fn.getEntryBlock()) {
 		return false;
@@ -42,26 +28,7 @@ bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
 	}
 	const auto* branch = as<BranchOperation>(only);
 	const auto* target = branch->getNextBlockInvocation().getBlock();
-	if (target == nullptr || target == &block) {
-		return false;
-	}
-	for (auto* pred : block.getPredecessors()) {
-		if (pred == nullptr) {
-			continue;
-		}
-		auto* predTerm = pred->getTerminatorOp();
-		if (predTerm == nullptr) {
-			continue;
-		}
-		if (predTerm->getOperationType() != Operation::OperationType::BranchOp) {
-			// Conservative: any non-unconditional-branch predecessor
-			// (IfOp today, potentially switch-like ops later) may rely
-			// on the empty block as a register-allocation decoupling
-			// point. Leave those cases alone.
-			return false;
-		}
-	}
-	return true;
+	return target != nullptr && target != &block;
 }
 
 /// Rebuilds @p predInv (an invocation in `pred`'s terminator that was

@@ -7,7 +7,7 @@ Block_0($1:i32, $2:i32):
 	$6 = 1 :i32
 	$7 = $2 == $6 :bool
 	$8 = $5 and $7 :bool
-	if $8 ? Block_1($3) : Block_2($3) :void
+	if $8 ? Block_1($3) : Block_3($3) :void
 
 Block_1($3:i32):
 	$10 = 14 :i32
@@ -16,8 +16,5 @@ Block_1($3:i32):
 
 Block_3($3:i32):
 	return ($3) :i32
-
-Block_2($3:i32):
-	br Block_3($3) :void
 }
 } //NESIR

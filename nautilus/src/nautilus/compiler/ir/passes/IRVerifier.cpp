@@ -63,8 +63,7 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 				continue;
 			}
 			if (isTerminatorOp(op->getOperationType())) {
-				addError(r, &fn, block,
-				         fmt::format("terminator op at index {} but block length is {}", i, ops.size()));
+				addError(r, &fn, block, fmt::format("terminator op at index {} but block length is {}", i, ops.size()));
 			}
 		}
 		auto* terminator = ops.back();

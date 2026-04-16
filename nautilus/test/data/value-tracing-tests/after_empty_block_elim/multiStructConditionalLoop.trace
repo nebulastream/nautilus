@@ -6,7 +6,7 @@ Block_0($1:i32, $2:i64):
 	$3 = 0 :i32
 	$4 = $3 cast_to i64 :i64
 	$5 = $2 > $4 :bool
-	if $5 ? Block_1($1, $25, $11) : Block_2($2) :void
+	if $5 ? Block_1($1, $25, $11) : Block_6($2) :void
 
 Block_1($1:i32, $25:ptr, $11:ptr):
 	$7 = 0 :i64
@@ -15,7 +15,7 @@ Block_1($1:i32, $25:ptr, $11:ptr):
 
 Block_5($7:i64, $8:i32, $1:i32, $25:ptr, $11:ptr):
 	$9 = $8 < $1 :bool
-	if $9 ? Block_3($1, $8, $25, $7, $11) : Block_4($7) :void
+	if $9 ? Block_3($1, $8, $25, $7, $11) : Block_6($7) :void
 
 Block_3($1:i32, $8:i32, $25:ptr, $7:i64, $11:ptr):
 	$12 = 7 :i64
@@ -46,13 +46,7 @@ Block_3($1:i32, $8:i32, $25:ptr, $7:i64, $11:ptr):
 	$60 = $8 + $59 :i32
 	br Block_5($58, $60, $1, $25, $11) :void
 
-Block_4($7:i64):
-	br Block_6($7) :void
-
 Block_6($2:i64):
 	return ($2) :i64
-
-Block_2($2:i64):
-	br Block_6($2) :void
 }
 } //NESIR

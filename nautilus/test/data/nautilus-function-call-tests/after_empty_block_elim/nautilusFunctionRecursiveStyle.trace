@@ -13,10 +13,7 @@ recursiveHelper() {
 Block_0($1:i32, $2:i32):
 	$3 = 0 :i32
 	$4 = $2 <= $3 :bool
-	if $4 ? Block_1($1) : Block_2($1) :void
-
-Block_1($1:i32):
-	br Block_3($1) :void
+	if $4 ? Block_3($1) : Block_2($1) :void
 
 Block_3($1:i32):
 	return ($1) :i32

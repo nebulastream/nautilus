@@ -13,7 +13,7 @@ Block_0($1:i32):
 	$11 = $1 < $10 :bool
 	$12 = $9 and $11 :bool
 	$13 = $7 or $12 :bool
-	if $13 ? Block_1() : Block_2($2) :void
+	if $13 ? Block_1() : Block_3($2) :void
 
 Block_1():
 	$15 = 1 :i32
@@ -21,8 +21,5 @@ Block_1():
 
 Block_3($2:i32):
 	return ($2) :i32
-
-Block_2($2:i32):
-	br Block_3($2) :void
 }
 } //NESIR

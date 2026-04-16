@@ -94,7 +94,7 @@ Block_17($1:i32, $2:i32):
 
 Block_29($2:i32, $1:i32, $48:i32):
 	$49 = $1 > $48 :bool
-	if $49 ? Block_19($2) : Block_20($2) :void
+	if $49 ? Block_19($2) : Block_30($2) :void
 
 Block_19($2:i32):
 	$51 = 1 :i32
@@ -103,9 +103,6 @@ Block_19($2:i32):
 
 Block_30($2:i32):
 	return ($2) :i32
-
-Block_20($2:i32):
-	br Block_30($2) :void
 
 Block_18($2:i32, $1:i32):
 	$70 = 9 :i32
