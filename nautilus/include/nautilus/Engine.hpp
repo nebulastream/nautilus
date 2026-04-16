@@ -138,6 +138,12 @@ public:
 		return module_.getExecutable();
 	}
 
+	/// Statistics recorded during the compilation that produced this
+	/// function, or a null shared_ptr in interpreted mode.
+	std::shared_ptr<const compiler::CompilationStatistics> getStatistics() const {
+		return module_.getStatistics();
+	}
+
 private:
 	CompiledModule module_;
 	ModuleFunction<R(Args...)> fn_;

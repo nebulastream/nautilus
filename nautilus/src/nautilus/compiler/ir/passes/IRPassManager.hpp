@@ -10,7 +10,8 @@
 
 namespace nautilus::compiler {
 class DumpHandler;
-}
+class CompilationStatistics;
+} // namespace nautilus::compiler
 
 namespace nautilus::compiler::ir {
 
@@ -25,17 +26,23 @@ namespace nautilus::compiler::ir {
  *    pass. Useful with `ir.failOnVerifyError` to pinpoint a broken pass.
  *  - `ir.failOnVerifyError`    (bool, default false): throw a
  *    `RuntimeException` instead of logging verifier errors.
- *  - `ir.logPassStatistics`    (bool, default false): log function/block/op
- *    counts before the pipeline and a delta after each pass.
  *  - `ir.dumpAfterEachPass`    (bool, default false): hand the IR string
  *    to the dump handler under `after_<pass-name>` after each pass.
+ *
+ * When a non-null `CompilationStatistics*` is supplied, the manager
+ * records baseline IR counts under @c irPasses.baseline.*, per-pass
+ * durations under @c irPasses.<name>.ms, per-pass entity deltas under
+ * @c irPasses.<name>.{blocks,operations}Delta, and the pipeline total
+ * under @c irPasses.totalMs. Logging of the report happens at the end
+ * of compilation; the pass manager itself is silent about statistics.
  *
  * Before running any pass, the manager calls `rebuildPredecessorLists` on
  * the graph so passes can rely on `BasicBlock::getPredecessors()`.
  */
 class IRPassManager {
 public:
-	explicit IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler = nullptr);
+	explicit IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler = nullptr,
+	                       compiler::CompilationStatistics* statistics = nullptr);
 
 	void addPass(std::unique_ptr<IRPass> pass);
 
@@ -49,10 +56,10 @@ public:
 private:
 	std::vector<std::unique_ptr<IRPass>> passes;
 	compiler::DumpHandler* dumpHandler;
+	compiler::CompilationStatistics* statistics;
 	bool verifyBeforePipeline;
 	bool verifyAfterEachPass;
 	bool failOnVerifyError;
-	bool logStatistics;
 	bool dumpAfterEachPass;
 
 	void verifyAndReport(const IRGraph& ir, const char* stage);

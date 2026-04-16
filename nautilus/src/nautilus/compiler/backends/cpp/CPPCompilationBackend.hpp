@@ -11,7 +11,8 @@ namespace nautilus::compiler::cpp {
 class CPPCompilationBackend : public CompilationBackend {
 public:
 	std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                    const engine::Options& options) const override;
+	                                    const engine::Options& options,
+	                                    CompilationStatistics* statistics = nullptr) const override;
 };
 
 } // namespace nautilus::compiler::cpp

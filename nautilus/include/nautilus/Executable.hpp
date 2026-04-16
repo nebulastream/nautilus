@@ -12,6 +12,8 @@
 
 namespace nautilus::compiler {
 
+class CompilationStatistics;
+
 /**
  * @brief Represents an executable object, which enables the invocation of dynamically defined methods.
  */
@@ -147,8 +149,19 @@ public:
 
 	const std::string_view getGeneratedFile(std::string_view key) const;
 
+	/// Attach statistics captured during the compilation that produced this
+	/// executable. Callers pass a shared pointer so that the module can
+	/// forward the same stats object to inspection APIs without copying.
+	void setCompilationStatistics(std::shared_ptr<const CompilationStatistics> statistics);
+
+	/// Statistics for the compilation that produced this executable, or a
+	/// null shared_ptr if none were attached (e.g. backends that pre-date
+	/// the stats infrastructure).
+	[[nodiscard]] std::shared_ptr<const CompilationStatistics> getCompilationStatistics() const;
+
 private:
 	std::map<std::string, std::string> generatedFiles;
+	std::shared_ptr<const CompilationStatistics> compilationStatistics;
 };
 
 } // namespace nautilus::compiler

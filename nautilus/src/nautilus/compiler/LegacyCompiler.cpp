@@ -1,4 +1,5 @@
 #include "nautilus/compiler/LegacyCompiler.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
@@ -19,6 +20,7 @@
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
+#include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -75,6 +77,21 @@ static constexpr auto ROOT_FUNCTION_NAME = "execute";
 static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
 static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
 
+namespace {
+
+/// Emit the final report to the user's log sink. Called from the top-level
+/// compile entry points only, so a full pipeline produces exactly one
+/// report even when it internally calls compileToIR + compileIR.
+void logStatisticsIfEnabled(const engine::Options& options, const CompilationStatistics& stats,
+                            std::string_view compilationId, std::string_view backendName) {
+	if (!options.getOptionOrDefault("engine.logStatistics", false)) {
+		return;
+	}
+	log::info("\n{}", stats.formatReport(compilationId, backendName));
+}
+
+} // namespace
+
 std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_function function) const {
 	auto rootFunction = CompilableFunction(ROOT_FUNCTION_NAME, function);
 	std::list<compiler::CompilableFunction> functionsToTrace;
@@ -82,14 +99,18 @@ std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_functio
 	return compile(functionsToTrace);
 }
 
-std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
+std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>& functions,
+                                                         CompilationStatistics* statistics) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
-	auto statsLogger =
-	    log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false), compilationId);
-	auto tTotal = log::now();
 
-	auto t0 = log::now();
+	if (statistics != nullptr && !statistics->contains("compilation.unitId")) {
+		statistics->set("compilation.unitId", compilationId);
+	}
+
+	const auto frontendStart = std::chrono::steady_clock::now();
+
+	const auto tracingStart = std::chrono::steady_clock::now();
 	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
 	// Recycle the chunks from the previous compile before this one starts.
 	// Any TraceModule from a previous compilation has already been
@@ -98,57 +119,85 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 	std::shared_ptr<tracing::TraceModule> traceModule =
 	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options, *arena_)
 	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options, *arena_);
-	statsLogger.logTiming(t0, "Tracing completed");
+	if (statistics != nullptr) {
+		statistics->recordTimingMs("tracing.ms", tracingStart);
+	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 
-	auto t1 = log::now();
+	const auto ssaStart = std::chrono::steady_clock::now();
 	auto ssaCreationPhase = tracing::SSACreationPhase();
 	auto afterSSAModule = ssaCreationPhase.apply(std::move(traceModule));
-	statsLogger.logTiming(t1, "SSA creation completed");
+	if (statistics != nullptr) {
+		statistics->recordTimingMs("ssaCreation.ms", ssaStart);
+	}
 	dumpHandler.dump("after_ssa", "trace", [&]() { return afterSSAModule->toString(); });
 
-	auto t2 = log::now();
+	const auto irGenStart = std::chrono::steady_clock::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
-	statsLogger.logTiming(t2, "IR generation completed");
+	if (statistics != nullptr) {
+		statistics->recordTimingMs("irGeneration.ms", irGenStart);
+		const auto snapshot = ir::computeStatistics(*ir);
+		statistics->set("ir.functions", static_cast<int64_t>(snapshot.numFunctions));
+		statistics->set("ir.blocks", static_cast<int64_t>(snapshot.numBlocks));
+		statistics->set("ir.operations", static_cast<int64_t>(snapshot.numOperations));
+	}
 	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
 	if (options.getOptionOrDefault("ir.runPasses", true)) {
-		auto tPasses = log::now();
-		ir::IRPassManager passManager(options, &dumpHandler);
+		ir::IRPassManager passManager(options, &dumpHandler, statistics);
 		if (!options.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
 		passManager.run(*ir);
-		statsLogger.logTiming(tPasses, "IR pass pipeline completed");
 		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(); });
 	}
 
-	statsLogger.logTiming(tTotal, "Frontend (trace + SSA + IR) completed");
+	if (statistics != nullptr) {
+		statistics->recordTimingMs("frontend.totalMs", frontendStart);
+	}
 	return ir;
 }
 
 std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
-                                                      const std::string& backendName) const {
+                                                      const std::string& backendName,
+                                                      CompilationStatistics* statistics) const {
 	const CompilationUnitID compilationId = createCompilationUnitID();
 	auto dumpHandler = DumpHandler(options, compilationId);
-	auto statsLogger =
-	    log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false), compilationId);
 
-	auto t0 = log::now();
+	if (statistics != nullptr) {
+		if (!statistics->contains("compilation.unitId")) {
+			statistics->set("compilation.unitId", compilationId);
+		}
+		statistics->set("backend.name", backendName);
+	}
+
 	const auto backend = backends->getBackend(backendName);
-	auto executable = backend->compile(ir, dumpHandler, options);
-	statsLogger.logTiming(t0, "Backend compilation ({}) completed", backendName);
+	auto executable = backend->compile(ir, dumpHandler, options, statistics);
 	executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
 	return executable;
 }
 
 std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction>& functions) const {
-	auto ir = compileToIR(functions);
-	return compileIR(ir, getName());
+	auto statistics = std::make_shared<CompilationStatistics>();
+	const auto compilationStart = std::chrono::steady_clock::now();
+
+	auto ir = compileToIR(functions, statistics.get());
+	const auto backendName = getName();
+	auto executable = compileIR(ir, backendName, statistics.get());
+
+	statistics->recordTimingMs("compilation.totalMs", compilationStart);
+
+	const auto compilationId = statistics->find("compilation.unitId") != nullptr
+	                               ? std::get<std::string>(*statistics->find("compilation.unitId"))
+	                               : std::string {};
+	logStatisticsIfEnabled(options, *statistics, compilationId, backendName);
+
+	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+	return executable;
 }
 
 #else
@@ -161,11 +210,12 @@ std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction
 	throw RuntimeException("Jit not initialised");
 }
 
-std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>&) const {
+std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFunction>&, CompilationStatistics*) const {
 	throw RuntimeException("Jit not initialised");
 }
 
-std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&) const {
+std::unique_ptr<Executable> LegacyCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&, const std::string&,
+                                                      CompilationStatistics*) const {
 	throw RuntimeException("Jit not initialised");
 }
 

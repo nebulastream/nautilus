@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/config.hpp"
@@ -213,6 +214,22 @@ public:
 
 	const compiler::Executable* getExecutable() const {
 		return state_->executable.get();
+	}
+
+	/**
+	 * @brief Statistics recorded while compiling this module's executable.
+	 *
+	 * Returns a null shared_ptr in interpreted mode (no executable) or if
+	 * the active executable was produced by a path that did not attach
+	 * statistics. When tiered compilation swaps in a tier‑1 executable,
+	 * the pointer automatically reflects the new executable's stats.
+	 */
+	std::shared_ptr<const compiler::CompilationStatistics> getStatistics() const {
+		std::shared_lock<std::shared_mutex> lock(state_->mutex);
+		if (!state_->executable) {
+			return nullptr;
+		}
+		return state_->executable->getCompilationStatistics();
 	}
 
 	/**

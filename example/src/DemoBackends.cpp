@@ -38,8 +38,8 @@ static void runWith(const std::string& backendName, int32_t n) {
 	// Force single-tier compilation so each run uses exactly the requested
 	// backend, instead of the tiered strategy switching between them.
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	// Enable per-phase compilation stats logging.
-	options.setOption("engine.compilationStats", true);
+	// Enable the per-compile statistics report.
+	options.setOption("engine.logStatistics", true);
 	auto engine = engine::NautilusEngine(options);
 
 	// Measure compile time + first call separately from warm calls.

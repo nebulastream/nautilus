@@ -1,7 +1,9 @@
 
 
+#include <chrono>
 #include <cstdint>
 #include <dyncall_callback.h>
+#include <nautilus/CompilationStatistics.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreterBackend.hpp>
 #include <nautilus/compiler/backends/bc/BCLoweringProvider.hpp>
@@ -106,8 +108,9 @@ static DCsigchar bcCallbackHandler(DCCallback* /*pcb*/, DCArgs* args, DCValue* r
 }
 
 std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                          const DumpHandler& dumpHandler,
-                                                          const engine::Options&) const {
+                                                          const DumpHandler& dumpHandler, const engine::Options&,
+                                                          CompilationStatistics* statistics) const {
+	const auto backendStart = std::chrono::steady_clock::now();
 	const auto& functionOperations = ir->getFunctionOperations();
 
 	std::unordered_map<std::string, void*> functionPtrs;
@@ -131,6 +134,11 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		callbackDataStore.push_back(std::move(data));
 	}
 
+	// Track total emitted opcodes across all functions for backend-level
+	// code-size reporting. Each OpCode is fixed-width so total bytes is a
+	// straightforward multiple of the instruction count.
+	int64_t totalInstructions = 0;
+
 	// Phase 2: Lower all functions to bytecode and set the interpreter.
 	// All function pointers are now available, so every function can call any other.
 	for (size_t i = 0; i < functionOperations.size(); i++) {
@@ -143,7 +151,19 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 			dumpHandler.dump("after_bc_generation", "bc", [&code]() { return code.toString(); });
 		}
 
+		if (statistics != nullptr) {
+			for (const auto& block : code.blocks) {
+				totalInstructions += static_cast<int64_t>(block.code.size());
+			}
+		}
+
 		callbackDataStore[i]->interpreter = std::make_unique<BCInterpreter>(std::move(code), std::move(regFile));
+	}
+
+	if (statistics != nullptr) {
+		statistics->set("bc.instructions", totalInstructions);
+		statistics->set("bc.codeSize.bytes", totalInstructions * static_cast<int64_t>(sizeof(OpCode)));
+		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
 	return std::make_unique<BCExecutable>(std::move(functionPtrs), std::move(callbackDataStore),
