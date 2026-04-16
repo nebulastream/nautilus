@@ -610,13 +610,23 @@ void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, Regis
 	processBlockInvocation(op->getTrueBlockInvocation(), frame);
 	cc.jmp(trueLabel);
 
+	// Emit the true-branch body *between* the two invocations' arg-passing
+	// steps. The body's value-producing visitors (visitAdd, etc.) bind
+	// their SSA identifiers in the frame; when those identifiers
+	// coincide with a downstream block arg (typical at an SSA merge
+	// point that both arms target), the false invocation below must see
+	// the body's binding so it emits a MOV into the body-chosen
+	// register. Processing the false invocation first would bind the
+	// merge identifier to a fresh temp register, and the body's later
+	// `frame.setValue` — an `emplace`, no overwrite — would silently
+	// fail to retarget it.
+	processBlock(op->getTrueBlockInvocation().getBlock(), frame);
+
 	// False branch: copy arguments then jump.
 	cc.bind(elsePath);
 	processBlockInvocation(op->getFalseBlockInvocation(), frame);
 	cc.jmp(falseLabel);
 
-	// Emit the bodies of both successor blocks.
-	processBlock(op->getTrueBlockInvocation().getBlock(), frame);
 	processBlock(op->getFalseBlockInvocation().getBlock(), frame);
 }
 
