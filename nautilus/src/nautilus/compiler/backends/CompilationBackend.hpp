@@ -6,6 +6,7 @@
 
 namespace nautilus::compiler {
 class Executable;
+class CompilationStatistics;
 namespace ir {
 class IRGraph;
 }
@@ -17,10 +18,19 @@ class CompilationBackend {
 public:
 	/**
 	 * @brief Compiles ir graph to executable.
+	 *
+	 * @param ir          IR graph to lower and compile.
+	 * @param dumpHandler Handler for backend-specific dump artefacts.
+	 * @param options     Engine options.
+	 * @param statistics  Optional statistics sink; may be @c nullptr. When
+	 *                    non-null, backends record per-phase timings and
+	 *                    backend-specific metrics (e.g. code size) under
+	 *                    backend-scoped keys.
 	 * @return std::unique_ptr<Executable>
 	 */
 	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
-	                                            const engine::Options& options) const = 0;
+	                                            const engine::Options& options,
+	                                            CompilationStatistics* statistics = nullptr) const = 0;
 
 	virtual ~CompilationBackend();
 };

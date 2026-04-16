@@ -8,6 +8,8 @@
 
 namespace nautilus::compiler {
 
+class CompilationStatistics;
+
 /**
  * @brief Standard single-tier JIT compiler implementation.
  *
@@ -41,18 +43,31 @@ public:
 
 	/**
 	 * @brief Trace and convert functions to IR without backend compilation.
+	 *
+	 * When @p statistics is non-null, tracing/SSA/IR-generation/IR-pass
+	 * timings and entity counts are recorded into it. Logging of the
+	 * final report is the caller's responsibility; @ref compile wires it
+	 * up for the common case.
+	 *
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
-	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions) const;
+	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions,
+	                                                       CompilationStatistics* statistics = nullptr) const;
 
 	/**
 	 * @brief Compile a pre-built IR graph with a specific backend.
+	 *
+	 * When @p statistics is non-null the selected backend records its
+	 * per-phase timings and code-size metrics into it.
+	 *
 	 * @param ir The IR graph
 	 * @param backendName Which backend to use
+	 * @param statistics Optional statistics sink populated by the backend.
 	 * @return Compiled executable
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
-	                                                    const std::string& backendName) const;
+	                                                    const std::string& backendName,
+	                                                    CompilationStatistics* statistics = nullptr) const;
 
 private:
 	const engine::Options options;

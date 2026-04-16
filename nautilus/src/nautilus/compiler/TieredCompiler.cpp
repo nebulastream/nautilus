@@ -1,4 +1,5 @@
 #include "nautilus/compiler/TieredCompiler.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/Module.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
@@ -9,6 +10,7 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include <chrono>
 #include <thread>
 
 namespace nautilus::compiler {
@@ -54,8 +56,27 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function
 }
 
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions) const {
-	auto ir = baseCompiler_.compileToIR(functions);
-	auto tier0Executable = baseCompiler_.compileIR(ir, config_.tier0.backend);
+	// One shared statistics object covers the entire tier-0 compile so the
+	// user's CompiledModule::getStatistics() reflects tracing + IR passes +
+	// tier-0 backend work in a single report.
+	auto statistics = std::make_shared<CompilationStatistics>();
+	const auto compilationStart = std::chrono::steady_clock::now();
+
+	auto ir = baseCompiler_.compileToIR(functions, statistics.get());
+	auto tier0Executable = baseCompiler_.compileIR(ir, config_.tier0.backend, statistics.get());
+
+	statistics->recordTimingMs("compilation.totalMs", compilationStart);
+	statistics->set("tier", std::string {"tier0"});
+
+	if (baseCompiler_.getOptions().getOptionOrDefault("engine.logStatistics", false)) {
+		const auto id = statistics->find("compilation.unitId") != nullptr
+		                    ? std::get<std::string>(*statistics->find("compilation.unitId"))
+		                    : std::string {};
+		log::info("\n{}", statistics->formatReport(id, config_.tier0.backend));
+	}
+
+	tier0Executable->setCompilationStatistics(
+	    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
 
 	// Cache the IR for the upcoming promoteAsync() call
 	lastCachedIR_ = std::move(ir);
@@ -81,12 +102,22 @@ void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>
 			auto compilationId = createPromotionUnitID();
 			auto dumpHandler = DumpHandler(options, compilationId);
 
-			auto statsLogger = log::CompilationStatsLogger(options.getOptionOrDefault("engine.compilationStats", false),
-			                                               compilationId);
-			auto t0 = log::now();
-			auto tier1Executable = backend->compile(ir, dumpHandler, options);
-			statsLogger.logTiming(t0, "Tier 1 promotion ({}) completed", config.tier1.backend);
+			auto statistics = std::make_shared<CompilationStatistics>();
+			statistics->set("compilation.unitId", compilationId);
+			statistics->set("tier", std::string {"tier1"});
+			statistics->set("backend.name", config.tier1.backend);
+
+			const auto promotionStart = std::chrono::steady_clock::now();
+			auto tier1Executable = backend->compile(ir, dumpHandler, options, statistics.get());
+			statistics->recordTimingMs("compilation.totalMs", promotionStart);
 			tier1Executable->setGeneratedFiles(dumpHandler.getGeneratedFiles());
+
+			if (options.getOptionOrDefault("engine.logStatistics", false)) {
+				log::info("\n{}", statistics->formatReport(compilationId, config.tier1.backend));
+			}
+
+			tier1Executable->setCompilationStatistics(
+			    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
 
 			if (auto s = weakState.lock()) {
 				std::unique_lock<std::shared_mutex> lock(s->mutex);

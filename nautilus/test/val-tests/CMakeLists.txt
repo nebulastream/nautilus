@@ -6,6 +6,7 @@ add_executable(nautilus-value-tests
         FunctionTest.cpp
         ValConceptTest.cpp
         StaticValTypeTest.cpp
+        CompilationStatisticsTest.cpp
         #  Interface/IntegerTypeTest.cpp
         #   Interface/FloatTypeTest.cpp
 )

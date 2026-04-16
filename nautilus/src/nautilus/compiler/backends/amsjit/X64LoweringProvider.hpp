@@ -28,6 +28,7 @@ public:
 	struct LowerResult {
 		void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
 		std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
+		uint64_t codeSize = 0;                          ///< Total emitted machine-code size in bytes.
 	};
 
 	/// Compile all functions in the IR graph into one JIT allocation.

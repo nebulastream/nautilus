@@ -1,4 +1,5 @@
 #include "nautilus/Executable.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 
 namespace nautilus::compiler {
 Executable::~Executable() = default;
@@ -17,5 +18,13 @@ const std::string_view Executable::getGeneratedFile(std::string_view key) const 
 		return it->second;
 	}
 	return "";
+}
+
+void Executable::setCompilationStatistics(std::shared_ptr<const CompilationStatistics> statistics) {
+	compilationStatistics = std::move(statistics);
+}
+
+std::shared_ptr<const CompilationStatistics> Executable::getCompilationStatistics() const {
+	return compilationStatistics;
 }
 } // namespace nautilus::compiler

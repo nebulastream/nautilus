@@ -38,6 +38,8 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	for (const auto& [name, funcNode] : ctx.getFuncNodes()) {
 		offsets[name] = code.labelOffset(funcNode->label());
 	}
+	// Capture size before rt.add — CodeHolder is consumed by add().
+	const uint64_t codeSize = code.codeSize();
 
 	void* basePtr = nullptr;
 	if (runtime.add(&basePtr, &code)) {
@@ -46,6 +48,7 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 	LowerResult result;
 	result.basePtr = basePtr;
+	result.codeSize = codeSize;
 	for (const auto& [name, offset] : offsets) {
 		result.jitPtrs[name] = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(basePtr) + offset);
 	}
