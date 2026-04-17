@@ -1,0 +1,19 @@
+NautilusIr {
+execute() {
+Block_0():
+	$2 = alloca 8b :ptr
+	$14 = alloca 64b :ptr
+	$1 = 0 :i32
+	func_*($2) :void
+	$6 = 0 :ui64
+	$8 = 1 :ui64
+	$9 = 0 :ui64
+	$10 = $2 + $9 :ptr
+	$13 = load($10) :i32
+	func_*($14) :void
+	$18 = func_*($14) :i64
+	$19 = $13 cast_to i64 :i64
+	$20 = $18 + $19 :i64
+	return ($20) :i64
+}
+} //NESIR
