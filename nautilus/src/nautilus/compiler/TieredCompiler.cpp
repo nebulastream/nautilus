@@ -4,6 +4,7 @@
 #include "nautilus/Module.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 
 #ifdef ENABLE_COMPILER
@@ -154,11 +155,24 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 	return baseCompiler_.getOptions();
 }
 
+std::shared_ptr<ir::IRGraph> TieredJITCompiler::compileToIR(std::list<CompilableFunction>& functions) const {
+	return baseCompiler_.compileToIR(functions);
+}
+
+std::unique_ptr<Executable> TieredJITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+                                                         const std::string& backendName) const {
+	return baseCompiler_.compileIR(ir, backendName);
+}
+
+void TieredJITCompiler::addIRPass(std::unique_ptr<ir::IRPass> pass) {
+	// Plugin passes are stored on the inner LegacyCompiler so they participate
+	// in both tier-0 (synchronous) and tier-1 (background promotion) compiles.
+	baseCompiler_.addIRPass(std::move(pass));
+}
+
 } // namespace nautilus::compiler
 
 #else
-
-#include "nautilus/exceptions/RuntimeException.hpp"
 
 namespace nautilus::compiler {
 
@@ -174,6 +188,16 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function) const {
 	throw RuntimeException("Jit not initialised");
 }
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>&) const {
+	throw RuntimeException("Jit not initialised");
+}
+std::shared_ptr<ir::IRGraph> TieredJITCompiler::compileToIR(std::list<CompilableFunction>&) const {
+	throw RuntimeException("Jit not initialised");
+}
+std::unique_ptr<Executable> TieredJITCompiler::compileIR(const std::shared_ptr<ir::IRGraph>&,
+                                                         const std::string&) const {
+	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::addIRPass(std::unique_ptr<ir::IRPass>) {
 	throw RuntimeException("Jit not initialised");
 }
 void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>) const {

@@ -44,7 +44,11 @@ public:
 	explicit IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler = nullptr,
 	                       compiler::CompilationStatistics* statistics = nullptr);
 
-	void addPass(std::unique_ptr<IRPass> pass);
+	/// Append a pass to the pipeline. Built-in callers typically pass a
+	/// freshly created `std::make_shared<...>()`; plugin callers (via
+	/// `LegacyCompiler::addIRPass`) hand over an already-shared instance so
+	/// the same pass survives across compilations.
+	void addPass(std::shared_ptr<IRPass> pass);
 
 	/// Executes every registered pass, in registration order, on @p ir.
 	void run(IRGraph& ir);
@@ -54,7 +58,7 @@ public:
 	}
 
 private:
-	std::vector<std::unique_ptr<IRPass>> passes;
+	std::vector<std::shared_ptr<IRPass>> passes;
 	compiler::DumpHandler* dumpHandler;
 	compiler::CompilationStatistics* statistics;
 	bool verifyBeforePipeline;

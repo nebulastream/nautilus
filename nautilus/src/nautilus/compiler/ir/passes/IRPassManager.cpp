@@ -20,7 +20,7 @@ IRPassManager::IRPassManager(const engine::Options& options, compiler::DumpHandl
       dumpAfterEachPass(options.getOptionOrDefault("ir.dumpAfterEachPass", false)) {
 }
 
-void IRPassManager::addPass(std::unique_ptr<IRPass> pass) {
+void IRPassManager::addPass(std::shared_ptr<IRPass> pass) {
 	if (pass != nullptr) {
 		passes.push_back(std::move(pass));
 	}

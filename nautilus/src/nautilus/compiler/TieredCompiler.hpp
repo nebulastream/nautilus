@@ -62,6 +62,12 @@ public:
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
 	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const override;
 
+	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions) const override;
+	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                    const std::string& backendName) const override;
+
+	void addIRPass(std::unique_ptr<ir::IRPass> pass) override;
+
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
 

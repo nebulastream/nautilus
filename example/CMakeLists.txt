@@ -17,6 +17,7 @@ set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_INLINING_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_PROFILING_PLUGIN ON CACHE BOOL "" FORCE)
 # Enable the AsmJit backend so demo_backends can include it in its comparison.
 # This is OFF by default in the top-level nautilus build but is safe on
 # x86-64 Linux / macOS and ARM64 Linux.
@@ -83,3 +84,6 @@ if (ENABLE_INLINING_PLUGIN)
         message(STATUS "Skipping demo_inlining_plugin: inlining plugin is not supported on this toolchain.")
     endif ()
 endif ()
+
+add_executable(demo_profiling_plugin src/DemoProfilingPlugin.cpp)
+target_link_libraries(demo_profiling_plugin PRIVATE nautilus nautilus-profiling)

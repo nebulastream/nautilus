@@ -10,6 +10,7 @@
 #include <any>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -19,6 +20,18 @@ namespace nautilus::common {
 class Arena;
 class ArenaPool;
 } // namespace nautilus::common
+
+namespace nautilus::compiler::ir {
+// IRPass is defined in the private header `nautilus/compiler/ir/passes/IRPass.hpp`.
+// Plugins (which have access to the src/ tree) include that header to derive from
+// it; this forward declaration is enough for the public surface to refer to it.
+class IRPass;
+} // namespace nautilus::compiler::ir
+
+namespace nautilus {
+/// Plugin-facing alias for the compiler's IR pass interface.
+using IRPass = compiler::ir::IRPass;
+} // namespace nautilus
 
 namespace nautilus::engine {
 namespace details {
@@ -184,6 +197,19 @@ public:
 	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const;
 
 	/**
+	 * @brief Register a plugin IR pass that runs during every subsequent
+	 * compilation, alongside the built-in passes.
+	 *
+	 * Forwarded to the underlying `JITCompiler`, which appends the pass to
+	 * the same `IRPassManager` pipeline it constructs internally — plugin
+	 * and built-in passes share dump/verify/statistics handling. Defined
+	 * out-of-line so the public header can keep `IRPass` forward-declared.
+	 *
+	 * No-op when compilation is disabled (interpreter mode).
+	 */
+	void addIRPass(std::unique_ptr<nautilus::IRPass> pass) const;
+
+	/**
 	 * @brief Creates a new module for registering multiple functions to be compiled together.
 	 * @return NautilusModule builder
 	 */
@@ -251,6 +277,7 @@ public:
 	}
 #endif
 
+
 	/**
 	 * @brief Register a function with an explicit signature (needed for lambdas).
 	 * @tparam Signature The val-typed function signature, e.g. val<int32_t>(val<int32_t>)
@@ -301,22 +328,17 @@ public:
 	/**
 	 * @brief Compile all registered functions together into one compilation unit.
 	 * When compilation is disabled, returns a module that interprets functions directly.
+	 *
+	 * Plugin IR passes are owned by the `JITCompiler` (via
+	 * @ref NautilusEngine::addIRPass), so the module just delegates the
+	 * compile call.
+	 *
 	 * @return CompiledModule with all functions accessible by name
 	 */
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
-			auto executable = jit_.compile(functions_);
-			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
-
-			// If using tiered compilation, start background promotion.
-			// The TieredJITCompiler directly swaps the executable and bumps
-			// the version in the module state when tier-1 compilation completes.
-			// if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
-			//	tiered->promoteAsync(module.getState());
-			//}
-
-			return module;
+			return CompiledModule(jit_.compile(functions_), std::move(interpretedFunctions_));
 		}
 #endif
 		return CompiledModule(std::move(interpretedFunctions_));

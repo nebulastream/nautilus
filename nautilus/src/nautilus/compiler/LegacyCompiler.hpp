@@ -2,9 +2,11 @@
 
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/passes/IRPass.hpp"
 #include <functional>
 #include <list>
 #include <memory>
+#include <vector>
 
 namespace nautilus::compiler {
 
@@ -41,6 +43,15 @@ public:
 		return options;
 	}
 
+	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions) const override {
+		return compileToIR(functions, nullptr);
+	}
+
+	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                    const std::string& backendName) const override {
+		return compileIR(ir, backendName, nullptr);
+	}
+
 	/**
 	 * @brief Trace and convert functions to IR without backend compilation.
 	 *
@@ -52,7 +63,7 @@ public:
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
 	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions,
-	                                                       CompilationStatistics* statistics = nullptr) const;
+	                                                       CompilationStatistics* statistics) const;
 
 	/**
 	 * @brief Compile a pre-built IR graph with a specific backend.
@@ -67,7 +78,9 @@ public:
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
 	                                                    const std::string& backendName,
-	                                                    CompilationStatistics* statistics = nullptr) const;
+	                                                    CompilationStatistics* statistics) const;
+
+	void addIRPass(std::unique_ptr<ir::IRPass> pass) override;
 
 private:
 	const engine::Options options;
@@ -81,5 +94,12 @@ private:
 	/// IRGraph created during compileToIR acquires its arena from here, so
 	/// successive compiles reuse heap chunks across IR graphs.
 	mutable common::ArenaPool* irArenaPool_;
+
+	/// Plugin IR passes registered via @ref addIRPass. Held by `shared_ptr`
+	/// because the same pass instance is wrapped in a `unique_ptr` adapter
+	/// for each compileToIR invocation (the `IRPassManager` consumes
+	/// `unique_ptr`, but the pass must outlive any single compile so it can
+	/// be reused across compilations and across tier-0/tier-1 promotions).
+	std::vector<std::shared_ptr<ir::IRPass>> pluginPasses_;
 };
 } // namespace nautilus::compiler

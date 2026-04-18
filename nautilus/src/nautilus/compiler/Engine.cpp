@@ -3,6 +3,7 @@
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/LegacyCompiler.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
+#include "nautilus/compiler/ir/passes/IRPass.hpp"
 
 namespace nautilus::engine {
 
@@ -41,5 +42,15 @@ NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const
 
 NautilusEngine::~NautilusEngine() = default;
 NautilusEngine::NautilusEngine(NautilusEngine&&) noexcept = default;
+
+void NautilusEngine::addIRPass(std::unique_ptr<nautilus::IRPass> pass) const {
+#ifdef ENABLE_TRACING
+	if (pass != nullptr) {
+		jit_->addIRPass(std::move(pass));
+	}
+#else
+	(void) pass;
+#endif
+}
 
 } // namespace nautilus::engine
