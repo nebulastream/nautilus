@@ -108,7 +108,8 @@ static DCsigchar bcCallbackHandler(DCCallback* /*pcb*/, DCArgs* args, DCValue* r
 }
 
 std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                          const DumpHandler& dumpHandler, const engine::Options&,
+                                                          const DumpHandler& dumpHandler,
+                                                          const engine::Options& options,
                                                           CompilationStatistics* statistics) const {
 	const auto backendStart = std::chrono::steady_clock::now();
 	const auto& functionOperations = ir->getFunctionOperations();
@@ -116,6 +117,13 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	std::unordered_map<std::string, void*> functionPtrs;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackDataStore;
 	std::vector<DCCallback*> callbackPtrs;
+
+	// Lowering-time option: the simple linear register allocator is
+	// enabled by default but can be turned off via "bc.registerAllocator"
+	// for A/B benchmarking or if a caller wants to reproduce the legacy
+	// one-slot-per-value behaviour.
+	LoweringOptions loweringOptions;
+	loweringOptions.enableRegisterAllocator = options.getOptionOrDefault("bc.registerAllocator", true);
 
 	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.
@@ -136,14 +144,18 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 
 	// Track total emitted opcodes across all functions for backend-level
 	// code-size reporting. Each OpCode is fixed-width so total bytes is a
-	// straightforward multiple of the instruction count.
+	// straightforward multiple of the instruction count. The peak register
+	// file size across functions captures the linear-allocator's main win
+	// (smaller per-invocation register file copy).
 	int64_t totalInstructions = 0;
+	int64_t totalRegisters = 0;
+	int64_t maxRegisters = 0;
 
 	// Phase 2: Lower all functions to bytecode and set the interpreter.
 	// All function pointers are now available, so every function can call any other.
 	for (size_t i = 0; i < functionOperations.size(); i++) {
 		const auto& funcOp = functionOperations[i];
-		auto result = BCLoweringProvider().lower(ir, funcOp->getName(), functionPtrs);
+		auto result = BCLoweringProvider().lower(ir, funcOp->getName(), functionPtrs, loweringOptions);
 		auto& code = std::get<0>(result);
 		auto& regFile = std::get<1>(result);
 
@@ -155,6 +167,9 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 			for (const auto& block : code.blocks) {
 				totalInstructions += static_cast<int64_t>(block.code.size());
 			}
+			const auto regCount = static_cast<int64_t>(regFile.size());
+			totalRegisters += regCount;
+			maxRegisters = std::max(maxRegisters, regCount);
 		}
 
 		callbackDataStore[i]->interpreter = std::make_unique<BCInterpreter>(std::move(code), std::move(regFile));
@@ -163,6 +178,10 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	if (statistics != nullptr) {
 		statistics->set("bc.instructions", totalInstructions);
 		statistics->set("bc.codeSize.bytes", totalInstructions * static_cast<int64_t>(sizeof(OpCode)));
+		statistics->set("bc.registers.total", totalRegisters);
+		statistics->set("bc.registers.max", maxRegisters);
+		statistics->set("bc.registerAllocator.enabled",
+		                std::string(loweringOptions.enableRegisterAllocator ? "true" : "false"));
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 

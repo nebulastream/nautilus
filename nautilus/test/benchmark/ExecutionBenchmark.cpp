@@ -86,6 +86,29 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+#ifdef ENABLE_BC_BACKEND
+	// BC-only A/B benchmark comparing execution with and without the
+	// linear register allocator. Lets us track the perf side of the
+	// "bc.registerAllocator" toggle next to the static-size effect that
+	// CompilationStatisticsTest measures (bc.registers.{total,max}).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allocOn : {false, true}) {
+			std::string tag = allocOn ? "regAlloc" : "noRegAlloc";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + tag)
+			    .operator=([&func, allocOn](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.registerAllocator", allocOn);
+				    func(meter, op);
+			    });
+		}
+	}
+#endif
 }
 
 } // namespace nautilus::engine
