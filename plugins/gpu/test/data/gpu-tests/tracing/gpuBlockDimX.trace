@@ -1,0 +1,6 @@
+EXECUTE:
+B0($1:ui32)
+	CALL	$2	func_*()	:ui32
+	ADD	$3	$2	$1	:ui32
+	RETURN	$0	$3	:ui32
+

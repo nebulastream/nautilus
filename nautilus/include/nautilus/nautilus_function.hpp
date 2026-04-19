@@ -5,9 +5,11 @@
 #include "nautilus/function.hpp" // getArgumentReferences
 #include "nautilus/val_func.hpp" // val<R(*)(Args...)>
 #include <functional>            // std::invoke
+#include <optional>
 #include <string>
 #include <type_traits> // std::is_void_v, std::invoke_result_t
-#include <utility>     // std::forward, std::move
+#include <unordered_map>
+#include <utility> // std::forward, std::move
 
 namespace nautilus {
 
@@ -63,8 +65,29 @@ public:
 		return name_;
 	}
 
+	void setAttribute(const std::string& key, const std::string& value) {
+		attributes_[key] = value;
+	}
+
+	bool hasAttribute(const std::string& key) const {
+		return attributes_.contains(key);
+	}
+
+	std::optional<std::string> getAttribute(const std::string& key) const {
+		auto it = attributes_.find(key);
+		if (it != attributes_.end()) {
+			return it->second;
+		}
+		return std::nullopt;
+	}
+
+	const std::unordered_map<std::string, std::string>& attributes() const noexcept {
+		return attributes_;
+	}
+
 private:
 	std::string name_;
+	std::unordered_map<std::string, std::string> attributes_;
 };
 
 // -----------------------------
@@ -168,7 +191,10 @@ private:
 		}
 	};
 
+protected:
 	NautilusFunctionDefinition definition_;
+
+private:
 	F f_;
 #ifdef ENABLE_TRACING
 	std::function<void()> fwrapper;

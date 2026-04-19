@@ -36,9 +36,13 @@ CompilationBackendRegistry::CompilationBackendRegistry() {
 }
 #endif
 
-const CompilationBackendRegistry* CompilationBackendRegistry::getInstance() {
+CompilationBackendRegistry* CompilationBackendRegistry::getInstance() {
 	static auto registry = std::make_unique<CompilationBackendRegistry>(CompilationBackendRegistry());
 	return registry.get();
+}
+
+void CompilationBackendRegistry::registerBackend(const std::string& name, std::unique_ptr<CompilationBackend> backend) {
+	items[name] = std::move(backend);
 }
 
 const CompilationBackend* CompilationBackendRegistry::getBackend(const std::string& name) const {

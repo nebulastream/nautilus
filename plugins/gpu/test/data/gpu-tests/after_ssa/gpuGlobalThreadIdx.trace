@@ -1,0 +1,9 @@
+EXECUTE:
+B0()
+	CALL	$1	func_*()	:ui32
+	CALL	$2	func_*()	:ui32
+	MUL	$3	$1	$2	:ui32
+	CALL	$4	func_*()	:ui32
+	ADD	$5	$3	$4	:ui32
+	RETURN	$0	$5	:ui32
+

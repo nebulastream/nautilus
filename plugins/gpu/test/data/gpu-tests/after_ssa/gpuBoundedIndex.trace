@@ -1,0 +1,17 @@
+EXECUTE:
+B0($1:ui32)
+	CALL	$2	func_*()	:ui32
+	CALL	$3	func_*()	:ui32
+	MUL	$4	$2	$3	:ui32
+	CALL	$5	func_*()	:ui32
+	ADD	$6	$4	$5	:ui32
+	LT	$7	$6	$1	:bool
+	CMP	$8	$7	B1($6)	B2()	:void
+B1($6:ui32)
+	JMP	$0	B3($6)	:void
+B2()
+	CONST	$10	0	:ui32
+	JMP	$0	B3($10)	:void
+B3($6:ui32)
+	RETURN	$0	$6	:ui32
+
