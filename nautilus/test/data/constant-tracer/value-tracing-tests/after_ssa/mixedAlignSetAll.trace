@@ -1,0 +1,39 @@
+EXECUTE:
+B0($1:i8,$2:i32,$3:i64)
+	ALLOCA	$4	:ptr
+	CONST	$9	0	:ui64
+	CONST	$10	0	:ui64
+	CONST	$11	0	:ui64
+	ADD	$12	$4	$9	:ptr
+	STORE	$18	$12	$1	:void
+	CONST	$23	4	:ui64
+	CONST	$24	4	:ui64
+	CONST	$25	4	:ui64
+	ADD	$26	$4	$23	:ptr
+	STORE	$32	$26	$2	:void
+	CONST	$37	8	:ui64
+	CONST	$38	8	:ui64
+	CONST	$39	8	:ui64
+	ADD	$40	$4	$37	:ptr
+	STORE	$46	$40	$3	:void
+	CONST	$49	0	:ui64
+	CONST	$50	0	:ui64
+	CONST	$51	0	:ui64
+	ADD	$52	$4	$49	:ptr
+	LOAD	$56	$52	:i8
+	CONST	$59	4	:ui64
+	CONST	$60	4	:ui64
+	CONST	$61	4	:ui64
+	ADD	$62	$4	$59	:ptr
+	LOAD	$66	$62	:i32
+	CONST	$69	8	:ui64
+	CONST	$70	8	:ui64
+	CONST	$71	8	:ui64
+	ADD	$72	$4	$69	:ptr
+	LOAD	$76	$72	:i64
+	CAST	$77	$56	:i64
+	CAST	$78	$66	:i64
+	ADD	$79	$77	$78	:i64
+	ADD	$80	$79	$76	:i64
+	RETURN	$0	$80	:i64
+

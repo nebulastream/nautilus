@@ -1,0 +1,5 @@
+EXECUTE:
+B0()
+	CONST	$1	42	:i32
+	RETURN	$0	$1	:i32
+

@@ -1,0 +1,73 @@
+EXECUTE:
+B0($1:i32)
+	ALLOCA	$2	:ptr
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	CONST	$7	0	:ui64
+	ADD	$8	$2	$5	:ptr
+	CONST	$12	0	:i32
+	CONST	$13	0	:i32
+	CONST	$14	0	:i32
+	STORE	$15	$8	$12	:void
+	CONST	$18	4	:ui64
+	CONST	$19	4	:ui64
+	CONST	$20	4	:ui64
+	ADD	$21	$2	$18	:ptr
+	CONST	$25	100	:i32
+	CONST	$26	100	:i32
+	CONST	$27	100	:i32
+	STORE	$28	$21	$25	:void
+	CONST	$29	0	:i32
+	JMP	$0	B3($2,$29,$1)	:void
+B1($2:ptr,$1:i32,$29:i32)
+	CALL	$35	func_*($2)	:i32
+	CALL	$36	func_*($2,$35)	:void
+	CONST	$37	1	:i32
+	ADD	$38	$29	$37	:i32
+	JMP	$0	B3($2,$38,$1)	:void
+B2($2:ptr)
+	CALL	$41	func_*($2)	:i32
+	RETURN	$0	$41	:i32
+B3($2:ptr,$29:i32,$1:i32) ControlFlowMerge
+	LT	$30	$29	$1	:bool
+	CMP	$32	$30	B1($2,$1,$29)	B2($2)	:void
+
+INCREMENTFIELDA:
+B0($1:ptr,$2:i32)
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	CONST	$7	0	:ui64
+	ADD	$8	$1	$5	:ptr
+	LOAD	$13	$8	:i32
+	ADD	$14	$13	$2	:i32
+	CONST	$17	0	:ui64
+	CONST	$18	0	:ui64
+	CONST	$19	0	:ui64
+	ADD	$20	$1	$17	:ptr
+	STORE	$26	$20	$14	:void
+	RETURN	$0	:void
+
+READFIELDA:
+B0($1:ptr)
+	CONST	$4	0	:ui64
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	ADD	$7	$1	$4	:ptr
+	LOAD	$11	$7	:i32
+	RETURN	$0	$11	:i32
+
+SUMFIELDS:
+B0($1:ptr)
+	CONST	$4	0	:ui64
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	ADD	$7	$1	$4	:ptr
+	CONST	$13	4	:ui64
+	CONST	$14	4	:ui64
+	CONST	$15	4	:ui64
+	ADD	$16	$1	$13	:ptr
+	LOAD	$20	$7	:i32
+	LOAD	$21	$16	:i32
+	ADD	$22	$20	$21	:i32
+	RETURN	$0	$22	:i32
+

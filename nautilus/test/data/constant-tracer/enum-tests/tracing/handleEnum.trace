@@ -1,0 +1,7 @@
+EXECUTE:
+B0($1:ui32)
+	ASSIGN	$2	$1	:ui32
+	CONST	$3	0	:ui32
+	EQ	$4	$2	$3	:bool
+	RETURN	$0	$4	:bool
+

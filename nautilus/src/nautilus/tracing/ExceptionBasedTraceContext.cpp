@@ -1,4 +1,3 @@
-
 #include "ExceptionBasedTraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
@@ -362,6 +361,11 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 		SymbolicExecutionContext symbolicExecutionContext;
 		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		// Give subclasses a chance to prepare per-function state — the
+		// partial-evaluation plugin uses this to sweep any stale
+		// Constant-registry entries that might have leaked from the
+		// outer function's trace.
+		this->beforeInnerFunction();
 		auto traceIteration = 0;
 
 		while (symbolicExecutionContext.shouldContinue()) {
@@ -457,6 +461,10 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+const void* ExceptionBasedTraceContext::currentTag() {
+	return state->tagRecorder.createTag();
 }
 
 } // namespace nautilus::tracing

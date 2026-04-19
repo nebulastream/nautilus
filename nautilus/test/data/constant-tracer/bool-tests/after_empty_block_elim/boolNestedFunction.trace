@@ -1,0 +1,18 @@
+NautilusIr {
+execute() {
+Block_0($1:bool, $2:bool):
+	$5 = $1 == $2 :bool
+	if $5 ? Block_1() : Block_2() :void
+
+Block_1():
+	$8 = true :bool
+	br Block_3($8) :void
+
+Block_3($8:bool):
+	return ($8) :bool
+
+Block_2():
+	$11 = false :bool
+	br Block_3($11) :void
+}
+} //NESIR

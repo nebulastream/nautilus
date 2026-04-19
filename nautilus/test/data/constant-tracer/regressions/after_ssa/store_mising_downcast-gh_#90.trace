@@ -1,0 +1,7 @@
+EXECUTE:
+B0($1:ptr)
+	CONST	$4	4294967295	:ui32
+	CONST	$5	-1	:i64
+	STORE	$6	$1	$4	:void
+	RETURN	$0	:void
+

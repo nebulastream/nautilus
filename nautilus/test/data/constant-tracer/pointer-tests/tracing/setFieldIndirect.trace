@@ -1,0 +1,17 @@
+EXECUTE:
+B0($1:ptr,$2:i32)
+	ASSIGN	$3	$2	:i32
+	ASSIGN	$4	$1	:ptr
+	ASSIGN	$5	$4	:ptr
+	CONST	$6	0	:ui64
+	CONST	$7	0	:ui64
+	CONST	$8	0	:ui64
+	ADD	$9	$5	$6	:ptr
+	ASSIGN	$10	$9	:ptr
+	ASSIGN	$11	$10	:ptr
+	ASSIGN	$12	$11	:ptr
+	ASSIGN	$13	$3	:i32
+	ASSIGN	$14	$13	:i32
+	STORE	$15	$12	$14	:void
+	RETURN	$0	:void
+

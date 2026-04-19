@@ -1,0 +1,37 @@
+EXECUTE:
+B0($1:i32)
+	ALLOCA	$6	:ptr
+	ALLOCA	$32	:ptr
+	CONST	$2	0	:i32
+	GT	$3	$1	$2	:bool
+	CMP	$5	$3	B1($6,$1)	B2($32)	:void
+B1($6:ptr,$1:i32)
+	CONST	$11	0	:ui64
+	CONST	$12	0	:ui64
+	CONST	$13	0	:ui64
+	ADD	$14	$6	$11	:ptr
+	STORE	$20	$14	$1	:void
+	CONST	$23	0	:ui64
+	CONST	$24	0	:ui64
+	CONST	$25	0	:ui64
+	ADD	$26	$6	$23	:ptr
+	LOAD	$30	$26	:i32
+	JMP	$0	B3($30)	:void
+B2($32:ptr)
+	CONST	$35	0	:ui64
+	CONST	$36	0	:ui64
+	CONST	$37	0	:ui64
+	ADD	$38	$32	$35	:ptr
+	CONST	$42	42	:i32
+	CONST	$43	42	:i32
+	CONST	$44	42	:i32
+	STORE	$45	$38	$42	:void
+	CONST	$48	0	:ui64
+	CONST	$49	0	:ui64
+	CONST	$50	0	:ui64
+	ADD	$51	$32	$48	:ptr
+	LOAD	$55	$51	:i32
+	JMP	$0	B3($55)	:void
+B3($30:i32)
+	RETURN	$0	$30	:i32
+

@@ -1,9 +1,14 @@
 #pragma once
 
+#include "nautilus/config.hpp"
 #include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <utility>
+
+#ifdef ENABLE_CONSTANT_TRACER
+#include "nautilus/partial_evaluation/LazyTracedRef.hpp"
+#endif
 
 namespace nautilus {
 
@@ -163,8 +168,12 @@ public:
 		return state;
 	}
 
+#ifdef ENABLE_CONSTANT_TRACER
+	mutable tracing::pe::LazyTracedRef<bool> state;
+#else
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
+#endif
 #endif
 
 	/// Default constructor.
@@ -177,8 +186,13 @@ public:
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	val() : state(false), value(false) {
+	}
+#else
 	val() : state(tracing::traceConstant(0)), value(false) {
 	}
+#endif
 #else
 	val() {
 	}
@@ -198,8 +212,13 @@ public:
 	/// val<bool> b = false;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	val(bool value) : state(value), value(value) {
+	}
+#else
 	val(bool value) : state(tracing::traceConstant(value)), value(value) {
 	}
+#endif
 #else
 	val(bool value) : value(value) {
 	}
@@ -221,8 +240,13 @@ public:
 	/// assert(b == a);
 	/// ```
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	val(const val<bool>& other) : state(other.state), value(other.value) {
+	}
+#else
 	val(const val<bool>& other) : state(tracing::traceCopy(other.state)), value(other.value) {
 	}
+#endif
 #else
 	val(const val<bool>& other) : value(other.value) {
 	}
@@ -286,6 +310,14 @@ public:
 	/// ```
 	val<bool>& operator=(const val<bool>& other) {
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+		if (state.isConstant() && other.state.isConstant()) {
+			state.resetToConstant(other.value);
+			this->value = other.value;
+			this->probability = other.probability;
+			return *this;
+		}
+#endif
 		tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		this->value = other.value;
@@ -312,6 +344,14 @@ public:
 	/// ```
 	val<bool>& operator=(val<bool>&& other) {
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+		if (state.isConstant() && other.state.isConstant()) {
+			state.resetToConstant(other.value);
+			this->value = std::move(other.value);
+			this->probability = std::move(other.probability);
+			return *this;
+		}
+#endif
 		tracing::traceAssignment(state, other.state, Type::b);
 #endif
 		this->value = std::move(other.value);
@@ -338,6 +378,17 @@ public:
 	operator bool() const {
 #ifdef ENABLE_TRACING
 		if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+			// Dead-branch elimination: if the condition is a known Constant,
+			// do not record a CMP/branch in the trace. The C++ if statement
+			// just takes the dictated path; the alternative path is never
+			// explored, which is sound because no trace operation in this
+			// iteration depends on a non-existent branch decision.
+			if (state.isConstant()) {
+				tracing::pe::noteConstantFoldElided();
+				return value;
+			}
+#endif
 			auto ref = state;
 			return tracing::traceBool(ref, this->probability);
 		}
@@ -438,6 +489,12 @@ namespace details {
 val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right));
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -449,6 +506,12 @@ val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
 val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right));
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -460,6 +523,12 @@ val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
 val<bool> inline lNot(const val<bool>& arg) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (arg.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(!RawValueResolver<bool>::getRawValue(arg));
+		}
+#endif
 		auto tc = tracing::traceUnaryOp(tracing::NOT, Type::b, arg.state);
 		return val<bool> {tc};
 	}
@@ -471,6 +540,12 @@ val<bool> inline lNot(const val<bool>& arg) {
 val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right));
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}
@@ -482,6 +557,12 @@ val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
 val<bool> inline neq(const val<bool>& left, const val<bool>& right) {
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(RawValueResolver<bool>::getRawValue(left) != RawValueResolver<bool>::getRawValue(right));
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
 		return val<bool> {tc};
 	}

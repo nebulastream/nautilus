@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
@@ -154,10 +155,42 @@ struct TraceState {
  * Holds shared state (TraceState, mangledNameCache) and provides
  * getMangledName() / getFunctionName() so they are not duplicated
  * across ExceptionBasedTraceContext and LazyTraceContext.
+ *
+ * Also declares the virtual `Trace()` entry point that
+ * TraceContextRegistry dispatches on — concrete contexts override to
+ * route to their own thread_local worker. Registry-owned instances are
+ * dormant (their per-trace state fields are never populated); only the
+ * vtable slot matters for registry-based dispatch.
  */
 class TraceContextBase : public TracingInterface {
 public:
 	~TraceContextBase() override = default;
+
+	/**
+	 * @brief Multi-function tracing entry point.
+	 *
+	 * Concrete subclasses route to their own thread_local instance of
+	 * the same class (so each call finds its per-thread trace state at
+	 * a stable address while the registry's factory instance stays
+	 * dormant). PELazyTraceContext adds a `pe::ModeGuard(true)`;
+	 * LazyTraceContext and ExceptionBasedTraceContext add
+	 * `pe::ModeGuard(false)` to pin the PE runtime flag to the value
+	 * matching the selected mode.
+	 *
+	 * @param functions Initial function worklist to trace.
+	 * @param options   Engine options for configuration.
+	 * @param arena     Arena backing all traces in the returned module;
+	 *                  must outlive the returned module.
+	 * @return TraceModule containing all function traces.
+	 */
+	virtual std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
+	                                           const engine::Options& options, Arena& arena) = 0;
+
+	/// Called by LegacyCompiler after Trace() returns so trace-mode-specific
+	/// counters can be written into the compilation report. Default is a no-op;
+	/// PE overrides to populate the constantTracer.* keys.
+	virtual void collectStatistics(compiler::CompilationStatistics& /*statistics*/) const noexcept {
+	}
 
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
@@ -188,7 +221,8 @@ protected:
  * 3. Multiple trace iterations execute, calling resume() to reset persistent state
  * 4. After tracing completes, setActiveTracer(nullptr) is called and ExecutionTrace is returned
  */
-class ExceptionBasedTraceContext final : public TraceContextBase {
+// Not declared `final`; see comment on LazyTraceContext for rationale.
+class ExceptionBasedTraceContext : public TraceContextBase {
 public:
 	// --- TracingInterface overrides ---
 
@@ -207,8 +241,8 @@ public:
 	 */
 	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functionsToTrace,
 	                                        const engine::Options& options, Arena& arena);
-	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functionsToTrace,
-	                                          const engine::Options& options, Arena& arena);
+	std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functionsToTrace,
+	                                   const engine::Options& options, Arena& arena) override;
 
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 
@@ -245,6 +279,8 @@ public:
 
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
+
+	const void* currentTag() override;
 
 	// --- Non-interface public API ---
 

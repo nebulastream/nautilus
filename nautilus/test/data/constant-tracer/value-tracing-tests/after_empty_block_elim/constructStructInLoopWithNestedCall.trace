@@ -1,0 +1,37 @@
+NautilusIr {
+execute() {
+Block_0($1:i32):
+	$7 = alloca 8b :ptr
+	$2 = 0 :i32
+	$3 = 0 :i32
+	br Block_3($3, $2, $1, $7) :void
+
+Block_3($3:i32, $2:i32, $1:i32, $7:ptr):
+	$4 = $2 < $1 :bool
+	if $4 ? Block_1($1, $2, $3, $7) : Block_2($3) :void
+
+Block_1($1:i32, $2:i32, $3:i32, $7:ptr):
+	$12 = 0 :ui64
+	$13 = 0 :ui64
+	$14 = 0 :ui64
+	$15 = $7 + $12 :ptr
+	store($2, $15) :void
+	$23 = func_*($7) :i32
+	$24 = $3 + $23 :i32
+	$25 = 1 :i32
+	$26 = $2 + $25 :i32
+	br Block_3($24, $26, $1, $7) :void
+
+Block_2($3:i32):
+	return ($3) :i32
+}
+readFieldA() {
+Block_0($1:ptr):
+	$4 = 0 :ui64
+	$5 = 0 :ui64
+	$6 = 0 :ui64
+	$7 = $1 + $4 :ptr
+	$11 = load($7) :i32
+	return ($11) :i32
+}
+} //NESIR

@@ -1,0 +1,8 @@
+NautilusIr {
+execute() {
+Block_0($1:ui32):
+	$3 = 0 :ui32
+	$4 = $1 == $3 :bool
+	return ($4) :bool
+}
+} //NESIR

@@ -1,0 +1,13 @@
+EXECUTE:
+B0($1:bool,$2:bool)
+	EQ	$5	$1	$2	:bool
+	CMP	$7	$5	B1()	B2()	:void
+B1()
+	CONST	$8	true	:bool
+	JMP	$0	B3($8)	:void
+B2()
+	CONST	$11	false	:bool
+	JMP	$0	B3($11)	:void
+B3($8:bool)
+	RETURN	$0	$8	:bool
+

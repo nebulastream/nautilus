@@ -1,0 +1,119 @@
+EXECUTE:
+B0($1:i32)
+	ALLOCA	$7	:ptr
+	ALLOCA	$68	:ptr
+	ALLOCA	$129	:ptr
+	CONST	$2	0	:i32
+	CONST	$3	0	:i64
+	JMP	$0	B3($3,$1,$2,$7,$68,$129)	:void
+B1($1:i32,$2:i32,$3:i64,$7:ptr,$68:ptr,$129:ptr)
+	CONST	$10	0	:ui64
+	CONST	$11	1	:i8
+	CONST	$12	1	:i8
+	CONST	$13	0	:ui64
+	CONST	$14	0	:ui64
+	ADD	$15	$7	$10	:ptr
+	STORE	$21	$15	$12	:void
+	CONST	$24	4	:ui64
+	CONST	$25	10	:i32
+	CONST	$26	10	:i32
+	CONST	$27	4	:ui64
+	CONST	$28	4	:ui64
+	ADD	$29	$7	$24	:ptr
+	STORE	$35	$29	$26	:void
+	CONST	$38	8	:ui64
+	CONST	$39	100	:i64
+	CONST	$40	100	:i64
+	CONST	$41	8	:ui64
+	CONST	$42	8	:ui64
+	ADD	$43	$7	$38	:ptr
+	STORE	$49	$43	$40	:void
+	CONST	$52	8	:ui64
+	CONST	$53	8	:ui64
+	CONST	$54	8	:ui64
+	ADD	$55	$7	$52	:ptr
+	LOAD	$59	$55	:i64
+	ADD	$60	$3	$59	:i64
+	CONST	$61	1	:i32
+	ADD	$62	$2	$61	:i32
+	JMP	$0	B3($60,$1,$62,$7,$68,$129)	:void
+B2($3:i64,$1:i32,$68:ptr,$129:ptr)
+	CONST	$64	0	:i32
+	JMP	$0	B6($3,$1,$64,$68,$129)	:void
+B3($3:i64,$1:i32,$2:i32,$7:ptr,$68:ptr,$129:ptr) ControlFlowMerge
+	LT	$4	$2	$1	:bool
+	CMP	$6	$4	B1($1,$2,$3,$7,$68,$129)	B2($3,$1,$68,$129)	:void
+B4($1:i32,$64:i32,$3:i64,$68:ptr,$129:ptr)
+	CONST	$71	0	:ui64
+	CONST	$72	200	:i64
+	CONST	$73	200	:i64
+	CONST	$74	0	:ui64
+	CONST	$75	0	:ui64
+	ADD	$76	$68	$71	:ptr
+	STORE	$82	$76	$73	:void
+	CONST	$85	8	:ui64
+	CONST	$86	2	:i8
+	CONST	$87	2	:i8
+	CONST	$88	8	:ui64
+	CONST	$89	8	:ui64
+	ADD	$90	$68	$85	:ptr
+	STORE	$96	$90	$87	:void
+	CONST	$99	10	:ui64
+	CONST	$100	20	:i16
+	CONST	$101	20	:i16
+	CONST	$102	10	:ui64
+	CONST	$103	10	:ui64
+	ADD	$104	$68	$99	:ptr
+	STORE	$110	$104	$101	:void
+	CONST	$113	0	:ui64
+	CONST	$114	0	:ui64
+	CONST	$115	0	:ui64
+	ADD	$116	$68	$113	:ptr
+	LOAD	$120	$116	:i64
+	ADD	$121	$3	$120	:i64
+	CONST	$122	1	:i32
+	ADD	$123	$64	$122	:i32
+	JMP	$0	B6($121,$1,$123,$68,$129)	:void
+B5($3:i64,$1:i32,$129:ptr)
+	CONST	$125	0	:i32
+	JMP	$0	B9($3,$125,$1,$129)	:void
+B6($3:i64,$1:i32,$64:i32,$68:ptr,$129:ptr) ControlFlowMerge
+	LT	$65	$64	$1	:bool
+	CMP	$67	$65	B4($1,$64,$3,$68,$129)	B5($3,$1,$129)	:void
+B7($1:i32,$125:i32,$3:i64,$129:ptr)
+	CONST	$132	0	:ui64
+	CONST	$133	30	:i32
+	CONST	$134	30	:i32
+	CONST	$135	0	:ui64
+	CONST	$136	0	:ui64
+	ADD	$137	$129	$132	:ptr
+	STORE	$143	$137	$134	:void
+	CONST	$146	4	:ui64
+	CONST	$147	3	:i32
+	CONST	$148	3	:i32
+	CONST	$149	4	:ui64
+	CONST	$150	4	:ui64
+	ADD	$151	$129	$146	:ptr
+	STORE	$157	$151	$148	:void
+	CONST	$160	0	:ui64
+	CONST	$161	0	:ui64
+	CONST	$162	0	:ui64
+	ADD	$163	$129	$160	:ptr
+	CONST	$169	4	:ui64
+	CONST	$170	4	:ui64
+	CONST	$171	4	:ui64
+	ADD	$172	$129	$169	:ptr
+	LOAD	$176	$163	:i32
+	LOAD	$177	$172	:i32
+	ADD	$178	$176	$177	:i32
+	CAST	$179	$178	:i64
+	ADD	$180	$3	$179	:i64
+	CONST	$181	1	:i32
+	ADD	$182	$125	$181	:i32
+	JMP	$0	B9($180,$182,$1,$129)	:void
+B8($3:i64)
+	RETURN	$0	$3	:i64
+B9($3:i64,$125:i32,$1:i32,$129:ptr) ControlFlowMerge
+	LT	$126	$125	$1	:bool
+	CMP	$128	$126	B7($1,$125,$3,$129)	B8($3)	:void
+

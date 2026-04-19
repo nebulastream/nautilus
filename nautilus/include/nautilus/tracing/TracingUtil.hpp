@@ -70,4 +70,19 @@ void popStaticVal();
 void allocateValRef(ValueRef ref);
 void freeValRef(ValueRef ref);
 
+// The constant-folding tracer's public API — registry, Stage 2 widening,
+// observability counters, runtime flags — used to live in this
+// namespace. It moved to `nautilus::tracing::pe` and is declared in
+// `<nautilus/partial_evaluation/api.hpp>`. Users enable it via the
+// ENABLE_CONSTANT_TRACER CMake option.
+
 } // namespace nautilus::tracing
+
+// The RAII `nautilus::unroll_scope(max_unroll)` guard — the per-site
+// counterpart to `setConstantUnrollLimit` above — lives in the
+// partial-evaluation plugin. Pull it in here under the flag so users who
+// include <nautilus/val.hpp> (which includes this header transitively)
+// see the primitive.
+#ifdef ENABLE_CONSTANT_TRACER
+#include "nautilus/partial_evaluation/unroll_scope.hpp"
+#endif

@@ -7,6 +7,7 @@ add_executable(nautilus-value-tests
         ValConceptTest.cpp
         StaticValTypeTest.cpp
         CompilationStatisticsTest.cpp
+        # ConstantTracerTest.cpp moved to plugins/partial_evaluation/test/
         #  Interface/IntegerTypeTest.cpp
         #   Interface/FloatTypeTest.cpp
 )

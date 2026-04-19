@@ -1,0 +1,7 @@
+EXECUTE:
+B0($1:ptr,$2:ptr)
+	CALL	$5	func_*($1)	:i32
+	CALL	$6	func_*($2)	:i32
+	ADD	$7	$5	$6	:i32
+	RETURN	$0	$7	:i32
+

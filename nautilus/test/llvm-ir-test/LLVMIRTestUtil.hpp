@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/ExecutionTest.hpp" // for testing::ConstantTracerFlagGuard
 #include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
@@ -32,6 +33,15 @@ template <typename Func>
 void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsics,
                 const std::filesystem::path& referenceIRDir,
                 const std::function<void(engine::Options&)>& extraOptions = {}) {
+	// Reference IR files are checked in without the partial-evaluation
+	// plugin's fold paths firing (every baseline was generated under the
+	// default PE-off configuration). Force the runtime flag off for the
+	// duration of this test so the comparison remains meaningful even
+	// when ENABLE_CONSTANT_TRACER is compiled in and another test earlier
+	// in the binary enabled it thread-locally. No-op under
+	// ENABLE_CONSTANT_TRACER=OFF (the guard's ctor is a stub).
+	testing::ConstantTracerFlagGuard peGuard(false);
+
 	std::string dumpPath = (std::filesystem::temp_directory_path() / ("nautilus-ir-test-" + functionName)).string();
 	std::filesystem::remove_all(dumpPath);
 	std::filesystem::create_directories(dumpPath);

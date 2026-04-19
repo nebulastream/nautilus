@@ -4,7 +4,6 @@
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
-#include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include <chrono>
@@ -23,8 +22,8 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/ExceptionBasedTraceContext.hpp" // for TraceContextBase (also pulls TraceState, etc.)
+#include "nautilus/tracing/TraceContextRegistry.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #endif
@@ -76,7 +75,6 @@ std::string createCompilationUnitID() {
 
 static constexpr auto ROOT_FUNCTION_NAME = "execute";
 static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
-static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
 
 namespace {
 
@@ -112,16 +110,17 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 	const auto frontendStart = std::chrono::steady_clock::now();
 
 	const auto tracingStart = std::chrono::steady_clock::now();
-	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
+	auto* traceRegistry = tracing::TraceContextRegistry::getInstance();
+	auto traceMode = options.getOptionOrDefault(TRACE_MODE_OPTION, traceRegistry->getDefaultName());
 	// Recycle the chunks from the previous compile before this one starts.
 	// Any TraceModule from a previous compilation has already been
 	// destroyed by the time we get here, so no live pointers remain.
 	arena_->softReset();
 	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options, *arena_)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options, *arena_);
+	    traceRegistry->getTraceContext(traceMode)->Trace(functions, options, *arena_);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
+		traceRegistry->getTraceContext(traceMode)->collectStatistics(*statistics);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 

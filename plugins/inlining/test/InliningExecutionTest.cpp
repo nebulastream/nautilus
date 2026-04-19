@@ -122,12 +122,20 @@ static void inlinedFunctionCallTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Inlined Function Call Test") {
-	auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
-		opts.setOption("engine.Compilation", true);
-		opts.setOption("mlir.enableMultithreading", false);
-		opts.setOption("mlir.inline_invoke_calls", true);
-	});
-	inlinedFunctionCallTests(engine);
+	// Cycle the constant-folding tracer off/on so we catch tracer-
+	// induced interactions with the inlining plugin. See the comment
+	// in AssumeExecutionTest.cpp for the broader rationale.
+	for (bool ctrEnabled : nautilus::testing::constantTracerModes()) {
+		DYNAMIC_SECTION((ctrEnabled ? "ctrOn" : "ctrOff")) {
+			nautilus::testing::ConstantTracerFlagGuard guard(ctrEnabled);
+			auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
+				opts.setOption("engine.Compilation", true);
+				opts.setOption("mlir.enableMultithreading", false);
+				opts.setOption("mlir.inline_invoke_calls", true);
+			});
+			inlinedFunctionCallTests(engine);
+		}
+	}
 }
 
 #endif

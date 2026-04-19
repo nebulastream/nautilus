@@ -1246,16 +1246,10 @@ TEST_CASE("VectorTest - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("VectorTest - Compiler") {
-	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
-	for (const auto& backend : nautilus::testing::availableBackends()) {
-		for (const auto& traceMode : traceModes) {
-			DYNAMIC_SECTION(backend + "_" + traceMode) {
-				auto engine = nautilus::testing::makeEngine(
-				    backend, [&](engine::Options& options) { options.setOption("engine.traceMode", traceMode); });
-				runVectorTest(engine, backend);
-			}
-		}
-	}
+	// Use the shared harness so every section runs under backend ×
+	// traceMode × (ctrOff/ctrOn). The backend argument inside
+	// runVectorTest is unused, so passing the engine only is fine.
+	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runVectorTest(engine); });
 }
 #endif
 } // namespace nautilus::engine

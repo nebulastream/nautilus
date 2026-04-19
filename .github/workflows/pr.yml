@@ -75,6 +75,15 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: ''
+          # Experimental constant-folding tracer. Covers the fold +
+          # materialize + stratification paths against the full execution
+          # test suite (every execution test runs in both ctrOn / ctrOff
+          # variants via forEachBackend). If this build diverges from the
+          # baseline in any test, the constant tracer has a regression.
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_CONSTANT_TRACER=ON'
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -137,6 +146,11 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/inlining/test --output-on-failure
+      - name: test partial-evaluation plugin
+        if: contains(matrix.flags, 'ENABLE_CONSTANT_TRACER=ON')
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/partial_evaluation/test --output-on-failure
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)
