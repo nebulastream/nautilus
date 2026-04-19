@@ -37,6 +37,19 @@ target_link_libraries(demo_backends PRIVATE nautilus)
 add_executable(demo_runtime_calls src/DemoRuntimeCalls.cpp)
 target_link_libraries(demo_runtime_calls PRIVATE nautilus)
 
+# Constant-folding tracer demo — the sources stay in example/src/
+# alongside the other examples, but the primitives it uses
+# (`nautilus::assume_stable`, `nautilus::unroll_scope`) are declared
+# and implemented in the partial-evaluation plugin at
+# plugins/partial_evaluation/. When ENABLE_CONSTANT_TRACER is on that
+# plugin's sources are compiled directly into the `nautilus` target
+# (see plugins/partial_evaluation/CMakeLists.txt), so linking against
+# `nautilus` is enough — no extra link dependency on the plugin.
+# When ENABLE_CONSTANT_TRACER is off the demo still builds and runs
+# with every fold counter reported as zero.
+add_executable(demo_constant_folding src/DemoConstantFolding.cpp)
+target_link_libraries(demo_constant_folding PRIVATE nautilus)
+
 # Plugin demos — each links the plugin library it exercises.
 # All plugin libraries use --whole-archive (on GNU/Clang) to force their
 # static initializer translation units (e.g. StdPluginInit.cpp,

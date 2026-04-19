@@ -1,0 +1,9 @@
+EXECUTE:
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr
+	ASSIGN	$3	$2	:ptr
+	CONST	$4	*	:ptr
+	CONST	$5	*	:ptr
+	NEQ	$6	$3	$4	:bool
+	RETURN	$0	$6	:bool
+

@@ -1,0 +1,78 @@
+EXECUTE:
+B0($1:i32,$2:i64)
+	CONST	$3	0	:i64
+	CONST	$4	0	:i32
+	GT	$5	$2	$3	:bool
+	ASSIGN	$6	$5	:bool
+	CMP	$7	$6	B1()	B2()	:void
+B1()
+	CONST	$8	0	:i32
+	CONST	$9	0	:i64
+	JMP	$0	B5()	:void
+B2()
+	RETURN	$0	$2	:i64
+B3()
+	ALLOCA	$13	:ptr
+	ASSIGN	$14	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	CONST	$16	8	:ui64
+	CONST	$17	7	:i64
+	CONST	$18	7	:i64
+	CONST	$19	8	:ui64
+	CONST	$20	8	:ui64
+	ADD	$21	$15	$16	:ptr
+	ASSIGN	$22	$21	:ptr
+	ASSIGN	$23	$22	:ptr
+	ASSIGN	$24	$23	:ptr
+	ASSIGN	$25	$18	:i64
+	ASSIGN	$26	$25	:i64
+	STORE	$27	$24	$26	:void
+	ALLOCA	$28	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$29	:ptr
+	CONST	$31	0	:ui64
+	CONST	$32	3	:i64
+	CONST	$33	3	:i64
+	CONST	$34	0	:ui64
+	CONST	$35	0	:ui64
+	ADD	$36	$30	$31	:ptr
+	ASSIGN	$37	$36	:ptr
+	ASSIGN	$38	$37	:ptr
+	ASSIGN	$39	$38	:ptr
+	ASSIGN	$40	$33	:i64
+	ASSIGN	$41	$40	:i64
+	STORE	$42	$39	$41	:void
+	ASSIGN	$43	$13	:ptr
+	ASSIGN	$44	$43	:ptr
+	CONST	$45	8	:ui64
+	CONST	$46	8	:ui64
+	CONST	$47	8	:ui64
+	ADD	$48	$44	$45	:ptr
+	ASSIGN	$49	$48	:ptr
+	ASSIGN	$50	$49	:ptr
+	ASSIGN	$51	$50	:ptr
+	LOAD	$52	$51	:i64
+	ADD	$53	$9	$52	:i64
+	ASSIGN	$54	$28	:ptr
+	ASSIGN	$55	$54	:ptr
+	CONST	$56	0	:ui64
+	CONST	$57	0	:ui64
+	CONST	$58	0	:ui64
+	ADD	$59	$55	$56	:ptr
+	ASSIGN	$60	$59	:ptr
+	ASSIGN	$61	$60	:ptr
+	ASSIGN	$62	$61	:ptr
+	LOAD	$63	$62	:i64
+	ADD	$64	$53	$63	:i64
+	ASSIGN	$9	$64	:i64
+	CONST	$65	1	:i32
+	ADD	$66	$8	$65	:i32
+	ASSIGN	$8	$66	:i32
+	JMP	$0	B5()	:void
+B4()
+	RETURN	$0	$9	:i64
+B5() ControlFlowMerge
+	LT	$10	$8	$1	:bool
+	ASSIGN	$11	$10	:bool
+	CMP	$12	$11	B3()	B4()	:void
+

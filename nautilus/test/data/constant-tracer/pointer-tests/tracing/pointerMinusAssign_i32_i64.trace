@@ -1,0 +1,18 @@
+EXECUTE:
+B0($1:ptr,$2:i64)
+	ASSIGN	$3	$2	:i64
+	ASSIGN	$4	$1	:ptr
+	CONST	$5	0	:i64
+	CONST	$6	0	:i32
+	SUB	$7	$5	$3	:i64
+	ASSIGN	$8	$7	:i64
+	CONST	$9	4	:ui64
+	CAST	$10	$8	:ui64
+	MUL	$11	$10	$9	:ui64
+	ADD	$12	$4	$11	:ptr
+	ASSIGN	$1	$12	:ptr
+	ASSIGN	$13	$1	:ptr
+	ASSIGN	$14	$13	:ptr
+	LOAD	$15	$14	:i32
+	RETURN	$0	$15	:i32
+

@@ -12,6 +12,10 @@
 #include <type_traits>
 #include <utility>
 
+#ifdef ENABLE_CONSTANT_TRACER
+#include "nautilus/partial_evaluation/LazyTracedRef.hpp"
+#endif
+
 namespace nautilus {
 
 template <is_nautilus_ref ValueType>
@@ -50,9 +54,22 @@ public:
 	}
 #endif
 	operator val<baseType>() {
-		// load
+		// Load — normally emits a LOAD op at trace time. When the caller
+		// has declared the pointer stable via `nautilus::assume_stable`
+		// AND the pointer is a compile-time Constant, we dereference
+		// at trace time and bake the loaded bytes into the trace as a
+		// Constant — skipping the LOAD entirely.
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+			if (ptr.assumed_stable_ && ptr.state.isConstant()) {
+				tracing::pe::noteConstantFoldElided();
+				auto rawPtr =
+				    details::RawValueResolver<typename std::remove_cvref_t<decltype((ptr))>::raw_type>::getRawValue(
+				        ptr);
+				return val<baseType>(*rawPtr);
+			}
+#endif
 			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<ValueType>::to_type(), ptr.state);
 			return val<baseType>(ref);
 		}
@@ -160,6 +177,34 @@ public:
 	using pointer_type = ValuePtrType;
 
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	// Constant-folding path: literal-built pointer vals (including
+	// nullptr) start in the Constant state — no trace footprint until
+	// first conversion to TypedValueRef. See LazyTracedRef.hpp for the
+	// lazy-materialization semantics. void* is in the ConstantLiteral
+	// variant so materialization works for arbitrary pointer types.
+	base_ptr_val() : state(static_cast<void*>(nullptr)), value() {
+	}
+	// Const-qualified pointer types (const char*, etc.) can't static_cast
+	// to void*; go through uintptr_t to keep the bit pattern intact. The
+	// val trace only uses the bit-level address, not the pointee const-
+	// ness, so this is safe.
+	base_ptr_val(ValuePtrType ptr) : state(reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(ptr))), value(ptr) {
+	}
+	base_ptr_val(ValuePtrType ptr, tracing::TypedValueRef tc) : state(tc), value(ptr) {
+	}
+	base_ptr_val(ValuePtrType ptr, tracing::pe::LazyTracedRef<void*> tc) : state(std::move(tc)), value(ptr) {
+	}
+	// Adapter constructor: existing call sites (val_func, val_ptr copy
+	// constructors, etc.) still construct via TypedValueRefHolder. Accept
+	// it and materialize eagerly into the LazyTracedRef so the state is
+	// already in the Materialized state and behaves like before.
+	base_ptr_val(ValuePtrType ptr, const tracing::TypedValueRefHolder& tc) : state(tc.valueRef), value(ptr) {
+	}
+
+	base_ptr_val(tracing::TypedValueRef ref) : state(ref), value(nullptr) {
+	}
+#else
 	base_ptr_val() : state(tracing::traceConstant<void*>(nullptr)), value() {
 	}
 	base_ptr_val(ValuePtrType ptr) : state(tracing::traceConstant((void*) ptr)), value(ptr) {
@@ -171,6 +216,7 @@ public:
 
 	base_ptr_val(tracing::TypedValueRef ref) : state(ref), value(nullptr) {
 	}
+#endif
 #else
 	base_ptr_val(ValuePtrType ptr) : value(ptr) {
 	}
@@ -209,7 +255,29 @@ public:
 		return state;
 	}
 
+#ifdef ENABLE_CONSTANT_TRACER
+	// See val_arith.hpp for the analogous field; mutable so the
+	// LazyTracedRef materialize() bridge can flip state on first conversion
+	// to TypedValueRef in const-qualified contexts. void* is the
+	// ConstantLiteral variant slot used for every pointer type.
+	mutable tracing::pe::LazyTracedRef<void*> state;
+#else
 	const tracing::TypedValueRefHolder state;
+#endif
+#endif
+
+#ifdef ENABLE_CONSTANT_TRACER
+	/// Set by `nautilus::assume_stable(val<T*>)` as the user's explicit
+	/// promise that the pointer is still valid at execution time and the
+	/// pointed-to memory doesn't change between trace-end and first run.
+	/// Propagates through copies and through constant-folded pointer
+	/// arithmetic so `*(assume_stable(p) + 3)` folds the whole chain.
+	/// When the bit is set AND `state.isConstant()`, operator+ folds the
+	/// ADD and operator val<baseType>() (LOAD) folds the dereference.
+	/// Public so the free functions operator+ / assume_stable / the
+	/// val<T&> LOAD path can read/write it; it's a user-visible
+	/// annotation, not a tracing-internal invariant.
+	bool assumed_stable_ = false;
 #endif
 
 protected:
@@ -288,9 +356,21 @@ public:
 	}
 
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	// Forward the raw LazyTracedRef so Constant-ness is preserved across
+	// the copy. The base_ptr_val adapter taking LazyTracedRef<void*>
+	// copies the holder via its own copy constructor, which preserves
+	// Constant state and emits a traceCopy only for Materialized inputs.
+	// Propagate the caller's assume_stable promise explicitly — a
+	// stable-assumed pointer stays stable through copies.
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, otherValue.state) {
+		this->assumed_stable_ = otherValue.assumed_stable_;
+	}
+#else
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+#endif
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
@@ -395,9 +475,21 @@ public:
 	using base_ptr_val<ValuePtrType>::base_ptr_val;
 
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	// Forward the raw LazyTracedRef so Constant-ness is preserved across
+	// the copy. The base_ptr_val adapter taking LazyTracedRef<void*>
+	// copies the holder via its own copy constructor, which preserves
+	// Constant state and emits a traceCopy only for Materialized inputs.
+	// Propagate the caller's assume_stable promise explicitly — a
+	// stable-assumed pointer stays stable through copies.
+	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value, otherValue.state) {
+		this->assumed_stable_ = otherValue.assumed_stable_;
+	}
+#else
 	val(const val<ValuePtrType>& otherValue)
 	    : base_ptr_val<ValuePtrType>(otherValue.value, tracing::traceCopy(otherValue.state)) {
 	}
+#endif
 #else
 	val(const val<ValuePtrType>& otherValue) : base_ptr_val<ValuePtrType>(otherValue.value) {
 	}
@@ -443,6 +535,12 @@ public:
 	}
 };
 
+/// `assume_stable(val<T*>)` is the user-facing opt-in that flips the
+/// `assumed_stable_` bit on a pointer val to authorize trace-time
+/// folding of pointer arithmetic and LOAD ops. Its definition lives in
+/// the partial-evaluation plugin (plugins/partial_evaluation/); see
+/// `<nautilus/partial_evaluation/assume_stable.hpp>` for the contract.
+
 template <is_ptr ValueType, is_fundamental_val IndexType>
 val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetValue = make_value(offset);
@@ -450,6 +548,22 @@ val<ValueType> inline operator+(val<ValueType> left, IndexType offset) {
 	auto offsetBytes = offsetValue * size;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		// Fold when the caller has declared the pointer stable via
+		// `assume_stable` and both the pointer and the byte offset are
+		// compile-time Constants. Result inherits the stable flag so
+		// `*(assume_stable(p) + 3)` folds the LOAD too.
+		if (left.assumed_stable_ && left.state.isConstant() && offsetBytes.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			auto offsetRaw =
+			    details::RawValueResolver<typename std::remove_cvref_t<decltype((offsetBytes))>::raw_type>::getRawValue(
+			        offsetBytes);
+			auto leftRaw = details::RawValueResolver<ValueType>::getRawValue(left);
+			auto result = val<ValueType>((ValueType) (((uint8_t*) leftRaw) + offsetRaw));
+			result.assumed_stable_ = true;
+			return result;
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::ADD, tracing::TypeResolver<ValueType>::to_type(), left.state,
 		                                 offsetBytes.state);
 		return val<ValueType>(tc);
@@ -484,6 +598,12 @@ val<bool> inline operator==(val<ValueType> left, val<ValueType> right) {
 
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() == right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -510,6 +630,12 @@ template <typename ValueType>
 val<bool> inline operator<=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() <= right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -522,6 +648,12 @@ template <typename ValueType>
 val<bool> inline operator<(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() < right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -534,6 +666,12 @@ template <typename ValueType>
 val<bool> inline operator>(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() > right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -546,6 +684,12 @@ template <typename ValueType>
 val<bool> inline operator>=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() >= right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -558,6 +702,12 @@ template <typename ValueType>
 val<bool> inline operator!=(val<ValueType> left, val<ValueType> right) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (left.state.isConstant() && right.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return val<bool>(left.state.constantValue() != right.state.constantValue());
+		}
+#endif
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
 		return val<bool>(tc);
 	}
@@ -660,3 +810,12 @@ private:
 };
 
 } // namespace nautilus
+
+#ifdef ENABLE_CONSTANT_TRACER
+// Pull the user-facing `nautilus::assume_stable(val<T*>)` primitive into
+// this header's translation-unit surface so `#include <nautilus/val.hpp>`
+// (which transitively includes val_ptr.hpp) exposes it to the user.
+// The function itself is defined in the partial-evaluation plugin; see
+// plugins/partial_evaluation/include/nautilus/partial_evaluation/assume_stable.hpp.
+#include "nautilus/partial_evaluation/assume_stable.hpp"
+#endif

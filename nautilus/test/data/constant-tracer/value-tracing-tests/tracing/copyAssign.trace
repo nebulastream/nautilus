@@ -1,0 +1,33 @@
+EXECUTE:
+B0()
+	ALLOCA	$1	:ptr
+	ASSIGN	$2	$1	:ptr
+	ASSIGN	$3	$2	:ptr
+	CONST	$4	0	:ui64
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	ADD	$7	$3	$4	:ptr
+	ASSIGN	$8	$7	:ptr
+	ASSIGN	$9	$8	:ptr
+	ASSIGN	$10	$9	:ptr
+	CONST	$11	42	:i32
+	CONST	$12	42	:i32
+	CONST	$13	42	:i32
+	STORE	$14	$10	$11	:void
+	ALLOCA	$15	:ptr
+	ASSIGN	$16	$15	:ptr
+	ASSIGN	$17	$1	:ptr
+	CONST	$18	8	:ui64
+	CALL	$19	func_*($16,$17,$18)	:ptr
+	ASSIGN	$20	$15	:ptr
+	ASSIGN	$21	$20	:ptr
+	CONST	$22	0	:ui64
+	CONST	$23	0	:ui64
+	CONST	$24	0	:ui64
+	ADD	$25	$21	$22	:ptr
+	ASSIGN	$26	$25	:ptr
+	ASSIGN	$27	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	LOAD	$29	$28	:i32
+	RETURN	$0	$29	:i32
+

@@ -1,4 +1,3 @@
-
 #include "LazyTraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
@@ -371,6 +370,10 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 		SymbolicExecutionContext symbolicExecutionContext;
 		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		// Same hook as ExceptionBasedTraceContext — subclasses (the PE
+		// plugin) override to sweep any per-trace state they own before
+		// the next inner function's body runs.
+		this->beforeInnerFunction();
 		auto traceIteration = 0;
 
 		while (symbolicExecutionContext.shouldContinue()) {
@@ -438,6 +441,10 @@ std::string LazyTraceContext::formatStaticVars() const {
 
 Snapshot LazyTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+const void* LazyTraceContext::currentTag() {
+	return state->tagRecorder.createTag();
 }
 
 } // namespace nautilus::tracing

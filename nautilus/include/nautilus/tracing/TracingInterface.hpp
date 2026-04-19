@@ -95,6 +95,55 @@ public:
 
 	/// Pop the top static variable from the static-variable stack.
 	virtual void popStaticVal() = 0;
+
+	/// Return an opaque pointer identifying the current execution position
+	/// (call stack). The backing type is nautilus::tracing::Tag (a
+	/// pointer-interned trie node from the TagRecorder); two calls from the
+	/// same source line compare equal by pointer. Exposed here as
+	/// `const void*` so that the full Tag definition stays internal to the
+	/// src/ tree. Used by Stage 2 of the constant-folding tracer to detect
+	/// back-edges where a Constant's value has changed between visits.
+	/// O(stack depth).
+	virtual const void* currentTag() = 0;
+
+	// -----------------------------------------------------------------
+	// Lifecycle hooks — default no-ops. Subclasses (the partial-
+	// evaluation plugin being the current user) override these to run
+	// trace-scoped setup / teardown without core needing to know about
+	// the subclass's existence.
+	// -----------------------------------------------------------------
+
+	/// Called by setActiveTracer() right after this instance becomes the
+	/// thread's active tracer. Hook point for per-trace state init
+	/// (e.g. zeroing observability counters at trace start). Default
+	/// no-op.
+	virtual void onActivate() noexcept {
+	}
+
+	/// Called by setActiveTracer() right before this instance is
+	/// replaced / cleared. Hook point for per-trace state teardown
+	/// (e.g. flushing out any registries a subclass owns). Default
+	/// no-op.
+	virtual void onDeactivate() noexcept {
+	}
+
+	/// Called inside the multi-function work-list loop at the top of
+	/// each inner function's trace iteration — after the TraceState is
+	/// re-initialized, before the traced C++ runs. Hook for per-
+	/// function defensive sweeps. Default no-op.
+	virtual void beforeInnerFunction() noexcept {
+	}
+
+	/// Declares whether this tracer is the partial-evaluation mode.
+	/// Core's `setActiveTracer()` reads this after swapping the
+	/// active-tracer pointer and syncs the PE runtime flag
+	/// (`pe::setConstantTracerEnabled`) so `LazyTracedRef`'s fold
+	/// fast paths and the Constant registry stay off outside PE mode
+	/// without any explicit toggling by user code. Default false;
+	/// `PELazyTraceContext` is the only override that returns true.
+	virtual bool isPartialEvaluationMode() const noexcept {
+		return false;
+	}
 };
 
 } // namespace nautilus::tracing

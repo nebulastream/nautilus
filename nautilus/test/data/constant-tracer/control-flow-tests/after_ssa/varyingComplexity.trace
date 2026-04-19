@@ -1,0 +1,33 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	5	:i32
+	CONST	$3	0	:i32
+	LT	$4	$1	$2	:bool
+	CMP	$6	$4	B1()	B2($1)	:void
+B1()
+	CONST	$7	1	:i32
+	JMP	$0	B7($7)	:void
+B2($1:i32)
+	CONST	$9	5	:i32
+	GTE	$10	$1	$9	:bool
+	CONST	$11	10	:i32
+	LTE	$12	$1	$11	:bool
+	AND	$13	$10	$12	:bool
+	CMP	$15	$13	B3($1)	B4()	:void
+B3($1:i32)
+	CONST	$16	2	:i32
+	CONST	$17	7	:i32
+	EQ	$18	$1	$17	:bool
+	CMP	$20	$18	B5($16)	B6($16)	:void
+B4()
+	CONST	$24	3	:i32
+	JMP	$0	B7($24)	:void
+B5($3:i32)
+	CONST	$21	1	:i32
+	ADD	$22	$3	$21	:i32
+	JMP	$0	B7($22)	:void
+B6($3:i32)
+	JMP	$0	B7($3)	:void
+B7($3:i32)
+	RETURN	$0	$3	:i32
+

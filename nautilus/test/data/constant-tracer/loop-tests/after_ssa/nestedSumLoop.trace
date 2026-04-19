@@ -1,0 +1,27 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	0	:i32
+	CONST	$3	1	:i32
+	JMP	$0	B6($3,$2,$1)	:void
+B1($3:i32,$1:i32,$2:i32)
+	CONST	$7	0	:i32
+	JMP	$0	B5($3,$1,$2,$7)	:void
+B2($3:i32)
+	RETURN	$0	$3	:i32
+B3($1:i32,$2:i32,$7:i32,$3:i32)
+	CONST	$11	10	:i32
+	ADD	$12	$3	$11	:i32
+	CONST	$13	1	:i32
+	ADD	$14	$7	$13	:i32
+	JMP	$0	B5($12,$1,$2,$14)	:void
+B4($3:i32,$1:i32,$2:i32)
+	CONST	$17	1	:i32
+	ADD	$18	$2	$17	:i32
+	JMP	$0	B6($3,$18,$1)	:void
+B5($3:i32,$1:i32,$2:i32,$7:i32) ControlFlowMerge
+	LT	$8	$7	$1	:bool
+	CMP	$10	$8	B3($1,$2,$7,$3)	B4($3,$1,$2)	:void
+B6($3:i32,$2:i32,$1:i32) ControlFlowMerge
+	LT	$4	$2	$1	:bool
+	CMP	$6	$4	B1($3,$1,$2)	B2($3)	:void
+

@@ -1,0 +1,15 @@
+EXECUTE:
+B0($1:ptr)
+	CONST	$4	0	:ui64
+	CONST	$5	0	:ui64
+	CONST	$6	0	:ui64
+	ADD	$7	$1	$4	:ptr
+	LOAD	$11	$7	:i32
+	CONST	$14	0	:ui64
+	CONST	$15	0	:ui64
+	CONST	$16	0	:ui64
+	ADD	$17	$1	$14	:ptr
+	LOAD	$21	$17	:i32
+	ADD	$22	$11	$21	:i32
+	RETURN	$0	$22	:i32
+

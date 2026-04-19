@@ -1,0 +1,26 @@
+EXECUTE:
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr
+	ASSIGN	$3	$2	:ptr
+	LOAD	$4	$3	:i32
+	CONST	$5	10	:i32
+	GT	$6	$4	$5	:bool
+	ASSIGN	$7	$6	:bool
+	CMP	$8	$7	B1()	B2()	:void
+B1()
+	ASSIGN	$9	$1	:ptr
+	ASSIGN	$10	$9	:ptr
+	CONST	$11	1	:i32
+	CONST	$12	1	:i32
+	CONST	$13	1	:i32
+	STORE	$14	$10	$11	:void
+	RETURN	$0	:void
+B2()
+	ASSIGN	$16	$1	:ptr
+	ASSIGN	$17	$16	:ptr
+	CONST	$18	42	:i32
+	CONST	$19	42	:i32
+	CONST	$20	42	:i32
+	STORE	$21	$17	$18	:void
+	RETURN	$0	:void
+

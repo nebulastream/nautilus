@@ -1,0 +1,27 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	5	:i32
+	GT	$3	$1	$2	:bool
+	ASSIGN	$4	$3	:bool
+	CMP	$5	$4	B1()	B2()	:void
+B1()
+	CONST	$6	0	:i32
+	CONST	$7	10	:i32
+	JMP	$0	B5()	:void
+B2()
+	CONST	$13	0	:i32
+	ASSIGN	$6	$13	:i32
+	CONST	$14	5	:i32
+	ASSIGN	$7	$14	:i32
+	JMP	$0	B5()	:void
+B3()
+	CONST	$11	-1	:i32
+	ASSIGN	$7	$11	:i32
+	RETURN	$0	$7	:i32
+B4()
+	RETURN	$0	$7	:i32
+B5() ControlFlowMerge
+	EQ	$8	$1	$6	:bool
+	ASSIGN	$9	$8	:bool
+	CMP	$10	$9	B3()	B4()	:void
+

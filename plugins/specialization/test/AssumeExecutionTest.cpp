@@ -33,23 +33,31 @@ val<int> cfWithAssumeAlignment(val<int32_t*> a) {
 
 TEST_CASE("MLIR Intrinsic Function Test") {
 	for (auto useIntrinsics : {false, true}) {
-		DYNAMIC_SECTION("useIntrinsics:" << useIntrinsics) {
-			auto engine = nautilus::testing::makeEngine("mlir", [&](engine::Options& options) {
-				options.setOption("dump.after_mlir_generation", true);
-				options.setOption("dump.console", true);
-				options.setOption("mlir.enableIntrinsics", useIntrinsics);
-				options.setOption("mlir.enableMultithreading", false);
-			});
+		// Inner split on the constant-folding tracer: when the feature
+		// is compiled in, run every test both with the tracer off and
+		// with it on to catch tracer-induced behavior differences. The
+		// ConstantTracerFlagGuard is defined in ExecutionTest.hpp and
+		// restores the thread-local flag on scope exit.
+		for (bool ctrEnabled : nautilus::testing::constantTracerModes()) {
+			DYNAMIC_SECTION("useIntrinsics:" << useIntrinsics << (ctrEnabled ? "_ctrOn" : "_ctrOff")) {
+				nautilus::testing::ConstantTracerFlagGuard guard(ctrEnabled);
+				auto engine = nautilus::testing::makeEngine("mlir", [&](engine::Options& options) {
+					options.setOption("dump.after_mlir_generation", true);
+					options.setOption("dump.console", true);
+					options.setOption("mlir.enableIntrinsics", useIntrinsics);
+					options.setOption("mlir.enableMultithreading", false);
+				});
 
-			SECTION("cfWithAssume") {
-				auto f = engine.registerFunction(cfWithAssume);
-				if (useIntrinsics) {
-					REQUIRE(f(42) == 52);
-					// the compiled version with intrinsics should optimize away the else branch
-					REQUIRE(f(0) == 10);
-				} else {
-					REQUIRE(f(42) == 52);
-					REQUIRE_THROWS(f(0));
+				SECTION("cfWithAssume") {
+					auto f = engine.registerFunction(cfWithAssume);
+					if (useIntrinsics) {
+						REQUIRE(f(42) == 52);
+						// the compiled version with intrinsics should optimize away the else branch
+						REQUIRE(f(0) == 10);
+					} else {
+						REQUIRE(f(42) == 52);
+						REQUIRE_THROWS(f(0));
+					}
 				}
 			}
 		}

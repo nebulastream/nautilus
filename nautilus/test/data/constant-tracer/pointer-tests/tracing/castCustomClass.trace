@@ -1,0 +1,6 @@
+EXECUTE:
+B0($1:ptr)
+	ASSIGN	$2	$1	:ptr
+	CALL	$3	func_*($2)	:i32
+	RETURN	$0	$3	:i32
+

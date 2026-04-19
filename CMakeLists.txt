@@ -13,6 +13,7 @@ option(USE_EXTERNAL_SPDLOG "Use a externally provided version of spdlog" OFF)
 option(USE_EXTERNAL_MLIR "Use a externally provided version of MLIR" OFF)
 option(USE_CCACHE_IF_AVAILABLE "Use ccache to speed up rebuilds" ON)
 cmake_dependent_option(ENABLE_TRACING "Enable the tracing" ON "ENABLE_COMPILER" OFF)
+cmake_dependent_option(ENABLE_CONSTANT_TRACER "Enable experimental constant-folding tracer (Stage 1: block-local folding with lazy materialization)" OFF "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)
@@ -175,6 +176,14 @@ endif ()
 include(${CMAKE_CURRENT_SOURCE_DIR}/plugins/inlining/cmake/NautilusInline.cmake)
 
 add_subdirectory(nautilus)
+
+# The partial-evaluation plugin (constant-folding tracer) is
+# build-time-coupled to the core: it adds its sources to the `nautilus`
+# target directly and extends the public include path. The
+# subdirectory's CMakeLists early-returns when ENABLE_CONSTANT_TRACER
+# is off, so this is a no-op in that case.
+add_subdirectory(plugins/partial_evaluation)
+
 if (ENABLE_SIMD_PLUGIN)
     add_subdirectory(plugins/simd)
 endif ()

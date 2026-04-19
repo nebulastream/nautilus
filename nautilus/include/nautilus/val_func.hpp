@@ -95,9 +95,17 @@ public:
 
 	// ---- Tracing state ----
 	// StateResolver<val<FuncPtr>> accesses .state, so expose it as a const
-	// reference to the inner val<void*>'s state.
+	// reference to the inner val<void*>'s state. The state holder type
+	// depends on whether the experimental constant-folding tracer is
+	// compiled in — both types implicitly convert to
+	// `const TypedValueRef&`, so the single downstream use (trace*Op
+	// argument) works uniformly.
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	const tracing::pe::LazyTracedRef<void*>& state = ptr.state;
+#else
 	const tracing::TypedValueRefHolder& state = ptr.state;
+#endif
 #endif
 
 	// ---- Bool / null check ----

@@ -31,7 +31,11 @@ class SymbolicExecutionContext;
  * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
  * "lazyTracing").
  */
-class LazyTraceContext final : public TraceContextBase {
+// Not declared `final` so that plugins (partial_evaluation in particular)
+// can ship a subclass that intercepts per-trace-op hooks. The subclass
+// registers itself as its own trace mode via TraceContextRegistry —
+// core never names it directly.
+class LazyTraceContext : public TraceContextBase {
 public:
 	// --- TracingInterface overrides ---
 
@@ -61,6 +65,8 @@ public:
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
+
+	const void* currentTag() override;
 
 	// --- Non-interface public API ---
 
@@ -102,8 +108,8 @@ public:
 	 */
 	std::unique_ptr<TraceModule> startTrace(std::list<compiler::CompilableFunction>& functions,
 	                                        const engine::Options& options, Arena& arena);
-	static std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
-	                                          const engine::Options& options, Arena& arena);
+	std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
+	                                   const engine::Options& options, Arena& arena) override;
 
 	LazyTraceContext() = default;
 

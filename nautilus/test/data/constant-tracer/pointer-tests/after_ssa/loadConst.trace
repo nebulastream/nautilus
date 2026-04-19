@@ -1,0 +1,7 @@
+EXECUTE:
+B0()
+	CONST	$1	*	:ptr
+	CONST	$2	*	:ptr
+	LOAD	$3	$2	:i32
+	RETURN	$0	$3	:i32
+

@@ -1,0 +1,15 @@
+EXECUTE:
+B0($1:ptr,$2:i32,$3:i32)
+	CONST	$6	*	:ptr
+	CONST	$7	*	:ptr
+	EQ	$8	$1	$6	:bool
+	CMP	$10	$8	B1()	B2($1,$2,$3)	:void
+B1()
+	CONST	$11	0	:i32
+	JMP	$0	B3($11)	:void
+B2($1:ptr,$2:i32,$3:i32)
+	INDIRECT_CALL	$15	:i32
+	JMP	$0	B3($15)	:void
+B3($11:i32)
+	RETURN	$0	$11	:i32
+

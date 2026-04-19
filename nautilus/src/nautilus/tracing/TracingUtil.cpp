@@ -1,12 +1,18 @@
-
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/Types.hpp"
+#include <cctype>
+#include <cerrno>
 #include <cstddef>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <iostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace nautilus::tracing {
 
@@ -15,12 +21,32 @@ namespace nautilus::tracing {
 // within a single trace go through the same implementation object.
 static thread_local TracingInterface* activeTracer = nullptr;
 
+// Trace-op pre-hooks (speculative flushes, etc.) live on subclasses of
+// the concrete trace context, not in these free-function wrappers. When
+// the partial-evaluation plugin is on, a subclassed context is routed
+// in via LazyTraceContext::setTraceOverride, and its per-op overrides
+// intercept each wrapper's activeTracer->traceXxx() call. Core stays
+// unaware of any of that.
+
 TracingInterface* getActiveTracer() {
 	return activeTracer;
 }
 
 void setActiveTracer(TracingInterface* tracer) {
+	// Fire onDeactivate on the outgoing tracer (if any) and onActivate on
+	// the incoming one. Both hooks are virtual no-ops on TracingInterface;
+	// subclasses (the partial-evaluation plugin in particular) override
+	// them for per-trace state init/teardown — e.g. resetting its
+	// observability counters on activation, flushing its Constant registry
+	// on deactivation. This keeps the core tracer unaware of any
+	// subclass's lifecycle concerns.
+	if (activeTracer != nullptr) {
+		activeTracer->onDeactivate();
+	}
 	activeTracer = tracer;
+	if (tracer != nullptr) {
+		tracer->onActivate();
+	}
 }
 
 bool inTracer() {

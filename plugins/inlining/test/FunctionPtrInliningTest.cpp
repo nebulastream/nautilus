@@ -156,12 +156,20 @@ static void functionPtrTests(engine::NautilusEngine& engine) {
 }
 
 TEST_CASE("Function Ptr Inlining Test") {
-	auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
-		opts.setOption("engine.Compilation", true);
-		opts.setOption("mlir.enableMultithreading", false);
-		opts.setOption("mlir.inline_invoke_calls", true);
-	});
-	functionPtrTests(engine);
+	// Cycle the constant-folding tracer off/on so inlining × tracer
+	// interactions (val<fn_ptr> folding, assume_stable etc.) are
+	// exercised. See InliningExecutionTest.cpp for the rationale.
+	for (bool ctrEnabled : nautilus::testing::constantTracerModes()) {
+		DYNAMIC_SECTION((ctrEnabled ? "ctrOn" : "ctrOff")) {
+			nautilus::testing::ConstantTracerFlagGuard guard(ctrEnabled);
+			auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
+				opts.setOption("engine.Compilation", true);
+				opts.setOption("mlir.enableMultithreading", false);
+				opts.setOption("mlir.inline_invoke_calls", true);
+			});
+			functionPtrTests(engine);
+		}
+	}
 }
 #endif
 

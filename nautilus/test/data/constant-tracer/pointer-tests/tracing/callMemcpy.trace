@@ -1,0 +1,8 @@
+EXECUTE:
+B0($1:ptr,$2:ptr)
+	ASSIGN	$3	$2	:ptr
+	ASSIGN	$4	$1	:ptr
+	CONST	$5	0	:ui64
+	CALL	$6	func_*($3,$4,$5)	:ptr
+	RETURN	$0	:void
+

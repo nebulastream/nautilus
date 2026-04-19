@@ -1,0 +1,81 @@
+EXECUTE:
+B0($1:i64,$2:i8,$3:i16)
+	ALLOCA	$4	:ptr
+	ASSIGN	$5	$1	:i64
+	ASSIGN	$6	$5	:i64
+	ASSIGN	$7	$4	:ptr
+	ASSIGN	$8	$7	:ptr
+	CONST	$9	0	:ui64
+	CONST	$10	0	:ui64
+	CONST	$11	0	:ui64
+	ADD	$12	$8	$9	:ptr
+	ASSIGN	$13	$12	:ptr
+	ASSIGN	$14	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	ASSIGN	$16	$6	:i64
+	ASSIGN	$17	$16	:i64
+	STORE	$18	$15	$17	:void
+	ASSIGN	$19	$2	:i8
+	ASSIGN	$20	$19	:i8
+	ASSIGN	$21	$4	:ptr
+	ASSIGN	$22	$21	:ptr
+	CONST	$23	8	:ui64
+	CONST	$24	8	:ui64
+	CONST	$25	8	:ui64
+	ADD	$26	$22	$23	:ptr
+	ASSIGN	$27	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$20	:i8
+	ASSIGN	$31	$30	:i8
+	STORE	$32	$29	$31	:void
+	ASSIGN	$33	$3	:i16
+	ASSIGN	$34	$33	:i16
+	ASSIGN	$35	$4	:ptr
+	ASSIGN	$36	$35	:ptr
+	CONST	$37	10	:ui64
+	CONST	$38	10	:ui64
+	CONST	$39	10	:ui64
+	ADD	$40	$36	$37	:ptr
+	ASSIGN	$41	$40	:ptr
+	ASSIGN	$42	$41	:ptr
+	ASSIGN	$43	$42	:ptr
+	ASSIGN	$44	$34	:i16
+	ASSIGN	$45	$44	:i16
+	STORE	$46	$43	$45	:void
+	ASSIGN	$47	$4	:ptr
+	ASSIGN	$48	$47	:ptr
+	CONST	$49	0	:ui64
+	CONST	$50	0	:ui64
+	CONST	$51	0	:ui64
+	ADD	$52	$48	$49	:ptr
+	ASSIGN	$53	$52	:ptr
+	ASSIGN	$54	$53	:ptr
+	ASSIGN	$55	$54	:ptr
+	LOAD	$56	$55	:i64
+	ASSIGN	$57	$4	:ptr
+	ASSIGN	$58	$57	:ptr
+	CONST	$59	8	:ui64
+	CONST	$60	8	:ui64
+	CONST	$61	8	:ui64
+	ADD	$62	$58	$59	:ptr
+	ASSIGN	$63	$62	:ptr
+	ASSIGN	$64	$63	:ptr
+	ASSIGN	$65	$64	:ptr
+	LOAD	$66	$65	:i8
+	ASSIGN	$67	$4	:ptr
+	ASSIGN	$68	$67	:ptr
+	CONST	$69	10	:ui64
+	CONST	$70	10	:ui64
+	CONST	$71	10	:ui64
+	ADD	$72	$68	$69	:ptr
+	ASSIGN	$73	$72	:ptr
+	ASSIGN	$74	$73	:ptr
+	ASSIGN	$75	$74	:ptr
+	LOAD	$76	$75	:i16
+	CAST	$77	$66	:i64
+	ADD	$78	$56	$77	:i64
+	CAST	$79	$76	:i64
+	ADD	$80	$78	$79	:i64
+	RETURN	$0	$80	:i64
+

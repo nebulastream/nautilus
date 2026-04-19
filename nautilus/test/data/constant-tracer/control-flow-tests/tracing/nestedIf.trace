@@ -1,0 +1,23 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	20	:i32
+	CONST	$3	1	:i32
+	LT	$4	$1	$2	:bool
+	ASSIGN	$5	$4	:bool
+	CMP	$6	$5	B1()	B2()	:void
+B1()
+	CONST	$7	10	:i32
+	GT	$8	$1	$7	:bool
+	ASSIGN	$9	$8	:bool
+	CMP	$10	$9	B3()	B4()	:void
+B2()
+	RETURN	$0	$3	:i32
+B3()
+	CONST	$11	2	:i32
+	ASSIGN	$3	$11	:i32
+	RETURN	$0	$3	:i32
+B4()
+	CONST	$14	3	:i32
+	ASSIGN	$3	$14	:i32
+	RETURN	$0	$3	:i32
+

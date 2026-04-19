@@ -1,0 +1,26 @@
+EXECUTE:
+B0()
+	CONST	$1	2	:i32
+	CONST	$2	2	:i32
+	CONST	$3	1	:i32
+	ADD	$4	$2	$3	:i32
+	CONST	$5	1	:i32
+	ADD	$6	$4	$5	:i32
+	CONST	$7	1	:i32
+	ADD	$8	$6	$7	:i32
+	CONST	$9	1	:i32
+	ADD	$10	$8	$9	:i32
+	CONST	$11	1	:i32
+	ADD	$12	$10	$11	:i32
+	CONST	$13	1	:i32
+	ADD	$14	$12	$13	:i32
+	CONST	$15	1	:i32
+	ADD	$16	$14	$15	:i32
+	CONST	$17	1	:i32
+	ADD	$18	$16	$17	:i32
+	CONST	$19	1	:i32
+	ADD	$20	$18	$19	:i32
+	CONST	$21	1	:i32
+	ADD	$22	$20	$21	:i32
+	RETURN	$0	$22	:i32
+

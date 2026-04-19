@@ -1,0 +1,52 @@
+EXECUTE:
+B0($1:i64)
+	ALLOCA	$7	:ptr
+	CONST	$2	0	:i64
+	CONST	$3	0	:i32
+	GT	$4	$1	$2	:bool
+	CMP	$6	$4	B1($7,$1)	B2($1)	:void
+B1($7:ptr,$1:i64)
+	CONST	$10	0	:ui64
+	CONST	$11	1	:i8
+	CONST	$12	1	:i8
+	CONST	$13	0	:ui64
+	CONST	$14	0	:ui64
+	ADD	$15	$7	$10	:ptr
+	STORE	$21	$15	$12	:void
+	CONST	$24	4	:ui64
+	CONST	$25	2	:i32
+	CONST	$26	2	:i32
+	CONST	$27	4	:ui64
+	CONST	$28	4	:ui64
+	ADD	$29	$7	$24	:ptr
+	STORE	$35	$29	$26	:void
+	CONST	$40	8	:ui64
+	CONST	$41	8	:ui64
+	CONST	$42	8	:ui64
+	ADD	$43	$7	$40	:ptr
+	STORE	$49	$43	$1	:void
+	CONST	$52	0	:ui64
+	CONST	$53	0	:ui64
+	CONST	$54	0	:ui64
+	ADD	$55	$7	$52	:ptr
+	LOAD	$59	$55	:i8
+	CONST	$62	4	:ui64
+	CONST	$63	4	:ui64
+	CONST	$64	4	:ui64
+	ADD	$65	$7	$62	:ptr
+	LOAD	$69	$65	:i32
+	CONST	$72	8	:ui64
+	CONST	$73	8	:ui64
+	CONST	$74	8	:ui64
+	ADD	$75	$7	$72	:ptr
+	LOAD	$79	$75	:i64
+	CAST	$80	$59	:i64
+	CAST	$81	$69	:i64
+	ADD	$82	$80	$81	:i64
+	ADD	$83	$82	$79	:i64
+	JMP	$0	B3($83)	:void
+B2($1:i64)
+	JMP	$0	B3($1)	:void
+B3($83:i64)
+	RETURN	$0	$83	:i64
+

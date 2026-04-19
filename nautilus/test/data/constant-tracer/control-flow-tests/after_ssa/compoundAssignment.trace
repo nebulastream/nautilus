@@ -1,0 +1,15 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	5	:i32
+	CONST	$3	10	:i32
+	EQ	$4	$1	$2	:bool
+	CMP	$6	$4	B1($3)	B2($3)	:void
+B1($3:i32)
+	CONST	$7	5	:i32
+	ADD	$8	$3	$7	:i32
+	JMP	$0	B3($8)	:void
+B2($3:i32)
+	JMP	$0	B3($3)	:void
+B3($3:i32)
+	RETURN	$0	$3	:i32
+

@@ -1,0 +1,55 @@
+EXECUTE:
+B0($1:f64,$2:i8)
+	ALLOCA	$3	:ptr
+	ASSIGN	$4	$1	:f64
+	ASSIGN	$5	$4	:f64
+	ASSIGN	$6	$3	:ptr
+	ASSIGN	$7	$6	:ptr
+	CONST	$8	0	:ui64
+	CONST	$9	0	:ui64
+	CONST	$10	0	:ui64
+	ADD	$11	$7	$8	:ptr
+	ASSIGN	$12	$11	:ptr
+	ASSIGN	$13	$12	:ptr
+	ASSIGN	$14	$13	:ptr
+	ASSIGN	$15	$5	:f64
+	ASSIGN	$16	$15	:f64
+	STORE	$17	$14	$16	:void
+	ASSIGN	$18	$2	:i8
+	ASSIGN	$19	$18	:i8
+	ASSIGN	$20	$3	:ptr
+	ASSIGN	$21	$20	:ptr
+	CONST	$22	8	:ui64
+	CONST	$23	8	:ui64
+	CONST	$24	8	:ui64
+	ADD	$25	$21	$22	:ptr
+	ASSIGN	$26	$25	:ptr
+	ASSIGN	$27	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	ASSIGN	$29	$19	:i8
+	ASSIGN	$30	$29	:i8
+	STORE	$31	$28	$30	:void
+	ASSIGN	$32	$3	:ptr
+	ASSIGN	$33	$32	:ptr
+	CONST	$34	0	:ui64
+	CONST	$35	0	:ui64
+	CONST	$36	0	:ui64
+	ADD	$37	$33	$34	:ptr
+	ASSIGN	$38	$37	:ptr
+	ASSIGN	$39	$38	:ptr
+	ASSIGN	$40	$39	:ptr
+	LOAD	$41	$40	:f64
+	ASSIGN	$42	$3	:ptr
+	ASSIGN	$43	$42	:ptr
+	CONST	$44	8	:ui64
+	CONST	$45	8	:ui64
+	CONST	$46	8	:ui64
+	ADD	$47	$43	$44	:ptr
+	ASSIGN	$48	$47	:ptr
+	ASSIGN	$49	$48	:ptr
+	ASSIGN	$50	$49	:ptr
+	LOAD	$51	$50	:i8
+	CAST	$52	$51	:f64
+	ADD	$53	$41	$52	:f64
+	RETURN	$0	$53	:f64
+

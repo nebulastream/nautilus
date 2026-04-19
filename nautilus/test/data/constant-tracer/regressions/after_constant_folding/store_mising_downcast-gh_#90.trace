@@ -1,0 +1,9 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr):
+	$4 = 4294967295 :ui32
+	$5 = -1 :i64
+	store($4, $1) :void
+	return :void
+}
+} //NESIR

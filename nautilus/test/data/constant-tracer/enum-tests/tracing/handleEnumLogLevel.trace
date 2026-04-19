@@ -1,0 +1,10 @@
+EXECUTE:
+B0($1:ui8)
+	ASSIGN	$2	$1	:ui8
+	CONST	$3	6	:ui8
+	EQ	$4	$2	$3	:bool
+	CONST	$5	5	:ui8
+	EQ	$6	$2	$5	:bool
+	OR	$7	$4	$6	:bool
+	RETURN	$0	$7	:bool
+

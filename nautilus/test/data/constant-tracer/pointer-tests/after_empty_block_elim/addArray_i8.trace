@@ -1,0 +1,43 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:i8):
+	$4 = 0 :i8
+	br Block_3($4, $3, $1, $2) :void
+
+Block_3($4:i8, $3:i8, $1:ptr, $2:ptr):
+	$5 = $4 < $3 :bool
+	if $5 ? Block_1($3, $4, $1, $2) : Block_2() :void
+
+Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
+	$8 = $4 cast_to i32 :i32
+	$12 = 1 :ui64
+	$13 = $8 cast_to ui64 :ui64
+	$14 = $13 * $12 :ui64
+	$15 = $1 + $14 :ptr
+	$18 = load($15) :i8
+	$19 = $4 cast_to i32 :i32
+	$23 = 1 :ui64
+	$24 = $19 cast_to ui64 :ui64
+	$25 = $24 * $23 :ui64
+	$26 = $2 + $25 :ptr
+	$29 = load($26) :i8
+	$30 = $18 cast_to i32 :i32
+	$31 = $29 cast_to i32 :i32
+	$32 = $30 + $31 :i32
+	$33 = $4 cast_to i32 :i32
+	$37 = 1 :ui64
+	$38 = $33 cast_to ui64 :ui64
+	$39 = $38 * $37 :ui64
+	$40 = $1 + $39 :ptr
+	$43 = $32 cast_to i8 :i8
+	store($43, $40) :void
+	$45 = 1 :i32
+	$46 = $4 cast_to i32 :i32
+	$47 = $46 + $45 :i32
+	$48 = $47 cast_to i8 :i8
+	br Block_3($48, $3, $1, $2) :void
+
+Block_2():
+	return :void
+}
+} //NESIR

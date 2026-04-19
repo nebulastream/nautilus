@@ -1,0 +1,5 @@
+EXECUTE:
+B0($1:ui32)
+	CALL	$3	func_*($1)	:i32
+	RETURN	$0	$3	:i32
+

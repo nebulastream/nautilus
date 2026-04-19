@@ -22,6 +22,7 @@
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContextRegistry.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -39,26 +40,46 @@ void setLogAddresses(bool);
 } // namespace nautilus::log::options
 namespace nautilus::engine {
 
-/// Thin alias over the shared `testing::checkReferenceDump` helper so the
-/// existing call sites keep compiling unchanged.
-inline bool checkTestFile(std::string actual, const std::string category, const std::string group,
-                          const std::string& name) {
-	return testing::checkReferenceDump(actual, category, group, name);
+/// Thin wrapper over the shared `testing::checkReferenceDump` helper:
+/// routes PE-mode runs to the override golden dir, everything else to
+/// the baseline. Caller passes the trace-mode name directly so the
+/// wrapper — not the test bodies — handles the override/baseline split.
+inline bool checkTestFile(const std::string& actual, const std::string& category, const std::string& group,
+                          const std::string& name, const std::string& traceMode) {
+	return testing::checkReferenceDump(actual, category, group, name, traceMode == "partialEvaluation");
 }
 
-using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&, common::Arena&);
-
-static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
-    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
-};
+/// Names of the trace modes exercised by this test. Names match the
+/// keys registered in `tracing::TraceContextRegistry`. Each is looked
+/// up via the registry and its `virtual Trace(...)` invoked.
+///
+/// Under `ENABLE_CONSTANT_TRACER=ON` only the PE mode is iterated: the
+/// golden-trace files were captured in one of two worlds — baseline
+/// traces (ENABLE_CONSTANT_TRACER=OFF) or PE traces (the override dir)
+/// — so iterating the non-PE modes in a PE build would produce a
+/// third shape (LazyTracedRef state without PE flushes) that no golden
+/// represents. Mirror the pre-refactor behavior where the PE plugin's
+/// setTraceOverride routed both lazy and exception-based contexts
+/// through PE.
+static const std::vector<std::string>& getTraceModeNames() {
+	static const std::vector<std::string> names = {
+#ifdef ENABLE_CONSTANT_TRACER
+	    "partialEvaluation",
+#else
+	    "exceptionBasedTracing",
+	    "lazyTracing",
+#endif
+	};
+	return names;
+}
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
-	for (auto& [ctxName, traceFn] : traceContexts) {
-		DYNAMIC_SECTION(ctxName) {
+	auto* registry = tracing::TraceContextRegistry::getInstance();
+	for (const auto& modeName : getTraceModeNames()) {
+		auto* traceCtx = registry->getTraceContext(modeName);
+		DYNAMIC_SECTION(modeName) {
 			for (auto& [name, func] : tests) {
 				DYNAMIC_SECTION(name) {
 					auto rootFunction = compiler::CompilableFunction("execute", func);
@@ -68,15 +89,15 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 					// Trace all functions (initially just "execute", but may include nested functions)
 
 					common::Arena arena;
-					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
+					auto executionTrace = traceCtx->Trace(functionsToTrace, engine::Options(), arena);
 					DYNAMIC_SECTION("tracing") {
-						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name, modeName));
 					}
 					auto ssaCreationPhase = tracing::SSACreationPhase();
 					auto afterSSA =
 					    ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
 					DYNAMIC_SECTION("after_ssa") {
-						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
+						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name, modeName));
 					}
 					DYNAMIC_SECTION("ssa_verify") {
 						for (const auto& fnName : afterSSA->getFunctionNames()) {
@@ -91,7 +112,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 					DYNAMIC_SECTION("ir") {
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, modeName));
 					}
 					DYNAMIC_SECTION("after_constant_folding") {
 						// Re-run the tracing pipeline for this section since
@@ -100,7 +121,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						std::list<compiler::CompilableFunction> functionsToTrace3;
 						functionsToTrace3.push_back(rootFunction3);
 						common::Arena arena3;
-						auto executionTrace3 = traceFn(functionsToTrace3, engine::Options(), arena3);
+						auto executionTrace3 = traceCtx->Trace(functionsToTrace3, engine::Options(), arena3);
 						auto ssaCreationPhase3 = tracing::SSACreationPhase();
 						auto afterSSA3 =
 						    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
@@ -110,7 +131,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
 						passManager.run(*ir3);
-						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name));
+						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, modeName));
 					}
 					DYNAMIC_SECTION("after_empty_block_elim") {
 						// Re-run the tracing pipeline: the previous section
@@ -120,7 +141,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						std::list<compiler::CompilableFunction> functionsToTrace2;
 						functionsToTrace2.push_back(rootFunction2);
 						common::Arena arena2;
-						auto executionTrace2 = traceFn(functionsToTrace2, engine::Options(), arena2);
+						auto executionTrace2 = traceCtx->Trace(functionsToTrace2, engine::Options(), arena2);
 						auto ssaCreationPhase2 = tracing::SSACreationPhase();
 						auto afterSSA2 =
 						    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
@@ -130,7 +151,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
 						passManager.run(*ir2);
-						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name));
+						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name, modeName));
 					}
 				}
 			}

@@ -1,11 +1,16 @@
 #pragma once
 
+#include "nautilus/config.hpp"
 #include "nautilus/val_base.hpp"
 #include "nautilus/val_concepts.hpp"
 #include "nautilus/val_details.hpp"
 #include <concepts>
 #include <type_traits>
 #include <utility>
+
+#ifdef ENABLE_CONSTANT_TRACER
+#include "nautilus/partial_evaluation/LazyTracedRef.hpp"
+#endif
 
 namespace nautilus {
 
@@ -63,6 +68,31 @@ public:
 	using basic_type = ValueType;
 
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	// Constant-folding tracer path: value-constructors create a Constant
+	// LazyTracedRef (no trace footprint), so pure operations on chains of
+	// constants fold eagerly and contribute nothing to the trace.
+	// Materialization happens lazily on first conversion to TypedValueRef.
+	// While Constant, the holder is linked into a thread-local intrusive
+	// registry so materializeAllConstants() at merge/branch points can
+	// flush all live Constants before the trace splits. See LazyTracedRef.hpp
+	// for the full story (block-local fold, §4.3 invariant, and loop-aware
+	// widening via stratification + iteration-cap backstop).
+	val() : state(static_cast<raw_type>(0)), value(0) {
+	}
+
+	val(ValueType value) : state(value), value(value) {
+	}
+
+	val(const val<ValueType>& other) : state(other.state), value(other.value) {
+	}
+
+	val(val<ValueType>&& other) noexcept : state(std::move(other.state)), value(std::move(other.value)) {
+	}
+
+	val(tracing::TypedValueRef& tc) : state(tc), value() {
+	}
+#else
 	/// Default constructor. Initializes with constant 0 and records in trace.
 	val() : state(tracing::traceConstant<raw_type>(0)), value(0) {
 	}
@@ -82,6 +112,7 @@ public:
 	/// Tracing constructor. Creates from TypedValueRef for internal use.
 	val(tracing::TypedValueRef& tc) : state(tc), value() {
 	}
+#endif // ENABLE_CONSTANT_TRACER
 #else
 	/// Default constructor. Initializes with 0.
 	val() : value(0) {
@@ -103,6 +134,14 @@ public:
 	/// Copy assignment operator. Assigns value and traces if enabled.
 	val<ValueType>& operator=(const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+		// Constant-constant assignment: stay constant, no trace work.
+		if (state.isConstant() && other.state.isConstant()) {
+			state.resetToConstant(other.value);
+			this->value = other.value;
+			return *this;
+		}
+#endif
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif
 		this->value = other.value;
@@ -112,6 +151,13 @@ public:
 	/// Move assignment operator. Moves value and traces if enabled.
 	val<ValueType>& operator=(val<ValueType>&& other) {
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+		if (state.isConstant() && other.state.isConstant()) {
+			state.resetToConstant(other.value);
+			this->value = std::move(other.value);
+			return *this;
+		}
+#endif
 		tracing::traceAssignment(state, other.state, tracing::TypeResolver<ValueType>::to_type());
 #endif
 		this->value = std::move(other.value);
@@ -124,6 +170,13 @@ public:
 	operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+			// Cast on a constant is itself constant: just convert the value.
+			if (state.isConstant()) {
+				tracing::pe::noteConstantFoldElided();
+				return val<OtherType>(static_cast<OtherType>(value));
+			}
+#endif
 			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
 			return val<OtherType>(resultRef);
 #endif
@@ -138,6 +191,10 @@ public:
 	operator val<OtherType>() const {
 		if SHOULD_TRACE () {
 #ifdef ENABLE_TRACING
+			// We deliberately do NOT fold int->ptr casts: val<ptr> does not
+			// participate in constant folding (it stays on TypedValueRefHolder)
+			// and pointer-typed
+			// constants in the trace need special handling in backends.
 			auto resultRef = tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<OtherType>::to_type(), state);
 			return val<OtherType>(resultRef);
 #endif
@@ -205,8 +262,17 @@ public:
 		return state;
 	}
 
+#ifdef ENABLE_CONSTANT_TRACER
+	/// Lazy state: either a Constant (no trace footprint) or a Materialized
+	/// trace ref. Implicitly converts to TypedValueRef on use, materializing
+	/// on first conversion. Mutable because materialization is logically
+	/// observation-only — the trace evolves underneath but the abstract value
+	/// of the val<T> does not.
+	mutable tracing::pe::LazyTracedRef<ValueType> state;
+#else
 	/// Holds the tracing state for this value when tracing is enabled
 	const tracing::TypedValueRefHolder state;
+#endif
 #endif
 
 private:
@@ -228,6 +294,12 @@ template <is_integral LHS>
 val<LHS> neg(const val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+		if (val.state.isConstant()) {
+			tracing::pe::noteConstantFoldElided();
+			return nautilus::val<LHS>(static_cast<LHS>(~RawValueResolver<LHS>::getRawValue(val)));
+		}
+#endif
 		auto tc = tracing::traceUnaryOp(tracing::NEGATE, tracing::TypeResolver<LHS>::to_type(), val.state);
 		return tc;
 	}
@@ -240,6 +312,38 @@ template <typename LHS, typename RHS>
 using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), decltype(+std::declval<RHS>())>;
 
 /// Binary operator helper for arithmetic operations with integer promotion
+#ifdef ENABLE_CONSTANT_TRACER
+#define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE)                                            \
+	template <typename LHS, typename RHS>                                                                              \
+	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
+		using LHSVal = std::remove_cvref_t<LHS>;                                                                       \
+		using RHSVal = std::remove_cvref_t<RHS>;                                                                       \
+		using LBase = typename LHSVal::basic_type;                                                                     \
+		using RBase = typename RHSVal::basic_type;                                                                     \
+		using commonType = ArithmeticResultType<LBase, RBase>;                                                         \
+		using resultType = decltype(std::declval<LBase>() OP std::declval<RBase>());                                   \
+                                                                                                                       \
+		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
+		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
+                                                                                                                       \
+		if SHOULD_TRACE () {                                                                                           \
+			/* Constant fold: skip tracing entirely when both sides are Constant. */                                   \
+			if (lValue.state.isConstant() && rValue.state.isConstant()) {                                              \
+				tracing::pe::noteConstantFoldElided();                                                                 \
+				auto folded = static_cast<resultType>(RawValueResolver<commonType>::getRawValue(lValue)                \
+				                                          OP RawValueResolver<commonType>::getRawValue(rValue));       \
+				return val<resultType>(folded);                                                                        \
+			}                                                                                                          \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<resultType>::to_type(),          \
+			                                 StateResolver<decltype(lValue)>::getState(lValue),                        \
+			                                 StateResolver<decltype(rValue)>::getState(rValue));                       \
+			return val<resultType>(tc);                                                                                \
+		}                                                                                                              \
+                                                                                                                       \
+		return val<resultType>(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(               \
+		    lValue)) OP RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
+	}
+#else
 #define DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(OP, OP_NAME, OP_TRACE)                                            \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
@@ -263,6 +367,7 @@ using ArithmeticResultType = std::common_type_t<decltype(+std::declval<LHS>()), 
 		return val<resultType>(RawValueResolver<resultType>::getRawValue(std::forward<decltype(lValue)>(               \
 		    lValue)) OP RawValueResolver<resultType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
 	}
+#endif
 
 DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(+, add, ADD)
 
@@ -279,6 +384,36 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(>>, shr, RSH)
 DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
 
 /// Binary operator helper for comparison operations (no promotion)
+#ifdef ENABLE_CONSTANT_TRACER
+#define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
+	template <typename LHS, typename RHS>                                                                              \
+	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
+		using LHSVal = std::remove_cvref_t<LHS>;                                                                       \
+		using RHSVal = std::remove_cvref_t<RHS>;                                                                       \
+		using LBase = typename LHSVal::basic_type;                                                                     \
+		using RBase = typename RHSVal::basic_type;                                                                     \
+		using commonType = std::common_type_t<LBase, RBase>;                                                           \
+                                                                                                                       \
+		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
+		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
+                                                                                                                       \
+		if SHOULD_TRACE () {                                                                                           \
+			if (lValue.state.isConstant() && rValue.state.isConstant()) {                                              \
+				tracing::pe::noteConstantFoldElided();                                                                 \
+				auto folded = static_cast<RES_TYPE>(RawValueResolver<commonType>::getRawValue(lValue)                  \
+				                                        OP RawValueResolver<commonType>::getRawValue(rValue));         \
+				return val<RES_TYPE>(folded);                                                                          \
+			}                                                                                                          \
+			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),            \
+			                                 StateResolver<decltype(lValue)>::getState(lValue),                        \
+			                                 StateResolver<decltype(rValue)>::getState(rValue));                       \
+			return val<RES_TYPE>(tc);                                                                                  \
+		}                                                                                                              \
+                                                                                                                       \
+		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(                 \
+		    lValue)) OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
+	}
+#else
 #define DEFINE_BINARY_OPERATOR_HELPER(OP, OP_NAME, OP_TRACE, RES_TYPE)                                                 \
 	template <typename LHS, typename RHS>                                                                              \
 	auto inline OP_NAME(LHS&& left, RHS&& right) {                                                                     \
@@ -301,6 +436,21 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
 		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(                 \
 		    lValue)) OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
 	}
+#endif
+
+} // namespace details
+} // namespace nautilus
+
+// The comparison-operator macros below instantiate templates that return
+// val<bool>. With ENABLE_CONSTANT_TRACER, the constant-fold path constructs
+// val<bool>(literal) inside the template body, which triggers implicit
+// instantiation of val<bool>. The val<bool> explicit specialization must
+// therefore be in scope here, before any of those instantiations — otherwise
+// a later specialization-after-instantiation error occurs.
+#include "nautilus/val_bool.hpp"
+
+namespace nautilus {
+namespace details {
 
 DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, bool)
 

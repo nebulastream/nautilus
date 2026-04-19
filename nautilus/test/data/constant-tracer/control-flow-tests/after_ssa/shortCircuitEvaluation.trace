@@ -1,0 +1,19 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	0	:i32
+	CONST	$3	0	:i32
+	NEQ	$4	$1	$2	:bool
+	CONST	$5	10	:i32
+	DIV	$6	$5	$1	:i32
+	CONST	$7	1	:i32
+	GT	$8	$6	$7	:bool
+	AND	$9	$4	$8	:bool
+	CMP	$11	$9	B1()	B2($3)	:void
+B1()
+	CONST	$12	1	:i32
+	JMP	$0	B3($12)	:void
+B2($3:i32)
+	JMP	$0	B3($3)	:void
+B3($3:i32)
+	RETURN	$0	$3	:i32
+

@@ -1,0 +1,34 @@
+NautilusIr {
+execute() {
+Block_0($1:i32):
+	$7 = alloca 8b :ptr
+	$21 = alloca 64b :ptr
+	$2 = 0 :i32
+	$3 = 0 :i64
+	br Block_3($3, $2, $1, $21, $7) :void
+
+Block_3($3:i64, $2:i32, $1:i32, $21:ptr, $7:ptr):
+	$4 = $2 < $1 :bool
+	if $4 ? Block_1($1, $2, $3, $21, $7) : Block_2($3) :void
+
+Block_1($1:i32, $2:i32, $3:i64, $21:ptr, $7:ptr):
+	$9 = 0 :i32
+	func_*($7) :void
+	$13 = 0 :ui64
+	$14 = 0 :ui64
+	$15 = 0 :ui64
+	$16 = $7 + $13 :ptr
+	$20 = load($16) :i32
+	func_*($21) :void
+	$25 = func_*($21) :i64
+	$26 = $3 + $25 :i64
+	$27 = $20 cast_to i64 :i64
+	$28 = $26 + $27 :i64
+	$29 = 1 :i32
+	$30 = $2 + $29 :i32
+	br Block_3($28, $30, $1, $21, $7) :void
+
+Block_2($3:i64):
+	return ($3) :i64
+}
+} //NESIR

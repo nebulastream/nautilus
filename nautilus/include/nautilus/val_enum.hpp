@@ -12,6 +12,10 @@
 
 #endif
 
+#ifdef ENABLE_CONSTANT_TRACER
+#include "nautilus/partial_evaluation/LazyTracedRef.hpp"
+#endif
+
 namespace nautilus {
 
 template <typename T>
@@ -31,6 +35,29 @@ public:
 	}
 
 #ifdef ENABLE_TRACING
+#ifdef ENABLE_CONSTANT_TRACER
+	// Constant-folding path: state is a LazyTracedRef on the underlying
+	// integer type, built without eager traceConstant. Materializes lazily
+	// on first conversion to TypedValueRef (see LazyTracedRef.hpp).
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(T val) : state(static_cast<underlying_type_t>(val)), value(static_cast<underlying_type_t>(val)) {
+	}
+
+	template <T>
+	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
+	val(val<T>& val) : state(static_cast<underlying_type_t>(val)), value(static_cast<underlying_type_t>(val)) {
+	}
+	val(val<underlying_type_t> t)
+	    : state(t.state), value((T) details::RawValueResolver<underlying_type_t>::getRawValue(t)) {
+	}
+	val(val<T>& t) : state(t.state), value(t.value) {
+	}
+	val(val<T>&& t) : state(std::move(t.state)), value(t.value) {
+	}
+	val(T val) : state(static_cast<underlying_type_t>(val)), value(val) {
+	}
+#else
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
 	val(T val)
@@ -53,6 +80,7 @@ public:
 	}
 	val(T val) : state(tracing::traceConstant(static_cast<std::underlying_type_t<T>>(val))), value(val) {
 	}
+#endif
 #else
 	template <T>
 	    requires std::is_enum_v<T> && (!std::is_convertible_v<T, std::underlying_type_t<T>>)
@@ -75,6 +103,15 @@ public:
 	val<bool> operator==(val<T>& other) const {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+			// Both-constant fast path: compare underlying values and return
+			// a Constant val<bool>. Skips emission of a CONST for the
+			// operands and the EQ op itself.
+			if (state.isConstant() && other.state.isConstant()) {
+				tracing::pe::noteConstantFoldElided();
+				return val<bool>(state.constantValue() == other.state.constantValue());
+			}
+#endif
 			auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, state, other.state);
 			return val<bool>(tc);
 		}
@@ -90,6 +127,12 @@ public:
 	val<bool> operator!=(val<T>& other) const {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
+#ifdef ENABLE_CONSTANT_TRACER
+			if (state.isConstant() && other.state.isConstant()) {
+				tracing::pe::noteConstantFoldElided();
+				return val<bool>(state.constantValue() != other.state.constantValue());
+			}
+#endif
 			auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, state, other.state);
 			return val<bool>(tc);
 		}
@@ -125,7 +168,14 @@ public:
 		return state;
 	}
 
+#ifdef ENABLE_CONSTANT_TRACER
+	// See val_arith.hpp for the analogous field; mutable because the
+	// LazyTracedRef's materialize() bridge is const-callable but flips
+	// state on first access.
+	mutable tracing::pe::LazyTracedRef<underlying_type_t> state;
+#else
 	tracing::TypedValueRefHolder state;
+#endif
 #endif
 
 private:

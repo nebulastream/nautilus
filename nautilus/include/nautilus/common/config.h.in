@@ -1,6 +1,7 @@
 #pragma once
 
 #cmakedefine ENABLE_TRACING
+#cmakedefine ENABLE_CONSTANT_TRACER
 #cmakedefine ENABLE_LOGGING
 #cmakedefine ENABLE_BC_BACKEND
 #cmakedefine ENABLE_C_BACKEND

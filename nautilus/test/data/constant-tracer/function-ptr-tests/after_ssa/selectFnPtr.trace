@@ -1,0 +1,14 @@
+EXECUTE:
+B0($1:bool,$2:i32,$3:i32)
+	CONST	$5	*	:ptr
+	CMP	$6	$1	B1($2,$3)	B2($2,$3)	:void
+B1($2:i32,$3:i32)
+	CONST	$7	*	:ptr
+	JMP	$0	B3($7,$2,$3)	:void
+B2($2:i32,$3:i32)
+	CONST	$12	*	:ptr
+	JMP	$0	B3($12,$2,$3)	:void
+B3($5:ptr,$2:i32,$3:i32) ControlFlowMerge
+	INDIRECT_CALL	$8	:i32
+	RETURN	$0	$8	:i32
+

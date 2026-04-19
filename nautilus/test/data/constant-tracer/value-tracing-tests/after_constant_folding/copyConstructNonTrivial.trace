@@ -1,0 +1,25 @@
+NautilusIr {
+execute() {
+Block_0():
+	$1 = alloca 4b :ptr
+	$16 = alloca 4b :ptr
+	func_*($1) :void
+	$5 = 0 :ui64
+	$6 = 0 :ui64
+	$7 = 0 :ui64
+	$8 = $1 + $5 :ptr
+	$12 = 99 :i32
+	$13 = 99 :i32
+	$14 = 99 :i32
+	store($12, $8) :void
+	func_*($16,$1) :void
+	$20 = 0 :ui64
+	$21 = 0 :ui64
+	$22 = 0 :ui64
+	$23 = $16 + $20 :ptr
+	$27 = load($23) :i32
+	func_*($16) :void
+	func_*($1) :void
+	return ($27) :i32
+}
+} //NESIR
