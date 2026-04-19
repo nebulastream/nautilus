@@ -1,0 +1,5 @@
+EXECUTE:
+B0()
+	CALL	$1	func_*()	:void
+	RETURN	$0	:void
+

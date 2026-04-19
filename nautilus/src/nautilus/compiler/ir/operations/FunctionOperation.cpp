@@ -8,10 +8,10 @@ namespace nautilus::compiler::ir {
 
 FunctionOperation::FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
                                      std::vector<Type> inputArgs, std::vector<std::string> inputArgNames,
-                                     Type outputArg)
+                                     Type outputArg, std::unordered_map<std::string, std::string> attributes)
     : Operation(OperationType::FunctionOp, outputArg), name(std::move(name)),
       functionBasicBlocks(std::move(functionBasicBlocks)), inputArgs(std::move(inputArgs)),
-      inputArgNames(std::move(inputArgNames)) {
+      inputArgNames(std::move(inputArgNames)), attributes(std::move(attributes)) {
 }
 
 const std::string& FunctionOperation::getName() const {
@@ -54,6 +54,18 @@ void FunctionOperation::detachBasicBlock(BasicBlock* block) {
 	assert(it != functionBasicBlocks.end() && "block is not owned by this function");
 	functionBasicBlocks.erase(it);
 	// The BasicBlock's storage stays live in the arena; not freed here.
+}
+
+bool FunctionOperation::hasAttribute(const std::string& key) const {
+	return attributes.contains(key);
+}
+
+std::optional<std::string> FunctionOperation::getAttribute(const std::string& key) const {
+	auto it = attributes.find(key);
+	if (it != attributes.end()) {
+		return it->second;
+	}
+	return std::nullopt;
 }
 
 } // namespace nautilus::compiler::ir

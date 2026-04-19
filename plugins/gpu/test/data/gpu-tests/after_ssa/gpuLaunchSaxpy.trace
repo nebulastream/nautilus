@@ -1,0 +1,42 @@
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:f32)
+	CONST	$4	1	:ui32
+	CONST	$6	1	:ui32
+	CONST	$7	1	:ui32
+	CONST	$8	256	:ui32
+	CONST	$10	1	:ui32
+	CONST	$11	1	:ui32
+	CALL	$15	func_*($4,$6,$7)	:void
+	CALL	$19	func_*($8,$10,$11)	:void
+	CALL	$20	func_*($1,$2,$3)	:void
+	RETURN	$0	:void
+
+SAXPY:
+B0($1:ptr,$2:ptr,$3:f32)
+	CALL	$6	func_*()	:ui32
+	CALL	$7	func_*()	:ui32
+	MUL	$8	$6	$7	:ui32
+	CALL	$9	func_*()	:ui32
+	ADD	$10	$8	$9	:ui32
+	CAST	$11	$10	:i32
+	CONST	$15	4	:ui64
+	CAST	$16	$11	:ui64
+	MUL	$17	$16	$15	:ui64
+	ADD	$18	$1	$17	:ptr
+	LOAD	$21	$18	:f32
+	MUL	$22	$3	$21	:f32
+	CAST	$23	$10	:i32
+	CONST	$27	4	:ui64
+	CAST	$28	$23	:ui64
+	MUL	$29	$28	$27	:ui64
+	ADD	$30	$2	$29	:ptr
+	LOAD	$33	$30	:f32
+	ADD	$34	$22	$33	:f32
+	CAST	$35	$10	:i32
+	CONST	$39	4	:ui64
+	CAST	$40	$35	:ui64
+	MUL	$41	$40	$39	:ui64
+	ADD	$42	$2	$41	:ptr
+	STORE	$46	$42	$34	:void
+	RETURN	$0	:void
+

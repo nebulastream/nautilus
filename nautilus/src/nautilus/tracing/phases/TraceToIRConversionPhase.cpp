@@ -46,8 +46,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 	// Process all functions in sorted order for deterministic IR output.
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
+		auto& attrs = traceModule->getFunctionAttributes(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		ir->addFunctionOperation(phaseContext.processFunction(functionName));
+		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
 	}
 
 	return ir;
@@ -60,8 +61,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
+		auto& attrs = traceModule->getFunctionAttributes(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		ir->addFunctionOperation(phaseContext.processFunction(functionName));
+		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
 	}
 
 	return ir;
@@ -95,7 +97,8 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 	return ir;
 }
 
-FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunction(const std::string& functionName) {
+FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunction(
+    const std::string& functionName, const std::unordered_map<std::string, std::string>& attributes) {
 	// Clear state for this function
 	currentBasicBlocks.clear();
 	blockMap.clear();
@@ -106,7 +109,7 @@ FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunctio
 
 	// Create and return the function operation
 	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
-	                                                std::vector<std::string> {}, returnType);
+	                                                std::vector<std::string> {}, returnType, attributes);
 }
 
 BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {

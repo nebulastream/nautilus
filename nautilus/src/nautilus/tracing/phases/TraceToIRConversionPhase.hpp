@@ -22,6 +22,7 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceOperation.hpp"
 #include <memory>
+#include <unordered_map>
 
 namespace nautilus::tracing {
 
@@ -78,9 +79,11 @@ private:
 		/**
 		 * @brief Processes a single function trace and returns a FunctionOperation
 		 * @param functionName The name of the function being processed
+		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
 		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
-		compiler::ir::FunctionOperation* processFunction(const std::string& functionName);
+		compiler::ir::FunctionOperation* processFunction(const std::string& functionName,
+		                                                 const std::unordered_map<std::string, std::string>& attributes = {});
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);

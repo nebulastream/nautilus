@@ -1,0 +1,27 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:ptr):
+	$4 = func_*() :ui32
+	$5 = $4 cast_to i32 :i32
+	$9 = 4 :ui64
+	$10 = $5 cast_to ui64 :ui64
+	$11 = $10 * $9 :ui64
+	$12 = $1 + $11 :ptr
+	$15 = $4 cast_to i32 :i32
+	$19 = 4 :ui64
+	$20 = $15 cast_to ui64 :ui64
+	$21 = $20 * $19 :ui64
+	$22 = $2 + $21 :ptr
+	$25 = load($12) :ui32
+	$26 = load($22) :ui32
+	$27 = $25 + $26 :ui32
+	$28 = $4 cast_to i32 :i32
+	$32 = 4 :ui64
+	$33 = $28 cast_to ui64 :ui64
+	$34 = $33 * $32 :ui64
+	$35 = $3 + $34 :ptr
+	store($27, $35) :void
+	func_*() :void
+	return :void
+}
+} //NESIR

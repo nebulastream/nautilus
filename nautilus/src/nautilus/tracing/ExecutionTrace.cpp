@@ -10,24 +10,49 @@
 namespace nautilus::tracing {
 
 ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
-	auto trace = std::make_unique<ExecutionTrace>(arena);
-	auto& traceRef = *trace;
-	functions[std::string(functionName)] = std::move(trace);
-	return traceRef;
+	auto key = std::string(functionName);
+	auto& def = functions[key];
+	def.name = key;
+	def.trace = std::make_unique<ExecutionTrace>(arena);
+	return *def.trace;
+}
+
+void TraceModule::setFunctionAttributes(const std::string& functionName,
+                                        const std::unordered_map<std::string, std::string>& attrs) {
+	auto it = functions.find(functionName);
+	if (it != functions.end()) {
+		it->second.attributes = attrs;
+	}
+}
+
+TraceFunctionDefinition* TraceModule::getFunctionDefinition(const std::string& functionName) {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? &it->second : nullptr;
+}
+
+const TraceFunctionDefinition* TraceModule::getFunctionDefinition(const std::string& functionName) const {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? &it->second : nullptr;
 }
 
 ExecutionTrace* TraceModule::getFunction(const std::string& functionName) {
 	auto it = functions.find(functionName);
-	return it != functions.end() ? it->second.get() : nullptr;
+	return it != functions.end() ? it->second.trace.get() : nullptr;
 }
 
 const ExecutionTrace* TraceModule::getFunction(const std::string& functionName) const {
 	auto it = functions.find(functionName);
-	return it != functions.end() ? it->second.get() : nullptr;
+	return it != functions.end() ? it->second.trace.get() : nullptr;
+}
+
+const std::unordered_map<std::string, std::string>&
+TraceModule::getFunctionAttributes(const std::string& functionName) const {
+	static const std::unordered_map<std::string, std::string> empty;
+	auto it = functions.find(functionName);
+	return it != functions.end() ? it->second.attributes : empty;
 }
 
 std::string TraceModule::toString() const {
-	// Sort function names for deterministic output across platforms.
 	auto sortedNames = getFunctionNames();
 	std::string result;
 	for (const auto& name : sortedNames) {
@@ -35,7 +60,7 @@ std::string TraceModule::toString() const {
 		std::transform(functionName.begin(), functionName.end(), functionName.begin(),
 		               [](unsigned char c) { return std::toupper(c); });
 		result += functionName + ":\n";
-		result += functions.at(name)->toString();
+		result += functions.at(name).trace->toString();
 		result += "\n";
 	}
 	return result;

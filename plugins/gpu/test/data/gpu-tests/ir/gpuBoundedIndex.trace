@@ -1,0 +1,22 @@
+NautilusIr {
+execute() {
+Block_0($1:ui32):
+	$2 = func_*() :ui32
+	$3 = func_*() :ui32
+	$4 = $2 * $3 :ui32
+	$5 = func_*() :ui32
+	$6 = $4 + $5 :ui32
+	$7 = $6 < $1 :bool
+	if $7 ? Block_1($6) : Block_2() :void
+
+Block_1($6:ui32):
+	br Block_3($6) :void
+
+Block_3($6:ui32):
+	return ($6) :ui32
+
+Block_2():
+	$10 = 0 :ui32
+	br Block_3($10) :void
+}
+} //NESIR

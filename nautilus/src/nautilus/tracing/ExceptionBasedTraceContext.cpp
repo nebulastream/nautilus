@@ -157,7 +157,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 	auto functionName = definition->name();
 	auto mangledName = getMangledName((void*) definition);
 	if (registeredFunctions.insert(functionName).second) {
-		functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper));
+		functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper, definition->attributes()));
 		log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
 		           functionsToTrace.size());
 	}
@@ -177,7 +177,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
                                                                     std::function<void()> fwrapper) {
 	auto functionName = definition->name();
 	if (registeredFunctions.insert(functionName).second) {
-		functionsToTrace.push_back(compiler::CompilableFunction(functionName, std::move(fwrapper)));
+		functionsToTrace.push_back(
+		    compiler::CompilableFunction(functionName, std::move(fwrapper), definition->attributes()));
 		log::debug("Added function '{}' to functionsToTrace list (via FUNC_ADDR). List now has {} functions",
 		           functionName, functionsToTrace.size());
 	}
@@ -356,6 +357,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
+		traceModule->setFunctionAttributes(currentFunction.getName(), currentFunction.getAttributes());
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

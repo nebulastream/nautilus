@@ -438,7 +438,7 @@ void CPPLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* nega
 		blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
 		frame.setValue(negateOperation->getIdentifier(), resultVar);
 	}
-	blocks[blockIndex] << resultVar << "= ~" << input << ";\n";
+	blocks[blockIndex] << resultVar << " = ~" << input << ";\n";
 }
 
 void CPPLoweringProvider::LoweringContext::visitNot(ir::NotOperation* notOperation, short blockIndex,
@@ -449,7 +449,7 @@ void CPPLoweringProvider::LoweringContext::visitNot(ir::NotOperation* notOperati
 		blockArguments << getType(notOperation->getStamp()) << " " << resultVar << ";\n";
 		frame.setValue(notOperation->getIdentifier(), resultVar);
 	}
-	blocks[blockIndex] << resultVar << "= !" << input << ";\n";
+	blocks[blockIndex] << resultVar << " = !" << input << ";\n";
 }
 
 void CPPLoweringProvider::LoweringContext::visitCast(ir::CastOperation* castOp, short blockIndex,

@@ -1,0 +1,75 @@
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CONST	$4	1	:ui32
+	ASSIGN	$5	$4	:ui32
+	CONST	$6	1	:ui32
+	CONST	$7	1	:ui32
+	CONST	$8	256	:ui32
+	ASSIGN	$9	$8	:ui32
+	CONST	$10	1	:ui32
+	CONST	$11	1	:ui32
+	ASSIGN	$12	$5	:ui32
+	ASSIGN	$13	$6	:ui32
+	ASSIGN	$14	$7	:ui32
+	CALL	$15	func_*($12,$13,$14)	:void
+	ASSIGN	$16	$9	:ui32
+	ASSIGN	$17	$10	:ui32
+	ASSIGN	$18	$11	:ui32
+	CALL	$19	func_*($16,$17,$18)	:void
+	CALL	$20	func_*($1,$2,$3)	:void
+	RETURN	$0	:void
+
+PREFIXSUM:
+B0($1:ptr,$2:ptr,$3:ui32)
+	ASSIGN	$4	$1	:ptr
+	ASSIGN	$5	$2	:ptr
+	CALL	$6	func_*()	:ui32
+	CALL	$7	func_*()	:ui32
+	MUL	$8	$6	$7	:ui32
+	CALL	$9	func_*()	:ui32
+	ADD	$10	$8	$9	:ui32
+	LT	$11	$10	$3	:bool
+	CMP	$12	$11	B1()	B2()	:void
+B1()
+	CONST	$13	0	:ui32
+	CONST	$14	0	:ui32
+	JMP	$0	B5()	:void
+B2()
+	RETURN	$0	:void
+B3()
+	CAST	$17	$14	:i32
+	ASSIGN	$18	$4	:ptr
+	ASSIGN	$19	$17	:i32
+	ASSIGN	$20	$19	:i32
+	CONST	$21	4	:ui64
+	CAST	$22	$20	:ui64
+	MUL	$23	$22	$21	:ui64
+	ADD	$24	$18	$23	:ptr
+	ASSIGN	$25	$24	:ptr
+	ASSIGN	$26	$25	:ptr
+	LOAD	$27	$26	:ui32
+	ADD	$28	$13	$27	:ui32
+	ASSIGN	$13	$28	:ui32
+	CONST	$29	1	:ui32
+	ADD	$30	$14	$29	:ui32
+	ASSIGN	$14	$30	:ui32
+	JMP	$0	B5()	:void
+B4()
+	ASSIGN	$37	$13	:ui32
+	CAST	$38	$10	:i32
+	ASSIGN	$39	$5	:ptr
+	ASSIGN	$40	$38	:i32
+	ASSIGN	$41	$40	:i32
+	CONST	$42	4	:ui64
+	CAST	$43	$41	:ui64
+	MUL	$44	$43	$42	:ui64
+	ADD	$45	$39	$44	:ptr
+	ASSIGN	$46	$45	:ptr
+	ASSIGN	$47	$46	:ptr
+	ASSIGN	$48	$37	:ui32
+	STORE	$49	$47	$48	:void
+	RETURN	$0	:void
+B5() ControlFlowMerge
+	LTE	$15	$14	$10	:bool
+	CMP	$16	$15	B3()	B4()	:void
+
