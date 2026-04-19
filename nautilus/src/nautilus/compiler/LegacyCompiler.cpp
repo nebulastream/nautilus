@@ -148,13 +148,18 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
-	if (options.getOptionOrDefault("ir.runPasses", true)) {
+	if (options.getOptionOrDefault("ir.runPasses", true) || !pluginPasses_.empty()) {
 		ir::IRPassManager passManager(options, &dumpHandler, statistics);
-		if (!options.getOptionOrDefault("ir.disableConstantFolding", false)) {
-			passManager.addPass(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+		if (options.getOptionOrDefault("ir.runPasses", true)) {
+			if (!options.getOptionOrDefault("ir.disableConstantFolding", false)) {
+				passManager.addPass(std::make_shared<ir::ConstantFoldingAndCopyPropagationPass>());
+			}
+			if (!options.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
+				passManager.addPass(std::make_shared<ir::EmptyBlockEliminationPass>());
+			}
 		}
-		if (!options.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
-			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
+		for (const auto& pluginPass : pluginPasses_) {
+			passManager.addPass(pluginPass);
 		}
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(); });
@@ -204,7 +209,17 @@ std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction
 	return executable;
 }
 
+void LegacyCompiler::addIRPass(std::unique_ptr<ir::IRPass> pass) {
+	if (pass != nullptr) {
+		pluginPasses_.push_back(std::move(pass));
+	}
+}
+
 #else
+
+void LegacyCompiler::addIRPass(std::unique_ptr<ir::IRPass>) {
+	throw RuntimeException("Jit not initialised");
+}
 
 std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_function) const {
 	throw RuntimeException("Jit not initialised");

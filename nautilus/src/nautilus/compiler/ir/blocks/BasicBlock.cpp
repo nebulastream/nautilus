@@ -4,6 +4,7 @@
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
 #include <utility>
 
@@ -82,6 +83,14 @@ void BasicBlock::replaceTerminatorOperation(Operation* newTerminatorOperation) {
 BasicBlock* BasicBlock::addOperation(Operation* operation) {
 	operations.emplace_back(operation);
 	return this;
+}
+
+void BasicBlock::addOperationBefore(Operation* before, Operation* operation) {
+	auto it = std::find(operations.begin(), operations.end(), before);
+	if (it == operations.end()) {
+		throw RuntimeException("addOperationBefore: anchor operation is not in this block");
+	}
+	operations.insert(it, operation);
 }
 
 void BasicBlock::replaceOperation(size_t operationIndex, Operation* operation) {
