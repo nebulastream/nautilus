@@ -4,10 +4,6 @@
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
-#include "nautilus/config.hpp"
-#ifdef ENABLE_CONSTANT_TRACER
-#include "nautilus/partial_evaluation/api.hpp"
-#endif
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include <chrono>
@@ -124,20 +120,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 	    traceRegistry->getTraceContext(traceMode)->Trace(functions, options, *arena_);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
-#ifdef ENABLE_CONSTANT_TRACER
-		// Constant-tracer observability counters. Defined in the
-		// partial-evaluation plugin (plugins/partial_evaluation/). Reading them
-		// *after* Trace() returns picks up the final values because
-		// setActiveTracer(nullptr) at trace end leaves them intact; the
-		// next Trace() call resets them on positive setActiveTracer().
-		statistics->set("constantTracer.foldsElided",
-		                static_cast<int64_t>(tracing::pe::getConstantTracerFoldsElided()));
-		statistics->set("constantTracer.flushes", static_cast<int64_t>(tracing::pe::getConstantTracerFlushes()));
-		statistics->set("constantTracer.wideningsCap",
-		                static_cast<int64_t>(tracing::pe::getConstantTracerWideningsCap()));
-		statistics->set("constantTracer.wideningsStrat",
-		                static_cast<int64_t>(tracing::pe::getConstantTracerWideningsStrat()));
-#endif
+		traceRegistry->getTraceContext(traceMode)->collectStatistics(*statistics);
 	}
 	dumpHandler.dump("after_tracing", "trace", [&]() { return traceModule->toString(); });
 

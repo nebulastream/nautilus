@@ -4,6 +4,7 @@
 #include "ExecutionTrace.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
@@ -184,6 +185,12 @@ public:
 	 */
 	virtual std::unique_ptr<TraceModule> Trace(std::list<compiler::CompilableFunction>& functions,
 	                                           const engine::Options& options, Arena& arena) = 0;
+
+	/// Called by LegacyCompiler after Trace() returns so trace-mode-specific
+	/// counters can be written into the compilation report. Default is a no-op;
+	/// PE overrides to populate the constantTracer.* keys.
+	virtual void collectStatistics(compiler::CompilationStatistics& /*statistics*/) const noexcept {
+	}
 
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);

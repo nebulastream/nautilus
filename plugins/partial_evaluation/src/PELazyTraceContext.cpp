@@ -16,6 +16,7 @@
 // Compiled only when ENABLE_CONSTANT_TRACER is on (the plugin's
 // CMakeLists.txt early-returns otherwise).
 
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/partial_evaluation/api.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 
@@ -66,6 +67,13 @@ public:
 	/// this tracer is active. See TracingInterface::isPartialEvaluationMode.
 	bool isPartialEvaluationMode() const noexcept override {
 		return true;
+	}
+
+	void collectStatistics(compiler::CompilationStatistics& statistics) const noexcept override {
+		statistics.set("constantTracer.foldsElided", static_cast<int64_t>(pe::getConstantTracerFoldsElided()));
+		statistics.set("constantTracer.flushes", static_cast<int64_t>(pe::getConstantTracerFlushes()));
+		statistics.set("constantTracer.wideningsCap", static_cast<int64_t>(pe::getConstantTracerWideningsCap()));
+		statistics.set("constantTracer.wideningsStrat", static_cast<int64_t>(pe::getConstantTracerWideningsStrat()));
 	}
 
 	// --- Lifecycle hooks ----------------------------------------------------
@@ -153,7 +161,7 @@ public:
 };
 
 std::unique_ptr<TraceModule> PELazyTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                      const engine::Options& options, Arena& arena) {
+                                                       const engine::Options& options, Arena& arena) {
 	// Per-thread PE context instance. Thread-local lives in the plugin
 	// (no core-side footprint), same pattern the core context uses for
 	// its default.
@@ -173,7 +181,7 @@ namespace {
 struct Registrar {
 	Registrar() noexcept {
 		TraceContextRegistry::getInstance()->registerTraceContext("partialEvaluation",
-		                                                           std::make_unique<PELazyTraceContext>());
+		                                                          std::make_unique<PELazyTraceContext>());
 	}
 };
 [[maybe_unused]] const Registrar kRegistrar {};

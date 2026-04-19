@@ -131,7 +131,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
 						passManager.run(*ir3);
-						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, modeName));
+						REQUIRE(
+						    checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name, modeName));
 					}
 					DYNAMIC_SECTION("after_empty_block_elim") {
 						// Re-run the tracing pipeline: the previous section
@@ -151,7 +152,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
 						passManager.run(*ir2);
-						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name, modeName));
+						REQUIRE(
+						    checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name, modeName));
 					}
 				}
 			}
