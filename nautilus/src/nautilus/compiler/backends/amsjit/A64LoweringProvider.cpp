@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -23,13 +24,15 @@ public:
 } // anonymous namespace
 
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
-                                                                  ::asmjit::JitRuntime& runtime) {
+                                                                  ::asmjit::JitRuntime& runtime,
+                                                                  const engine::Options& options,
+                                                                  CompilationStatistics* statistics) {
 	CodeHolder code;
 	code.init(runtime.environment(), runtime.cpuFeatures());
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
 
-	LoweringContext ctx(std::move(ir), code);
+	LoweringContext ctx(std::move(ir), code, options, statistics);
 	ctx.processAll();
 
 	std::unordered_map<std::string, uint64_t> offsets;
@@ -55,8 +58,13 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 // ── LoweringContext construction ──────────────────────────────────────────────
 
-AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code)
+AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code,
+                                                         const engine::Options& options,
+                                                         CompilationStatistics* statistics)
     : cc(&code), ir(std::move(ir)) {
+	if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
+		cc.addPassT<A64PostRAPeepholePass>(statistics);
+	}
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────

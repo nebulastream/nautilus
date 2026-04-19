@@ -14,7 +14,7 @@ namespace nautilus::compiler::asmjit {
 
 std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                               const DumpHandler& /*dumpHandler*/,
-                                                              const engine::Options& /*options*/,
+                                                              const engine::Options& options,
                                                               CompilationStatistics* statistics) const {
 	const auto backendStart = std::chrono::steady_clock::now();
 
@@ -22,7 +22,10 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_
 	AsmJitLoweringProvider provider;
 
 	const auto compileStart = std::chrono::steady_clock::now();
-	auto result = provider.lower(ir, *runtime);
+	// Thread the statistics sink through lower() so the optional post-RA
+	// peephole pass can record its counters under backend-scoped keys
+	// (asmjit.peephole.*).
+	auto result = provider.lower(ir, *runtime, options, statistics);
 	if (!result.basePtr) {
 		return nullptr;
 	}

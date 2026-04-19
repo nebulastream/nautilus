@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -24,13 +25,15 @@ public:
 } // anonymous namespace
 
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
-                                                                  ::asmjit::JitRuntime& runtime) {
+                                                                  ::asmjit::JitRuntime& runtime,
+                                                                  const engine::Options& options,
+                                                                  CompilationStatistics* statistics) {
 	CodeHolder code;
 	code.init(runtime.environment(), runtime.cpuFeatures());
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
 
-	LoweringContext ctx(std::move(ir), code);
+	LoweringContext ctx(std::move(ir), code, options, statistics);
 	ctx.processAll();
 
 	// Capture label offsets while code is still in the CodeHolder (before rt.add resets it).
@@ -57,8 +60,18 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 // ── LoweringContext construction ──────────────────────────────────────────────
 
-AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code)
+AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code,
+                                                         const engine::Options& options,
+                                                         CompilationStatistics* statistics)
     : cc(&code), ir(std::move(ir)) {
+	// Register the optional post-RA peephole pass. It appends to the
+	// Compiler's pass list *after* X86RAPass (which was installed during
+	// `cc(&code)` via x86::Compiler::onAttach), so it sees physical-register
+	// operands. Gated by an option so it can be toggled off for benchmarks
+	// and regression investigations.
+	if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
+		cc.addPassT<X64PostRAPeepholePass>(statistics);
+	}
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
@@ -474,7 +487,16 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		else
 			cc.setne(resultGp);
 	} else {
-		cc.cmp(toGp(left), toGp(right));
+		// Peephole: `cmp x, 0` → `test x, x` when the right operand is the
+		// integer constant zero. Same flag output for ZF/SF/CF/OF and all
+		// consumers here read only via setcc/jcc — two bytes shorter and
+		// breaks no dependency.
+		const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(op->getRightInput());
+		if (rightConst != nullptr && rightConst->getValue() == 0) {
+			cc.test(toGp(left), toGp(left));
+		} else {
+			cc.cmp(toGp(left), toGp(right));
+		}
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:

@@ -2,14 +2,20 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/amsjit/X64PostRAPeepholePass.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include "nautilus/options.hpp"
 #include <asmjit/x86.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
+
+namespace nautilus::compiler {
+class CompilationStatistics;
+} // namespace nautilus::compiler
 
 namespace nautilus::compiler::asmjit {
 
@@ -32,7 +38,12 @@ public:
 	};
 
 	/// Compile all functions in the IR graph into one JIT allocation.
-	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime);
+	///
+	/// When @p statistics is non-null, the optional post-RA peephole pass
+	/// (see @ref X64PostRAPeepholePass) records its per-run counters into
+	/// it under the `asmjit.peephole.*` key namespace.
+	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime, const engine::Options& options,
+	                  CompilationStatistics* statistics = nullptr);
 
 private:
 	// Integer/pointer types → GP register; float types → XMM register.
@@ -41,7 +52,8 @@ private:
 
 	class LoweringContext : public ir::OperationDispatcher<LoweringContext> {
 	public:
-		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code);
+		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code, const engine::Options& options,
+		                CompilationStatistics* statistics);
 
 		/// Pass 1 + Pass 2 + finalize.
 		void processAll();
