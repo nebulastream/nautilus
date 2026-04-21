@@ -8,21 +8,23 @@ InlineFunctionRegistry& InlineFunctionRegistry::instance() {
 
 int InlineFunctionRegistry::addBitcode(void* fn, std::string bitcode) {
 	std::lock_guard<std::mutex> lock(mutex_);
-	bitcodeRegistry_[fn] = bitcode;
+	bitcodeRegistry_[fn] = std::move(bitcode);
 	return 0;
 }
 
-int InlineFunctionRegistry::addSymbol(std::string& symbolName, void* ptr) {
+int InlineFunctionRegistry::addSymbol(std::string_view symbolName, void* ptr) {
 	std::lock_guard<std::mutex> lock(mutex_);
-	symbolRegistry_[symbolName] = ptr;
+	symbolRegistry_[std::string(symbolName)] = ptr;
 	return 0;
 }
 
-const std::string& InlineFunctionRegistry::getBitcode(void* fn) const {
-	static std::string empty {};
+std::optional<std::string> InlineFunctionRegistry::getBitcode(void* fn) const {
 	std::lock_guard<std::mutex> lock(mutex_);
 	auto it = bitcodeRegistry_.find(fn);
-	return it != bitcodeRegistry_.end() ? it->second : empty;
+	if (it == bitcodeRegistry_.end()) {
+		return std::nullopt;
+	}
+	return it->second;
 }
 
 bool InlineFunctionRegistry::containsFunctionBitcode(void* fn) const {
@@ -30,13 +32,16 @@ bool InlineFunctionRegistry::containsFunctionBitcode(void* fn) const {
 	return bitcodeRegistry_.contains(fn);
 }
 
-void* InlineFunctionRegistry::getSymbolAddress(std::string& symbolName) const {
+void* InlineFunctionRegistry::getSymbolAddress(std::string_view symbolName) const {
 	std::lock_guard<std::mutex> lock(mutex_);
-	auto it = symbolRegistry_.find(symbolName);
+	// Heterogeneous lookup is not available for std::unordered_map in C++20,
+	// so materialize the name into a std::string for the find() call.
+	auto it = symbolRegistry_.find(std::string(symbolName));
 	return it != symbolRegistry_.end() ? it->second : nullptr;
 }
 
-const std::unordered_map<std::string, void*>& InlineFunctionRegistry::getSymbolTable() {
+std::unordered_map<std::string, void*> InlineFunctionRegistry::getSymbolTable() const {
+	std::lock_guard<std::mutex> lock(mutex_);
 	return symbolRegistry_;
 }
 
@@ -45,6 +50,5 @@ int registerBitcodePleaseIgnoreThisThanks(void* fn, const char* bitcodePtr, uint
 }
 
 int registerSymbolPleaseIgnoreThisThanks(const char* symbolStringPtr, uint64_t symbolNameLength, void* ptr) {
-	auto symbolName = std::string(symbolStringPtr, symbolNameLength);
-	return InlineFunctionRegistry::instance().addSymbol(symbolName, ptr);
+	return InlineFunctionRegistry::instance().addSymbol(std::string_view(symbolStringPtr, symbolNameLength), ptr);
 }

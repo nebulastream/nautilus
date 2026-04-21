@@ -22,6 +22,10 @@
 
 namespace nautilus::passes {
 
+// Generates a 128-bit-ish hex string used to disambiguate extracted symbol
+// names. Thread-safety: the static RNG state is only touched from within a
+// single LLVM pass invocation, which the pass manager runs serially per
+// module, so no external synchronisation is required here.
 std::string getUUIDString() {
 	static std::random_device rd;
 	static std::mt19937 gen(rd());
@@ -91,7 +95,18 @@ std::optional<std::string> serializeFunctionWithDependencySymbols(llvm::Function
 	StripDebugInfo(*wrapperModule); // to suppress some llvm warning messages for invalid debug info
 
 	for (auto& globalVariable : wrapperModule->globals()) {
-		auto originalGV = dyn_cast<llvm::GlobalValue>(v2vInverted[&globalVariable]);
+		// ExtractGVPass may introduce fresh globals that were not present in
+		// the original module; those are absent from v2vInverted. Skipping
+		// them is safe: without a runtime address in the registry they
+		// can't be rewritten anyway.
+		auto it = v2vInverted.find(&globalVariable);
+		if (it == v2vInverted.end()) {
+			continue;
+		}
+		auto* originalGV = llvm::dyn_cast<llvm::GlobalValue>(it->second);
+		if (!originalGV) {
+			continue;
+		}
 		auto uniqueName = getUniqueName(originalGV, symbolMap, originalModule);
 		globalVariable.setName(uniqueName);
 		globalVariable.setInitializer(nullptr);
@@ -101,13 +116,21 @@ std::optional<std::string> serializeFunctionWithDependencySymbols(llvm::Function
 	}
 
 	for (auto& function : wrapperModule->functions()) {
-		if (&function != clonedTarget && !function.isIntrinsic()) {
-			auto originalFunction = dyn_cast<llvm::GlobalValue>(v2vInverted[&function]);
-			auto uniqueName = getUniqueName(originalFunction, symbolMap, originalModule);
-			function.setName(uniqueName);
-			function.deleteBody();
-			function.setLinkage(llvm::GlobalValue::ExternalLinkage);
+		if (&function == clonedTarget || function.isIntrinsic()) {
+			continue;
 		}
+		auto it = v2vInverted.find(&function);
+		if (it == v2vInverted.end()) {
+			continue;
+		}
+		auto* originalFunction = llvm::dyn_cast<llvm::GlobalValue>(it->second);
+		if (!originalFunction) {
+			continue;
+		}
+		auto uniqueName = getUniqueName(originalFunction, symbolMap, originalModule);
+		function.setName(uniqueName);
+		function.deleteBody();
+		function.setLinkage(llvm::GlobalValue::ExternalLinkage);
 	}
 
 	// serialize wrapperModule to bitcode string

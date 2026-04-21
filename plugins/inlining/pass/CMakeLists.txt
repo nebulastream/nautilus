@@ -26,7 +26,4 @@ if (NAUTILUS_INLINE_SUPPORTED)
     add_custom_target(InliningPassDependency
             DEPENDS $<TARGET_FILE:InliningPass>
     )
-    set_target_properties(InliningPass PROPERTIES
-            INTERFACE_ ${ENABLE_INLINING_PASS}
-    )
 endif ()
