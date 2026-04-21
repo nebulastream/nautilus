@@ -15,7 +15,6 @@
 #include "LLVMInliningUtils.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
 #include <llvm/IR/Module.h>
-#include <sstream>
 #endif
 
 int registerInliningHooksPleaseIgnoreThisThanks() {
@@ -38,7 +37,9 @@ struct InliningPluginRegistrar {
 		// Hook 2: contribute the inline registry's (name -> address) pairs
 		// to the JIT's ORC symbol map. The symbol names are hex-formatted
 		// runtime addresses, matching the names used by the rewritten
-		// inlinable functions.
+		// inlinable functions. NOTE: this iterates a snapshot of the table
+		// at hook-call time; symbols registered later (e.g. via a late
+		// dlopen) will not appear until the next JIT compile.
 		hooks.jitSymbolContributor = [](const nautilus::compiler::mlir::SymbolContributor& contribute) {
 			for (const auto& [key, value] : InlineFunctionRegistry::instance().getSymbolTable()) {
 				auto hexStr = nautilus::compiler::mlir::ptrToHex(value);
@@ -48,14 +49,16 @@ struct InliningPluginRegistrar {
 
 		// Hook 3: when lowering an external proxy call whose target has
 		// registered bitcode, emit the hex-formatted pointer address as the
-		// MLIR function name so the JIT-time inliner can pick it up.
+		// MLIR function name so the JIT-time inliner can pick it up. The
+		// name must match the format produced by `ptrToHex` elsewhere in
+		// the plugin so that `hexToPtr` round-trips and `jitSymbolContributor`
+		// resolves the same symbol — using `ptrToHex` here keeps those
+		// formats in lock-step.
 		hooks.proxyCallNameOverride = [](void* functionPtr) -> std::optional<std::string> {
 			if (!InlineFunctionRegistry::instance().containsFunctionBitcode(functionPtr)) {
 				return std::nullopt;
 			}
-			std::stringstream ss;
-			ss << functionPtr;
-			return ss.str();
+			return nautilus::compiler::mlir::ptrToHex(functionPtr);
 		};
 	}
 };

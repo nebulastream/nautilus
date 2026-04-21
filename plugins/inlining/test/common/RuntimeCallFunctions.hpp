@@ -133,7 +133,7 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 	return sum;
 }
 
-inline int32_t get42() {
+NAUTILUS_INLINE int32_t get42() {
 	return 42;
 }
 

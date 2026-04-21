@@ -15,7 +15,10 @@ include_guard(GLOBAL)
 
 option(ENABLE_INLINING_PASS "Enable building inlining llvm pass" ON)
 
-function(is_inlining_supported result_var)
+# Runs the host/toolchain detection and writes the result to ${result_var}
+# in the parent scope. Prefer the cached value in NAUTILUS_INLINE_SUPPORTED
+# once it has been populated by the top-level include below.
+function(_detect_inlining_support result_var)
     if(NOT ENABLE_INLINING_PASS)
         set(${result_var} FALSE PARENT_SCOPE)
         return()
@@ -44,6 +47,19 @@ function(is_inlining_supported result_var)
     set(${result_var} TRUE PARENT_SCOPE)
 endfunction()
 
+# Cached detector: run detection exactly once per configure and stash the
+# result in an INTERNAL cache variable so every subsequent
+# `nautilus_inline(...)` invocation is a cheap read (and so the toolchain
+# warnings above are emitted only once).
+function(is_inlining_supported result_var)
+    if(NOT DEFINED NAUTILUS_INLINE_SUPPORTED_CACHED)
+        _detect_inlining_support(_nautilus_inline_detected)
+        set(NAUTILUS_INLINE_SUPPORTED_CACHED "${_nautilus_inline_detected}" CACHE INTERNAL
+            "Whether the Nautilus inlining plugin is supported on this host/toolchain")
+    endif ()
+    set(${result_var} "${NAUTILUS_INLINE_SUPPORTED_CACHED}" PARENT_SCOPE)
+endfunction()
+
 
 is_inlining_supported(NAUTILUS_INLINE_SUPPORTED)
 
@@ -56,7 +72,14 @@ function(nautilus_inline target)
                     "-fpass-plugin=$<TARGET_FILE:InliningPass>"
             )
         else ()
-            message(WARNING "nautilus_inline(${target}) called but the InliningPass target is not available. Enable ENABLE_INLINING_PLUGIN to build it. Skipping.")
+            # The toolchain supports inlining but the pass library isn't a
+            # target in this configure. The most common cause is that the
+            # top-level ENABLE_INLINING_PLUGIN gate is OFF (the gate that
+            # actually add_subdirectory()'s plugins/inlining), not the
+            # local ENABLE_INLINING_PASS in this file. Both gates must be
+            # ON for the pass to be built. Warn rather than FATAL so that
+            # callers like the demo can degrade gracefully.
+            message(WARNING "nautilus_inline(${target}) called but the InliningPass target is not available. Enable both ENABLE_INLINING_PLUGIN (top-level) and ENABLE_INLINING_PASS (plugin-local) to build it. Skipping.")
         endif ()
     else ()
         message(WARNING "Function inlining requires clang 19-21 during compilation.")
