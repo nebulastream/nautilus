@@ -1,6 +1,7 @@
 #include "common/GPUFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/common/Arena.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -60,7 +61,7 @@ static bool checkTestFile(std::string actual, const std::string& category, const
 }
 
 using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&);
+                                                          const engine::Options&, common::Arena&);
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
@@ -77,7 +78,8 @@ static void runTraceTests(const std::string& category,
 					auto rootFunction = compiler::CompilableFunction("execute", func);
 					std::list<compiler::CompilableFunction> functionsToTrace;
 					functionsToTrace.push_back(rootFunction);
-					auto executionTrace = traceFn(functionsToTrace, engine::Options());
+					common::Arena arena;
+					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
 					DYNAMIC_SECTION("tracing") {
 						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 					}

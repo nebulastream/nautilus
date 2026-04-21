@@ -1,6 +1,7 @@
 #include "common/GPUFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/common/Arena.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/gpu/backends.hpp"
 #include "nautilus/gpu/config.hpp"
@@ -49,7 +50,8 @@ static std::shared_ptr<compiler::ir::IRGraph> traceToIR(std::function<void()> wr
 	auto rootFunction = compiler::CompilableFunction("execute", std::move(wrapper));
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	functionsToTrace.push_back(rootFunction);
-	auto traceModule = tracing::ExceptionBasedTraceContext::Trace(functionsToTrace, engine::Options());
+	common::Arena arena;
+	auto traceModule = tracing::ExceptionBasedTraceContext::Trace(functionsToTrace, engine::Options(), arena);
 	auto ssaPhase = tracing::SSACreationPhase();
 	auto afterSSA = ssaPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
 	auto irPhase = tracing::TraceToIRConversionPhase();
