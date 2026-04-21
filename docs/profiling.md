@@ -64,10 +64,13 @@ operation types, no dialect work.
 
 ## Runtime library
 
-A new subdirectory `src/nautilus/profile/` contains `libnautilus_profile`, a
-thin wrapper over the Perfetto client SDK. It exposes a stable C ABI so every
-backend reaches it via the same mechanism already used for any other runtime
-call:
+Profiling ships as an optional plugin under `plugins/profile/`, matching the
+layout of existing optional features (`specialization`, `simd`, `std`,
+`inlining`, `gpu`). It builds the `nautilus-profile` static library, gated on
+the top-level CMake option `ENABLE_PROFILE_PLUGIN` (default `OFF`).
+
+The plugin exposes a stable C ABI so every backend reaches it via the same
+`ProxyCallOperation` path already used for any other runtime call:
 
 ```c
 void __nautilus_profile_begin(const char* name);
@@ -75,10 +78,10 @@ void __nautilus_profile_end(const char* name);
 void __nautilus_profile_counter_i64(const char* name, int64_t value);
 ```
 
-The Perfetto SDK is pulled in via `FetchContent` in a new
-`cmake/Perfetto.cmake` module, gated on `ENABLE_PROFILE` (default `OFF`).
-When the flag is off, the header-only `Profiler.hpp` expands to empty inline
-functions and no runtime dependency is added.
+The Perfetto SDK will be pulled in via `FetchContent` in a dedicated CMake
+module at step 3 of the rollout. Step 1 ships a stub implementation backed
+by `nautilus::log` + an in-memory recorder; this recorder remains available
+as a test-only observation hook after Perfetto is wired in.
 
 ## Perfetto output model
 
@@ -228,8 +231,11 @@ rather than addressed.
 
 ## Rollout order
 
-1. Runtime library with stub `spdlog` implementations of the C ABI; wire the
-   CPP backend and add a test.
+1. Runtime library with stub `spdlog`-backed implementations of the C ABI;
+   expose a `Recorder` facility for tests; ship `Profiler.hpp` with
+   `startRegion`/`endRegion`/`ScopedRegion`/`traceCounter`; add a
+   `BasicRegionTest` that runs across the interpreter, MLIR, CPP, and BC
+   backends. (Done.)
 2. MLIR symbol registration via `jitSymbolContributor`; mirror the CPP test.
 3. Replace stubs with real Perfetto SDK calls; add `flushTrace` and the
    per-module track model.
