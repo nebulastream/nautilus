@@ -1,0 +1,4 @@
+#pragma once
+
+#cmakedefine ENABLE_CUDA_BACKEND
+#cmakedefine ENABLE_METAL_BACKEND

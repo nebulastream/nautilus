@@ -83,3 +83,63 @@ if (ENABLE_INLINING_PLUGIN)
         message(STATUS "Skipping demo_inlining_plugin: inlining plugin is not supported on this toolchain.")
     endif ()
 endif ()
+# GPU demo: pick a backend at configure time and only build the target if a
+# usable runtime is present.  On macOS we need both the Metal backend enabled
+# and the metallib toolchain installed.  On Linux we need the CUDA backend
+# enabled and nvcc + CUDAToolkit (cudart) available so the demo can allocate
+# unified-managed memory.
+set(GPU_DEMO_BACKEND "")
+if (TARGET nautilus-gpu)
+    if (APPLE AND ENABLE_METAL_BACKEND)
+        # metallib lives in the MetalToolchain asset, not the PATH. Match the
+        # runtime lookup in MetalCompiler.cpp: try `xcrun --find metallib`,
+        # falling back to DEVELOPER_DIR=/Applications/Xcode.app/... if Xcode
+        # is installed but xcode-select still points at CommandLineTools.
+        execute_process(
+                COMMAND xcrun --sdk macosx --find metallib
+                OUTPUT_VARIABLE METALLIB_EXECUTABLE
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+                RESULT_VARIABLE _xcrun_metallib_rc)
+        if (NOT _xcrun_metallib_rc EQUAL 0 OR NOT METALLIB_EXECUTABLE)
+            set(METALLIB_EXECUTABLE "")
+            if (EXISTS "/Applications/Xcode.app/Contents/Developer")
+                execute_process(
+                        COMMAND env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+                                xcrun --sdk macosx --find metallib
+                        OUTPUT_VARIABLE METALLIB_EXECUTABLE
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_QUIET
+                        RESULT_VARIABLE _xcrun_metallib_rc2)
+                if (NOT _xcrun_metallib_rc2 EQUAL 0)
+                    set(METALLIB_EXECUTABLE "")
+                endif ()
+            endif ()
+        endif ()
+        if (METALLIB_EXECUTABLE)
+            set(GPU_DEMO_BACKEND "metal")
+        endif ()
+    elseif (ENABLE_CUDA_BACKEND)
+        find_program(NVCC_EXECUTABLE nvcc
+                HINTS ENV CUDA_HOME PATHS /usr/local/cuda/bin /opt/cuda/bin)
+        if (NVCC_EXECUTABLE)
+            find_package(CUDAToolkit QUIET)
+            if (CUDAToolkit_FOUND)
+                set(GPU_DEMO_BACKEND "cuda")
+            endif ()
+        endif ()
+    endif ()
+endif ()
+
+if (GPU_DEMO_BACKEND)
+    add_executable(demo-gpu src/DemoGPU.cpp)
+    target_link_libraries(demo-gpu PRIVATE nautilus nautilus-gpu)
+    target_compile_definitions(demo-gpu PRIVATE GPU_DEMO_BACKEND="${GPU_DEMO_BACKEND}")
+    if (GPU_DEMO_BACKEND STREQUAL "cuda")
+        target_compile_definitions(demo-gpu PRIVATE GPU_DEMO_USE_CUDA)
+        target_link_libraries(demo-gpu PRIVATE CUDA::cudart)
+    endif ()
+    message(STATUS "Building demo-gpu with ${GPU_DEMO_BACKEND} backend")
+else ()
+    message(STATUS "Skipping demo-gpu: no usable GPU backend (need Metal toolchain on macOS or nvcc + CUDAToolkit on Linux, with -DENABLE_GPU_PLUGIN=ON)")
+endif ()

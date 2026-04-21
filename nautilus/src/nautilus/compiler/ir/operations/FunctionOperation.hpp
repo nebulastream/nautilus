@@ -3,12 +3,15 @@
 
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <optional>
+#include <unordered_map>
 
 namespace nautilus::compiler::ir {
 class FunctionOperation : public Operation {
 public:
 	explicit FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
-	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg);
+	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg,
+	                           std::unordered_map<std::string, std::string> attributes = {});
 
 	~FunctionOperation() = default;
 
@@ -37,6 +40,9 @@ public:
 
 	[[nodiscard]] const std::vector<std::string>& getInputArgNames() const;
 
+	[[nodiscard]] bool hasAttribute(const std::string& key) const;
+	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
+
 	static bool classof(const Operation* Op);
 
 private:
@@ -44,5 +50,6 @@ private:
 	std::vector<BasicBlock*> functionBasicBlocks;
 	std::vector<Type> inputArgs;
 	std::vector<std::string> inputArgNames;
+	std::unordered_map<std::string, std::string> attributes;
 };
 } // namespace nautilus::compiler::ir

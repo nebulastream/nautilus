@@ -349,3 +349,26 @@ Block_4:
 }```
 
 </details>
+
+## GPU demo
+
+`demo-gpu` traces a `vecAdd` kernel and executes it on a real GPU through one
+of the GPU plugin's backends.  Configure with `-DENABLE_GPU_PLUGIN=ON`; the
+build picks the backend automatically:
+
+- **macOS**: Metal backend, requires the Metal toolchain (`metallib`). Install
+  via `xcodebuild -downloadComponent MetalToolchain`.
+- **Linux**: CUDA backend, requires `nvcc` plus the CUDA Toolkit (so we can
+  link `CUDA::cudart` and allocate `cudaMallocManaged` unified memory).
+
+If neither runtime is found the configure step prints a status line and the
+`demo-gpu` target is skipped — only `demo` is built.
+
+```bash
+cmake -DENABLE_GPU_PLUGIN=ON -S . -B build
+cmake --build build --target demo-gpu
+./build/demo-gpu
+```
+
+The kernel computes `c[i] = a[i] + b[i]` over 256 floats and prints a few
+elements plus an `OK`/`MISMATCH` line.

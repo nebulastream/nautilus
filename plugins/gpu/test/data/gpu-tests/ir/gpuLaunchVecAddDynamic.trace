@@ -1,0 +1,42 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
+	$5 = 255 :ui32
+	$6 = $4 + $5 :ui32
+	$7 = 256 :ui32
+	$8 = $6 / $7 :ui32
+	$11 = 1 :ui32
+	$12 = 1 :ui32
+	$13 = 256 :ui32
+	$15 = 1 :ui32
+	$16 = 1 :ui32
+	func_*($8,$11,$12) :void
+	func_*($13,$15,$16) :void
+	func_*($1,$2,$3) :void
+	return :void
+}
+vecAdd() {
+Block_0($1:ptr, $2:ptr, $3:ptr):
+	$7 = func_*() :ui32
+	$8 = $7 cast_to i32 :i32
+	$12 = 4 :ui64
+	$13 = $8 cast_to ui64 :ui64
+	$14 = $13 * $12 :ui64
+	$15 = $1 + $14 :ptr
+	$18 = $7 cast_to i32 :i32
+	$22 = 4 :ui64
+	$23 = $18 cast_to ui64 :ui64
+	$24 = $23 * $22 :ui64
+	$25 = $2 + $24 :ptr
+	$28 = load($15) :ui32
+	$29 = load($25) :ui32
+	$30 = $28 + $29 :ui32
+	$31 = $7 cast_to i32 :i32
+	$35 = 4 :ui64
+	$36 = $31 cast_to ui64 :ui64
+	$37 = $36 * $35 :ui64
+	$38 = $3 + $37 :ptr
+	store($30, $38) :void
+	return :void
+}
+} //NESIR

@@ -1,0 +1,31 @@
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CONST	$4	1	:ui32
+	CONST	$6	1	:ui32
+	CONST	$7	1	:ui32
+	CONST	$8	256	:ui32
+	CONST	$10	1	:ui32
+	CONST	$11	1	:ui32
+	CALL	$15	func_*($4,$6,$7)	:void
+	CALL	$19	func_*($8,$10,$11)	:void
+	CALL	$20	func_*($1,$2,$3)	:void
+	RETURN	$0	:void
+
+VECSCALE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CALL	$6	func_*()	:ui32
+	CAST	$7	$6	:i32
+	CONST	$11	4	:ui64
+	CAST	$12	$7	:ui64
+	MUL	$13	$12	$11	:ui64
+	ADD	$14	$1	$13	:ptr
+	LOAD	$18	$14	:ui32
+	MUL	$19	$18	$3	:ui32
+	CAST	$20	$6	:i32
+	CONST	$24	4	:ui64
+	CAST	$25	$20	:ui64
+	MUL	$26	$25	$24	:ui64
+	ADD	$27	$2	$26	:ptr
+	STORE	$31	$27	$19	:void
+	RETURN	$0	:void
+

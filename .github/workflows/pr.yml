@@ -50,7 +50,7 @@ jobs:
           - os: 'macos-15'
             cc: 'clang'
             cxx: 'clang++'
-            flags: ''
+            flags: '-DENABLE_GPU_PLUGIN=ON'
           - os: 'ubuntu-24.04'
             cc: 'gcc-12'
             cxx: 'g++-12'
@@ -66,11 +66,15 @@ jobs:
           - os: 'ubuntu-24.04-arm'
             cc: 'clang-19'
             cxx: 'clang++-19'
-            flags: ''
+            flags: '-DENABLE_GPU_PLUGIN=ON'
           - os: 'ubuntu-24.04'
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: ''
+          - os: 'ubuntu-24.04'
+            cc: 'clang-18'
+            cxx: 'clang++-18'
+            flags: '-DENABLE_GPU_PLUGIN=ON'
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -133,6 +137,11 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/inlining/test --output-on-failure
+      - name: test gpu plugin
+        if: contains(matrix.flags, 'ENABLE_GPU_PLUGIN=ON')
+        shell: bash
+        run: |
+          ctest --test-dir build/plugins/gpu/test --output-on-failure
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)

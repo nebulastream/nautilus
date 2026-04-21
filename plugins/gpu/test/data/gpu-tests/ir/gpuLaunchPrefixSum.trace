@@ -1,0 +1,61 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:ui32):
+	$4 = 1 :ui32
+	$6 = 1 :ui32
+	$7 = 1 :ui32
+	$8 = 256 :ui32
+	$10 = 1 :ui32
+	$11 = 1 :ui32
+	func_*($4,$6,$7) :void
+	func_*($8,$10,$11) :void
+	func_*($1,$2,$3) :void
+	return :void
+}
+prefixSum() {
+Block_0($1:ptr, $2:ptr, $3:ui32):
+	$6 = func_*() :ui32
+	$7 = func_*() :ui32
+	$8 = $6 * $7 :ui32
+	$9 = func_*() :ui32
+	$10 = $8 + $9 :ui32
+	$11 = $10 < $3 :bool
+	if $11 ? Block_1($2, $10, $1) : Block_2() :void
+
+Block_1($5:ptr, $10:ui32, $4:ptr):
+	$13 = 0 :ui32
+	$14 = 0 :ui32
+	br Block_5($5, $10, $13, $14, $4) :void
+
+Block_5($5:ptr, $10:ui32, $13:ui32, $14:ui32, $4:ptr):
+	$15 = $14 <= $10 :bool
+	if $15 ? Block_3($5, $10, $14, $13, $4) : Block_4($5, $10, $13) :void
+
+Block_3($5:ptr, $10:ui32, $14:ui32, $13:ui32, $4:ptr):
+	$17 = $14 cast_to i32 :i32
+	$21 = 4 :ui64
+	$22 = $17 cast_to ui64 :ui64
+	$23 = $22 * $21 :ui64
+	$24 = $4 + $23 :ptr
+	$27 = load($24) :ui32
+	$28 = $13 + $27 :ui32
+	$29 = 1 :ui32
+	$30 = $14 + $29 :ui32
+	br Block_5($5, $10, $28, $30, $4) :void
+
+Block_4($5:ptr, $10:ui32, $13:ui32):
+	$38 = $10 cast_to i32 :i32
+	$42 = 4 :ui64
+	$43 = $38 cast_to ui64 :ui64
+	$44 = $43 * $42 :ui64
+	$45 = $5 + $44 :ptr
+	store($13, $45) :void
+	br Block_6() :void
+
+Block_6():
+	return :void
+
+Block_2():
+	br Block_6() :void
+}
+} //NESIR

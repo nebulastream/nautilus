@@ -1,0 +1,93 @@
+CLASSIFY:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CALL	$6	func_*()	:ui32
+	CALL	$7	func_*()	:ui32
+	MUL	$8	$6	$7	:ui32
+	CALL	$9	func_*()	:ui32
+	ADD	$10	$8	$9	:ui32
+	LT	$11	$10	$3	:bool
+	CMP	$12	$11	B1($2,$10,$1)	B2()	:void
+B1($5:ptr,$10:ui32,$4:ptr)
+	CAST	$13	$10	:i32
+	CONST	$17	4	:ui64
+	CAST	$18	$13	:ui64
+	MUL	$19	$18	$17	:ui64
+	ADD	$20	$4	$19	:ptr
+	CONST	$23	200	:ui32
+	LOAD	$24	$20	:ui32
+	GT	$25	$24	$23	:bool
+	CMP	$26	$25	B3($5,$10)	B4($5,$10,$4)	:void
+B2()
+	JMP	$0	B9()	:void
+B3($5:ptr,$10:ui32)
+	CONST	$27	3	:ui32
+	CAST	$28	$10	:i32
+	CONST	$32	4	:ui64
+	CAST	$33	$28	:ui64
+	MUL	$34	$33	$32	:ui64
+	ADD	$35	$5	$34	:ptr
+	STORE	$39	$35	$27	:void
+	JMP	$0	B9()	:void
+B4($5:ptr,$10:ui32,$4:ptr)
+	CAST	$46	$10	:i32
+	CONST	$50	4	:ui64
+	CAST	$51	$46	:ui64
+	MUL	$52	$51	$50	:ui64
+	ADD	$53	$4	$52	:ptr
+	CONST	$56	100	:ui32
+	LOAD	$57	$53	:ui32
+	GT	$58	$57	$56	:bool
+	CMP	$59	$58	B5($5,$10)	B6($5,$10,$4)	:void
+B5($5:ptr,$10:ui32)
+	CONST	$60	2	:ui32
+	CAST	$61	$10	:i32
+	CONST	$65	4	:ui64
+	CAST	$66	$61	:ui64
+	MUL	$67	$66	$65	:ui64
+	ADD	$68	$5	$67	:ptr
+	STORE	$72	$68	$60	:void
+	JMP	$0	B9()	:void
+B6($5:ptr,$10:ui32,$4:ptr)
+	CAST	$76	$10	:i32
+	CONST	$80	4	:ui64
+	CAST	$81	$76	:ui64
+	MUL	$82	$81	$80	:ui64
+	ADD	$83	$4	$82	:ptr
+	CONST	$86	0	:ui32
+	LOAD	$87	$83	:ui32
+	GT	$88	$87	$86	:bool
+	CMP	$89	$88	B7($5,$10)	B8($5,$10)	:void
+B7($5:ptr,$10:ui32)
+	CONST	$90	1	:ui32
+	CAST	$91	$10	:i32
+	CONST	$95	4	:ui64
+	CAST	$96	$91	:ui64
+	MUL	$97	$96	$95	:ui64
+	ADD	$98	$5	$97	:ptr
+	STORE	$102	$98	$90	:void
+	JMP	$0	B9()	:void
+B8($5:ptr,$10:ui32)
+	CONST	$106	0	:ui32
+	CAST	$107	$10	:i32
+	CONST	$111	4	:ui64
+	CAST	$112	$107	:ui64
+	MUL	$113	$112	$111	:ui64
+	ADD	$114	$5	$113	:ptr
+	STORE	$118	$114	$106	:void
+	JMP	$0	B9()	:void
+B9()
+	RETURN	$0	:void
+
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CONST	$4	1	:ui32
+	CONST	$6	1	:ui32
+	CONST	$7	1	:ui32
+	CONST	$8	256	:ui32
+	CONST	$10	1	:ui32
+	CONST	$11	1	:ui32
+	CALL	$15	func_*($4,$6,$7)	:void
+	CALL	$19	func_*($8,$10,$11)	:void
+	CALL	$20	func_*($1,$2,$3)	:void
+	RETURN	$0	:void
+

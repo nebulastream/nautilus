@@ -1,0 +1,44 @@
+NautilusIr {
+execute() {
+Block_0($1:ptr, $2:ptr, $3:f32):
+	$4 = 1 :ui32
+	$6 = 1 :ui32
+	$7 = 1 :ui32
+	$8 = 256 :ui32
+	$10 = 1 :ui32
+	$11 = 1 :ui32
+	func_*($4,$6,$7) :void
+	func_*($8,$10,$11) :void
+	func_*($1,$2,$3) :void
+	return :void
+}
+saxpy() {
+Block_0($1:ptr, $2:ptr, $3:f32):
+	$6 = func_*() :ui32
+	$7 = func_*() :ui32
+	$8 = $6 * $7 :ui32
+	$9 = func_*() :ui32
+	$10 = $8 + $9 :ui32
+	$11 = $10 cast_to i32 :i32
+	$15 = 4 :ui64
+	$16 = $11 cast_to ui64 :ui64
+	$17 = $16 * $15 :ui64
+	$18 = $1 + $17 :ptr
+	$21 = load($18) :f32
+	$22 = $3 * $21 :f32
+	$23 = $10 cast_to i32 :i32
+	$27 = 4 :ui64
+	$28 = $23 cast_to ui64 :ui64
+	$29 = $28 * $27 :ui64
+	$30 = $2 + $29 :ptr
+	$33 = load($30) :f32
+	$34 = $22 + $33 :f32
+	$35 = $10 cast_to i32 :i32
+	$39 = 4 :ui64
+	$40 = $35 cast_to ui64 :ui64
+	$41 = $40 * $39 :ui64
+	$42 = $2 + $41 :ptr
+	store($34, $42) :void
+	return :void
+}
+} //NESIR

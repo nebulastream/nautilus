@@ -37,7 +37,8 @@ public:
 
 class CompilationBackendRegistry {
 public:
-	static const CompilationBackendRegistry* getInstance();
+	static CompilationBackendRegistry* getInstance();
+	void registerBackend(const std::string& name, std::unique_ptr<CompilationBackend> backend);
 	const CompilationBackend* getBackend(const std::string& name) const;
 	/// Returns the name of the first available backend, or empty string if none.
 	std::string getDefaultBackendName() const;

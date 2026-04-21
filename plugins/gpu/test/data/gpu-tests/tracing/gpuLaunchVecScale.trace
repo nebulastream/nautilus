@@ -1,0 +1,53 @@
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	CONST	$4	1	:ui32
+	ASSIGN	$5	$4	:ui32
+	CONST	$6	1	:ui32
+	CONST	$7	1	:ui32
+	CONST	$8	256	:ui32
+	ASSIGN	$9	$8	:ui32
+	CONST	$10	1	:ui32
+	CONST	$11	1	:ui32
+	ASSIGN	$12	$5	:ui32
+	ASSIGN	$13	$6	:ui32
+	ASSIGN	$14	$7	:ui32
+	CALL	$15	func_*($12,$13,$14)	:void
+	ASSIGN	$16	$9	:ui32
+	ASSIGN	$17	$10	:ui32
+	ASSIGN	$18	$11	:ui32
+	CALL	$19	func_*($16,$17,$18)	:void
+	CALL	$20	func_*($1,$2,$3)	:void
+	RETURN	$0	:void
+
+VECSCALE:
+B0($1:ptr,$2:ptr,$3:ui32)
+	ASSIGN	$4	$1	:ptr
+	ASSIGN	$5	$2	:ptr
+	CALL	$6	func_*()	:ui32
+	CAST	$7	$6	:i32
+	ASSIGN	$8	$4	:ptr
+	ASSIGN	$9	$7	:i32
+	ASSIGN	$10	$9	:i32
+	CONST	$11	4	:ui64
+	CAST	$12	$10	:ui64
+	MUL	$13	$12	$11	:ui64
+	ADD	$14	$8	$13	:ptr
+	ASSIGN	$15	$14	:ptr
+	ASSIGN	$16	$15	:ptr
+	ASSIGN	$17	$3	:ui32
+	LOAD	$18	$16	:ui32
+	MUL	$19	$18	$17	:ui32
+	CAST	$20	$6	:i32
+	ASSIGN	$21	$5	:ptr
+	ASSIGN	$22	$20	:i32
+	ASSIGN	$23	$22	:i32
+	CONST	$24	4	:ui64
+	CAST	$25	$23	:ui64
+	MUL	$26	$25	$24	:ui64
+	ADD	$27	$21	$26	:ptr
+	ASSIGN	$28	$27	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$19	:ui32
+	STORE	$31	$29	$30	:void
+	RETURN	$0	:void
+

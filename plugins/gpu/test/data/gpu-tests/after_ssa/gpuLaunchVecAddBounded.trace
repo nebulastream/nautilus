@@ -1,0 +1,51 @@
+EXECUTE:
+B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
+	CONST	$5	255	:ui32
+	ADD	$6	$4	$5	:ui32
+	CONST	$7	256	:ui32
+	DIV	$8	$6	$7	:ui32
+	CONST	$11	1	:ui32
+	CONST	$12	1	:ui32
+	CONST	$13	256	:ui32
+	CONST	$15	1	:ui32
+	CONST	$16	1	:ui32
+	CALL	$20	func_*($8,$11,$12)	:void
+	CALL	$24	func_*($13,$15,$16)	:void
+	CALL	$25	func_*($1,$2,$3,$4)	:void
+	RETURN	$0	:void
+
+VECADDBOUNDED:
+B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
+	CALL	$8	func_*()	:ui32
+	CALL	$9	func_*()	:ui32
+	MUL	$10	$8	$9	:ui32
+	CALL	$11	func_*()	:ui32
+	ADD	$12	$10	$11	:ui32
+	LT	$13	$12	$4	:bool
+	CMP	$14	$13	B1($3,$12,$2,$1)	B2()	:void
+B1($7:ptr,$12:ui32,$6:ptr,$5:ptr)
+	CAST	$15	$12	:i32
+	CONST	$19	4	:ui64
+	CAST	$20	$15	:ui64
+	MUL	$21	$20	$19	:ui64
+	ADD	$22	$5	$21	:ptr
+	CAST	$25	$12	:i32
+	CONST	$29	4	:ui64
+	CAST	$30	$25	:ui64
+	MUL	$31	$30	$29	:ui64
+	ADD	$32	$6	$31	:ptr
+	LOAD	$35	$22	:ui32
+	LOAD	$36	$32	:ui32
+	ADD	$37	$35	$36	:ui32
+	CAST	$38	$12	:i32
+	CONST	$42	4	:ui64
+	CAST	$43	$38	:ui64
+	MUL	$44	$43	$42	:ui64
+	ADD	$45	$7	$44	:ptr
+	STORE	$49	$45	$37	:void
+	JMP	$0	B3()	:void
+B2()
+	JMP	$0	B3()	:void
+B3()
+	RETURN	$0	:void
+

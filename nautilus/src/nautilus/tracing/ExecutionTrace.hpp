@@ -16,16 +16,19 @@ using Arena = common::Arena;
 
 class ExecutionTrace;
 
+/// Bundles a traced function's execution trace with its metadata.
+struct TraceFunctionDefinition {
+	std::string name;
+	std::unique_ptr<ExecutionTrace> trace;
+	std::unordered_map<std::string, std::string> attributes;
+};
+
 /**
- * @brief Container for multiple execution traces, mapping function names to their traces.
+ * @brief Container for traced functions, each represented by a TraceFunctionDefinition.
  *
- * TraceModule manages a collection of execution traces, where each trace corresponds to a
- * different function. This is used to support tracing of nested Nautilus functions, where
- * the root "execute" function may call other Nautilus functions that need to be traced
- * and compiled separately.
- *
- * The module maintains ownership of all ExecutionTrace objects through unique_ptr, ensuring
- * proper lifetime management. It is move-only to prevent accidental copying of large trace data.
+ * TraceModule manages a collection of function traces used to support tracing of nested
+ * Nautilus functions, where the root "execute" function may call other Nautilus functions
+ * that need to be traced and compiled separately.
  *
  * @note This class is move-only (copy operations are deleted)
  * @see ExecutionTrace
@@ -36,11 +39,8 @@ public:
 	TraceModule() = default;
 	~TraceModule() = default;
 
-	// Delete copy operations (TraceModule is move-only)
 	TraceModule(const TraceModule&) = delete;
 	TraceModule& operator=(const TraceModule&) = delete;
-
-	// Default move operations
 	TraceModule(TraceModule&&) = default;
 	TraceModule& operator=(TraceModule&&) = default;
 
@@ -58,67 +58,30 @@ public:
 	 */
 	ExecutionTrace& addNewFunction(std::string_view functionName, Arena& arena);
 
-	/**
-	 * @brief Retrieves the execution trace for a specific function.
-	 *
-	 * @param functionName Name of the function to retrieve
-	 * @return Pointer to the ExecutionTrace if found, nullptr otherwise
-	 * @note The returned pointer is owned by the TraceModule and should not be deleted
-	 */
-	ExecutionTrace* getFunction(const std::string& functionName);
+	/// Associates generic attributes with a previously added function.
+	void setFunctionAttributes(const std::string& functionName,
+	                           const std::unordered_map<std::string, std::string>& attrs);
 
-	bool hasFunction(const std::string& functionName) const;
-	/**
-	 * @brief Retrieves the execution trace for a specific function (const version).
-	 *
-	 * @param functionName Name of the function to retrieve
-	 * @return Pointer to the ExecutionTrace if found, nullptr otherwise
-	 * @note The returned pointer is owned by the TraceModule and should not be deleted
-	 */
+	/// Returns the TraceFunctionDefinition for a function, or nullptr if not found.
+	TraceFunctionDefinition* getFunctionDefinition(const std::string& functionName);
+	const TraceFunctionDefinition* getFunctionDefinition(const std::string& functionName) const;
+
+	/// Convenience: returns the execution trace for a function, or nullptr.
+	ExecutionTrace* getFunction(const std::string& functionName);
 	const ExecutionTrace* getFunction(const std::string& functionName) const;
 
-	/**
-	 * @brief Converts all function traces to a string representation.
-	 *
-	 * Formats all execution traces in the module with function names as headers.
-	 * Useful for debugging and dumping trace information.
-	 *
-	 * @return String containing all function traces with headers like "Function: <name>"
-	 * @note The output format is consistent with ExecutionTrace::toString()
-	 */
-	std::string toString() const;
+	/// Convenience: returns the attributes for a function (empty map if none).
+	const std::unordered_map<std::string, std::string>& getFunctionAttributes(const std::string& functionName) const;
 
-	/**
-	 * @brief Gets a list of all function names in this module.
-	 *
-	 * @return Vector of function names contained in the module
-	 * @note The order of names is not guaranteed
-	 */
+	bool hasFunction(const std::string& functionName) const;
+
+	/// Returns all function names in sorted order.
 	std::vector<std::string> getFunctionNames() const;
 
-	/**
-	 * @brief Returns an iterator to the beginning of the functions map
-	 */
-	auto begin() {
-		return functions.begin();
-	}
-	auto begin() const {
-		return functions.begin();
-	}
-
-	/**
-	 * @brief Returns an iterator to the end of the functions map
-	 */
-	auto end() {
-		return functions.end();
-	}
-	auto end() const {
-		return functions.end();
-	}
+	std::string toString() const;
 
 private:
-	/// Maps function names to their execution traces
-	std::unordered_map<std::string, std::unique_ptr<ExecutionTrace>> functions;
+	std::unordered_map<std::string, TraceFunctionDefinition> functions;
 };
 
 /**
