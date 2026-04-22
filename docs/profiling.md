@@ -229,22 +229,27 @@ rather than addressed.
 - AsmJIT upstream begins emitting unwind info, at which point enabling
   profiling for it becomes a small additive change.
 
-## Rollout order
+## Rollout status
 
-1. Runtime library with stub `spdlog`-backed implementations of the C ABI;
-   expose a `Recorder` facility for tests; ship `Profiler.hpp` with
-   `startRegion`/`endRegion`/`ScopedRegion`/`traceCounter`; add a
-   `BasicRegionTest` that runs across the interpreter, MLIR, CPP, and BC
-   backends. (Done.)
-2. MLIR symbol registration via `jitSymbolContributor`; mirror the CPP test.
-3. Replace stubs with real Perfetto SDK calls; add `flushTrace` and the
-   per-module track model.
-4. Auto-instrumentation at registration time.
-5. JIT symbol map + MLIR `registerJitCode()` integration; verify that an
-   external `perf record` produces useful flamegraphs.
-6. In-process sampler: sampler thread, signal handler, ring buffer,
-   consumer, `StreamingProfilePacket` emission.
-7. Loop-level auto-instrumentation (optional, as a new IR phase).
-8. Compile-time strip pass for zero-overhead production builds.
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | C-ABI runtime stubs + `Profiler.hpp` + cross-backend `BasicRegionTest` | Done |
+| 2 | MLIR symbol registration for profiler runtime | Done (free via `ProxyCallOperation`) |
+| 3 | Chrome Trace Event JSON writer + `flushTrace` + per-module tracks via `openModule`/`closeModule` | Done |
+| 4 | Auto-instrumentation helper `profile::instrument("name", fn)` | Done |
+| 5 | `JitSymbols` registry + MLIR observer hook + `writePerfMap()` | Done |
+| 6 | SIGPROF in-process sampler (signal handler, SPSC rings, dladdr+JIT symbolication) | Done |
+| 7 | Loop-level auto-instrumentation (optional, IR phase) | Not started |
+| 8 | Compile-time strip pass for zero-overhead production builds | Not started |
 
-Steps 1–3 constitute the MVP. 4–6 add the sampler story. 7–8 are additive.
+The output format is Chrome Trace Event JSON rather than Perfetto protobuf
+because it loads natively in `ui.perfetto.dev` and `chrome://tracing`, needs
+no external SDK, and adds zero third-party dependencies. Swapping in the
+Perfetto SDK later is a TraceWriter-only change.
+
+The sampler reaches into the same recorder buffer that `startRegion`/
+`endRegion` fill, so regions and samples share one monotonic clock and one
+`.perftrace` file. In the Perfetto UI, clicking a region filters the
+flamegraph to stacks collected during that window.
+
+Steps 7 and 8 are deferred; the MVP plus sampler story is complete.
