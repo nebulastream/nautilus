@@ -105,6 +105,13 @@ void recordSampleEvent(Event ev) {
 	detail::recorderBuffer().push_back(std::move(ev));
 }
 
+// Exposes the monotonic session clock so the sampler (a separate TU) can
+// stamp samples in the same timebase as regions. Signal-safe: a relaxed
+// atomic load plus one steady_clock::now() call.
+uint64_t sessionNowMicros() {
+	return detail::nowMicros();
+}
+
 void openModule(const char* name) {
 	detail::tlsModuleStack.push_back(name != nullptr ? name : "<null>");
 }

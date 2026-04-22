@@ -31,6 +31,11 @@ namespace nautilus::profile {
 // can reach the shared recorder buffer without duplicating its mutex.
 void recordSampleEvent(Event ev);
 
+// Also defined in profile_runtime.cpp. Returns microseconds since the
+// recorder's session start — the same timebase region events use, so
+// samples and regions can be correlated on a shared timeline.
+uint64_t sessionNowMicros();
+
 namespace {
 
 // Stored per registered thread. Signal handler writes to `buffer` through
@@ -83,8 +88,10 @@ static uint64_t currentTid() {
 }
 
 static uint64_t monotonicUs() {
-	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch())
-	    .count();
+	// Share the timebase with the region recorder so a sample's ts can be
+	// compared directly against B/E timestamps and correlated to the region
+	// that was open at the moment the signal fired.
+	return sessionNowMicros();
 }
 
 static size_t roundUpPow2(size_t v) {
