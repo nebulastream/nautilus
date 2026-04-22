@@ -1,6 +1,6 @@
 include(CTest)
 include(Catch)
-add_executable(nautilus-execution-tests
+set(NAUTILUS_EXECUTION_TEST_SOURCES
         ExecutionTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
@@ -15,9 +15,29 @@ add_executable(nautilus-execution-tests
         SelectExecutionTest.cpp
 )
 
+if (ENABLE_MLIR_BACKEND)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            MLIRJitEventListenerTest.cpp
+            MLIRJitEventListenerTestFixture.cpp)
+endif ()
+
+add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
+
 target_link_libraries(nautilus-execution-tests PUBLIC nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
 if (ENABLE_LOGGING)
     target_link_libraries(nautilus-execution-tests PRIVATE spdlog::spdlog)
+endif ()
+if (ENABLE_MLIR_BACKEND)
+    # The fixture TU subclasses llvm::JITEventListener. Match how LLVM itself
+    # is built (-fno-rtti) so the derived vtable does not reference typeinfo
+    # symbols that the LLVM libs never export. The test TU itself still needs
+    # RTTI (val<T> uses typeid).
+    find_package(MLIR QUIET CONFIG)
+    if (MLIR_INCLUDE_DIRS)
+        target_include_directories(nautilus-execution-tests SYSTEM PRIVATE ${MLIR_INCLUDE_DIRS})
+    endif ()
+    set_source_files_properties(MLIRJitEventListenerTestFixture.cpp
+            PROPERTIES COMPILE_OPTIONS -fno-rtti)
 endif ()
 target_include_directories(nautilus-execution-tests PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>

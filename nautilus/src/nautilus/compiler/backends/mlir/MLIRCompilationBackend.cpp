@@ -109,7 +109,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// compiled execute function.
 	const auto jitStart = std::chrono::steady_clock::now();
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses());
+	                                            loweringProvider->getJitProxyTargetAddresses(),
+	                                            options.getMLIRJitEventListeners());
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

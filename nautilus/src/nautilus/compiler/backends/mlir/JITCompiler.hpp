@@ -2,6 +2,7 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
+#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/IR/Module.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
@@ -21,6 +22,7 @@ public:
 	static std::unique_ptr<MLIRJit> jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 	                                                 llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
 	                                                 const std::vector<std::string>& jitProxyFunctionSymbols,
-	                                                 const std::vector<void*>& jitProxyFunctionTargetAddresses);
+	                                                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
+	                                                 const std::vector<llvm::JITEventListener*>& eventListeners);
 };
 } // namespace nautilus::compiler::mlir

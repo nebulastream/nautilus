@@ -3,7 +3,6 @@
 // See https://llvm.org/LICENSE.txt (Apache-2.0 with LLVM exception).
 
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
-
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
