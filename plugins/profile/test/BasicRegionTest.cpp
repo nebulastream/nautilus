@@ -2,6 +2,7 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/profile/Instrument.hpp"
 #include "nautilus/profile/JitSymbols.hpp"
+#include "nautilus/profile/MLIR.hpp"
 #include "nautilus/profile/Profiler.hpp"
 #include "nautilus/profile/Recorder.hpp"
 #include "nautilus/profile/Sampler.hpp"
@@ -202,19 +203,18 @@ TEST_CASE("Profile plugin: JIT symbol table lookups", "[profile]") {
 
 #ifdef ENABLE_MLIR_BACKEND
 TEST_CASE("Profile plugin: MLIR compile populates the JIT symbol table", "[profile][mlir]") {
-	nautilus::profile::ensureMLIRBackendHookInstalled();
 	nautilus::profile::clearJitSymbols();
 
-	auto engine = nautilus::testing::makeEngine("mlir");
+	// Opt into JIT symbol registration for this engine by attaching our
+	// listener. Upstream mlir::ExecutionEngine forbids custom listeners;
+	// Nautilus's MLIRJit wrapper accepts them via this Options field.
+	auto engine = nautilus::testing::makeEngine(
+	    "mlir", [](engine::Options& o) { o.addMLIRJitEventListener(nautilus::profile::mlirJitEventListener()); });
 	auto f = engine.registerFunction(plainAdd);
 	REQUIRE(f(3, 4) == 7);
 
-	// After the first call, the MLIR lookup path should have fired the
-	// observer hook and registered the function's address.
 	const auto* exec = f.getExecutable();
 	REQUIRE(exec != nullptr);
-	// We don't have the raw pointer here, so fall back to a range walk via
-	// writePerfMap which reads the full registry.
 	auto path = nautilus::profile::writePerfMap();
 	REQUIRE_FALSE(path.empty());
 

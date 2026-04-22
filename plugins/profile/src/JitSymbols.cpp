@@ -1,5 +1,4 @@
 #include "nautilus/profile/JitSymbols.hpp"
-#include "nautilus/config.hpp"
 #include "nautilus/logging.hpp"
 #include <algorithm>
 #include <atomic>
@@ -9,15 +8,6 @@
 #include <mutex>
 #include <unistd.h>
 #include <vector>
-
-#ifndef ENABLE_MLIR_BACKEND
-// When MLIR is disabled the MLIRProfilePluginInit TU is not compiled in, so
-// we provide a no-op fallback here to keep the public API definition complete.
-namespace nautilus::profile {
-void ensureMLIRBackendHookInstalled() {
-}
-} // namespace nautilus::profile
-#endif
 
 namespace nautilus::profile {
 

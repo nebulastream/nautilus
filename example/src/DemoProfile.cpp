@@ -7,6 +7,7 @@
 #include "nautilus/function.hpp"
 #include "nautilus/profile/Instrument.hpp"
 #include "nautilus/profile/JitSymbols.hpp"
+#include "nautilus/profile/MLIR.hpp"
 #include "nautilus/profile/Profiler.hpp"
 #include "nautilus/profile/Recorder.hpp"
 #include "nautilus/profile/Sampler.hpp"
@@ -81,10 +82,12 @@ static val<int64_t> pipeline(val<int64_t> n) {
 // --- Driver ------------------------------------------------------------------
 
 int main(int /*argc*/, char* /*argv*/[]) {
-	profile::ensureMLIRBackendHookInstalled();
-
 	engine::Options options;
 	options.setOption("engine.backend", std::string {"mlir"});
+	// Authoritative (name, addr, size) for every JIT'd function comes from
+	// this listener — no more /proc/self/maps heuristic, no static
+	// initializer ordering tricks.
+	options.addMLIRJitEventListener(profile::mlirJitEventListener());
 	engine::NautilusEngine engine(options);
 
 	auto f = engine.registerFunction(pipeline);

@@ -237,7 +237,7 @@ rather than addressed.
 | 2 | MLIR symbol registration for profiler runtime | Done (free via `ProxyCallOperation`) |
 | 3 | Chrome Trace Event JSON writer + `flushTrace` + per-module tracks via `openModule`/`closeModule` | Done |
 | 4 | Auto-instrumentation helper `profile::instrument("name", fn)` | Done |
-| 5 | `JitSymbols` registry + MLIR observer hook + `writePerfMap()` | Done |
+| 5 | `JitSymbols` registry + `llvm::JITEventListener` attached via `Options::addMLIRJitEventListener` + `writePerfMap()` | Done |
 | 6 | SIGPROF in-process sampler (signal handler, SPSC rings, dladdr+JIT symbolication) | Done |
 | 7 | Loop-level auto-instrumentation (optional, IR phase) | Not started |
 | 8 | Compile-time strip pass for zero-overhead production builds | Not started |

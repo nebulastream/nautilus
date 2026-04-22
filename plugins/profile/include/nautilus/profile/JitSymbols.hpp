@@ -40,11 +40,4 @@ std::string writePerfMap();
 // Discards every registered symbol. Useful for tests.
 void clearJitSymbols();
 
-// When the profile plugin is linked as a static archive, the MLIR
-// backend-observer translation unit may be dropped because nothing else
-// references it. Call this function once (e.g. at program start) to force
-// the linker to keep the TU and activate JIT-symbol registration for
-// MLIR-compiled functions. No-op if ENABLE_MLIR_BACKEND was off.
-void ensureMLIRBackendHookInstalled();
-
 } // namespace nautilus::profile
