@@ -8,25 +8,25 @@
 namespace nautilus::compiler::mlir {
 static std::mutex llvm_jit_mutex {};
 
-MLIRExecutable::MLIRExecutable(std::unique_ptr<::mlir::ExecutionEngine> engine) : engine(std::move(engine)) {
+MLIRExecutable::MLIRExecutable(std::unique_ptr<MLIRJit> jit) : jit(std::move(jit)) {
 }
 MLIRExecutable::~MLIRExecutable() {
-	if (engine) {
+	if (jit) {
 		std::scoped_lock lock(llvm_jit_mutex);
-		engine.reset();
+		jit.reset();
 	}
 }
-MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept : engine(std::move(other.engine)) {
+MLIRExecutable::MLIRExecutable(MLIRExecutable&& other) noexcept : jit(std::move(other.jit)) {
 }
 MLIRExecutable& MLIRExecutable::operator=(MLIRExecutable&& other) noexcept {
 	if (this == &other)
 		return *this;
-	engine = std::move(other.engine);
+	jit = std::move(other.jit);
 	return *this;
 }
 void* MLIRExecutable::getInvocableFunctionPtr(const std::string& member) {
 	std::scoped_lock lock(llvm_jit_mutex);
-	return engine->lookup(member).get();
+	return jit->lookup(member).get();
 }
 bool MLIRExecutable::hasInvocableFunctionPtr() {
 	return true;

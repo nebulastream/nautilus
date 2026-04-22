@@ -5,6 +5,14 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
+
+// Forward-declared so the Nautilus public header does not pull in LLVM.
+// Only the MLIR backend dereferences these pointers; if MLIR is disabled,
+// the list simply stays empty.
+namespace llvm {
+class JITEventListener;
+} // namespace llvm
 
 namespace nautilus::engine {
 
@@ -30,7 +38,21 @@ public:
 		return defaultValue;
 	}
 
+	// Register a JITEventListener to attach to the MLIR backend's JIT.
+	// The caller retains ownership; the listener must outlive every
+	// Executable produced by an Engine configured with this Options.
+	void addMLIRJitEventListener(llvm::JITEventListener* listener) {
+		if (listener != nullptr) {
+			mlir_jit_event_listeners_.push_back(listener);
+		}
+	}
+
+	const std::vector<llvm::JITEventListener*>& getMLIRJitEventListeners() const {
+		return mlir_jit_event_listeners_;
+	}
+
 private:
 	std::unordered_map<std::string, OptionValue> options;
+	std::vector<llvm::JITEventListener*> mlir_jit_event_listeners_;
 };
 } // namespace nautilus::engine

@@ -11,6 +11,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <chrono>
+#include <llvm/Support/TargetSelect.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
@@ -27,8 +28,8 @@ namespace nautilus::compiler::mlir {
 
 MLIRCompilationBackend::MLIRCompilationBackend() {
 	// Initialize information about the local machine in LLVM.
-	LLVMInitializeNativeTarget();
-	LLVMInitializeNativeAsmPrinter();
+	llvm::InitializeNativeTarget();
+	llvm::InitializeNativeTargetAsmPrinter();
 
 	// Register default MLIR intrinsics
 	RegisterMLIRMemoryIntrinsicPlugin();
@@ -108,7 +109,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// compiled execute function.
 	const auto jitStart = std::chrono::steady_clock::now();
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses());
+	                                            loweringProvider->getJitProxyTargetAddresses(),
+	                                            options.getMLIRJitEventListeners());
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
