@@ -103,11 +103,11 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		auto transformErr =
 		    tsm.withModuleDo([&options](llvm::Module& m) -> llvm::Error { return options.transformer(&m); });
 		if (transformErr) {
-			return std::move(transformErr);
+			return transformErr;
 		}
 	}
 	if (auto err = jit->addIRModule(std::move(tsm))) {
-		return std::move(err);
+		return err;
 	}
 
 	// Resolve symbols that are statically linked in the current process.
@@ -122,7 +122,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	// due to a known LLVM bug (llvm/llvm-project#71963); mirror that.
 	if (!jit->getTargetTriple().isAArch64()) {
 		if (auto err = jit->initialize(mainJD)) {
-			return std::move(err);
+			return err;
 		}
 	}
 
