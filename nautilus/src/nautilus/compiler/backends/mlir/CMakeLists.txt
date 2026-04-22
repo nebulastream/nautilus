@@ -15,10 +15,24 @@ if (ENABLE_MLIR_BACKEND)
     message(STATUS "dialect_libs: ${dialect_libs}")
     message(STATUS "conversion_libs: ${conversion_libs}")
     message(STATUS "extension_libs: ${extension_libs}")
+    # Native codegen libs (host target backend + asm printer); used to be
+    # pulled in transitively via MLIRExecutionEngine.
+    llvm_map_components_to_libnames(nautilus_llvm_native_libs native)
+
     target_link_libraries(nautilus
             PRIVATE
-            MLIRExecutionEngine
+            # MLIRExecutionEngine is deliberately NOT linked: Nautilus drives
+            # LLJIT directly via our own MLIRJit wrapper (see jit/).
+            MLIRTargetLLVMIRExport                  # translateModuleToLLVMIR
+            MLIRBuiltinToLLVMIRTranslation          # registerBuiltinDialectTranslation
+            MLIRLLVMToLLVMIRTranslation             # registerLLVMDialectTranslation
+            MLIRExecutionEngineUtils                # makeOptimizingTransformer (OptUtils)
             MLIRFuncAllExtensions
+            # LLVM libs for our direct LLJIT build.
+            LLVMOrcJIT
+            LLVMExecutionEngine
+            LLVMRuntimeDyld                         # SectionMemoryManager
+            ${nautilus_llvm_native_libs}
             # Dialects
             MLIRMathToLLVM
             MLIRFuncToLLVM
