@@ -11,6 +11,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <chrono>
+#include <llvm/Support/TargetSelect.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/Func/Extensions/AllExtensions.h>
@@ -27,8 +28,8 @@ namespace nautilus::compiler::mlir {
 
 MLIRCompilationBackend::MLIRCompilationBackend() {
 	// Initialize information about the local machine in LLVM.
-	LLVMInitializeNativeTarget();
-	LLVMInitializeNativeAsmPrinter();
+	llvm::InitializeNativeTarget();
+	llvm::InitializeNativeTargetAsmPrinter();
 
 	// Register default MLIR intrinsics
 	RegisterMLIRMemoryIntrinsicPlugin();

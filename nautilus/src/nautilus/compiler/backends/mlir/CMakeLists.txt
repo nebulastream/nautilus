@@ -25,7 +25,8 @@ if (ENABLE_MLIR_BACKEND)
             MLIRReconcileUnrealizedCasts
     )
     
-    add_subdirectory(intrinsics)    
+    add_subdirectory(intrinsics)
+    add_subdirectory(jit)
     add_source_files(nautilus
             MLIRLoweringProvider.cpp
             MLIRCompilationBackend.cpp

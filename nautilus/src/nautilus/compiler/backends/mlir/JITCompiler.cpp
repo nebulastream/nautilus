@@ -10,24 +10,22 @@
 
 namespace nautilus::compiler::mlir {
 
-std::unique_ptr<::mlir::ExecutionEngine>
-JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
-                              const llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
-                              const std::vector<std::string>& jitProxyFunctionSymbols,
-                              const std::vector<void*>& jitProxyFunctionTargetAddresses) {
+std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
+                                                       llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
+                                                       const std::vector<std::string>& jitProxyFunctionSymbols,
+                                                       const std::vector<void*>& jitProxyFunctionTargetAddresses) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
 	::mlir::registerBuiltinDialectTranslation(*mlirModule->getContext());
 	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 
-	// Create MLIR execution engine (wrapper around LLVM ExecutionEngine).
-	::mlir::ExecutionEngineOptions options;
-	options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
-	options.transformer = optPipeline;
-	auto maybeEngine = ::mlir::ExecutionEngine::create(*mlirModule, options);
+	MLIRJit::Options jitOptions;
+	jitOptions.codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+	jitOptions.transformer = optPipeline;
 
-	assert(maybeEngine && "failed to construct an execution engine");
+	auto maybeJit = MLIRJit::create(*mlirModule, jitOptions);
+	assert(maybeJit && "failed to construct an execution engine");
 
 	// We register all external functions (symbols) that we do not inline.
 	const auto runtimeSymbolMap = [&](llvm::orc::MangleAndInterner interner) {
@@ -48,8 +46,8 @@ JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
 		}
 		return symbolMap;
 	};
-	auto& engine = maybeEngine.get();
-	engine->registerSymbols(runtimeSymbolMap);
-	return std::move(engine);
+	auto& jit = maybeJit.get();
+	jit->registerSymbols(runtimeSymbolMap);
+	return std::move(jit);
 }
 } // namespace nautilus::compiler::mlir

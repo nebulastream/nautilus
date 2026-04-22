@@ -1,7 +1,7 @@
 #pragma once
 
 #include "nautilus/Executable.hpp"
-#include <mlir/ExecutionEngine/ExecutionEngine.h>
+#include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 
 namespace nautilus::compiler::mlir {
 
@@ -10,7 +10,7 @@ namespace nautilus::compiler::mlir {
  */
 class MLIRExecutable : public Executable {
 public:
-	MLIRExecutable(std::unique_ptr<::mlir::ExecutionEngine> engine);
+	MLIRExecutable(std::unique_ptr<MLIRJit> jit);
 	~MLIRExecutable() override;
 	MLIRExecutable(const MLIRExecutable& other) = delete;
 	MLIRExecutable(MLIRExecutable&& other) noexcept;
@@ -24,6 +24,6 @@ public:
 	bool hasInvocableFunctionPtr() override;
 
 private:
-	std::unique_ptr<::mlir::ExecutionEngine> engine;
+	std::unique_ptr<MLIRJit> jit;
 };
 } // namespace nautilus::compiler::mlir
