@@ -26,9 +26,9 @@ using namespace nautilus;
 // entry that dladdr can name from a signal handler.
 extern "C" __attribute__((noinline, visibility("default"))) int64_t nativeMix(int64_t x, int64_t seed) noexcept {
 	uint64_t v = static_cast<uint64_t>(x) ^ static_cast<uint64_t>(seed);
-	// Splittable-random-style mix, iterated to give the sampler something
-	// to catch us in the middle of.
-	for (int i = 0; i < 256; ++i) {
+	// Splittable-random-style mix, iterated heavily so the sampler can
+	// catch us in the middle even with per-event clock_gettime overhead.
+	for (int i = 0; i < 4096; ++i) {
 		v ^= v >> 30;
 		v *= 0xbf58476d1ce4e5b9ULL;
 		v ^= v >> 27;
