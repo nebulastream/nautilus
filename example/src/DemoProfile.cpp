@@ -117,6 +117,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
 		std::cerr << "flushTrace failed\n";
 		return 1;
 	}
+	const std::string perf_map = profile::writePerfMap();
+	if (!perf_map.empty()) {
+		std::cerr << "wrote " << perf_map << "\n";
+	}
 
 	// Emit a small stderr summary so the operator sees what just happened
 	// without having to grep the trace file by hand.
