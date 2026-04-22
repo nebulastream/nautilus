@@ -112,7 +112,18 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 
 	// Resolve symbols that are statically linked in the current process.
 	auto& mainJD = jit->getMainJITDylib();
+	// GCC 12+ at -O3 (and with asan) raises a spurious -Wmaybe-uninitialized
+	// inside the inlined move constructor of llvm::unique_function for the
+	// defaulted AddAbsoluteSymbolsFn parameter. The warning is a known
+	// false positive in gcc's inliner; suppress locally.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 	auto generatorOrErr = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(dataLayout.getGlobalPrefix());
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 	if (!generatorOrErr) {
 		return generatorOrErr.takeError();
 	}
