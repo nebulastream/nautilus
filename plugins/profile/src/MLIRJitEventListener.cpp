@@ -104,7 +104,11 @@ public:
 } // namespace
 
 llvm::JITEventListener* mlirJitEventListener() {
-	// Process-singleton. It outlives every Engine and NautilusModule.
+	// Installing the listener is a strong signal that the user wants the
+	// profile plugin engaged for MLIR compilations, so also pull in the
+	// intrinsic lowering that inlines llvm.readcyclecounter(). Both sides
+	// are idempotent.
+	registerMLIRIntrinsics();
 	static ProfileListener instance;
 	return &instance;
 }

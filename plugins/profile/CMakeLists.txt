@@ -7,7 +7,9 @@ set(PROFILE_SOURCES
 )
 
 if (ENABLE_MLIR_BACKEND)
-    list(APPEND PROFILE_SOURCES src/MLIRJitEventListener.cpp)
+    list(APPEND PROFILE_SOURCES
+            src/MLIRJitEventListener.cpp
+            src/MLIRProfileIntrinsics.cpp)
 endif ()
 
 target_sources(nautilus-profile PRIVATE ${PROFILE_SOURCES})

@@ -17,6 +17,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(__x86_64__) || defined(__i386__)
+#include <cpuid.h>
+#endif
+
 namespace nautilus::profile::detail {
 
 static std::mutex& recorderMutex() {
@@ -29,17 +33,98 @@ static std::vector<Event>& recorderBuffer() {
 	return buf;
 }
 
-// Session start time; every event ts is (now - sessionStart) in microseconds.
-// Reset by clearRecordedEvents().
-static std::atomic<std::chrono::steady_clock::time_point>& sessionStart() {
-	static std::atomic<std::chrono::steady_clock::time_point> t {std::chrono::steady_clock::now()};
-	return t;
+// ---- Session timebase ------------------------------------------------------
+//
+// Event timestamps are raw "ticks" from a monotonic cycle counter (invariant
+// TSC on x86, CNTVCT on arm64) where available. The JIT'd path emits
+// `llvm.readcyclecounter()` inline before calling the profiler runtime, so
+// the cost of a region event drops from a vDSO `clock_gettime` (~20-30 ns)
+// to a single `rdtsc` (~5-10 ns). On hardware without an invariant cycle
+// counter, we fall back to `steady_clock::now()` expressed in nanoseconds
+// and the calibration degenerates to 1000 ticks/µs.
+//
+// Conversion to microseconds happens lazily at flush time so the hot path
+// never divides.
+
+struct Timebase {
+	bool useTsc = false;     // true if the raw tick source is rdtsc/cntvct
+	uint64_t baseline = 0;   // subtracted from raw ticks to produce session-relative
+	double ticks_per_us = 1; // divisor applied at flush time
+};
+
+static bool hostHasInvariantCycleCounter() {
+#if defined(__aarch64__)
+	return true; // arm64 cntvct is architecturally invariant
+#elif defined(__x86_64__) || defined(__i386__)
+	unsigned int max_ext = __get_cpuid_max(0x80000000u, nullptr);
+	if (max_ext < 0x80000007u) {
+		return false;
+	}
+	unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+	if (!__get_cpuid(0x80000007u, &eax, &ebx, &ecx, &edx)) {
+		return false;
+	}
+	return ((edx >> 8) & 1u) != 0u;
+#else
+	return false;
+#endif
 }
 
-static uint64_t nowMicros() {
-	using namespace std::chrono;
-	auto start = sessionStart().load(std::memory_order_relaxed);
-	return duration_cast<microseconds>(steady_clock::now() - start).count();
+static inline uint64_t rawCycles() {
+#if defined(__x86_64__) || defined(__i386__) || defined(__aarch64__)
+	return __builtin_readcyclecounter();
+#else
+	auto d = std::chrono::steady_clock::now().time_since_epoch();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+#endif
+}
+
+static inline uint64_t steadyNanos() {
+	auto d = std::chrono::steady_clock::now().time_since_epoch();
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+}
+
+static Timebase calibrateTimebase() {
+	Timebase tb;
+	tb.useTsc = hostHasInvariantCycleCounter();
+	if (tb.useTsc) {
+		// Measure ticks/µs by sleeping briefly. 5 ms is enough to dwarf
+		// clock-read jitter without noticeably delaying startup.
+		uint64_t t0 = rawCycles();
+		auto w0 = std::chrono::steady_clock::now();
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		uint64_t t1 = rawCycles();
+		auto w1 = std::chrono::steady_clock::now();
+		auto us = std::chrono::duration_cast<std::chrono::microseconds>(w1 - w0).count();
+		if (us > 0 && t1 > t0) {
+			tb.ticks_per_us = static_cast<double>(t1 - t0) / static_cast<double>(us);
+		}
+		tb.baseline = t0;
+	} else {
+		// Fallback: store steady_clock nanoseconds; 1000 ticks per µs.
+		tb.ticks_per_us = 1000.0;
+		tb.baseline = steadyNanos();
+	}
+	return tb;
+}
+
+static Timebase& timebase() {
+	// Meyers singleton with first-use calibration. Access from the profiler
+	// hot path is a pair of relaxed atomic loads (ticks_per_us + baseline).
+	static Timebase tb = calibrateTimebase();
+	return tb;
+}
+
+static uint64_t sessionTicks() {
+	const Timebase& tb = timebase();
+	if (tb.useTsc) {
+		return rawCycles() - tb.baseline;
+	}
+	return steadyNanos() - tb.baseline;
+}
+
+uint64_t ticksToMicros(uint64_t ticks) {
+	return static_cast<uint64_t>(static_cast<double>(ticks) / timebase().ticks_per_us);
 }
 
 static uint64_t currentTid() {
@@ -70,12 +155,12 @@ static void record(Event ev) {
 	recorderBuffer().push_back(std::move(ev));
 }
 
-static Event makeEvent(Event::Kind kind, const char* name, int64_t value) {
+static Event makeEvent(Event::Kind kind, const char* name, int64_t value, uint64_t ticks) {
 	Event ev;
 	ev.kind = kind;
 	ev.name = name != nullptr ? name : "<null>";
 	ev.value = value;
-	ev.timestamp_us = nowMicros();
+	ev.timestamp_ticks = ticks;
 	ev.tid = currentTid();
 	ev.module = currentModule();
 	return ev;
@@ -95,7 +180,10 @@ std::vector<Event> takeRecordedEvents() {
 void clearRecordedEvents() {
 	std::lock_guard<std::mutex> lock(detail::recorderMutex());
 	detail::recorderBuffer().clear();
-	detail::sessionStart().store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+	// Reset the timebase baseline so the next session's events start at
+	// ticks=0 again. ticks_per_us and useTsc stay as calibrated.
+	auto& tb = detail::timebase();
+	tb.baseline = tb.useTsc ? detail::rawCycles() : detail::steadyNanos();
 }
 
 // Bridge used by the sampler consumer. Defined here so the recorder state
@@ -106,10 +194,12 @@ void recordSampleEvent(Event ev) {
 }
 
 // Exposes the monotonic session clock so the sampler (a separate TU) can
-// stamp samples in the same timebase as regions. Signal-safe: a relaxed
-// atomic load plus one steady_clock::now() call.
-uint64_t sessionNowMicros() {
-	return detail::nowMicros();
+// stamp samples in the same timebase as regions. Returns raw ticks; the
+// sampler records them directly into Event::timestamp_ticks. Signal-safe:
+// just a couple of atomic loads and a rdtsc/cntvct read on TSC-capable
+// hardware, or steady_clock::now() on the fallback path.
+uint64_t sessionNowTicks() {
+	return detail::sessionTicks();
 }
 
 void openModule(const char* name) {
@@ -231,7 +321,7 @@ bool flushTrace(const std::string& path) {
 		buf.append(",\"tid\":");
 		buf.append(std::to_string(vtid));
 		buf.append(",\"ts\":");
-		buf.append(std::to_string(ev.timestamp_us));
+		buf.append(std::to_string(detail::ticksToMicros(ev.timestamp_ticks)));
 
 		switch (ev.kind) {
 		case Event::Kind::Begin:
@@ -298,22 +388,46 @@ bool flushTrace(const std::string& path) {
 
 extern "C" {
 
+// Default entry points — read the cycle counter internally. Used by the
+// interpreter and by the CPP/BC backends that call invoke() directly.
+
 void __nautilus_profile_begin(const char* name) {
-	nautilus::log::debug("profile.begin {}", name != nullptr ? name : "<null>");
+	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
 	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::Begin, name, 0));
+	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::Begin, name, 0, ticks));
 }
 
 void __nautilus_profile_end(const char* name) {
-	nautilus::log::debug("profile.end {}", name != nullptr ? name : "<null>");
+	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
 	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::End, name, 0));
+	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::End, name, 0, ticks));
 }
 
 void __nautilus_profile_counter_i64(const char* name, int64_t value) {
-	nautilus::log::debug("profile.counter {} {}", name != nullptr ? name : "<null>", value);
+	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
 	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::CounterI64, name, value));
+	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::CounterI64, name, value, ticks));
+}
+
+// Pre-timed entry points — the caller (currently only the MLIR intrinsic
+// lowering) emits llvm.readcyclecounter() inline and passes the raw tick
+// value. Saves one function call and the cost of reading the counter
+// through the plain entry point.
+
+void __nautilus_profile_begin_ticks(const char* name, uint64_t ticks) {
+	nautilus::profile::detail::record(nautilus::profile::detail::makeEvent(
+	    nautilus::profile::Event::Kind::Begin, name, 0, ticks - nautilus::profile::detail::timebase().baseline));
+}
+
+void __nautilus_profile_end_ticks(const char* name, uint64_t ticks) {
+	nautilus::profile::detail::record(nautilus::profile::detail::makeEvent(
+	    nautilus::profile::Event::Kind::End, name, 0, ticks - nautilus::profile::detail::timebase().baseline));
+}
+
+void __nautilus_profile_counter_i64_ticks(const char* name, int64_t value, uint64_t ticks) {
+	nautilus::profile::detail::record(
+	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::CounterI64, name, value,
+	                                         ticks - nautilus::profile::detail::timebase().baseline));
 }
 
 } // extern "C"

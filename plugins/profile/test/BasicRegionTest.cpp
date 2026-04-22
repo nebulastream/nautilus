@@ -164,7 +164,7 @@ TEST_CASE("Profile plugin: openModule groups regions onto a named track", "[prof
 	REQUIRE(events.size() == 2);
 	CHECK(events[0].module == "module_A");
 	CHECK(events[1].module == "module_A");
-	CHECK(events[0].timestamp_us <= events[1].timestamp_us);
+	CHECK(events[0].timestamp_ticks <= events[1].timestamp_ticks);
 	CHECK(events[0].tid == events[1].tid);
 }
 

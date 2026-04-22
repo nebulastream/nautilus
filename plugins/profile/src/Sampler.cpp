@@ -31,10 +31,10 @@ namespace nautilus::profile {
 // can reach the shared recorder buffer without duplicating its mutex.
 void recordSampleEvent(Event ev);
 
-// Also defined in profile_runtime.cpp. Returns microseconds since the
-// recorder's session start — the same timebase region events use, so
-// samples and regions can be correlated on a shared timeline.
-uint64_t sessionNowMicros();
+// Also defined in profile_runtime.cpp. Returns raw cycle-counter ticks
+// since the recorder's session start — the same timebase region events
+// use, so samples and regions correlate on a shared timeline.
+uint64_t sessionNowTicks();
 
 namespace {
 
@@ -42,7 +42,7 @@ namespace {
 // `head` (producer); consumer advances `tail`. SPSC, so plain atomics
 // suffice for ordering.
 struct Sample {
-	uint64_t ts_us;
+	uint64_t ts_ticks;
 	uint32_t depth;
 	void* frames[64];
 };
@@ -87,11 +87,11 @@ static uint64_t currentTid() {
 #endif
 }
 
-static uint64_t monotonicUs() {
-	// Share the timebase with the region recorder so a sample's ts can be
-	// compared directly against B/E timestamps and correlated to the region
-	// that was open at the moment the signal fired.
-	return sessionNowMicros();
+static uint64_t monotonicTicks() {
+	// Share the timebase with the region recorder so a sample's timestamp
+	// can be compared directly against B/E timestamps and correlated to
+	// the region that was open at the moment the signal fired.
+	return sessionNowTicks();
 }
 
 static size_t roundUpPow2(size_t v) {
@@ -125,7 +125,7 @@ extern "C" void sigprof_handler(int /*sig*/, siginfo_t* /*info*/, void* /*ctx*/)
 	}
 
 	Sample& s = slot->buffer[head & slot->mask];
-	s.ts_us = monotonicUs();
+	s.ts_ticks = monotonicTicks();
 	int depth = backtrace(s.frames, static_cast<int>(sizeof(s.frames) / sizeof(void*)));
 	s.depth = depth > 0 ? static_cast<uint32_t>(depth) : 0;
 
@@ -186,7 +186,7 @@ static size_t drainSlot(ThreadSlot* slot) {
 		ev.kind = Event::Kind::Sample;
 		ev.name = "sample";
 		ev.value = 0;
-		ev.timestamp_us = s.ts_us;
+		ev.timestamp_ticks = s.ts_ticks;
 		ev.tid = slot->tid;
 		ev.module.clear();
 		ev.stack.reserve(s.depth);

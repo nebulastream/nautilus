@@ -21,7 +21,7 @@ struct Event {
 	Kind kind;
 	std::string name;
 	int64_t value;                  // only meaningful for CounterI64
-	uint64_t timestamp_us;          // monotonic microseconds since recorder init
+	uint64_t timestamp_ticks;       // raw cycle counter since session start
 	uint64_t tid;                   // OS thread id
 	std::string module;             // innermost open module on the emitting thread
 	std::vector<std::string> stack; // resolved frames, Sample events only
