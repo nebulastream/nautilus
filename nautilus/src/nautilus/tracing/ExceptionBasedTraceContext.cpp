@@ -348,6 +348,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	registeredFunctions.clear();
 	setActiveTracer(this);
 
+	bool isFirstFunction = true;
 	while (!functionsToTrace.empty()) {
 		auto currentFunction = functionsToTrace.front();
 		functionsToTrace.pop_front();
@@ -357,7 +358,15 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
-		traceModule->setFunctionAttributes(currentFunction.getName(), currentFunction.getAttributes());
+		// The first function popped from the user-supplied list is the entry point.
+		// Tag it so backends can identify it without relying on positional ordering
+		// (function names get sorted alphabetically downstream).
+		auto attributes = currentFunction.getAttributes();
+		if (isFirstFunction) {
+			attributes["entry"] = "true";
+			isFirstFunction = false;
+		}
+		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

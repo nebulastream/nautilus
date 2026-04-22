@@ -91,8 +91,10 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(*trace->getBlocks().front());
-	auto* functionOperation = ir->getArena().create<FunctionOperation>(
-	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType);
+	std::unordered_map<std::string, std::string> attributes = {{"entry", "true"}};
+	auto* functionOperation =
+	    ir->getArena().create<FunctionOperation>("execute", std::move(currentBasicBlocks), std::vector<Type> {},
+	                                             std::vector<std::string> {}, returnType, std::move(attributes));
 	ir->addFunctionOperation(functionOperation);
 	return ir;
 }

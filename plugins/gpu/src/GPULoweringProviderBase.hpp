@@ -152,6 +152,29 @@ protected:
 		}
 	}
 
+	/// Returns the user-visible entry-point function. Picks the one tagged with
+	/// the `entry` attribute (set by the trace contexts on the first traced
+	/// function); falls back to the first non-kernel function and finally to
+	/// `functionOperations[0]` so legacy callers that bypass the trace contexts
+	/// still get a result.
+	const ir::FunctionOperation* getEntryFunction() const {
+		const auto& functionOperations = ir->getFunctionOperations();
+		if (functionOperations.empty()) {
+			return nullptr;
+		}
+		for (const auto* func : functionOperations) {
+			if (func->hasAttribute("entry")) {
+				return func;
+			}
+		}
+		for (const auto* func : functionOperations) {
+			if (!kernelFunctions.contains(func->getName())) {
+				return func;
+			}
+		}
+		return functionOperations[0];
+	}
+
 	static std::string getVariable(const ir::OperationIdentifier& id) {
 		return "var_" + id.toString();
 	}
@@ -372,8 +395,7 @@ protected:
 	}
 
 	template <class OpType>
-	void processBinary(ir::Operation* o, const std::string& operation, short blockIndex,
-	                   RegisterFrame& frame) {
+	void processBinary(ir::Operation* o, const std::string& operation, short blockIndex, RegisterFrame& frame) {
 		auto op = static_cast<OpType*>(o);
 		auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 		auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());
