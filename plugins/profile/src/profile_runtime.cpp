@@ -2,6 +2,7 @@
 #include "nautilus/logging.hpp"
 #include "nautilus/profile/Recorder.hpp"
 #include "nautilus/profile/TraceWriter.hpp"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -23,16 +24,6 @@
 
 namespace nautilus::profile::detail {
 
-static std::mutex& recorderMutex() {
-	static std::mutex m;
-	return m;
-}
-
-static std::vector<Event>& recorderBuffer() {
-	static std::vector<Event> buf;
-	return buf;
-}
-
 // ---- Session timebase ------------------------------------------------------
 //
 // Event timestamps are raw "ticks" from a monotonic cycle counter (invariant
@@ -47,14 +38,14 @@ static std::vector<Event>& recorderBuffer() {
 // never divides.
 
 struct Timebase {
-	bool useTsc = false;     // true if the raw tick source is rdtsc/cntvct
-	uint64_t baseline = 0;   // subtracted from raw ticks to produce session-relative
-	double ticks_per_us = 1; // divisor applied at flush time
+	bool useTsc = false;
+	uint64_t baseline = 0;
+	double ticks_per_us = 1;
 };
 
 static bool hostHasInvariantCycleCounter() {
 #if defined(__aarch64__)
-	return true; // arm64 cntvct is architecturally invariant
+	return true;
 #elif defined(__x86_64__) || defined(__i386__)
 	unsigned int max_ext = __get_cpuid_max(0x80000000u, nullptr);
 	if (max_ext < 0x80000007u) {
@@ -88,8 +79,6 @@ static Timebase calibrateTimebase() {
 	Timebase tb;
 	tb.useTsc = hostHasInvariantCycleCounter();
 	if (tb.useTsc) {
-		// Measure ticks/µs by sleeping briefly. 5 ms is enough to dwarf
-		// clock-read jitter without noticeably delaying startup.
 		uint64_t t0 = rawCycles();
 		auto w0 = std::chrono::steady_clock::now();
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -101,7 +90,6 @@ static Timebase calibrateTimebase() {
 		}
 		tb.baseline = t0;
 	} else {
-		// Fallback: store steady_clock nanoseconds; 1000 ticks per µs.
 		tb.ticks_per_us = 1000.0;
 		tb.baseline = steadyNanos();
 	}
@@ -109,8 +97,6 @@ static Timebase calibrateTimebase() {
 }
 
 static Timebase& timebase() {
-	// Meyers singleton with first-use calibration. Access from the profiler
-	// hot path is a pair of relaxed atomic loads (ticks_per_us + baseline).
 	static Timebase tb = calibrateTimebase();
 	return tb;
 }
@@ -131,39 +117,150 @@ static uint64_t currentTid() {
 #if defined(__linux__)
 	return static_cast<uint64_t>(::syscall(SYS_gettid));
 #else
-	// macOS and generic fallback: hash the std::thread::id. Stable for the
-	// lifetime of the thread and unique across live threads, which is all
-	// the trace writer needs.
 	return std::hash<std::thread::id> {}(std::this_thread::get_id());
 #endif
 }
 
-// Per-thread stack of open module names. "module" here means a logical
-// region-grouping opened via profile::openModule, not an MLIR/Nautilus
-// compilation module.
+// Per-thread stack of open module names. Stored as raw const char* pointers;
+// the caller guarantees these point to static storage (per the design doc).
 static thread_local std::vector<const char*> tlsModuleStack;
 
-static std::string currentModule() {
-	if (tlsModuleStack.empty()) {
-		return {};
+static const char* currentModuleRaw() {
+	return tlsModuleStack.empty() ? nullptr : tlsModuleStack.back();
+}
+
+// ---- Per-thread region-event SPSC ring -------------------------------------
+//
+// Trivially copyable payload, 40 bytes. Writer (profiler hot path) does two
+// atomic loads + a small number of stores + one atomic store with release.
+// No mutex, no allocation.
+
+struct RegionEvent {
+	uint64_t ticks;
+	const char* name;   // interned literal
+	const char* module; // interned literal or nullptr
+	int64_t value;      // counter value, else 0
+	uint32_t kind;      // static_cast<uint32_t>(Event::Kind)
+	uint32_t pad;       // explicit padding — pointer-aligned
+};
+static_assert(sizeof(RegionEvent) == 40, "RegionEvent layout changed unexpectedly");
+
+struct RegionSlot {
+	std::atomic<uint64_t> head {0};
+	std::atomic<uint64_t> tail {0};
+	std::atomic<uint64_t> overruns {0};
+	size_t mask = 0;
+	std::vector<RegionEvent> buffer;
+	uint64_t tid = 0;
+};
+
+static std::mutex& regionSlotsMutex() {
+	static std::mutex m;
+	return m;
+}
+static std::vector<RegionSlot*>& regionSlots() {
+	static std::vector<RegionSlot*> v;
+	return v;
+}
+static thread_local RegionSlot* tls_region_slot = nullptr;
+
+// Ring capacity. Large enough that typical workloads never drop events but
+// small enough that per-thread overhead stays reasonable (64 KiB each).
+static constexpr size_t kRegionRingSlots = 16 * 1024;
+
+static RegionSlot* getOrCreateRegionSlot() {
+	if (tls_region_slot != nullptr) {
+		return tls_region_slot;
 	}
-	return tlsModuleStack.back();
+	auto* slot = new RegionSlot();
+	slot->buffer.resize(kRegionRingSlots);
+	slot->mask = kRegionRingSlots - 1;
+	slot->tid = currentTid();
+	tls_region_slot = slot;
+	{
+		std::lock_guard<std::mutex> lock(regionSlotsMutex());
+		regionSlots().push_back(slot);
+	}
+	return slot;
 }
 
-static void record(Event ev) {
-	std::lock_guard<std::mutex> lock(recorderMutex());
-	recorderBuffer().push_back(std::move(ev));
+static inline void pushRegionEvent(Event::Kind kind, const char* name, int64_t value, uint64_t ticks) {
+	RegionSlot* slot = getOrCreateRegionSlot();
+	const uint64_t head = slot->head.load(std::memory_order_relaxed);
+	const uint64_t tail = slot->tail.load(std::memory_order_acquire);
+	if (head - tail >= slot->buffer.size()) {
+		slot->overruns.fetch_add(1, std::memory_order_relaxed);
+		return;
+	}
+	RegionEvent& e = slot->buffer[head & slot->mask];
+	e.ticks = ticks;
+	e.name = name != nullptr ? name : "<null>";
+	e.module = currentModuleRaw();
+	e.value = value;
+	e.kind = static_cast<uint32_t>(kind);
+	e.pad = 0;
+	slot->head.store(head + 1, std::memory_order_release);
 }
 
-static Event makeEvent(Event::Kind kind, const char* name, int64_t value, uint64_t ticks) {
-	Event ev;
-	ev.kind = kind;
-	ev.name = name != nullptr ? name : "<null>";
-	ev.value = value;
-	ev.timestamp_ticks = ticks;
-	ev.tid = currentTid();
-	ev.module = currentModule();
-	return ev;
+// ---- Sample-event buffer ---------------------------------------------------
+//
+// Samples are low-frequency (~2 kHz) and already land on the consumer thread
+// via the Sampler's own per-thread rings. Keep them in a simple global
+// mutex-protected vector here — the hot path for these is already off the
+// profiler's critical section.
+
+static std::mutex& sampleMutex() {
+	static std::mutex m;
+	return m;
+}
+static std::vector<Event>& sampleBuffer() {
+	static std::vector<Event> v;
+	return v;
+}
+
+// ---- Drain: materialize a merged, time-sorted std::vector<Event> -----------
+
+static std::vector<Event> drainAll() {
+	std::vector<Event> out;
+
+	// Samples: swap the global buffer out.
+	{
+		std::lock_guard<std::mutex> lock(sampleMutex());
+		out.swap(sampleBuffer());
+	}
+
+	// Regions: walk every registered slot under a snapshot of the slot list,
+	// drain each ring SPSC, and materialize Event objects with strings here
+	// (off the hot path).
+	std::vector<RegionSlot*> slots;
+	{
+		std::lock_guard<std::mutex> lock(regionSlotsMutex());
+		slots = regionSlots();
+	}
+	for (RegionSlot* slot : slots) {
+		uint64_t head = slot->head.load(std::memory_order_acquire);
+		uint64_t tail = slot->tail.load(std::memory_order_relaxed);
+		out.reserve(out.size() + static_cast<size_t>(head - tail));
+		while (tail != head) {
+			const RegionEvent& r = slot->buffer[tail & slot->mask];
+			Event ev;
+			ev.kind = static_cast<Event::Kind>(r.kind);
+			ev.name = r.name != nullptr ? std::string(r.name) : std::string("<null>");
+			ev.value = r.value;
+			ev.timestamp_ticks = r.ticks;
+			ev.tid = slot->tid;
+			ev.module = r.module != nullptr ? std::string(r.module) : std::string();
+			out.push_back(std::move(ev));
+			++tail;
+		}
+		slot->tail.store(tail, std::memory_order_release);
+	}
+
+	// Merge by timestamp so the output is a single monotonic stream. This is
+	// a post-drain sort — flush-time only, never on the hot path.
+	std::sort(out.begin(), out.end(),
+	          [](const Event& a, const Event& b) { return a.timestamp_ticks < b.timestamp_ticks; });
+	return out;
 }
 
 } // namespace nautilus::profile::detail
@@ -171,33 +268,24 @@ static Event makeEvent(Event::Kind kind, const char* name, int64_t value, uint64
 namespace nautilus::profile {
 
 std::vector<Event> takeRecordedEvents() {
-	std::lock_guard<std::mutex> lock(detail::recorderMutex());
-	std::vector<Event> out;
-	out.swap(detail::recorderBuffer());
-	return out;
+	return detail::drainAll();
 }
 
 void clearRecordedEvents() {
-	std::lock_guard<std::mutex> lock(detail::recorderMutex());
-	detail::recorderBuffer().clear();
-	// Reset the timebase baseline so the next session's events start at
-	// ticks=0 again. ticks_per_us and useTsc stay as calibrated.
+	// Discard everything and reset the timebase baseline. Subsequent sessions
+	// start at ticks=0 again; ticks_per_us stays as calibrated.
+	(void) detail::drainAll();
 	auto& tb = detail::timebase();
 	tb.baseline = tb.useTsc ? detail::rawCycles() : detail::steadyNanos();
 }
 
-// Bridge used by the sampler consumer. Defined here so the recorder state
-// (mutex + buffer) stays encapsulated in this TU.
+// Bridge used by the SIGPROF sampler consumer. Samples are rare; the
+// mutex-protected global buffer is fine for them.
 void recordSampleEvent(Event ev) {
-	std::lock_guard<std::mutex> lock(detail::recorderMutex());
-	detail::recorderBuffer().push_back(std::move(ev));
+	std::lock_guard<std::mutex> lock(detail::sampleMutex());
+	detail::sampleBuffer().push_back(std::move(ev));
 }
 
-// Exposes the monotonic session clock so the sampler (a separate TU) can
-// stamp samples in the same timebase as regions. Returns raw ticks; the
-// sampler records them directly into Event::timestamp_ticks. Signal-safe:
-// just a couple of atomic loads and a rdtsc/cntvct read on TSC-capable
-// hardware, or steady_clock::now() on the fallback path.
 uint64_t sessionNowTicks() {
 	return detail::sessionTicks();
 }
@@ -214,8 +302,6 @@ void closeModule(const char* /*name*/) {
 
 namespace {
 
-// JSON escape of a region/module name. Chrome-trace names are unlikely to
-// contain unusual characters but we still handle the common cases.
 void appendEscaped(std::string& out, const std::string& s) {
 	for (char c : s) {
 		switch (c) {
@@ -246,8 +332,6 @@ void appendEscaped(std::string& out, const std::string& s) {
 	}
 }
 
-// Assigns a stable "virtual tid" per (real_tid, module_name) pair so that
-// Perfetto UI renders one track per logical module on each thread.
 class VirtualTidTable {
 public:
 	uint64_t assign(uint64_t real_tid, const std::string& module) {
@@ -274,13 +358,7 @@ private:
 } // namespace
 
 bool flushTrace(const std::string& path) {
-	// Drain events under the same lock so we don't race with in-flight
-	// emits. Then release the lock before touching the filesystem.
-	std::vector<Event> events;
-	{
-		std::lock_guard<std::mutex> lock(detail::recorderMutex());
-		events.swap(detail::recorderBuffer());
-	}
+	std::vector<Event> events = detail::drainAll();
 
 	std::ofstream out(path);
 	if (!out) {
@@ -289,15 +367,12 @@ bool flushTrace(const std::string& path) {
 	}
 
 	VirtualTidTable tids;
-	const uint32_t pid = 1; // Chrome-trace pid is a logical grouping; anything nonzero works.
+	const uint32_t pid = 1;
 
 	out << "{\"traceEvents\":[\n";
 	std::string buf;
 	bool first = true;
 
-	// Metadata events to label each virtual tid with its module name.
-	// We must buffer these until we know all module names, so emit after
-	// the main event loop.
 	std::vector<std::pair<uint64_t, std::string>> threadLabels;
 	std::unordered_map<uint64_t, bool> labelled;
 
@@ -342,7 +417,6 @@ bool flushTrace(const std::string& path) {
 			buf.append("}");
 			break;
 		case Event::Kind::Sample:
-			// Chrome-trace "sample" point event; frames are carried in args.
 			buf.append(",\"ph\":\"i\",\"s\":\"t\",\"name\":\"");
 			appendEscaped(buf, ev.name.empty() ? "sample" : ev.name);
 			buf.append("\",\"args\":{\"frames\":[");
@@ -392,21 +466,18 @@ extern "C" {
 // interpreter and by the CPP/BC backends that call invoke() directly.
 
 void __nautilus_profile_begin(const char* name) {
-	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
-	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::Begin, name, 0, ticks));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::Begin, name, 0,
+	                                           nautilus::profile::detail::sessionTicks());
 }
 
 void __nautilus_profile_end(const char* name) {
-	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
-	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::End, name, 0, ticks));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::End, name, 0,
+	                                           nautilus::profile::detail::sessionTicks());
 }
 
 void __nautilus_profile_counter_i64(const char* name, int64_t value) {
-	const uint64_t ticks = nautilus::profile::detail::sessionTicks();
-	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::CounterI64, name, value, ticks));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::CounterI64, name, value,
+	                                           nautilus::profile::detail::sessionTicks());
 }
 
 // Pre-timed entry points — the caller (currently only the MLIR intrinsic
@@ -415,19 +486,18 @@ void __nautilus_profile_counter_i64(const char* name, int64_t value) {
 // through the plain entry point.
 
 void __nautilus_profile_begin_ticks(const char* name, uint64_t ticks) {
-	nautilus::profile::detail::record(nautilus::profile::detail::makeEvent(
-	    nautilus::profile::Event::Kind::Begin, name, 0, ticks - nautilus::profile::detail::timebase().baseline));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::Begin, name, 0,
+	                                           ticks - nautilus::profile::detail::timebase().baseline);
 }
 
 void __nautilus_profile_end_ticks(const char* name, uint64_t ticks) {
-	nautilus::profile::detail::record(nautilus::profile::detail::makeEvent(
-	    nautilus::profile::Event::Kind::End, name, 0, ticks - nautilus::profile::detail::timebase().baseline));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::End, name, 0,
+	                                           ticks - nautilus::profile::detail::timebase().baseline);
 }
 
 void __nautilus_profile_counter_i64_ticks(const char* name, int64_t value, uint64_t ticks) {
-	nautilus::profile::detail::record(
-	    nautilus::profile::detail::makeEvent(nautilus::profile::Event::Kind::CounterI64, name, value,
-	                                         ticks - nautilus::profile::detail::timebase().baseline));
+	nautilus::profile::detail::pushRegionEvent(nautilus::profile::Event::Kind::CounterI64, name, value,
+	                                           ticks - nautilus::profile::detail::timebase().baseline);
 }
 
 } // extern "C"
