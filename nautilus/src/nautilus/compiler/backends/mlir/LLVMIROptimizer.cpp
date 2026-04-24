@@ -62,6 +62,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 			llvmIRModule->print(llvmStringStream, nullptr);
 			return llvmIRString;
 		});
+		llvm::errs() << *llvmIRModule;
 
 		return optimizedModule;
 	};

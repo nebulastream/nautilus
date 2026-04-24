@@ -119,6 +119,11 @@ static void inlinedFunctionCallTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(true) == 1);
 		REQUIRE(f(false) == 2);
 	}
+
+	SECTION("higherOrderFunction") {
+		auto f = engine.registerFunction(cmpFunc);
+		REQUIRE(f(42, 1) == 42);
+	}
 }
 
 TEST_CASE("Inlined Function Call Test") {

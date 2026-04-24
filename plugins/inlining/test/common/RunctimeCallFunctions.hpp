@@ -4,6 +4,7 @@
 #include <nautilus/Engine.hpp>
 #include <nautilus/inline.hpp>
 #include <nautilus/val_ptr.hpp>
+#include <nautilus/val_func.hpp>
 
 namespace nautilus {
 
@@ -206,6 +207,45 @@ val<int32_t> incrementFuncCallFiveTimesWithRef(val<bool> isFirstCall) {
 	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 	invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
+}
+
+
+NAUTILUS_INLINE bool comparator1(int32_t a, int32_t b) {
+	return a < b || a * b < 0;
+}
+
+NAUTILUS_INLINE bool comparator2(int32_t a, int32_t b) {
+	return a < b && a * b < 0;
+}
+
+NAUTILUS_INLINE int32_t cmp_proxy(
+	int32_t a, int32_t b,
+	bool (*comp)(int32_t, int32_t)
+) {
+	if (comp(a, b) || comp(b, a)) {
+		return a;
+	}
+	return b;
+}
+
+NAUTILUS_INLINE int32_t apply_cmp(
+	int32_t a, int32_t b,
+	int32_t (*cmp)(int32_t, int32_t, bool (*)(int32_t, int32_t))
+) {
+	return cmp(a, b, comparator1);
+	/*
+	 *TODO
+	 *if (a > b) {
+		return cmp(a, b, comparator1);
+	} else {
+		return cmp(a, b, comparator2);
+	}*/
+}
+
+val<int32_t> cmpFunc(val<int32_t> a, val<int32_t> b) {
+	return invoke(apply_cmp, a, b,
+		val<int32_t(*)(int32_t, int32_t, bool(*)(int32_t, int32_t))>(cmp_proxy)
+	);
 }
 
 } // namespace nautilus::engine

@@ -5,6 +5,9 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Transforms/IPO/ModuleInliner.h"
+#include <iostream>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Module.h>
@@ -110,7 +113,7 @@ void fixFunctionNameConflicts(const llvm::Module& moduleToOptimize, llvm::Module
 	}
 }
 
-void inlineFunctions(llvm::Module& moduleToOptimize) {
+void inlineFunctionsHelper(llvm::Module& moduleToOptimize) {
 	// repeat until module wasnt modified during an iteration
 	// this is key for recursive inlining, where inlinable candidates may appear later during processing
 	std::unordered_map<void*, llvm::Function*> inlinedFunctions {};
@@ -204,5 +207,107 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 	} while (doAnotherIteration);
 
 	StripDebugInfo(moduleToOptimize); // suppress more warnings from function cloning
+}
+
+void runInliner(llvm::Module& M) {
+	thread_local llvm::PassBuilder PB;
+	thread_local llvm::LoopAnalysisManager LAM;
+	thread_local llvm::FunctionAnalysisManager FAM;
+	thread_local llvm::CGSCCAnalysisManager CGAM;
+	thread_local llvm::ModuleAnalysisManager MAM;
+	thread_local bool initialized = false;
+
+	if (!initialized) {
+		PB.registerModuleAnalyses(MAM);
+		PB.registerCGSCCAnalyses(CGAM);
+		PB.registerFunctionAnalyses(FAM);
+		PB.registerLoopAnalyses(LAM);
+		PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+		initialized = true;
+	}
+
+	llvm::ModulePassManager MPM;
+	MPM.addPass(llvm::ModuleInlinerWrapperPass());
+	MPM.run(M, MAM);
+}
+
+uint64_t traceToConstantAddr(llvm::Value* V, int depth = 0) {
+	using namespace llvm;
+	if (depth > 10)
+		return 0;
+
+	if (auto* CE = dyn_cast<ConstantExpr>(V)) {
+		if (CE->getOpcode() == Instruction::IntToPtr) {
+			if (auto* CI = dyn_cast<ConstantInt>(CE->getOperand(0)))
+				return CI->getZExtValue();
+		}
+		return 0;
+	}
+
+	if (auto* ITP = dyn_cast<IntToPtrInst>(V)) {
+		if (auto* CI = dyn_cast<ConstantInt>(ITP->getOperand(0)))
+			return CI->getZExtValue();
+		return 0;
+	}
+
+	if (auto* Load = dyn_cast<LoadInst>(V)) {
+		auto* loadPtr = Load->getPointerOperand();
+		for (auto& SearchBB : *Load->getFunction()) {
+			for (auto& SearchI : SearchBB) {
+				auto* Store = dyn_cast<StoreInst>(&SearchI);
+				if (!Store || Store->getPointerOperand() != loadPtr)
+					continue;
+				uint64_t addr = traceToConstantAddr(Store->getValueOperand(), depth + 1);
+				if (addr)
+					return addr;
+			}
+		}
+		return 0;
+	}
+
+	return 0;
+}
+
+bool rewriteHigherOrderFunctionCalls(llvm::Module& M) {
+	using namespace llvm;
+	bool changed = false;
+	for (auto& F : M) {
+		for (auto& BB : F) {
+			for (auto& I : BB) {
+				auto* Call = dyn_cast<CallInst>(&I);
+				if (!Call)
+					continue;
+
+				uint64_t addr = traceToConstantAddr(Call->getCalledOperand());
+				if (!addr)
+					continue;
+
+				void* ptr = reinterpret_cast<void*>(addr);
+				if (!InlineFunctionRegistry::instance().containsFunctionBitcode(ptr))
+					continue;
+
+				std::string name = ptrToHex(ptr);
+
+				FunctionType* FTy = Call->getFunctionType();
+				Function* target = M.getFunction(name);
+				if (!target) {
+					target = Function::Create(FTy, GlobalValue::InternalLinkage, name, M);
+				}
+
+				Call->setCalledOperand(target);
+				changed = true;
+			}
+		}
+	}
+	return changed;
+}
+
+void inlineFunctions(llvm::Module& M) {
+	inlineFunctionsHelper(M);
+	runInliner(M);
+	while (rewriteHigherOrderFunctionCalls(M)) {
+		inlineFunctionsHelper(M);
+		runInliner(M);
+	}
 }
 } // namespace nautilus::compiler::mlir
