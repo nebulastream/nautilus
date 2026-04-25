@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.eslintrc.json
+**/tsconfig.json
+**/*.map
+**/*.ts
+node_modules/**
+!out/**
+!syntaxes/**
+!snippets/**
+!language-configuration/**
+!images/**
+!package.json
+!README.md
+!LICENSE
