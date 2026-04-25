@@ -358,9 +358,12 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
-		// The first function popped from the user-supplied list is the entry point.
-		// Tag it so backends can identify it without relying on positional ordering
-		// (function names get sorted alphabetically downstream).
+		// Tag the first popped function as the entry point. Everything else in
+		// the queue was `invoke`d by some other traced function; that alone
+		// cannot tell us host-vs-device side (a plain NautilusFunction may be
+		// invoked from either), so non-entry classification is left to a
+		// downstream call-graph pass. `kernel` rides through unchanged from
+		// NautilusKernelFunction.
 		auto attributes = currentFunction.getAttributes();
 		if (isFirstFunction) {
 			attributes["entry"] = "true";

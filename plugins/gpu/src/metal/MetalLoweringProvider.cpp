@@ -216,8 +216,8 @@ void MetalLoweringProvider::DeviceContext::processOperation(ir::Operation* opt, 
 	dispatchOperation(opt, blockIndex, frame);
 }
 
-void MetalLoweringProvider::DeviceContext::processGPUOperation(ir::Operation* opt,
-                                                               short blockIndex, gpu::RegisterFrame& frame) {
+void MetalLoweringProvider::DeviceContext::processGPUOperation(ir::Operation* opt, short blockIndex,
+                                                               gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
 	if (opt->getOperationType() == OT::ProxyCallOp) {
 		processProxyCall(ir::as<ir::ProxyCallOperation>(opt), blockIndex, frame);
@@ -331,24 +331,14 @@ MetalLoweringProvider::HostContext::Code MetalLoweringProvider::HostContext::pro
 	code << "#include <Metal/Metal.h>\n\n";
 	code << "#define NAUTILUS_BUFFER_SIZE " << bufferSize << "\n\n";
 
-	const auto& functionOperations = ir->getFunctionOperations();
 	classifyKernelFunctions();
 
-	if (functionOperations.empty()) {
-		return code;
-	}
-
-	// Find the host function (non-kernel). It may not be at index 0 if the
-	// function order varies depending on the tracing/IR construction.
-	const ir::FunctionOperation* hostFunc = nullptr;
-	for (const auto& func : functionOperations) {
-		if (!kernelFunctions.contains(func->getName())) {
-			hostFunc = func;
-			break;
-		}
-	}
-	// If all functions are kernels, host dispatch is fully external.
-	if (!hostFunc) {
+	// Host context emits exactly one function: the user-facing entry. It is
+	// identified by the `entry` attribute set on the first traced function;
+	// if no entry is present (all functions are kernels), host dispatch is
+	// fully external and we emit nothing.
+	const auto* hostFunc = getEntryFunction();
+	if (hostFunc == nullptr) {
 		return code;
 	}
 	const auto& rootFunc = *hostFunc;
@@ -389,8 +379,8 @@ void MetalLoweringProvider::HostContext::processOperation(ir::Operation* opt, sh
 	dispatchOperation(opt, blockIndex, frame);
 }
 
-void MetalLoweringProvider::HostContext::processGPUOperation(ir::Operation* opt,
-                                                             short blockIndex, gpu::RegisterFrame& frame) {
+void MetalLoweringProvider::HostContext::processGPUOperation(ir::Operation* opt, short blockIndex,
+                                                             gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
 	if (opt->getOperationType() == OT::ProxyCallOp) {
 		processProxyCall(ir::as<ir::ProxyCallOperation>(opt), blockIndex, frame);

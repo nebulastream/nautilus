@@ -86,15 +86,16 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 
 	classifyKernelFunctions();
 
-	// Function role is derived from IR attributes:
-	//   - "kernel" attribute  -> emit as `__global__` (device kernel)
-	//   - "entry" attribute   -> the user-visible entrypoint, exposed as `extern "C" execute`
-	//   - otherwise           -> `__device__` helper (current convention)
-	// When the entry function is itself a kernel we rename it to `<name>_kernel` and
-	// synthesize a small `extern "C" execute` host wrapper that performs the launch.
+	// Role is read straight from IR attributes — no heuristics:
+	//   - `kernel`  (NautilusKernelFunction)              -> `__global__`
+	//   - `entry`   (first traced function)               -> `extern "C" execute`
+	//   - otherwise (helper discovered through tracing)   -> `__host__ __device__`
+	// The catch-all "helper" classification is intentionally permissive: a future
+	// call-graph pass may further narrow it to plain `__device__` or `__host__`,
+	// or duplicate the function for distinct host/device specialisations.
 	const auto* entryFunc = getEntryFunction();
 
-	enum class Decoration { Kernel, Device, EntryHost };
+	enum class Decoration { Kernel, EntryHost, HostDevice };
 	auto decorate = [&](const ir::FunctionOperation& func) {
 		if (kernelFunctions.contains(func.getName())) {
 			return Decoration::Kernel;
@@ -102,7 +103,7 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 		if (&func == entryFunc) {
 			return Decoration::EntryHost;
 		}
-		return Decoration::Device;
+		return Decoration::HostDevice;
 	};
 
 	auto emitFunction = [&](const ir::FunctionOperation& func, Decoration decoration,
@@ -125,8 +126,8 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 		case Decoration::Kernel:
 			pipelineCode << "__global__ void " << funcName << "(";
 			break;
-		case Decoration::Device:
-			pipelineCode << "__device__ " << getType(func.getOutputArg()) << " " << funcName << "(";
+		case Decoration::HostDevice:
+			pipelineCode << "__host__ __device__ " << getType(func.getOutputArg()) << " " << funcName << "(";
 			break;
 		case Decoration::EntryHost:
 			pipelineCode << "extern \"C\" " << getType(func.getOutputArg()) << " " << funcName << "(";
@@ -148,9 +149,9 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 		pipelineCode << (decoration == Decoration::EntryHost ? "}\n" : "}\n\n");
 	};
 
-	bool entryIsKernel = entryFunc != nullptr && kernelFunctions.contains(entryFunc->getName());
-
-	// Emit every non-entry function in alphabetical order (the IR's natural ordering).
+	// Emit every non-entry function in alphabetical order (the IR's natural
+	// ordering). Entry is always emitted last so kernels and helpers are in
+	// scope by name when the host wrapper references them.
 	for (const auto* func : ir->getFunctionOperations()) {
 		if (func == entryFunc) {
 			continue;
@@ -158,44 +159,9 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 		emitFunction(*func, decorate(*func));
 	}
 
-	if (entryFunc == nullptr) {
-		return pipelineCode;
-	}
-
-	if (!entryIsKernel) {
+	if (entryFunc != nullptr) {
 		emitFunction(*entryFunc, Decoration::EntryHost, "execute");
-		return pipelineCode;
 	}
-
-	// Entry is a kernel: emit the kernel under a unique name and synthesize the
-	// `extern "C" execute` host wrapper that launches it.
-	auto kernelName = entryFunc->getName() + "_kernel";
-	emitFunction(*entryFunc, Decoration::Kernel, kernelName);
-
-	auto gridX = options.getOptionOrDefault<int>("gpu.gridDimX", 1);
-	auto gridY = options.getOptionOrDefault<int>("gpu.gridDimY", 1);
-	auto gridZ = options.getOptionOrDefault<int>("gpu.gridDimZ", 1);
-	auto blockX = options.getOptionOrDefault<int>("gpu.blockDimX", 256);
-	auto blockY = options.getOptionOrDefault<int>("gpu.blockDimY", 1);
-	auto blockZ = options.getOptionOrDefault<int>("gpu.blockDimZ", 1);
-
-	const auto& entryBlock = entryFunc->getFunctionBasicBlock();
-	pipelineCode << "extern \"C\" void execute(";
-	for (size_t i = 0; i < entryBlock.getArguments().size(); i++) {
-		if (i != 0)
-			pipelineCode << ",";
-		pipelineCode << getType(entryBlock.getArguments()[i]->getStamp()) << " arg_" << i;
-	}
-	pipelineCode << "){\n";
-	pipelineCode << "    dim3 grid(" << gridX << "," << gridY << "," << gridZ << ");\n";
-	pipelineCode << "    dim3 block(" << blockX << "," << blockY << "," << blockZ << ");\n";
-	pipelineCode << "    " << kernelName << "<<<grid, block>>>(";
-	for (size_t i = 0; i < entryBlock.getArguments().size(); i++) {
-		if (i != 0)
-			pipelineCode << ",";
-		pipelineCode << "arg_" << i;
-	}
-	pipelineCode << ");\n    cudaDeviceSynchronize();\n}\n";
 	return pipelineCode;
 }
 

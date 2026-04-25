@@ -123,56 +123,27 @@ protected:
 		return gpuIntrinsics.contains(fnPtr);
 	}
 
-	bool functionUsesGPUIntrinsics(const ir::FunctionOperation& func) const {
-		for (auto& block : func.getBasicBlocks()) {
-			for (auto& op : block->getOperations()) {
-				if (op->getOperationType() == ir::Operation::OperationType::ProxyCallOp) {
-					auto* call = static_cast<ir::ProxyCallOperation*>(op);
-					// Only device intrinsics (threadIdx, syncThreads, etc.) mark a function
-					// as a kernel. Launch config intrinsics (setGrid, setBlock) do not.
-					if (deviceIntrinsics.contains(call->getFunctionPtr())) {
-						return true;
-					}
-				}
-			}
-		}
-		return false;
-	}
-
+	/// Populates `kernelFunctions` from the explicit `kernel` attribute set by
+	/// `NautilusKernelFunction`. There is intentionally no heuristic fallback —
+	/// the trace contexts already give every IR function an unambiguous role
+	/// (`kernel`, `entry`, or `device`) based on queue provenance.
 	void classifyKernelFunctions() {
 		for (const auto& func : ir->getFunctionOperations()) {
-			// Primary: explicit kernel attribute set by NautilusKernelFunction
 			if (func->hasAttribute("kernel")) {
 				kernelFunctions.insert(func->getName());
 			}
-			// Fallback: heuristic intrinsic scanning for free functions
-			else if (functionUsesGPUIntrinsics(*func)) {
-				kernelFunctions.insert(func->getName());
-			}
 		}
 	}
 
-	/// Returns the user-visible entry-point function. Picks the one tagged with
-	/// the `entry` attribute (set by the trace contexts on the first traced
-	/// function); falls back to the first non-kernel function and finally to
-	/// `functionOperations[0]` so legacy callers that bypass the trace contexts
-	/// still get a result.
+	/// Returns the user-facing entry function, identified by the `entry`
+	/// attribute set on the first function in the trace queue.
 	const ir::FunctionOperation* getEntryFunction() const {
-		const auto& functionOperations = ir->getFunctionOperations();
-		if (functionOperations.empty()) {
-			return nullptr;
-		}
-		for (const auto* func : functionOperations) {
+		for (const auto* func : ir->getFunctionOperations()) {
 			if (func->hasAttribute("entry")) {
 				return func;
 			}
 		}
-		for (const auto* func : functionOperations) {
-			if (!kernelFunctions.contains(func->getName())) {
-				return func;
-			}
-		}
-		return functionOperations[0];
+		return nullptr;
 	}
 
 	static std::string getVariable(const ir::OperationIdentifier& id) {
