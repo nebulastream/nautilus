@@ -4,14 +4,20 @@
 // one node; edges are derived from block terminators (`return` / `br` / `if`).
 // Block names are reused verbatim as Mermaid node ids — the parser already
 // guarantees they match `/Block_\d+/`, which is a valid Mermaid identifier.
+//
+// The webview renders Mermaid with `securityLevel: 'strict'` and
+// `htmlLabels: false`, so labels are SVG <text> and DOMPurify-sanitised.
+// Click handlers are wired up by the webview after rendering rather than via
+// a Mermaid `click ... call ...` directive (which would require `'loose'`).
 
 import { IrFunction, ParsedIr } from './parser';
 
 export interface CfgGraph {
 	mermaid: string;
 	functionName: string;
-	// Block names rendered in this graph, in declaration order. Used by the
-	// webview to scope cursor-driven highlights.
+	// Block names rendered in this graph, in declaration order. The webview
+	// uses this list (validated against `/^Block_\d+$/`) to attach click
+	// handlers to the rendered SVG nodes.
 	blocks: string[];
 }
 
@@ -28,18 +34,17 @@ function buildGraph(fn: IrFunction): CfgGraph {
 	lines.push('flowchart TD');
 
 	if (fn.blocks.length === 0) {
-		lines.push(`    empty["${escape(fn.name)}: (no blocks)"]`);
+		lines.push(`    empty["${quoteLabel(fn.name)}: (no blocks)"]`);
 		return { mermaid: lines.join('\n'), functionName: fn.name, blocks: [] };
 	}
 
 	const entryName = fn.blocks[0].name;
 
-	// Nodes.
+	// Nodes. Shape conveys the terminator: rectangle for normal, stadium
+	// for return, rhombus for conditional `if`.
 	for (const block of fn.blocks) {
 		const id = block.name;
 		const label = renderLabel(block.name, block.args, block.instructions, block.terminator);
-		// Shape conveys role: rectangle for normal, stadium for return,
-		// rhombus for conditional branches (`if`).
 		let shape: string;
 		if (block.terminator === 'return') {
 			shape = `${id}(["${label}"])`;
@@ -51,9 +56,9 @@ function buildGraph(fn: IrFunction): CfgGraph {
 		lines.push(`    ${shape}`);
 	}
 
-	// Edges. Conditional branches: the parser preserves successor order
-	// (true branch first, then false), matching the textual `if $cond ?
-	// Block_T : Block_F :void` form.
+	// Edges. The parser preserves successor order on conditional branches
+	// (true branch first, then false), matching the textual
+	// `if $cond ? Block_T : Block_F :void` form.
 	for (const block of fn.blocks) {
 		if (block.terminator === 'if' && block.successors.length === 2) {
 			const [t, f] = block.successors;
@@ -66,15 +71,9 @@ function buildGraph(fn: IrFunction): CfgGraph {
 		}
 	}
 
-	// Click handlers — Mermaid wires these to `window.onNautilusBlockClick`,
-	// which the webview defines and forwards to the extension host.
-	for (const block of fn.blocks) {
-		lines.push(`    click ${block.name} call onNautilusBlockClick("${block.name}")`);
-	}
-
-	// Styling. Colors mirror the palette already used by the C++ Mermaid
-	// dumper in `nautilus/src/nautilus/compiler/ir/util/GraphVizUtil.cpp`,
-	// so the extension's view feels familiar to anyone reading those dumps.
+	// Styling. Colors mirror the palette of the C++ Mermaid dumper in
+	// `nautilus/src/nautilus/compiler/ir/util/GraphVizUtil.cpp` so the
+	// extension's view feels familiar to anyone reading those dumps.
 	lines.push('    classDef entry stroke:#3cb4a4,stroke-width:2px,fill:#d7ede7,color:#000');
 	lines.push('    classDef exit stroke:#e98693,stroke-width:2px,fill:#fde8ec,color:#000');
 	lines.push('    classDef cond stroke:#3cb4a4,stroke-width:1px,fill:#fff,color:#000');
@@ -104,17 +103,14 @@ function renderLabel(
 ): string {
 	const sig = args.length === 0
 		? name
-		: `${name}(${args.map(a => `${escape(a.name)}:${escape(a.type)}`).join(', ')})`;
+		: `${name}(${args.map(a => `${a.name}:${a.type}`).join(', ')})`;
 	const insnWord = instructions === 1 ? 'insn' : 'insns';
-	return `${escape(sig)}<br/><span style='font-size:0.85em;opacity:0.75'>${instructions} ${insnWord} · ${escape(terminator)}</span>`;
+	// Single-line plain-text label. Mermaid (strict mode, no htmlLabels)
+	// escapes any markup automatically; we only need to neutralise the
+	// closing-quote character so the label string stays well-formed.
+	return quoteLabel(`${sig} | ${instructions} ${insnWord} · ${terminator}`);
 }
 
-// Mermaid uses `"…"` to delimit labels with HTML; escape characters that
-// would either break the surrounding quotes or be rendered as raw HTML.
-function escape(s: string): string {
-	return s
-		.replace(/&/g, '&amp;')
-		.replace(/"/g, '&quot;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
+function quoteLabel(s: string): string {
+	return s.replace(/"/g, '&quot;');
 }

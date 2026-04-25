@@ -3,6 +3,16 @@
 // Receives `render` / `highlight` messages from the extension host, drives
 // Mermaid to produce the SVG, attaches svg-pan-zoom for navigation, and
 // forwards user actions (block click, function switch) back to the host.
+//
+// Security posture:
+//   - Mermaid runs with `securityLevel: 'strict'`, which sanitises label
+//     contents through DOMPurify before producing the SVG.
+//   - `htmlLabels` is disabled, so labels are SVG <text>, not HTML.
+//   - The rendered SVG is parsed via DOMParser and inserted as a DOM
+//     subtree (no `innerHTML`).
+//   - Click handlers are wired manually after parsing — we do *not* use
+//     Mermaid's `click ... call ...` directive (which would require
+//     `securityLevel: 'loose'`).
 
 (function () {
 	'use strict';
@@ -17,6 +27,7 @@
 	let panZoom = null;
 	let highlightedEl = null;
 	let renderToken = 0;
+	const SVG_NS = 'http://www.w3.org/2000/svg';
 
 	if (typeof window.mermaid === 'undefined') {
 		report('error', 'Mermaid bundle failed to load.');
@@ -24,15 +35,10 @@
 	}
 	window.mermaid.initialize({
 		startOnLoad: false,
-		securityLevel: 'loose',
+		securityLevel: 'strict',
 		theme: 'neutral',
-		flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
+		flowchart: { useMaxWidth: false, htmlLabels: false, curve: 'basis' },
 	});
-
-	// Click bridge invoked from Mermaid `click NodeId call onNautilusBlockClick(...)`.
-	window.onNautilusBlockClick = function (block) {
-		vscode.postMessage({ type: 'revealBlock', block: String(block) });
-	};
 
 	select.addEventListener('change', () => {
 		vscode.postMessage({ type: 'selectFunction', name: select.value });
@@ -76,25 +82,61 @@
 			if (myToken !== renderToken) {
 				return; // a newer render superseded this one
 			}
-			container.innerHTML = result.svg;
-			if (typeof result.bindFunctions === 'function') {
-				result.bindFunctions(container);
-			}
-			setupPanZoom();
+			const svgEl = parseSvg(result.svg);
+			clearChildren(container);
+			container.appendChild(svgEl);
+			attachClickHandlers(Array.isArray(payload.blocks) ? payload.blocks : []);
+			setupPanZoom(svgEl);
 			highlight(payload.currentBlock);
 		} catch (err) {
-			container.innerHTML = '';
-			const pre = document.createElement('pre');
-			pre.className = 'error';
-			pre.textContent = `Mermaid render failed: ${err && err.message ? err.message : String(err)}`;
-			container.appendChild(pre);
-			report('error', `Mermaid render failed: ${err && err.message ? err.message : String(err)}`);
+			showError(`Mermaid render failed: ${err && err.message ? err.message : String(err)}`);
 		}
+	}
+
+	// Parse Mermaid's SVG output into a DOM subtree. Using DOMParser instead
+	// of innerHTML avoids the HTML-injection sink and lets us reject any
+	// output that is not well-formed SVG (which would itself be a red flag,
+	// since Mermaid's strict-mode pipeline always produces valid SVG).
+	function parseSvg(svgText) {
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(svgText, 'image/svg+xml');
+		const err = doc.querySelector('parsererror');
+		if (err) {
+			throw new Error(err.textContent || 'invalid SVG');
+		}
+		const root = doc.documentElement;
+		if (!root || root.namespaceURI !== SVG_NS || root.localName !== 'svg') {
+			throw new Error('Mermaid output was not an <svg> element');
+		}
+		return document.importNode(root, /* deep */ true);
+	}
+
+	function attachClickHandlers(blocks) {
+		for (const block of blocks) {
+			if (typeof block !== 'string' || !/^Block_\d+$/.test(block)) {
+				continue; // defensive: only known-shape block ids are wired
+			}
+			const node = findBlockNode(block);
+			if (node) {
+				node.style.cursor = 'pointer';
+				node.addEventListener('click', () => {
+					vscode.postMessage({ type: 'revealBlock', block });
+				});
+			}
+		}
+	}
+
+	function findBlockNode(blockName) {
+		const safe = cssEscape(blockName);
+		return (
+			container.querySelector(`g.node[id^='flowchart-${safe}-']`) ||
+			container.querySelector(`g[id^='flowchart-${safe}-']`)
+		);
 	}
 
 	function populateFunctions(names, active) {
 		const current = select.value;
-		select.innerHTML = '';
+		clearChildren(select);
 		for (const name of names) {
 			const opt = document.createElement('option');
 			opt.value = name;
@@ -110,24 +152,23 @@
 		}
 	}
 
-	function setupPanZoom() {
+	function setupPanZoom(svgEl) {
 		if (panZoom) {
 			try { panZoom.destroy(); } catch (e) { /* ignore */ }
 			panZoom = null;
 		}
-		const svg = container.querySelector('svg');
-		if (!svg || typeof window.svgPanZoom === 'undefined') {
+		if (!svgEl || typeof window.svgPanZoom === 'undefined') {
 			return;
 		}
 		// Mermaid sometimes sets width/height to a fixed pixel value; force
 		// the SVG to fill its host so pan-zoom has something to work with.
-		svg.removeAttribute('width');
-		svg.removeAttribute('height');
-		svg.setAttribute('width', '100%');
-		svg.setAttribute('height', '100%');
-		svg.style.maxWidth = 'none';
-		svg.style.maxHeight = 'none';
-		panZoom = window.svgPanZoom(svg, {
+		svgEl.removeAttribute('width');
+		svgEl.removeAttribute('height');
+		svgEl.setAttribute('width', '100%');
+		svgEl.setAttribute('height', '100%');
+		svgEl.style.maxWidth = 'none';
+		svgEl.style.maxHeight = 'none';
+		panZoom = window.svgPanZoom(svgEl, {
 			zoomEnabled: true,
 			controlIconsEnabled: false,
 			fit: true,
@@ -142,13 +183,10 @@
 			highlightedEl.classList.remove('cursor-current');
 			highlightedEl = null;
 		}
-		if (!blockName) {
+		if (typeof blockName !== 'string' || !/^Block_\d+$/.test(blockName)) {
 			return;
 		}
-		// Mermaid prefixes flowchart node ids with `flowchart-` and suffixes
-		// them with a numeric id. Match by attribute prefix.
-		const node = container.querySelector(`g.node[id^='flowchart-${cssEscape(blockName)}-']`)
-			?? container.querySelector(`g[id^='flowchart-${cssEscape(blockName)}-']`);
+		const node = findBlockNode(blockName);
 		if (node) {
 			node.classList.add('cursor-current');
 			highlightedEl = node;
@@ -159,13 +197,26 @@
 		status.textContent = text;
 	}
 
+	function showError(message) {
+		clearChildren(container);
+		const pre = document.createElement('pre');
+		pre.className = 'error';
+		pre.textContent = message;
+		container.appendChild(pre);
+		report('error', message);
+	}
+
+	function clearChildren(node) {
+		while (node.firstChild) {
+			node.removeChild(node.firstChild);
+		}
+	}
+
 	function report(level, message) {
 		vscode.postMessage({ type: 'log', level, message });
 	}
 
 	function cssEscape(s) {
-		// Block names are `Block_\d+` so this is mostly a guard against
-		// any future labels that contain CSS-special characters.
 		if (window.CSS && typeof window.CSS.escape === 'function') {
 			return window.CSS.escape(s);
 		}

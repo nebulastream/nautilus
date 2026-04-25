@@ -5,7 +5,7 @@
 // Contract with the webview (see `media/graph.js`):
 //
 //   extension → webview:
-//     { type: 'render', mermaid, functions, activeFunction, currentBlock }
+//     { type: 'render', mermaid, functions, activeFunction, blocks, currentBlock }
 //     { type: 'highlight', block }
 //
 //   webview → extension:
@@ -26,6 +26,10 @@ interface RenderPayload {
 	mermaid: string;
 	functions: string[];
 	activeFunction: string;
+	// Block names that the webview should wire click handlers for. The
+	// webview validates each entry against `/^Block_\d+$/` before using it
+	// in a CSS selector.
+	blocks: string[];
 	currentBlock: string | null;
 }
 
@@ -151,6 +155,7 @@ export class GraphPanel {
 				mermaid: 'flowchart TD\n    empty["(no functions found)"]',
 				functions: [],
 				activeFunction: '',
+				blocks: [],
 				currentBlock: null,
 			};
 		}
@@ -170,6 +175,7 @@ export class GraphPanel {
 			mermaid: graph.mermaid,
 			functions: fnNames,
 			activeFunction: graph.functionName,
+			blocks: graph.blocks,
 			currentBlock: this.currentBlock(),
 		};
 	}
