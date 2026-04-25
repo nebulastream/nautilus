@@ -1,0 +1,312 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Nautilus IR",
+	"scopeName": "source.nautilus-ir",
+	"fileTypes": ["nesir", "trace", "nir"],
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#nesir-end-marker" },
+		{ "include": "#wrapper" },
+		{ "include": "#execute-header" },
+		{ "include": "#block-header" },
+		{ "include": "#instruction" },
+		{ "include": "#braces" }
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.nautilus-ir",
+					"begin": "//",
+					"end": "$",
+					"patterns": [
+						{
+							"name": "keyword.other.nesir-marker.nautilus-ir",
+							"match": "\\bNESIR\\b"
+						}
+					]
+				},
+				{
+					"name": "comment.block.nautilus-ir",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"nesir-end-marker": {
+			"name": "comment.line.nesir-marker.nautilus-ir",
+			"match": "//\\s*NESIR\\s*$"
+		},
+		"wrapper": {
+			"begin": "\\b(NautilusIr)\\s*(\\{)",
+			"beginCaptures": {
+				"1": { "name": "entity.name.namespace.nautilus-ir" },
+				"2": { "name": "punctuation.section.block.begin.nautilus-ir" }
+			},
+			"end": "\\}",
+			"endCaptures": {
+				"0": { "name": "punctuation.section.block.end.nautilus-ir" }
+			},
+			"patterns": [
+				{ "include": "$self" }
+			]
+		},
+		"execute-header": {
+			"match": "\\b(execute)\\s*(\\()\\s*(\\))\\s*(\\{)",
+			"captures": {
+				"1": { "name": "entity.name.function.nautilus-ir" },
+				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" },
+				"3": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
+				"4": { "name": "punctuation.section.block.begin.nautilus-ir" }
+			}
+		},
+		"block-header": {
+			"begin": "^\\s*(Block_\\d+|B\\d+)\\s*(\\()",
+			"beginCaptures": {
+				"1": { "name": "entity.name.label.block.nautilus-ir" },
+				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" }
+			},
+			"end": "(\\))\\s*(:)",
+			"endCaptures": {
+				"1": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
+				"2": { "name": "punctuation.separator.block-header.nautilus-ir" }
+			},
+			"patterns": [
+				{ "include": "#typed-ssa-arg" },
+				{ "include": "#ssa-value" },
+				{ "include": "#types" },
+				{ "include": "#punctuation" }
+			]
+		},
+		"instruction": {
+			"patterns": [
+				{ "include": "#return-instruction" },
+				{ "include": "#branch-instruction" },
+				{ "include": "#if-instruction" },
+				{ "include": "#store-instruction" },
+				{ "include": "#load-instruction" },
+				{ "include": "#call-instruction" },
+				{ "include": "#assignment" }
+			]
+		},
+		"return-instruction": {
+			"begin": "\\b(return)\\b",
+			"beginCaptures": {
+				"1": { "name": "keyword.control.return.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "#type-suffix" },
+				{ "include": "#ssa-value" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"branch-instruction": {
+			"begin": "\\b(br|JMP|jmp)\\b",
+			"beginCaptures": {
+				"1": { "name": "keyword.control.branch.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "#block-reference" },
+				{ "include": "#type-suffix" },
+				{ "include": "#ssa-value" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"if-instruction": {
+			"begin": "\\b(if|CMP|cmp)\\b",
+			"beginCaptures": {
+				"1": { "name": "keyword.control.conditional.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{
+					"name": "keyword.operator.ternary.nautilus-ir",
+					"match": "\\?|:"
+				},
+				{ "include": "#block-reference" },
+				{ "include": "#type-suffix" },
+				{ "include": "#ssa-value" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"store-instruction": {
+			"begin": "\\b(store|STORE)\\s*(\\()",
+			"beginCaptures": {
+				"1": { "name": "keyword.other.memory.store.nautilus-ir" },
+				"2": { "name": "punctuation.section.parens.begin.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "#type-suffix" },
+				{ "include": "#ssa-value" },
+				{ "include": "#numbers" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"load-instruction": {
+			"begin": "\\b(load|LOAD|alloca|ALLOCA)\\s*(\\()",
+			"beginCaptures": {
+				"1": { "name": "keyword.other.memory.nautilus-ir" },
+				"2": { "name": "punctuation.section.parens.begin.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "#type-suffix" },
+				{ "include": "#ssa-value" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"call-instruction": {
+			"patterns": [
+				{
+					"match": "\\b(func_\\*|FUNC_ADDR|CALL|INDIRECT_CALL)\\b",
+					"name": "support.function.call.nautilus-ir"
+				}
+			]
+		},
+		"assignment": {
+			"begin": "(\\$\\d+)\\s*(=)",
+			"beginCaptures": {
+				"1": { "name": "variable.other.ssa.definition.nautilus-ir" },
+				"2": { "name": "keyword.operator.assignment.nautilus-ir" }
+			},
+			"end": "$",
+			"patterns": [
+				{ "include": "#cast-rhs" },
+				{ "include": "#call-instruction" },
+				{ "include": "#load-instruction" },
+				{ "include": "#operators" },
+				{ "include": "#numbers" },
+				{ "include": "#ssa-value" },
+				{ "include": "#type-suffix" },
+				{ "include": "#punctuation" },
+				{ "include": "#comments" }
+			]
+		},
+		"cast-rhs": {
+			"match": "\\b(cast_to|CAST)\\b",
+			"name": "keyword.operator.cast.nautilus-ir"
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.logical.word.nautilus-ir",
+					"match": "\\b(and|or|xor|not|AND|OR|XOR|NOT|negate|NEGATE|BAND|BOR|BXOR|LSH|RSH|EQ|NEQ|LT|LTE|GT|GTE|ADD|SUB|MUL|DIV|MOD|SELECT)\\b"
+				},
+				{
+					"name": "keyword.operator.comparison.nautilus-ir",
+					"match": "==|!=|<=|>=|<|>"
+				},
+				{
+					"name": "keyword.operator.bitshift.nautilus-ir",
+					"match": "<<|>>"
+				},
+				{
+					"name": "keyword.operator.arithmetic.nautilus-ir",
+					"match": "[+\\-*/%]"
+				},
+				{
+					"name": "keyword.operator.bitwise.nautilus-ir",
+					"match": "[&|\\^]"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "support.type.primitive.integer.nautilus-ir",
+					"match": "\\b(i8|i16|i32|i64|ui8|ui16|ui32|ui64)\\b"
+				},
+				{
+					"name": "support.type.primitive.float.nautilus-ir",
+					"match": "\\b(f32|f64)\\b"
+				},
+				{
+					"name": "support.type.primitive.nautilus-ir",
+					"match": "\\b(bool|ptr|void)\\b"
+				}
+			]
+		},
+		"type-suffix": {
+			"begin": ":",
+			"beginCaptures": {
+				"0": { "name": "punctuation.separator.type.nautilus-ir" }
+			},
+			"end": "(?=[\\s,)?])",
+			"patterns": [
+				{ "include": "#types" }
+			]
+		},
+		"typed-ssa-arg": {
+			"match": "(\\$\\d+)\\s*(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\b",
+			"captures": {
+				"1": { "name": "variable.parameter.ssa.nautilus-ir" },
+				"2": { "name": "punctuation.separator.type.nautilus-ir" },
+				"3": { "name": "support.type.primitive.nautilus-ir" }
+			}
+		},
+		"ssa-value": {
+			"name": "variable.other.ssa.nautilus-ir",
+			"match": "\\$\\d+\\b"
+		},
+		"block-reference": {
+			"match": "\\b(Block_\\d+|B\\d+)\\b",
+			"name": "entity.name.label.block.reference.nautilus-ir"
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.float.nautilus-ir",
+					"match": "-?\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+				},
+				{
+					"name": "constant.numeric.hex.nautilus-ir",
+					"match": "\\b0[xX][0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "constant.numeric.integer.nautilus-ir",
+					"match": "-?\\b\\d+\\b"
+				},
+				{
+					"name": "constant.language.boolean.nautilus-ir",
+					"match": "\\b(true|false)\\b"
+				}
+			]
+		},
+		"punctuation": {
+			"patterns": [
+				{
+					"name": "punctuation.section.parens.begin.nautilus-ir",
+					"match": "\\("
+				},
+				{
+					"name": "punctuation.section.parens.end.nautilus-ir",
+					"match": "\\)"
+				},
+				{
+					"name": "punctuation.separator.comma.nautilus-ir",
+					"match": ","
+				}
+			]
+		},
+		"braces": {
+			"patterns": [
+				{
+					"name": "punctuation.section.block.begin.nautilus-ir",
+					"match": "\\{"
+				},
+				{
+					"name": "punctuation.section.block.end.nautilus-ir",
+					"match": "\\}"
+				}
+			]
+		}
+	}
+}

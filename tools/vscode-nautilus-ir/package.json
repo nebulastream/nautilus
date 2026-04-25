@@ -1,0 +1,287 @@
+{
+	"name": "nautilus-ir",
+	"displayName": "Nautilus IR",
+	"description": "Syntax highlighting, navigation, and gdb-based debugging for Nautilus IR (.nesir / .trace) files emitted by the Nautilus tracing JIT compiler.",
+	"version": "0.1.0",
+	"publisher": "nebulastream",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.80.0"
+	},
+	"categories": [
+		"Programming Languages",
+		"Snippets",
+		"Debuggers"
+	],
+	"keywords": [
+		"nautilus",
+		"nebulastream",
+		"ir",
+		"jit",
+		"compiler",
+		"ssa",
+		"nesir"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/nebulastream/nautilus.git"
+	},
+	"activationEvents": [
+		"onLanguage:nautilus-ir",
+		"onDebug",
+		"onCommand:nautilus-ir.dumpInfo",
+		"onCommand:nautilus-ir.gotoBlock"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "nautilus-ir",
+				"aliases": [
+					"Nautilus IR",
+					"NESIR",
+					"nautilus-ir"
+				],
+				"extensions": [
+					".nesir",
+					".trace",
+					".nir"
+				],
+				"configuration": "./language-configuration/language-configuration.json",
+				"icon": {
+					"light": "./images/file-icon-light.svg",
+					"dark": "./images/file-icon-dark.svg"
+				},
+				"firstLine": "^\\s*NautilusIr\\s*\\{"
+			}
+		],
+		"grammars": [
+			{
+				"language": "nautilus-ir",
+				"scopeName": "source.nautilus-ir",
+				"path": "./syntaxes/nautilus-ir.tmLanguage.json"
+			}
+		],
+		"snippets": [
+			{
+				"language": "nautilus-ir",
+				"path": "./snippets/nautilus-ir.code-snippets"
+			}
+		],
+		"commands": [
+			{
+				"command": "nautilus-ir.gotoBlock",
+				"title": "Nautilus IR: Go to Block...",
+				"category": "Nautilus IR"
+			},
+			{
+				"command": "nautilus-ir.dumpInfo",
+				"title": "Nautilus IR: Show File Statistics",
+				"category": "Nautilus IR"
+			},
+			{
+				"command": "nautilus-ir.toggleFollowDefinitions",
+				"title": "Nautilus IR: Toggle SSA Definition Highlight",
+				"category": "Nautilus IR"
+			},
+			{
+				"command": "nautilus-ir.debugWithGdb",
+				"title": "Nautilus IR: Debug Current File with gdb",
+				"category": "Nautilus IR"
+			}
+		],
+		"configuration": {
+			"title": "Nautilus IR",
+			"properties": {
+				"nautilusIr.gdbPath": {
+					"type": "string",
+					"default": "gdb",
+					"description": "Path to the gdb executable used for debugging Nautilus IR files."
+				},
+				"nautilusIr.gdbExtraArgs": {
+					"type": "array",
+					"items": { "type": "string" },
+					"default": [],
+					"description": "Extra command-line arguments forwarded to gdb when launching."
+				},
+				"nautilusIr.highlightDefinitions": {
+					"type": "boolean",
+					"default": true,
+					"description": "Highlight all uses of an SSA value when the cursor is on its definition."
+				},
+				"nautilusIr.showInlayTypes": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show inline summary information for blocks and operations."
+				},
+				"nautilusIr.codeLens": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show CodeLens above blocks (predecessors / successors / argument count)."
+				}
+			}
+		},
+		"breakpoints": [
+			{
+				"language": "nautilus-ir"
+			}
+		],
+		"debuggers": [
+			{
+				"type": "nautilus-ir-gdb",
+				"label": "Nautilus IR (gdb)",
+				"languages": [
+					"nautilus-ir"
+				],
+				"program": "./out/debugAdapter.js",
+				"runtime": "node",
+				"configurationAttributes": {
+					"launch": {
+						"required": [
+							"program"
+						],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Absolute path to the Nautilus IR file to debug.",
+								"default": "${file}"
+							},
+							"gdbPath": {
+								"type": "string",
+								"description": "Override the gdb executable used for this session.",
+								"default": "gdb"
+							},
+							"gdbArgs": {
+								"type": "array",
+								"items": { "type": "string" },
+								"description": "Additional command-line arguments passed to gdb.",
+								"default": []
+							},
+							"stopOnEntry": {
+								"type": "boolean",
+								"description": "Stop at the first instruction of the entry block.",
+								"default": true
+							},
+							"cwd": {
+								"type": "string",
+								"description": "Working directory for the gdb process.",
+								"default": "${workspaceFolder}"
+							},
+							"env": {
+								"type": "object",
+								"description": "Environment variables forwarded to gdb.",
+								"default": {}
+							},
+							"trace": {
+								"type": "boolean",
+								"description": "Log all DAP traffic to the debug console for diagnostics.",
+								"default": false
+							}
+						}
+					},
+					"attach": {
+						"required": [
+							"program",
+							"pid"
+						],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Path to the Nautilus IR file currently being executed.",
+								"default": "${file}"
+							},
+							"pid": {
+								"type": "number",
+								"description": "Process id to attach to."
+							},
+							"gdbPath": {
+								"type": "string",
+								"default": "gdb"
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "nautilus-ir-gdb",
+						"request": "launch",
+						"name": "Debug Nautilus IR (gdb)",
+						"program": "${file}",
+						"stopOnEntry": true,
+						"cwd": "${workspaceFolder}"
+					}
+				],
+				"configurationSnippets": [
+					{
+						"label": "Nautilus IR: Launch with gdb",
+						"description": "Debug a .nesir/.trace file using gdb.",
+						"body": {
+							"type": "nautilus-ir-gdb",
+							"request": "launch",
+							"name": "Debug Nautilus IR (gdb)",
+							"program": "^\"\\${file}\"",
+							"stopOnEntry": true,
+							"cwd": "^\"\\${workspaceFolder}\""
+						}
+					},
+					{
+						"label": "Nautilus IR: Attach with gdb",
+						"description": "Attach to a running process executing Nautilus IR.",
+						"body": {
+							"type": "nautilus-ir-gdb",
+							"request": "attach",
+							"name": "Attach to Nautilus IR (gdb)",
+							"program": "^\"\\${file}\"",
+							"pid": 0
+						}
+					}
+				]
+			}
+		],
+		"menus": {
+			"editor/context": [
+				{
+					"when": "resourceLangId == nautilus-ir",
+					"command": "nautilus-ir.gotoBlock",
+					"group": "navigation@1"
+				},
+				{
+					"when": "resourceLangId == nautilus-ir",
+					"command": "nautilus-ir.debugWithGdb",
+					"group": "navigation@2"
+				}
+			],
+			"editor/title": [
+				{
+					"when": "resourceLangId == nautilus-ir",
+					"command": "nautilus-ir.dumpInfo",
+					"group": "navigation"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"command": "nautilus-ir.gotoBlock",
+				"key": "ctrl+shift+b",
+				"mac": "cmd+shift+b",
+				"when": "editorLangId == nautilus-ir"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"package": "vsce package",
+		"lint": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@vscode/debugadapter": "^1.65.0",
+		"@vscode/debugprotocol": "^1.65.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"@types/vscode": "^1.80.0",
+		"typescript": "^5.4.0"
+	}
+}
