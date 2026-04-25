@@ -358,13 +358,13 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph,
                                                              format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
-	fmt::format_to(out, "NautilusIr {{\n");
+	fmt::format_to(out, "nautilus {{\n");
 
 	// Print all function operations
 	for (const auto* func : graph.getFunctionOperations()) {
 		fmt::format_to(out, "{}", *func);
 	}
 
-	fmt::format_to(out, "}} //NESIR\n");
+	fmt::format_to(out, "}} //nautilus\n");
 	return out;
 }

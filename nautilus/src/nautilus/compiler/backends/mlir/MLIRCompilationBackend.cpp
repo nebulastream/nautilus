@@ -41,8 +41,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
                                                             CompilationStatistics* statistics) const {
 	const auto backendStart = std::chrono::steady_clock::now();
 
-	// 1. Create the MLIRLoweringProvider and lower the given NESIR. Return an
-	// MLIR module.
+	// 1. Create the MLIRLoweringProvider and lower the given Nautilus IR. Return
+	// an MLIR module.
 	::mlir::DialectRegistry registry;
 	registry.insert<::mlir::arith::ArithDialect, ::mlir::cf::ControlFlowDialect, ::mlir::math::MathDialect,
 	                ::mlir::LLVM::LLVMDialect, ::mlir::func::FuncDialect>();

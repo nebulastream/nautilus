@@ -20,13 +20,13 @@ Calls the individual scripts below.
 
 ### `regenerate-trace-data.sh`
 
-Regenerates trace test references (tracing, ir, after_ssa stages).
+Regenerates trace test references for every pipeline stage.
 
 ```bash
 ./s/regenerate-trace-data.sh
 ```
 
-Deletes all `.trace` files from `nautilus/test/data/*/` and reruns tests to regenerate them.
+Deletes the existing reference files under `nautilus/test/data/*/` and reruns tests to regenerate them. Raw execution traces (`tracing/`, `after_ssa/`) live in `.trace` files; Nautilus IR dumps (`ir/`, `after_constant_folding/`, `after_empty_block_elim/`) live in `.nautilus` files.
 
 **Verify:** `cd build && ctest --test-dir nautilus -R "Trace Test" --output-on-failure`
 
@@ -58,8 +58,9 @@ Use these scripts when:
 
 ## Test Reference Structure
 
-**Trace tests:** `nautilus/test/data/{category}/{tracing,ir,after_ssa}/`
+**Trace tests:** `nautilus/test/data/{category}/{tracing,after_ssa,ir,after_constant_folding,after_empty_block_elim}/`
 - Categories: bool-tests, cast-tests, control-flow-tests, enum-tests, expression-tests, loop-tests, pointer-tests, regressions, runtime-call-tests, static-loop-tests
+- Raw execution traces (`tracing`, `after_ssa`) use the `.trace` extension; Nautilus IR dumps (`ir`, `after_constant_folding`, `after_empty_block_elim`) use the `.nautilus` extension
 
 **LLVM IR tests:** `nautilus/test/llvm-ir-test/reference-ir/*.ll`
 - Normalized LLVM IR files (machine-specific attributes removed)
