@@ -26,8 +26,9 @@ export class IrSymbolProvider implements vscode.DocumentSymbolProvider {
 		const ir = irFor(document);
 		const symbols: vscode.DocumentSymbol[] = [];
 		for (const fn of ir.functions) {
+			const signature = `(${fn.args.map(a => `${a.name}:${a.type}`).join(', ')})${fn.returnType ? ` :${fn.returnType}` : ''}`;
 			const fnSym = new vscode.DocumentSymbol(
-				`${fn.name}()`,
+				`${fn.name}${signature}`,
 				`${fn.blocks.length} block(s) · ${fn.definitions.size} def(s)`,
 				vscode.SymbolKind.Function,
 				fn.bodyRange,
@@ -196,6 +197,18 @@ export class IrHoverProvider implements vscode.HoverProvider {
 			const refs = fn ? allRefs.filter(r => r.functionName === fn.name) : allRefs;
 			md.appendMarkdown(`\n\n${refs.length} use(s) in \`${def.functionName}\`.`);
 			return md;
+		}
+		// Function parameter? Look at the enclosing function's signature first.
+		if (fn) {
+			const param = fn.args.find(a => a.name === name);
+			if (param) {
+				md.appendMarkdown(`**${name}** *(parameter of \`${fn.name}\`)*\n\n`);
+				md.appendMarkdown(`Type: \`${param.type}\``);
+				if (fn.returnType) {
+					md.appendMarkdown(`\n\nFunction returns \`${fn.returnType}\`.`);
+				}
+				return md;
+			}
 		}
 		// Block argument lookup (within the enclosing function).
 		const blocks = fn?.blocks ?? ir.blocks;

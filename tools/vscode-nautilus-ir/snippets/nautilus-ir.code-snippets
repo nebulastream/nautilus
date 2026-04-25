@@ -3,8 +3,8 @@
 		"prefix": "nautilus",
 		"body": [
 			"nautilus {",
-			"${1:execute}() {",
-			"Block_0(${2:\\$1}:${3:i32}):",
+			"${1:execute}(\\$1:${2:i32}) :${3:i32} {",
+			"Block_0(\\$1:${2:i32}):",
 			"\t\\$2 = ${4:0} :${3:i32}",
 			"\treturn (\\$2) :${3:i32}",
 			"}",
@@ -15,9 +15,10 @@
 	"Nautilus IR function": {
 		"prefix": "fn",
 		"body": [
-			"${1:funcName}() {",
-			"Block_0(${2:\\$1}:${3:i32}):",
-			"\treturn (\\$1) :${3:i32}",
+			"${1:funcName}(\\$1:${2:i32}, \\$2:${2:i32}) :${3:i32} {",
+			"Block_0(\\$1:${2:i32}, \\$2:${2:i32}):",
+			"\t\\$3 = \\$1 + \\$2 :${3:i32}",
+			"\treturn (\\$3) :${3:i32}",
 			"}"
 		],
 		"description": "Helper function inside the nautilus { ... } module."

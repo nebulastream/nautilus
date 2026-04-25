@@ -4,7 +4,7 @@
 // Grammar reference (informally):
 //
 //   module      ::= 'nautilus' '{' function* '}' '//nautilus'?
-//   function    ::= IDENT '(' ')' '{' block+ '}'
+//   function    ::= IDENT '(' arg-list? ')' (':' TYPE)? '{' block+ '}'
 //   block       ::= 'Block_' INT '(' arg-list? ')' ':' statement*
 //   arg-list    ::= typed-ssa (',' typed-ssa)*
 //   typed-ssa   ::= '$' INT ':' TYPE
@@ -67,6 +67,8 @@ export interface Block {
 
 export interface IrFunction {
 	name: string;
+	args: BlockArgument[];                 // typed parameters from the header
+	returnType: string | undefined;        // primitive type after `):` (undefined if absent)
 	headerLine: number;
 	headerRange: vscode.Range;
 	bodyRange: vscode.Range;
@@ -86,7 +88,9 @@ export interface ParsedIr {
 	references: Map<string, SsaReference[]>;
 }
 
-const FUNCTION_HEADER_RE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\)\s*\{\s*$/;
+// Matches "name(arg-list?) :returnType? {". The arg list and the return type
+// are optional to support both legacy and current dump formats.
+const FUNCTION_HEADER_RE = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*(?::\s*([a-z0-9]+))?\s*\{\s*$/;
 const BLOCK_HEADER_RE = /^\s*(Block_\d+)\s*\(([^)]*)\)\s*:\s*$/;
 const SSA_DEF_RE = /^\s*(\$\d+)\s*=\s*(.+?)\s*$/;
 const BARE_DECL_RE = /^\s*(\$\d+)\s*:\s*([a-z0-9]+)\s*$/;
@@ -135,8 +139,15 @@ export function parse(document: vscode.TextDocument): ParsedIr {
 		if (fnMatch && fnMatch[1] !== MODULE_KEYWORD) {
 			finalizeBlock(currentBlock, i - 1, document);
 			finalizeFunction(currentFn, i - 1, document);
+			const argList = fnMatch[2].trim();
+			const args: BlockArgument[] = argList === ''
+				? []
+				: argList.split(',').map(rawArgToken);
+			const returnType = fnMatch[3] && PRIMITIVE_TYPES.has(fnMatch[3]) ? fnMatch[3] : undefined;
 			currentFn = {
 				name: fnMatch[1],
+				args,
+				returnType,
 				headerLine: i,
 				headerRange: new vscode.Range(i, 0, i, text.length),
 				bodyRange: new vscode.Range(i, 0, i, text.length),

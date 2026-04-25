@@ -38,10 +38,12 @@ a navigable, debuggable artifact.
 ### Navigation
 
 - **Document outline / breadcrumbs** — top level: every IR function in
-  the module (a single file may contain `execute()` plus helpers like
-  `add()`, `inner()`, `loopHelper()`, etc.). Children: basic blocks.
-  Grandchildren: SSA definitions with types. Use the outline view,
-  breadcrumb dropdowns, and **Go to Symbol in File** (`Ctrl+Shift+O`).
+  the module, rendered with its typed signature
+  (e.g. `add($1:i32, $2:i32) :i32`). A single file may contain
+  `execute()` plus helpers like `add()`, `inner()`, `loopHelper()`, etc.
+  Children: basic blocks. Grandchildren: SSA definitions with types.
+  Use the outline view, breadcrumb dropdowns, and **Go to Symbol in
+  File** (`Ctrl+Shift+O`).
 - **Go to Definition** (`F12`) on `$N` jumps to its assignment; on
   `Block_N` it jumps to the block header.
 - **Find All References** (`Shift+F12`) for SSA values and block names.

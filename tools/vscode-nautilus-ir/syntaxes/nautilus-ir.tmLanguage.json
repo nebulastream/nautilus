@@ -54,12 +54,21 @@
 			]
 		},
 		"function-header": {
-			"begin": "^\\s*(?!nautilus\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()\\s*(\\))\\s*(\\{)",
+			"begin": "^\\s*(?!nautilus\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()([^)]*)(\\))\\s*(?:(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void))?\\s*(\\{)\\s*$",
 			"beginCaptures": {
 				"1": { "name": "entity.name.function.nautilus-ir" },
 				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" },
-				"3": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
-				"4": { "name": "punctuation.section.block.begin.nautilus-ir" }
+				"3": {
+					"patterns": [
+						{ "include": "#typed-ssa-arg" },
+						{ "include": "#types" },
+						{ "include": "#punctuation" }
+					]
+				},
+				"4": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
+				"5": { "name": "punctuation.separator.return-type.nautilus-ir" },
+				"6": { "name": "support.type.primitive.nautilus-ir" },
+				"7": { "name": "punctuation.section.block.begin.nautilus-ir" }
 			},
 			"end": "^\\s*(\\})",
 			"endCaptures": {
