@@ -1,12 +1,12 @@
 nautilus {
-execute() {
+execute($1:i32, $2:i32, $3:i32) :i32 {
 Block_0($1:i32, $2:i32, $3:i32):
 	$4 = func_*($1,$2) :i32
 	$5 = func_*($2,$3) :i32
 	$6 = func_*($4,$5) :i32
 	return ($6) :i32
 }
-multiply() {
+multiply($1:i32, $2:i32) :i32 {
 Block_0($1:i32, $2:i32):
 	$3 = $1 * $2 :i32
 	return ($3) :i32

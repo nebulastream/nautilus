@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute() :ui32 {
 Block_0():
 	$1 = 0 :ui32
 	return ($1) :ui32

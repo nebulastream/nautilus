@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr, $3:i8) :void {
 Block_0($1:ptr, $2:ptr, $3:i8):
 	$4 = 0 :i8
 	br Block_3($4, $3, $1, $2) :void

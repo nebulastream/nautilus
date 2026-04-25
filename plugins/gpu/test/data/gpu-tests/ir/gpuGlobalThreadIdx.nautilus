@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute() :ui32 {
 Block_0():
 	$1 = func_*() :ui32
 	$2 = func_*() :ui32

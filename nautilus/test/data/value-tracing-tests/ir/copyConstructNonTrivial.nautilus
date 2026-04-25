@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute() :i32 {
 Block_0():
 	$1 = alloca 4b :ptr
 	$15 = alloca 4b :ptr

@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:i32) :bool {
 Block_0($1:i32):
 	$2 = true :bool
 	$3 = 42 :i64

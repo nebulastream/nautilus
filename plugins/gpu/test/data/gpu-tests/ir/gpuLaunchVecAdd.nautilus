@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr, $3:ptr) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -12,7 +12,7 @@ Block_0($1:ptr, $2:ptr, $3:ptr):
 	func_*($1,$2,$3) :void
 	return :void
 }
-vecAdd() {
+vecAdd($1:ptr, $2:ptr, $3:ptr) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr):
 	$7 = func_*() :ui32
 	$8 = $7 cast_to i32 :i32

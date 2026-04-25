@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute() :i64 {
 Block_0():
 	$1 = alloca 16b :ptr
 	$2 = 1000 :i64

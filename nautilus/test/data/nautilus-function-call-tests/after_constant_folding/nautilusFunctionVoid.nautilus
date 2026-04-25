@@ -1,11 +1,11 @@
 nautilus {
-execute() {
+execute($1:ptr) :i32 {
 Block_0($1:ptr):
 	func_*($1) :void
 	$5 = load($1) :i32
 	return ($5) :i32
 }
-voidHelper() {
+voidHelper($1:ptr) :void {
 Block_0($1:ptr):
 	$4 = 10 :i32
 	$5 = load($1) :i32

@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute() :i32 {
 Block_0():
 	$1 = 0 :i32
 	$2 = 42 :i32

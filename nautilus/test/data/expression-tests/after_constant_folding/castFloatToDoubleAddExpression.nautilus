@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:f32) :f64 {
 Block_0($1:f32):
 	$2 = 7 :f64
 	$3 = $1 cast_to f64 :f64

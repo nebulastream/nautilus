@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr) :bool {
 Block_0($1:ptr):
 	$3 = * :ptr
 	$6 = $1  $3 :bool

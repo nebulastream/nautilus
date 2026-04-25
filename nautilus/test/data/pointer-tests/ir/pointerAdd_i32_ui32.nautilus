@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ui32) :i32 {
 Block_0($1:ptr, $2:ui32):
 	$6 = 4 :ui64
 	$7 = $2 cast_to ui64 :ui64

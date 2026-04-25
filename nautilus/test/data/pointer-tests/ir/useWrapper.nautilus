@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr) :i32 {
 Block_0($1:ptr, $2:ptr):
 	$3 = func_*($1) :i32
 	$4 = func_*($2) :i32

@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ui32) :ui16 {
 Block_0($1:ui32):
 	$2 = $1 cast_to ui16 :ui16
 	return ($2) :ui16

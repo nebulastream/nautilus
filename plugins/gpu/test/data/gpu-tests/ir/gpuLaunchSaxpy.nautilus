@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr, $3:f32) :void {
 Block_0($1:ptr, $2:ptr, $3:f32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -12,7 +12,7 @@ Block_0($1:ptr, $2:ptr, $3:f32):
 	func_*($1,$2,$3) :void
 	return :void
 }
-saxpy() {
+saxpy($1:ptr, $2:ptr, $3:f32) :void {
 Block_0($1:ptr, $2:ptr, $3:f32):
 	$6 = func_*() :ui32
 	$7 = func_*() :ui32

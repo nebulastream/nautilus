@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ui16) :ui16 {
 Block_0($1:ui16):
 	return ($1) :ui16
 }

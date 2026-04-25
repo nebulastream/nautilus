@@ -1,16 +1,16 @@
 nautilus {
-execute() {
+execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = func_*($1) :i32
 	return ($2) :i32
 }
-inner() {
+inner($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = 2 :i32
 	$3 = $1 * $2 :i32
 	return ($3) :i32
 }
-outer() {
+outer($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = func_*($1) :i32
 	$3 = 5 :i32
