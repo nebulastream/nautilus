@@ -9,6 +9,7 @@ import {
 	IrFoldingProvider,
 	IrRenameProvider,
 	IrCodeLensProvider,
+	IrInlineValuesProvider,
 	irFor,
 } from './features';
 import { GdbDescriptorFactory } from './debugAdapter';
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.languages.registerFoldingRangeProvider(SELECTOR, new IrFoldingProvider()),
 		vscode.languages.registerRenameProvider(SELECTOR, new IrRenameProvider()),
 		vscode.languages.registerCodeLensProvider(SELECTOR, new IrCodeLensProvider()),
+		vscode.languages.registerInlineValuesProvider(SELECTOR, new IrInlineValuesProvider()),
 	);
 
 	// Diagnostics: light static checks (undefined SSA references, dangling branches).

@@ -121,6 +121,12 @@ The extension contributes a `nautilus-ir-gdb` debug adapter that drives
   they remain pending until the JIT registers symbols for the IR file.
 - Step over / into / out, continue, pause, restart.
 - Live **Variables** view (locals, arguments, registers).
+- **Inline values** — while stopped, the live value of every SSA `$N`,
+  function parameter, and block argument is displayed next to its
+  definition in the editor (only for definitions at or above the current
+  stop line, since later defs have not yet been computed). Nautilus emits
+  each IR value `$N` into DWARF as a local named `vN`; the extension
+  rewrites the lookup automatically. Toggle via `nautilusIr.inlineValues`.
 - **Watch** and **Hover** evaluation via `data-evaluate-expression`.
 - Stack trace and frame navigation across host C++ ↔ JIT'd IR frames.
 - Console / stdout / stderr forwarded from gdb and the inferior.
@@ -188,6 +194,7 @@ honored so gdb can locate the IR source.
 | `nautilusIr.highlightDefinitions`    | `true`  | Highlight all uses of an SSA value when the cursor is on its definition.         |
 | `nautilusIr.codeLens`                | `true`  | Show CodeLens above every block.                                                 |
 | `nautilusIr.graph.autoOpen`          | `false` | Open the graph view automatically when a `.nautilus` file is opened.             |
+| `nautilusIr.inlineValues`            | `true`  | Show SSA values inline next to their definitions while debugging.                |
 | `nautilusIr.lastHostProgram`         | `""`    | Remembered host program for the ad-hoc "Debug Current File" command.             |
 
 ### Commands

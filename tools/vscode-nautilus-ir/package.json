@@ -123,6 +123,11 @@
 					"default": true,
 					"description": "Show CodeLens above blocks (predecessors / successors / argument count)."
 				},
+				"nautilusIr.inlineValues": {
+					"type": "boolean",
+					"default": true,
+					"description": "While debugging, show the live value of each SSA $N next to its definition (and parameters / block arguments). Values are resolved through gdb against Nautilus's DWARF locals (which name $N as vN)."
+				},
 				"nautilusIr.lastHostProgram": {
 					"type": "string",
 					"default": "",
