@@ -118,6 +118,12 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Show CodeLens above blocks (predecessors / successors / argument count)."
+				},
+				"nautilusIr.lastHostProgram": {
+					"type": "string",
+					"default": "",
+					"scope": "resource",
+					"description": "Last-used C++ host executable for ad-hoc gdb debugging. Updated automatically by the 'Debug Current File with gdb' command."
 				}
 			}
 		},
@@ -143,8 +149,29 @@
 						"properties": {
 							"program": {
 								"type": "string",
-								"description": "Absolute path to the Nautilus IR file to debug.",
+								"description": "Absolute path to the C++ host executable that loads and runs the Nautilus IR (e.g. an ExecutionTest binary or your own demo). Nautilus IR is never executed on its own — gdb debugs the host process and stops in JIT-compiled IR code via source-line debug info.",
+								"default": "${workspaceFolder}/build/nautilus/test/execution-tests/ExecutionTest"
+							},
+							"args": {
+								"type": "array",
+								"items": { "type": "string" },
+								"description": "Command-line arguments forwarded to the host program.",
+								"default": []
+							},
+							"irFile": {
+								"type": "string",
+								"description": "Optional Nautilus IR file the host program will load. If set, the adapter will tell gdb to look for source files in this directory and pre-set a breakpoint on its first instruction (when stopAtIrEntry is true).",
 								"default": "${file}"
+							},
+							"stopAtIrEntry": {
+								"type": "boolean",
+								"description": "If true, set a one-shot breakpoint at the first instruction of irFile so execution halts as soon as control reaches the JIT-compiled IR.",
+								"default": true
+							},
+							"stopOnEntry": {
+								"type": "boolean",
+								"description": "Stop at main() of the host program before running.",
+								"default": false
 							},
 							"gdbPath": {
 								"type": "string",
@@ -154,13 +181,14 @@
 							"gdbArgs": {
 								"type": "array",
 								"items": { "type": "string" },
-								"description": "Additional command-line arguments passed to gdb.",
+								"description": "Additional command-line arguments passed to gdb itself.",
 								"default": []
 							},
-							"stopOnEntry": {
-								"type": "boolean",
-								"description": "Stop at the first instruction of the entry block.",
-								"default": true
+							"sourceDirectories": {
+								"type": "array",
+								"items": { "type": "string" },
+								"description": "Extra directories that gdb should search for source files (forwarded as `directory` commands). Useful when the IR file lives outside the host program's source tree.",
+								"default": []
 							},
 							"cwd": {
 								"type": "string",
@@ -169,12 +197,12 @@
 							},
 							"env": {
 								"type": "object",
-								"description": "Environment variables forwarded to gdb.",
+								"description": "Environment variables forwarded to the inferior.",
 								"default": {}
 							},
 							"trace": {
 								"type": "boolean",
-								"description": "Log all DAP traffic to the debug console for diagnostics.",
+								"description": "Log all DAP/MI traffic to the debug console for diagnostics.",
 								"default": false
 							}
 						}
@@ -187,12 +215,22 @@
 						"properties": {
 							"program": {
 								"type": "string",
-								"description": "Path to the Nautilus IR file currently being executed.",
-								"default": "${file}"
+								"description": "Path to the host C++ executable currently running the Nautilus IR.",
+								"default": "${workspaceFolder}/build/nautilus/test/execution-tests/ExecutionTest"
 							},
 							"pid": {
 								"type": "number",
 								"description": "Process id to attach to."
+							},
+							"irFile": {
+								"type": "string",
+								"description": "Optional Nautilus IR file currently of interest (used to add a source-search directory).",
+								"default": "${file}"
+							},
+							"sourceDirectories": {
+								"type": "array",
+								"items": { "type": "string" },
+								"default": []
 							},
 							"gdbPath": {
 								"type": "string",
@@ -205,34 +243,39 @@
 					{
 						"type": "nautilus-ir-gdb",
 						"request": "launch",
-						"name": "Debug Nautilus IR (gdb)",
-						"program": "${file}",
-						"stopOnEntry": true,
+						"name": "Debug Nautilus IR via host program (gdb)",
+						"program": "${workspaceFolder}/build/nautilus/test/execution-tests/ExecutionTest",
+						"args": [],
+						"irFile": "${file}",
+						"stopAtIrEntry": true,
 						"cwd": "${workspaceFolder}"
 					}
 				],
 				"configurationSnippets": [
 					{
-						"label": "Nautilus IR: Launch with gdb",
-						"description": "Debug a .nesir/.trace file using gdb.",
+						"label": "Nautilus IR: Launch host program with gdb",
+						"description": "Debug a Nautilus IR file by launching the C++ host program that loads it under gdb.",
 						"body": {
 							"type": "nautilus-ir-gdb",
 							"request": "launch",
-							"name": "Debug Nautilus IR (gdb)",
-							"program": "^\"\\${file}\"",
-							"stopOnEntry": true,
+							"name": "Debug Nautilus IR via host program (gdb)",
+							"program": "^\"\\${workspaceFolder}/build/path/to/host_executable\"",
+							"args": [],
+							"irFile": "^\"\\${file}\"",
+							"stopAtIrEntry": true,
 							"cwd": "^\"\\${workspaceFolder}\""
 						}
 					},
 					{
-						"label": "Nautilus IR: Attach with gdb",
-						"description": "Attach to a running process executing Nautilus IR.",
+						"label": "Nautilus IR: Attach to host process with gdb",
+						"description": "Attach to a running C++ host process executing Nautilus IR.",
 						"body": {
 							"type": "nautilus-ir-gdb",
 							"request": "attach",
-							"name": "Attach to Nautilus IR (gdb)",
-							"program": "^\"\\${file}\"",
-							"pid": 0
+							"name": "Attach to Nautilus IR host (gdb)",
+							"program": "^\"\\${workspaceFolder}/build/path/to/host_executable\"",
+							"pid": 0,
+							"irFile": "^\"\\${file}\""
 						}
 					}
 				]

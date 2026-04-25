@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import {
 	IrSymbolProvider,
 	IrDefinitionProvider,
@@ -73,9 +74,9 @@ export function activate(context: vscode.ExtensionContext): void {
 		const line = editor.selection.active.line;
 		const block = ir.blocks.find(b => line >= b.headerLine && line <= b.bodyRange.end.line);
 		if (block) {
-			statusItem.text = `$(symbol-method) ${block.name}  ⟶  ${block.successors.join(', ') || block.terminator}`;
+			statusItem.text = `$(symbol-method) ${block.functionName}::${block.name}  ⟶  ${block.successors.join(', ') || block.terminator}`;
 			statusItem.tooltip = new vscode.MarkdownString(
-				`**${block.name}**\n\nPredecessors: ${block.predecessors.join(', ') || '*(none)*'}\n\nSuccessors: ${block.successors.join(', ') || '*(none)*'}`,
+				`**${block.functionName}::${block.name}**\n\nPredecessors: ${block.predecessors.join(', ') || '*(none)*'}\n\nSuccessors: ${block.successors.join(', ') || '*(none)*'}`,
 			);
 			statusItem.show();
 		} else {
@@ -101,10 +102,12 @@ async function gotoBlockCommand(): Promise<void> {
 		return;
 	}
 	const ir = irFor(editor.document);
-	const items: vscode.QuickPickItem[] = ir.blocks.map(b => ({
-		label: b.name,
+	const items: (vscode.QuickPickItem & { fn: string; block: string })[] = ir.blocks.map(b => ({
+		label: `${b.functionName}::${b.name}`,
 		description: `${b.args.length} args, ${b.instructions} insns`,
 		detail: `→ ${b.successors.length ? b.successors.join(', ') : b.terminator}`,
+		fn: b.functionName,
+		block: b.name,
 	}));
 	const pick = await vscode.window.showQuickPick(items, {
 		placeHolder: 'Jump to block...',
@@ -114,7 +117,8 @@ async function gotoBlockCommand(): Promise<void> {
 	if (!pick) {
 		return;
 	}
-	const target = ir.blockByName.get(pick.label);
+	const fn = ir.functionByName.get(pick.fn);
+	const target = fn?.blockByName.get(pick.block);
 	if (target) {
 		const pos = new vscode.Position(target.headerLine, 0);
 		editor.selection = new vscode.Selection(pos, pos);
@@ -128,22 +132,31 @@ function dumpInfoCommand(): void {
 		return;
 	}
 	const ir = irFor(editor.document);
-	const total = ir.blocks.reduce((sum, b) => sum + b.instructions, 0);
-	const unreachable = ir.blocks.filter(b => b.predecessors.length === 0 && b !== ir.blocks[0]);
+	const totalInsns = ir.blocks.reduce((sum, b) => sum + b.instructions, 0);
+	const totalDefs = ir.functions.reduce((sum, fn) => sum + fn.definitions.size, 0);
+	const unreachable: string[] = [];
+	for (const fn of ir.functions) {
+		const entry = fn.blocks[0];
+		for (const block of fn.blocks) {
+			if (block !== entry && block.predecessors.length === 0) {
+				unreachable.push(`${fn.name}::${block.name}`);
+			}
+		}
+	}
 	vscode.window.showInformationMessage(
-		`Nautilus IR: ${ir.blocks.length} blocks · ${total} instructions · ${ir.definitions.size} SSA defs · ${unreachable.length} unreachable`,
+		`Nautilus IR: ${ir.functions.length} functions · ${ir.blocks.length} blocks · ${totalInsns} instructions · ${totalDefs} SSA defs · ${unreachable.length} unreachable`,
 	);
 }
 
 function showBlockInfoCommand(uri: vscode.Uri, blockName: string): void {
 	vscode.workspace.openTextDocument(uri).then(doc => {
 		const ir = irFor(doc);
-		const block = ir.blockByName.get(blockName);
+		const block = ir.blocks.find(b => b.name === blockName);
 		if (!block) {
 			return;
 		}
 		vscode.window.showInformationMessage(
-			`${block.name}: preds=[${block.predecessors.join(', ')}] succs=[${block.successors.join(', ')}] terminator=${block.terminator}`,
+			`${block.functionName}::${block.name}: preds=[${block.predecessors.join(', ')}] succs=[${block.successors.join(', ')}] terminator=${block.terminator}`,
 		);
 	});
 }
@@ -161,13 +174,35 @@ async function debugWithGdbCommand(): Promise<void> {
 		vscode.window.showWarningMessage('Open a Nautilus IR file before launching the gdb debugger.');
 		return;
 	}
+	// A Nautilus IR file is loaded by a C++ host program. Ask the user which
+	// host binary to attach gdb to, defaulting to a remembered choice.
+	const irPath = editor.document.uri.fsPath;
 	const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+	const memento = vscode.workspace.getConfiguration('nautilusIr');
+	const remembered = memento.get<string>('lastHostProgram', '');
+	const picked = await vscode.window.showOpenDialog({
+		title: 'Select the C++ host executable that loads this Nautilus IR',
+		canSelectFiles: true,
+		canSelectFolders: false,
+		canSelectMany: false,
+		defaultUri: remembered ? vscode.Uri.file(remembered) : folder?.uri,
+		openLabel: 'Debug',
+	});
+	if (!picked || picked.length === 0) {
+		return;
+	}
+	const hostProgram = picked[0].fsPath;
+	await memento.update('lastHostProgram', hostProgram, vscode.ConfigurationTarget.Workspace);
+
 	await vscode.debug.startDebugging(folder, {
 		type: 'nautilus-ir-gdb',
 		request: 'launch',
-		name: 'Debug Nautilus IR (gdb)',
-		program: editor.document.uri.fsPath,
-		stopOnEntry: true,
+		name: 'Debug Nautilus IR via host program (gdb)',
+		program: hostProgram,
+		args: [],
+		irFile: irPath,
+		stopAtIrEntry: true,
+		cwd: folder?.uri.fsPath ?? path.dirname(hostProgram),
 	});
 }
 
@@ -177,49 +212,49 @@ function runLint(doc: vscode.TextDocument): vscode.Diagnostic[] {
 	const ir = irFor(doc);
 	const out: vscode.Diagnostic[] = [];
 
-	// Block argument names that shadow defs are fine (block args ARE defs); collect the set.
-	const knownNames = new Set<string>(ir.definitions.keys());
-	for (const block of ir.blocks) {
-		for (const arg of block.args) {
-			knownNames.add(arg.name);
+	// SSA names are scoped per function — `$3` in `add()` is unrelated to
+	// `$3` in `execute()`. Validate each function in isolation.
+	for (const fn of ir.functions) {
+		const known = new Set<string>(fn.definitions.keys());
+		for (const block of fn.blocks) {
+			for (const arg of block.args) {
+				known.add(arg.name);
+			}
 		}
-	}
-
-	// 1. Undefined SSA references.
-	for (const [name, refs] of ir.references) {
-		if (knownNames.has(name)) {
-			continue;
-		}
-		for (const r of refs) {
-			out.push(new vscode.Diagnostic(
-				new vscode.Range(r.line, r.character, r.line, r.character + name.length),
-				`Undefined SSA value ${name}.`,
-				vscode.DiagnosticSeverity.Warning,
-			));
-		}
-	}
-
-	// 2. Branches to unknown blocks.
-	for (const block of ir.blocks) {
-		for (const succ of block.successors) {
-			if (!ir.blockByName.has(succ)) {
+		// Undefined SSA references inside this function.
+		for (const [name, refs] of ir.references) {
+			if (known.has(name)) {
+				continue;
+			}
+			for (const r of refs) {
+				if (r.functionName !== fn.name) {
+					continue;
+				}
 				out.push(new vscode.Diagnostic(
-					block.bodyRange,
-					`Branch targets unknown block ${succ}.`,
+					new vscode.Range(r.line, r.character, r.line, r.character + name.length),
+					`Undefined SSA value ${name} in ${fn.name}().`,
 					vscode.DiagnosticSeverity.Warning,
 				));
 			}
 		}
-	}
-
-	// 3. Blocks without a recognizable terminator.
-	for (const block of ir.blocks) {
-		if (block.instructions > 0 && block.terminator === 'unknown') {
-			out.push(new vscode.Diagnostic(
-				block.headerRange,
-				`Block ${block.name} has no return/branch terminator.`,
-				vscode.DiagnosticSeverity.Information,
-			));
+		// Dangling branch targets.
+		for (const block of fn.blocks) {
+			for (const succ of block.successors) {
+				if (!fn.blockByName.has(succ)) {
+					out.push(new vscode.Diagnostic(
+						block.headerRange,
+						`Branch in ${fn.name}() targets unknown block ${succ}.`,
+						vscode.DiagnosticSeverity.Warning,
+					));
+				}
+			}
+			if (block.instructions > 0 && block.terminator === 'unknown') {
+				out.push(new vscode.Diagnostic(
+					block.headerRange,
+					`Block ${block.name} in ${fn.name}() has no return/branch terminator.`,
+					vscode.DiagnosticSeverity.Information,
+				));
+			}
 		}
 	}
 
