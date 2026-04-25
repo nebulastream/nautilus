@@ -123,33 +123,27 @@ protected:
 		return gpuIntrinsics.contains(fnPtr);
 	}
 
-	bool functionUsesGPUIntrinsics(const ir::FunctionOperation& func) const {
-		for (auto& block : func.getBasicBlocks()) {
-			for (auto& op : block->getOperations()) {
-				if (op->getOperationType() == ir::Operation::OperationType::ProxyCallOp) {
-					auto* call = static_cast<ir::ProxyCallOperation*>(op);
-					// Only device intrinsics (threadIdx, syncThreads, etc.) mark a function
-					// as a kernel. Launch config intrinsics (setGrid, setBlock) do not.
-					if (deviceIntrinsics.contains(call->getFunctionPtr())) {
-						return true;
-					}
-				}
-			}
-		}
-		return false;
-	}
-
+	/// Populates `kernelFunctions` from the explicit `kernel` attribute set by
+	/// `NautilusKernelFunction`. There is intentionally no heuristic fallback —
+	/// the trace contexts already give every IR function an unambiguous role
+	/// (`kernel`, `entry`, or `device`) based on queue provenance.
 	void classifyKernelFunctions() {
 		for (const auto& func : ir->getFunctionOperations()) {
-			// Primary: explicit kernel attribute set by NautilusKernelFunction
 			if (func->hasAttribute("kernel")) {
 				kernelFunctions.insert(func->getName());
 			}
-			// Fallback: heuristic intrinsic scanning for free functions
-			else if (functionUsesGPUIntrinsics(*func)) {
-				kernelFunctions.insert(func->getName());
+		}
+	}
+
+	/// Returns the user-facing entry function, identified by the `entry`
+	/// attribute set on the first function in the trace queue.
+	const ir::FunctionOperation* getEntryFunction() const {
+		for (const auto* func : ir->getFunctionOperations()) {
+			if (func->hasAttribute("entry")) {
+				return func;
 			}
 		}
+		return nullptr;
 	}
 
 	static std::string getVariable(const ir::OperationIdentifier& id) {
@@ -372,8 +366,7 @@ protected:
 	}
 
 	template <class OpType>
-	void processBinary(ir::Operation* o, const std::string& operation, short blockIndex,
-	                   RegisterFrame& frame) {
+	void processBinary(ir::Operation* o, const std::string& operation, short blockIndex, RegisterFrame& frame) {
 		auto op = static_cast<OpType*>(o);
 		auto leftInput = frame.getValue(op->getLeftInput()->getIdentifier());
 		auto rightInput = frame.getValue(op->getRightInput()->getIdentifier());

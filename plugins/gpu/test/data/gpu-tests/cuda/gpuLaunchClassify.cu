@@ -2,27 +2,7 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
-__device__ void execute(uint8_t* var_$1 ,uint8_t* var_$2 ,uint32_t var_$3 ){
-uint32_t var_$4;
-uint32_t var_$6;
-uint32_t var_$7;
-uint32_t var_$8;
-uint32_t var_$10;
-uint32_t var_$11;
-Block_0:
-var_$4 = (uint32_t)1;
-var_$6 = (uint32_t)1;
-var_$7 = (uint32_t)1;
-var_$8 = (uint32_t)256;
-var_$10 = (uint32_t)1;
-var_$11 = (uint32_t)1;
-classify<<<dim3(var_$4,var_$6,var_$7),dim3(var_$8,var_$10,var_$11)>>>(var_$1,var_$2,var_$3);
-cudaDeviceSynchronize();
-return;
-
-}
-
-__global__ void classify_kernel(uint8_t* var_$1 ,uint8_t* var_$2 ,uint32_t var_$3 ){
+__global__ void classify(uint8_t* var_$1 ,uint8_t* var_$2 ,uint32_t var_$3 ){
 uint32_t var_$6;
 uint32_t var_$7;
 uint32_t var_$8;
@@ -241,9 +221,22 @@ goto Block_9;
 
 }
 
-extern "C" void execute(uint8_t* arg_0,uint8_t* arg_1,uint32_t arg_2){
-    dim3 grid(1,1,1);
-    dim3 block(256,1,1);
-    classify_kernel<<<grid, block>>>(arg_0,arg_1,arg_2);
-    cudaDeviceSynchronize();
+extern "C" void execute(uint8_t* var_$1 ,uint8_t* var_$2 ,uint32_t var_$3 ){
+uint32_t var_$4;
+uint32_t var_$6;
+uint32_t var_$7;
+uint32_t var_$8;
+uint32_t var_$10;
+uint32_t var_$11;
+Block_0:
+var_$4 = (uint32_t)1;
+var_$6 = (uint32_t)1;
+var_$7 = (uint32_t)1;
+var_$8 = (uint32_t)256;
+var_$10 = (uint32_t)1;
+var_$11 = (uint32_t)1;
+classify<<<dim3(var_$4,var_$6,var_$7),dim3(var_$8,var_$10,var_$11)>>>(var_$1,var_$2,var_$3);
+cudaDeviceSynchronize();
+return;
+
 }

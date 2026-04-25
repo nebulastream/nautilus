@@ -357,6 +357,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	registeredFunctions.clear();
 	setActiveTracer(this);
 
+	bool isFirstFunction = true;
 	while (!functionsToTrace.empty()) {
 		auto currentFunction = functionsToTrace.front();
 		functionsToTrace.pop_front();
@@ -366,7 +367,18 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
-		traceModule->setFunctionAttributes(currentFunction.getName(), currentFunction.getAttributes());
+		// Tag the first popped function as the entry point. Everything else in
+		// the queue was `invoke`d by some other traced function; that alone
+		// cannot tell us host-vs-device side (a plain NautilusFunction may be
+		// invoked from either), so non-entry classification is left to a
+		// downstream call-graph pass. `kernel` rides through unchanged from
+		// NautilusKernelFunction.
+		auto attributes = currentFunction.getAttributes();
+		if (isFirstFunction) {
+			attributes["entry"] = "true";
+			isFirstFunction = false;
+		}
+		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

@@ -84,17 +84,30 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 	Code pipelineCode;
 	pipelineCode << "\n#include <cstdint>\n#include <cuda_runtime.h>\n\n";
 
-	const auto& functionOperations = ir->getFunctionOperations();
-	auto gridX = options.getOptionOrDefault<int>("gpu.gridDimX", 1);
-	auto gridY = options.getOptionOrDefault<int>("gpu.gridDimY", 1);
-	auto gridZ = options.getOptionOrDefault<int>("gpu.gridDimZ", 1);
-	auto blockX = options.getOptionOrDefault<int>("gpu.blockDimX", 256);
-	auto blockY = options.getOptionOrDefault<int>("gpu.blockDimY", 1);
-	auto blockZ = options.getOptionOrDefault<int>("gpu.blockDimZ", 1);
-
 	classifyKernelFunctions();
 
-	auto emitFunction = [&](const ir::FunctionOperation& func, const std::string& nameOverride = "") {
+	// Role is read straight from IR attributes — no heuristics:
+	//   - `kernel`  (NautilusKernelFunction)              -> `__global__`
+	//   - `entry`   (first traced function)               -> `extern "C" execute`
+	//   - otherwise (helper discovered through tracing)   -> `__host__ __device__`
+	// The catch-all "helper" classification is intentionally permissive: a future
+	// call-graph pass may further narrow it to plain `__device__` or `__host__`,
+	// or duplicate the function for distinct host/device specialisations.
+	const auto* entryFunc = getEntryFunction();
+
+	enum class Decoration { Kernel, EntryHost, HostDevice };
+	auto decorate = [&](const ir::FunctionOperation& func) {
+		if (kernelFunctions.contains(func.getName())) {
+			return Decoration::Kernel;
+		}
+		if (&func == entryFunc) {
+			return Decoration::EntryHost;
+		}
+		return Decoration::HostDevice;
+	};
+
+	auto emitFunction = [&](const ir::FunctionOperation& func, Decoration decoration,
+	                        const std::string& nameOverride = "") {
 		resetFunctionState();
 		gpu::RegisterFrame rootFrame;
 		std::vector<std::string> arguments;
@@ -108,12 +121,17 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 		}
 		processBlock(&functionBasicBlock, rootFrame);
 
-		bool isKernel = kernelFunctions.contains(func.getName());
 		auto funcName = nameOverride.empty() ? func.getName() : nameOverride;
-		if (isKernel) {
+		switch (decoration) {
+		case Decoration::Kernel:
 			pipelineCode << "__global__ void " << funcName << "(";
-		} else {
-			pipelineCode << "__device__ " << getType(func.getOutputArg()) << " " << funcName << "(";
+			break;
+		case Decoration::HostDevice:
+			pipelineCode << "__host__ __device__ " << getType(func.getOutputArg()) << " " << funcName << "(";
+			break;
+		case Decoration::EntryHost:
+			pipelineCode << "extern \"C\" " << getType(func.getOutputArg()) << " " << funcName << "(";
+			break;
 		}
 		for (size_t i = 0; i < arguments.size(); i++) {
 			if (i != 0)
@@ -125,78 +143,35 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 			pipelineCode << functions.str();
 		for (auto& block : blocks)
 			pipelineCode << block.str() << "\n";
-		pipelineCode << "}\n\n";
+		// Entry function gets a single trailing newline (matches the public
+		// `execute` emit). Non-entry functions get a blank line for readability
+		// when several appear in sequence.
+		pipelineCode << (decoration == Decoration::EntryHost ? "}\n" : "}\n\n");
 	};
 
-	// Emit non-root functions
-	for (size_t i = 1; i < functionOperations.size(); i++) {
-		emitFunction(*functionOperations[i]);
+	// Emit every non-entry function in alphabetical order (the IR's natural
+	// ordering). Entry is always emitted last so kernels and helpers are in
+	// scope by name when the host wrapper references them.
+	for (const auto* func : ir->getFunctionOperations()) {
+		if (func == entryFunc) {
+			continue;
+		}
+		emitFunction(*func, decorate(*func));
 	}
 
-	// Emit root function
-	if (!functionOperations.empty()) {
-		const auto& rootFunc = *functionOperations[0];
-		bool rootIsKernel = kernelFunctions.contains(rootFunc.getName());
-
-		if (rootIsKernel) {
-			auto kernelName = rootFunc.getName() + "_kernel";
-			emitFunction(rootFunc, kernelName);
-
-			const auto& rootBlock = rootFunc.getFunctionBasicBlock();
-			pipelineCode << "extern \"C\" void execute(";
-			for (size_t i = 0; i < rootBlock.getArguments().size(); i++) {
-				if (i != 0)
-					pipelineCode << ",";
-				pipelineCode << getType(rootBlock.getArguments()[i]->getStamp()) << " arg_" << i;
-			}
-			pipelineCode << "){\n";
-			pipelineCode << "    dim3 grid(" << gridX << "," << gridY << "," << gridZ << ");\n";
-			pipelineCode << "    dim3 block(" << blockX << "," << blockY << "," << blockZ << ");\n";
-			pipelineCode << "    " << kernelName << "<<<grid, block>>>(";
-			for (size_t i = 0; i < rootBlock.getArguments().size(); i++) {
-				if (i != 0)
-					pipelineCode << ",";
-				pipelineCode << "arg_" << i;
-			}
-			pipelineCode << ");\n    cudaDeviceSynchronize();\n}\n";
-		} else {
-			// Root is host code
-			resetFunctionState();
-			gpu::RegisterFrame rootFrame;
-			std::vector<std::string> arguments;
-			const auto& functionBasicBlock = rootFunc.getFunctionBasicBlock();
-			for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
-				auto argument = functionBasicBlock.getArguments()[i];
-				auto var = getVariable(argument->getIdentifier());
-				rootFrame.setValue(argument->getIdentifier(), var);
-				arguments.emplace_back(getType(argument->getStamp()) + " " + var);
-			}
-			processBlock(&functionBasicBlock, rootFrame);
-
-			pipelineCode << "extern \"C\" " << getType(rootFunc.getOutputArg()) << " execute(";
-			for (size_t i = 0; i < arguments.size(); i++) {
-				if (i != 0)
-					pipelineCode << ",";
-				pipelineCode << arguments[i] << " ";
-			}
-			pipelineCode << "){\n" << blockArguments.str();
-			if (!functions.str().empty())
-				pipelineCode << functions.str();
-			for (auto& block : blocks)
-				pipelineCode << block.str() << "\n";
-			pipelineCode << "}\n";
-		}
+	if (entryFunc != nullptr) {
+		emitFunction(*entryFunc, Decoration::EntryHost, "execute");
 	}
 	return pipelineCode;
 }
 
-void CUDALoweringProvider::LoweringContext::processOperation(ir::Operation* opt,
-                                                             short blockIndex, gpu::RegisterFrame& frame) {
+void CUDALoweringProvider::LoweringContext::processOperation(ir::Operation* opt, short blockIndex,
+                                                             gpu::RegisterFrame& frame) {
 	dispatchOperation(opt, blockIndex, frame);
 }
 
-void CUDALoweringProvider::LoweringContext::processGPUOperation(ir::Operation* opt,
-                                                                short blockIndex, gpu::RegisterFrame& frame) {
+void CUDALoweringProvider::LoweringContext::processGPUOperation(ir::Operation* opt, short blockIndex,
+                                                                gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
 	switch (opt->getOperationType()) {
 	case OT::ProxyCallOp:

@@ -59,57 +59,18 @@ static std::shared_ptr<compiler::ir::IRGraph> traceToIR(std::function<void()> wr
 }
 
 #ifdef ENABLE_CUDA_BACKEND
+// Codegen reference comparison only covers realistic GPU programs:
+// `NautilusKernelFunction` kernels invoked from a host entry via `gpu::launch`.
+// The simple "free function calls a device intrinsic and is registered as the
+// entry" tests (gpuThreadIdxX etc.) don't translate to a valid CUDA program
+// (kernels are void, host code can't use threadIdx.x). They remain in the
+// execution test suite to verify CPU-fallback semantics.
 TEST_CASE("GPU CUDA Codegen Test") {
 	nautilus::log::options::setLogAddresses(false);
 	engine::Options options;
 	options.setOption("gpu.blockDimX", 256);
 	options.setOption("gpu.gridDimX", 1);
 
-	SECTION("gpuThreadIdxX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuThreadIdxX));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuThreadIdxX", ".cu"));
-	}
-	SECTION("gpuBlockIdxX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBlockIdxX));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuBlockIdxX", ".cu"));
-	}
-	SECTION("gpuBlockDimX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBlockDimX));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuBlockDimX", ".cu"));
-	}
-	SECTION("gpuGridDimX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuGridDimX));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuGridDimX", ".cu"));
-	}
-	SECTION("gpuSyncThreadsOnly") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuSyncThreadsOnly));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuSyncThreadsOnly", ".cu"));
-	}
-	SECTION("gpuGlobalThreadIdx") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuGlobalThreadIdx));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuGlobalThreadIdx", ".cu"));
-	}
-	SECTION("gpuThreadIdx3D") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuThreadIdx3D));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuThreadIdx3D", ".cu"));
-	}
-	SECTION("gpuBoundedIndex") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBoundedIndex));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuBoundedIndex", ".cu"));
-	}
-	SECTION("gpuVectorAdd") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuVectorAdd));
-		auto code = gpu::lowerToCUDA(ir, options);
-		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuVectorAdd", ".cu"));
-	}
 	SECTION("gpuLaunchVecAdd") {
 		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchVecAdd));
 		auto code = gpu::lowerToCUDA(ir, options);
@@ -149,55 +110,12 @@ TEST_CASE("GPU CUDA Codegen Test") {
 #endif
 
 #ifdef ENABLE_METAL_BACKEND
+// See note above on the CUDA test: only `gpu::launch`-style programs make
+// sense as Metal codegen reference cases.
 TEST_CASE("GPU Metal Codegen Test") {
 	nautilus::log::options::setLogAddresses(false);
 	engine::Options options;
 
-	SECTION("gpuThreadIdxX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuThreadIdxX));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuThreadIdxX", ".metal"));
-	}
-	SECTION("gpuBlockIdxX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBlockIdxX));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuBlockIdxX", ".metal"));
-	}
-	SECTION("gpuBlockDimX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBlockDimX));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuBlockDimX", ".metal"));
-	}
-	SECTION("gpuGridDimX") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuGridDimX));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuGridDimX", ".metal"));
-	}
-	SECTION("gpuSyncThreadsOnly") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuSyncThreadsOnly));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuSyncThreadsOnly", ".metal"));
-	}
-	SECTION("gpuGlobalThreadIdx") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuGlobalThreadIdx));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuGlobalThreadIdx", ".metal"));
-	}
-	SECTION("gpuThreadIdx3D") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuThreadIdx3D));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuThreadIdx3D", ".metal"));
-	}
-	SECTION("gpuBoundedIndex") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuBoundedIndex));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuBoundedIndex", ".metal"));
-	}
-	SECTION("gpuVectorAdd") {
-		auto ir = traceToIR(details::createFunctionWrapper(gpuVectorAdd));
-		auto out = gpu::lowerToMetal(ir, options);
-		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuVectorAdd", ".metal"));
-	}
 	SECTION("gpuLaunchVecAdd - device") {
 		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchVecAdd));
 		auto out = gpu::lowerToMetal(ir, options);
