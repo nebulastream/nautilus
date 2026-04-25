@@ -2,10 +2,10 @@
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "Nautilus IR",
 	"scopeName": "source.nautilus-ir",
-	"fileTypes": ["nesir", "trace", "nir"],
+	"fileTypes": ["nautilus"],
 	"patterns": [
 		{ "include": "#comments" },
-		{ "include": "#nesir-end-marker" },
+		{ "include": "#end-marker" },
 		{ "include": "#wrapper" },
 		{ "include": "#function-header" },
 		{ "include": "#block-header" },
@@ -22,8 +22,8 @@
 					"end": "$",
 					"patterns": [
 						{
-							"name": "keyword.other.nesir-marker.nautilus-ir",
-							"match": "\\bNESIR\\b"
+							"name": "keyword.other.module-marker.nautilus-ir",
+							"match": "\\bnautilus\\b"
 						}
 					]
 				},
@@ -34,12 +34,12 @@
 				}
 			]
 		},
-		"nesir-end-marker": {
-			"name": "comment.line.nesir-marker.nautilus-ir",
-			"match": "//\\s*NESIR\\s*$"
+		"end-marker": {
+			"name": "comment.line.module-end.nautilus-ir",
+			"match": "//\\s*nautilus\\s*$"
 		},
 		"wrapper": {
-			"begin": "^\\s*(NautilusIr)\\s*(\\{)",
+			"begin": "^\\s*(nautilus)\\s*(\\{)",
 			"beginCaptures": {
 				"1": { "name": "entity.name.namespace.nautilus-ir" },
 				"2": { "name": "punctuation.section.block.begin.nautilus-ir" }
@@ -54,7 +54,7 @@
 			]
 		},
 		"function-header": {
-			"begin": "^\\s*(?!NautilusIr\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()\\s*(\\))\\s*(\\{)",
+			"begin": "^\\s*(?!nautilus\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()\\s*(\\))\\s*(\\{)",
 			"beginCaptures": {
 				"1": { "name": "entity.name.function.nautilus-ir" },
 				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" },

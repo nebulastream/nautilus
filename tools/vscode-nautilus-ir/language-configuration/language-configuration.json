@@ -24,14 +24,14 @@
 	],
 	"folding": {
 		"markers": {
-			"start": "^\\s*(NautilusIr\\s*\\{|execute\\s*\\(\\s*\\)\\s*\\{|Block_\\d+\\b)",
-			"end": "^\\s*(\\}|//\\s*NESIR)"
+			"start": "^\\s*(nautilus\\s*\\{|[A-Za-z_][A-Za-z0-9_]*\\s*\\(\\s*\\)\\s*\\{|Block_\\d+\\b)",
+			"end": "^\\s*(\\}|//\\s*nautilus)"
 		},
 		"offSide": false
 	},
 	"wordPattern": "(\\$?[A-Za-z_][A-Za-z0-9_]*)|(\\$\\d+)",
 	"indentationRules": {
-		"increaseIndentPattern": "^\\s*(NautilusIr\\s*\\{|execute\\s*\\(\\s*\\)\\s*\\{|Block_\\d+.*:)\\s*$",
+		"increaseIndentPattern": "^\\s*(nautilus\\s*\\{|[A-Za-z_][A-Za-z0-9_]*\\s*\\(\\s*\\)\\s*\\{|Block_\\d+.*:)\\s*$",
 		"decreaseIndentPattern": "^\\s*\\}\\s*(//.*)?$"
 	},
 	"onEnterRules": [

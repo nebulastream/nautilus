@@ -1,7 +1,7 @@
 {
 	"name": "nautilus-ir",
 	"displayName": "Nautilus IR",
-	"description": "Syntax highlighting, navigation, and gdb-based debugging for Nautilus IR (.nesir / .trace) files emitted by the Nautilus tracing JIT compiler.",
+	"description": "Syntax highlighting, navigation, and gdb-based debugging for Nautilus IR (.nautilus) files emitted by the Nautilus tracing JIT compiler.",
 	"version": "0.1.0",
 	"publisher": "nebulastream",
 	"license": "MIT",
@@ -19,8 +19,7 @@
 		"ir",
 		"jit",
 		"compiler",
-		"ssa",
-		"nesir"
+		"ssa"
 	],
 	"repository": {
 		"type": "git",
@@ -39,20 +38,17 @@
 				"id": "nautilus-ir",
 				"aliases": [
 					"Nautilus IR",
-					"NESIR",
 					"nautilus-ir"
 				],
 				"extensions": [
-					".nesir",
-					".trace",
-					".nir"
+					".nautilus"
 				],
 				"configuration": "./language-configuration/language-configuration.json",
 				"icon": {
 					"light": "./images/file-icon-light.svg",
 					"dark": "./images/file-icon-dark.svg"
 				},
-				"firstLine": "^\\s*NautilusIr\\s*\\{"
+				"firstLine": "^\\s*nautilus\\s*\\{"
 			}
 		],
 		"grammars": [

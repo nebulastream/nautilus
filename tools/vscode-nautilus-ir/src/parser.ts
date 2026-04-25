@@ -1,9 +1,9 @@
 // Lightweight, regex-based parser for Nautilus IR (the dialect dumped into
-// `nautilus/test/data/*/ir/*.trace`).
+// `nautilus/test/data/*/ir/*.nautilus`).
 //
 // Grammar reference (informally):
 //
-//   module      ::= 'NautilusIr' '{' function* '}' '//NESIR'?
+//   module      ::= 'nautilus' '{' function* '}' '//nautilus'?
 //   function    ::= IDENT '(' ')' '{' block+ '}'
 //   block       ::= 'Block_' INT '(' arg-list? ')' ':' statement*
 //   arg-list    ::= typed-ssa (',' typed-ssa)*
@@ -99,7 +99,8 @@ const PRIMITIVE_TYPES = new Set([
 	'f32', 'f64', 'bool', 'ptr', 'void',
 ]);
 
-const MODULE_OPEN_RE = /^\s*NautilusIr\s*\{\s*$/;
+const MODULE_OPEN_RE = /^\s*nautilus\s*\{\s*$/;
+const MODULE_KEYWORD = 'nautilus';
 
 export function parse(document: vscode.TextDocument): ParsedIr {
 	const ir: ParsedIr = {
@@ -129,9 +130,9 @@ export function parse(document: vscode.TextDocument): ParsedIr {
 		}
 
 		// Function header. Distinguish from block headers (Block_N) and
-		// from the literal `NautilusIr {` line by the regexes above.
+		// from the literal `nautilus {` module-open line.
 		const fnMatch = code.match(FUNCTION_HEADER_RE);
-		if (fnMatch && fnMatch[1] !== 'NautilusIr') {
+		if (fnMatch && fnMatch[1] !== MODULE_KEYWORD) {
 			finalizeBlock(currentBlock, i - 1, document);
 			finalizeFunction(currentFn, i - 1, document);
 			currentFn = {

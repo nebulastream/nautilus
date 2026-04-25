@@ -1,16 +1,26 @@
 {
-	"NautilusIr skeleton": {
-		"prefix": "nesir",
+	"Nautilus IR module skeleton": {
+		"prefix": "nautilus",
 		"body": [
-			"NautilusIr {",
-			"execute() {",
-			"Block_0(${1:\\$1}:${2:i32}):",
-			"\t\\$2 = ${3:0} :${2:i32}",
-			"\treturn (\\$2) :${2:i32}",
+			"nautilus {",
+			"${1:execute}() {",
+			"Block_0(${2:\\$1}:${3:i32}):",
+			"\t\\$2 = ${4:0} :${3:i32}",
+			"\treturn (\\$2) :${3:i32}",
 			"}",
-			"} //NESIR"
+			"} //nautilus"
 		],
 		"description": "Empty Nautilus IR module skeleton."
+	},
+	"Nautilus IR function": {
+		"prefix": "fn",
+		"body": [
+			"${1:funcName}() {",
+			"Block_0(${2:\\$1}:${3:i32}):",
+			"\treturn (\\$1) :${3:i32}",
+			"}"
+		],
+		"description": "Helper function inside the nautilus { ... } module."
 	},
 	"Block": {
 		"prefix": "block",

@@ -4,25 +4,26 @@ A first-class editor experience for the intermediate representation (IR)
 emitted by [Nautilus](https://github.com/nebulastream/nautilus), the tracing
 JIT compiler used by NebulaStream.
 
-This extension turns plain `.nesir` / `.trace` IR dumps from the Nautilus
-test suite, the engine's `dump.ir = true` option, or any custom pipeline
-into a navigable, debuggable artifact.
+This extension turns plain `.nautilus` IR dumps from the Nautilus test
+suite, the engine's `dump.ir = true` option, or any custom pipeline into
+a navigable, debuggable artifact.
 
 ## Features
 
 ### Editing
 
 - **Syntax highlighting** for the full Nautilus IR grammar as emitted into
-  `nautilus/test/data/*/ir/*.trace` — primitive types
+  `nautilus/test/data/*/ir/*.nautilus` — primitive types
   (`i8…i64`, `ui8…ui64`, `f32`, `f64`, `bool`, `ptr`, `void`), arithmetic,
   bitwise, logical, comparison and unary (`~`, `!`) operators, control
   flow (`if … ? … : …`, `br`, `return`), memory (`load`, `store`,
   `alloca Nb`), casts (`cast_to TYPE`), runtime function pointer calls
   (`func_*(…)`), block headers (`Block_N(...):`), bare-typed
-  declarations (`$N :type`), the `NautilusIr` wrapper, arbitrary
-  function definitions (`execute()`, `add()`, `inner()`, `loopHelper()`,
-  …), and the `//NESIR` end marker. Validated against all 439 IR
-  fixtures in the test corpus with 100% token coverage.
+  declarations (`$N :type`), the `nautilus { … }` module wrapper,
+  arbitrary function definitions (`execute()`, `add()`, `inner()`,
+  `loopHelper()`, …), and the `//nautilus` end marker. Validated
+  against all 439 IR fixtures in the test corpus with 100% token
+  coverage.
 
   > Note: the alternate "mnemonic" dialect that appears in
   > `*/after_ssa/*.trace` and `*/tracing/*.trace` (`EXECUTE: B0(…)
@@ -99,7 +100,7 @@ The extension contributes a `nautilus-ir-gdb` debug adapter that drives
 #### Quick start
 
 1. Build a host program with debug info (`cmake -DCMAKE_BUILD_TYPE=Debug ..`).
-2. Open a `.nesir` / `.trace` file.
+2. Open a `.nautilus` file.
 3. Click **Run and Debug** in the side bar, then **Nautilus IR via host
    program (gdb)**. Edit `program` in `launch.json` to point at the host
    binary that loads this IR (e.g. `${workspaceFolder}/build/nautilus/test/execution-tests/ExecutionTest`).
@@ -184,22 +185,20 @@ vsce package
 
 ## File associations
 
-The extension registers itself for `.nesir`, `.trace`, and `.nir`
-extensions. If your project keeps `.trace` files used by another tool, set
+The extension registers itself for the `.nautilus` extension. If you also
+want it to handle older IR dumps that still carry a different extension
+(e.g. legacy `.trace` files from before the Nautilus rename), add an
+explicit association in your settings:
 
 ```jsonc
 "files.associations": {
-    "**/test/data/**/ir/*.trace": "nautilus-ir",
-    "**/test/data/**/after_ssa/*.trace": "nautilus-ir",
-    "**/test/data/**/after_constant_folding/*.trace": "nautilus-ir"
+    "**/test/data/**/ir/*.trace": "nautilus-ir"
 }
 ```
 
-so only Nautilus traces opt in.
-
 ## Example
 
-Open `nautilus/test/data/loop-tests/ir/collatz.trace` and you should see
+Open `nautilus/test/data/loop-tests/ir/collatz.nautilus` and you should see
 syntax-highlighted blocks, a populated outline, and CodeLens annotations
 above each `Block_N(...)` showing predecessor and successor counts.
 

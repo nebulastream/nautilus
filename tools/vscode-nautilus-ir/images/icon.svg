@@ -18,5 +18,5 @@
 		<line x1="64" y1="88" x2="32" y2="96"/>
 		<line x1="64" y1="88" x2="96" y2="96"/>
 	</g>
-	<text x="64" y="62" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle" fill="white">NESIR</text>
+	<text x="64" y="62" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle" fill="white">nautilus</text>
 </svg>
