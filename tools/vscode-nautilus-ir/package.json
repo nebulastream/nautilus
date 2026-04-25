@@ -29,7 +29,8 @@
 		"onLanguage:nautilus-ir",
 		"onDebug",
 		"onCommand:nautilus-ir.dumpInfo",
-		"onCommand:nautilus-ir.gotoBlock"
+		"onCommand:nautilus-ir.gotoBlock",
+		"onCommand:nautilus-ir.showGraph"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -84,6 +85,11 @@
 				"command": "nautilus-ir.debugWithGdb",
 				"title": "Nautilus IR: Debug Current File with gdb",
 				"category": "Nautilus IR"
+			},
+			{
+				"command": "nautilus-ir.showGraph",
+				"title": "Nautilus IR: Show Graph",
+				"category": "Nautilus IR"
 			}
 		],
 		"configuration": {
@@ -120,6 +126,11 @@
 					"default": "",
 					"scope": "resource",
 					"description": "Last-used C++ host executable for ad-hoc gdb debugging. Updated automatically by the 'Debug Current File with gdb' command."
+				},
+				"nautilusIr.graph.autoOpen": {
+					"type": "boolean",
+					"default": false,
+					"description": "Automatically open the graph view when a Nautilus IR file is opened."
 				}
 			}
 		},
@@ -288,13 +299,23 @@
 					"when": "resourceLangId == nautilus-ir",
 					"command": "nautilus-ir.debugWithGdb",
 					"group": "navigation@2"
+				},
+				{
+					"when": "resourceLangId == nautilus-ir",
+					"command": "nautilus-ir.showGraph",
+					"group": "navigation@3"
 				}
 			],
 			"editor/title": [
 				{
 					"when": "resourceLangId == nautilus-ir",
+					"command": "nautilus-ir.showGraph",
+					"group": "navigation@1"
+				},
+				{
+					"when": "resourceLangId == nautilus-ir",
 					"command": "nautilus-ir.dumpInfo",
-					"group": "navigation"
+					"group": "navigation@2"
 				}
 			]
 		},
@@ -309,7 +330,8 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
+		"compile": "tsc -p ./ && npm run build:media",
+		"build:media": "node scripts/build-media.js",
 		"watch": "tsc -watch -p ./",
 		"package": "vsce package",
 		"lint": "tsc --noEmit"
@@ -321,6 +343,8 @@
 	"devDependencies": {
 		"@types/node": "^20.10.0",
 		"@types/vscode": "^1.80.0",
+		"mermaid": "^10.9.0",
+		"svg-pan-zoom": "^3.6.2",
 		"typescript": "^5.4.0"
 	}
 }

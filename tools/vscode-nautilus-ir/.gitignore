@@ -1,4 +1,5 @@
 node_modules/
 out/
+media/vendor/
 *.vsix
 .vscode-test/

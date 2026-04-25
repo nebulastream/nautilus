@@ -12,6 +12,7 @@ import {
 	irFor,
 } from './features';
 import { GdbDescriptorFactory } from './debugAdapter';
+import { GraphPanel } from './graphView';
 
 const SELECTOR: vscode.DocumentSelector = { language: 'nautilus-ir', scheme: 'file' };
 
@@ -52,7 +53,20 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('nautilus-ir.showBlockInfo', showBlockInfoCommand),
 		vscode.commands.registerCommand('nautilus-ir.toggleFollowDefinitions', toggleFollowDefinitionsCommand),
 		vscode.commands.registerCommand('nautilus-ir.debugWithGdb', debugWithGdbCommand),
+		vscode.commands.registerCommand('nautilus-ir.showGraph', () => GraphPanel.createOrShow(context.extensionUri)),
 	);
+
+	// Optional auto-open of the graph panel for newly opened IR files.
+	const maybeAutoOpen = (doc: vscode.TextDocument) => {
+		if (doc.languageId !== 'nautilus-ir') {
+			return;
+		}
+		const enabled = vscode.workspace.getConfiguration('nautilusIr').get<boolean>('graph.autoOpen', false);
+		if (enabled) {
+			GraphPanel.createOrShow(context.extensionUri);
+		}
+	};
+	context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(maybeAutoOpen));
 
 	// Debug adapter (inline implementation, no separate process).
 	context.subscriptions.push(

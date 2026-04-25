@@ -1,6 +1,7 @@
 .vscode/**
 .vscode-test/**
 src/**
+scripts/**
 .gitignore
 .eslintrc.json
 **/tsconfig.json
@@ -12,6 +13,7 @@ node_modules/**
 !snippets/**
 !language-configuration/**
 !images/**
+!media/**
 !package.json
 !README.md
 !LICENSE

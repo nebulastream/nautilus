@@ -1,0 +1,91 @@
+html, body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	overflow: hidden;
+	color: var(--vscode-foreground);
+	background: var(--vscode-editor-background);
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+#toolbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--vscode-panel-border);
+	background: var(--vscode-editorWidget-background);
+}
+
+#toolbar label {
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.9em;
+}
+
+#toolbar select,
+#toolbar button {
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 2px;
+	padding: 2px 8px;
+	font: inherit;
+}
+
+#toolbar button {
+	cursor: pointer;
+}
+
+#toolbar button:hover {
+	background: var(--vscode-button-hoverBackground, var(--vscode-input-background));
+}
+
+#status {
+	margin-left: auto;
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.85em;
+	font-style: italic;
+}
+
+#graph-host {
+	position: absolute;
+	top: 36px;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	overflow: hidden;
+}
+
+#graph-container {
+	width: 100%;
+	height: 100%;
+}
+
+#graph-container svg {
+	display: block;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+/* Cursor-driven highlight on the current block. Targets the rendered
+ * Mermaid <g class="node"> wrapper; the inner shape inherits the stroke. */
+g.node.cursor-current > rect,
+g.node.cursor-current > polygon,
+g.node.cursor-current > path,
+g.node.cursor-current > circle,
+g.node.cursor-current > ellipse {
+	stroke: #da2d4f !important;
+	stroke-width: 3px !important;
+	filter: drop-shadow(0 0 4px rgba(218, 45, 79, 0.45));
+}
+
+g.node {
+	cursor: pointer;
+}
+
+pre.error {
+	color: var(--vscode-errorForeground);
+	padding: 16px;
+	white-space: pre-wrap;
+}
