@@ -26,12 +26,12 @@ void setLogAddresses(bool);
 namespace nautilus::engine {
 
 static bool checkTestFile(std::string actual, const std::string& category, const std::string& group,
-                          const std::string& name) {
+                          const std::string& name, const std::string& extension = ".trace") {
 	auto groupDir = std::string(GPU_TEST_DATA_FOLDER) + category + "/" + group + "/";
 	if (!std::filesystem::exists(groupDir)) {
 		std::filesystem::create_directories(groupDir);
 	}
-	std::string filePath = groupDir + name + ".trace";
+	std::string filePath = groupDir + name + extension;
 	if (!std::filesystem::exists(filePath)) {
 		std::cerr << "File does not exist: " << filePath << " Initializing with current trace. Please Rerun.\n";
 		std::ofstream file {filePath};
@@ -102,7 +102,7 @@ static void runTraceTests(const std::string& category,
 					DYNAMIC_SECTION("ir") {
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
 					}
 				}
 			}

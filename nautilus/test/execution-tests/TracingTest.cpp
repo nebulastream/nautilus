@@ -42,8 +42,8 @@ namespace nautilus::engine {
 /// Thin alias over the shared `testing::checkReferenceDump` helper so the
 /// existing call sites keep compiling unchanged.
 inline bool checkTestFile(std::string actual, const std::string category, const std::string group,
-                          const std::string& name) {
-	return testing::checkReferenceDump(actual, category, group, name);
+                          const std::string& name, const std::string& extension = ".trace") {
+	return testing::checkReferenceDump(actual, category, group, name, extension);
 }
 
 using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
@@ -91,7 +91,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 					DYNAMIC_SECTION("ir") {
 						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
 						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name));
+						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
 					}
 					DYNAMIC_SECTION("after_constant_folding") {
 						// Re-run the tracing pipeline for this section since
@@ -110,7 +110,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
 						passManager.run(*ir3);
-						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name));
+						REQUIRE(checkTestFile(ir3.get()->toString(), category, "after_constant_folding", name,
+						                      ".nautilus"));
 					}
 					DYNAMIC_SECTION("after_empty_block_elim") {
 						// Re-run the tracing pipeline: the previous section
@@ -130,7 +131,8 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						compiler::ir::IRPassManager passManager(passOpts);
 						passManager.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
 						passManager.run(*ir2);
-						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name));
+						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name,
+						                      ".nautilus"));
 					}
 				}
 			}

@@ -15,19 +15,22 @@ namespace nautilus::testing {
  * tracing test binary and the pass-test binary share one primitive.
  *
  * Compares @p actual against the checked-in reference file at
- * `<TEST_DATA_FOLDER>/<category>/<group>/<name>.trace`. If the file does
+ * `<TEST_DATA_FOLDER>/<category>/<group>/<name><extension>`. If the file does
  * not exist it is created from @p actual and the function returns false,
  * so CI fails on the first run and the developer can commit the generated
  * reference. This matches the existing tracing-test workflow exactly.
+ *
+ * The default extension is `.trace` (raw execution trace dumps); Nautilus IR
+ * dumps should pass `.nautilus` so the on-disk artefacts carry the right name.
  */
 inline bool checkReferenceDump(const std::string& actual, const std::string& category, const std::string& group,
-                               const std::string& name) {
+                               const std::string& name, const std::string& extension = ".trace") {
 	auto groupDir = std::string(TEST_DATA_FOLDER) + category + "/" + group + "/";
 	if (!std::filesystem::exists(groupDir)) {
 		std::filesystem::create_directories(groupDir);
 	}
 
-	std::string filePath = groupDir + name + ".trace";
+	std::string filePath = groupDir + name + extension;
 	if (!std::filesystem::exists(filePath)) {
 		std::cerr << "File does not exist: " << filePath << " Initializing with current dump. Please Rerun.\n";
 		std::ofstream file {filePath};

@@ -33,8 +33,9 @@ for arg in "$@"; do
 			echo "Regenerate trace test reference files for Nautilus"
 			echo ""
 			echo "This script will:"
-			echo "  1. Delete all .trace files from test/data/*/{tracing,ir,after_ssa}/"
-			echo "  2. Run trace tests to regenerate the reference files"
+			echo "  1. Delete all .trace files from test/data/*/{tracing,after_ssa}/"
+			echo "  2. Delete all .nautilus files from test/data/*/{ir,after_constant_folding,after_empty_block_elim}/"
+			echo "  3. Run trace tests to regenerate the reference files"
 			echo ""
 			echo "Options:"
 			echo "  --help    Show this help message"
@@ -87,26 +88,40 @@ categories=(
 	"static-loop-tests"
 )
 
-groups=(
+# Map each group to the extension its reference files use:
+# raw execution traces stay as .trace, Nautilus IR dumps use .nautilus.
+trace_groups=(
 	"tracing"
-	"ir"
 	"after_ssa"
 )
 
+ir_groups=(
+	"ir"
+	"after_constant_folding"
+	"after_empty_block_elim"
+)
+
 file_count=0
-for category in "${categories[@]}"; do
-	for group in "${groups[@]}"; do
-		dir="${TRACE_TEST_DATA_DIR}/${category}/${group}"
-		if [ -d "${dir}" ]; then
-			count=$(find "${dir}" -name "*.trace" 2>/dev/null | wc -l)
-			if [ "${count}" -gt 0 ]; then
-				echo -e "  Deleting ${count} files from ${category}/${group}"
-				find "${dir}" -name "*.trace" -delete
-				file_count=$((file_count + count))
+delete_files() {
+	local extension="$1"
+	shift
+	for group in "$@"; do
+		for category in "${categories[@]}"; do
+			dir="${TRACE_TEST_DATA_DIR}/${category}/${group}"
+			if [ -d "${dir}" ]; then
+				count=$(find "${dir}" -name "*${extension}" 2>/dev/null | wc -l)
+				if [ "${count}" -gt 0 ]; then
+					echo -e "  Deleting ${count} ${extension} files from ${category}/${group}"
+					find "${dir}" -name "*${extension}" -delete
+					file_count=$((file_count + count))
+				fi
 			fi
-		fi
+		done
 	done
-done
+}
+
+delete_files ".trace" "${trace_groups[@]}"
+delete_files ".nautilus" "${ir_groups[@]}"
 
 echo -e "${GREEN}Deleted ${file_count} trace reference files${NC}"
 echo ""
