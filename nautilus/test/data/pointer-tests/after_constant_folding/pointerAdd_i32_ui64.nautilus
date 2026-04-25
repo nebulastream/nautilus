@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ui64) :i32 {
 Block_0($1:ptr, $2:ui64):
 	$6 = 4 :ui64
 	$7 = $2 * $6 :ui64

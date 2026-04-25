@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = alloca 8b :ptr
 	$4 = 0 :ui64
@@ -26,7 +26,7 @@ Block_2($2:ptr):
 	$25 = func_*($2) :i32
 	return ($25) :i32
 }
-incrementFieldA() {
+incrementFieldA($1:ptr, $2:i32) :void {
 Block_0($1:ptr, $2:i32):
 	$4 = 0 :ui64
 	$6 = 1 :ui64
@@ -41,7 +41,7 @@ Block_0($1:ptr, $2:i32):
 	store($13, $19) :void
 	return :void
 }
-readFieldA() {
+readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
 	$3 = 0 :ui64
 	$5 = 1 :ui64

@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:i8) :i8 {
 Block_0($1:i8):
 	return ($1) :i8
 }

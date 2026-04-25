@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:i32) :i64 {
 Block_0($1:i32):
 	$6 = alloca 16b :ptr
 	$62 = alloca 16b :ptr

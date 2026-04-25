@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:bool, $2:f64, $3:f64) :f64 {
 Block_0($1:bool, $2:f64, $3:f64):
 	$7 :f64
 	return ($7) :f64

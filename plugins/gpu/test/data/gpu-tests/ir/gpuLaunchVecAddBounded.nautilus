@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$5 = 255 :ui32
 	$6 = $4 + $5 :ui32
@@ -15,7 +15,7 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	func_*($1,$2,$3,$4) :void
 	return :void
 }
-vecAddBounded() {
+vecAddBounded($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$8 = func_*() :ui32
 	$9 = func_*() :ui32

@@ -1,5 +1,5 @@
 nautilus {
-classify() {
+classify($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$6 = func_*() :ui32
 	$7 = func_*() :ui32
@@ -88,7 +88,7 @@ Block_8($5:ptr, $10:ui32):
 Block_2():
 	br Block_9() :void
 }
-execute() {
+execute($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32

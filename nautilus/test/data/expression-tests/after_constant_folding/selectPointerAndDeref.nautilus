@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:bool, $2:ptr, $3:ptr) :i32 {
 Block_0($1:bool, $2:ptr, $3:ptr):
 	$7 :ptr
 	$10 = load($7) :i32

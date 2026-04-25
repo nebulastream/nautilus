@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:bool, $2:bool) :bool {
 Block_0($1:bool, $2:bool):
 	$4 = $1 or $2 :bool
 	return ($4) :bool

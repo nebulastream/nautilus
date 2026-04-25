@@ -342,10 +342,32 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}(", func.getName());
-		for (const auto& arg : func.getInputArgNames()) {
-			fmt::format_to(out, "{} ", arg);
+		// The trace-to-IR conversion leaves `inputArgs`/`inputArgNames` empty;
+		// the parameters live on the entry block. Fall back to those.
+		const auto& argTypes = func.getInputArgs();
+		const auto& argNames = func.getInputArgNames();
+		const auto* entry = func.getEntryBlock();
+		if (entry != nullptr && argTypes.empty() && argNames.empty()) {
+			const auto& blockArgs = entry->getArguments();
+			for (size_t i = 0; i < blockArgs.size(); ++i) {
+				if (i > 0) {
+					fmt::format_to(out, ", ");
+				}
+				fmt::format_to(out, "{}:{}", blockArgs[i]->getIdentifier(), toString(blockArgs[i]->getStamp()));
+			}
+		} else {
+			for (size_t i = 0; i < argTypes.size(); ++i) {
+				if (i > 0) {
+					fmt::format_to(out, ", ");
+				}
+				if (i < argNames.size()) {
+					fmt::format_to(out, "{}:{}", argNames[i], toString(argTypes[i]));
+				} else {
+					fmt::format_to(out, "{}", toString(argTypes[i]));
+				}
+			}
 		}
-		fmt::format_to(out, ") {{");
+		fmt::format_to(out, ") :{} {{", toString(func.getOutputArg()));
 		for (const auto* block : func.getBasicBlocks()) {
 			fmt::format_to(out, "{}", *block);
 		}

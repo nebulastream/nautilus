@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -12,7 +12,7 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	func_*($1,$2,$3) :void
 	return :void
 }
-prefixSum() {
+prefixSum($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$6 = func_*() :ui32
 	$7 = func_*() :ui32

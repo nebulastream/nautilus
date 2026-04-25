@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:bool, $2:i16, $3:i16) :i16 {
 Block_0($1:bool, $2:i16, $3:i16):
 	$7 :i16
 	return ($7) :i16

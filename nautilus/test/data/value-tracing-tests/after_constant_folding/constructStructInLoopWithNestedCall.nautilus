@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:i32) :i32 {
 Block_0($1:i32):
 	$6 = alloca 8b :ptr
 	$2 = 0 :i32
@@ -25,7 +25,7 @@ Block_1($1:i32, $3:i32, $2:i32, $6:ptr):
 Block_2($2:i32):
 	return ($2) :i32
 }
-readFieldA() {
+readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
 	$3 = 0 :ui64
 	$5 = 1 :ui64

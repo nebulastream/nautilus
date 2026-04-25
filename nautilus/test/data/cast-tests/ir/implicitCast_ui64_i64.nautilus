@@ -1,5 +1,5 @@
 nautilus {
-execute() {
+execute($1:ui64) :i64 {
 Block_0($1:ui64):
 	$2 = $1 cast_to i64 :i64
 	return ($2) :i64
