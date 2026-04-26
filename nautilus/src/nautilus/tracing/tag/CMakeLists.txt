@@ -13,4 +13,5 @@
 
 add_source_files(nautilus
         Tag.cpp
-        TagRecorder.cpp)
+        TagRecorder.cpp
+        SourceLocationResolver.cpp)

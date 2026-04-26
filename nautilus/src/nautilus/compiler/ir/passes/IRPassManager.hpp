@@ -41,8 +41,11 @@ namespace nautilus::compiler::ir {
  */
 class IRPassManager {
 public:
+	/// @p printOptions is borrowed; caller keeps ownership and must outlive
+	/// the pass-manager run.  Used for `dumpAfterEachPass` annotated IR dumps.
 	explicit IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler = nullptr,
-	                       compiler::CompilationStatistics* statistics = nullptr);
+	                       compiler::CompilationStatistics* statistics = nullptr,
+	                       const IRPrintOptions* printOptions = nullptr);
 
 	void addPass(std::unique_ptr<IRPass> pass);
 
@@ -61,6 +64,7 @@ private:
 	bool verifyAfterEachPass;
 	bool failOnVerifyError;
 	bool dumpAfterEachPass;
+	const IRPrintOptions* printOptions;
 
 	void verifyAndReport(const IRGraph& ir, const char* stage);
 };

@@ -12,7 +12,7 @@ BasicBlock::BasicBlock(common::Arena& arena, BlockIdentifier identifier, std::ve
     : arena_(&arena), identifier(identifier), operations(), arguments(std::move(arguments)) {
 }
 
-void BasicBlock::addNextBlock(BasicBlock* nextBlock, std::span<Operation* const> ops) {
+Operation* BasicBlock::addNextBlock(BasicBlock* nextBlock, std::span<Operation* const> ops) {
 	auto* branchOp = arena_->create<BranchOperation>();
 	auto& nextBlockIn = branchOp->getNextBlockInvocation();
 	nextBlockIn.setBlock(nextBlock);
@@ -24,6 +24,7 @@ void BasicBlock::addNextBlock(BasicBlock* nextBlock, std::span<Operation* const>
 	if (nextBlock != nullptr) {
 		nextBlock->addPredecessor(this);
 	}
+	return branchOp;
 }
 
 BasicBlock::~BasicBlock() = default;
