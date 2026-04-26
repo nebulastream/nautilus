@@ -64,6 +64,35 @@ a navigable, debuggable artifact.
 - **Quick block jumper** — `Ctrl+Shift+B` (`Cmd+Shift+B` on macOS) opens a
   Quick Pick listing every block with its successor summary.
 
+### Graph view
+
+Run **Nautilus IR: Show Graph** (palette, editor title bar, or right-click
+menu) to open a side-by-side control-flow graph of the active `.nautilus`
+file. The graph is synthesized in the extension from the parsed IR text, so
+it works on any IR dump — there is no dependency on Nautilus's
+`dump.graph=true` option.
+
+- **Click a block node** to jump to its `Block_N(...)` header in the editor.
+- **Move the cursor** in the editor to highlight the enclosing block in the
+  graph; switching between functions in the file flips the rendered graph
+  automatically.
+- **Function picker** in the toolbar selects which function to render when
+  the file contains multiple (`execute`, helpers, etc.).
+- **Pan & zoom** with the mouse; **Fit** / **Reset** buttons restore the
+  default view.
+
+The graph shape conveys terminator type at a glance:
+
+| Shape       | Meaning                                |
+|-------------|----------------------------------------|
+| Rectangle   | Block ends in `br` (unconditional jump) |
+| Diamond     | Block ends in `if` (conditional)        |
+| Stadium     | Block ends in `return`                  |
+
+Conditional edges are labeled `true` / `false`. Entry blocks (`Block_0`)
+are tinted teal; return blocks are tinted pink, mirroring the palette of
+Nautilus's own C++ Mermaid dumper.
+
 ### Diagnostics
 
 Light static checks are surfaced in the Problems panel:
@@ -158,6 +187,7 @@ honored so gdb can locate the IR source.
 | `nautilusIr.gdbExtraArgs`            | `[]`    | Extra args appended to every gdb invocation.                                     |
 | `nautilusIr.highlightDefinitions`    | `true`  | Highlight all uses of an SSA value when the cursor is on its definition.         |
 | `nautilusIr.codeLens`                | `true`  | Show CodeLens above every block.                                                 |
+| `nautilusIr.graph.autoOpen`          | `false` | Open the graph view automatically when a `.nautilus` file is opened.             |
 | `nautilusIr.lastHostProgram`         | `""`    | Remembered host program for the ad-hoc "Debug Current File" command.             |
 
 ### Commands
@@ -165,6 +195,7 @@ honored so gdb can locate the IR source.
 | Command                                          | Default keybinding         |
 |--------------------------------------------------|----------------------------|
 | `Nautilus IR: Go to Block...`                    | `Ctrl/Cmd+Shift+B`         |
+| `Nautilus IR: Show Graph`                        | —                          |
 | `Nautilus IR: Show File Statistics`              | —                          |
 | `Nautilus IR: Toggle SSA Definition Highlight`   | —                          |
 | `Nautilus IR: Debug Current File with gdb`       | —                          |
@@ -174,7 +205,8 @@ honored so gdb can locate the IR source.
 ```bash
 cd tools/vscode-nautilus-ir
 npm install
-npm run compile           # tsc → ./out
+npm run compile           # tsc → ./out, plus copies Mermaid + svg-pan-zoom
+                          # bundles into media/vendor/ for the graph webview
 # Open this folder in VS Code and press F5 to launch an Extension Host.
 ```
 
