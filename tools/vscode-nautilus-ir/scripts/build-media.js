@@ -17,6 +17,7 @@ fs.mkdirSync(dest, { recursive: true });
 const bundles = [
 	['mermaid/dist/mermaid.min.js', 'mermaid.min.js'],
 	['svg-pan-zoom/dist/svg-pan-zoom.min.js', 'svg-pan-zoom.min.js'],
+	['dompurify/dist/purify.min.js', 'purify.min.js'],
 ];
 
 let failed = false;

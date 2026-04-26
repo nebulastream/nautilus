@@ -254,6 +254,7 @@ export class GraphPanel {
 		const mediaRoot = vscode.Uri.joinPath(this.extensionUri, 'media');
 		const mermaidUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'vendor', 'mermaid.min.js'));
 		const panZoomUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'vendor', 'svg-pan-zoom.min.js'));
+		const purifyUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'vendor', 'purify.min.js'));
 		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'graph.js'));
 		const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'graph.css'));
 		const nonce = randomNonce();
@@ -284,6 +285,7 @@ export class GraphPanel {
 <div id="graph-host">
 	<div id="graph-container"></div>
 </div>
+<script nonce="${nonce}" src="${purifyUri}"></script>
 <script nonce="${nonce}" src="${mermaidUri}"></script>
 <script nonce="${nonce}" src="${panZoomUri}"></script>
 <script nonce="${nonce}" src="${scriptUri}"></script>

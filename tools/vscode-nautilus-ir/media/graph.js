@@ -8,9 +8,10 @@
 //   - Mermaid runs with `securityLevel: 'strict'`, which sanitises label
 //     contents through DOMPurify before producing the SVG.
 //   - `htmlLabels` is disabled, so labels are SVG <text>, not HTML.
-//   - The rendered SVG is parsed via DOMParser and inserted as a DOM
-//     subtree (no `innerHTML`).
-//   - Click handlers are wired manually after parsing — we do *not* use
+//   - Mermaid's SVG output is run through DOMPurify a second time in the
+//     SVG profile and inserted as a DocumentFragment — never as a string,
+//     so there is no `innerHTML` / `DOMParser` sink for tainted content.
+//   - Click handlers are wired manually after rendering; we do *not* use
 //     Mermaid's `click ... call ...` directive (which would require
 //     `securityLevel: 'loose'`).
 
@@ -27,10 +28,13 @@
 	let panZoom = null;
 	let highlightedEl = null;
 	let renderToken = 0;
-	const SVG_NS = 'http://www.w3.org/2000/svg';
 
 	if (typeof window.mermaid === 'undefined') {
 		report('error', 'Mermaid bundle failed to load.');
+		return;
+	}
+	if (typeof window.DOMPurify === 'undefined') {
+		report('error', 'DOMPurify bundle failed to load.');
 		return;
 	}
 	window.mermaid.initialize({
@@ -82,7 +86,7 @@
 			if (myToken !== renderToken) {
 				return; // a newer render superseded this one
 			}
-			const svgEl = parseSvg(result.svg);
+			const svgEl = sanitizeSvg(result.svg);
 			clearChildren(container);
 			container.appendChild(svgEl);
 			attachClickHandlers(Array.isArray(payload.blocks) ? payload.blocks : []);
@@ -93,22 +97,19 @@
 		}
 	}
 
-	// Parse Mermaid's SVG output into a DOM subtree. Using DOMParser instead
-	// of innerHTML avoids the HTML-injection sink and lets us reject any
-	// output that is not well-formed SVG (which would itself be a red flag,
-	// since Mermaid's strict-mode pipeline always produces valid SVG).
-	function parseSvg(svgText) {
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(svgText, 'image/svg+xml');
-		const err = doc.querySelector('parsererror');
-		if (err) {
-			throw new Error(err.textContent || 'invalid SVG');
+	// Sanitize Mermaid's SVG output via DOMPurify, returning a live SVG
+	// element. `RETURN_DOM_FRAGMENT` skips any string sink: DOMPurify
+	// produces the DOM directly from the cleaned tree.
+	function sanitizeSvg(svgText) {
+		const fragment = window.DOMPurify.sanitize(svgText, {
+			USE_PROFILES: { svg: true, svgFilters: true },
+			RETURN_DOM_FRAGMENT: true,
+		});
+		const svgEl = fragment.querySelector('svg');
+		if (!svgEl) {
+			throw new Error('Mermaid output contained no <svg> element');
 		}
-		const root = doc.documentElement;
-		if (!root || root.namespaceURI !== SVG_NS || root.localName !== 'svg') {
-			throw new Error('Mermaid output was not an <svg> element');
-		}
-		return document.importNode(root, /* deep */ true);
+		return svgEl;
 	}
 
 	function attachClickHandlers(blocks) {
