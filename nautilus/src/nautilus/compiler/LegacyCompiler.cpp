@@ -23,6 +23,7 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/debug/DwarfVariableResolver.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -116,6 +117,21 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
 		irPrintOptions.showSourceLocations = true;
 		irPrintOptions.resolver = sourceLocationResolver.get();
+	}
+	// User-declared variable names are an opt-in extension on top of
+	// source locations. Resolving them needs an already-resolved source
+	// frame, so we silently force `dump.sourceLocations` on whenever
+	// `dump.variableNames` is. The DwarfVariableResolver singleton is
+	// nullptr on platforms without DWARF support, in which case the
+	// IRGraph formatter just skips the [var=...] annotation.
+	if (options.getOptionOrDefault("dump.variableNames", false)) {
+		if (!sourceLocationResolver) {
+			sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
+			irPrintOptions.showSourceLocations = true;
+			irPrintOptions.resolver = sourceLocationResolver.get();
+		}
+		irPrintOptions.showVariableNames = true;
+		irPrintOptions.variableResolver = debug::DwarfVariableResolver::getInstance();
 	}
 
 	const auto frontendStart = std::chrono::steady_clock::now();

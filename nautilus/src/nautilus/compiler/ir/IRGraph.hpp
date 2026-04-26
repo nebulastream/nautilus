@@ -12,6 +12,10 @@ namespace nautilus::tracing {
 class SourceLocationResolver;
 } // namespace nautilus::tracing
 
+namespace nautilus::debug {
+class DwarfVariableResolver;
+} // namespace nautilus::debug
+
 namespace nautilus::compiler::ir {
 
 class FunctionOperation;
@@ -19,8 +23,19 @@ class FunctionOperation;
 /// Options that control how `IRGraph::toString` renders the graph.  Default-
 /// constructed options reproduce the historic output byte-for-byte.
 struct IRPrintOptions {
+	/// When true, the per-op trailer includes the source-location stack
+	/// recovered from the trace's @c Tag chain via @c resolver.
 	bool showSourceLocations = false;
 	tracing::SourceLocationResolver* resolver = nullptr;
+
+	/// When true, the per-op trailer additionally annotates the innermost
+	/// user frame with the user-declared variable name resolved from the
+	/// host binary's DWARF (e.g. @c sum, @c factor). Implies
+	/// @c showSourceLocations: variable resolution needs a resolved
+	/// source frame to query against. When @c variableResolver is null
+	/// or DWARF is unavailable the trailer silently omits the name.
+	bool showVariableNames = false;
+	debug::DwarfVariableResolver* variableResolver = nullptr;
 };
 
 /**

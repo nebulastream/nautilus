@@ -18,6 +18,7 @@
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
+#include "nautilus/debug/DwarfVariableResolver.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
@@ -344,6 +345,17 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 
 	// Opt-in source-location trailer.  The TLS pointer is only non-null
 	// inside the scope of `IRGraph::toString(options)`.
+	//
+	// LIFETIME WARNING: Operation::sourceTag points into the trie owned
+	// by TagRecorder, which is currently stack-allocated inside
+	// {Lazy,ExceptionBased}TraceContext::startTrace and destroyed when
+	// tracing ends. Calling toString() with showSourceLocations=true
+	// after the enclosing trace has finished therefore dereferences
+	// dangling pointers. The compiler's own dump path runs while
+	// tracing is still in scope only for the engine's after_ir_creation
+	// dump; out-of-band callers (tests, post-trace inspection) need the
+	// trie to be relocated into longer-lived storage first. Tracked as
+	// a follow-up to PR #271.
 	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
 	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
 		if (const auto* tag = op.getSourceTag()) {
@@ -354,6 +366,19 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 				// under the op text the block formatter indents with one tab.
 				const auto& innermost = frames.back();
 				fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+
+				// Optional DWARF variable-name annotation. We query the
+				// host binary's DWARF for a DW_TAG_variable declared at
+				// the innermost frame's coordinates and append the
+				// recovered name (e.g. `sum`, `factor`) when one exists.
+				// Independent of the inlined-frames loop below — the
+				// variable lives at the innermost user-visible site.
+				if (opts->showVariableNames && opts->variableResolver != nullptr) {
+					if (auto name = opts->variableResolver->resolveVariableName(innermost)) {
+						fmt::format_to(out, " [var={}]", *name);
+					}
+				}
+
 				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
 					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
 				}
