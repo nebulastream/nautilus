@@ -8,9 +8,20 @@
 #include <string_view>
 #include <unordered_map>
 
+namespace nautilus::tracing {
+class SourceLocationResolver;
+} // namespace nautilus::tracing
+
 namespace nautilus::compiler::ir {
 
 class FunctionOperation;
+
+/// Options that control how `IRGraph::toString` renders the graph.  Default-
+/// constructed options reproduce the historic output byte-for-byte.
+struct IRPrintOptions {
+	bool showSourceLocations = false;
+	tracing::SourceLocationResolver* resolver = nullptr;
+};
 
 /**
  * @brief The IRGraph represents a fragment of nautilus ir.
@@ -62,6 +73,8 @@ public:
 	const FunctionOperation* getFunctionOperation(const std::string& name) const;
 
 	std::string toString() const;
+
+	std::string toString(const IRPrintOptions& options) const;
 
 	[[nodiscard]] const CompilationUnitID& getId() const;
 

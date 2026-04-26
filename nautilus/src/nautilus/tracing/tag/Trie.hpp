@@ -15,10 +15,10 @@ namespace nautilus::tracing {
 template <typename T>
 class TrieNode {
 public:
-	explicit TrieNode() : content(0) {
+	explicit TrieNode() : content(0), parent(nullptr) {
 	}
 
-	explicit TrieNode(T value) : content(value) {
+	explicit TrieNode(T value, TrieNode<T>* parent = nullptr) : content(value), parent(parent) {
 	}
 
 	/**
@@ -30,14 +30,24 @@ public:
 		auto found = std::find_if(children.begin(), children.end(),
 		                          [value](std::unique_ptr<TrieNode<T>>& x) { return x->content == value; });
 		if (found == children.end()) {
-			return children.emplace_back(std::make_unique<TrieNode<T>>(value)).get();
+			return children.emplace_back(std::make_unique<TrieNode<T>>(value, this)).get();
 		} else {
 			return found->get();
 		}
 	}
 
+	[[nodiscard]] const T& getContent() const noexcept {
+		return content;
+	}
+
+	/// Returns the parent node, or nullptr if this is the (sentinel-content) root.
+	[[nodiscard]] const TrieNode<T>* getParent() const noexcept {
+		return parent;
+	}
+
 private:
 	T content;
 	std::vector<std::unique_ptr<TrieNode<T>>> children;
+	TrieNode<T>* parent;
 };
 } // namespace nautilus::tracing

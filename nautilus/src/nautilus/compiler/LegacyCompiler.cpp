@@ -27,6 +27,7 @@
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
 
 namespace nautilus::compiler {
@@ -109,6 +110,14 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		statistics->set("compilation.unitId", compilationId);
 	}
 
+	std::unique_ptr<tracing::SourceLocationResolver> sourceLocationResolver;
+	ir::IRPrintOptions irPrintOptions;
+	if (options.getOptionOrDefault("dump.sourceLocations", false)) {
+		sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
+		irPrintOptions.showSourceLocations = true;
+		irPrintOptions.resolver = sourceLocationResolver.get();
+	}
+
 	const auto frontendStart = std::chrono::steady_clock::now();
 
 	const auto tracingStart = std::chrono::steady_clock::now();
@@ -143,13 +152,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		statistics->set("ir.blocks", static_cast<int64_t>(snapshot.numBlocks));
 		statistics->set("ir.operations", static_cast<int64_t>(snapshot.numOperations));
 	}
-	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(); });
+	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(irPrintOptions); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
 
 	if (options.getOptionOrDefault("ir.runPasses", true)) {
-		ir::IRPassManager passManager(options, &dumpHandler, statistics);
+		ir::IRPassManager passManager(options, &dumpHandler, statistics, &irPrintOptions);
 		if (!options.getOptionOrDefault("ir.disableConstantFolding", false)) {
 			passManager.addPass(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
 		}
@@ -157,7 +166,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
 		passManager.run(*ir);
-		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(); });
+		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(irPrintOptions); });
 	}
 
 	if (statistics != nullptr) {

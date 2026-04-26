@@ -19,10 +19,35 @@
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/logging.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
 #include <utility>
 
 namespace nautilus::compiler::ir {
+
+namespace {
+
+/// Thread-local pointer consulted by the per-Operation fmt formatter while
+/// `IRGraph::toString(options)` is running.  Using a scoped TLS keeps the
+/// extension hidden from every other caller of `fmt::formatter<Operation>`
+/// so the default `toString()` path produces byte-identical output to what
+/// it did before source-location support existed.
+thread_local const IRPrintOptions* currentPrintOptions = nullptr;
+
+struct PrintOptionsScope {
+	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
+		currentPrintOptions = opts;
+	}
+	~PrintOptionsScope() {
+		currentPrintOptions = previous;
+	}
+	PrintOptionsScope(const PrintOptionsScope&) = delete;
+	PrintOptionsScope& operator=(const PrintOptionsScope&) = delete;
+
+	const IRPrintOptions* previous;
+};
+
+} // namespace
 
 IRGraph::IRGraph(const compiler::CompilationUnitID& id) : arena_(common::ArenaPool::makeStandalone()), id(id) {
 }
@@ -119,6 +144,11 @@ constexpr const char* compOpToString(CompareOperation::Comparator type) {
 } // namespace nautilus::compiler::ir
 
 std::string nautilus::compiler::ir::IRGraph::toString() const {
+	return fmt::to_string(*this);
+}
+
+std::string nautilus::compiler::ir::IRGraph::toString(const nautilus::compiler::ir::IRPrintOptions& options) const {
+	PrintOptionsScope scope(&options);
 	return fmt::to_string(*this);
 }
 
@@ -311,6 +341,25 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		break;
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
+
+	// Opt-in source-location trailer.  The TLS pointer is only non-null
+	// inside the scope of `IRGraph::toString(options)`.
+	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
+	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
+		if (const auto* tag = op.getSourceTag()) {
+			const auto frames = opts->resolver->resolveStack(tag);
+			if (!frames.empty()) {
+				// Innermost frame on the same line; outer frames continue on
+				// their own lines, outermost last.  Two tabs lines them up
+				// under the op text the block formatter indents with one tab.
+				const auto& innermost = frames.back();
+				fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
+					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
+				}
+			}
+		}
+	}
 	return out;
 }
 

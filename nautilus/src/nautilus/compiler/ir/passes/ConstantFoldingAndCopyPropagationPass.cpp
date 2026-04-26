@@ -369,6 +369,11 @@ void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
 					continue;
 				}
 				if (auto* folded = tryFold(arena, op)) {
+					// Preserve the traced source location of the op being
+					// replaced so a later IR dump still points at the user's
+					// code — the fold is a compile-time rewrite, not a shift
+					// in provenance.
+					folded->setSourceTag(op->getSourceTag());
 					block->replaceOperation(i, folded);
 					replacements.emplace(op, folded);
 					changed = true;

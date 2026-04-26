@@ -12,12 +12,12 @@
 namespace nautilus::compiler::ir {
 
 IRPassManager::IRPassManager(const engine::Options& options, compiler::DumpHandler* dumpHandler,
-                             compiler::CompilationStatistics* statistics)
+                             compiler::CompilationStatistics* statistics, const IRPrintOptions* printOptions)
     : dumpHandler(dumpHandler), statistics(statistics),
       verifyBeforePipeline(options.getOptionOrDefault("ir.verifyBeforePipeline", false)),
       verifyAfterEachPass(options.getOptionOrDefault("ir.verifyAfterEachPass", false)),
       failOnVerifyError(options.getOptionOrDefault("ir.failOnVerifyError", false)),
-      dumpAfterEachPass(options.getOptionOrDefault("ir.dumpAfterEachPass", false)) {
+      dumpAfterEachPass(options.getOptionOrDefault("ir.dumpAfterEachPass", false)), printOptions(printOptions) {
 }
 
 void IRPassManager::addPass(std::unique_ptr<IRPass> pass) {
@@ -74,7 +74,10 @@ void IRPassManager::run(IRGraph& ir) {
 
 		if (dumpAfterEachPass && dumpHandler != nullptr) {
 			const std::string stageName = "after_" + name;
-			dumpHandler->dump(stageName, "ir", [&]() { return ir.toString(); });
+			// Default-constructed IRPrintOptions produces byte-identical
+			// output to the no-arg toString().
+			const IRPrintOptions opts = printOptions != nullptr ? *printOptions : IRPrintOptions {};
+			dumpHandler->dump(stageName, "ir", [&]() { return ir.toString(opts); });
 		}
 	}
 

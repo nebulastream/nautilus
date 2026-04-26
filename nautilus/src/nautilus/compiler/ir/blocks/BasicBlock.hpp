@@ -10,6 +10,9 @@
 #include <span>
 #include <vector>
 
+// `tracing::Tag` is forward-declared in `Operation.hpp`; we only need the
+// pointer name here.
+
 namespace nautilus::compiler::ir {
 
 /**
@@ -92,12 +95,25 @@ public:
 		return op;
 	}
 
+	/// Variant of @ref addOperation that stamps the freshly created op with
+	/// the source tag from a `TraceOperation`.  Folds the addOperation +
+	/// setSourceTag pair every conversion-phase call site otherwise repeats.
+	template <typename T, typename... Args>
+	T* addTaggedOperation(const tracing::Tag* sourceTag, Args&&... args) {
+		auto* op = addOperation<T>(std::forward<Args>(args)...);
+		op->setSourceTag(sourceTag);
+		return op;
+	}
+
 	/// Appends an already-arena-allocated operation to this block.
 	BasicBlock* addOperation(Operation* operation);
 
 	BasicBlock* addNextBlock(BasicBlock* nextBlock);
 
-	void addNextBlock(BasicBlock* nextBlock, std::span<Operation* const> inputArguments);
+	/// Appends a fresh branch terminator to this block targeting @p nextBlock
+	/// with the given invocation arguments and returns it, so callers can
+	/// stamp source-location tags or other metadata without re-fetching.
+	Operation* addNextBlock(BasicBlock* nextBlock, std::span<Operation* const> inputArguments);
 
 	BasicBlock* addTrueBlock(BasicBlock* thenBlock);
 
