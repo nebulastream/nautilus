@@ -14,7 +14,8 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
                                                        llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
                                                        const std::vector<std::string>& jitProxyFunctionSymbols,
                                                        const std::vector<void*>& jitProxyFunctionTargetAddresses,
-                                                       const std::vector<llvm::JITEventListener*>& eventListeners) {
+                                                       const std::vector<llvm::JITEventListener*>& eventListeners,
+                                                       llvm::CodeGenOptLevel codeGenOptLevel) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
@@ -22,7 +23,7 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
 	::mlir::registerLLVMDialectTranslation(*mlirModule->getContext());
 
 	MLIRJit::Options jitOptions;
-	jitOptions.codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
+	jitOptions.codeGenOptLevel = codeGenOptLevel;
 	jitOptions.transformer = optPipeline;
 	jitOptions.eventListeners = eventListeners;
 

@@ -152,7 +152,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		statistics->set("ir.blocks", static_cast<int64_t>(snapshot.numBlocks));
 		statistics->set("ir.operations", static_cast<int64_t>(snapshot.numOperations));
 	}
-	dumpHandler.dump("after_ir_creation", "ir", [&]() { return ir->toString(irPrintOptions); });
+	dumpHandler.dump("after_ir_creation", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	if (options.getOptionOrDefault("dump.graph", false)) {
 		ir::createGraphVizFromIr(ir, options, dumpHandler);
 	}
@@ -166,7 +166,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
 		passManager.run(*ir);
-		dumpHandler.dump("after_ir_passes", "ir", [&]() { return ir->toString(irPrintOptions); });
+		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}
 
 	if (statistics != nullptr) {

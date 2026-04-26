@@ -25,6 +25,7 @@ bool DumpHandler::shallCreateFolder() const {
 	generallyDump = generallyDump or shouldDump("after_ssa");
 	generallyDump = generallyDump or shouldDump("after_ir_creation");
 	generallyDump = generallyDump or shouldDump("after_mlir_generation");
+	generallyDump = generallyDump or shouldDump("before_llvm_optimization");
 	generallyDump = generallyDump or shouldDump("after_llvm_generation");
 	generallyDump = generallyDump or shouldDump("after_cpp_generation");
 	generallyDump = generallyDump or shouldDump("after_bc_generation");
