@@ -24,9 +24,27 @@
 #include <memory>
 #include <unordered_map>
 
+namespace nautilus::debug {
+class DwarfVariableResolver;
+} // namespace nautilus::debug
+
 namespace nautilus::tracing {
 
 class TraceModule;
+class SourceLocationResolver;
+
+/// Optional resolvers used by @c TraceToIRConversionPhase to bake
+/// source-location and variable-name metadata onto the @c IRGraph
+/// while the trace's @c TagRecorder is still alive. Either field may
+/// be null; passing a null resolver disables that level of resolution.
+struct DebugInfoResolvers {
+	SourceLocationResolver* sourceLocationResolver = nullptr;
+	debug::DwarfVariableResolver* variableResolver = nullptr;
+
+	[[nodiscard]] bool empty() const noexcept {
+		return sourceLocationResolver == nullptr && variableResolver == nullptr;
+	}
+};
 
 /**
  * @brief Translates a trace into a corresponding IR fragment.
@@ -36,10 +54,14 @@ public:
 	/**
 	 * @brief Performs the conversion and returns a IR fragment for the given trace module
 	 * @param traceModule Module containing all function traces
+	 * @param resolvers   Optional source-location and variable-name resolvers; when
+	 *                    non-null, their output is baked into the IR graph's debug
+	 *                    side-table so the resulting IR is self-contained.
 	 * @return IR graph containing all functions
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule,
-	                                             const compiler::CompilationUnitID& id = "");
+	                                             const compiler::CompilationUnitID& id = "",
+	                                             DebugInfoResolvers resolvers = {});
 
 	/**
 	 * @brief Pool-backed variant of @ref apply.  The IR graph's arena is
@@ -47,7 +69,8 @@ public:
 	 * amortising the per-IRGraph heap allocation across many compiles.
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<TraceModule> traceModule, common::ArenaPool& pool,
-	                                             const compiler::CompilationUnitID& id = "");
+	                                             const compiler::CompilationUnitID& id = "",
+	                                             DebugInfoResolvers resolvers = {});
 
 	/**
 	 * @brief Performs the conversion and returns a IR fragment for the given trace (legacy method)
@@ -55,13 +78,15 @@ public:
 	 * @return IR graph containing a single function
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace,
-	                                             const compiler::CompilationUnitID& id = "");
+	                                             const compiler::CompilationUnitID& id = "",
+	                                             DebugInfoResolvers resolvers = {});
 
 	/**
 	 * @brief Pool-backed variant of the single-trace @ref apply.
 	 */
 	std::shared_ptr<compiler::ir::IRGraph> apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
-	                                             const compiler::CompilationUnitID& id = "");
+	                                             const compiler::CompilationUnitID& id = "",
+	                                             DebugInfoResolvers resolvers = {});
 
 private:
 	using ValueFrame = compiler::Frame<compiler::ir::OperationIdentifier, compiler::ir::Operation*>;
@@ -72,7 +97,7 @@ private:
 	class IRConversionContext {
 	public:
 		IRConversionContext(ExecutionTrace* trace, std::shared_ptr<compiler::ir::IRGraph> ir,
-		                    const compiler::CompilationUnitID& id);
+		                    const compiler::CompilationUnitID& id, DebugInfoResolvers resolvers = {});
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
 
@@ -82,8 +107,9 @@ private:
 		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
 		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
-		compiler::ir::FunctionOperation* processFunction(const std::string& functionName,
-		                                                 const std::unordered_map<std::string, std::string>& attributes = {});
+		compiler::ir::FunctionOperation*
+		processFunction(const std::string& functionName,
+		                const std::unordered_map<std::string, std::string>& attributes = {});
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
@@ -135,12 +161,21 @@ private:
 		void processTernaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
 		                            TraceOperation& operation);
 
+		/// Resolves the trace operation's tag chain to a SourceFrame
+		/// stack and (optionally) a DWARF-recovered variable name, then
+		/// stashes the result on the IR graph's debug side-table keyed
+		/// by @p irOp's identifier. No-op when no resolvers were
+		/// supplied. Called immediately after each IR op is created so
+		/// the live @c TagRecorder is still in scope.
+		void bakeDebugInfo(const compiler::ir::Operation* irOp, const TraceOperation& traceOp);
+
 	private:
 		ExecutionTrace* trace;
 		Type returnType;
 		std::shared_ptr<compiler::ir::IRGraph> ir;
 		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;
 		std::vector<compiler::ir::BasicBlock*> currentBasicBlocks;
+		DebugInfoResolvers resolvers_;
 	};
 };
 

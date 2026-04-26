@@ -18,7 +18,6 @@
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
-#include "nautilus/debug/DwarfVariableResolver.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
@@ -28,24 +27,30 @@ namespace nautilus::compiler::ir {
 
 namespace {
 
-/// Thread-local pointer consulted by the per-Operation fmt formatter while
-/// `IRGraph::toString(options)` is running.  Using a scoped TLS keeps the
-/// extension hidden from every other caller of `fmt::formatter<Operation>`
-/// so the default `toString()` path produces byte-identical output to what
-/// it did before source-location support existed.
-thread_local const IRPrintOptions* currentPrintOptions = nullptr;
+/// Thread-local context consulted by the per-Operation fmt formatter while
+/// @c IRGraph::toString(options) is running. Bundles the print options
+/// with the @c IRGraph itself so the formatter can look up baked debug
+/// metadata from the graph's side-table without re-running any resolver.
+/// The default @c toString() path leaves this null and produces output
+/// byte-identical to what it did before source-location support existed.
+struct DumpContext {
+	const IRPrintOptions* options;
+	const IRGraph* graph;
+};
+thread_local const DumpContext* currentDumpContext = nullptr;
 
-struct PrintOptionsScope {
-	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
-		currentPrintOptions = opts;
+struct DumpContextScope {
+	DumpContextScope(const IRPrintOptions* opts, const IRGraph* g) : ctx {opts, g}, previous(currentDumpContext) {
+		currentDumpContext = &ctx;
 	}
-	~PrintOptionsScope() {
-		currentPrintOptions = previous;
+	~DumpContextScope() {
+		currentDumpContext = previous;
 	}
-	PrintOptionsScope(const PrintOptionsScope&) = delete;
-	PrintOptionsScope& operator=(const PrintOptionsScope&) = delete;
+	DumpContextScope(const DumpContextScope&) = delete;
+	DumpContextScope& operator=(const DumpContextScope&) = delete;
 
-	const IRPrintOptions* previous;
+	DumpContext ctx;
+	const DumpContext* previous;
 };
 
 } // namespace
@@ -74,6 +79,24 @@ const FunctionOperation* IRGraph::getFunctionOperation(const std::string& name) 
 
 const CompilationUnitID& IRGraph::getId() const {
 	return id;
+}
+
+void IRGraph::setDebugInfo(OperationIdentifier opId, OperationDebugInfo info) {
+	// Merge rather than replace so callers can attach the source-location
+	// stack and the DWARF-resolved variable name independently. Empty
+	// fields in @p info never overwrite a non-empty existing field.
+	auto& slot = debugInfoByOpId_[opId];
+	if (!info.frames.empty()) {
+		slot.frames = std::move(info.frames);
+	}
+	if (info.variableName.has_value() && !info.variableName->empty()) {
+		slot.variableName = std::move(info.variableName);
+	}
+}
+
+const OperationDebugInfo* IRGraph::getDebugInfo(OperationIdentifier opId) const {
+	auto it = debugInfoByOpId_.find(opId);
+	return it == debugInfoByOpId_.end() ? nullptr : &it->second;
 }
 
 constexpr const char* binaryOpToString(Operation::OperationType type) {
@@ -149,7 +172,7 @@ std::string nautilus::compiler::ir::IRGraph::toString() const {
 }
 
 std::string nautilus::compiler::ir::IRGraph::toString(const nautilus::compiler::ir::IRPrintOptions& options) const {
-	PrintOptionsScope scope(&options);
+	DumpContextScope scope(&options, this);
 	return fmt::to_string(*this);
 }
 
@@ -343,45 +366,32 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
 
-	// Opt-in source-location trailer.  The TLS pointer is only non-null
-	// inside the scope of `IRGraph::toString(options)`.
-	//
-	// LIFETIME WARNING: Operation::sourceTag points into the trie owned
-	// by TagRecorder, which is currently stack-allocated inside
-	// {Lazy,ExceptionBased}TraceContext::startTrace and destroyed when
-	// tracing ends. Calling toString() with showSourceLocations=true
-	// after the enclosing trace has finished therefore dereferences
-	// dangling pointers. The compiler's own dump path runs while
-	// tracing is still in scope only for the engine's after_ir_creation
-	// dump; out-of-band callers (tests, post-trace inspection) need the
-	// trie to be relocated into longer-lived storage first. Tracked as
-	// a follow-up to PR #271.
-	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
-	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
-		if (const auto* tag = op.getSourceTag()) {
-			const auto frames = opts->resolver->resolveStack(tag);
-			if (!frames.empty()) {
-				// Innermost frame on the same line; outer frames continue on
-				// their own lines, outermost last.  Two tabs lines them up
-				// under the op text the block formatter indents with one tab.
-				const auto& innermost = frames.back();
-				fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+	// Opt-in source-location trailer. The TLS context is only non-null
+	// inside the scope of @c IRGraph::toString(options). Resolution
+	// happened once during IR conversion (see TraceToIRConversionPhase);
+	// here we just read the baked metadata from the graph's side-table.
+	// No live @c Tag chain is dereferenced, so the trace's TagRecorder
+	// can already be torn down by this point.
+	if (const auto* ctx = nautilus::compiler::ir::currentDumpContext;
+	    ctx != nullptr && ctx->options != nullptr && ctx->options->showSourceLocations && ctx->graph != nullptr) {
+		const auto* info = ctx->graph->getDebugInfo(op.getIdentifier());
+		if (info != nullptr && !info->frames.empty()) {
+			// Innermost frame on the same line; outer frames continue on
+			// their own lines, outermost last. Two tabs line them up
+			// under the op text the block formatter indents with one tab.
+			const auto& innermost = info->frames.back();
+			fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
 
-				// Optional DWARF variable-name annotation. We query the
-				// host binary's DWARF for a DW_TAG_variable declared at
-				// the innermost frame's coordinates and append the
-				// recovered name (e.g. `sum`, `factor`) when one exists.
-				// Independent of the inlined-frames loop below — the
-				// variable lives at the innermost user-visible site.
-				if (opts->showVariableNames && opts->variableResolver != nullptr) {
-					if (auto name = opts->variableResolver->resolveVariableName(innermost)) {
-						fmt::format_to(out, " [var={}]", *name);
-					}
-				}
+			// DWARF variable-name annotation, if requested and recovered
+			// during conversion. Independent of the inlined-frames loop
+			// below — the variable lives at the innermost user-visible
+			// site.
+			if (ctx->options->showVariableNames && info->variableName.has_value()) {
+				fmt::format_to(out, " [var={}]", *info->variableName);
+			}
 
-				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
-					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
-				}
+			for (auto it = info->frames.rbegin() + 1; it != info->frames.rend(); ++it) {
+				fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
 			}
 		}
 	}

@@ -10,9 +10,6 @@
 #include <span>
 #include <vector>
 
-// `tracing::Tag` is forward-declared in `Operation.hpp`; we only need the
-// pointer name here.
-
 namespace nautilus::compiler::ir {
 
 /**
@@ -92,16 +89,6 @@ public:
 	T* addOperation(Args&&... args) {
 		auto* op = arena_->create<T>(*arena_, std::forward<Args>(args)...);
 		operations.push_back(op);
-		return op;
-	}
-
-	/// Variant of @ref addOperation that stamps the freshly created op with
-	/// the source tag from a `TraceOperation`.  Folds the addOperation +
-	/// setSourceTag pair every conversion-phase call site otherwise repeats.
-	template <typename T, typename... Args>
-	T* addTaggedOperation(const tracing::Tag* sourceTag, Args&&... args) {
-		auto* op = addOperation<T>(std::forward<Args>(args)...);
-		op->setSourceTag(sourceTag);
 		return op;
 	}
 

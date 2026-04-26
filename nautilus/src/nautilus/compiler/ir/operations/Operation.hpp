@@ -11,13 +11,6 @@
 #include <span>
 #include <string>
 
-namespace nautilus::tracing {
-template <typename T>
-class TrieNode;
-using TagAddress = uint64_t;
-using Tag = TrieNode<TagAddress>;
-} // namespace nautilus::tracing
-
 namespace nautilus::compiler::ir {
 
 class OperationIdentifier {
@@ -105,7 +98,7 @@ public:
 
 	/// Constructs an Operation that has no SSA inputs.
 	Operation(OperationType opType, OperationIdentifier identifier, Type type) noexcept
-	    : opType(opType), stamp(type), identifier(identifier), inputs() {
+	    : opType(opType), identifier(identifier), stamp(type), inputs() {
 	}
 
 	/// Convenience constructor (no identifier, no inputs).
@@ -116,13 +109,13 @@ public:
 	/// arena-allocated array.
 	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
 	          std::initializer_list<Operation*> ins)
-	    : opType(opType), stamp(type), identifier(identifier), inputs(allocateInputs(arena, ins)) {
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins)) {
 	}
 
 	/// Variable-length input constructor (used by call-like operations).
 	Operation(common::Arena& arena, OperationType opType, OperationIdentifier identifier, Type type,
 	          std::span<Operation* const> ins)
-	    : opType(opType), stamp(type), identifier(identifier), inputs(allocateInputs(arena, ins)) {
+	    : opType(opType), identifier(identifier), stamp(type), inputs(allocateInputs(arena, ins)) {
 	}
 
 	/// Non-virtual destructor (see class comment).
@@ -147,14 +140,6 @@ public:
 		return inputs;
 	}
 
-	void setSourceTag(const tracing::Tag* tag) const noexcept {
-		sourceTag = tag;
-	}
-
-	[[nodiscard]] const tracing::Tag* getSourceTag() const noexcept {
-		return sourceTag;
-	}
-
 	template <typename OP>
 	const OP* dynCast() const {
 		return OP::classof(this) ? static_cast<const OP*>(this) : nullptr;
@@ -175,30 +160,21 @@ protected:
 		return {buf, count};
 	}
 
-	// Field order is chosen so the eight-byte sourceTag lands inside what
-	// would otherwise be tail padding: opType (1B) + stamp (1B) pack
-	// together, identifier (4B) follows in its natural 4-byte slot, and the
-	// span occupies the next 16 bytes.  Total size is identical to the
-	// pre-sourceTag layout (32 B on a 64-bit target).
 	const OperationType opType;
-	const Type stamp;
 	const OperationIdentifier identifier;
+	const Type stamp;
 	/// View into the arena-allocated inputs buffer. Fixed-arity ops leave
 	/// this span untouched after construction and only mutate the pointers
 	/// it refers to; the two re-sizing ops (BasicBlockInvocation,
 	/// ProxyCallOperation::setInputArguments) re-seat it onto a fresh
 	/// arena buffer.
 	std::span<Operation*> inputs;
-	/// Back-pointer into the tag trie owned by the tracing arena: the call
-	/// stack captured at trace time.  Mutable so passes that hand out
-	/// `const Operation*` (e.g. constant folding propagating provenance)
-	/// can stamp it without leaking the const out.  Lives in what was
-	/// previously tail padding, so it does not grow the struct.
-	mutable const tracing::Tag* sourceTag = nullptr;
 };
 
-// The field reordering above keeps Operation at 32 B on 64-bit targets.
-// Bump intentionally and update the layout if this fires.
+// Source-location metadata is no longer carried per-Operation: it is
+// resolved at IR-conversion time and parked on the @c IRGraph's
+// side-table (@c OperationDebugInfo, keyed by @c OperationIdentifier).
+// The tag trie owned by @c TagRecorder no longer has to outlive the IR.
 static_assert(sizeof(Operation) <= 32, "Operation grew unexpectedly; check field packing");
 
 /**
