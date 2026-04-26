@@ -83,14 +83,16 @@ const CompilationUnitID& IRGraph::getId() const {
 
 void IRGraph::setDebugInfo(OperationIdentifier opId, OperationDebugInfo info) {
 	// Merge rather than replace so callers can attach the source-location
-	// stack and the DWARF-resolved variable name independently. Empty
-	// fields in @p info never overwrite a non-empty existing field.
+	// stack and the per-frame variable names independently. Empty fields
+	// in @p info never overwrite a non-empty existing field. The two
+	// vectors must stay in lock-step (same length): we move them as a
+	// pair so the invariant is preserved across merges.
 	auto& slot = debugInfoByOpId_[opId];
 	if (!info.frames.empty()) {
 		slot.frames = std::move(info.frames);
 	}
-	if (info.variableName.has_value() && !info.variableName->empty()) {
-		slot.variableName = std::move(info.variableName);
+	if (info.hasAnyVariableName()) {
+		slot.variableNames = std::move(info.variableNames);
 	}
 }
 
@@ -376,22 +378,42 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	    ctx != nullptr && ctx->options != nullptr && ctx->options->showSourceLocations && ctx->graph != nullptr) {
 		const auto* info = ctx->graph->getDebugInfo(op.getIdentifier());
 		if (info != nullptr && !info->frames.empty()) {
-			// Innermost frame on the same line; outer frames continue on
-			// their own lines, outermost last. Two tabs line them up
-			// under the op text the block formatter indents with one tab.
-			const auto& innermost = info->frames.back();
+			// Helper that, when variable names are requested and a name
+			// was recovered for the given frame index, appends a
+			// `[var=<name>]` suffix to the trailer.
+			auto appendVarName = [&](size_t frameIdx) {
+				if (!ctx->options->showVariableNames) {
+					return;
+				}
+				if (frameIdx >= info->variableNames.size()) {
+					return;
+				}
+				const auto& name = info->variableNames[frameIdx];
+				if (name.has_value() && !name->empty()) {
+					fmt::format_to(out, " [var={}]", *name);
+				}
+			};
+
+			// Innermost frame goes on the same line as the op; outer
+			// frames continue on their own lines, outermost last. Two
+			// tabs line them up under the op text the block formatter
+			// indents with one tab. Each frame can carry its own
+			// `[var=...]` annotation, since a value flowing through
+			// user-side helper functions is assigned to a different
+			// variable at each level of the call hierarchy.
+			const size_t innermostIdx = info->frames.size() - 1;
+			const auto& innermost = info->frames[innermostIdx];
 			fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+			appendVarName(innermostIdx);
 
-			// DWARF variable-name annotation, if requested and recovered
-			// during conversion. Independent of the inlined-frames loop
-			// below — the variable lives at the innermost user-visible
-			// site.
-			if (ctx->options->showVariableNames && info->variableName.has_value()) {
-				fmt::format_to(out, " [var={}]", *info->variableName);
-			}
-
-			for (auto it = info->frames.rbegin() + 1; it != info->frames.rend(); ++it) {
-				fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
+			// `frames` is outer-to-inner. We've already printed the
+			// innermost (last) entry; iterate the remainder from inner
+			// to outer so the dump reads naturally.
+			for (size_t i = info->frames.size() - 1; i > 0; --i) {
+				const size_t outerIdx = i - 1;
+				const auto& f = info->frames[outerIdx];
+				fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", f.file, f.line, f.function);
+				appendVarName(outerIdx);
 			}
 		}
 	}

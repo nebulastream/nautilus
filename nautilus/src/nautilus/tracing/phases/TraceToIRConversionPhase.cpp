@@ -110,11 +110,19 @@ void TraceToIRConversionPhase::IRConversionContext::bakeDebugInfo(const compiler
 		info.frames = resolvers_.sourceLocationResolver->resolveStack(tag);
 	}
 	if (resolvers_.variableResolver != nullptr && !info.frames.empty()) {
-		// The innermost user frame is where the user wrote the
-		// expression that produced this value, so it's the right site
-		// to query DWARF for the surrounding variable declaration.
-		const auto& innermost = info.frames.back();
-		info.variableName = resolvers_.variableResolver->resolveVariableName(innermost);
+		// Resolve a variable name for *every* frame in the call hierarchy,
+		// not just the innermost. When a value flows through user-side
+		// helper functions (e.g. `val<int> sum = compute(x, y);` where
+		// `compute` itself contains `val<int> acc = a + b`), each frame
+		// has its own user-declared destination variable. The dump
+		// formatter pairs each entry with the corresponding @c frames
+		// entry to render a per-frame [var=...] annotation. Variable
+		// resolver caches lookups per (file, line, column), so this
+		// per-frame loop is effectively free after the first occurrence.
+		info.variableNames.reserve(info.frames.size());
+		for (const auto& frame : info.frames) {
+			info.variableNames.push_back(resolvers_.variableResolver->resolveVariableName(frame));
+		}
 	}
 	if (info.empty()) {
 		return;

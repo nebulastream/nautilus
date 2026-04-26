@@ -26,18 +26,33 @@ class FunctionOperation;
 /// passes can run, and the dump path can resolve @c (file, line, ...)
 /// from the side-table without re-entering any resolver.
 ///
-/// Frames are stored outer-to-inner: element 0 is the caller furthest
+/// @c frames is stored outer-to-inner: element 0 is the caller furthest
 /// from the user-visible source site, the last element is the innermost
-/// user frame. @c variableName, when present, is the user-declared
-/// name recovered from DWARF at the innermost frame's coordinates
-/// (e.g. "sum", "factor"); empty when no DWARF was available or no
-/// matching DIE was found.
+/// user frame.
+///
+/// @c variableNames is the same length as @c frames, with element @c i
+/// holding the user-declared name (recovered from DWARF) of the
+/// variable that received the value at @c frames[i] — or
+/// @c std::nullopt when no matching DIE was found at that frame's
+/// coordinates. The two vectors are kept in lock-step so the dump can
+/// pair each frame with its name in one pass; consumers can iterate
+/// both together to render a per-frame [var=...] annotation.
 struct OperationDebugInfo {
 	std::vector<tracing::SourceFrame> frames;
-	std::optional<std::string> variableName;
+	std::vector<std::optional<std::string>> variableNames;
 
 	[[nodiscard]] bool empty() const noexcept {
-		return frames.empty() && !variableName.has_value();
+		return frames.empty() && variableNames.empty();
+	}
+
+	/// True if any frame has a recovered variable name.
+	[[nodiscard]] bool hasAnyVariableName() const noexcept {
+		for (const auto& name : variableNames) {
+			if (name.has_value() && !name->empty()) {
+				return true;
+			}
+		}
+		return false;
 	}
 };
 
