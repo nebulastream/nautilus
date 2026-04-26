@@ -18,3 +18,4 @@ leak:llvm::detail::IEEEFloat
 leak:createX86MCInstrInfo
 leak:LegacyLegalizerInfo
 leak:GenericLLVMIRPlatformSupport
+leak:llvm::allocate_buffer

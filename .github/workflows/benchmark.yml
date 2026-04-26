@@ -35,7 +35,7 @@ jobs:
       - name: cmake
         shell: bash
         run: |
-          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_BENCHMARKS=ON -DENABLE_LOGGING=OFF -DENABLE_ASMJIT_BACKEND=ON ${{ matrix.flags }}  -G Ninja -S .
+          cmake -DCMAKE_BUILD_TYPE=Release -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_BENCHMARKS=ON -DENABLE_LOGGING=OFF -G Ninja -S .
       - name: build
         shell: bash
         run: |
