@@ -268,4 +268,67 @@ val<uint64_t> invokeU32ThenCastToU64(val<uint32_t> v) {
 	return static_cast<val<uint64_t>>(narrow);
 }
 
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+// --- Short-circuit evaluation regression tests ---
+//
+// These exist to prove that under ENABLE_SHORT_CIRCUIT_BOOL the right-hand
+// side of && / || really is not evaluated at runtime when the left-hand side
+// determines the result. The shape of these tests is fragile by design: they
+// would crash, divide by zero, dereference null, or leave a counter at the
+// wrong value if the JIT lowered && / || to an eager binary op rather than a
+// branch. They are gated on the cmake option because the same code is *not*
+// safe to run under the eager-AND/OR build (the divide and the deref live
+// directly in the trace, unguarded).
+
+inline int64_t shortCircuitSideEffectCounter = 0;
+
+inline bool incrementCounterAndReturnTrue() {
+	shortCircuitSideEffectCounter++;
+	return true;
+}
+
+inline bool incrementCounterAndReturnFalse() {
+	shortCircuitSideEffectCounter++;
+	return false;
+}
+
+inline int32_t divideTenBy(int32_t x) {
+	return 10 / x;
+}
+
+inline int32_t loadInt(int32_t* p) {
+	return *p;
+}
+
+// `false && rhs` must not invoke rhs. The counter stays at its pre-call
+// value when `a` is false, and bumps by exactly one when `a` is true.
+val<bool> shortCircuitAndRhsCounter(val<bool> a) {
+	return a && invoke(incrementCounterAndReturnTrue);
+}
+
+// Symmetric case for ||: `true || rhs` must not invoke rhs.
+val<bool> shortCircuitOrRhsCounter(val<bool> a) {
+	return a || invoke(incrementCounterAndReturnFalse);
+}
+
+// Divide-by-zero guard. Without short-circuit semantics calling this with
+// x == 0 would compute 10 / 0 in the trace and fault. With short-circuit
+// the divide is nested under the `x != 0` branch.
+val<int32_t> shortCircuitGuardDivByZero(val<int32_t> x) {
+	if ((x != 0) && (invoke(divideTenBy, x) > 1)) {
+		return invoke(divideTenBy, x);
+	}
+	return val<int32_t>(0);
+}
+
+// Null-pointer deref guard. Same idea: the load is only emitted on the path
+// where `p != nullptr` is known to be true.
+val<int32_t> shortCircuitGuardNullDeref(val<int32_t*> p) {
+	if ((p != nullptr) && (invoke(loadInt, p) == 42)) {
+		return val<int32_t>(1);
+	}
+	return val<int32_t>(0);
+}
+#endif
+
 } // namespace nautilus::engine

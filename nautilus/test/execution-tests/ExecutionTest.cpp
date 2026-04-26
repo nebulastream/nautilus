@@ -485,13 +485,18 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(19) == 1);
 		REQUIRE(f(20) == 0);
 	}
-	/*SECTION("shortCircuitEvaluation") {
-	    auto f = engine.registerFunction(shortCircuitEvaluation);
-	    REQUIRE(f(0) == 0);
-	    REQUIRE(f(10) == 0);
-	    REQUIRE(f(5) == 1);
-	    REQUIRE(f(4) == 1);
-	}*/
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	// Re-enabled under short-circuit semantics: the (10 / value) divide is
+	// only emitted on the `value != 0` branch, so f(0) returns 0 instead of
+	// faulting on integer divide-by-zero.
+	SECTION("shortCircuitEvaluation") {
+		auto f = engine.registerFunction(shortCircuitEvaluation);
+		REQUIRE(f(0) == 0);
+		REQUIRE(f(10) == 0);
+		REQUIRE(f(5) == 1);
+		REQUIRE(f(4) == 1);
+	}
+#endif
 	SECTION("ifWithFunctionCall") {
 		auto f = engine.registerFunction(ifWithFunctionCall);
 		REQUIRE(f(0) == 0);

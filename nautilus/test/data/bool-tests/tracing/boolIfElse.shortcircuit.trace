@@ -1,0 +1,16 @@
+EXECUTE:
+B0($1:bool,$2:bool)
+	CMP	$3	$1	B1()	B2()	:void
+B1()
+	CMP	$4	$2	B3()	B4()	:void
+B2()
+	CONST	$8	false	:bool
+	RETURN	$0	$8	:bool
+B3()
+	CONST	$5	true	:bool
+	RETURN	$0	$5	:bool
+B4()
+	CONST	$11	false	:bool
+	ASSIGN	$8	$11	:bool
+	RETURN	$0	$8	:bool
+

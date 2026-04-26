@@ -22,6 +22,16 @@ namespace nautilus::testing {
  *
  * The default extension is `.trace` (raw execution trace dumps); Nautilus IR
  * dumps should pass `.nautilus` so the on-disk artefacts carry the right name.
+ *
+ * When the build defines `ENABLE_SHORT_CIRCUIT_BOOL`, the IR shape produced by
+ * `&&` / `||` is no longer a flat AND/OR op but a short-circuit branch tree,
+ * so a subset of the default fixtures stop matching. To keep both
+ * configurations in tree, the helper first looks for an optional sibling file
+ * named `<name>.shortcircuit<extension>`. If that override exists it takes
+ * priority; otherwise the default fixture is consulted. When the default
+ * fixture exists but does not match, the helper materialises the override
+ * with the actual dump so the next run picks it up — same auto-init flow as
+ * the default-fixture case.
  */
 inline bool checkReferenceDump(const std::string& actual, const std::string& category, const std::string& group,
                                const std::string& name, const std::string& extension = ".trace") {
@@ -30,7 +40,14 @@ inline bool checkReferenceDump(const std::string& actual, const std::string& cat
 		std::filesystem::create_directories(groupDir);
 	}
 
-	std::string filePath = groupDir + name + extension;
+	std::string defaultPath = groupDir + name + extension;
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	std::string overridePath = groupDir + name + ".shortcircuit" + extension;
+	std::string filePath = std::filesystem::exists(overridePath) ? overridePath : defaultPath;
+#else
+	std::string filePath = defaultPath;
+#endif
+
 	if (!std::filesystem::exists(filePath)) {
 		std::cerr << "File does not exist: " << filePath << " Initializing with current dump. Please Rerun.\n";
 		std::ofstream file {filePath};
@@ -50,6 +67,18 @@ inline bool checkReferenceDump(const std::string& actual, const std::string& cat
 	if (expect.str() == actual) {
 		return true;
 	}
+
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	// Default fixture exists and did not match. Materialise a short-circuit
+	// override so the developer can rerun and commit it.
+	if (filePath == defaultPath) {
+		std::cerr << "Trace mismatch under ENABLE_SHORT_CIRCUIT_BOOL; writing override " << overridePath
+		          << ". Please rerun and commit the new fixture.\n";
+		std::ofstream out {overridePath};
+		out << actual;
+		return false;
+	}
+#endif
 
 	char tmpName[] = "/tmp/actual_trace_XXXXXX";
 	int tmpFd = mkstemp(tmpName);
