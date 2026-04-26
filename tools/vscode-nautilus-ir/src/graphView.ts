@@ -1,42 +1,24 @@
 // Webview panel that renders the control-flow graph of the active Nautilus
 // IR file using Mermaid. The graph is synthesized client-side from the IR
 // text — there is no dependency on Nautilus's `dump.graph` option.
-//
-// Contract with the webview (see `media/graph.js`):
-//
-//   extension → webview:
-//     { type: 'render', mermaid, functions, activeFunction, blocks, currentBlock }
-//     { type: 'highlight', block }
-//
-//   webview → extension:
-//     { type: 'ready' }                     // initial handshake
-//     { type: 'revealBlock', block }        // user clicked a graph node
-//     { type: 'selectFunction', name }      // user picked from the dropdown
-//     { type: 'log', level, message }       // webview-side diagnostics
 
 import * as vscode from 'vscode';
 import { irFor } from './features';
 import { cfgFor } from './cfgFromParsedIr';
-import { ParsedIr } from './parser';
+import { ParsedIr, blockAtLine, functionAt } from './parser';
 
 const RENDER_DEBOUNCE_MS = 150;
 
-interface RenderPayload {
-	type: 'render';
-	mermaid: string;
-	functions: string[];
-	activeFunction: string;
-	// Block names that the webview should wire click handlers for. The
-	// webview validates each entry against `/^Block_\d+$/` before using it
-	// in a CSS selector.
-	blocks: string[];
-	currentBlock: string | null;
-}
+// Wire-format messages exchanged with `media/graph.js`.
+type ExtensionToWebview =
+	| { type: 'render'; mermaid: string; functions: string[]; activeFunction: string; blocks: string[]; currentBlock: string | null }
+	| { type: 'highlight'; block: string | null };
 
-interface HighlightPayload {
-	type: 'highlight';
-	block: string | null;
-}
+type WebviewToExtension =
+	| { type: 'ready' }
+	| { type: 'revealBlock'; block: string }
+	| { type: 'selectFunction'; name: string }
+	| { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };
 
 export class GraphPanel {
 	private static current: GraphPanel | undefined;
@@ -58,7 +40,7 @@ export class GraphPanel {
 
 		const panel = vscode.window.createWebviewPanel(
 			'nautilus-ir.graph',
-			`Nautilus IR Graph — ${editor.document.fileName.split(/[\\/]/).pop() ?? ''}`,
+			titleFor(editor.document),
 			{ viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
 			{
 				enableScripts: true,
@@ -75,7 +57,9 @@ export class GraphPanel {
 	private activeFunction: string | undefined;
 	private renderTimer: NodeJS.Timeout | undefined;
 	private webviewReady = false;
-	private pendingRender: RenderPayload | undefined;
+	private pendingRender: Extract<ExtensionToWebview, { type: 'render' }> | undefined;
+	private lastRenderJson: string | undefined;
+	private lastHighlightedBlock: string | null | undefined;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -87,16 +71,10 @@ export class GraphPanel {
 
 		this.disposables.push(
 			this.panel.onDidDispose(() => this.dispose()),
-			this.panel.webview.onDidReceiveMessage(msg => this.handleMessage(msg)),
+			this.panel.webview.onDidReceiveMessage(msg => this.handleMessage(msg as WebviewToExtension)),
 			vscode.workspace.onDidChangeTextDocument(e => {
 				if (e.document === this.linkedDoc) {
 					this.scheduleRender();
-				}
-			}),
-			vscode.workspace.onDidCloseTextDocument(d => {
-				if (d === this.linkedDoc) {
-					// Keep the last rendered graph visible; users often close
-					// the source while inspecting the picture.
 				}
 			}),
 			vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -115,8 +93,10 @@ export class GraphPanel {
 
 	public linkTo(document: vscode.TextDocument): void {
 		this.linkedDoc = document;
-		this.panel.title = `Nautilus IR Graph — ${document.fileName.split(/[\\/]/).pop() ?? ''}`;
-		this.activeFunction = undefined; // recompute default
+		this.panel.title = titleFor(document);
+		this.activeFunction = undefined;
+		this.lastRenderJson = undefined; // new doc → never dedup against old payload
+		this.lastHighlightedBlock = undefined;
 		this.scheduleRender(/* immediate */ true);
 	}
 
@@ -142,13 +122,19 @@ export class GraphPanel {
 		if (!payload) {
 			return;
 		}
+		const json = JSON.stringify(payload);
+		if (json === this.lastRenderJson) {
+			return; // edits that don't change the rendered graph stay invisible
+		}
+		this.lastRenderJson = json;
+		this.lastHighlightedBlock = payload.currentBlock;
 		this.pendingRender = payload;
 		if (this.webviewReady) {
 			void this.panel.webview.postMessage(payload);
 		}
 	}
 
-	private buildRenderPayload(ir: ParsedIr): RenderPayload | undefined {
+	private buildRenderPayload(ir: ParsedIr): Extract<ExtensionToWebview, { type: 'render' }> | undefined {
 		if (ir.functions.length === 0) {
 			return {
 				type: 'render',
@@ -162,8 +148,6 @@ export class GraphPanel {
 
 		const fnNames = ir.functions.map(f => f.name);
 		if (!this.activeFunction || !fnNames.includes(this.activeFunction)) {
-			// Default: prefer the function containing the cursor in the
-			// matching editor; otherwise fall back to the first function.
 			this.activeFunction = this.functionAtCursor(ir) ?? fnNames[0];
 		}
 		const graph = cfgFor(ir, this.activeFunction);
@@ -176,32 +160,27 @@ export class GraphPanel {
 			functions: fnNames,
 			activeFunction: graph.functionName,
 			blocks: graph.blocks,
-			currentBlock: this.currentBlock(),
+			currentBlock: this.currentBlockName(ir),
 		};
 	}
 
-	private functionAtCursor(ir: ParsedIr): string | undefined {
+	private cursorLine(): number | undefined {
 		const editor = vscode.window.visibleTextEditors.find(e => e.document === this.linkedDoc);
-		if (!editor) {
-			return undefined;
-		}
-		const line = editor.selection.active.line;
-		const fn = ir.functions.find(f => line >= f.headerLine && line <= f.bodyRange.end.line);
-		return fn?.name;
+		return editor?.selection.active.line;
 	}
 
-	private currentBlock(): string | null {
-		const editor = vscode.window.visibleTextEditors.find(e => e.document === this.linkedDoc);
-		if (!editor) {
+	private functionAtCursor(ir: ParsedIr): string | undefined {
+		const line = this.cursorLine();
+		return line === undefined ? undefined : functionAt(ir, line)?.name;
+	}
+
+	private currentBlockName(ir: ParsedIr): string | null {
+		const line = this.cursorLine();
+		if (line === undefined) {
 			return null;
 		}
-		const ir = irFor(this.linkedDoc);
-		const line = editor.selection.active.line;
-		const block = ir.blocks.find(b =>
-			b.functionName === this.activeFunction &&
-			line >= b.headerLine && line <= b.bodyRange.end.line,
-		);
-		return block?.name ?? null;
+		const block = blockAtLine(ir, line);
+		return block && block.functionName === this.activeFunction ? block.name : null;
 	}
 
 	private postCurrentBlockHighlight(line: number): void {
@@ -209,42 +188,40 @@ export class GraphPanel {
 			return;
 		}
 		const ir = irFor(this.linkedDoc);
-		// If the cursor moved into a different function, switch the rendered
-		// function so the highlight has somewhere to land.
-		const fn = ir.functions.find(f => line >= f.headerLine && line <= f.bodyRange.end.line);
+		const fn = functionAt(ir, line);
+		// Cursor moved into a different function → switch the rendered graph.
 		if (fn && fn.name !== this.activeFunction) {
 			this.activeFunction = fn.name;
 			this.scheduleRender(/* immediate */ true);
 			return;
 		}
-		const block = ir.blocks.find(b =>
-			b.functionName === this.activeFunction &&
-			line >= b.headerLine && line <= b.bodyRange.end.line,
-		);
-		const payload: HighlightPayload = { type: 'highlight', block: block?.name ?? null };
+		const block = blockAtLine(ir, line);
+		const name = block && block.functionName === this.activeFunction ? block.name : null;
+		if (name === this.lastHighlightedBlock) {
+			return; // no-op: cursor moved within the same block
+		}
+		this.lastHighlightedBlock = name;
+		const payload: ExtensionToWebview = { type: 'highlight', block: name };
 		void this.panel.webview.postMessage(payload);
 	}
 
-	private handleMessage(msg: { type: string; [k: string]: unknown }): void {
+	private handleMessage(msg: WebviewToExtension): void {
 		switch (msg.type) {
 		case 'ready':
 			this.webviewReady = true;
 			if (!this.pendingRender) {
-				const ir = irFor(this.linkedDoc);
-				this.pendingRender = this.buildRenderPayload(ir);
+				this.pendingRender = this.buildRenderPayload(irFor(this.linkedDoc));
 			}
 			if (this.pendingRender) {
 				void this.panel.webview.postMessage(this.pendingRender);
 			}
 			return;
 		case 'revealBlock':
-			void this.revealBlock(typeof msg.block === 'string' ? msg.block : '');
+			void this.revealBlock(msg.block);
 			return;
 		case 'selectFunction':
-			if (typeof msg.name === 'string') {
-				this.activeFunction = msg.name;
-				this.scheduleRender(/* immediate */ true);
-			}
+			this.activeFunction = msg.name;
+			this.scheduleRender(/* immediate */ true);
 			return;
 		case 'log':
 			if (msg.level === 'error') {
@@ -263,9 +240,8 @@ export class GraphPanel {
 			preserveFocus: false,
 		});
 		const ir = irFor(this.linkedDoc);
-		const block = ir.blocks.find(b =>
-			b.functionName === this.activeFunction && b.name === blockName,
-		) ?? ir.blocks.find(b => b.name === blockName);
+		const block = ir.functionByName.get(this.activeFunction ?? '')?.blockByName.get(blockName)
+			?? ir.blockByName.get(blockName);
 		if (!block) {
 			return;
 		}
@@ -325,6 +301,10 @@ export class GraphPanel {
 			try { d?.dispose(); } catch { /* ignore */ }
 		}
 	}
+}
+
+function titleFor(document: vscode.TextDocument): string {
+	return `Nautilus IR Graph — ${document.fileName.split(/[\\/]/).pop() ?? ''}`;
 }
 
 function randomNonce(): string {
