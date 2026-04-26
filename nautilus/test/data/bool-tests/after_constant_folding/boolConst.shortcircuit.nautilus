@@ -1,0 +1,17 @@
+nautilus {
+execute($1:bool) :bool {
+Block_0($1:bool):
+	if $1 ? Block_1() : Block_2() :void
+
+Block_1():
+	$3 = true :bool
+	br Block_3($3) :void
+
+Block_3($3:bool):
+	return ($3) :bool
+
+Block_2():
+	$5 = false :bool
+	br Block_3($5) :void
+}
+} //nautilus

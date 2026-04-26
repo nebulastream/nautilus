@@ -535,6 +535,16 @@ auto inline operator!=(bool left, const val<bool>& right) {
 // Logical Operators for val<bool>
 // ============================================================================
 
+// When ENABLE_SHORT_CIRCUIT_BOOL is set, we deliberately do NOT overload && / ||.
+// C++ overloaded logical operators always evaluate both operands, so an overload
+// cannot preserve short-circuit semantics. Without an overload, built-in && / ||
+// kicks in and converts each operand via val<bool>::operator bool(), which calls
+// tracing::traceBool. The symbolic execution engine then explores each path
+// independently, so the right-hand side is only traced on the path where the
+// left-hand side is true (for &&) or false (for ||). The result type becomes
+// native bool; assigning it back to val<bool> produces a path-local constant.
+#ifndef ENABLE_SHORT_CIRCUIT_BOOL
+
 // Logical operator overloads for bool values
 auto inline operator||(bool left, const val<bool>& right) {
 	auto leftVal = make_value(left);
@@ -563,6 +573,8 @@ auto inline operator&&(const val<bool>& left, bool right) {
 auto inline operator&&(const val<bool>& left, const val<bool>& right) {
 	return details::lAnd(left, right);
 }
+
+#endif // !ENABLE_SHORT_CIRCUIT_BOOL
 
 auto inline operator!(const val<bool>& left) {
 	return details::lNot(left);

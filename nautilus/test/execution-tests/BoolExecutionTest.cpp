@@ -239,6 +239,47 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(uint32_t {0}) == 0u);
 		REQUIRE(f(uint32_t {0xFFFFFFFFu}) == 0xFFFFFFFFu);
 	}
+
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	// `false && rhs` must not invoke the rhs proxy call at runtime.
+	SECTION("shortCircuitAndSkipsRhs") {
+		auto f = engine.registerFunction(shortCircuitAndRhsCounter);
+		shortCircuitSideEffectCounter = 0;
+		REQUIRE(f(false) == false);
+		REQUIRE(shortCircuitSideEffectCounter == 0);
+		REQUIRE(f(true) == true);
+		REQUIRE(shortCircuitSideEffectCounter == 1);
+	}
+
+	// `true || rhs` must not invoke the rhs proxy call at runtime.
+	SECTION("shortCircuitOrSkipsRhs") {
+		auto f = engine.registerFunction(shortCircuitOrRhsCounter);
+		shortCircuitSideEffectCounter = 0;
+		REQUIRE(f(true) == true);
+		REQUIRE(shortCircuitSideEffectCounter == 0);
+		REQUIRE(f(false) == false);
+		REQUIRE(shortCircuitSideEffectCounter == 1);
+	}
+
+	// The classic divide-by-zero guard: would SIGFPE without short-circuit.
+	SECTION("shortCircuitGuardDivByZero") {
+		auto f = engine.registerFunction(shortCircuitGuardDivByZero);
+		REQUIRE(f(0) == 0);  // would crash without short-circuit
+		REQUIRE(f(1) == 10); // 10 / 1 == 10, > 1
+		REQUIRE(f(5) == 2);  // 10 / 5 == 2,  > 1
+		REQUIRE(f(20) == 0); // 10 / 20 == 0, not > 1
+	}
+
+	// Null-pointer guard: would segfault without short-circuit.
+	SECTION("shortCircuitGuardNullDeref") {
+		auto f = engine.registerFunction(shortCircuitGuardNullDeref);
+		int32_t target = 42;
+		int32_t other = 7;
+		REQUIRE(f(nullptr) == 0); // would crash without short-circuit
+		REQUIRE(f(&target) == 1);
+		REQUIRE(f(&other) == 0);
+	}
+#endif
 }
 
 TEST_CASE("Bool Interpreter Test") {

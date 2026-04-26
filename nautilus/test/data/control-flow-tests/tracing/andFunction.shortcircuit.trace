@@ -1,0 +1,66 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	true	:bool
+	CMP	$3	$2	B1()	B2()	:void
+B1()
+	CONST	$4	42	:i64
+	CAST	$5	$1	:i64
+	EQ	$6	$5	$4	:bool
+	CMP	$7	$6	B3()	B4()	:void
+B2()
+	CONST	$22	false	:bool
+	ASSIGN	$2	$22	:bool
+	JMP	$0	B13()	:void
+B3()
+	CONST	$8	true	:bool
+	JMP	$0	B14()	:void
+B4()
+	CONST	$24	false	:bool
+	ASSIGN	$8	$24	:bool
+	JMP	$0	B14()	:void
+B5()
+	CONST	$10	42	:i64
+	CAST	$11	$1	:i64
+	EQ	$12	$11	$10	:bool
+	CMP	$13	$12	B7()	B8()	:void
+B6()
+	CONST	$26	false	:bool
+	ASSIGN	$2	$26	:bool
+	JMP	$0	B15()	:void
+B7()
+	CONST	$14	true	:bool
+	JMP	$0	B16()	:void
+B8()
+	CONST	$28	false	:bool
+	ASSIGN	$14	$28	:bool
+	JMP	$0	B16()	:void
+B9()
+	CONST	$16	42	:i64
+	CAST	$17	$1	:i64
+	EQ	$18	$17	$16	:bool
+	CMP	$19	$18	B11()	B12()	:void
+B10()
+	CONST	$30	false	:bool
+	ASSIGN	$2	$30	:bool
+	RETURN	$0	$2	:bool
+B11()
+	CONST	$20	true	:bool
+	JMP	$0	B17()	:void
+B12()
+	CONST	$32	false	:bool
+	ASSIGN	$20	$32	:bool
+	JMP	$0	B17()	:void
+B13() ControlFlowMerge
+	CMP	$9	$2	B5()	B6()	:void
+B14() ControlFlowMerge
+	ASSIGN	$2	$8	:bool
+	JMP	$0	B13()	:void
+B15() ControlFlowMerge
+	CMP	$15	$2	B9()	B10()	:void
+B16() ControlFlowMerge
+	ASSIGN	$2	$14	:bool
+	JMP	$0	B15()	:void
+B17() ControlFlowMerge
+	ASSIGN	$2	$20	:bool
+	RETURN	$0	$2	:bool
+

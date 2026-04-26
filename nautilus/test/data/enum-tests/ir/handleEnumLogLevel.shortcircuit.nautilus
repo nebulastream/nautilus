@@ -1,0 +1,28 @@
+nautilus {
+execute($1:ui8) :bool {
+Block_0($1:ui8):
+	$2 = 6 :ui8
+	$3 = $1 == $2 :bool
+	if $3 ? Block_1() : Block_2($1) :void
+
+Block_1():
+	$5 = true :bool
+	br Block_5($5) :void
+
+Block_5($5:bool):
+	return ($5) :bool
+
+Block_2($1:ui8):
+	$7 = 5 :ui8
+	$8 = $1 == $7 :bool
+	if $8 ? Block_3() : Block_4() :void
+
+Block_3():
+	$10 = true :bool
+	br Block_5($10) :void
+
+Block_4():
+	$12 = false :bool
+	br Block_5($12) :void
+}
+} //nautilus
