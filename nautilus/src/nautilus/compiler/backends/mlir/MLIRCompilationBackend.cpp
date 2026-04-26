@@ -7,10 +7,14 @@
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
+#include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
+#include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <chrono>
+#include <fstream>
+#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/Support/TargetSelect.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -63,7 +67,26 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		MLIRIntrinsicPluginRegistry::instance().registerAllIntrinsics(intrinsicManager);
 	}
 
+	// Build debug-info options once; downstream steps read from this struct.
+	const auto debugInfo = debugInfoOptionsFromEngineOptions(options);
+
+	// Prepare the Nautilus-IR "source file" used for debugging in
+	// "nautilus-ir" mode.  The file must exist before lowering runs so
+	// the FileLineColLocs attached by MLIRLoweringProvider point at real
+	// content that GDB/LLDB can read on `list`.
+	std::shared_ptr<IRSourceMap> irSourceMap;
+	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir") {
+		irSourceMap = std::make_shared<IRSourceMap>(dumpIRWithSourceMap(*ir));
+		if (!debugInfo.sourceFile.empty()) {
+			std::ofstream out(debugInfo.sourceFile);
+			out << irSourceMap->text;
+		}
+	}
+
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
+	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir" && irSourceMap) {
+		loweringProvider->setDebugInfo(debugInfo, irSourceMap);
+	}
 
 	const auto loweringStart = std::chrono::steady_clock::now();
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
@@ -91,7 +114,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
 	// and optimization passes.
 	const auto pipelineStart = std::chrono::steady_clock::now();
-	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {})) {
+	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo)) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 	if (statistics != nullptr) {
@@ -108,9 +131,28 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 4. JIT compile LLVM IR module and return engine that provides access
 	// compiled execute function.
 	const auto jitStart = std::chrono::steady_clock::now();
-	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses(),
-	                                            options.getMLIRJitEventListeners());
+
+	// Compose event listeners: user-provided plus, when debug is enabled
+	// with auto-register, LLVM's GDB JIT interface listener.  The GDB
+	// listener is a stateless process-wide singleton so repeated calls
+	// are cheap and safe.
+	std::vector<llvm::JITEventListener*> eventListeners = options.getMLIRJitEventListeners();
+	if (debugInfo.enable && debugInfo.autoRegisterGdbListener) {
+		if (auto* gdb = llvm::JITEventListener::createGDBRegistrationListener()) {
+			eventListeners.push_back(gdb);
+		}
+	}
+
+	// With debug info active the IR optimizer is clamped to -O0; match
+	// that in the JIT's MC layer at -O1-equivalent (`Less`) so the
+	// register allocator does not fold distinct $N SSA values into the
+	// same physical register.  `None` triggers fast-regalloc which
+	// spills every SSA value and confuses LLVM's DWARF asmprinter when
+	// dbg.value operands live on the stack rather than in registers.
+	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
+	auto engine =
+	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                  loweringProvider->getJitProxyTargetAddresses(), eventListeners, jitCodeGenLevel);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

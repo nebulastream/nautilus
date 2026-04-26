@@ -18,7 +18,8 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             MLIRJitEventListenerTest.cpp
-            MLIRJitEventListenerTestFixture.cpp)
+            MLIRJitEventListenerTestFixture.cpp
+            DebugInfoExecutionTest.cpp)
 endif ()
 
 add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})

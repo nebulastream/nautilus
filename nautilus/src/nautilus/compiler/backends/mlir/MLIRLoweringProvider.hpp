@@ -3,10 +3,13 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
+#include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
+#include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
+#include <memory>
 #include <mlir/IR/PatternMatch.h>
 #include <span>
 #include <unordered_set>
@@ -43,6 +46,19 @@ public:
 	::mlir::OwningOpRef<::mlir::ModuleOp> generateModuleFromIR(std::shared_ptr<ir::IRGraph>);
 
 	/**
+	 * @brief Enable emission of FileLineColLocs tied to a Nautilus IR dump.
+	 *
+	 * When set, getNameLoc() returns a FileLineColLoc pointing into
+	 * debugInfo.sourceFile using the line numbers in sourceMap.  The
+	 * DIScopeForLLVMFuncOpPass that runs later in the pipeline then
+	 * materializes DISubprograms referencing those locations, giving
+	 * GDB/LLDB a valid file/line mapping to step through.  The caller
+	 * is responsible for having written `sourceMap->text` to
+	 * `debugInfo.sourceFile` before invoking generateModuleFromIR.
+	 */
+	void setDebugInfo(DebugInfoOptions debugInfo, std::shared_ptr<const IRSourceMap> sourceMap);
+
+	/**
 	 * @return std::vector<std::string>: All proxy function symbols used in the module.
 	 */
 	std::vector<std::string> getJitProxyFunctionSymbols();
@@ -74,6 +90,43 @@ private:
 	    blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
 
+	// Debug-info state.  When debugInfo_.enable is false, all debug
+	// paths are no-ops and the lowering produces byte-identical output
+	// to a build without debug support.
+	DebugInfoOptions debugInfo_;
+	std::shared_ptr<const IRSourceMap> irSourceMap_;
+	// The Nautilus IR op currently being lowered.  Set in generateMLIR
+	// just before each dispatch() so that the ~73 existing
+	// getNameLoc(name) call sites automatically produce a FileLineColLoc
+	// pointing at the correct Nautilus IR line.
+	const ir::Operation* currentOp_ = nullptr;
+	// Dump line of the currently-lowered op — set positionally from
+	// the enclosing block's blockOpLines.  Provides a line to
+	// terminator ops (`br`, `if`, `return`) that have no `$N` id to
+	// look up in `operationLines`, so GDB can stop on the terminator.
+	uint32_t currentOpLine_ = 0;
+	// One shadow alloca per Nautilus $N id used in the current function.
+	// Allocated at function entry when debug info is active, refreshed
+	// by a store at every site that (re)defines the identifier (function
+	// param, body op, non-entry block arg).  EmitDbgValuePass later
+	// emits a single dbg.declare per alloca so GDB can resolve $N by
+	// reading its stack slot at any PC inside the function — no
+	// dependency on register liveness.  The map is cleared in
+	// generateFunction before each function's body is lowered.
+	std::unordered_map<uint32_t, ::mlir::Value> debugAllocas_;
+	// Line of the current function's header in the IR dump.  Used as
+	// the `!dbg` location of the prologue (allocas, function-parameter
+	// stores) so GDB treats it as a single source line at function
+	// entry rather than jumping through each variable's eventual
+	// declaration line during the prologue.
+	uint32_t currentFunctionHeaderLine_ = 0;
+	// Per-function line tables for the function currently being
+	// lowered.  Nautilus IR re-uses `$N` ids and `Block_N` indices
+	// across functions, so we must scope lookups to the current
+	// function — consulting the global IRSourceMap by id alone would
+	// return the wrong caller/callee line.
+	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
+
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
 	 *
@@ -84,6 +137,23 @@ private:
 
 	void generateFunction(::mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& funcOp, ValueFrame& frame);
 	::mlir::func::FuncOp generateFunctionDefinitions(const ir::FunctionOperation& funcOp);
+
+	/// Build a `$N` NameLoc wrapping a FileLineColLoc at the IR dump line
+	/// of the given identifier.  Returns a plain NameLoc("arg") location
+	/// when debug info is disabled so the caller can use the result
+	/// unconditionally.
+	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName);
+
+	/// Lazily create an `llvm.alloca` at the entry block of the currently
+	/// enclosing `func.func` for shadow-storing $N's value.  The alloca
+	/// is cached in `debugAllocas_` so subsequent stores reuse the same
+	/// slot.  No-op when `debugInfo_.enable` is false.
+	::mlir::Value ensureDebugAlloca(uint32_t id, ::mlir::Type type);
+
+	/// Emit a store of `value` into $id's shadow alloca at the builder's
+	/// current insertion point.  Creates the alloca on first use.  No-op
+	/// when `debugInfo_.enable` is false.
+	void storeDebugValue(uint32_t id, ::mlir::Value value, ::mlir::Location loc);
 
 	// Per-operation hooks invoked by OperationDispatcher::dispatch.
 	void visitConstInt(ir::ConstIntOperation* constIntOp, ValueFrame& frame);
@@ -138,6 +208,11 @@ private:
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.
 	 * @param name: Name of the location. Used for debugging.
+	 *
+	 * When setDebugInfo() has been called with a non-null source map and
+	 * currentOp_ is set, returns a FileLineColLoc pointing at the line in
+	 * the source file where the current op is defined, wrapped in a
+	 * NameLoc.  Otherwise returns the legacy Query_1:0:0 placeholder.
 	 */
 	::mlir::Location getNameLoc(const std::string& name);
 

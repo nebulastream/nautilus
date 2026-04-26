@@ -37,8 +37,12 @@ if (ENABLE_MLIR_BACKEND)
             MLIRMathToLLVM
             MLIRFuncToLLVM
             MLIRReconcileUnrealizedCasts
+            # Debug info: LocationSnapshot in MLIRTransforms, DIScopeForLLVMFuncOp in MLIRLLVMIRTransforms.
+            MLIRTransforms
+            MLIRLLVMIRTransforms
     )
-    
+
+    add_subdirectory(debug)
     add_subdirectory(intrinsics)
     add_subdirectory(jit)
     add_source_files(nautilus
