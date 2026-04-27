@@ -406,6 +406,105 @@ export class IrRenameProvider implements vscode.RenameProvider {
 	}
 }
 
+// ----- InlineValuesProvider: show SSA value contents next to their defs while debugging -----
+//
+// While stopped in gdb, VS Code asks the provider for variable values to render
+// inline in the editor. Nautilus emits each IR SSA value `$N` into DWARF as a
+// local named `vN`, so we rewrite the IR's `$N` -> `vN` and let VS Code route
+// the lookup through our debug adapter's evaluateRequest, which forwards to
+// `-data-evaluate-expression`.
+//
+// We only emit values for definitions/arguments at or above the stopped line —
+// SSA values defined later have not yet been computed, so showing them would be
+// misleading (gdb would either return optimised-out or a stale frame value).
+
+export class IrInlineValuesProvider implements vscode.InlineValuesProvider {
+	provideInlineValues(
+		document: vscode.TextDocument,
+		viewPort: vscode.Range,
+		context: vscode.InlineValueContext,
+	): vscode.InlineValue[] {
+		const config = vscode.workspace.getConfiguration('nautilusIr');
+		if (!config.get<boolean>('inlineValues', true)) {
+			return [];
+		}
+		const ir = irFor(document);
+		const stoppedLine = context.stoppedLocation.start.line;
+		const fn = functionAt(ir, stoppedLine);
+		if (!fn) {
+			return [];
+		}
+		const startLine = Math.max(viewPort.start.line, fn.headerLine);
+		const endLine = Math.min(viewPort.end.line, fn.bodyRange.end.line);
+		const out: vscode.InlineValue[] = [];
+
+		const inRange = (line: number): boolean =>
+			line >= startLine && line <= endLine && line <= stoppedLine;
+
+		// Function parameters appear on the function header line. Nautilus
+		// emits one DWARF dbg.declare per function arg whose store location
+		// points at this line, so the value is bound here.
+		const paramNames = new Set(fn.args.map(a => a.name));
+		if (inRange(fn.headerLine) && fn.args.length > 0) {
+			const headerText = document.lineAt(fn.headerLine).text;
+			for (const param of fn.args) {
+				const range = locateName(headerText, fn.headerLine, param.name);
+				if (range) {
+					out.push(new vscode.InlineValueEvaluatableExpression(range, dwarfNameFor(param.name)));
+				}
+			}
+		}
+
+		// SSA definitions: `$N = …`
+		for (const def of fn.definitions.values()) {
+			if (!inRange(def.line)) {
+				continue;
+			}
+			const range = new vscode.Range(def.line, def.character, def.line, def.character + def.name.length);
+			out.push(new vscode.InlineValueEvaluatableExpression(range, dwarfNameFor(def.name)));
+		}
+
+		// Block arguments appear on each block's header line. The entry
+		// block's args ARE the function's parameters (same SSA values, same
+		// DWARF scope), so skip those here when we already rendered them on
+		// the function header — otherwise we emit each param's value twice
+		// on adjacent lines.
+		const entryBlock = fn.blocks[0];
+		for (const block of fn.blocks) {
+			if (!inRange(block.headerLine)) {
+				continue;
+			}
+			const headerText = document.lineAt(block.headerLine).text;
+			const isEntry = block === entryBlock;
+			for (const arg of block.args) {
+				if (isEntry && paramNames.has(arg.name)) {
+					continue;
+				}
+				const range = locateName(headerText, block.headerLine, arg.name);
+				if (range) {
+					out.push(new vscode.InlineValueEvaluatableExpression(range, dwarfNameFor(arg.name)));
+				}
+			}
+		}
+
+		return out;
+	}
+}
+
+// Nautilus emits SSA value `$N` into DWARF as a local named `vN`.
+function dwarfNameFor(ssa: string): string {
+	return ssa.startsWith('$') ? `v${ssa.slice(1)}` : ssa;
+}
+
+function locateName(lineText: string, lineNumber: number, name: string): vscode.Range | undefined {
+	const re = new RegExp(`\\${name}\\b`);
+	const m = re.exec(lineText);
+	if (!m) {
+		return undefined;
+	}
+	return new vscode.Range(lineNumber, m.index, lineNumber, m.index + name.length);
+}
+
 // ----- CodeLensProvider: show predecessor/successor counts above each block -----
 
 export class IrCodeLensProvider implements vscode.CodeLensProvider {
