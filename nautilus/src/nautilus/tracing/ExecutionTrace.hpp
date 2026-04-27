@@ -281,6 +281,18 @@ public:
 	 */
 	ValueRef getNextValueRef();
 
+	/// Adopt the TagRecorder whose trie supplied the `Tag*` back-pointers
+	/// stored on this trace's operations.  Holding the recorder here —
+	/// instead of as a stack local in the trace context — gives those
+	/// pointers a defined lifetime that lasts at least as long as the
+	/// trace itself.  TraceToIRConversionPhase resolves the chain
+	/// through this trie into the IR graph's sidecar before the trace
+	/// is destroyed, after which the trie can be torn down without
+	/// leaving any dangling `Tag*` pointers in the IR.
+	void setTagRecorder(std::unique_ptr<TagRecorder> recorder) {
+		tagRecorder_ = std::move(recorder);
+	}
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -305,6 +317,13 @@ public:
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
 
+private:
+	/// Owns the trie of return-address chains for this trace.  Exposed
+	/// only via setTagRecorder / takeTagRecorder so the recorder's
+	/// lifetime is explicit at every transfer point.
+	std::unique_ptr<TagRecorder> tagRecorder_;
+
+public:
 	/**
 	 * @brief Gets the next available operation identifier
 	 * @return operation_identifier The next operation identifier

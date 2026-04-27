@@ -291,12 +291,18 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
                                                                   const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 
 	// The ExecutionTrace borrows the caller-provided arena for all Block
 	// and TraceOperation allocations.  The arena must outlive the returned
 	// trace.
 	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
+	// Heap-allocate the TagRecorder and stash it on the trace so the
+	// trie outlives this function.  Conversion-time IR ops hold raw
+	// `Tag*` pointers into the trie; a stack-local recorder used to
+	// leave those pointers dangling the moment we returned.
+	auto recorder = std::make_unique<tracing::TagRecorder>((tracing::TagAddress) rootAddress);
+	auto& tr = *recorder;
+	executionTrace->setTagRecorder(std::move(recorder));
 	SymbolicExecutionContext symbolicExecutionContext;
 
 	// Initialize ExceptionBasedTraceContext with references to our objects
@@ -373,7 +379,15 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);
-		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		// Heap-allocate the TagRecorder and stash it on the
+		// ExecutionTrace itself so its trie of return-address tags
+		// survives until the trace dies — instead of dangling the
+		// moment this function returns, as a stack-local TagRecorder
+		// used to.  IR operations subsequently produced for this
+		// function hold raw `Tag*` back-pointers into this trie.
+		auto recorder = std::make_unique<tracing::TagRecorder>((tracing::TagAddress) rootAddress);
+		auto& tr = *recorder;
+		executionTrace.setTagRecorder(std::move(recorder));
 		SymbolicExecutionContext symbolicExecutionContext;
 		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;

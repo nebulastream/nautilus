@@ -11,6 +11,8 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
@@ -22,6 +24,7 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <cassert>
 #include <vector>
 
@@ -43,14 +46,17 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
 
+	// One resolver shared by every function in the module so its
+	// per-PC cache amortises across the whole compile.
+	SourceLocationResolver resolver;
+
 	// Process all functions in sorted order for deterministic IR output.
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
-		auto phaseContext = IRConversionContext(trace, ir, id);
+		auto phaseContext = IRConversionContext(trace, ir, resolver, id);
 		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
 	}
-
 	return ir;
 }
 
@@ -59,34 +65,44 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
 
+	SourceLocationResolver resolver;
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
-		auto phaseContext = IRConversionContext(trace, ir, id);
+		auto phaseContext = IRConversionContext(trace, ir, resolver, id);
 		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
 	}
-
 	return ir;
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace,
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
-	auto phaseContext = IRConversionContext(trace.get(), ir, id);
+	SourceLocationResolver resolver;
+	auto phaseContext = IRConversionContext(trace.get(), ir, resolver, id);
 	return phaseContext.process();
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<ExecutionTrace> trace, common::ArenaPool& pool,
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(pool.acquire(), id);
-	auto phaseContext = IRConversionContext(trace.get(), ir, id);
+	SourceLocationResolver resolver;
+	auto phaseContext = IRConversionContext(trace.get(), ir, resolver, id);
 	return phaseContext.process();
 }
 
 TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrace* trace,
                                                                    std::shared_ptr<compiler::ir::IRGraph> ir,
+                                                                   SourceLocationResolver& resolver,
                                                                    const compiler::CompilationUnitID&)
-    : trace(trace), ir(std::move(ir)) {
+    : trace(trace), ir(std::move(ir)), resolver(&resolver) {
+}
+
+void TraceToIRConversionPhase::IRConversionContext::recordSource(const compiler::ir::Operation* op, const Tag* tag) {
+	if (op == nullptr || tag == nullptr) {
+		return;
+	}
+	ir->setSourceLocation(op, resolver->resolveStack(tag));
 }
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
@@ -215,11 +231,13 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 	}
 	case Op::RETURN: {
 		if (operation.input.empty()) {
-			currentIrBlock->addTaggedOperation<ReturnOperation>(operation.tag.getTag());
+			auto* returnOp = currentIrBlock->addOperation<ReturnOperation>();
+			recordSource(returnOp, operation.tag.getTag());
 			returnType = Type::v;
 		} else {
 			auto returnValue = frame.getValue(createValueIdentifier(operation.input[0]));
-			currentIrBlock->addTaggedOperation<ReturnOperation>(operation.tag.getTag(), returnValue);
+			auto* returnOp = currentIrBlock->addOperation<ReturnOperation>(returnValue);
+			recordSource(returnOp, operation.tag.getTag());
 			returnType = returnValue->getStamp();
 		}
 		return;
@@ -279,8 +297,8 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryOperator(ValueF
 	auto leftInput = frame.getValue(createValueIdentifier(op.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(op.input[1]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation =
-	    currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, leftInput, rightInput);
+	auto operation = currentBlock->addOperation<OpType>(resultIdentifier, leftInput, rightInput);
+	recordSource(operation, op.tag.getTag());
 	frame.setValue(resultIdentifier, operation);
 }
 
@@ -290,7 +308,8 @@ void TraceToIRConversionPhase::IRConversionContext::processUnaryOperator(ValueFr
                                                                          TraceOperation& op) {
 	auto input = frame.getValue(createValueIdentifier(op.input[0]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation = currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, input);
+	auto operation = currentBlock->addOperation<OpType>(resultIdentifier, input);
+	recordSource(operation, op.tag.getTag());
 	frame.setValue(resultIdentifier, operation);
 }
 
@@ -302,8 +321,9 @@ void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(Value
 	auto secondInput = frame.getValue(createValueIdentifier(op.input[1]));
 	auto thirdInput = frame.getValue(createValueIdentifier(op.input[2]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation = currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, firstInput, secondInput,
-	                                                          thirdInput, op.resultRef.type);
+	auto operation =
+	    currentBlock->addOperation<OpType>(resultIdentifier, firstInput, secondInput, thirdInput, op.resultRef.type);
+	recordSource(operation, op.tag.getTag());
 	frame.setValue(resultIdentifier, operation);
 }
 
@@ -320,7 +340,8 @@ void TraceToIRConversionPhase::IRConversionContext::processJMP(ValueFrame& frame
 		targetBlock = processBlock(trace->getBlock(blockRef.block));
 		blockMap[blockRef.block] = targetBlock;
 	}
-	block->addNextBlock(targetBlock, blockInvocation.getArguments())->setSourceTag(operation.tag.getTag());
+	auto* branchOp = block->addNextBlock(targetBlock, blockInvocation.getArguments());
+	recordSource(branchOp, operation.tag.getTag());
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame, Block&, BasicBlock* currentIrBlock,
@@ -334,10 +355,11 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 	auto booleanValue = frame.getValue(createValueIdentifier(valueRef));
 	auto& arena = ir->getArena();
 	auto* ifOperation = arena.create<IfOperation>(arena, booleanValue, probability);
-	ifOperation->setSourceTag(operation.tag.getTag());
+	recordSource(ifOperation, operation.tag.getTag());
 
 	// IfOperation needs its true/false invocations wired before being
-	// appended; we therefore can't use `addTaggedOperation` here without
+	// appended via addOperation; the conversion-phase helpers that
+	// fold addOperation + recordSource can't be used here without
 	// breaking that ordering.
 	auto trueCaseBlock = processBlock(trace->getBlock(trueCaseBlockRef.block));
 	ifOperation->getTrueBlockInvocation().setBlock(trueCaseBlock);
@@ -366,8 +388,8 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryComp(ValueFrame
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto divOperation = currentBlock->addTaggedOperation<BinaryCompOperation>(operation.tag.getTag(), resultIdentifier,
-	                                                                          leftInput, rightInput, type);
+	auto divOperation = currentBlock->addOperation<BinaryCompOperation>(resultIdentifier, leftInput, rightInput, type);
+	recordSource(divOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, divOperation);
 }
 
@@ -378,8 +400,8 @@ void TraceToIRConversionPhase::IRConversionContext::processShift(ValueFrame& fra
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto divOperation = currentBlock->addTaggedOperation<ShiftOperation>(operation.tag.getTag(), resultIdentifier,
-	                                                                     leftInput, rightInput, type);
+	auto divOperation = currentBlock->addOperation<ShiftOperation>(resultIdentifier, leftInput, rightInput, type);
+	recordSource(divOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, divOperation);
 }
 
@@ -390,8 +412,8 @@ void TraceToIRConversionPhase::IRConversionContext::processLogicalComperator(Val
 	auto leftInput = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(operation.input[1]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto compareOperation = currentBlock->addTaggedOperation<CompareOperation>(operation.tag.getTag(), resultIdentifier,
-	                                                                           leftInput, rightInput, comp);
+	auto compareOperation = currentBlock->addOperation<CompareOperation>(resultIdentifier, leftInput, rightInput, comp);
+	recordSource(compareOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, compareOperation);
 }
 
@@ -399,8 +421,8 @@ void TraceToIRConversionPhase::IRConversionContext::processLoad(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto* loadOperation = currentBlock->addTaggedOperation<LoadOperation>(operation.tag.getTag(), resultIdentifier,
-	                                                                      address, operation.resultType);
+	auto* loadOperation = currentBlock->addOperation<LoadOperation>(resultIdentifier, address, operation.resultType);
+	recordSource(loadOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, loadOperation);
 }
 
@@ -408,7 +430,8 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& fra
                                                                  TraceOperation& operation) {
 	auto address = frame.getValue(createValueIdentifier(operation.input[0]));
 	auto value = frame.getValue(createValueIdentifier(operation.input[1]));
-	currentBlock->addTaggedOperation<StoreOperation>(operation.tag.getTag(), value, address);
+	auto* storeOperation = currentBlock->addOperation<StoreOperation>(value, address);
+	recordSource(storeOperation, operation.tag.getTag());
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
@@ -422,9 +445,10 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
-	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs);
+	auto proxyCallOperation = currentBlock->addOperation<ProxyCallOperation>(
+	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier,
+	    inputArguments, resultType, functionCallTarget.fnAttrs);
+	recordSource(proxyCallOperation, operation.tag.getTag());
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -440,8 +464,9 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	}
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
-	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs);
+	auto indirectCallOp = currentBlock->addOperation<IndirectCallOperation>(
+	    resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs);
+	recordSource(indirectCallOp, operation.tag.getTag());
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}
@@ -451,9 +476,9 @@ void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& 
                                                                     TraceOperation& operation) {
 	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto funcAddrOp = currentBlock->addTaggedOperation<FunctionAddressOfOperation>(
-	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier);
+	auto funcAddrOp = currentBlock->addOperation<FunctionAddressOfOperation>(
+	    functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr, resultIdentifier);
+	recordSource(funcAddrOp, operation.tag.getTag());
 	frame.setValue(resultIdentifier, funcAddrOp);
 }
 
@@ -468,22 +493,19 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 	    [&](auto&& value) {
 		    using T = std::decay_t<decltype(value)>;
 		    if constexpr (std::is_same_v<T, bool>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstBooleanOperation>(sourceTag, resultIdentifier, value);
+			    constOperation = currentBlock->addOperation<ConstBooleanOperation>(resultIdentifier, value);
 		    } else if constexpr (std::is_integral_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(sourceTag, resultIdentifier, value,
-			                                                                         resultType);
+			    constOperation = currentBlock->addOperation<ConstIntOperation>(resultIdentifier, value, resultType);
 		    } else if constexpr (std::is_floating_point_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(sourceTag, resultIdentifier,
-			                                                                           value, resultType);
+			    constOperation = currentBlock->addOperation<ConstFloatOperation>(resultIdentifier, value, resultType);
 		    } else if constexpr (std::is_pointer_v<T>) {
-			    constOperation =
-			        currentBlock->addTaggedOperation<ConstPtrOperation>(sourceTag, resultIdentifier, value);
+			    constOperation = currentBlock->addOperation<ConstPtrOperation>(resultIdentifier, value);
 		    } else {
 			    // static_assert(false, "non-exhaustive visitor!");
 		    }
 	    },
 	    constant);
+	recordSource(constOperation, sourceTag);
 
 	frame.setValue(resultIdentifier, constOperation);
 }
@@ -492,8 +514,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto castOperation = currentBlock->addTaggedOperation<CastOperation>(operation.tag.getTag(), resultIdentifier, input,
-	                                                                     operation.resultType);
+	auto castOperation = currentBlock->addOperation<CastOperation>(resultIdentifier, input, operation.resultType);
+	recordSource(castOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, castOperation);
 }
 
@@ -501,8 +523,8 @@ void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& fr
                                                                   TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	AllocSize allocationSize = std::get<AllocSize>(operation.input[0]);
-	auto allocaOperation =
-	    currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier, allocationSize);
+	auto allocaOperation = currentBlock->addOperation<AllocaOperation>(resultIdentifier, allocationSize);
+	recordSource(allocaOperation, operation.tag.getTag());
 	frame.setValue(resultIdentifier, allocaOperation);
 }
 

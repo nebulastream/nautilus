@@ -27,7 +27,6 @@
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #endif
 
 namespace nautilus::compiler {
@@ -110,12 +109,14 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		statistics->set("compilation.unitId", compilationId);
 	}
 
-	std::unique_ptr<tracing::SourceLocationResolver> sourceLocationResolver;
 	ir::IRPrintOptions irPrintOptions;
 	if (options.getOptionOrDefault("dump.sourceLocations", false)) {
-		sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
+		// The IR graph's sidecar already holds resolved frames keyed
+		// by `Operation*` (TraceToIRConversionPhase populates it
+		// while the trace's TagRecorder is still alive), so the dump
+		// trailer just needs the toggle — no separate resolver or
+		// trie ownership is needed here.
 		irPrintOptions.showSourceLocations = true;
-		irPrintOptions.resolver = sourceLocationResolver.get();
 	}
 
 	const auto frontendStart = std::chrono::steady_clock::now();

@@ -303,11 +303,18 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
                                                         const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Completing Tracing");
 	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 
 	// The ExecutionTrace borrows the caller-provided arena for all
 	// allocations; the arena must outlive the returned trace.
 	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
+	// Heap-allocate the TagRecorder and stash it on the trace so its
+	// trie outlives this function: every IR op produced during
+	// conversion holds a raw `Tag*` back-pointer into a node of this
+	// trie, and a stack-local recorder used to leave those pointers
+	// dangling the moment we returned.
+	auto recorder = std::make_unique<tracing::TagRecorder>((tracing::TagAddress) rootAddress);
+	auto& tr = *recorder;
+	executionTrace->setTagRecorder(std::move(recorder));
 	SymbolicExecutionContext symbolicExecutionContext;
 
 	// Initialize LazyTraceContext with references to our objects
@@ -382,7 +389,16 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);
-		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		// Heap-allocate the TagRecorder and stash it on the
+		// ExecutionTrace itself.  The trace's IR operations hold raw
+		// `Tag*` back-pointers into the recorder's trie; storing it
+		// here gives those pointers a lifetime that extends through
+		// SSA creation and IR conversion (the trace is alive for
+		// both), instead of dangling the moment this function returns
+		// as a stack-local TagRecorder used to.
+		auto recorder = std::make_unique<tracing::TagRecorder>((tracing::TagAddress) rootAddress);
+		auto& tr = *recorder;
+		executionTrace.setTagRecorder(std::move(recorder));
 		SymbolicExecutionContext symbolicExecutionContext;
 		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;

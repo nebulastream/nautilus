@@ -8,6 +8,7 @@
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/tracing/Types.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -92,31 +93,34 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	//  * Otherwise (locations created outside dispatch) fall back to the
 	//    IR source file with line 0 so DIScopeForLLVMFuncOpPass still
 	//    builds a DISubprogram whose DIFile refers to the real IR dump.
-	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-		if (currentOp_ != nullptr && currentFunctionLines_ != nullptr) {
-			const uint32_t id = currentOp_->getIdentifier().getId();
-			if (auto it = currentFunctionLines_->operationLines.find(id);
-			    it != currentFunctionLines_->operationLines.end()) {
-				const std::string dollarName = "$" + std::to_string(id);
-				auto baseLocation = mlir::FileLineColLoc::get(fileAttr, it->second, 1);
-				return mlir::NameLoc::get(builder->getStringAttr(dollarName), baseLocation);
+	mlir::Location result = [&]() -> mlir::Location {
+		if (debugInfo_.enable && irSourceMap_ != nullptr) {
+			::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
+			if (currentOp_ != nullptr && currentFunctionLines_ != nullptr) {
+				const uint32_t id = currentOp_->getIdentifier().getId();
+				if (auto it = currentFunctionLines_->operationLines.find(id);
+				    it != currentFunctionLines_->operationLines.end()) {
+					const std::string dollarName = "$" + std::to_string(id);
+					auto baseLocation = mlir::FileLineColLoc::get(fileAttr, it->second, 1);
+					return mlir::NameLoc::get(builder->getStringAttr(dollarName), baseLocation);
+				}
 			}
-		}
-		// Terminators (br / if / return) have no `$N = ...` line to
-		// consult, but `generateMLIR` set `currentOpLine_` from the
-		// block's positional op-line list.  Use it so the translated
-		// instruction carries a real !dbg and GDB stops on the
-		// terminator line rather than skipping the whole block.
-		if (currentOpLine_ != 0) {
-			auto baseLocation = mlir::FileLineColLoc::get(fileAttr, currentOpLine_, 1);
+			// Terminators (br / if / return) have no `$N = ...` line to
+			// consult, but `generateMLIR` set `currentOpLine_` from the
+			// block's positional op-line list.  Use it so the translated
+			// instruction carries a real !dbg and GDB stops on the
+			// terminator line rather than skipping the whole block.
+			if (currentOpLine_ != 0) {
+				auto baseLocation = mlir::FileLineColLoc::get(fileAttr, currentOpLine_, 1);
+				return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+			}
+			auto baseLocation = mlir::FileLineColLoc::get(fileAttr, 0, 0);
 			return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
 		}
-		auto baseLocation = mlir::FileLineColLoc::get(fileAttr, 0, 0);
+		auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
 		return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
-	}
-	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
-	return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+	}();
+	return attachSourceStack(result);
 }
 
 mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef fallbackName) {
@@ -124,13 +128,43 @@ mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef 
 		return getNameLoc(fallbackName.str());
 	}
 	uint32_t line = 0;
-	if (auto it = currentFunctionLines_->operationLines.find(id);
-	    it != currentFunctionLines_->operationLines.end()) {
+	if (auto it = currentFunctionLines_->operationLines.find(id); it != currentFunctionLines_->operationLines.end()) {
 		line = it->second;
 	}
 	auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 	auto fileLine = mlir::FileLineColLoc::get(fileAttr, line, 1);
-	return mlir::NameLoc::get(builder->getStringAttr("$" + std::to_string(id)), fileLine);
+	auto dollarLoc = mlir::NameLoc::get(builder->getStringAttr("$" + std::to_string(id)), fileLine);
+	return attachSourceStack(dollarLoc);
+}
+
+mlir::Location MLIRLoweringProvider::attachSourceStack(::mlir::Location irLoc) {
+	if (currentIRGraph_ == nullptr || currentOp_ == nullptr) {
+		return irLoc;
+	}
+	auto frames = currentIRGraph_->getSourceLocation(currentOp_);
+	if (frames.empty()) {
+		return irLoc;
+	}
+	// `frames` is ordered outer-to-inner.  Walk it innermost-first so
+	// each new frame becomes the immediate caller of the previous
+	// location: the first wrap pairs the IR location with the
+	// closest user frame, and subsequent wraps stack the remaining
+	// callers outward.  The resulting CallSiteLoc chain mirrors a
+	// DWARF inlinedAt list whose deepest callee is the Nautilus IR
+	// `$N` location and whose outermost caller is the topmost user
+	// frame, so GDB/LLDB walk both the IR dump and the original
+	// source stack on `bt`.
+	mlir::Location loc = irLoc;
+	for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+		auto fileAttr = builder->getStringAttr(it->file);
+		auto fileLine = mlir::FileLineColLoc::get(fileAttr, it->line, it->column);
+		mlir::Location frameLoc = fileLine;
+		if (!it->function.empty()) {
+			frameLoc = mlir::NameLoc::get(builder->getStringAttr(it->function), fileLine);
+		}
+		loc = mlir::CallSiteLoc::get(loc, frameLoc);
+	}
+	return loc;
 }
 
 mlir::Value MLIRLoweringProvider::ensureDebugAlloca(uint32_t id, mlir::Type type) {
@@ -459,6 +493,20 @@ MLIRLoweringProvider::~MLIRLoweringProvider() {
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std::shared_ptr<ir::IRGraph> ir) {
+	// Pin the graph so attachSourceStack can read its sidecar (the
+	// pre-resolved user-source chain for each op) without needing a
+	// separate resolver or any ownership of the originating
+	// TagRecorder trie.  Cleared on exit so subsequent helper-op
+	// creations that run outside any module-generation cycle don't
+	// inherit a stale graph.
+	currentIRGraph_ = ir.get();
+	struct GraphScope {
+		const ir::IRGraph** slot;
+		~GraphScope() {
+			*slot = nullptr;
+		}
+	} graphScope {&currentIRGraph_};
+
 	// Generate MLIR for all function operations in the IR graph
 	const auto& functions = ir->getFunctionOperations();
 
@@ -633,8 +681,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		if (auto it = irSourceMap_->functionLines.find(functionOp.getName());
-		    it != irSourceMap_->functionLines.end()) {
+		if (auto it = irSourceMap_->functionLines.find(functionOp.getName()); it != irSourceMap_->functionLines.end()) {
 			currentFunctionHeaderLine_ = it->second;
 		}
 		if (auto it = irSourceMap_->functions.find(functionOp.getName()); it != irSourceMap_->functions.end()) {
@@ -1007,9 +1054,8 @@ void MLIRLoweringProvider::visitIf(ir::IfOperation* ifOp, ValueFrame& frame) {
 
 	builder->restoreInsertionPoint(parentBlockInsertionPoint);
 	// create cond branch operation, which evaluates the condition and branches to the true or false block
-	auto mlirOp =
-	    builder->create<mlir::cf::CondBranchOp>(branchLoc, frame.getValue(ifOp->getValue()->getIdentifier()), trueBlock,
-	                                            trueBlockArgs, elseBlock, elseBlockArgs);
+	auto mlirOp = builder->create<mlir::cf::CondBranchOp>(branchLoc, frame.getValue(ifOp->getValue()->getIdentifier()),
+	                                                      trueBlock, trueBlockArgs, elseBlock, elseBlockArgs);
 
 	// set the branch weights for branches by using the branch probabilities
 	// The if probability indicates how likely the true branch is taken and is derived from the val<bool> condition

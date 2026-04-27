@@ -27,24 +27,30 @@ namespace nautilus::compiler::ir {
 
 namespace {
 
-/// Thread-local pointer consulted by the per-Operation fmt formatter while
-/// `IRGraph::toString(options)` is running.  Using a scoped TLS keeps the
+/// Thread-local context consulted by the per-Operation fmt formatter while
+/// `IRGraph::toString(options)` is running.  Using scoped TLS keeps the
 /// extension hidden from every other caller of `fmt::formatter<Operation>`
 /// so the default `toString()` path produces byte-identical output to what
-/// it did before source-location support existed.
+/// it did before source-location support existed.  The graph pointer lets
+/// the formatter look up sidecar source-location entries by `Operation*`.
 thread_local const IRPrintOptions* currentPrintOptions = nullptr;
+thread_local const IRGraph* currentPrintGraph = nullptr;
 
 struct PrintOptionsScope {
-	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
+	PrintOptionsScope(const IRPrintOptions* opts, const IRGraph* graph)
+	    : previousOptions(currentPrintOptions), previousGraph(currentPrintGraph) {
 		currentPrintOptions = opts;
+		currentPrintGraph = graph;
 	}
 	~PrintOptionsScope() {
-		currentPrintOptions = previous;
+		currentPrintOptions = previousOptions;
+		currentPrintGraph = previousGraph;
 	}
 	PrintOptionsScope(const PrintOptionsScope&) = delete;
 	PrintOptionsScope& operator=(const PrintOptionsScope&) = delete;
 
-	const IRPrintOptions* previous;
+	const IRPrintOptions* previousOptions;
+	const IRGraph* previousGraph;
 };
 
 } // namespace
@@ -54,6 +60,34 @@ IRGraph::IRGraph(const compiler::CompilationUnitID& id) : arena_(common::ArenaPo
 
 IRGraph::IRGraph(common::ArenaPool::Handle arena, const compiler::CompilationUnitID& id)
     : arena_(std::move(arena)), id(id) {
+}
+
+IRGraph::~IRGraph() = default;
+
+void IRGraph::setSourceLocation(const Operation* op, std::vector<tracing::SourceFrame> frames) {
+	if (op == nullptr || frames.empty()) {
+		return;
+	}
+	sourceLocations_.insert_or_assign(op, std::move(frames));
+}
+
+std::span<const tracing::SourceFrame> IRGraph::getSourceLocation(const Operation* op) const {
+	auto it = sourceLocations_.find(op);
+	if (it == sourceLocations_.end()) {
+		return {};
+	}
+	return it->second;
+}
+
+void IRGraph::copySourceLocation(const Operation* from, const Operation* to) {
+	if (from == nullptr || to == nullptr || from == to) {
+		return;
+	}
+	auto it = sourceLocations_.find(from);
+	if (it == sourceLocations_.end()) {
+		return;
+	}
+	sourceLocations_.insert_or_assign(to, it->second);
 }
 
 FunctionOperation* IRGraph::addFunctionOperation(FunctionOperation* functionOperation) {
@@ -148,7 +182,7 @@ std::string nautilus::compiler::ir::IRGraph::toString() const {
 }
 
 std::string nautilus::compiler::ir::IRGraph::toString(const nautilus::compiler::ir::IRPrintOptions& options) const {
-	PrintOptionsScope scope(&options);
+	PrintOptionsScope scope(&options, this);
 	return fmt::to_string(*this);
 }
 
@@ -342,21 +376,19 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
 
-	// Opt-in source-location trailer.  The TLS pointer is only non-null
+	// Opt-in source-location trailer.  The TLS pointers are only non-null
 	// inside the scope of `IRGraph::toString(options)`.
 	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
-	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
-		if (const auto* tag = op.getSourceTag()) {
-			const auto frames = opts->resolver->resolveStack(tag);
-			if (!frames.empty()) {
-				// Innermost frame on the same line; outer frames continue on
-				// their own lines, outermost last.  Two tabs lines them up
-				// under the op text the block formatter indents with one tab.
-				const auto& innermost = frames.back();
-				fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
-				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
-					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
-				}
+	    opts != nullptr && opts->showSourceLocations && nautilus::compiler::ir::currentPrintGraph != nullptr) {
+		const auto frames = nautilus::compiler::ir::currentPrintGraph->getSourceLocation(&op);
+		if (!frames.empty()) {
+			// Innermost frame on the same line; outer frames continue on
+			// their own lines, outermost last.  Two tabs lines them up
+			// under the op text the block formatter indents with one tab.
+			const auto& innermost = frames.back();
+			fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+			for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
+				fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
 			}
 		}
 	}

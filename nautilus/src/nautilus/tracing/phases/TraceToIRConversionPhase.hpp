@@ -26,6 +26,7 @@
 
 namespace nautilus::tracing {
 
+class SourceLocationResolver;
 class TraceModule;
 
 /**
@@ -72,7 +73,7 @@ private:
 	class IRConversionContext {
 	public:
 		IRConversionContext(ExecutionTrace* trace, std::shared_ptr<compiler::ir::IRGraph> ir,
-		                    const compiler::CompilationUnitID& id);
+		                    SourceLocationResolver& resolver, const compiler::CompilationUnitID& id);
 
 		std::shared_ptr<compiler::ir::IRGraph> process();
 
@@ -82,8 +83,9 @@ private:
 		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
 		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
-		compiler::ir::FunctionOperation* processFunction(const std::string& functionName,
-		                                                 const std::unordered_map<std::string, std::string>& attributes = {});
+		compiler::ir::FunctionOperation*
+		processFunction(const std::string& functionName,
+		                const std::unordered_map<std::string, std::string>& attributes = {});
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
@@ -135,10 +137,20 @@ private:
 		void processTernaryOperator(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock,
 		                            TraceOperation& operation);
 
+		/// Resolve @p tag through the shared `SourceLocationResolver`
+		/// and store the resulting frame chain on the IR graph's
+		/// sidecar, keyed by @p op.  Called eagerly at op-creation
+		/// time so the trace's tag trie can be torn down with the
+		/// trace — the IR carries only resolved frames after the
+		/// conversion phase returns.  Null tag is a no-op so call
+		/// sites can pass `traceOp.tag.getTag()` unchecked.
+		void recordSource(const compiler::ir::Operation* op, const Tag* tag);
+
 	private:
 		ExecutionTrace* trace;
 		Type returnType;
 		std::shared_ptr<compiler::ir::IRGraph> ir;
+		SourceLocationResolver* resolver;
 		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;
 		std::vector<compiler::ir::BasicBlock*> currentBasicBlocks;
 	};

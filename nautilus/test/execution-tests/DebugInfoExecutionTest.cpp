@@ -110,6 +110,25 @@ TEST_CASE("Debug info: disabled by default produces identical results") {
 	REQUIRE(fn(41) == 42);
 }
 
+TEST_CASE("Source stack: MLIR backend folds the sidecar into CallSiteLoc chains without crashing") {
+	// `TraceToIRConversionPhase` populates the IR graph's
+	// `Operation* -> SourceFrame[]` sidecar by resolving each op's
+	// trace-time tag while the trace's `TagRecorder` is still
+	// alive.  The MLIR backend then reads the sidecar by operation
+	// pointer and wraps each emitted location in a
+	// `mlir::CallSiteLoc` chain.  This regression test exercises
+	// the full path on a function with both nested arithmetic and
+	// a return — enough ops to cover sidecar lookup, empty-frames
+	// degradation, and the constant-folding pass's
+	// `copySourceLocation` propagation.
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugSumThree);
+	REQUIRE(fn(1, 2, 3) == 6);
+}
+
 TEST_CASE("Debug info: MLIR source mode writes a snapshot file and compiles") {
 	const auto sourcePath =
 	    (std::filesystem::temp_directory_path() / ("nautilus_debug_mlir_test_" + std::to_string(::getpid()) + ".mlir"))
@@ -584,8 +603,7 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 							}
 							auto scopeStart = scopeKey + std::string("scope: !").size();
 							auto scopeEnd = scopeStart;
-							while (scopeEnd < line.size() &&
-							       std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
+							while (scopeEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
 								++scopeEnd;
 							}
 							auto scopeId = line.substr(scopeStart, scopeEnd - scopeStart);
@@ -798,8 +816,7 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 	REQUIRE(std::filesystem::exists(sourcePath));
 	const auto ir = readFile(sourcePath);
 	REQUIRE(ir.find("debug_helper(") != std::string::npos);
-	const bool hasOuterFn =
-	    ir.find("execute(") != std::string::npos || ir.find("debugCaller(") != std::string::npos;
+	const bool hasOuterFn = ir.find("execute(") != std::string::npos || ir.find("debugCaller(") != std::string::npos;
 	REQUIRE(hasOuterFn);
 
 	// Parse the pre-optimization LLVM IR to map subprograms to their
@@ -850,8 +867,7 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 						if (dbgKey != std::string::npos) {
 							auto idStart = dbgKey + std::string("!dbg !").size();
 							auto idEnd = idStart;
-							while (idEnd < line.size() &&
-							       std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
+							while (idEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
 								++idEnd;
 							}
 							callDbgScope = line.substr(idStart, idEnd - idStart);
@@ -885,13 +901,22 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 						auto nameEnd = line.find('"', nameStart);
 						auto lineStart = lineKey + std::string("line: ").size();
 						auto lineNumEnd = lineStart;
-						while (lineNumEnd < line.size() &&
-						       std::isdigit(static_cast<unsigned char>(line[lineNumEnd]))) {
+						while (lineNumEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[lineNumEnd]))) {
 							++lineNumEnd;
 						}
 						subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
 						subprogramLine[metaId] = line.substr(lineStart, lineNumEnd - lineStart);
-					} else if (line.find("!DILexicalBlock(") != std::string::npos) {
+					} else if (line.find("!DILexicalBlock(") != std::string::npos ||
+					           line.find("!DILexicalBlockFile(") != std::string::npos) {
+						// DILexicalBlockFile is what LLVM emits when an
+						// inlined frame's file differs from its parent
+						// scope's file — exactly what a CallSiteLoc
+						// chain whose outer caller lives in a user
+						// source file produces.  For the purposes of
+						// walking back to the enclosing DISubprogram,
+						// it has the same shape as DILexicalBlock
+						// (single `scope: !N` field), so handle them
+						// together.
 						auto scopeKey = line.find("scope: !");
 						if (scopeKey == std::string::npos) {
 							continue;
@@ -1066,8 +1091,7 @@ TEST_CASE("Debug info: block terminators carry non-zero !dbg lines") {
 					REQUIRE(it != dilocationLine.end());
 					++terminatorsChecked;
 					if (it->second == "0") {
-						INFO("terminator in @" << currentFunction << " has !dbg !" << id << " line: 0 — "
-						                       << line);
+						INFO("terminator in @" << currentFunction << " has !dbg !" << id << " line: 0 — " << line);
 						sawLineZero = true;
 					}
 				}

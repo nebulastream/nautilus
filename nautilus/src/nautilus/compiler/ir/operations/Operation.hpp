@@ -11,13 +11,6 @@
 #include <span>
 #include <string>
 
-namespace nautilus::tracing {
-template <typename T>
-class TrieNode;
-using TagAddress = uint64_t;
-using Tag = TrieNode<TagAddress>;
-} // namespace nautilus::tracing
-
 namespace nautilus::compiler::ir {
 
 class OperationIdentifier {
@@ -66,6 +59,11 @@ private:
  * Add, Sub, Cast, Load, Store, Const*, ...) become trivially
  * destructible — the arena then skips registering destructors for
  * them entirely, which both saves memory and accelerates `softReset`.
+ *
+ * Trace-time source locations live on a sidecar map keyed by
+ * `Operation*` on the owning `IRGraph`, not on the Operation itself.
+ * This keeps Operation a pure IR node (24 B) and frees the IR graph
+ * from any dependency on the originating tag trie's lifetime.
  */
 class Operation {
 public:
@@ -147,14 +145,6 @@ public:
 		return inputs;
 	}
 
-	void setSourceTag(const tracing::Tag* tag) const noexcept {
-		sourceTag = tag;
-	}
-
-	[[nodiscard]] const tracing::Tag* getSourceTag() const noexcept {
-		return sourceTag;
-	}
-
 	template <typename OP>
 	const OP* dynCast() const {
 		return OP::classof(this) ? static_cast<const OP*>(this) : nullptr;
@@ -175,11 +165,10 @@ protected:
 		return {buf, count};
 	}
 
-	// Field order is chosen so the eight-byte sourceTag lands inside what
-	// would otherwise be tail padding: opType (1B) + stamp (1B) pack
-	// together, identifier (4B) follows in its natural 4-byte slot, and the
-	// span occupies the next 16 bytes.  Total size is identical to the
-	// pre-sourceTag layout (32 B on a 64-bit target).
+	// Field order packs the small fields into a 4-byte slot up front
+	// (opType (1B) + stamp (1B) + 2B padding + identifier (4B)) and
+	// keeps the 16-byte span at the tail, holding the struct to
+	// 24 B on a 64-bit target.
 	const OperationType opType;
 	const Type stamp;
 	const OperationIdentifier identifier;
@@ -189,17 +178,11 @@ protected:
 	/// ProxyCallOperation::setInputArguments) re-seat it onto a fresh
 	/// arena buffer.
 	std::span<Operation*> inputs;
-	/// Back-pointer into the tag trie owned by the tracing arena: the call
-	/// stack captured at trace time.  Mutable so passes that hand out
-	/// `const Operation*` (e.g. constant folding propagating provenance)
-	/// can stamp it without leaking the const out.  Lives in what was
-	/// previously tail padding, so it does not grow the struct.
-	mutable const tracing::Tag* sourceTag = nullptr;
 };
 
-// The field reordering above keeps Operation at 32 B on 64-bit targets.
+// The field layout above keeps Operation at 24 B on 64-bit targets.
 // Bump intentionally and update the layout if this fires.
-static_assert(sizeof(Operation) <= 32, "Operation grew unexpectedly; check field packing");
+static_assert(sizeof(Operation) <= 24, "Operation grew unexpectedly; check field packing");
 
 /**
  * @brief LLVM-style tag-based type tests. Every Operation subclass must expose

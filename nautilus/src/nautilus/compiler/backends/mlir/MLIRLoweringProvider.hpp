@@ -126,6 +126,11 @@ private:
 	// function — consulting the global IRSourceMap by id alone would
 	// return the wrong caller/callee line.
 	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
+	// IR graph currently being lowered.  Set in generateModuleFromIR
+	// so getNameLoc / attachSourceStack can look up the resolved
+	// user-source frames for `currentOp_` from the graph's sidecar
+	// without depending on the trace's tag trie.
+	const ir::IRGraph* currentIRGraph_ = nullptr;
 
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
@@ -143,6 +148,18 @@ private:
 	/// when debug info is disabled so the caller can use the result
 	/// unconditionally.
 	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName);
+
+	/// If the currently-lowered Nautilus IR op has a resolved
+	/// user-source stack on the IR graph's sidecar, wrap @p irLoc in
+	/// a chain of `mlir::CallSiteLoc`s whose outer frames carry that
+	/// stack.  The deepest callee is @p irLoc itself (so the existing
+	/// IR `$N` NameLoc keeps its meaning for downstream passes such
+	/// as EmitDbgValuePass) and each user frame appears as a
+	/// successively outer caller, modelling the DWARF inlinedAt
+	/// chain a debugger expects.  Returns @p irLoc unchanged when no
+	/// source stack is available, so callers can use the helper
+	/// unconditionally.
+	::mlir::Location attachSourceStack(::mlir::Location irLoc);
 
 	/// Lazily create an `llvm.alloca` at the entry block of the currently
 	/// enclosing `func.func` for shadow-storing $N's value.  The alloca

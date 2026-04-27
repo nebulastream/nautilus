@@ -88,6 +88,16 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		loweringProvider->setDebugInfo(debugInfo, irSourceMap);
 	}
 
+	// The lowering provider folds each op's user-source stack into a
+	// `mlir::CallSiteLoc` chain — Nautilus IR `$N` location as the
+	// deepest callee, user frames as outer callers — so the MLIR dump
+	// shows the full inlining stack and DWARF lowering produces
+	// matching `!dbg` metadata that lets GDB/LLDB walk both the IR
+	// and the original source on `bt`.  The frames themselves were
+	// resolved once at IR-conversion time and live on the IR graph's
+	// sidecar; the backend just looks them up by `Operation*` here,
+	// no resolver or trie ownership required.
+
 	const auto loweringStart = std::chrono::steady_clock::now();
 	auto mlirModule = loweringProvider->generateModuleFromIR(ir);
 	if (*mlirModule == nullptr) {

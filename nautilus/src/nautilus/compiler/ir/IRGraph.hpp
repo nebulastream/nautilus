@@ -4,23 +4,25 @@
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace nautilus::tracing {
-class SourceLocationResolver;
+struct SourceFrame;
 } // namespace nautilus::tracing
 
 namespace nautilus::compiler::ir {
 
 class FunctionOperation;
+class Operation;
 
 /// Options that control how `IRGraph::toString` renders the graph.  Default-
 /// constructed options reproduce the historic output byte-for-byte.
 struct IRPrintOptions {
 	bool showSourceLocations = false;
-	tracing::SourceLocationResolver* resolver = nullptr;
 };
 
 /**
@@ -50,7 +52,10 @@ public:
 	/// the Handle is pool-backed the Arena is recycled on destruction.
 	IRGraph(common::ArenaPool::Handle arena, const CompilationUnitID& id);
 
-	~IRGraph() = default;
+	/// Defined out-of-line so the sidecar source-location map can
+	/// store `vector<tracing::SourceFrame>` even though SourceFrame
+	/// is only forward-declared in this header.
+	~IRGraph();
 
 	/**
 	 * @brief Adds a function operation to the IR graph
@@ -85,6 +90,25 @@ public:
 		return *arena_;
 	}
 
+	/// Stash the resolved source-stack chain for @p op.  Each frame is
+	/// outer-to-inner: element 0 is the caller furthest from the
+	/// traced op, the last element is the innermost user frame.
+	/// Replaces any previous entry for the same operation.
+	void setSourceLocation(const Operation* op, std::vector<tracing::SourceFrame> frames);
+
+	/// Returns the source-stack chain previously stored via
+	/// `setSourceLocation`.  An empty span means either no stack was
+	/// recorded (e.g. terminator ops) or none of the captured frames
+	/// resolved to user-visible source (e.g. all-internal stack on a
+	/// build without DWARF).
+	[[nodiscard]] std::span<const tracing::SourceFrame> getSourceLocation(const Operation* op) const;
+
+	/// Convenience helper for IR transformation passes that mint a
+	/// replacement op: copy any sidecar entry from @p from over to
+	/// @p to so the new op inherits the original operation's source
+	/// stack.  No-op when @p from has no entry.
+	void copySourceLocation(const Operation* from, const Operation* to);
+
 private:
 	common::ArenaPool::Handle arena_;
 	std::vector<FunctionOperation*> functionOperations;
@@ -93,6 +117,17 @@ private:
 	// graph (the FunctionOperation itself lives in the arena).
 	std::unordered_map<std::string_view, FunctionOperation*> functionOperationsByName;
 	const CompilationUnitID id;
+	/// Sidecar map from each `Operation*` (stable for the IR graph's
+	/// lifetime — operations live in `arena_`) to the user-source
+	/// stack captured for that op at trace time, already resolved
+	/// through DWARF / backward-cpp.  Storing the resolved frames here
+	/// — rather than chasing a `tracing::Tag*` back into a trie owned
+	/// by the trace — lets the IR graph stand on its own once
+	/// TraceToIRConversionPhase has produced it: backends, dump code,
+	/// and IR passes simply look the chain up by operation pointer
+	/// without depending on the originating TraceModule still being
+	/// alive.
+	std::unordered_map<const Operation*, std::vector<tracing::SourceFrame>> sourceLocations_;
 };
 
 } // namespace nautilus::compiler::ir
