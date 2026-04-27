@@ -320,7 +320,7 @@ class irGraph {
 ### C++ Standards
 
 - **Minimum**: C++20 (specified in `CMakeLists.txt`)
-- **Compiler Support**: GCC 10+, Clang 15+
+- **Compiler Support**: GCC 14+, Clang 19+
 - **Modern Features**: Use C++20 concepts, ranges, and other modern features
 - **Template Code**: Extensively used for type-safe tracing
 
@@ -547,11 +547,11 @@ test-category/
 **PR/Push Workflow** (`pr.yml`):
 - **Format Check**: clang-format-18, newline validation
 - **Build Matrix**:
-  - GCC 10-14, Clang 15-19
-  - Ubuntu 22.04 and 24.04
+  - GCC 14, Clang 19, Clang 21
+  - Ubuntu 24.04
   - macOS 15
   - ARM builds (Ubuntu 24.04-ARM)
-  - Address/Thread sanitizers
+  - Address sanitizers
 - **LLVM IR Test**: llvm-diff-21 validation
 - **Caching**: MLIR binaries, CMake cache, ccache
 

@@ -17,7 +17,7 @@ cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
-cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" OFF "ENABLE_TRACING" OFF)
+cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
 
 
@@ -164,11 +164,9 @@ if (ENABLE_ASMJIT_BACKEND)
     set(ASMJIT_NO_FOREIGN ON)
     set(ASMJIT_NO_DEPRECATED ON)
     add_subdirectory(${THIRD_PARTY_DIR}/asmjit)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(asmjit PUBLIC -Wno-deprecated-anon-enum-enum-conversion -Wno-nested-anon-types -Wno-gnu-anonymous-struct -Wno-extra-semi)
-    else ()
-        target_compile_options(asmjit PUBLIC -Wno-pedantic -Wno-extra-semi)
-    endif ()
+    disable_target_warnings(asmjit)
+    get_target_property(_asmjit_includes asmjit INTERFACE_INCLUDE_DIRECTORIES)
+    set_target_properties(asmjit PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_asmjit_includes}")
 endif ()
 
 # Define nautilus_inline() globally so callers can use it regardless of

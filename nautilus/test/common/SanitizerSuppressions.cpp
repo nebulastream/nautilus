@@ -41,6 +41,7 @@ extern "C" const char* __lsan_default_suppressions() {
 	       "leak:llvm::orc::setUpGenericLLVMIRPlatform\n"
 	       "leak:llvm::sys::getProcessTriple\n"
 	       "leak:llvm::raw_ostream\n"
-	       "leak:nautilus::compiler::mlir::MLIRCompilationBackend::compile\n";
+	       "leak:nautilus::compiler::mlir::MLIRCompilationBackend::compile\n"
+	       "leak:llvm::allocate_buffer\n";
 }
 #endif
