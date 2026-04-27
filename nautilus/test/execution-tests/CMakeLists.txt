@@ -13,6 +13,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
+        ThreeValuedAndMergeRepro.cpp
 )
 
 if (ENABLE_MLIR_BACKEND)

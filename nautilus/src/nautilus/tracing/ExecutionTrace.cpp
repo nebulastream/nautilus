@@ -268,7 +268,16 @@ uint32_t ExecutionTrace::createBlock() {
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	if (oi.blockIndex == currentBlockIndex) {
-		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
+		// A snapshot collision inside the same block means we re-entered the
+		// same source location with the same alive-vars context without
+		// crossing any branching point. That can only happen for a control
+		// flow that loops within a single block (e.g. an unbounded
+		// `while (true)` whose body emits no CMP). Surface enough detail in
+		// the message to help diagnose unexpected hits in user traces.
+		throw RuntimeException(fmt::format("Invalid trace: control flow merge resolved to the current block "
+		                                   "(block={}, op={}, totalOps={}). This usually indicates a constant loop "
+		                                   "with no exit condition the tracer can observe.",
+		                                   oi.blockIndex, oi.operationIndex, blocks[oi.blockIndex]->operations.size()));
 	}
 
 	// create new merge block
