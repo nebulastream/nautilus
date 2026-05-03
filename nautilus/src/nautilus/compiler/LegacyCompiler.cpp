@@ -23,6 +23,7 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
+#include "nautilus/debug/DwarfVariableResolver.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -110,12 +111,34 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		statistics->set("compilation.unitId", compilationId);
 	}
 
+	// Resolve source-location and variable-name metadata at IR-conversion
+	// time, while the trace's TagRecorder is still alive, and bake it
+	// onto the IRGraph's debug side-table. After conversion the IR is
+	// self-contained: no live Tag pointers, no resolver lookups during
+	// dump, and the trie can be torn down with the trace.
 	std::unique_ptr<tracing::SourceLocationResolver> sourceLocationResolver;
 	ir::IRPrintOptions irPrintOptions;
+	tracing::DebugInfoResolvers conversionResolvers;
 	if (options.getOptionOrDefault("dump.sourceLocations", false)) {
 		sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
+		conversionResolvers.sourceLocationResolver = sourceLocationResolver.get();
 		irPrintOptions.showSourceLocations = true;
-		irPrintOptions.resolver = sourceLocationResolver.get();
+	}
+	// Variable-name resolution is an opt-in extension on top of
+	// source-location capture. It needs a resolved source frame to
+	// query DWARF against, so we silently force `dump.sourceLocations`
+	// on whenever `dump.variableNames` is. The DwarfVariableResolver
+	// singleton returns nullptr on platforms without DWARF support; in
+	// that case the conversion phase records the source frame stack
+	// without a [var=...] annotation.
+	if (options.getOptionOrDefault("dump.variableNames", false)) {
+		if (!sourceLocationResolver) {
+			sourceLocationResolver = std::make_unique<tracing::SourceLocationResolver>();
+			conversionResolvers.sourceLocationResolver = sourceLocationResolver.get();
+			irPrintOptions.showSourceLocations = true;
+		}
+		conversionResolvers.variableResolver = debug::DwarfVariableResolver::getInstance();
+		irPrintOptions.showVariableNames = true;
 	}
 
 	const auto frontendStart = std::chrono::steady_clock::now();
@@ -144,7 +167,7 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	const auto irGenStart = std::chrono::steady_clock::now();
 	auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId);
+	auto ir = irGenerationPhase.apply(afterSSAModule, *irArenaPool_, compilationId, conversionResolvers);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("irGeneration.ms", irGenStart);
 		const auto snapshot = ir::computeStatistics(*ir);

@@ -27,24 +27,30 @@ namespace nautilus::compiler::ir {
 
 namespace {
 
-/// Thread-local pointer consulted by the per-Operation fmt formatter while
-/// `IRGraph::toString(options)` is running.  Using a scoped TLS keeps the
-/// extension hidden from every other caller of `fmt::formatter<Operation>`
-/// so the default `toString()` path produces byte-identical output to what
-/// it did before source-location support existed.
-thread_local const IRPrintOptions* currentPrintOptions = nullptr;
+/// Thread-local context consulted by the per-Operation fmt formatter while
+/// @c IRGraph::toString(options) is running. Bundles the print options
+/// with the @c IRGraph itself so the formatter can look up baked debug
+/// metadata from the graph's side-table without re-running any resolver.
+/// The default @c toString() path leaves this null and produces output
+/// byte-identical to what it did before source-location support existed.
+struct DumpContext {
+	const IRPrintOptions* options;
+	const IRGraph* graph;
+};
+thread_local const DumpContext* currentDumpContext = nullptr;
 
-struct PrintOptionsScope {
-	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
-		currentPrintOptions = opts;
+struct DumpContextScope {
+	DumpContextScope(const IRPrintOptions* opts, const IRGraph* g) : ctx {opts, g}, previous(currentDumpContext) {
+		currentDumpContext = &ctx;
 	}
-	~PrintOptionsScope() {
-		currentPrintOptions = previous;
+	~DumpContextScope() {
+		currentDumpContext = previous;
 	}
-	PrintOptionsScope(const PrintOptionsScope&) = delete;
-	PrintOptionsScope& operator=(const PrintOptionsScope&) = delete;
+	DumpContextScope(const DumpContextScope&) = delete;
+	DumpContextScope& operator=(const DumpContextScope&) = delete;
 
-	const IRPrintOptions* previous;
+	DumpContext ctx;
+	const DumpContext* previous;
 };
 
 } // namespace
@@ -73,6 +79,26 @@ const FunctionOperation* IRGraph::getFunctionOperation(const std::string& name) 
 
 const CompilationUnitID& IRGraph::getId() const {
 	return id;
+}
+
+void IRGraph::setDebugInfo(OperationIdentifier opId, OperationDebugInfo info) {
+	// Merge rather than replace so callers can attach the source-location
+	// stack and the per-frame variable names independently. Empty fields
+	// in @p info never overwrite a non-empty existing field. The two
+	// vectors must stay in lock-step (same length): we move them as a
+	// pair so the invariant is preserved across merges.
+	auto& slot = debugInfoByOpId_[opId];
+	if (!info.frames.empty()) {
+		slot.frames = std::move(info.frames);
+	}
+	if (info.hasAnyVariableName()) {
+		slot.variableNames = std::move(info.variableNames);
+	}
+}
+
+const OperationDebugInfo* IRGraph::getDebugInfo(OperationIdentifier opId) const {
+	auto it = debugInfoByOpId_.find(opId);
+	return it == debugInfoByOpId_.end() ? nullptr : &it->second;
 }
 
 constexpr const char* binaryOpToString(Operation::OperationType type) {
@@ -148,7 +174,7 @@ std::string nautilus::compiler::ir::IRGraph::toString() const {
 }
 
 std::string nautilus::compiler::ir::IRGraph::toString(const nautilus::compiler::ir::IRPrintOptions& options) const {
-	PrintOptionsScope scope(&options);
+	DumpContextScope scope(&options, this);
 	return fmt::to_string(*this);
 }
 
@@ -342,21 +368,52 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
 
-	// Opt-in source-location trailer.  The TLS pointer is only non-null
-	// inside the scope of `IRGraph::toString(options)`.
-	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
-	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
-		if (const auto* tag = op.getSourceTag()) {
-			const auto frames = opts->resolver->resolveStack(tag);
-			if (!frames.empty()) {
-				// Innermost frame on the same line; outer frames continue on
-				// their own lines, outermost last.  Two tabs lines them up
-				// under the op text the block formatter indents with one tab.
-				const auto& innermost = frames.back();
-				fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
-				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
-					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
+	// Opt-in source-location trailer. The TLS context is only non-null
+	// inside the scope of @c IRGraph::toString(options). Resolution
+	// happened once during IR conversion (see TraceToIRConversionPhase);
+	// here we just read the baked metadata from the graph's side-table.
+	// No live @c Tag chain is dereferenced, so the trace's TagRecorder
+	// can already be torn down by this point.
+	if (const auto* ctx = nautilus::compiler::ir::currentDumpContext;
+	    ctx != nullptr && ctx->options != nullptr && ctx->options->showSourceLocations && ctx->graph != nullptr) {
+		const auto* info = ctx->graph->getDebugInfo(op.getIdentifier());
+		if (info != nullptr && !info->frames.empty()) {
+			// Helper that, when variable names are requested and a name
+			// was recovered for the given frame index, appends a
+			// `[var=<name>]` suffix to the trailer.
+			auto appendVarName = [&](size_t frameIdx) {
+				if (!ctx->options->showVariableNames) {
+					return;
 				}
+				if (frameIdx >= info->variableNames.size()) {
+					return;
+				}
+				const auto& name = info->variableNames[frameIdx];
+				if (name.has_value() && !name->empty()) {
+					fmt::format_to(out, " [var={}]", *name);
+				}
+			};
+
+			// Innermost frame goes on the same line as the op; outer
+			// frames continue on their own lines, outermost last. Two
+			// tabs line them up under the op text the block formatter
+			// indents with one tab. Each frame can carry its own
+			// `[var=...]` annotation, since a value flowing through
+			// user-side helper functions is assigned to a different
+			// variable at each level of the call hierarchy.
+			const size_t innermostIdx = info->frames.size() - 1;
+			const auto& innermost = info->frames[innermostIdx];
+			fmt::format_to(out, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+			appendVarName(innermostIdx);
+
+			// `frames` is outer-to-inner. We've already printed the
+			// innermost (last) entry; iterate the remainder from inner
+			// to outer so the dump reads naturally.
+			for (size_t i = info->frames.size() - 1; i > 0; --i) {
+				const size_t outerIdx = i - 1;
+				const auto& f = info->frames[outerIdx];
+				fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", f.file, f.line, f.function);
+				appendVarName(outerIdx);
 			}
 		}
 	}

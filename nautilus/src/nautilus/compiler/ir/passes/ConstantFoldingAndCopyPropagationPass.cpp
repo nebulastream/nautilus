@@ -352,7 +352,7 @@ size_t countOps(const FunctionOperation& fn) {
 	return total;
 }
 
-void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
+void applyToFunction(IRGraph& ir, common::Arena& arena, FunctionOperation& fn) {
 	const size_t iterationBound = countOps(fn) * 4u + 8u;
 	size_t iterations = 0;
 	bool changed = true;
@@ -372,8 +372,12 @@ void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
 					// Preserve the traced source location of the op being
 					// replaced so a later IR dump still points at the user's
 					// code — the fold is a compile-time rewrite, not a shift
-					// in provenance.
-					folded->setSourceTag(op->getSourceTag());
+					// in provenance. Debug metadata is now stored on the
+					// IR graph's side-table keyed by OperationIdentifier;
+					// copy the entry so the new op inherits the same trailer.
+					if (const auto* info = ir.getDebugInfo(op->getIdentifier())) {
+						ir.setDebugInfo(folded->getIdentifier(), *info);
+					}
 					block->replaceOperation(i, folded);
 					replacements.emplace(op, folded);
 					changed = true;
@@ -397,7 +401,7 @@ void ConstantFoldingAndCopyPropagationPass::apply(IRGraph& ir) {
 	common::Arena& arena = ir.getArena();
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			applyToFunction(arena, *fn);
+			applyToFunction(ir, arena, *fn);
 		}
 	}
 }

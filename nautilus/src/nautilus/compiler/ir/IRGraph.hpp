@@ -3,24 +3,71 @@
 
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-
-namespace nautilus::tracing {
-class SourceLocationResolver;
-} // namespace nautilus::tracing
+#include <vector>
 
 namespace nautilus::compiler::ir {
 
 class FunctionOperation;
 
+/// Per-operation debug metadata baked at IR-conversion time.
+///
+/// Resolution of the live trace @c Tag chain happens once during
+/// @c TraceToIRConversionPhase, while the @c TagRecorder is still in
+/// scope, and the result is stashed on the @c IRGraph keyed by
+/// @c OperationIdentifier. The IR is then self-contained: the trace
+/// arena (and the trie owned by @c TagRecorder) can be torn down,
+/// passes can run, and the dump path can resolve @c (file, line, ...)
+/// from the side-table without re-entering any resolver.
+///
+/// @c frames is stored outer-to-inner: element 0 is the caller furthest
+/// from the user-visible source site, the last element is the innermost
+/// user frame.
+///
+/// @c variableNames is the same length as @c frames, with element @c i
+/// holding the user-declared name (recovered from DWARF) of the
+/// variable that received the value at @c frames[i] — or
+/// @c std::nullopt when no matching DIE was found at that frame's
+/// coordinates. The two vectors are kept in lock-step so the dump can
+/// pair each frame with its name in one pass; consumers can iterate
+/// both together to render a per-frame [var=...] annotation.
+struct OperationDebugInfo {
+	std::vector<tracing::SourceFrame> frames;
+	std::vector<std::optional<std::string>> variableNames;
+
+	[[nodiscard]] bool empty() const noexcept {
+		return frames.empty() && variableNames.empty();
+	}
+
+	/// True if any frame has a recovered variable name.
+	[[nodiscard]] bool hasAnyVariableName() const noexcept {
+		for (const auto& name : variableNames) {
+			if (name.has_value() && !name->empty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+};
+
 /// Options that control how `IRGraph::toString` renders the graph.  Default-
 /// constructed options reproduce the historic output byte-for-byte.
 struct IRPrintOptions {
+	/// When true, the per-op trailer prints the source-location stack
+	/// recorded on the @c IRGraph side-table during IR conversion.
 	bool showSourceLocations = false;
-	tracing::SourceLocationResolver* resolver = nullptr;
+
+	/// When true and the side-table carries a recovered variable name
+	/// for the op, the trailer adds a @c [var=<name>] tail. Implies
+	/// @c showSourceLocations: variable annotations live on the same
+	/// line as the source-location trailer.
+	bool showVariableNames = false;
 };
 
 /**
@@ -85,6 +132,23 @@ public:
 		return *arena_;
 	}
 
+	/// Records resolved debug metadata for an operation. Merges with any
+	/// existing entry: empty fields in @p info never overwrite a non-
+	/// empty existing field, so callers can attach the source-location
+	/// stack and the DWARF-resolved variable name in either order.
+	void setDebugInfo(OperationIdentifier id, OperationDebugInfo info);
+
+	/// Returns the recorded debug metadata for @p id, or @c nullptr if
+	/// nothing was captured for it. The common (option-off) case is
+	/// always @c nullptr — the side-table is empty.
+	[[nodiscard]] const OperationDebugInfo* getDebugInfo(OperationIdentifier id) const;
+
+	/// Read-only access to the whole side-table. Useful for iterating
+	/// the resolved metadata without going through the per-op accessor.
+	[[nodiscard]] const std::unordered_map<OperationIdentifier, OperationDebugInfo>& getDebugInfoMap() const {
+		return debugInfoByOpId_;
+	}
+
 private:
 	common::ArenaPool::Handle arena_;
 	std::vector<FunctionOperation*> functionOperations;
@@ -92,6 +156,11 @@ private:
 	// owned by FunctionOperation, which is stable for the lifetime of the
 	// graph (the FunctionOperation itself lives in the arena).
 	std::unordered_map<std::string_view, FunctionOperation*> functionOperationsByName;
+	/// Resolved debug metadata side-table, keyed by operation id.
+	/// Populated only when the user opted into source-location capture
+	/// at compile time. Empty otherwise — zero overhead for the default
+	/// path.
+	std::unordered_map<OperationIdentifier, OperationDebugInfo> debugInfoByOpId_;
 	const CompilationUnitID id;
 };
 
