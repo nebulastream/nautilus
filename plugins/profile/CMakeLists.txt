@@ -4,6 +4,7 @@ set(PROFILE_SOURCES
         src/profile_runtime.cpp
         src/JitSymbols.cpp
         src/Sampler.cpp
+        src/PerfettoTraceWriter.cpp
 )
 
 if (ENABLE_MLIR_BACKEND)

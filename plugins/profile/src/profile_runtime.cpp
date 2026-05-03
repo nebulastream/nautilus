@@ -1,4 +1,5 @@
 #include "nautilus/profile/profile_runtime.h"
+#include "PerfettoTraceWriter.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/profile/Recorder.hpp"
 #include "nautilus/profile/TraceWriter.hpp"
@@ -453,6 +454,15 @@ bool flushTrace(const std::string& path) {
 	out << "\n]}\n";
 	if (!out) {
 		nautilus::log::error("profile.flushTrace: write failed for {}", path);
+		return false;
+	}
+	return true;
+}
+
+bool flushPerfettoTrace(const std::string& path) {
+	std::vector<Event> events = detail::drainAll();
+	if (!detail::writePerfettoTrace(path, events)) {
+		nautilus::log::error("profile.flushPerfettoTrace: write failed for {}", path);
 		return false;
 	}
 	return true;

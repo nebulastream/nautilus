@@ -1,8 +1,12 @@
 // Standalone demo: exercises nested Nautilus functions, a native runtime
 // invoke(), per-module Perfetto tracks, and the SIGPROF sampler.
 //
-// Produces a Chrome Trace JSON file at /tmp/nautilus-nested-profile.json
-// that can be dragged into https://ui.perfetto.dev.
+// Produces:
+//   * /tmp/nautilus-nested-profile.perfetto-trace  (native protobuf, the
+//     recommended drop into https://ui.perfetto.dev — gives a real
+//     CPU-sampling flamegraph per region track)
+//   * /tmp/nautilus-nested-profile.json            (Chrome Trace JSON,
+//     kept for tools that prefer it)
 #include "nautilus/Engine.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/profile/Instrument.hpp"
@@ -115,11 +119,16 @@ int main(int /*argc*/, char* /*argv*/[]) {
 	profile::unregisterThisThread();
 	profile::stopSampler();
 
-	const std::string trace_path = "/tmp/nautilus-nested-profile.json";
-	if (!profile::flushTrace(trace_path)) {
-		std::cerr << "flushTrace failed\n";
+	// Perfetto-native binary trace — drag into ui.perfetto.dev for the
+	// proper flamegraph + region timeline view.
+	const std::string perfetto_path = "/tmp/nautilus-nested-profile.perfetto-trace";
+	if (!profile::flushPerfettoTrace(perfetto_path)) {
+		std::cerr << "flushPerfettoTrace failed\n";
 		return 1;
 	}
+	std::cerr << "wrote " << perfetto_path << "\n";
+
+	// JIT perf map for external tools (perf record, addr2line, etc).
 	const std::string perf_map = profile::writePerfMap();
 	if (!perf_map.empty()) {
 		std::cerr << "wrote " << perf_map << "\n";
@@ -145,7 +154,6 @@ int main(int /*argc*/, char* /*argv*/[]) {
 			break;
 		}
 	}
-	std::cerr << "wrote " << trace_path << "\n";
 	std::cerr << "post-flush leftover: begin=" << beg << " end=" << end << " counter=" << ctr << " sample=" << samp
 	          << "\n";
 	return 0;
