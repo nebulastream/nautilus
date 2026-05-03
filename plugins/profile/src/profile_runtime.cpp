@@ -6,12 +6,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdio>
-#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 #if defined(__linux__)
@@ -301,168 +298,10 @@ void closeModule(const char* /*name*/) {
 	}
 }
 
-namespace {
-
-void appendEscaped(std::string& out, const std::string& s) {
-	for (char c : s) {
-		switch (c) {
-		case '"':
-			out.append("\\\"");
-			break;
-		case '\\':
-			out.append("\\\\");
-			break;
-		case '\n':
-			out.append("\\n");
-			break;
-		case '\r':
-			out.append("\\r");
-			break;
-		case '\t':
-			out.append("\\t");
-			break;
-		default:
-			if (static_cast<unsigned char>(c) < 0x20) {
-				char buf[8];
-				std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
-				out.append(buf);
-			} else {
-				out.push_back(c);
-			}
-		}
-	}
-}
-
-class VirtualTidTable {
-public:
-	uint64_t assign(uint64_t real_tid, const std::string& module) {
-		auto key = std::make_pair(real_tid, module);
-		auto it = map_.find(key);
-		if (it != map_.end()) {
-			return it->second;
-		}
-		uint64_t vid = next_++;
-		map_.emplace(std::move(key), vid);
-		return vid;
-	}
-
-private:
-	struct PairHash {
-		size_t operator()(const std::pair<uint64_t, std::string>& p) const noexcept {
-			return std::hash<uint64_t> {}(p.first) ^ (std::hash<std::string> {}(p.second) << 1);
-		}
-	};
-	std::unordered_map<std::pair<uint64_t, std::string>, uint64_t, PairHash> map_;
-	uint64_t next_ = 1;
-};
-
-} // namespace
-
 bool flushTrace(const std::string& path) {
 	std::vector<Event> events = detail::drainAll();
-
-	std::ofstream out(path);
-	if (!out) {
-		nautilus::log::error("profile.flushTrace: cannot open {}", path);
-		return false;
-	}
-
-	VirtualTidTable tids;
-	const uint32_t pid = 1;
-
-	out << "{\"traceEvents\":[\n";
-	std::string buf;
-	bool first = true;
-
-	std::vector<std::pair<uint64_t, std::string>> threadLabels;
-	std::unordered_map<uint64_t, bool> labelled;
-
-	auto flushComma = [&](std::ofstream& o) {
-		if (!first) {
-			o << ",\n";
-		}
-		first = false;
-	};
-
-	for (const auto& ev : events) {
-		uint64_t vtid = tids.assign(ev.tid, ev.module);
-		if (!labelled[vtid]) {
-			threadLabels.emplace_back(vtid, ev.module.empty() ? "<default>" : ev.module);
-			labelled[vtid] = true;
-		}
-
-		buf.clear();
-		buf.append("  {\"cat\":\"nautilus\",\"pid\":");
-		buf.append(std::to_string(pid));
-		buf.append(",\"tid\":");
-		buf.append(std::to_string(vtid));
-		buf.append(",\"ts\":");
-		buf.append(std::to_string(detail::ticksToMicros(ev.timestamp_ticks)));
-
-		switch (ev.kind) {
-		case Event::Kind::Begin:
-			buf.append(",\"ph\":\"B\",\"name\":\"");
-			appendEscaped(buf, ev.name);
-			buf.append("\"");
-			break;
-		case Event::Kind::End:
-			buf.append(",\"ph\":\"E\",\"name\":\"");
-			appendEscaped(buf, ev.name);
-			buf.append("\"");
-			break;
-		case Event::Kind::CounterI64:
-			buf.append(",\"ph\":\"C\",\"name\":\"");
-			appendEscaped(buf, ev.name);
-			buf.append("\",\"args\":{\"value\":");
-			buf.append(std::to_string(ev.value));
-			buf.append("}");
-			break;
-		case Event::Kind::Sample:
-			buf.append(",\"ph\":\"i\",\"s\":\"t\",\"name\":\"");
-			appendEscaped(buf, ev.name.empty() ? "sample" : ev.name);
-			buf.append("\",\"args\":{\"frames\":[");
-			for (size_t i = 0; i < ev.stack.size(); ++i) {
-				if (i != 0) {
-					buf.append(",");
-				}
-				buf.append("\"");
-				appendEscaped(buf, ev.stack[i]);
-				buf.append("\"");
-			}
-			buf.append("]}");
-			break;
-		}
-		buf.append("}");
-
-		flushComma(out);
-		out << buf;
-	}
-
-	for (const auto& [vtid, label] : threadLabels) {
-		buf.clear();
-		buf.append("  {\"cat\":\"__metadata\",\"ph\":\"M\",\"name\":\"thread_name\",\"pid\":");
-		buf.append(std::to_string(pid));
-		buf.append(",\"tid\":");
-		buf.append(std::to_string(vtid));
-		buf.append(",\"args\":{\"name\":\"");
-		appendEscaped(buf, label);
-		buf.append("\"}}");
-		flushComma(out);
-		out << buf;
-	}
-
-	out << "\n]}\n";
-	if (!out) {
-		nautilus::log::error("profile.flushTrace: write failed for {}", path);
-		return false;
-	}
-	return true;
-}
-
-bool flushPerfettoTrace(const std::string& path) {
-	std::vector<Event> events = detail::drainAll();
 	if (!detail::writePerfettoTrace(path, events)) {
-		nautilus::log::error("profile.flushPerfettoTrace: write failed for {}", path);
+		nautilus::log::error("profile.flushTrace: write failed for {}", path);
 		return false;
 	}
 	return true;

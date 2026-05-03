@@ -99,14 +99,14 @@ TEST_CASE("Profile plugin: traceCounter records value", "[profile]") {
 	    /*include_interpreter=*/true, /*tweak=*/ {}, /*include_asmjit=*/false);
 }
 
-TEST_CASE("Profile plugin: flushPerfettoTrace writes a binary protobuf trace", "[profile]") {
+TEST_CASE("Profile plugin: flushTrace writes a Perfetto protobuf trace", "[profile]") {
 	nautilus::profile::clearRecordedEvents();
 	auto engine = nautilus::testing::makeEngine("cpp");
 	auto f = engine.registerFunction(addWithRegion);
 	REQUIRE(f(7, 8) == 15);
 
 	auto path = std::filesystem::temp_directory_path() / "nautilus-profile-flush-test.perfetto-trace";
-	REQUIRE(nautilus::profile::flushPerfettoTrace(path.string()));
+	REQUIRE(nautilus::profile::flushTrace(path.string()));
 
 	std::ifstream in(path, std::ios::binary);
 	REQUIRE(in.is_open());
@@ -125,35 +125,6 @@ TEST_CASE("Profile plugin: flushPerfettoTrace writes a binary protobuf trace", "
 	// (Trace.packet) which has wire type 2 (length-delimited):
 	//   tag = (1 << 3) | 2 = 0x0a
 	CHECK(static_cast<unsigned char>(bytes[0]) == 0x0au);
-
-	std::filesystem::remove(path);
-
-	// flushPerfettoTrace must drain the buffer.
-	CHECK(nautilus::profile::takeRecordedEvents().empty());
-}
-
-TEST_CASE("Profile plugin: flushTrace writes valid Chrome trace JSON", "[profile]") {
-	nautilus::profile::clearRecordedEvents();
-	auto engine = nautilus::testing::makeEngine("cpp");
-	auto f = engine.registerFunction(addWithRegion);
-	REQUIRE(f(1, 2) == 3);
-
-	auto path = std::filesystem::temp_directory_path() / "nautilus-profile-flush-test.json";
-	REQUIRE(nautilus::profile::flushTrace(path.string()));
-
-	std::ifstream in(path);
-	REQUIRE(in.is_open());
-	std::stringstream buf;
-	buf << in.rdbuf();
-	auto text = buf.str();
-
-	// Structural checks — we don't ship a JSON parser, so grep.
-	CHECK(text.find("\"traceEvents\":[") != std::string::npos);
-	CHECK(text.find("\"ph\":\"B\"") != std::string::npos);
-	CHECK(text.find("\"ph\":\"E\"") != std::string::npos);
-	CHECK(text.find("\"name\":\"basic_region\"") != std::string::npos);
-	CHECK(text.find("\"cat\":\"nautilus\"") != std::string::npos);
-	CHECK(text.find("\"cat\":\"__metadata\"") != std::string::npos);
 
 	std::filesystem::remove(path);
 

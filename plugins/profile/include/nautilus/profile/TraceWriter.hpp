@@ -14,23 +14,15 @@ namespace nautilus::profile {
 void openModule(const char* name);
 void closeModule(const char* name);
 
-// Writes every event recorded since the last flush/clear to `path` in Chrome
-// Trace Event JSON format. The file loads natively in https://ui.perfetto.dev
-// and in chrome://tracing.
-//
-// Returns true on success, false on I/O error. Clears the internal buffer
-// regardless of success.
-bool flushTrace(const std::string& path);
-
 // Writes every recorded event to `path` in Perfetto's native trace protobuf
-// format (https://perfetto.dev/docs/reference/trace-packet-proto). Compared
-// to flushTrace, this gives the Perfetto UI a properly-typed CPU sampling
-// track with an aggregated flamegraph that filters under any selected
-// region — instead of one orphan instant-event marker per sample.
+// format (https://perfetto.dev/docs/reference/trace-packet-proto). The file
+// loads natively in https://ui.perfetto.dev as a process timeline with
+// per-(thread, module) tracks, counter sub-tracks for traceCounter values,
+// and a CPU-sampling flamegraph that filters under any selected region.
 //
 // File extension by convention is `.perfetto-trace` (or `.pftrace`); the
 // writer doesn't enforce one. Returns true on success, false on I/O error.
 // Clears the internal buffer regardless of success.
-bool flushPerfettoTrace(const std::string& path);
+bool flushTrace(const std::string& path);
 
 } // namespace nautilus::profile
