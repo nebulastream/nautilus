@@ -246,10 +246,19 @@ public:
 
 	// Move-constructs from another val<ValueType>.
 	// Transfers the underlying alloca/heap pointer; no new allocation, no copy.
+	// In tracing mode this constructs the new value_ptr directly from the source's
+	// SSA ref instead of going through val<T*>'s copy ctor, which would emit an
+	// extra traceCopy/ASSIGN op into the IR for what is logically just an alias.
 	// The source is left in a moved-from state and its destructor becomes a no-op.
-	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr) {
+#ifdef ENABLE_TRACING
+	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value, other.value_ptr.getState()) {
 		other.moved_ = true;
 	}
+#else
+	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value) {
+		other.moved_ = true;
+	}
+#endif
 
 	// Constructs the object from one or more traced (val<T>) or plain arguments.
 	// Each argument's raw type is deduced via unwrap_val_t, which produces the concrete

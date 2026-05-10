@@ -343,6 +343,9 @@ TEST_CASE("Value Trace Test") {
 	    {"copyConstruct", details::createFunctionWrapper(copyConstruct)},
 	    {"copyAssign", details::createFunctionWrapper(copyAssign)},
 	    {"copyConstructNonTrivial", details::createFunctionWrapper(copyConstructNonTrivial)},
+	    // move constructor (no traceCopy/ASSIGN op should appear for the move itself)
+	    {"moveConstructTrivial", details::createFunctionWrapper(moveConstructTrivial)},
+	    {"returnByValue", details::createFunctionWrapper(returnByValue)},
 	    // destructor
 	    {"nonTrivialDestructor", details::createFunctionWrapper(nonTrivialDestructor)},
 	    // loops
