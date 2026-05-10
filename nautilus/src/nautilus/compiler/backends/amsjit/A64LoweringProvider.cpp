@@ -178,6 +178,21 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 
 		blockLabels.clear();
 		processedBlocks.clear();
+		functionAllocaSlots_.clear();
+
+		// Materialise the function's alloca table into one stack slot per
+		// entry in the prologue.  visitAlloca() then just looks the slot up
+		// by index.  Replaces the old hoisting phase: slot order is fixed
+		// by trace's allocaSpecs, not by where the AllocaOperation lives.
+		const auto& allocaSpecs = funcOp->getAllocaSpecs();
+		functionAllocaSlots_.reserve(allocaSpecs.size());
+		for (const auto& spec : allocaSpecs) {
+			auto stackMem =
+			    cc.newStack(static_cast<uint32_t>(spec.size), static_cast<uint32_t>(std::max<size_t>(spec.align, 1)));
+			auto ptrReg = cc.newIntPtr();
+			cc.loadAddressOf(ptrReg, stackMem);
+			functionAllocaSlots_.emplace_back(AsmReg(ptrReg));
+		}
 
 		for (auto* block : funcOp->getBasicBlocks()) {
 			getOrCreateLabel(block->getIdentifier());
@@ -707,10 +722,12 @@ void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op,
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* op, RegisterFrame& frame) {
-	auto stackMem = cc.newStack(static_cast<uint32_t>(op->getSize()), 8 /*align*/);
-	auto ptrReg = cc.newIntPtr();
-	cc.loadAddressOf(ptrReg, stackMem);
-	frame.setValue(op->getIdentifier(), AsmReg(ptrReg));
+	// Stack slots were created in the function prologue from the alloca
+	// table; this op just rebinds its identifier to the corresponding
+	// pointer register.
+	auto index = op->getIndex();
+	assert(index < functionAllocaSlots_.size() && "AllocaOperation index out of range for function");
+	frame.setValue(op->getIdentifier(), functionAllocaSlots_[index]);
 }
 
 // ── External function calls ───────────────────────────────────────────────────

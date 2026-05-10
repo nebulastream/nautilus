@@ -1,7 +1,6 @@
 EXECUTE:
 B0($1:i32)
 	ALLOCA	$2	:ptr
-	ALLOCA	$19	:ptr
 	CONST	$3	0	:i64
 	CONST	$6	8	:ui64
 	CONST	$8	1	:ui64
@@ -9,8 +8,9 @@ B0($1:i32)
 	ADD	$10	$2	$9	:ptr
 	STORE	$15	$10	$3	:void
 	CONST	$16	0	:i32
-	JMP	$0	B3($2,$16,$1,$19)	:void
-B1($2:ptr,$1:i32,$16:i32,$19:ptr)
+	JMP	$0	B3($2,$16,$1)	:void
+B1($2:ptr,$1:i32,$16:i32)
+	ALLOCA	$19	:ptr
 	CONST	$20	5	:i32
 	CONST	$23	0	:ui64
 	CONST	$25	1	:ui64
@@ -36,7 +36,7 @@ B1($2:ptr,$1:i32,$16:i32,$19:ptr)
 	STORE	$64	$59	$52	:void
 	CONST	$65	1	:i32
 	ADD	$66	$16	$65	:i32
-	JMP	$0	B3($2,$66,$1,$19)	:void
+	JMP	$0	B3($2,$66,$1)	:void
 B2($2:ptr)
 	CONST	$69	8	:ui64
 	CONST	$71	1	:ui64
@@ -44,7 +44,7 @@ B2($2:ptr)
 	ADD	$73	$2	$72	:ptr
 	LOAD	$76	$73	:i64
 	RETURN	$0	$76	:i64
-B3($2:ptr,$16:i32,$1:i32,$19:ptr) ControlFlowMerge
+B3($2:ptr,$16:i32,$1:i32) ControlFlowMerge
 	LT	$17	$16	$1	:bool
-	CMP	$18	$17	B1($2,$1,$16,$19)	B2($2)	:void
+	CMP	$18	$17	B1($2,$1,$16)	B2($2)	:void
 

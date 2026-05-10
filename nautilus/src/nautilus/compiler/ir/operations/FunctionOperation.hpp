@@ -3,14 +3,25 @@
 
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <cstddef>
 #include <optional>
 #include <unordered_map>
 
 namespace nautilus::compiler::ir {
+
+/// Per-function record of one stack allocation.  Each AllocaOperation in the
+/// IR references one of these by index; backends emit the real `alloca`
+/// instruction (or equivalent) once per entry in the function prologue.
+struct AllocaSpec {
+	size_t size;
+	size_t align;
+};
+
 class FunctionOperation : public Operation {
 public:
 	explicit FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
 	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg,
+	                           std::vector<AllocaSpec> allocaSpecs = {},
 	                           std::unordered_map<std::string, std::string> attributes = {});
 
 	~FunctionOperation() = default;
@@ -40,6 +51,11 @@ public:
 
 	[[nodiscard]] const std::vector<std::string>& getInputArgNames() const;
 
+	/// Returns the function's alloca table.  Each entry corresponds to one
+	/// stack allocation site observed during tracing; AllocaOperation nodes
+	/// in this function's body reference entries by index.
+	[[nodiscard]] const std::vector<AllocaSpec>& getAllocaSpecs() const;
+
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
 
@@ -50,6 +66,7 @@ private:
 	std::vector<BasicBlock*> functionBasicBlocks;
 	std::vector<Type> inputArgs;
 	std::vector<std::string> inputArgNames;
+	std::vector<AllocaSpec> allocaSpecs;
 	std::unordered_map<std::string, std::string> attributes;
 };
 } // namespace nautilus::compiler::ir

@@ -36,8 +36,10 @@ public:
 	/// Trace a constant value of the given type.
 	virtual TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) = 0;
 
-	/// Trace a copy of an existing traced value.
-	virtual TypedValueRef& traceAlloca(size_t allocSize) = 0;
+	/// Trace a stack allocation of @p size bytes with @p align byte alignment.
+	/// Each call appends a fresh entry to the function's alloca table on the
+	/// execution trace; the returned ref points to that entry's index.
+	virtual TypedValueRef& traceAlloca(size_t size, size_t align) = 0;
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;

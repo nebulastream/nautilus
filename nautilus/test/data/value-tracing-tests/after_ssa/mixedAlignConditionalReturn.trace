@@ -1,11 +1,11 @@
 EXECUTE:
 B0($1:i64)
-	ALLOCA	$6	:ptr
 	CONST	$2	0	:i32
 	CAST	$3	$2	:i64
 	GT	$4	$1	$3	:bool
-	CMP	$5	$4	B1($6,$1)	B2($1)	:void
-B1($6:ptr,$1:i64)
+	CMP	$5	$4	B1($1)	B2($1)	:void
+B1($1:i64)
+	ALLOCA	$6	:ptr
 	CONST	$7	1	:i8
 	CONST	$10	0	:ui64
 	CONST	$12	1	:ui64

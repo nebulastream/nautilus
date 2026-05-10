@@ -36,9 +36,12 @@
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/gpu/intrinsic_targets.hpp"
 #include "nautilus/options.hpp"
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <functional>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -112,6 +115,11 @@ protected:
 	std::unordered_map<void*, IntrinsicHandler> gpuIntrinsics;
 	std::unordered_set<void*> deviceIntrinsics; // Only these mark a function as a kernel
 	std::unordered_set<std::string> kernelFunctions;
+	/// Variable names for the current function's alloca slots, indexed by
+	/// AllocaOperation::getIndex().  Populated by setupFunctionAllocaSlots()
+	/// at the start of every function lowering; cleared in resetFunctionState
+	/// so indices from a previous function don't bleed through.
+	std::vector<std::string> functionAllocaSlots;
 
 	// Launch config: variable names holding grid/block dims from the last setGrid/setBlock calls.
 	// These are consumed by the next kernel launch.
@@ -336,15 +344,36 @@ protected:
 		}
 	}
 
+	/// Materialise the function's alloca table into one stack buffer per
+	/// entry, declared once in the variable-declarations section.  Per-use
+	/// processAlloca() then just assigns the result to the corresponding
+	/// buffer.  Doing this here (rather than per-use) removes the need for
+	/// hoisting: the slot order is fixed by the trace's allocaSpecs, not by
+	/// where the AllocaOperation lives in the CFG.
+	void setupFunctionAllocaSlots(const ir::FunctionOperation& func) {
+		const auto& specs = func.getAllocaSpecs();
+		functionAllocaSlots.reserve(specs.size());
+		for (size_t i = 0; i < specs.size(); ++i) {
+			const auto& spec = specs[i];
+			auto bufVar = "alloca_buf_" + std::to_string(i);
+			blockArguments << "alignas(" << std::max<size_t>(spec.align, 1) << ") uint8_t " << bufVar << "["
+			               << spec.size << "];\n";
+			functionAllocaSlots.emplace_back(std::move(bufVar));
+		}
+	}
+
 	void processAlloca(ir::AllocaOperation* allocaOp, short blockIndex, RegisterFrame& frame) {
+		// Stack buffers were declared once in the function prologue by
+		// setupFunctionAllocaSlots(); this op just hands the pointer to
+		// its slot.
+		auto index = allocaOp->getIndex();
+		assert(index < functionAllocaSlots.size() && "AllocaOperation index out of range for function");
 		auto resultVar = getVariable(allocaOp->getIdentifier());
-		auto bufVar = "alloca_buf_" + allocaOp->getIdentifier().toString();
 		if (!frame.contains(allocaOp->getIdentifier())) {
-			blockArguments << "alignas(8) uint8_t " << bufVar << "[" << allocaOp->getSize() << "];\n";
 			blockArguments << "uint8_t* " << resultVar << ";\n";
 			frame.setValue(allocaOp->getIdentifier(), resultVar);
 		}
-		blocks[blockIndex] << resultVar << " = " << bufVar << ";\n";
+		blocks[blockIndex] << resultVar << " = " << functionAllocaSlots[index] << ";\n";
 	}
 
 	template <class OpType>
@@ -489,6 +518,7 @@ protected:
 		functions.str("");
 		functions.clear();
 		functionNames.clear();
+		functionAllocaSlots.clear();
 	}
 };
 

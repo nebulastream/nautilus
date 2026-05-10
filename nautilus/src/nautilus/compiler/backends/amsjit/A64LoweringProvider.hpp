@@ -73,6 +73,11 @@ private:
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
 		std::unordered_set<ir::BlockIdentifier> processedBlocks;
+		/// Pointer registers for the current function's alloca slots, indexed
+		/// by AllocaOperation::getIndex(). Materialised once in the function
+		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
+		/// function to keep stale entries from leaking across functions.
+		std::vector<AsmReg> functionAllocaSlots_;
 
 		static ::asmjit::TypeId getTypeId(Type t);
 		static bool isFloatType(Type t);

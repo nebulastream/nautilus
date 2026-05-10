@@ -37,7 +37,7 @@ public:
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
 	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
-	TypedValueRef& traceAlloca(size_t allocSize) override;
+	TypedValueRef& traceAlloca(size_t size, size_t align) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
 	                             const TypedValueRef& right) override;

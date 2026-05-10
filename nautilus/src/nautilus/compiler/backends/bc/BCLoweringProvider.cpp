@@ -4,6 +4,7 @@
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include <cassert>
 #include <utility>
 
 namespace nautilus::compiler::bc {
@@ -132,6 +133,24 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		program.arguments.emplace_back(argumentRegister);
 		// Mark function arguments so they're never freed
 		functionArgs.insert(argument->getIdentifier());
+	}
+
+	// Materialise the function's alloca table into one buffer + pinned
+	// register per entry, before any per-block lowering.  visitAlloca then
+	// just looks the slot register up by index.  This replaces the old
+	// per-call-site alloca path: the table order is fixed by tracing, not
+	// by where the AllocaOperation lives in the CFG.
+	functionAllocaSlots.clear();
+	const auto& allocaSpecs = targetFunction->getAllocaSpecs();
+	functionAllocaSlots.reserve(allocaSpecs.size());
+	for (const auto& spec : allocaSpecs) {
+		auto slotRegister = registerProvider.allocPinnedRegister();
+		allocateRegister(slotRegister);
+		auto bufferIndex = program.allocaBuffers.size();
+		program.allocaBuffers.emplace_back(spec.size, uint8_t {0});
+		program.allocaRegisterMap.emplace_back(slotRegister, bufferIndex);
+		defaultRegisterFile[slotRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
+		functionAllocaSlots.emplace_back(slotRegister);
 	}
 	// Linear register allocator: compute global static use counts once
 	// over the entire reachable CFG. During lowering, each visitXxx hook
@@ -2130,17 +2149,13 @@ void BCLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selec
 
 void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short /*block*/,
                                                       RegisterFrame& frame) {
-	// The alloca's register is restored from the default register file
-	// (via allocaRegisterMap) at the start of every invocation and must
-	// hold the same buffer pointer across every loop iteration, so we
-	// pin it against reuse by the linear allocator.
-	auto resultRegister = registerProvider.allocPinnedRegister();
-	allocateRegister(resultRegister);
-	auto bufferIndex = program.allocaBuffers.size();
-	program.allocaBuffers.emplace_back(allocaOp->getSize(), uint8_t {0});
-	program.allocaRegisterMap.emplace_back(resultRegister, bufferIndex);
-	defaultRegisterFile[resultRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
-	frame.setValue(allocaOp->getIdentifier(), resultRegister);
+	// The slot register and its backing buffer were created in the
+	// function prologue from FunctionOperation::getAllocaSpecs().  Every
+	// per-use AllocaOperation just rebinds its identifier to the
+	// already-pinned register.
+	auto index = allocaOp->getIndex();
+	assert(index < functionAllocaSlots.size() && "AllocaOperation index out of range for function");
+	frame.setValue(allocaOp->getIdentifier(), functionAllocaSlots[index]);
 }
 
 void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,

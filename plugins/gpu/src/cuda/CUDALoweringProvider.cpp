@@ -109,6 +109,7 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 	auto emitFunction = [&](const ir::FunctionOperation& func, Decoration decoration,
 	                        const std::string& nameOverride = "") {
 		resetFunctionState();
+		setupFunctionAllocaSlots(func);
 		gpu::RegisterFrame rootFrame;
 		std::vector<std::string> arguments;
 		const auto& functionBasicBlock = func.getFunctionBasicBlock();

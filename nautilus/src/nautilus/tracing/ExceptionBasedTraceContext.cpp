@@ -106,11 +106,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 	}
 }
 
-TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t allocSize) {
+TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, allocSize](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {AllocSize {allocSize}});
+	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+		auto index = state->executionTrace.addAllocaSpec(size, align);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
 }
 

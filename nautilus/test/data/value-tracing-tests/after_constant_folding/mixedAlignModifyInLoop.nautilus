@@ -1,7 +1,7 @@
 nautilus {
 execute($1:i32) :i64 {
 Block_0($1:i32):
-	$2 = alloca 16b :ptr
+	$2 = alloca[0] :ptr
 	$3 = 0 :i8
 	$6 = 0 :ui64
 	$8 = 1 :ui64

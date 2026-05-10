@@ -11,6 +11,7 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
@@ -92,9 +93,9 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(ExecutionTrac
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(*trace->getBlocks().front());
 	std::unordered_map<std::string, std::string> attributes = {{"entry", "true"}};
-	auto* functionOperation =
-	    ir->getArena().create<FunctionOperation>("execute", std::move(currentBasicBlocks), std::vector<Type> {},
-	                                             std::vector<std::string> {}, returnType, std::move(attributes));
+	auto* functionOperation = ir->getArena().create<FunctionOperation>(
+	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType,
+	    collectAllocaSpecs(), std::move(attributes));
 	ir->addFunctionOperation(functionOperation);
 	return ir;
 }
@@ -111,7 +112,17 @@ FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunctio
 
 	// Create and return the function operation
 	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
-	                                                std::vector<std::string> {}, returnType, attributes);
+	                                                std::vector<std::string> {}, returnType, collectAllocaSpecs(),
+	                                                attributes);
+}
+
+std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionContext::collectAllocaSpecs() const {
+	std::vector<compiler::ir::AllocaSpec> specs;
+	specs.reserve(trace->allocaSpecs.size());
+	for (const auto& spec : trace->allocaSpecs) {
+		specs.push_back({spec.size, spec.align});
+	}
+	return specs;
 }
 
 BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {
@@ -279,8 +290,7 @@ void TraceToIRConversionPhase::IRConversionContext::processBinaryOperator(ValueF
 	auto leftInput = frame.getValue(createValueIdentifier(op.input[0]));
 	auto rightInput = frame.getValue(createValueIdentifier(op.input[1]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation =
-	    currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, leftInput, rightInput);
+	auto operation = currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, leftInput, rightInput);
 	frame.setValue(resultIdentifier, operation);
 }
 
@@ -302,8 +312,8 @@ void TraceToIRConversionPhase::IRConversionContext::processTernaryOperator(Value
 	auto secondInput = frame.getValue(createValueIdentifier(op.input[1]));
 	auto thirdInput = frame.getValue(createValueIdentifier(op.input[2]));
 	auto resultIdentifier = createValueIdentifier(op.resultRef);
-	auto operation = currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, firstInput, secondInput,
-	                                                          thirdInput, op.resultRef.type);
+	auto operation = currentBlock->addTaggedOperation<OpType>(op.tag.getTag(), resultIdentifier, firstInput,
+	                                                          secondInput, thirdInput, op.resultRef.type);
 	frame.setValue(resultIdentifier, operation);
 }
 
@@ -471,8 +481,8 @@ void TraceToIRConversionPhase::IRConversionContext::processConst(ValueFrame& fra
 			    constOperation =
 			        currentBlock->addTaggedOperation<ConstBooleanOperation>(sourceTag, resultIdentifier, value);
 		    } else if constexpr (std::is_integral_v<T>) {
-			    constOperation = currentBlock->addTaggedOperation<ConstIntOperation>(sourceTag, resultIdentifier, value,
-			                                                                         resultType);
+			    constOperation =
+			        currentBlock->addTaggedOperation<ConstIntOperation>(sourceTag, resultIdentifier, value, resultType);
 		    } else if constexpr (std::is_floating_point_v<T>) {
 			    constOperation = currentBlock->addTaggedOperation<ConstFloatOperation>(sourceTag, resultIdentifier,
 			                                                                           value, resultType);
@@ -492,17 +502,17 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
                                                                 TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto input = frame.getValue(createValueIdentifier(operation.input[0]));
-	auto castOperation = currentBlock->addTaggedOperation<CastOperation>(operation.tag.getTag(), resultIdentifier, input,
-	                                                                     operation.resultType);
+	auto castOperation = currentBlock->addTaggedOperation<CastOperation>(operation.tag.getTag(), resultIdentifier,
+	                                                                     input, operation.resultType);
 	frame.setValue(resultIdentifier, castOperation);
 }
 
 void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& frame, BasicBlock* currentBlock,
                                                                   TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	AllocSize allocationSize = std::get<AllocSize>(operation.input[0]);
+	AllocaIndex index = std::get<AllocaIndex>(operation.input[0]);
 	auto allocaOperation =
-	    currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier, allocationSize);
+	    currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier, index);
 	frame.setValue(resultIdentifier, allocaOperation);
 }
 

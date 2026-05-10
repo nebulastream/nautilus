@@ -305,6 +305,19 @@ public:
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
 
+	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
+	/// AllocaIndex pointing at an entry here.  Copied wholesale to the
+	/// resulting FunctionOperation by TraceToIRConversionPhase so backends can
+	/// emit one real alloca per entry in the function prologue.
+	std::vector<AllocaSpec> allocaSpecs;
+
+	/// Appends a new alloca to the table and returns its index.  Called from
+	/// the trace contexts inside the tag-checked traceAlloca lambda, so it
+	/// only fires for genuinely new alloca sites — re-traces that hit an
+	/// existing tag short-circuit through control-flow merging and never
+	/// invoke the lambda.
+	AllocaIndex addAllocaSpec(size_t size, size_t align);
+
 	/**
 	 * @brief Gets the next available operation identifier
 	 * @return operation_identifier The next operation identifier

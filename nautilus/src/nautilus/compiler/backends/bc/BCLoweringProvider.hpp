@@ -117,6 +117,11 @@ private:
 		std::unordered_map<ir::BlockIdentifier, short> activeBlocks;
 		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 		std::unordered_set<ir::OperationIdentifier> functionArgs;
+		/// Pinned registers backing each entry in the current function's
+		/// alloca table.  Each register holds a stable pointer to its
+		/// corresponding allocaBuffers slot; visitAlloca resolves an index
+		/// here rather than allocating a buffer per call site.
+		std::vector<short> functionAllocaSlots;
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 

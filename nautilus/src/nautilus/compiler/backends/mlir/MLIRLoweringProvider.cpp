@@ -124,8 +124,7 @@ mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef 
 		return getNameLoc(fallbackName.str());
 	}
 	uint32_t line = 0;
-	if (auto it = currentFunctionLines_->operationLines.find(id);
-	    it != currentFunctionLines_->operationLines.end()) {
+	if (auto it = currentFunctionLines_->operationLines.find(id); it != currentFunctionLines_->operationLines.end()) {
 		line = it->second;
 	}
 	auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
@@ -630,11 +629,11 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	blockMapping.clear();
 	inductionVars.clear();
 	debugAllocas_.clear();
+	functionAllocaSlots_.clear();
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		if (auto it = irSourceMap_->functionLines.find(functionOp.getName());
-		    it != irSourceMap_->functionLines.end()) {
+		if (auto it = irSourceMap_->functionLines.find(functionOp.getName()); it != irSourceMap_->functionLines.end()) {
 			currentFunctionHeaderLine_ = it->second;
 		}
 		if (auto it = irSourceMap_->functions.find(functionOp.getName()); it != irSourceMap_->functions.end()) {
@@ -647,6 +646,27 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 
 	// Set InsertPoint to beginning of the execute function.
 	builder->setInsertionPointToStart(&mlirFunction.getBody().front());
+
+	// Materialise the function's alloca table into one LLVM alloca per
+	// entry, pinned at the prologue.  visitAlloca() just looks the slot up
+	// by index later.  Doing this here (rather than per-use) replaces the
+	// old hoisting phase: the alloca order is determined by the trace's
+	// allocaSpecs vector, not by the position of the AllocaOperation in
+	// any block.
+	const auto& allocaSpecs = functionOp.getAllocaSpecs();
+	if (!allocaSpecs.empty()) {
+		auto i8Type = builder->getI8Type();
+		auto ptrTy = LLVM::LLVMPointerType::get(context);
+		auto i64Ty = IntegerType::get(context, 64);
+		functionAllocaSlots_.reserve(allocaSpecs.size());
+		for (const auto& spec : allocaSpecs) {
+			Value sizeVal =
+			    builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty, builder->getI64IntegerAttr(spec.size));
+			auto align = static_cast<uint32_t>(std::max<size_t>(spec.align, 1));
+			auto slot = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, align);
+			functionAllocaSlots_.emplace_back(slot);
+		}
+	}
 
 	// Store references to function args in the valueMap map.
 	auto valueMapIterator = mlirFunction.args_begin();
@@ -1007,9 +1027,8 @@ void MLIRLoweringProvider::visitIf(ir::IfOperation* ifOp, ValueFrame& frame) {
 
 	builder->restoreInsertionPoint(parentBlockInsertionPoint);
 	// create cond branch operation, which evaluates the condition and branches to the true or false block
-	auto mlirOp =
-	    builder->create<mlir::cf::CondBranchOp>(branchLoc, frame.getValue(ifOp->getValue()->getIdentifier()), trueBlock,
-	                                            trueBlockArgs, elseBlock, elseBlockArgs);
+	auto mlirOp = builder->create<mlir::cf::CondBranchOp>(branchLoc, frame.getValue(ifOp->getValue()->getIdentifier()),
+	                                                      trueBlock, trueBlockArgs, elseBlock, elseBlockArgs);
 
 	// set the branch weights for branches by using the branch probabilities
 	// The if probability indicates how likely the true branch is taken and is derived from the val<bool> condition
@@ -1265,14 +1284,11 @@ void MLIRLoweringProvider::visitShift(ir::ShiftOperation* shiftOperation,
 }
 
 void MLIRLoweringProvider::visitAlloca(ir::AllocaOperation* allocaOperation, ValueFrame& frame) {
-	auto i8Type = builder->getI8Type();
-	auto ptrTy = LLVM::LLVMPointerType::get(context);
-	auto i64Ty = IntegerType::get(context, 64);
-	Value sizeVal = builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty,
-	                                                  builder->getI64IntegerAttr(allocaOperation->getSize()));
-	auto alloca = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, 8u);
-
-	frame.setValue(allocaOperation->getIdentifier(), alloca);
+	// Real allocations were emitted once in generateFunction()'s prologue;
+	// every per-use AllocaOperation just looks up the corresponding slot.
+	auto index = allocaOperation->getIndex();
+	assert(index < functionAllocaSlots_.size() && "AllocaOperation index out of range for function");
+	frame.setValue(allocaOperation->getIdentifier(), functionAllocaSlots_[index]);
 }
 
 void MLIRLoweringProvider::visitConstBoolean(ir::ConstBooleanOperation* constBooleanOp,

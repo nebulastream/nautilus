@@ -82,8 +82,9 @@ private:
 		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
 		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
-		compiler::ir::FunctionOperation* processFunction(const std::string& functionName,
-		                                                 const std::unordered_map<std::string, std::string>& attributes = {});
+		compiler::ir::FunctionOperation*
+		processFunction(const std::string& functionName,
+		                const std::unordered_map<std::string, std::string>& attributes = {});
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);
@@ -122,6 +123,11 @@ private:
 		void processConst(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void processCast(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
+
+		/// Snapshots the trace's central alloca table and converts each entry to
+		/// the IR-side `AllocaSpec` shape so it can be embedded on the
+		/// FunctionOperation.
+		std::vector<compiler::ir::AllocaSpec> collectAllocaSpecs() const;
 
 		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation,
 		                          const BlockRef& val);
