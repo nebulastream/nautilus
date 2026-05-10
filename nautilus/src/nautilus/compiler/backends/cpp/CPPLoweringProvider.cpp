@@ -82,6 +82,23 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		functions.str("");
 		functions.clear();
 		functionNames.clear();
+		functionAllocaSlots.clear();
+
+		// Materialise the function's alloca table into one stack buffer per
+		// entry, declared once in the variable-declarations section.
+		// visitAlloca() then just assigns the per-use pointer to the
+		// corresponding buffer.  Doing this here (rather than per-use)
+		// removes the need for hoisting: the slot order is fixed by the
+		// trace's allocaSpecs, not by where the AllocaOperation lives.
+		const auto& allocaSpecs = functionOperation.getAllocaSpecs();
+		functionAllocaSlots.reserve(allocaSpecs.size());
+		for (size_t i = 0; i < allocaSpecs.size(); ++i) {
+			const auto& spec = allocaSpecs[i];
+			auto bufVar = "alloca_buf_" + std::to_string(i);
+			blockArguments << "alignas(" << std::max<size_t>(spec.align, 1) << ") uint8_t " << bufVar << "["
+			               << spec.size << "];\n";
+			functionAllocaSlots.emplace_back(std::move(bufVar));
+		}
 
 		RegisterFrame rootFrame;
 		std::vector<std::string> arguments;
@@ -487,14 +504,16 @@ void CPPLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* sele
 
 void CPPLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short blockIndex,
                                                        RegisterFrame& frame) {
+	// Stack buffers were declared once in the function prologue; this op
+	// just hands the pointer to its slot.
+	auto index = allocaOp->getIndex();
+	assert(index < functionAllocaSlots.size() && "AllocaOperation index out of range for function");
 	auto resultVar = getVariable(allocaOp->getIdentifier());
-	auto bufVar = "alloca_buf_" + allocaOp->getIdentifier().toString();
 	if (!frame.contains(allocaOp->getIdentifier())) {
-		blockArguments << "alignas(8) uint8_t " << bufVar << "[" << allocaOp->getSize() << "];\n";
 		blockArguments << "uint8_t* " << resultVar << ";\n";
 		frame.setValue(allocaOp->getIdentifier(), resultVar);
 	}
-	blocks[blockIndex] << resultVar << " = " << bufVar << ";\n";
+	blocks[blockIndex] << resultVar << " = " << functionAllocaSlots[index] << ";\n";
 }
 
 void CPPLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,

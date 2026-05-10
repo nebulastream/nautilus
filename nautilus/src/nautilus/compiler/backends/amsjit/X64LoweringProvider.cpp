@@ -196,6 +196,22 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 		// Reset per-function block tracking so each function starts clean.
 		blockLabels.clear();
 		processedBlocks.clear();
+		functionAllocaSlots_.clear();
+
+		// Materialise the function's alloca table into one stack slot per
+		// entry, captured in a pointer register.  visitAlloca() then just
+		// looks the slot up by index.  Doing this here (rather than per
+		// use) replaces the old hoisting phase: slot order is fixed by the
+		// trace's allocaSpecs, not by where the AllocaOperation lives.
+		const auto& allocaSpecs = funcOp->getAllocaSpecs();
+		functionAllocaSlots_.reserve(allocaSpecs.size());
+		for (const auto& spec : allocaSpecs) {
+			auto stackMem =
+			    cc.newStack(static_cast<uint32_t>(spec.size), static_cast<uint32_t>(std::max<size_t>(spec.align, 1)));
+			auto ptrReg = cc.newIntPtr();
+			cc.lea(ptrReg, stackMem);
+			functionAllocaSlots_.emplace_back(AsmReg(ptrReg));
+		}
 
 		// Pre-create labels for all blocks in this function so forward jumps resolve.
 		for (auto* block : funcOp->getBasicBlocks()) {
@@ -774,11 +790,12 @@ void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op,
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* op, RegisterFrame& frame) {
-	// Allocate aligned stack space and capture its address in a GP register.
-	auto stackMem = cc.newStack(static_cast<uint32_t>(op->getSize()), 8 /*align*/);
-	auto ptrReg = cc.newIntPtr();
-	cc.lea(ptrReg, stackMem);
-	frame.setValue(op->getIdentifier(), AsmReg(ptrReg));
+	// Stack slots were created in the function prologue from the alloca
+	// table; this op just rebinds its identifier to the corresponding
+	// pointer register.
+	auto index = op->getIndex();
+	assert(index < functionAllocaSlots_.size() && "AllocaOperation index out of range for function");
+	frame.setValue(op->getIdentifier(), functionAllocaSlots_[index]);
 }
 
 // ── External function calls ───────────────────────────────────────────────────

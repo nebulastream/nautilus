@@ -333,7 +333,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	}
 	case OpType::AllocaOp: {
 		const auto* alloca = nautilus::compiler::ir::cast<AllocaOperation>(&op);
-		fmt::format_to(out, "{} = alloca {}b", op.getIdentifier(), alloca->getSize());
+		fmt::format_to(out, "{} = alloca[{}]", op.getIdentifier(), alloca->getIndex());
 		break;
 	}
 	default:

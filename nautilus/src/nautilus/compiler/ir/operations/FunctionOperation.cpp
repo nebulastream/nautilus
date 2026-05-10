@@ -8,10 +8,11 @@ namespace nautilus::compiler::ir {
 
 FunctionOperation::FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
                                      std::vector<Type> inputArgs, std::vector<std::string> inputArgNames,
-                                     Type outputArg, std::unordered_map<std::string, std::string> attributes)
+                                     Type outputArg, std::vector<AllocaSpec> allocaSpecs,
+                                     std::unordered_map<std::string, std::string> attributes)
     : Operation(OperationType::FunctionOp, outputArg), name(std::move(name)),
       functionBasicBlocks(std::move(functionBasicBlocks)), inputArgs(std::move(inputArgs)),
-      inputArgNames(std::move(inputArgNames)), attributes(std::move(attributes)) {
+      inputArgNames(std::move(inputArgNames)), allocaSpecs(std::move(allocaSpecs)), attributes(std::move(attributes)) {
 }
 
 const std::string& FunctionOperation::getName() const {
@@ -40,6 +41,10 @@ bool FunctionOperation::classof(const Operation* Op) {
 
 const std::vector<std::string>& FunctionOperation::getInputArgNames() const {
 	return inputArgNames;
+}
+
+const std::vector<AllocaSpec>& FunctionOperation::getAllocaSpecs() const {
+	return allocaSpecs;
 }
 
 BasicBlock* FunctionOperation::getEntryBlock() const {

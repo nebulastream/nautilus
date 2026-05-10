@@ -114,6 +114,13 @@ private:
 	// dependency on register liveness.  The map is cleared in
 	// generateFunction before each function's body is lowered.
 	std::unordered_map<uint32_t, ::mlir::Value> debugAllocas_;
+
+	/// Per-function alloca slot pointers, indexed by the AllocaOperation's
+	/// allocaIndex. Populated by generateFunction()'s prologue from
+	/// `FunctionOperation::getAllocaSpecs()`; visitAlloca then just looks the
+	/// slot up here. Cleared at the top of every function so indices from a
+	/// previous function don't bleed through.
+	std::vector<::mlir::Value> functionAllocaSlots_;
 	// Line of the current function's header in the IR dump.  Used as
 	// the `!dbg` location of the prologue (allocas, function-parameter
 	// stores) so GDB treats it as a single source line at function

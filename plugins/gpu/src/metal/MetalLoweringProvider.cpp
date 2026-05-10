@@ -105,6 +105,7 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 
 	auto emitFunction = [&](const ir::FunctionOperation& func) {
 		resetFunctionState();
+		setupFunctionAllocaSlots(func);
 		gpu::RegisterFrame rootFrame;
 		const auto& functionBasicBlock = func.getFunctionBasicBlock();
 
@@ -345,6 +346,7 @@ MetalLoweringProvider::HostContext::Code MetalLoweringProvider::HostContext::pro
 
 	// Generate the host function body
 	resetFunctionState();
+	setupFunctionAllocaSlots(rootFunc);
 	gpu::RegisterFrame rootFrame;
 	std::vector<std::string> arguments;
 	const auto& functionBasicBlock = rootFunc.getFunctionBasicBlock();

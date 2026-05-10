@@ -33,7 +33,7 @@ TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input);
 TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
                               const TypedValueRef& third);
 
-TypedValueRef& traceAlloca(const size_t size);
+TypedValueRef& traceAlloca(size_t size, size_t align);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);

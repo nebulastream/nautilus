@@ -40,6 +40,11 @@ private:
 		std::unordered_map<ir::BlockIdentifier, std::string> activeBlocks;
 		std::unordered_set<std::string> functionNames;
 		std::string returnType;
+		/// Variable names for the current function's alloca slots, indexed by
+		/// AllocaOperation::getIndex().  Populated in process()'s function
+		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
+		/// function so indices from a previous function don't bleed through.
+		std::vector<std::string> functionAllocaSlots;
 
 		std::string process(const ir::BasicBlock*, RegisterFrame& frame);
 
