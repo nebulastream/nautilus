@@ -84,7 +84,14 @@ inline void registerLaunchConfigIntrinsic(std::unordered_map<void*, IntrinsicHan
 	map[fnPtr] = [&outX, &outY, &outZ, &hasConfig](ir::ProxyCallOperation* call, short, RegisterFrame& frame,
 	                                               std::stringstream&, std::vector<std::stringstream>&,
 	                                               std::string (*)(const ir::OperationIdentifier&)) -> bool {
-		auto inputArgs = call->getInputArguments();
+		const auto& inputArgs = call->getInputArguments();
+		// setGrid / setBlock are always emitted with exactly three uint32_t dims
+		// by gpu::launch. Anything else means the caller is using these intrinsics
+		// directly, which is unsupported.
+		if (inputArgs.size() != 3) {
+			throw RuntimeException("GPU launch config intrinsic expected 3 arguments, got " +
+			                       std::to_string(inputArgs.size()));
+		}
 		outX = frame.getValue(inputArgs[0]->getIdentifier());
 		outY = frame.getValue(inputArgs[1]->getIdentifier());
 		outZ = frame.getValue(inputArgs[2]->getIdentifier());
