@@ -75,6 +75,19 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		rootFrame.setValue(argument->getIdentifier(), var);
 		arguments.emplace_back(getType(argument->getStamp()) + " " + var);
 	}
+
+	// Materialise the function's alloca table into one stack buffer per
+	// entry; AllocaOperation lookups then index into functionAllocaSlots.
+	functionAllocaSlots.clear();
+	const auto& allocaSpecs = functionOperation.getAllocaSpecs();
+	functionAllocaSlots.reserve(allocaSpecs.size());
+	for (size_t i = 0; i < allocaSpecs.size(); i++) {
+		auto bufVar = "alloca_buf_" + std::to_string(i);
+		blockArguments << "alignas(" << allocaSpecs[i].align << ") uint8_t " << bufVar << "[" << allocaSpecs[i].size
+		               << "];\n";
+		functionAllocaSlots.emplace_back(bufVar);
+	}
+
 	this->process(&functionBasicBlock, rootFrame);
 
 	std::stringstream pipelineCode;
@@ -459,9 +472,8 @@ void CPPLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp
 void CPPLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp, short blockIndex,
                                                    RegisterFrame& frame) {
 	auto resultVar = getVariable(allocaOp->getIdentifier());
-	auto bufVar = "alloca_buf_" + allocaOp->getIdentifier().toString();
+	const auto& bufVar = functionAllocaSlots.at(allocaOp->getIndex());
 	if (!frame.contains(allocaOp->getIdentifier())) {
-		blockArguments << "alignas(8) uint8_t " << bufVar << "[" << allocaOp->getSize() << "];\n";
 		blockArguments << "uint8_t* " << resultVar << ";\n";
 		frame.setValue(allocaOp->getIdentifier(), resultVar);
 	}

@@ -50,35 +50,14 @@ Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	//  return trace->getBlock(bl);
 }
 
-void SSACreationPhase::SSACreationPhaseContext::hoistAllocaOperations() {
-	// Collect all ALLOCA operations from every block, preserving their relative
-	// order.  Instead of erasing the original operation (which would invalidate
-	// every operationIndex stored in returnRefs and elsewhere), we replace it
-	// with an ALLOCA_TOMBSTONE that later phases simply skip.
-	std::vector<TraceOperation> allocaOps;
-	auto& blocks = trace->getBlocks();
-	for (auto& block : blocks) {
-		for (auto& op : block.operations) {
-			if (op.op == Op::ALLOCA) {
-				allocaOps.push_back(op);
-				op.op = Op::ALLOCA_TOMBSTONE;
-			}
-		}
-	}
-
-	// Prepend the collected ALLOCA operations to the head of the initial block.
-	if (!allocaOps.empty()) {
-		auto& initialBlock = blocks.front();
-		initialBlock.operations.insert(initialBlock.operations.begin(), std::make_move_iterator(allocaOps.begin()),
-		                               std::make_move_iterator(allocaOps.end()));
-	}
-}
-
 std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::process() {
 	auto rootBlockNumberOfArguments = trace->getArguments().size();
 
-	// Hoist all ALLOCA operations to the head of the initial block first.
-	hoistAllocaOperations();
+	// Allocas no longer require hoisting: every Op::ALLOCA carries an index
+	// into the trace's central allocaSpecs table, which is copied wholesale
+	// onto the FunctionOperation by TraceToIRConversionPhase.  Backends emit
+	// one real alloca per table entry in the function prologue, so the trace
+	// op can sit anywhere in the CFG.
 
 	//  In the first step we get the return block, which contains the return call.
 	//  Starting with this block we trace all inputs
@@ -107,9 +86,6 @@ bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, Ty
 	// operation before the operationIndex
 	for (uint32_t i = 0; i < operationIndex; i++) {
 		auto& resOperation = block.operations[i];
-		if (resOperation.op == Op::ALLOCA_TOMBSTONE) {
-			continue;
-		}
 		if (resOperation.resultRef == ref) {
 			return true;
 		}
@@ -187,9 +163,6 @@ const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::g
 	}
 	auto& defined = blockDefinitions[blockId];
 	for (auto& op : trace->getBlock(blockId).operations) {
-		if (op.op == Op::ALLOCA_TOMBSTONE) {
-			continue;
-		}
 		defined.insert(op.resultRef.ref);
 	}
 	return defined;
@@ -298,8 +271,7 @@ void SSACreationPhase::SSACreationPhaseContext::removeAssignOperations() {
 				}
 			}
 		}
-		std::erase_if(block.operations,
-		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
+		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
 	}
 }
 
@@ -348,8 +320,7 @@ void SSACreationPhase::SSACreationPhaseContext::makeBlockArgumentsUnique() {
 			}
 		}
 
-		std::erase_if(block.operations,
-		              [&](const auto& item) { return item.op == Op::ASSIGN || item.op == Op::ALLOCA_TOMBSTONE; });
+		std::erase_if(block.operations, [&](const auto& item) { return item.op == Op::ASSIGN; });
 	}
 }
 

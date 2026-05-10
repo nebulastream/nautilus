@@ -928,6 +928,47 @@ void valueExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(copyConstructNonTrivial);
 		REQUIRE(f() == 99);
 	}
+	SECTION("moveConstructTrivial") {
+		auto f = engine.registerFunction(moveConstructTrivial);
+		REQUIRE(f() == 52);
+	}
+	SECTION("moveConstructNonTrivial") {
+		auto f = engine.registerFunction(moveConstructNonTrivial);
+		REQUIRE(f() == 99);
+	}
+	SECTION("moveAssign") {
+		auto f = engine.registerFunction(moveAssign);
+		REQUIRE(f() == 1);
+	}
+	SECTION("moveAssignSelf") {
+		auto f = engine.registerFunction(moveAssignSelf);
+		REQUIRE(f() == 5);
+	}
+	SECTION("moveDtorBalance") {
+		CountedDtor::ctor_count = 0;
+		CountedDtor::dtor_count = 0;
+		auto f = engine.registerFunction(moveDtorBalance);
+		REQUIRE(f() == 7);
+		REQUIRE(CountedDtor::ctor_count >= 1);
+		REQUIRE(CountedDtor::ctor_count == CountedDtor::dtor_count);
+	}
+	SECTION("returnByValue") {
+		auto f = engine.registerFunction(returnByValue);
+		REQUIRE(f((int32_t) 0) == 0);
+		REQUIRE(f((int32_t) 42) == 42);
+		REQUIRE(f((int32_t) -7) == -7);
+	}
+	SECTION("returnByValueCond") {
+		auto f = engine.registerFunction(returnByValueCond);
+		REQUIRE(f((int32_t) 1) == 1);
+		REQUIRE(f((int32_t) 0) == 2);
+		REQUIRE(f((int32_t) -3) == 2);
+	}
+	SECTION("staticLoopAssignStructToOuter") {
+		auto f = engine.registerFunction(staticLoopAssignStructToOuter);
+		// Final iteration writes inner.a=3, inner.b=30 into outer; sum is 33.
+		REQUIRE(f() == 33);
+	}
 	SECTION("nonTrivialDestructor") {
 		auto f = engine.registerFunction(nonTrivialDestructor);
 		REQUIRE(f() == 42);

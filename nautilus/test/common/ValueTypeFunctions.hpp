@@ -4,6 +4,7 @@
 #include "nautilus/function.hpp"
 #include <cstdint>
 #include <nautilus/Engine.hpp>
+#include <nautilus/static.hpp>
 #include <nautilus/std/cstring.h>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
@@ -43,6 +44,129 @@ struct TestWithDtor {
 	~TestWithDtor() {
 	}
 };
+
+// Struct that counts constructions and destructions globally so tests can
+// assert that move semantics do not leak or double-destruct objects.
+struct CountedDtor {
+	static inline int ctor_count = 0;
+	static inline int dtor_count = 0;
+	int32_t v;
+	CountedDtor() : v(0) {
+		++ctor_count;
+	}
+	CountedDtor(const CountedDtor& other) : v(other.v) {
+		++ctor_count;
+	}
+	CountedDtor& operator=(const CountedDtor& other) {
+		v = other.v;
+		return *this;
+	}
+	~CountedDtor() {
+		++dtor_count;
+	}
+};
+
+// Move-construct from a trivially-copyable struct. The source's data must
+// be observable through the moved-to object.
+val<int32_t> moveConstructTrivial() {
+	val<Test> original;
+	original.set(&Test::a, 42);
+	original.set(&Test::b, 10);
+	val<Test> moved(std::move(original));
+	return moved.get(&Test::a) + moved.get(&Test::b);
+}
+
+// Move-construct from a non-trivially-destructible struct.
+val<int32_t> moveConstructNonTrivial() {
+	val<TestWithDtor> original;
+	original.set(&TestWithDtor::value, 99);
+	val<TestWithDtor> moved(std::move(original));
+	return moved.get(&TestWithDtor::value);
+}
+
+// Move-assign overwrites the LHS storage with the RHS storage.
+val<int32_t> moveAssign() {
+	val<Test> a;
+	a.set(&Test::a, 1);
+	val<Test> b;
+	b.set(&Test::a, 99);
+	b = std::move(a);
+	return b.get(&Test::a);
+}
+
+// Self-move-assignment must not destroy or corrupt the value. The ref alias
+// hides the self-move from -Wself-move; the operator= must still detect it
+// at runtime and short-circuit.
+val<int32_t> moveAssignSelf() {
+	val<Test> a;
+	a.set(&Test::a, 5);
+	val<Test>& ref = a;
+	ref = std::move(a);
+	return a.get(&Test::a);
+}
+
+// Move + destruct of a CountedDtor object.
+// At runtime ctor_count and dtor_count must end balanced and >= 1.
+val<int32_t> moveDtorBalance() {
+	val<CountedDtor> a;
+	a.set(&CountedDtor::v, 7);
+	val<CountedDtor> b(std::move(a));
+	return b.get(&CountedDtor::v);
+}
+
+// Returning a named local: NRVO is allowed, the move ctor is the fallback.
+val<Test> makeTest(val<int32_t> x) {
+	val<Test> t;
+	t.set(&Test::a, x);
+	t.set(&Test::b, 0);
+	return t;
+}
+
+val<int32_t> returnByValue(val<int32_t> x) {
+	val<Test> r = makeTest(x);
+	return r.get(&Test::a);
+}
+
+// Conditional return of two named locals: NRVO cannot apply, so the implicit
+// move on return is what avoids a deep copy.
+val<Test> makeTestCond(val<int32_t> x) {
+	val<Test> a;
+	a.set(&Test::a, 1);
+	val<Test> b;
+	b.set(&Test::a, 2);
+	if (x > 0) {
+		return a;
+	}
+	return b;
+}
+
+val<int32_t> returnByValueCond(val<int32_t> x) {
+	val<Test> r = makeTestCond(x);
+	return r.get(&Test::a);
+}
+
+// Static (fully-unrolled) loop body that constructs a fresh val<Test> each
+// iteration and copy-assigns it into a val<Test> declared outside the loop.
+// With N=3 unrolled iterations the IR has 4 allocas: 1 for `outer` plus
+// 1 per unrolled iteration for `inner`. The copy-assignment writes through
+// `outer.value_ptr` rather than reallocating, so `outer` keeps its single slot.
+val<int32_t> staticLoopAssignStructToOuter() {
+	val<Test> outer;
+	outer.set(&Test::a, 0);
+	outer.set(&Test::b, 0);
+	for (static_val<int> i = 0; i < 3; i = i + 1) {
+		val<Test> inner;
+		inner.set(&Test::a, i + 1);
+		inner.set(&Test::b, (i + 1) * 10);
+		outer = inner;
+	}
+	return outer.get(&Test::a) + outer.get(&Test::b);
+}
+
+static_assert(std::is_move_constructible_v<val<Test>>);
+static_assert(std::is_move_assignable_v<val<Test>>);
+static_assert(std::is_nothrow_move_constructible_v<val<Test>>);
+static_assert(std::is_nothrow_move_assignable_v<val<Test>>);
 
 // Structs with mixed-alignment members to exercise field_offset padding.
 // Layout: [i8][3 pad][i32][i64] = 16 bytes, alignof = 8

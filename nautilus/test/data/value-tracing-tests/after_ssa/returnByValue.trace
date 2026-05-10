@@ -1,0 +1,19 @@
+B0($1:i32)
+	ALLOCA	$3	:ptr
+	CONST	$7	0	:ui64
+	CONST	$9	1	:ui64
+	MUL	$10	$7	$9	:ui64
+	ADD	$11	$3	$10	:ptr
+	STORE	$16	$11	$1	:void
+	CONST	$18	4	:ui64
+	CONST	$20	1	:ui64
+	MUL	$21	$18	$20	:ui64
+	ADD	$22	$3	$21	:ptr
+	CONST	$25	0	:i32
+	STORE	$28	$22	$25	:void
+	CONST	$30	0	:ui64
+	CONST	$32	1	:ui64
+	MUL	$33	$30	$32	:ui64
+	ADD	$34	$3	$33	:ptr
+	LOAD	$37	$34	:i32
+	RETURN	$0	$37	:i32

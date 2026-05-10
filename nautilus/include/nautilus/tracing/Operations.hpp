@@ -43,12 +43,12 @@ enum Op : uint8_t {
 	NEGATE,
 	// Ternary
 	SELECT,
+	// Stack allocation. The single input is an AllocaIndex referencing an entry
+	// in ExecutionTrace::allocaSpecs (which records (size, align) for every
+	// alloca encountered during tracing). Backends emit one real alloca per
+	// table entry in the function prologue and treat the index as a table
+	// lookup at every use site, so allocas no longer need to be hoisted.
 	ALLOCA,
-	// Placeholder left behind when hoistAllocaOperations() moves an ALLOCA to
-	// the entry block.  Preserves vector indices so that returnRefs (and any
-	// other operation_identifier) remain valid.  Only exists during SSA
-	// creation; stripped by removeAssignOperations before IR lowering.
-	ALLOCA_TOMBSTONE,
 };
 
 constexpr const char* toString(Op type) {
@@ -117,8 +117,6 @@ constexpr const char* toString(Op type) {
 		return "SELECT";
 	case ALLOCA:
 		return "ALLOCA";
-	case ALLOCA_TOMBSTONE:
-		return "ALLOCA_TOMBSTONE";
 	default:
 		__builtin_unreachable();
 	}

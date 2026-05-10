@@ -99,8 +99,13 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 	}
 }
 
-TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t allocSize) {
-	return traceOperation(ALLOCA, Type::ptr, {allocSize});
+TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align) {
+	auto op = Op::ALLOCA;
+	auto resultType = Type::ptr;
+	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+		auto index = state->executionTrace.addAllocaSpec(size, align);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
