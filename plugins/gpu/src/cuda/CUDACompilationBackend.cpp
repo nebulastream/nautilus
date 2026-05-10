@@ -15,8 +15,7 @@ std::unique_ptr<Executable> CUDACompilationBackend::compile(const std::shared_pt
 
 	std::string identifier = "nautilus_cuda_" + ir->getId();
 
-	// Compile .cu to shared library via nvcc
-	auto lib = CUDACompiler::compile(identifier, code);
+	auto lib = CUDACompiler::compile(identifier, code, options);
 	return std::make_unique<CUDAExecutable>(lib);
 }
 
