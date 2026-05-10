@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <nautilus/Engine.hpp>
 #include <nautilus/nautilus_function.hpp>
+#include <nautilus/static.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_memcpy.hpp>
 #include <nautilus/val_ptr.hpp>
@@ -143,6 +144,24 @@ val<Test> makeTestCond(val<int32_t> x) {
 val<int32_t> returnByValueCond(val<int32_t> x) {
 	val<Test> r = makeTestCond(x);
 	return r.get(&Test::a);
+}
+
+// Static (fully-unrolled) loop body that constructs a fresh val<Test> each
+// iteration and copy-assigns it into a val<Test> declared outside the loop.
+// With N=3 unrolled iterations the IR has 4 allocas: 1 for `outer` plus
+// 1 per unrolled iteration for `inner`. The copy-assignment writes through
+// `outer.value_ptr` rather than reallocating, so `outer` keeps its single slot.
+val<int32_t> staticLoopAssignStructToOuter() {
+	val<Test> outer;
+	outer.set(&Test::a, 0);
+	outer.set(&Test::b, 0);
+	for (static_val<int> i = 0; i < 3; i = i + 1) {
+		val<Test> inner;
+		inner.set(&Test::a, i + 1);
+		inner.set(&Test::b, (i + 1) * 10);
+		outer = inner;
+	}
+	return outer.get(&Test::a) + outer.get(&Test::b);
 }
 
 static_assert(std::is_move_constructible_v<val<Test>>);

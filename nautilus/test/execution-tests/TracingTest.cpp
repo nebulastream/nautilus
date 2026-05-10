@@ -346,6 +346,8 @@ TEST_CASE("Value Trace Test") {
 	    // move constructor (no traceCopy/ASSIGN op should appear for the move itself)
 	    {"moveConstructTrivial", details::createFunctionWrapper(moveConstructTrivial)},
 	    {"returnByValue", details::createFunctionWrapper(returnByValue)},
+	    // static (fully-unrolled) loop with per-iteration alloca assigned into an outer struct
+	    {"staticLoopAssignStructToOuter", details::createFunctionWrapper(staticLoopAssignStructToOuter)},
 	    // destructor
 	    {"nonTrivialDestructor", details::createFunctionWrapper(nonTrivialDestructor)},
 	    // loops

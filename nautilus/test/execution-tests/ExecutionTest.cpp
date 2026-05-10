@@ -1011,6 +1011,11 @@ void valueExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f((int32_t) 0) == 2);
 		REQUIRE(f((int32_t) -3) == 2);
 	}
+	SECTION("staticLoopAssignStructToOuter") {
+		auto f = engine.registerFunction(staticLoopAssignStructToOuter);
+		// Final iteration writes inner.a=3, inner.b=30 into outer; sum is 33.
+		REQUIRE(f() == 33);
+	}
 	SECTION("nonTrivialDestructor") {
 		auto f = engine.registerFunction(nonTrivialDestructor);
 		REQUIRE(f() == 42);
