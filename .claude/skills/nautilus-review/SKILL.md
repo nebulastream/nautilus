@@ -133,6 +133,20 @@ for (val<int32_t> j = 0; j < tile_size; j = j + 1) { … }
 ```
 Rewrite: `for (static_val<int> j = 0; j < 4; j = j + 1) { … }` — `static_val` (defined in `include/nautilus/static.hpp`) unrolls at trace time, so the loop disappears from the IR and the body is fully visible to constant folding.
 
+**Hard cap: never use `static_val` for a loop with more than 100 iterations.** A `static_val` loop is fully unrolled at trace time — every iteration's body is appended verbatim to the trace and to the resulting IR. Past ~100 iterations the trace blows up, compile time grows superlinearly, and the resulting IR is large enough to thrash the optimizer's working set without producing better code than a dynamic loop would. (For context, the symbolic-execution path explorer caps total iterations at `MAX_ITERATIONS = 100000`, see `src/nautilus/tracing/symbolic_execution/SymbolicExecutionContext.hpp:30` — but that's a tracer safety net, not a target. Stay under 100 unrolled bodies.)
+
+When in doubt — use a dynamic `val<T>` loop:
+
+```cpp
+// BAD: 1024 iterations fully unrolled into the trace
+for (static_val<int> i = 0; i < 1024; i = i + 1) { sum = sum + array[i]; }
+
+// GOOD: dynamic loop, single body in the IR
+for (val<int32_t> i = 0; i < 1024; i = i + 1) { sum = sum + array[i]; }
+```
+
+If you genuinely need both unrolling (for body-specific specialization) and a high count, split: an outer dynamic loop iterating over chunks of ≤100, with an inner `static_val` loop unrolling the chunk.
+
 #### B2. Nested dynamic loops where one bound is compile-time known
 
 If the inner loop's count is known, make it `static_val`. The outer dynamic loop remains; the inner becomes straight-line code that the constant-folding and DCE phases can simplify. Dynamic × dynamic nests are the largest cause of long compile times.
@@ -439,7 +453,8 @@ When skimming a diff, these tokens often indicate a finding:
 | `(int*)`, `(uintptr_t)`, `reinterpret_cast`    | Escape from traced domain (A1, A3, E1).                       |
 | `static_cast<int*>` from a `val<T*>`           | Same.                                                         |
 | `int <name> = 0;` near `val<int*>` array reads | Untraced accumulator (A2).                                    |
-| `for (val<int…> i = 0; i < <literal>;`         | Should it be `static_val`? (B1, B2).                          |
+| `for (val<int…> i = 0; i < <literal>;`         | Should it be `static_val`? (B1, B2). Cap at 100 unrolled iterations. |
+| `static_val<…> i = 0; i < <literal ≥ 100>`     | B1 hard cap — switch to a dynamic `val<T>` loop.              |
 | `while (`                                      | Often a B3 candidate.                                         |
 | `if (…) { ret = a; } else { ret = b; }`        | C1 — replace with `select`.                                   |
 | `&&`, `\|\|` between two `val<bool>`           | C6 — confirm short-circuit is intentional.                    |
