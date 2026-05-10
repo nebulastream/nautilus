@@ -172,7 +172,7 @@ Rewrite: `val<int32_t> y = select(x < 0, val<int32_t>(0), x);`
 
 Use this only for **simple value selection**. Don't use it when both arms have side effects — `select` evaluates both arms unconditionally.
 
-Note: LLVM's later mid-end pipeline often collapses tiny if/else-of-constants into a `select` automatically (see `test/llvm-ir-test/reference-ir/conditionalReturn.ll` and `ifElseIfElse.ll`, both of which boil down to a `select` chain even though the source uses if/else). Manual `select()` still wins because it (a) keeps the *Nautilus* IR shorter — fewer blocks, smaller `after_ssa/`, faster compilation — and (b) makes the intent explicit, so the upstream `ConstantFoldingAndCopyPropagationPass` can fold it before MLIR ever runs. Reach for `select` whenever both arms are cheap, side-effect-free expressions.
+Note: LLVM's later mid-end pipeline often collapses tiny if/else-of-constants into a `select` automatically (see `test/llvm-ir-test/reference-ir/conditionalReturn.ll` and `ifElseIfElse.ll`, both of which boil down to a `select` chain even though the source uses if/else). Manual `select()` still wins because it (a) keeps the *Nautilus* IR shorter — fewer blocks, smaller `after_ssa/`, faster compilation — and (b) makes the intent explicit, so the upstream `ConstantFoldingAndCopyPropagationPass` can fold it before MLIR ever runs. Reach for `select` whenever both arms are cheap, side-effect-free expressions. `select` is also the canonical rewrite when the single-return rule (H1) bans an early-return-of-constants pattern.
 
 #### C2. No probability hint on a heavily skewed `val<bool>` condition
 
@@ -292,47 +292,98 @@ See A3. The Member-pointer overload (`val_ptr.hpp:264`) produces a typed `Load` 
 
 ### H. Return values and control-flow merges
 
-This section is about how the value coming out of an `if`/`else if`/`else`/early-return block is threaded into the function's exit. Most reviewers get this wrong because the C++ source shape misleads them about the *trace* shape. Read this section carefully before flagging or rewriting any return-related code.
+#### H1. Single-return rule — every Nautilus function must have exactly one `return` statement (enforced)
 
-**Mental model — what `SSACreationPhase` does to returns** (`src/nautilus/tracing/phases/SSACreationPhase.cpp:48-82`):
+**Project policy.** Any Nautilus function that uses `val<T>` (parameter, local, or return type) must have exactly one `return` statement, placed at the bottom of the function. Multiple `return` statements — including early-exit guards, per-branch returns, and returns inside loops — are not allowed and must be flagged in review as **Major**.
 
-1. The tracer records a `RETURN` op at every site that returned (whether that was an explicit `return` statement in source or the function's natural exit).
-2. If there is **only one** `RETURN` op in the whole trace, it is left alone — the trace already has a single exit.
-3. If there are **two or more** `RETURN` ops, the SSA phase:
-   - Creates a fresh "merge" block.
-   - Clones the *first* return op into the merge block as the canonical return; **its `resultType` becomes the function's return type**.
-   - Rewrites every original return site: the `RETURN` op is replaced by an `ASSIGN` to a shared sentinel value, followed by a `JMP` to the merge block.
-   - Empty-input (void) returns are simply erased instead of replaced.
-4. SSA propagation (`propagateValue`) then walks the predecessor chain and adds the sentinel value as a block argument all the way up to wherever the value originates, producing the equivalent of an LLVM phi at the merge.
+The motivation is concrete. The SSA pass (`src/nautilus/tracing/phases/SSACreationPhase.cpp:48-82`) handles multi-return functions by synthesising a merge block: it clones the *first* return op as the canonical exit (its `resultType` becomes the function's return type), rewrites every other return site to `ASSIGN target = value` + `JMP merge`, and then propagates the merged value as a block argument up the predecessor chain. That synthesis works, but it has costs that pile up:
 
-The practical consequence: **early returns and a single bottom-of-function return produce the same SSA shape.** Both end up as `JMP merge_block(value)` from each branch and a single `RETURN` in the merge block. The reference IR confirms this: see `test/llvm-ir-test/reference-ir/multipleReturns.ll` (three source returns → one phi + one ret) and `test/llvm-ir-test/reference-ir/ifElseIfElse.ll` (one source return, branches set a variable → identical select chain). Don't invent stylistic findings claiming early return is "faster" or "slower" — it isn't, in Nautilus.
+- The first traced return fixes the function's IR return type. If a later return contributes a value of different width or signedness, the per-branch `ASSIGN` silently carries an implicit cast — the GH#90-class regression family lives here (`nautilus/test/data/regressions/tracing/store_mising_downcast-gh_#90.*`).
+- The merge only shares the *value*. Side effects (Stores, Calls, allocations) sitting in the per-branch tails before each return are duplicated in the trace and the IR; the optimizer often fails to coalesce them.
+- A `return` inside a dynamic `for (val<…> …)` loop adds a second exit edge to the loop body. `LoopAnalysisPhase` then frequently fails to recognise the canonical for-shape, blocking strength reduction and induction-variable simplification.
+- A canonical single-return function has source structure that matches the IR shape, so reviewing `dump.after_ssa` against the source is straightforward.
 
-What *does* matter at the merge — flag these:
+**The rewrite recipes below are exhaustive — every multi-return shape encountered in review maps to one of them.**
 
-#### H1. Branches that return values of different IR types
+#### H2. Rewrite: early-return-of-constants → single trailing `return` with `select`
 
-The first traced return op fixes the canonical `resultType` (`SSACreationPhase.cpp:55-56`). If a later branch returns a value of a different width or signedness, the per-branch `ASSIGN` carries an implicit cast — bloating the trace and risking the GH#90-class implicit-narrowing-store regression. Pick one type up front and cast at each return site explicitly.
+This is the most common multi-return pattern. Both arms return a cheap constant or pure expression.
 
 ```cpp
-// BAD: branches disagree on width — implicit cast injected per branch
-val<int64_t> compute(val<int32_t> x) {
-    if (x == 0) return val<int32_t>(0);   // implicit i32 -> i64 at this return
-    return x * x + val<int64_t>(1);       // i64 here
+// BAD — two return statements
+val<int32_t> conditionalReturn(val<int32_t> v) {
+    if (v == 42) return 1;
+    return 120;
 }
 
-// GOOD: explicit, single conversion in the narrow arm
-val<int64_t> compute(val<int32_t> x) {
-    if (x == 0) return static_cast<val<int64_t>>(0);
-    return x * x + val<int64_t>(1);
+// GOOD — single return, no branches at all in the Nautilus IR
+val<int32_t> conditionalReturn(val<int32_t> v) {
+    return select(v == 42, val<int32_t>(1), val<int32_t>(120));
 }
 ```
 
-#### H2. Side effects (Stores, Calls) duplicated across branches that return the same shape
-
-The merge only shares the *value*. Anything else done in each branch is recorded per-branch in the trace and the final IR. If two branches do the same store, allocate the same buffer, or invoke the same helper before returning, that work is duplicated and the optimizer will not always coalesce it.
+For three-way and longer chains, nest `select`s, or accumulate into a single `result` and return it:
 
 ```cpp
-// BAD: every branch records its own STORE to the output slot
+// BAD
+val<int32_t> multipleReturns(val<int32_t> v) {
+    if (v == 1) return 1;
+    if (v < 10) return 42;
+    return v + v + 1;
+}
+
+// GOOD
+val<int32_t> multipleReturns(val<int32_t> v) {
+    val<int32_t> result = v + v + 1;
+    if (v < 10) result = 42;
+    if (v == 1) result = 1;       // last assignment wins, mirrors original priority
+    return result;
+}
+```
+
+#### H3. Rewrite: branches that set a value before returning → assign-and-fall-through
+
+The cleanest single-return shape for if/else-if/else: declare the result, write to it from each arm, return it once at the bottom. This is the shape used by most existing fixtures (`ifElseIfElse`, `nestedIf`, `varyingComplexity` in `test/common/ControlFlowFunctions.hpp`), and it stays valid under this policy as-is.
+
+```cpp
+val<int32_t> classify(val<int32_t> v) {
+    val<int32_t> result;
+    if (v == 0) {
+        result = 10;
+    } else if (v == 1) {
+        result = 20;
+    } else {
+        result = 30;
+    }
+    return result;
+}
+```
+
+#### H4. Rewrite: branches with mixed return types
+
+Pick the wider type up front, cast each contributing value once, then return.
+
+```cpp
+// BAD — different widths returned from different branches
+val<int64_t> compute(val<int32_t> x) {
+    if (x == 0) return val<int32_t>(0);     // implicit i32 -> i64 at this return
+    return x * x + val<int64_t>(1);
+}
+
+// GOOD — single return, single explicit cast
+val<int64_t> compute(val<int32_t> x) {
+    val<int64_t> result = x * x + val<int64_t>(1);
+    if (x == 0) result = static_cast<val<int64_t>>(0);
+    return result;
+}
+```
+
+#### H5. Rewrite: side effects before each early return → hoist them past a single return
+
+Per-branch side effects on the way to a return get duplicated in the IR. With a single return, they collapse naturally.
+
+```cpp
+// BAD — three Stores in three separate branches
 val<int32_t> classify(val<int32_t*> out, val<int32_t> x) {
     if (x < 0) { *out = -1; return 0; }
     if (x > 0) { *out = +1; return 1; }
@@ -340,60 +391,66 @@ val<int32_t> classify(val<int32_t*> out, val<int32_t> x) {
     return 2;
 }
 
-// BETTER: hoist the side effect out of the branches; each branch contributes only the merged value
+// GOOD — one Store, one return
 val<int32_t> classify(val<int32_t*> out, val<int32_t> x) {
     val<int32_t> tag = select(x < 0, val<int32_t>(-1),
                        select(x > 0, val<int32_t>(+1), val<int32_t>(0)));
     val<int32_t> code = select(x < 0, val<int32_t>(0),
                         select(x > 0, val<int32_t>(1), val<int32_t>(2)));
-    *out = tag;          // single STORE
+    *out = tag;
     return code;
 }
 ```
 
-(If the per-branch work is genuinely different — e.g., one arm calls a logger, the other doesn't — leave it alone; the side-effect *is* the point.)
+#### H6. Rewrite: `return` inside a dynamic loop → result variable + early-exit flag, single trailing return
 
-#### H3. Missing `setIsTrueProbability` on a heavily-skewed early-return guard
+Returning from inside a `for (val<…> …)` loop is a double violation: it's a second return *and* a second loop exit. Replace with a state variable that the loop reads each iteration, and a single return at the bottom.
 
-`val<bool>::setIsTrueProbability` becomes LLVM `!prof !{!"branch_weights", …}` metadata on the conditional branch, *not* on the return — but when the branch directly leads to an early `return`, the metadata still drives block layout: the unlikely arm gets pushed out of the hot path. Confirmed in `test/llvm-ir-test/reference-ir/withBranchProbability.ll` (line 9, 23: `br i1 %2, label %3, label %5, !prof !1`).
+```cpp
+// BAD — return inside the loop
+val<int32_t> findFirst(val<int32_t*> arr, val<int32_t> n, val<int32_t> needle) {
+    for (val<int32_t> i = 0; i < n; i = i + 1) {
+        if (arr[i] == needle) return i;
+    }
+    return val<int32_t>(-1);
+}
+
+// GOOD — single exit, single return
+val<int32_t> findFirst(val<int32_t*> arr, val<int32_t> n, val<int32_t> needle) {
+    val<int32_t> result = -1;
+    val<bool> found = false;
+    for (val<int32_t> i = 0; i < n && !found; i = i + 1) {
+        val<bool> hit = (arr[i] == needle);
+        result = select(hit, i, result);
+        found = found || hit;
+    }
+    return result;
+}
+```
+
+#### H7. Probability hints on the single return's guard
+
+The single-return rule does not change `setIsTrueProbability` semantics: the hint still attaches to the conditional branch and propagates to LLVM as `!prof !{!"branch_weights", …}` metadata (`test/llvm-ir-test/reference-ir/withBranchProbability.ll:9, 23: br i1 %2, label %3, label %5, !prof !1`). When a hot guard now sets a result variable instead of returning early, place the hint on the same `val<bool>`:
 
 ```cpp
 val<int32_t> hotPath(val<int32_t> v) {
     val<bool> rare_error = (v < 0);
-    rare_error.setIsTrueProbability(0.001);   // documented expectation
-    if (rare_error) return -1;                // early return, cold path
-    return v * 2;                             // hot
+    rare_error.setIsTrueProbability(0.001);
+    val<int32_t> result = v * 2;
+    if (rare_error) result = -1;
+    return result;
 }
 ```
 
-If a function has an early return guarding a rare error case and there's no probability hint, that's an opportunity, not a bug — flag as Minor.
+Missing probability hint on a heavily-skewed guard is a Minor finding.
 
-#### H4. Returning by collapsing a chain of branches: prefer a single `select` chain when the values are simple
+#### H8. Void functions — the same rule applies
 
-When all branches return constants (or cheap pure expressions), the `select` form keeps the Nautilus IR linear (no branches at all), which compiles faster than letting the SSA phase build the merge block and then relying on LLVM to collapse it back to `select` later. Reference IR for `conditionalReturn` (two returns) and `ifElseIfElse` (three return values via a single source return) both end up as `select` chains in LLVM — but starting there saves the round trip.
+For `void`-returning functions, multiple `return;` statements are also disallowed. The SSA phase erases per-branch void returns rather than synthesising a merge (`SSACreationPhase.cpp:67-68`), so the IR cost is smaller — but the policy is uniform. Use a single fall-through exit. Never mix `return;` and `return value;` in the same function (that's also a C++ error, but template instantiations make it easy to slip into).
 
-```cpp
-// OK — LLVM will collapse to a select, but Nautilus IR contains the merge block first
-val<int32_t> conditionalReturn(val<int32_t> v) {
-    if (v == 42) return 1;
-    return 120;
-}
+#### H9. Test fixtures that intentionally exercise the multi-return path
 
-// BETTER — Nautilus IR has no branches at all
-val<int32_t> conditionalReturn(val<int32_t> v) {
-    return select(v == 42, val<int32_t>(1), val<int32_t>(120));
-}
-```
-
-This is *not* an instruction to rewrite all early returns. Apply it only when **(a)** every branch returns a cheap expression and **(b)** the chain has no side effects. Long, deeply-nested branch logic with statements other than the return reads better as if/else; trust the optimizer there.
-
-#### H5. Void returns inside loops or in mixed void/value branches
-
-For void functions, the merge logic *erases* per-branch return ops (`SSACreationPhase.cpp:67-68`) instead of building ASSIGN+JMP. So multiple early `return;` statements in a void function are essentially free at the IR level. The thing to actually check: don't mix `return;` and `return value;` in the same function (that's a C++ error anyway, but easy to do via templates).
-
-#### H6. Returning from inside a dynamic loop
-
-A `return` inside a `for (val<…> …)` loop creates an extra exit edge from the loop body to the merge block. `LoopAnalysisPhase` may then fail to recognize the canonical loop shape, blocking strength reduction and induction-variable simplification. If you have `for (…) { if (cond) return early; … }`, consider factoring the early-exit condition out of the loop, or rewriting as `while (!found && i < n) { … }` so the loop has a single exit.
+The functions `conditionalReturn`, `multipleReturns`, and `withBranchProbability` in `nautilus/test/common/ControlFlowFunctions.hpp` deliberately violate the single-return rule because they are *fixtures* for the SSA merge logic and the corresponding reference LLVM IR (`multipleReturns.ll`, `conditionalReturn.ll`, `withBranchProbability.ll`). Do not flag these; the multi-return shape is the test. Anywhere else, flag.
 
 ### I. Diagnostic workflow
 
@@ -402,8 +459,8 @@ A `return` inside a `for (val<…> …)` loop creates an extra exit edge from th
 `Engine` accepts options (`include/nautilus/options.hpp`) — `dump.ir`, `dump.after_ssa`, `dump.after_constant_folding`, `dump.after_empty_block_elim`. The same directory layout is mirrored under `nautilus/test/data/<category>/` so you can diff a problematic kernel against a known-good test for the same shape.
 
 For return-merge findings specifically, the smoking gun is in `dump.after_ssa`:
-- A merge block whose only operation is `RETURN` and whose argument list has multiple incoming values → multi-return / branch-merged value, working as designed.
-- The same merge block containing extra ops (Stores, Calls) duplicated across predecessors → H2 candidate.
+- A merge block whose only operation is `RETURN` and whose argument list has multiple incoming values → the source has multiple `return` statements that the SSA phase merged. Under the single-return rule (H1), this is a violation; rewrite per H2–H8.
+- The same merge block containing extra ops (Stores, Calls) duplicated across predecessors → H5 candidate (per-branch side effects), and the multi-return shape that produced it is itself an H1 violation.
 
 For probability-hint findings, dump the LLVM IR (`dump.llvm_ir`) and look for `!prof !{!"branch_weights", …}` metadata on the relevant `br` instruction (see `withBranchProbability.ll:9`).
 
@@ -460,7 +517,8 @@ When skimming a diff, these tokens often indicate a finding:
 | `&&`, `\|\|` between two `val<bool>`           | C6 — confirm short-circuit is intentional.                    |
 | `invoke(` inside a `for`                       | F1 — does the helper carry `NAUTILUS_INLINE`?                 |
 | `*ptr = …` where the RHS is a wider `val<T>`   | D3 — explicit cast missing.                                   |
-| `setIsTrueProbability` absent on a hot guard   | C2 / H3 — opportunity, not a bug.                             |
-| Multiple `return` statements with mismatched widths | H1 — implicit per-branch cast at the merge.              |
-| Same `*ptr = …` or `invoke(…)` before two `return`s | H2 — hoist the side effect out of the branches.          |
-| `return` inside a `for (val<…> …)` loop        | H6 — multiple loop exits may inhibit loop analysis.           |
+| `setIsTrueProbability` absent on a hot guard   | C2 / H7 — opportunity, not a bug.                             |
+| **Two or more `return` statements in any function using `val<T>`** | **H1 — single-return rule violated; flag Major. Apply rewrite from H2–H8.** |
+| `return` inside a `for (val<…> …)` loop        | H1 + H6 — second return *and* second loop exit; rewrite with a flag and a single trailing return. |
+| Mixed return widths across branches            | H4 — pick a single return type and cast each contributor once. |
+| Same `*ptr = …` or `invoke(…)` repeated before each return | H5 — hoist the side effect past the single return. |
