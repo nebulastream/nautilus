@@ -3,6 +3,8 @@
 
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/amsjit/A64PostRAPeepholePass.hpp"
+#include "nautilus/compiler/backends/amsjit/AsmJitRegister.hpp"
+#include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
@@ -11,7 +13,6 @@
 #include <asmjit/a64.h>
 #include <unordered_map>
 #include <unordered_set>
-#include <variant>
 
 namespace nautilus::compiler {
 class CompilationStatistics;
@@ -46,14 +47,16 @@ public:
 	                  CompilationStatistics* statistics = nullptr);
 
 private:
-	// Integer/pointer types → GP register (X); float types → Vec register (S/D).
-	using AsmReg = std::variant<::asmjit::a64::Gp, ::asmjit::a64::Vec>;
-	using RegisterFrame = Frame<ir::OperationIdentifier, AsmReg>;
+	// AsmReg / RegisterFrame come from AsmJitRegister.hpp at namespace scope so
+	// the intrinsic-plugin framework can name them too. The using-declarations
+	// here keep AsmJitLoweringProvider::AsmReg available to legacy call sites.
+	using AsmReg = nautilus::compiler::asmjit::AsmReg;
+	using RegisterFrame = nautilus::compiler::asmjit::RegisterFrame;
 
 	class LoweringContext : public ir::OperationDispatcher<LoweringContext> {
 	public:
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir, ::asmjit::CodeHolder& code, const engine::Options& options,
-		                CompilationStatistics* statistics);
+		                CompilationStatistics* statistics, const AsmJitIntrinsicManager& intrinsicManager);
 
 		/// Pass 1 + Pass 2 + finalize.
 		void processAll();
@@ -69,6 +72,10 @@ private:
 
 		::asmjit::a64::Compiler cc;
 		std::shared_ptr<ir::IRGraph> ir;
+		/// Maps function-pointer keys → intrinsic handler. Non-owning; the
+		/// manager is owned by AsmJitLoweringProvider::lower() and lives for
+		/// the duration of the LoweringContext.
+		const AsmJitIntrinsicManager& intrinsicManager_;
 		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;

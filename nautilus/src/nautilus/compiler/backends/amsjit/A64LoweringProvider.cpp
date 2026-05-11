@@ -32,7 +32,16 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
 
-	LoweringContext ctx(std::move(ir), code, options, statistics);
+	// Build the intrinsic manager from the global plugin registry. Gated by
+	// `asmjit.enableIntrinsics` (default true), mirroring `mlir.enableIntrinsics`.
+	// When disabled, the manager stays empty and every ProxyCall falls through
+	// to the regular scalar invoke path.
+	AsmJitIntrinsicManager intrinsicManager;
+	if (options.getOptionOrDefault<bool>("asmjit.enableIntrinsics", true)) {
+		AsmJitIntrinsicPluginRegistry::instance().registerAllIntrinsics(intrinsicManager);
+	}
+
+	LoweringContext ctx(std::move(ir), code, options, statistics, intrinsicManager);
 	ctx.processAll();
 
 	std::unordered_map<std::string, uint64_t> offsets;
@@ -60,8 +69,9 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code,
                                                          const engine::Options& options,
-                                                         CompilationStatistics* statistics)
-    : cc(&code), ir(std::move(ir)) {
+                                                         CompilationStatistics* statistics,
+                                                         const AsmJitIntrinsicManager& intrinsicManager)
+    : cc(&code), ir(std::move(ir)), intrinsicManager_(intrinsicManager) {
 	if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
 		cc.addPassT<A64PostRAPeepholePass>(statistics);
 	}
@@ -733,6 +743,17 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 // ── External function calls ───────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
+	// Check the intrinsic manager first. A registered handler can fully
+	// replace the scalar function-call lowering with native NEON instructions
+	// (e.g. emit `add v0.4s, v1.4s, v2.4s` for vector_add_i32x4_impl). The
+	// handler is expected to bind the result identifier into the frame itself.
+	if (auto intrinsic = intrinsicManager_.getIntrinsic(op->getFunctionPtr())) {
+		IntrinsicCallContext ctx {cc, op, frame};
+		if ((*intrinsic)(ctx)) {
+			return;
+		}
+	}
+
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	for (auto* arg : op->getInputArguments()) {
