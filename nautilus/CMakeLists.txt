@@ -58,13 +58,16 @@ if (ENABLE_BC_BACKEND AND TARGET dyncallback_s)
     list(APPEND EXPORT_TARGETS dyncallback_s)
 endif ()
 
+# No PUBLIC_HEADER DESTINATION: it would apply to every target in this call,
+# and fmt sets PUBLIC_HEADER with relative paths that CMake resolves against
+# this dir (not fmt's source dir), which breaks `cmake --install`. Nautilus's
+# headers are installed via the install(DIRECTORY ...) calls below instead.
 install(
         TARGETS nautilus ${EXPORT_TARGETS}
         EXPORT ${PROJECT_NAME}-config
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/
 )
 
 install(

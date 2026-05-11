@@ -56,10 +56,38 @@ endif ()
 
 add_subdirectory(pass)
 
-if (TARGET InliningPass)
-    list(APPEND EXPORT_TARGETS InliningPass PARENT_SCOPE)
-endif ()
-
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif ()
+
+# Install rules: register nautilus-inlining (and the optional InliningPass
+# LLVM pass plugin) in the same export set used by the core nautilus library
+# so that `find_package(nautilus)` exposes the plugin as
+# `nautilus::nautilus-inlining`. The NautilusInline.cmake helper is also
+# shipped so consumers can call `nautilus_inline(target)` after installation.
+include(GNUInstallDirs)
+add_library(${PROJECT_NAME}::nautilus-inlining ALIAS nautilus-inlining)
+
+install(
+        TARGETS nautilus-inlining
+        EXPORT ${PROJECT_NAME}-config
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/nautilus/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nautilus)
+
+if (TARGET InliningPass)
+    install(
+            TARGETS InliningPass
+            EXPORT ${PROJECT_NAME}-config
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif ()
+
+install(FILES ${CMAKE_CURRENT_LIST_DIR}/cmake/NautilusInline.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
