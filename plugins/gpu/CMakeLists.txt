@@ -38,3 +38,25 @@ target_link_libraries(nautilus-gpu PRIVATE fmt::fmt)
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif ()
+
+# Install rules: register nautilus-gpu in the same export set used by the
+# core nautilus library so that `find_package(nautilus)` exposes this plugin
+# as `nautilus::nautilus-gpu`.
+include(GNUInstallDirs)
+add_library(${PROJECT_NAME}::nautilus-gpu ALIAS nautilus-gpu)
+
+install(
+        TARGETS nautilus-gpu
+        EXPORT ${PROJECT_NAME}-config
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/nautilus/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nautilus)
+
+# The configured config.hpp is generated into the build tree and is part of
+# the public API surface of the GPU plugin.
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/nautilus/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nautilus)

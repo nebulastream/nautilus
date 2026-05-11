@@ -45,3 +45,20 @@ endif ()
 if (ENABLE_TESTS)
     add_subdirectory(test)
 endif ()
+
+# Install rules: register nautilus-std in the same export set used by the core
+# nautilus library so that `find_package(nautilus)` exposes this plugin as
+# `nautilus::nautilus-std`.
+include(GNUInstallDirs)
+add_library(${PROJECT_NAME}::nautilus-std ALIAS nautilus-std)
+
+install(
+        TARGETS nautilus-std
+        EXPORT ${PROJECT_NAME}-config
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/nautilus/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nautilus)
