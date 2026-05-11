@@ -6,8 +6,11 @@ B0($1:bool,$2:bool)
 	CMP	$6	$5	B1()	B2()	:void
 B1()
 	CONST	$7	true	:bool
-	RETURN	$0	$7	:bool
+	JMP	$0	B3()	:void
 B2()
 	CONST	$10	false	:bool
-	RETURN	$0	$10	:bool
+	ASSIGN	$7	$10	:bool
+	JMP	$0	B3()	:void
+B3()
+	RETURN	$0	$7	:bool
 

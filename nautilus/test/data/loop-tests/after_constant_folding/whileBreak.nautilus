@@ -14,9 +14,6 @@ Block_1($2:i32, $1:i32):
 	if $6 ? Block_3($2) : Block_4($1, $2) :void
 
 Block_3($2:i32):
-	br Block_6($2) :void
-
-Block_6($2:i32):
 	return ($2) :i32
 
 Block_4($1:i32, $2:i32):
@@ -26,6 +23,6 @@ Block_4($1:i32, $2:i32):
 	br Block_5($11, $1, $12) :void
 
 Block_2($2:i32):
-	br Block_6($2) :void
+	br Block_3($2) :void
 }
 } //nautilus

@@ -151,7 +151,7 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
+operation_identifier ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -168,6 +168,70 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	addTag(snapshot, operationIdentifier);
 
 	returnRefs.emplace_back(operationIdentifier);
+	return operationIdentifier;
+}
+
+operation_identifier ExecutionTrace::mergeReturnIntoExisting(operation_identifier existing, Type resultType,
+                                                             const TypedValueRef& ref) {
+	auto& existingBlock = *blocks[existing.blockIndex];
+	auto* existingReturn = existingBlock.operations[existing.operationIndex];
+	const bool isVoid = existingReturn->input.empty();
+
+	// Detect whether the previous dedup hit has already turned the existing
+	// return into a dedicated merge target.  Such a block is the sole product
+	// of this routine and uniquely contains a single RETURN op as its only
+	// operation; processControlFlowMerge always moves at least one preceding
+	// op alongside any merged op, so the shape check is unambiguous.
+	const bool alreadyMerged = existingBlock.operations.size() == 1 && existingReturn->op == Op::RETURN;
+
+	Block* mergeBlock;
+	operation_identifier canonical = existing;
+
+	if (!alreadyMerged) {
+		// First dedup hit: split the existing block so the RETURN lives alone
+		// in a fresh merge block, mirroring the post-hoc transform performed
+		// by SSACreationPhase::getReturnBlock for the multi-return case.  The
+		// merge block is intentionally left as a Default block — the
+		// Block::Type::ControlFlowMerge marker is reserved for loop headers /
+		// dataflow merges that downstream phases (LoopAnalysisPhase) treat
+		// specially, and a return merge is neither.
+		auto mergeBlockId = createBlock();
+		mergeBlock = blocks[mergeBlockId];
+		mergeBlock->operations.push_back(existingReturn);
+
+		// In the existing block, replace the RETURN with a JMP to the merge
+		// block.  For non-void returns the canonical slot is the original
+		// return value's ref; the first path already produces that value, so
+		// no explicit ASSIGN is needed in this block.
+		existingBlock.operations.erase(existingBlock.operations.begin() + existing.operationIndex);
+		existingBlock.operations.push_back(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergeBlockId)));
+		mergeBlock->predecessors.emplace_back(existing.blockIndex);
+
+		canonical = {mergeBlockId, 0};
+		for (auto& returnRef : returnRefs) {
+			if (returnRef.blockIndex == existing.blockIndex && returnRef.operationIndex == existing.operationIndex) {
+				returnRef = canonical;
+			}
+		}
+	} else {
+		mergeBlock = &existingBlock;
+	}
+
+	// Append this path's contribution: ASSIGN(canonicalSlot, ref) for non-void
+	// returns, then JMP to the merge block.  The ASSIGN lets removeAssignOperations
+	// rewire each path's locally-produced value into the canonical slot during
+	// SSA cleanup, so the resulting CFG has a single RETURN reading a phi.
+	auto& currentBlock = *blocks[currentBlockIndex];
+	if (!isVoid) {
+		auto canonicalSlot = std::get<TypedValueRef>(existingReturn->input[0]);
+		auto snap = Snapshot();
+		auto* assignOp = makeTraceOp(*arena, snap, ASSIGN, resultType, canonicalSlot, ref);
+		currentBlock.operations.push_back(assignOp);
+	}
+	currentBlock.operations.push_back(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergeBlock->blockId)));
+	mergeBlock->predecessors.emplace_back(currentBlockIndex);
+
+	return canonical;
 }
 
 TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef,

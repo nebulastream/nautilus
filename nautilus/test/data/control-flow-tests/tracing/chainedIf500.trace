@@ -4998,9 +4998,10 @@ B999()
 	CONST	$2501	1	:i32
 	ADD	$2502	$2	$2501	:i32
 	ASSIGN	$2	$2502	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B1500()	:void
 B1000()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B1500()	:void
 B1001() ControlFlowMerge
 	GT	$9	$1	$8	:bool
 	CMP	$10	$9	B3()	B4()	:void
@@ -6498,4 +6499,6 @@ B1498() ControlFlowMerge
 B1499() ControlFlowMerge
 	GT	$2499	$1	$2498	:bool
 	CMP	$2500	$2499	B999()	B1000()	:void
+B1500()
+	RETURN	$0	$2	:i32
 

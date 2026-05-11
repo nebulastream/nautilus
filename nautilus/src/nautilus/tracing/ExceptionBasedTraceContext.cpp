@@ -206,10 +206,24 @@ void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, co
 void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (isFollowing()) {
 		follow(RETURN);
-	} else {
-		auto tag = recordSnapshot();
-		state->executionTrace.addReturn(tag, resultType, ref);
+		return;
 	}
+	auto tag = recordSnapshot();
+	const auto* callStackTag = tag.getTag();
+	auto it = state->returnTagMap.find(callStackTag);
+	if (it == state->returnTagMap.end()) {
+		// First time we hit this call-stack location's return: append a fresh
+		// RETURN op and remember its identifier for future dedup hits.
+		auto opId = state->executionTrace.addReturn(tag, resultType, ref);
+		state->returnTagMap.emplace(callStackTag, opId);
+		return;
+	}
+	// Subsequent return reaching the same source location (different iteration
+	// or different user-level return statement compiled into the same wrapper
+	// site): merge into the existing return block instead of appending a
+	// duplicate RETURN op.  The merge logic creates the dedicated return
+	// merge block on the first dedup hit and reuses it thereafter.
+	it->second = state->executionTrace.mergeReturnIntoExisting(it->second, resultType, ref);
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,

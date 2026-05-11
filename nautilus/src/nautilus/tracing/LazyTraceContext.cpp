@@ -217,10 +217,17 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	}
 	if (isFollowing()) {
 		follow(RETURN);
-	} else {
-		auto tag = recordSnapshot();
-		state->executionTrace.addReturn(tag, resultType, ref);
+		return;
 	}
+	auto tag = recordSnapshot();
+	const auto* callStackTag = tag.getTag();
+	auto it = state->returnTagMap.find(callStackTag);
+	if (it == state->returnTagMap.end()) {
+		auto opId = state->executionTrace.addReturn(tag, resultType, ref);
+		state->returnTagMap.emplace(callStackTag, opId);
+		return;
+	}
+	it->second = state->executionTrace.mergeReturnIntoExisting(it->second, resultType, ref);
 }
 
 TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,

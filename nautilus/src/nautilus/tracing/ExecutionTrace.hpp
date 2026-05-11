@@ -160,8 +160,27 @@ public:
 	 * @param snapshot The current execution snapshot
 	 * @param type The type of the return value
 	 * @param ref The value reference being returned
+	 * @return operation_identifier of the newly appended RETURN op
 	 */
-	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+	operation_identifier addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+
+	/**
+	 * @brief Routes the current block to an existing RETURN op, deduplicating
+	 * per-iteration returns that share a call-stack location (Tag*).
+	 *
+	 * On the first call for a given @p existing the RETURN op is moved into a
+	 * fresh ControlFlowMerge block, the original block ends with a JMP to that
+	 * merge block, and the current block ends with an ASSIGN (non-void only)
+	 * + JMP to the same merge block.  On subsequent calls (when @p existing
+	 * already points into the dedicated merge block) only the current block's
+	 * ASSIGN + JMP is appended.
+	 *
+	 * The returned identifier always points at the canonical RETURN op in the
+	 * merge block; callers should store it back into their tag→return map so
+	 * that follow-up dedup hits skip the split step.
+	 */
+	operation_identifier mergeReturnIntoExisting(operation_identifier existing, Type resultType,
+	                                             const TypedValueRef& ref);
 
 	/**
 	 * @brief Checks if a tag exists for the given snapshot

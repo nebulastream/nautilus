@@ -318,4 +318,35 @@ val<int32_t> withBranchProbability(val<int32_t> value) {
 	}
 }
 
+/// Regression fixture for the trace-explosion bug: a deeply nested function
+/// with a dynamic loop, multiple internal early returns, and a trailing
+/// return.  Before the trace-time return-dedup fix, each symbolic-execution
+/// iteration appended a separate RETURN op for every path that reached the
+/// wrapper's return site, multiplied by an O(N·L) propagateValue cost during
+/// SSA — see SSACreationPhase::getReturnBlock.  After the fix all returns are
+/// collapsed into a single canonical RETURN at trace time and the after_ssa
+/// shape mirrors the source structure 1:1.
+val<int32_t> nestedLoopMultipleReturns(val<int32_t> n) {
+	val<int32_t> acc = 0;
+	if (n < 0) {
+		return -1;
+	}
+	if (n == 0) {
+		return 0;
+	}
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		if (i == 3) {
+			return 100;
+		}
+		if (i == 5) {
+			return 200;
+		}
+		acc = acc + i;
+	}
+	if (acc > 1000) {
+		return 1000;
+	}
+	return acc;
+}
+
 } // namespace nautilus::engine
