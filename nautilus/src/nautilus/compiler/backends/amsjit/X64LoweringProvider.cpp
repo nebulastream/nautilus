@@ -33,7 +33,16 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
 
-	LoweringContext ctx(std::move(ir), code, options, statistics);
+	// Build the intrinsic manager from the global plugin registry. Gated by
+	// `asmjit.enableIntrinsics` (default true), mirroring `mlir.enableIntrinsics`.
+	// When disabled, the manager stays empty and every ProxyCall falls through
+	// to the regular scalar invoke path.
+	AsmJitIntrinsicManager intrinsicManager;
+	if (options.getOptionOrDefault<bool>("asmjit.enableIntrinsics", true)) {
+		AsmJitIntrinsicPluginRegistry::instance().registerAllIntrinsics(intrinsicManager);
+	}
+
+	LoweringContext ctx(std::move(ir), code, options, statistics, intrinsicManager);
 	ctx.processAll();
 
 	// Capture label offsets while code is still in the CodeHolder (before rt.add resets it).
@@ -62,8 +71,9 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, CodeHolder& code,
                                                          const engine::Options& options,
-                                                         CompilationStatistics* statistics)
-    : cc(&code), ir(std::move(ir)) {
+                                                         CompilationStatistics* statistics,
+                                                         const AsmJitIntrinsicManager& intrinsicManager)
+    : cc(&code), ir(std::move(ir)), intrinsicManager_(intrinsicManager) {
 	// Register the optional post-RA peephole pass. It appends to the
 	// Compiler's pass list *after* X86RAPass (which was installed during
 	// `cc(&code)` via x86::Compiler::onAttach), so it sees physical-register
@@ -801,6 +811,17 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 // ── External function calls ───────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
+	// Check the intrinsic manager first. A registered handler can fully
+	// replace the scalar function-call lowering with native instructions
+	// (e.g. emit `paddd xmm0, xmm1` for vector_add_i32x4_impl). The handler
+	// is expected to bind the result identifier into the frame itself.
+	if (auto intrinsic = intrinsicManager_.getIntrinsic(op->getFunctionPtr())) {
+		IntrinsicCallContext ctx {cc, op, frame};
+		if ((*intrinsic)(ctx)) {
+			return;
+		}
+	}
+
 	// Build the callee's signature dynamically from the IR's type information.
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));

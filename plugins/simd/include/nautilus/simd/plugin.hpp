@@ -37,3 +37,19 @@ struct NautilusSimdMlirPluginRegistrar {
 [[maybe_unused]] static NautilusSimdMlirPluginRegistrar nautilus_simd_mlir_plugin_registrar_;
 } // namespace
 #endif
+
+#ifdef ENABLE_ASMJIT_BACKEND
+namespace nautilus::compiler::asmjit {
+// Defined in plugins/simd/src/AsmJitVectorIntrinsics.cpp
+void RegisterAsmJitVectorIntrinsicPlugin();
+} // namespace nautilus::compiler::asmjit
+
+namespace {
+struct NautilusSimdAsmJitPluginRegistrar {
+	NautilusSimdAsmJitPluginRegistrar() {
+		nautilus::compiler::asmjit::RegisterAsmJitVectorIntrinsicPlugin();
+	}
+};
+[[maybe_unused]] static NautilusSimdAsmJitPluginRegistrar nautilus_simd_asmjit_plugin_registrar_;
+} // namespace
+#endif

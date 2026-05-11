@@ -9,6 +9,7 @@ add_source_files(nautilus
         AsmJitCompilationBackend.cpp
         ${ASMJIT_LOWERING_SRC}
         AsmJitExecutable.cpp
+        intrinsics/AsmJitBackendIntrinsic.cpp
 )
 
 target_link_libraries(nautilus PRIVATE asmjit)
