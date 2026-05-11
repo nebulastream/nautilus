@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
@@ -25,7 +26,7 @@
 namespace nautilus::tracing {
 using namespace compiler::ir;
 
-OperationIdentifier createValueIdentifier(TypedValueRef& val) {
+OperationIdentifier createValueIdentifier(const TypedValueRef& val) {
 	return {val.ref};
 }
 
@@ -49,10 +50,20 @@ TraceToIRConversionPhase::IRConversionContext::IRConversionContext(std::shared_p
 
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process() {
 	processBlock(trace->getBlocks().front());
-	auto functionOperation = std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {},
-	                                                             std::vector<std::string> {}, returnType);
+	auto functionOperation =
+	    std::make_unique<FunctionOperation>("execute", currentBasicBlocks, std::vector<Type> {},
+	                                        std::vector<std::string> {}, returnType, collectAllocaSpecs());
 	ir->addRootOperation(std::move(functionOperation));
 	return ir;
+}
+
+std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionContext::collectAllocaSpecs() const {
+	std::vector<compiler::ir::AllocaSpec> specs;
+	specs.reserve(trace->allocaSpecs.size());
+	for (const auto& spec : trace->allocaSpecs) {
+		specs.push_back({spec.size, spec.align});
+	}
+	return specs;
 }
 
 BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& block) {
@@ -279,7 +290,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCMP(ValueFrame& frame
 
 void TraceToIRConversionPhase::IRConversionContext::createBlockArguments(ValueFrame& frame,
                                                                          BasicBlockInvocation& blockInvocation,
-                                                                         BlockRef val) {
+                                                                         const BlockRef& val) {
 	for (auto& arg : val.arguments) {
 		auto valueIdentifier = createValueIdentifier(arg);
 		blockInvocation.addArgument(frame.getValue(valueIdentifier));
@@ -392,8 +403,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCast(ValueFrame& fram
 void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& frame, BasicBlock* currentBlock,
                                                                   TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	AllocSize allocationSize = std::get<AllocSize>(operation.input[0]);
-	auto allocaOperation = currentBlock->addOperation<AllocaOperation>(resultIdentifier, allocationSize);
+	AllocaIndex index = std::get<AllocaIndex>(operation.input[0]);
+	auto allocaOperation = currentBlock->addOperation<AllocaOperation>(resultIdentifier, index);
 	frame.setValue(resultIdentifier, allocaOperation);
 }
 

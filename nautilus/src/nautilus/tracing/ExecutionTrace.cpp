@@ -276,6 +276,12 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	localTagMap[snapshot] = identifier;
 }
 
+AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
+	auto index = static_cast<AllocaIndex>(allocaSpecs.size());
+	allocaSpecs.push_back({size, align});
+	return index;
+}
+
 } // namespace nautilus::tracing
 
 std::string nautilus::tracing::ExecutionTrace::toString() const {

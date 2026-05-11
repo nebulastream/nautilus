@@ -1,9 +1,9 @@
 B0($1:i32)
-	ALLOCA	$5	:ptr
 	CONST	$2	0	:i32
 	GT	$3	$1	$2	:bool
-	CMP	$4	$3	B1($5,$1)	B2($1)	:void
-B1($5:ptr,$1:i32)
+	CMP	$4	$3	B1($1)	B2($1)	:void
+B1($1:i32)
+	ALLOCA	$5	:ptr
 	CONST	$9	0	:ui64
 	CONST	$11	1	:ui64
 	MUL	$12	$9	$11	:ui64

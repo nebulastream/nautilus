@@ -104,8 +104,8 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
-TypedValueRef& traceAlloca(size_t allocSize) {
-	return activeTracer->traceAlloca(allocSize);
+TypedValueRef& traceAlloca(size_t size, size_t align) {
+	return activeTracer->traceAlloca(size, align);
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& op) {

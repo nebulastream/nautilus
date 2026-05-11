@@ -235,7 +235,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	} else if (auto negateOp = op.dynCast<NegateOperation>()) {
 		fmt::format_to(out, "{} = ~{}", negateOp->getIdentifier(), negateOp->getInput()->getIdentifier());
 	} else if (auto alloca = op.dynCast<AllocaOperation>()) {
-		fmt::format_to(out, "{} = alloca {}b", alloca->getIdentifier(), alloca->getSize());
+		fmt::format_to(out, "{} = alloca[{}]", alloca->getIdentifier(), alloca->getIndex());
 	} else {
 		fmt::format_to(out, "{}", op.getIdentifier().toString());
 	}

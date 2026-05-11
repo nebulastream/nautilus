@@ -1,16 +1,15 @@
-
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include <cstddef>
+#include <cstdint>
 
 namespace nautilus::compiler::ir {
 
-AllocaOperation::AllocaOperation(OperationIdentifier id, size_t allocationSize)
-    : Operation(OperationType::AllocaOp, id, Type::ptr, {}), allocationSize(allocationSize) {
+AllocaOperation::AllocaOperation(OperationIdentifier id, uint32_t allocaIndex)
+    : Operation(OperationType::AllocaOp, id, Type::ptr), allocaIndex(allocaIndex) {
 }
 
-size_t AllocaOperation::getSize() const {
-	return allocationSize;
+uint32_t AllocaOperation::getIndex() const {
+	return allocaIndex;
 }
 
 } // namespace nautilus::compiler::ir

@@ -16,7 +16,20 @@ namespace nautilus::tracing {
 
 class None {};
 using BranchProbability = double;
-using AllocSize = size_t;
+
+/// Index into ExecutionTrace::allocaSpecs identifying which alloca slot this
+/// trace operation refers to.  Each Op::ALLOCA carries one of these as its
+/// only input; the backing (size, align) pair is held centrally on the trace
+/// so backends can iterate the full table when emitting the function prologue.
+using AllocaIndex = uint32_t;
+
+/// Per-function alloca-table entry.  Recorded at trace time, copied onto the
+/// resulting FunctionOperation, then materialised as one real alloca per entry
+/// in each backend's function prologue.
+struct AllocaSpec {
+	size_t size;
+	size_t align;
+};
 
 /**
  * @brief Represents a function call operation in the trace.
@@ -46,7 +59,7 @@ struct BlockRef {
 };
 
 using InputVariant =
-    std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocSize>;
+    std::variant<TypedValueRef, None, ConstantLiteral, BlockRef, FunctionCall, BranchProbability, AllocaIndex>;
 
 /**
  * @brief Represents an individual operation in a trace.

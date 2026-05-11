@@ -448,6 +448,25 @@ void MLIRLoweringProvider::generateMLIR(const ir::FunctionOperation& functionOp,
 		frame.setValue(functionOp.getFunctionBasicBlock().getArguments().at(i)->getIdentifier(), valueMapIterator[i]);
 	}
 
+	// Materialise the function's alloca table: emit one llvm.alloca per
+	// entry in the function prologue and remember the resulting pointer so
+	// AllocaOperation lookups can resolve by index.
+	functionAllocaSlots.clear();
+	const auto& allocaSpecs = functionOp.getAllocaSpecs();
+	functionAllocaSlots.reserve(allocaSpecs.size());
+	{
+		auto i8Type = builder->getI8Type();
+		auto ptrTy = LLVM::LLVMPointerType::get(context);
+		auto i64Ty = IntegerType::get(context, 64);
+		for (const auto& spec : allocaSpecs) {
+			Value sizeVal =
+			    builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty, builder->getI64IntegerAttr(spec.size));
+			auto alignment = static_cast<unsigned>(std::max<size_t>(spec.align, 1));
+			auto alloca = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, alignment);
+			functionAllocaSlots.emplace_back(alloca);
+		}
+	}
+
 	// Generate MLIR for operations in function body (BasicBlock).
 	generateMLIR(&functionOp.getFunctionBasicBlock(), frame);
 
@@ -906,14 +925,8 @@ void MLIRLoweringProvider::generateMLIR(ir::ShiftOperation* shiftOperation,
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::AllocaOperation* allocaOperation, ValueFrame& frame) {
-	auto i8Type = builder->getI8Type();
-	auto ptrTy = LLVM::LLVMPointerType::get(context);
-	auto i64Ty = IntegerType::get(context, 64);
-	Value sizeVal = builder->create<LLVM::ConstantOp>(getNameLoc("location"), i64Ty,
-	                                                  builder->getI64IntegerAttr(allocaOperation->getSize()));
-	auto alloca = builder->create<LLVM::AllocaOp>(getNameLoc("location"), ptrTy, i8Type, sizeVal, 8u);
-
-	frame.setValue(allocaOperation->getIdentifier(), alloca);
+	auto slot = functionAllocaSlots.at(allocaOperation->getIndex());
+	frame.setValue(allocaOperation->getIdentifier(), slot);
 }
 
 void MLIRLoweringProvider::generateMLIR(ir::ConstBooleanOperation* constBooleanOp,

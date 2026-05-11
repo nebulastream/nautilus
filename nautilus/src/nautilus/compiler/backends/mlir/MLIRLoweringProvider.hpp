@@ -91,6 +91,12 @@ private:
 	std::unordered_map<std::string, ::mlir::Block*> blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
 
+	/// MLIR pointer values backing each entry of the current function's
+	/// alloca table.  Populated in the FunctionOperation prologue from
+	/// FunctionOperation::getAllocaSpecs(); AllocaOperation lookups index
+	/// here rather than emitting a fresh alloca per call site.
+	std::vector<::mlir::Value> functionAllocaSlots;
+
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
 	 *

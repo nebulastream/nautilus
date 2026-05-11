@@ -48,6 +48,23 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		// Mark function arguments so they're never freed
 		functionArgs.insert(argument->getIdentifier());
 	}
+
+	// Materialise the function's alloca table into one buffer + register
+	// per entry, before any per-block lowering.  process(AllocaOperation)
+	// then just looks the slot register up by index.
+	functionAllocaSlots.clear();
+	const auto& allocaSpecs = functionOperation.getAllocaSpecs();
+	functionAllocaSlots.reserve(allocaSpecs.size());
+	for (const auto& spec : allocaSpecs) {
+		auto slotRegister = registerProvider.allocRegister();
+		allocateRegister(slotRegister);
+		auto bufferIndex = program.allocaBuffers.size();
+		program.allocaBuffers.emplace_back(spec.size, uint8_t {0});
+		program.allocaRegisterMap.emplace_back(slotRegister, bufferIndex);
+		defaultRegisterFile[slotRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
+		functionAllocaSlots.emplace_back(slotRegister);
+	}
+
 	this->process(&functionBasicBlock, rootFrame);
 	// Resize register file to actual number of registers used
 	defaultRegisterFile.resize(registerProvider.getRegisterCount(), 0);
@@ -1853,13 +1870,8 @@ void BCLoweringProvider::LoweringContext::process(ir::SelectOperation* selectOp,
 
 void BCLoweringProvider::LoweringContext::process(ir::AllocaOperation* allocaOp, short /*block*/,
                                                   RegisterFrame& frame) {
-	auto resultRegister = registerProvider.allocRegister();
-	allocateRegister(resultRegister);
-	auto bufferIndex = program.allocaBuffers.size();
-	program.allocaBuffers.emplace_back(allocaOp->getSize(), uint8_t {0});
-	program.allocaRegisterMap.emplace_back(resultRegister, bufferIndex);
-	defaultRegisterFile[resultRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
-	frame.setValue(allocaOp->getIdentifier(), resultRegister);
+	auto slotRegister = functionAllocaSlots.at(allocaOp->getIndex());
+	frame.setValue(allocaOp->getIdentifier(), slotRegister);
 }
 
 } // namespace nautilus::compiler::bc

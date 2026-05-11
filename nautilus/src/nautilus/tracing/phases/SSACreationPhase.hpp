@@ -78,13 +78,6 @@ private:
 		const std::unordered_set<ValueRef>& getOrBuildDefinitions(uint32_t blockId);
 
 		/**
-		 * @brief Hoists all ALLOCA operations to the head of the initial block.
-		 * This ensures stack allocations are in the function entry block, which is
-		 * required for correct code generation in most backends.
-		 */
-		void hoistAllocaOperations();
-
-		/**
 		 * @brief Removes the assignment operations from all blocks.
 		 * Assignment operations are only required to infer SSA form.
 		 */

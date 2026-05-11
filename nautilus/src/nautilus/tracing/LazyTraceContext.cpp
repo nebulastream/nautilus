@@ -97,11 +97,12 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceAlloca(size_t allocSize) {
+TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, allocSize](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {allocSize});
+	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+		auto index = state->executionTrace.addAllocaSpec(size, align);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
 }
 

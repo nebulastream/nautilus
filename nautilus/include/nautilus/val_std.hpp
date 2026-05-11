@@ -28,7 +28,8 @@
  * | Parameterised construction | Yes       | `val<T>(val<A>, val<B>, …)` — args unwrapped via `unwrap_val_t` |
  * | Copy construction          | Yes       | `memcpy` for trivially-copyable; otherwise `invoke`|
  * | Copy assignment            | Yes       | same as copy construction                          |
- * | Move construction/assignment | No      | Not provided; use copy                             |
+ * | Move construction          | Yes       | Transfers the underlying alloca; no new allocation |
+ * | Move assignment            | Yes       | Destroys the LHS storage, then transfers from RHS  |
  * | Destruction                | Yes       | Non-trivial dtor forwarded through `invoke()`      |
  * | Field read  (`get`)        | Yes       | Returns `val<F&>` for arithmetic/pointer fields    |
  * | Field write (`set`)        | Yes       | Accepts `val<F>` or plain `F`                      |
@@ -110,8 +111,10 @@
 #include "nautilus/function.hpp"
 #include "nautilus/std/cstring.h"
 #include "nautilus/val_concepts.hpp"
+#include <concepts>
 #include <cstring>
 #include <type_traits>
+#include <utility>
 
 namespace nautilus {
 
@@ -136,11 +139,11 @@ template <typename ValueType>
 val<ValueType*> nautilus_alloca() {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto valueRef = tracing::traceAlloca(sizeof(ValueType));
+		auto valueRef = tracing::traceAlloca(sizeof(ValueType), alignof(ValueType));
 		return val<ValueType*>(valueRef);
 	}
 #endif
-	ValueType* ptr = static_cast<ValueType*>(::operator new(sizeof(ValueType)));
+	ValueType* ptr = static_cast<ValueType*>(::operator new(sizeof(ValueType), std::align_val_t {alignof(ValueType)}));
 	return val<ValueType*>(ptr);
 }
 } // namespace details
@@ -157,6 +160,11 @@ private:
 	// All data lives behind a traced pointer so that loads, stores and the
 	// alloca itself appear as first-class operations in the IR.
 	val<ValueType*> value_ptr;
+
+	// True after a move transferred ownership of value_ptr to another object.
+	// Suppresses the destructor's traced destruct() call and the heap free so
+	// that the resource is released exactly once.
+	bool moved_ = false;
 
 	static void construct(ValueType* ptr) {
 		new (ptr) ValueType();
@@ -182,6 +190,29 @@ private:
 		new (ptr) ValueType(args...);
 	}
 
+	// Releases the resources owned by value_ptr (traced destruct + heap free in
+	// interpreter mode) unless this object has been moved-from. Used by both
+	// the destructor and move assignment.
+	void release_storage() {
+		if (moved_) {
+			return;
+		}
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			invoke(destruct, value_ptr);
+		}
+		// Pair the aligned operator new in nautilus_alloca's interpreter
+		// fallback with an aligned operator delete; without the
+		// std::align_val_t overload, ASan flags a new-delete-type-mismatch
+		// for any over-aligned ValueType.
+#ifdef ENABLE_TRACING
+		if (!tracing::inTracer()) {
+			::operator delete(value_ptr.value, std::align_val_t {alignof(ValueType)});
+		}
+#else
+		::operator delete(value_ptr.value, std::align_val_t {alignof(ValueType)});
+#endif
+	}
+
 public:
 	// Default-constructs the object on the traced stack.
 	// For trivially-default-constructible types the ctor call is elided.
@@ -201,13 +232,30 @@ public:
 		}
 	}
 
+	// Move-constructs from another val<ValueType>.
+	// Transfers the underlying alloca/heap pointer; no new allocation, no copy.
+	// In tracing mode this constructs the new value_ptr directly from the source's
+	// SSA ref instead of going through val<T*>'s copy ctor, which would emit an
+	// extra traceCopy/ASSIGN op into the IR for what is logically just an alias.
+	// The source is left in a moved-from state and its destructor becomes a no-op.
+#ifdef ENABLE_TRACING
+	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value, other.value_ptr.state) {
+		other.moved_ = true;
+	}
+#else
+	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value) {
+		other.moved_ = true;
+	}
+#endif
+
 	// Constructs the object from one or more traced (val<T>) or plain arguments.
 	// Each argument's raw type is deduced via unwrap_val_t, which produces the concrete
 	// construct_with<RawArgs...> instantiation passed to invoke().
-	// The non-template copy constructor above always wins for same-type copies, so
-	// this template never conflicts with it.
+	// The same-type guard ensures the dedicated copy/move constructors above are
+	// always selected for val<ValueType> arguments instead of this template.
 	template <typename... ValArgs>
-	    requires(sizeof...(ValArgs) > 0)
+	    requires(sizeof...(ValArgs) > 0 &&
+	             !(sizeof...(ValArgs) == 1 && (std::same_as<std::remove_cvref_t<ValArgs>, val<ValueType>> || ...)))
 	val(ValArgs&&... args) : value_ptr(details::nautilus_alloca<ValueType>()) {
 		invoke(construct_with<details::unwrap_val_t<ValArgs>...>, value_ptr, std::forward<ValArgs>(args)...);
 	}
@@ -220,6 +268,19 @@ public:
 		} else {
 			invoke(copy_assign, value_ptr, other.value_ptr);
 		}
+		return *this;
+	}
+
+	// Move-assigns from another val<ValueType>.
+	// Releases this object's storage, then transfers ownership of other's storage.
+	val<ValueType>& operator=(val<ValueType>&& other) noexcept {
+		if (std::addressof(other) == this) {
+			return *this;
+		}
+		release_storage();
+		value_ptr = other.value_ptr;
+		moved_ = false;
+		other.moved_ = true;
 		return *this;
 	}
 
@@ -287,18 +348,10 @@ public:
 	}
 
 	// Destroys the object. For trivially-destructible types the dtor call is elided.
+	// A moved-from val<T> skips both the traced destruct and the heap free so the
+	// resource is released exactly once.
 	~val() {
-		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
-			invoke(destruct, value_ptr);
-		}
-		// in interpreter mode the value is allocated on heap, so we remove the allocation here
-#ifdef ENABLE_TRACING
-		if (!tracing::inTracer()) {
-			::operator delete(value_ptr.value);
-		}
-#else
-		::operator delete(value_ptr.value);
-#endif
+		release_storage();
 	}
 };
 } // namespace nautilus
