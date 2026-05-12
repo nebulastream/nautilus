@@ -66,39 +66,25 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
-	std::unordered_map<uint32_t, uint32_t> counts;
+	// Keys are source-position identities (review item F) — either a Tag*
+	// pointer cast to uint64_t, or an argument-position sentinel
+	// (ARG_POSITION_SENTINEL_BASE | index).  Both are stable across symbolic
+	// execution iterations, so two iterations whose live val<T>s materialised
+	// at the same source positions hash identically.
+	std::unordered_map<uint64_t, uint32_t> counts;
 	uint64_t alive_hash = 0;
 
 public:
-	/**
-	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
-	 */
 	AliveVariableHash() = default;
 
-	/**
-	 * @brief Increments the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
-	inline void increment(uint32_t id) noexcept {
+	inline void increment(uint64_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		++c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 	}
 
-	/**
-	 * @brief Decrements the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
-	inline void decrement(uint32_t id) noexcept {
+	inline void decrement(uint64_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		--c;
@@ -241,8 +227,8 @@ public:
 
 	bool traceBool(const TypedValueRef& value, double probability) override;
 
-	void allocateValRef(ValueRef ref) override;
-	void freeValRef(ValueRef ref) override;
+	void allocateValRef(uint64_t positionId) override;
+	void freeValRef(uint64_t positionId) override;
 
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
 	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,

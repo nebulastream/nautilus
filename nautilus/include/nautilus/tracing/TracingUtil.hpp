@@ -67,7 +67,19 @@ void traceReturnOperation(Type type, const TypedValueRef& ref);
 
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();
-void allocateValRef(ValueRef ref);
-void freeValRef(ValueRef ref);
+
+/// Returns the positionId most recently published by the trace context
+/// (via recordSnapshot or registerFunctionArgument).  Used by
+/// TypedValueRefHolder construction to bind each val<T> to a source-position
+/// identity that survives the symbolic-execution iteration boundary.
+uint64_t currentPositionId();
+
+/// Sentinel for argument positions; high bit set so the value can never
+/// collide with a real Tag* pointer (user-space pointers on supported
+/// platforms have the high bit clear).
+inline constexpr uint64_t ARG_POSITION_SENTINEL_BASE = 1ULL << 63;
+
+void allocateValRef(uint64_t positionId);
+void freeValRef(uint64_t positionId);
 
 } // namespace nautilus::tracing

@@ -2,12 +2,58 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
 
 namespace nautilus::tracing {
+
+// Phase-0 measurement gate for review item F.  Counts every checkTag outcome
+// across the lifetime of the process so the decision to invest in a
+// position-invariant val<T> identity refactor can be made from data rather
+// than speculation.  The dump is gated on NAUTILUS_F_MEASURE=1 so normal
+// builds and CI runs are silent.
+namespace {
+
+struct FMeasureStats {
+	std::atomic<uint64_t> totalCheckTag {0};
+	std::atomic<uint64_t> globalHits {0};
+	std::atomic<uint64_t> localHits {0};
+	std::atomic<uint64_t> nearMissAliveVariance {0};  // F-fixable: same staticHash, different aliveHash
+	std::atomic<uint64_t> nearMissStaticVariance {0}; // not F-fixable: aliveHash matches, hashes still differ
+	std::atomic<uint64_t> trueMisses {0};
+
+	~FMeasureStats() {
+		const char* env = std::getenv("NAUTILUS_F_MEASURE");
+		if (env == nullptr || env[0] == '\0' || env[0] == '0') {
+			return;
+		}
+		const uint64_t total = totalCheckTag.load();
+		const uint64_t nearMissA = nearMissAliveVariance.load();
+		const uint64_t nearMissS = nearMissStaticVariance.load();
+		const uint64_t nearMiss = nearMissA + nearMissS;
+		const double nmPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMiss) / static_cast<double>(total));
+		const double aPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMissA) / static_cast<double>(total));
+		std::fprintf(stderr,
+		             "[F-measure] checkTag total=%lu globalHits=%lu localHits=%lu "
+		             "nearMiss=%lu (alive=%lu static=%lu) trueMisses=%lu nearMissPct=%.2f%% aliveVarPct=%.2f%%\n",
+		             total, globalHits.load(), localHits.load(), nearMiss, nearMissA, nearMissS, trueMisses.load(),
+		             nmPct, aPct);
+	}
+};
+
+FMeasureStats g_fMeasureStats;
+
+} // namespace
+
+// Published by trace contexts inside recordSnapshot() so checkTag can decide
+// whether a near-miss is due to alive-var variance (F-fixable) or static-var
+// variance.  thread_local to stay safe under parallel tracing.
+thread_local uint64_t g_lastRecordedAliveHash = 0;
 
 ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
 	auto key = std::string(functionName);
@@ -132,10 +178,12 @@ Arena& ExecutionTrace::getArena() {
 }
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
+	g_fMeasureStats.totalCheckTag.fetch_add(1, std::memory_order_relaxed);
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
+		g_fMeasureStats.globalHits.fetch_add(1, std::memory_order_relaxed);
 		auto& ref = globalTabIter->second;
 		processControlFlowMerge(ref);
 		return false;
@@ -144,9 +192,24 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if we visited the same operation in this execution -> loop
 	auto localTagIter = localTagMap.find(snapshot);
 	if (localTagIter != localTagMap.end()) {
+		g_fMeasureStats.localHits.fetch_add(1, std::memory_order_relaxed);
 		auto& ref = localTagIter->second;
 		processControlFlowMerge(ref);
 		return false;
+	}
+
+	// Miss in both real maps.  If we've ever seen this Tag* before in this
+	// trace, the full-Snapshot mismatch means a merge that the existing scheme
+	// did not unlock.  Split into "alive-var variance" (F-fixable) and "static-var
+	// variance" (F does not help) using the aliveHash published by recordSnapshot.
+	const uint64_t aliveHash = g_lastRecordedAliveHash;
+	auto [it, inserted] = tagSeenAliveHash.try_emplace(snapshot.getTag(), aliveHash);
+	if (inserted) {
+		g_fMeasureStats.trueMisses.fetch_add(1, std::memory_order_relaxed);
+	} else if (it->second != aliveHash) {
+		g_fMeasureStats.nearMissAliveVariance.fetch_add(1, std::memory_order_relaxed);
+	} else {
+		g_fMeasureStats.nearMissStaticVariance.fetch_add(1, std::memory_order_relaxed);
 	}
 	return true;
 }

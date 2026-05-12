@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -323,6 +324,14 @@ public:
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+
+	// Phase-0 measurement for review item F: first-seen aliveVars.hash() value
+	// for every Tag* we've encountered in this trace.  On a near-miss (Tag*
+	// repeats but full Snapshot differs) we compare the current aliveHash
+	// against the recorded one to decide whether F (position-invariant
+	// aliveVars identity) is the appropriate fix or whether the variance is
+	// elsewhere (e.g. in static-var content, which F does not address).
+	std::unordered_map<const Tag*, uint64_t> tagSeenAliveHash;
 
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the
