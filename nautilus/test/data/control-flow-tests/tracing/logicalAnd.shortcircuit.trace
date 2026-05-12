@@ -9,11 +9,15 @@ B1()
 	LT	$7	$1	$6	:bool
 	CMP	$8	$7	B3()	B4()	:void
 B2()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B5()	:void
 B3()
 	CONST	$9	1	:i32
 	ASSIGN	$2	$9	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B5()	:void
 B4()
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B5()	:void
+B5()
 	RETURN	$0	$2	:i32
 

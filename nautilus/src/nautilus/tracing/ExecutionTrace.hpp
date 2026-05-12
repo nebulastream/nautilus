@@ -321,6 +321,17 @@ public:
 	/// Non-owning pointers to arena-allocated Block instances.
 	std::vector<Block*> blocks;
 	std::vector<operation_identifier> returnRefs;
+
+	// Maps a call-stack Tag* (i.e. the source location of a return) to the
+	// operation_identifier of the canonical RETURN op for that location.
+	// Every symbolic-execution iteration reaches the wrapper's
+	// traceReturnOperation at the same Tag*, so this dedup map prevents the
+	// trace from accumulating one duplicate RETURN per iteration.  Lives on
+	// the ExecutionTrace (rather than on TraceState) so processControlFlowMerge
+	// can keep it consistent when it relocates a RETURN op into a fresh merge
+	// block; otherwise a subsequent traceReturnOperation hit at the same Tag*
+	// would dereference a stale (blockIndex, opIndex) and split malformed.
+	std::unordered_map<const Tag*, operation_identifier> returnTagMap;
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;

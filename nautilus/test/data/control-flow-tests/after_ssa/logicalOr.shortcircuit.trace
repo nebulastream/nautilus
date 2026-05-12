@@ -15,9 +15,7 @@ B3()
 	CONST	$11	1	:i32
 	JMP	$0	B5($11)	:void
 B4($2:i32)
-	JMP	$0	B6($2)	:void
-B5($6:i32) ControlFlowMerge
-	JMP	$0	B6($6)	:void
-B6($2:i32)
+	JMP	$0	B5($2)	:void
+B5($2:i32)
 	RETURN	$0	$2	:i32
 

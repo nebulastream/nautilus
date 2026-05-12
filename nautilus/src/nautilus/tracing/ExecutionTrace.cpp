@@ -424,6 +424,17 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 					returnRef = operationReference;
 				}
 			}
+			// Also re-point the call-stack Tag* → opId dedup map, otherwise
+			// subsequent traceReturnOperation hits at the same Tag* would
+			// invoke mergeReturnIntoExisting with a (blockIndex, opIndex) that
+			// no longer points at a RETURN, and the resulting split would
+			// produce malformed control flow (extra empty block with a
+			// dangling RETURN referencing values out of scope).
+			if (auto it = returnTagMap.find(opTag.getTag()); it != returnTagMap.end()) {
+				if (it->second.blockIndex == referenceBlock.blockId && it->second.operationIndex == opIndex) {
+					it->second = operationReference;
+				}
+			}
 		} else {
 			globalTagMap[opTag] = operationReference;
 			localTagMap[opTag] = operationReference;

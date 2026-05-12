@@ -130,14 +130,6 @@ struct TraceState {
 	const engine::Options& options;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
-	// Maps a call-stack Tag* (i.e. the source location of a return) to the
-	// operation_identifier of the canonical RETURN op for that location.
-	// Every symbolic-execution iteration reaches the wrapper's
-	// traceReturnOperation at the same Tag*, so this dedup map prevents the
-	// trace from accumulating one duplicate RETURN per iteration.  Persists
-	// across iterations within a single function trace; reinitialised when a
-	// new TraceState is constructed (i.e. for each new function).
-	std::unordered_map<const Tag*, operation_identifier> returnTagMap;
 
 	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };

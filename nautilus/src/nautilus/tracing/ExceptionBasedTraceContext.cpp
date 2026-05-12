@@ -236,12 +236,12 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 	}
 	auto tag = recordSnapshot();
 	const auto* callStackTag = tag.getTag();
-	auto it = state->returnTagMap.find(callStackTag);
-	if (it == state->returnTagMap.end()) {
+	auto it = state->executionTrace.returnTagMap.find(callStackTag);
+	if (it == state->executionTrace.returnTagMap.end()) {
 		// First time we hit this call-stack location's return: append a fresh
 		// RETURN op and remember its identifier for future dedup hits.
 		auto opId = state->executionTrace.addReturn(tag, resultType, ref);
-		state->returnTagMap.emplace(callStackTag, opId);
+		state->executionTrace.returnTagMap.emplace(callStackTag, opId);
 		return;
 	}
 	// Subsequent return reaching the same source location (different iteration

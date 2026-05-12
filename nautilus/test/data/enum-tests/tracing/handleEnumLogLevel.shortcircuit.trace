@@ -5,16 +5,20 @@ B0($1:ui8)
 	CMP	$4	$3	B1()	B2()	:void
 B1()
 	CONST	$5	true	:bool
-	RETURN	$0	$5	:bool
+	JMP	$0	B5()	:void
 B2()
 	CONST	$7	5	:ui8
 	EQ	$8	$1	$7	:bool
 	CMP	$9	$8	B3()	B4()	:void
 B3()
 	CONST	$10	true	:bool
-	RETURN	$0	$10	:bool
+	ASSIGN	$5	$10	:bool
+	JMP	$0	B5()	:void
 B4()
 	CONST	$12	false	:bool
 	ASSIGN	$10	$12	:bool
-	RETURN	$0	$10	:bool
+	ASSIGN	$5	$10	:bool
+	JMP	$0	B5()	:void
+B5()
+	RETURN	$0	$5	:bool
 

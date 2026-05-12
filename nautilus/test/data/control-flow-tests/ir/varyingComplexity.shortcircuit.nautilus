@@ -8,9 +8,9 @@ Block_0($1:i32):
 
 Block_1():
 	$6 = 1 :i32
-	br Block_10($6) :void
+	br Block_9($6) :void
 
-Block_10($2:i32):
+Block_9($2:i32):
 	return ($2) :i32
 
 Block_2($1:i32):
@@ -32,17 +32,14 @@ Block_5($1:i32):
 Block_7($2:i32):
 	$18 = 1 :i32
 	$19 = $2 + $18 :i32
-	br Block_10($19) :void
+	br Block_9($19) :void
 
 Block_8($2:i32):
-	br Block_10($2) :void
+	br Block_9($2) :void
 
 Block_6():
 	$23 = 3 :i32
 	br Block_9($23) :void
-
-Block_9($21:i32):
-	br Block_10($21) :void
 
 Block_4():
 	$21 = 3 :i32
