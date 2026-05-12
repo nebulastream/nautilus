@@ -10,13 +10,10 @@ Block_0($1:ui32):
 	if $7 ? Block_1($6) : Block_2() :void
 
 Block_1($6:ui32):
-	br Block_3($6) :void
-
-Block_3($6:ui32):
 	return ($6) :ui32
 
 Block_2():
 	$10 = 0 :ui32
-	br Block_3($10) :void
+	br Block_1($10) :void
 }
 } //nautilus

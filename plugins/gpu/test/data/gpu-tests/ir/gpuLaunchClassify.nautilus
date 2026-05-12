@@ -28,9 +28,9 @@ Block_3($5:ptr, $10:ui32):
 	$34 = $33 * $32 :ui64
 	$35 = $5 + $34 :ptr
 	store($27, $35) :void
-	br Block_9() :void
+	br Block_5() :void
 
-Block_9():
+Block_5():
 	return :void
 
 Block_4($5:ptr, $10:ui32, $4:ptr):
@@ -42,9 +42,9 @@ Block_4($5:ptr, $10:ui32, $4:ptr):
 	$56 = 100 :ui32
 	$57 = load($53) :ui32
 	$58 = $57 > $56 :bool
-	if $58 ? Block_5($5, $10) : Block_6($5, $10, $4) :void
+	if $58 ? Block_6($5, $10) : Block_7($5, $10, $4) :void
 
-Block_5($5:ptr, $10:ui32):
+Block_6($5:ptr, $10:ui32):
 	$60 = 2 :ui32
 	$61 = $10 cast_to i32 :i32
 	$65 = 4 :ui64
@@ -52,9 +52,9 @@ Block_5($5:ptr, $10:ui32):
 	$67 = $66 * $65 :ui64
 	$68 = $5 + $67 :ptr
 	store($60, $68) :void
-	br Block_9() :void
+	br Block_5() :void
 
-Block_6($5:ptr, $10:ui32, $4:ptr):
+Block_7($5:ptr, $10:ui32, $4:ptr):
 	$76 = $10 cast_to i32 :i32
 	$80 = 4 :ui64
 	$81 = $76 cast_to ui64 :ui64
@@ -63,9 +63,9 @@ Block_6($5:ptr, $10:ui32, $4:ptr):
 	$86 = 0 :ui32
 	$87 = load($83) :ui32
 	$88 = $87 > $86 :bool
-	if $88 ? Block_7($5, $10) : Block_8($5, $10) :void
+	if $88 ? Block_8($5, $10) : Block_9($5, $10) :void
 
-Block_7($5:ptr, $10:ui32):
+Block_8($5:ptr, $10:ui32):
 	$90 = 1 :ui32
 	$91 = $10 cast_to i32 :i32
 	$95 = 4 :ui64
@@ -73,9 +73,9 @@ Block_7($5:ptr, $10:ui32):
 	$97 = $96 * $95 :ui64
 	$98 = $5 + $97 :ptr
 	store($90, $98) :void
-	br Block_9() :void
+	br Block_5() :void
 
-Block_8($5:ptr, $10:ui32):
+Block_9($5:ptr, $10:ui32):
 	$106 = 0 :ui32
 	$107 = $10 cast_to i32 :i32
 	$111 = 4 :ui64
@@ -83,10 +83,10 @@ Block_8($5:ptr, $10:ui32):
 	$113 = $112 * $111 :ui64
 	$114 = $5 + $113 :ptr
 	store($106, $114) :void
-	br Block_9() :void
+	br Block_5() :void
 
 Block_2():
-	br Block_9() :void
+	br Block_5() :void
 }
 execute($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):

@@ -25,7 +25,7 @@ B1($5:ptr,$10:ui32,$4:ptr)
 	CONST	$14	0	:ui32
 	JMP	$0	B5($5,$10,$13,$14,$4)	:void
 B2()
-	JMP	$0	B6()	:void
+	RETURN	$0	:void
 B3($5:ptr,$10:ui32,$14:ui32,$13:ui32,$4:ptr)
 	CAST	$17	$14	:i32
 	CONST	$21	4	:ui64
@@ -44,10 +44,8 @@ B4($5:ptr,$10:ui32,$13:ui32)
 	MUL	$44	$43	$42	:ui64
 	ADD	$45	$5	$44	:ptr
 	STORE	$49	$45	$13	:void
-	JMP	$0	B6()	:void
+	JMP	$0	B2()	:void
 B5($5:ptr,$10:ui32,$13:ui32,$14:ui32,$4:ptr) ControlFlowMerge
 	LTE	$15	$14	$10	:bool
 	CMP	$16	$15	B3($5,$10,$14,$13,$4)	B4($5,$10,$13)	:void
-B6()
-	RETURN	$0	:void
 

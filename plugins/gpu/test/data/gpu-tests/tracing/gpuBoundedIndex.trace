@@ -11,5 +11,6 @@ B1()
 	RETURN	$0	$6	:ui32
 B2()
 	CONST	$10	0	:ui32
-	RETURN	$0	$10	:ui32
+	ASSIGN	$6	$10	:ui32
+	JMP	$0	B1()	:void
 
