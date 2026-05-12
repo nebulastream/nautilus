@@ -3,6 +3,7 @@
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
 #include <atomic>
+#include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <fmt/format.h>
@@ -39,8 +40,9 @@ struct FMeasureStats {
 		const double nmPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMiss) / static_cast<double>(total));
 		const double aPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMissA) / static_cast<double>(total));
 		std::fprintf(stderr,
-		             "[F-measure] checkTag total=%lu globalHits=%lu localHits=%lu "
-		             "nearMiss=%lu (alive=%lu static=%lu) trueMisses=%lu nearMissPct=%.2f%% aliveVarPct=%.2f%%\n",
+		             "[F-measure] checkTag total=%" PRIu64 " globalHits=%" PRIu64 " localHits=%" PRIu64
+		             " nearMiss=%" PRIu64 " (alive=%" PRIu64 " static=%" PRIu64 ") trueMisses=%" PRIu64
+		             " nearMissPct=%.2f%% aliveVarPct=%.2f%%\n",
 		             total, globalHits.load(), localHits.load(), nearMiss, nearMissA, nearMissS, trueMisses.load(),
 		             nmPct, aPct);
 	}
