@@ -25,7 +25,7 @@ B1()
 	GT	$25	$24	$23	:bool
 	CMP	$26	$25	B3()	B4()	:void
 B2()
-	RETURN	$0	:void
+	JMP	$0	B5()	:void
 B3()
 	CONST	$27	3	:ui32
 	CAST	$28	$10	:i32
@@ -40,7 +40,7 @@ B3()
 	ASSIGN	$37	$36	:ptr
 	ASSIGN	$38	$27	:ui32
 	STORE	$39	$37	$38	:void
-	RETURN	$0	:void
+	JMP	$0	B5()	:void
 B4()
 	CAST	$46	$10	:i32
 	ASSIGN	$47	$4	:ptr
@@ -55,8 +55,10 @@ B4()
 	CONST	$56	100	:ui32
 	LOAD	$57	$55	:ui32
 	GT	$58	$57	$56	:bool
-	CMP	$59	$58	B5()	B6()	:void
+	CMP	$59	$58	B6()	B7()	:void
 B5()
+	RETURN	$0	:void
+B6()
 	CONST	$60	2	:ui32
 	CAST	$61	$10	:i32
 	ASSIGN	$62	$5	:ptr
@@ -70,8 +72,8 @@ B5()
 	ASSIGN	$70	$69	:ptr
 	ASSIGN	$71	$60	:ui32
 	STORE	$72	$70	$71	:void
-	RETURN	$0	:void
-B6()
+	JMP	$0	B5()	:void
+B7()
 	CAST	$76	$10	:i32
 	ASSIGN	$77	$4	:ptr
 	ASSIGN	$78	$76	:i32
@@ -85,8 +87,8 @@ B6()
 	CONST	$86	0	:ui32
 	LOAD	$87	$85	:ui32
 	GT	$88	$87	$86	:bool
-	CMP	$89	$88	B7()	B8()	:void
-B7()
+	CMP	$89	$88	B8()	B9()	:void
+B8()
 	CONST	$90	1	:ui32
 	CAST	$91	$10	:i32
 	ASSIGN	$92	$5	:ptr
@@ -100,8 +102,8 @@ B7()
 	ASSIGN	$100	$99	:ptr
 	ASSIGN	$101	$90	:ui32
 	STORE	$102	$100	$101	:void
-	RETURN	$0	:void
-B8()
+	JMP	$0	B5()	:void
+B9()
 	CONST	$106	0	:ui32
 	CAST	$107	$10	:i32
 	ASSIGN	$108	$5	:ptr
@@ -115,7 +117,7 @@ B8()
 	ASSIGN	$116	$115	:ptr
 	ASSIGN	$117	$106	:ui32
 	STORE	$118	$116	$117	:void
-	RETURN	$0	:void
+	JMP	$0	B5()	:void
 
 EXECUTE:
 B0($1:ptr,$2:ptr,$3:ui32)

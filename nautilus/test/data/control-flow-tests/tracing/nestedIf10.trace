@@ -12,7 +12,8 @@ B1()
 	GT	$9	$1	$8	:bool
 	CMP	$10	$9	B3()	B4()	:void
 B2()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B3()
 	CONST	$11	1	:i32
 	ADD	$12	$2	$11	:i32
@@ -21,7 +22,8 @@ B3()
 	GT	$14	$1	$13	:bool
 	CMP	$15	$14	B5()	B6()	:void
 B4()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B5()
 	CONST	$16	1	:i32
 	ADD	$17	$2	$16	:i32
@@ -30,7 +32,8 @@ B5()
 	GT	$19	$1	$18	:bool
 	CMP	$20	$19	B7()	B8()	:void
 B6()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B7()
 	CONST	$21	1	:i32
 	ADD	$22	$2	$21	:i32
@@ -39,7 +42,8 @@ B7()
 	GT	$24	$1	$23	:bool
 	CMP	$25	$24	B9()	B10()	:void
 B8()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B9()
 	CONST	$26	1	:i32
 	ADD	$27	$2	$26	:i32
@@ -48,7 +52,8 @@ B9()
 	GT	$29	$1	$28	:bool
 	CMP	$30	$29	B11()	B12()	:void
 B10()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B11()
 	CONST	$31	1	:i32
 	ADD	$32	$2	$31	:i32
@@ -57,7 +62,8 @@ B11()
 	GT	$34	$1	$33	:bool
 	CMP	$35	$34	B13()	B14()	:void
 B12()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B13()
 	CONST	$36	1	:i32
 	ADD	$37	$2	$36	:i32
@@ -66,7 +72,8 @@ B13()
 	GT	$39	$1	$38	:bool
 	CMP	$40	$39	B15()	B16()	:void
 B14()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B15()
 	CONST	$41	1	:i32
 	ADD	$42	$2	$41	:i32
@@ -75,7 +82,8 @@ B15()
 	GT	$44	$1	$43	:bool
 	CMP	$45	$44	B17()	B18()	:void
 B16()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B17()
 	CONST	$46	1	:i32
 	ADD	$47	$2	$46	:i32
@@ -84,12 +92,16 @@ B17()
 	GT	$49	$1	$48	:bool
 	CMP	$50	$49	B19()	B20()	:void
 B18()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
 B19()
 	CONST	$51	1	:i32
 	ADD	$52	$2	$51	:i32
 	ASSIGN	$2	$52	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B21()	:void
 B20()
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B21()	:void
+B21()
 	RETURN	$0	$2	:i32
 

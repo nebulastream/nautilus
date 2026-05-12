@@ -13,7 +13,7 @@ B1()
 	ASSIGN	$11	$10	:i32
 	ASSIGN	$12	$11	:i32
 	STORE	$13	$9	$12	:void
-	RETURN	$0	:void
+	JMP	$0	B3()	:void
 B2()
 	ASSIGN	$15	$1	:ptr
 	ASSIGN	$16	$15	:ptr
@@ -21,5 +21,7 @@ B2()
 	ASSIGN	$18	$17	:i32
 	ASSIGN	$19	$18	:i32
 	STORE	$20	$16	$19	:void
+	JMP	$0	B3()	:void
+B3()
 	RETURN	$0	:void
 

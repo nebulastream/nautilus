@@ -12,12 +12,12 @@ Block_1($1:i32):
 
 Block_3($1:i32):
 	$8 = true :bool
-	br Block_14($1, $8) :void
-
-Block_14($1:i32, $8:bool):
 	br Block_13($1, $8) :void
 
 Block_13($1:i32, $2:bool):
+	br Block_14($1, $2) :void
+
+Block_14($1:i32, $2:bool):
 	if $2 ? Block_5($1) : Block_6($1) :void
 
 Block_5($1:i32):
@@ -28,12 +28,12 @@ Block_5($1:i32):
 
 Block_7($1:i32):
 	$14 = true :bool
-	br Block_16($1, $14) :void
-
-Block_16($1:i32, $14:bool):
 	br Block_15($1, $14) :void
 
 Block_15($1:i32, $2:bool):
+	br Block_16($1, $2) :void
+
+Block_16($1:i32, $2:bool):
 	if $2 ? Block_9($1) : Block_10() :void
 
 Block_9($1:i32):
@@ -46,10 +46,7 @@ Block_11():
 	$20 = true :bool
 	br Block_17($20) :void
 
-Block_17($20:bool):
-	br Block_18($20) :void
-
-Block_18($2:bool):
+Block_17($2:bool):
 	return ($2) :bool
 
 Block_12():
@@ -58,7 +55,7 @@ Block_12():
 
 Block_10():
 	$30 = false :bool
-	br Block_18($30) :void
+	br Block_17($30) :void
 
 Block_8($1:i32):
 	$28 = false :bool

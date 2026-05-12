@@ -47,12 +47,12 @@ Block_3($1:i32, $8:i32, $7:i64):
 	br Block_5($58, $60, $1) :void
 
 Block_4($7:i64):
-	br Block_6($7) :void
+	br Block_2($7) :void
 
-Block_6($2:i64):
+Block_2($2:i64):
 	return ($2) :i64
 
 Block_2($2:i64):
-	br Block_6($2) :void
+	return ($2) :i64
 }
 } //nautilus

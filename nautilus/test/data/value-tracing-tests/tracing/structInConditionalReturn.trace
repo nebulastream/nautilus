@@ -49,7 +49,10 @@ B1()
 	LOAD	$47	$38	:i32
 	LOAD	$48	$46	:i32
 	ADD	$49	$47	$48	:i32
-	RETURN	$0	$49	:i32
+	JMP	$0	B3()	:void
 B2()
-	RETURN	$0	$1	:i32
+	ASSIGN	$49	$1	:i32
+	JMP	$0	B3()	:void
+B3()
+	RETURN	$0	$49	:i32
 

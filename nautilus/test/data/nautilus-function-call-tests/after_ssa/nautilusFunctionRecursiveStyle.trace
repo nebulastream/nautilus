@@ -14,11 +14,9 @@ B0($1:i32,$2:i32)
 	LTE	$4	$2	$3	:bool
 	CMP	$5	$4	B1($1)	B2($1)	:void
 B1($1:i32)
-	JMP	$0	B3($1)	:void
+	RETURN	$0	$1	:i32
 B2($1:i32)
 	CONST	$8	1	:i32
 	ADD	$9	$1	$8	:i32
-	JMP	$0	B3($9)	:void
-B3($1:i32)
-	RETURN	$0	$1	:i32
+	JMP	$0	B1($9)	:void
 

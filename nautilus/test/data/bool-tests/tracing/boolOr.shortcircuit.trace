@@ -3,15 +3,19 @@ B0($1:bool,$2:bool)
 	CMP	$3	$1	B1()	B2()	:void
 B1()
 	CONST	$4	true	:bool
-	RETURN	$0	$4	:bool
+	JMP	$0	B5()	:void
 B2()
 	CMP	$7	$2	B3()	B4()	:void
 B3()
 	CONST	$8	true	:bool
 	ASSIGN	$4	$8	:bool
-	RETURN	$0	$4	:bool
+	ASSIGN	$4	$4	:bool
+	JMP	$0	B5()	:void
 B4()
 	CONST	$11	false	:bool
 	ASSIGN	$4	$11	:bool
+	ASSIGN	$4	$4	:bool
+	JMP	$0	B5()	:void
+B5()
 	RETURN	$0	$4	:bool
 

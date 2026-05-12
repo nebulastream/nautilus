@@ -50,12 +50,12 @@ Block_4($5:ptr, $10:ui32, $13:ui32):
 	$44 = $43 * $42 :ui64
 	$45 = $5 + $44 :ptr
 	store($13, $45) :void
-	br Block_6() :void
+	br Block_2() :void
 
-Block_6():
+Block_2():
 	return :void
 
 Block_2():
-	br Block_6() :void
+	return :void
 }
 } //nautilus

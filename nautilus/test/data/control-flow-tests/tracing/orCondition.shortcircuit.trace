@@ -16,9 +16,12 @@ B3()
 	ASSIGN	$6	$12	:i32
 	JMP	$0	B5()	:void
 B4()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B6()	:void
 B5() ControlFlowMerge
 	ADD	$7	$2	$6	:i32
 	ASSIGN	$2	$7	:i32
+	JMP	$0	B6()	:void
+B6()
 	RETURN	$0	$2	:i32
 

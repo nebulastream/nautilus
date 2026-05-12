@@ -10,10 +10,7 @@ Block_1():
 	$6 = 1 :i32
 	br Block_5($6) :void
 
-Block_5($6:i32):
-	br Block_6($6) :void
-
-Block_6($2:i32):
+Block_5($2:i32):
 	return ($2) :i32
 
 Block_2($1:i32, $2:i32):
@@ -26,6 +23,6 @@ Block_3():
 	br Block_5($11) :void
 
 Block_4($2:i32):
-	br Block_6($2) :void
+	br Block_5($2) :void
 }
 } //nautilus

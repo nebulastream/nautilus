@@ -47,6 +47,13 @@ public:
 	~TypedValueRefHolder();
 	operator const TypedValueRef&() const;
 	TypedValueRef valueRef;
+	// Position-invariant identity of the val<T> that owns this holder, used as
+	// the key for AliveVariableHash so that two iterations producing val<T>s
+	// at the same source position hash identically (review item F).  Derived
+	// from the trace context's most-recently-recorded Tag* (or an argument
+	// sentinel) at construction time.  Outside an active trace this is 0 and
+	// inert because allocate/freeValRef short-circuit on a null tracer.
+	uint64_t positionId;
 };
 
 } // namespace nautilus::tracing

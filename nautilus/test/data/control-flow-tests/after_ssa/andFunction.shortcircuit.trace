@@ -12,7 +12,7 @@ B2($1:i32)
 	JMP	$0	B13($1,$22)	:void
 B3($1:i32)
 	CONST	$8	true	:bool
-	JMP	$0	B14($1,$8)	:void
+	JMP	$0	B13($1,$8)	:void
 B4($1:i32)
 	CONST	$24	false	:bool
 	JMP	$0	B14($1,$24)	:void
@@ -26,7 +26,7 @@ B6($1:i32)
 	JMP	$0	B15($1,$26)	:void
 B7($1:i32)
 	CONST	$14	true	:bool
-	JMP	$0	B16($1,$14)	:void
+	JMP	$0	B15($1,$14)	:void
 B8($1:i32)
 	CONST	$28	false	:bool
 	JMP	$0	B16($1,$28)	:void
@@ -37,7 +37,7 @@ B9($1:i32)
 	CMP	$19	$18	B11()	B12()	:void
 B10()
 	CONST	$30	false	:bool
-	JMP	$0	B18($30)	:void
+	JMP	$0	B17($30)	:void
 B11()
 	CONST	$20	true	:bool
 	JMP	$0	B17($20)	:void
@@ -45,15 +45,13 @@ B12()
 	CONST	$32	false	:bool
 	JMP	$0	B17($32)	:void
 B13($1:i32,$2:bool) ControlFlowMerge
+	JMP	$0	B14($1,$2)	:void
+B14($1:i32,$2:bool) ControlFlowMerge
 	CMP	$9	$2	B5($1)	B6($1)	:void
-B14($1:i32,$8:bool) ControlFlowMerge
-	JMP	$0	B13($1,$8)	:void
 B15($1:i32,$2:bool) ControlFlowMerge
+	JMP	$0	B16($1,$2)	:void
+B16($1:i32,$2:bool) ControlFlowMerge
 	CMP	$15	$2	B9($1)	B10()	:void
-B16($1:i32,$14:bool) ControlFlowMerge
-	JMP	$0	B15($1,$14)	:void
-B17($20:bool) ControlFlowMerge
-	JMP	$0	B18($20)	:void
-B18($2:bool)
+B17($2:bool)
 	RETURN	$0	$2	:bool
 

@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -160,8 +161,27 @@ public:
 	 * @param snapshot The current execution snapshot
 	 * @param type The type of the return value
 	 * @param ref The value reference being returned
+	 * @return operation_identifier of the newly appended RETURN op
 	 */
-	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+	operation_identifier addReturn(Snapshot&, Type type, const TypedValueRef& ref);
+
+	/**
+	 * @brief Routes the current block to an existing RETURN op, deduplicating
+	 * per-iteration returns that share a call-stack location (Tag*).
+	 *
+	 * On the first call for a given @p existing the RETURN op is moved into a
+	 * fresh ControlFlowMerge block, the original block ends with a JMP to that
+	 * merge block, and the current block ends with an ASSIGN (non-void only)
+	 * + JMP to the same merge block.  On subsequent calls (when @p existing
+	 * already points into the dedicated merge block) only the current block's
+	 * ASSIGN + JMP is appended.
+	 *
+	 * The returned identifier always points at the canonical RETURN op in the
+	 * merge block; callers should store it back into their tag→return map so
+	 * that follow-up dedup hits skip the split step.
+	 */
+	operation_identifier mergeReturnIntoExisting(operation_identifier existing, Type resultType,
+	                                             const TypedValueRef& ref);
 
 	/**
 	 * @brief Checks if a tag exists for the given snapshot
@@ -301,9 +321,28 @@ public:
 	/// Non-owning pointers to arena-allocated Block instances.
 	std::vector<Block*> blocks;
 	std::vector<operation_identifier> returnRefs;
+
+	// Maps a call-stack Tag* (i.e. the source location of a return) to the
+	// operation_identifier of the canonical RETURN op for that location.
+	// Every symbolic-execution iteration reaches the wrapper's
+	// traceReturnOperation at the same Tag*, so this dedup map prevents the
+	// trace from accumulating one duplicate RETURN per iteration.  Lives on
+	// the ExecutionTrace (rather than on TraceState) so processControlFlowMerge
+	// can keep it consistent when it relocates a RETURN op into a fresh merge
+	// block; otherwise a subsequent traceReturnOperation hit at the same Tag*
+	// would dereference a stale (blockIndex, opIndex) and split malformed.
+	std::unordered_map<const Tag*, operation_identifier> returnTagMap;
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+
+	// Phase-0 measurement for review item F: first-seen aliveVars.hash() value
+	// for every Tag* we've encountered in this trace.  On a near-miss (Tag*
+	// repeats but full Snapshot differs) we compare the current aliveHash
+	// against the recorded one to decide whether F (position-invariant
+	// aliveVars identity) is the appropriate fix or whether the variance is
+	// elsewhere (e.g. in static-var content, which F does not address).
+	std::unordered_map<const Tag*, uint64_t> tagSeenAliveHash;
 
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the

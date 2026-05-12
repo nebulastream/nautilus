@@ -2,12 +2,60 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
+#include <atomic>
+#include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
 
 namespace nautilus::tracing {
+
+// Phase-0 measurement gate for review item F.  Counts every checkTag outcome
+// across the lifetime of the process so the decision to invest in a
+// position-invariant val<T> identity refactor can be made from data rather
+// than speculation.  The dump is gated on NAUTILUS_F_MEASURE=1 so normal
+// builds and CI runs are silent.
+namespace {
+
+struct FMeasureStats {
+	std::atomic<uint64_t> totalCheckTag {0};
+	std::atomic<uint64_t> globalHits {0};
+	std::atomic<uint64_t> localHits {0};
+	std::atomic<uint64_t> nearMissAliveVariance {0};  // F-fixable: same staticHash, different aliveHash
+	std::atomic<uint64_t> nearMissStaticVariance {0}; // not F-fixable: aliveHash matches, hashes still differ
+	std::atomic<uint64_t> trueMisses {0};
+
+	~FMeasureStats() {
+		const char* env = std::getenv("NAUTILUS_F_MEASURE");
+		if (env == nullptr || env[0] == '\0' || env[0] == '0') {
+			return;
+		}
+		const uint64_t total = totalCheckTag.load();
+		const uint64_t nearMissA = nearMissAliveVariance.load();
+		const uint64_t nearMissS = nearMissStaticVariance.load();
+		const uint64_t nearMiss = nearMissA + nearMissS;
+		const double nmPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMiss) / static_cast<double>(total));
+		const double aPct = total == 0 ? 0.0 : (100.0 * static_cast<double>(nearMissA) / static_cast<double>(total));
+		std::fprintf(stderr,
+		             "[F-measure] checkTag total=%" PRIu64 " globalHits=%" PRIu64 " localHits=%" PRIu64
+		             " nearMiss=%" PRIu64 " (alive=%" PRIu64 " static=%" PRIu64 ") trueMisses=%" PRIu64
+		             " nearMissPct=%.2f%% aliveVarPct=%.2f%%\n",
+		             total, globalHits.load(), localHits.load(), nearMiss, nearMissA, nearMissS, trueMisses.load(),
+		             nmPct, aPct);
+	}
+};
+
+FMeasureStats g_fMeasureStats;
+
+} // namespace
+
+// Published by trace contexts inside recordSnapshot() so checkTag can decide
+// whether a near-miss is due to alive-var variance (F-fixable) or static-var
+// variance.  thread_local to stay safe under parallel tracing.
+thread_local uint64_t g_lastRecordedAliveHash = 0;
 
 ExecutionTrace& TraceModule::addNewFunction(std::string_view functionName, Arena& arena) {
 	auto key = std::string(functionName);
@@ -132,10 +180,12 @@ Arena& ExecutionTrace::getArena() {
 }
 
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
+	g_fMeasureStats.totalCheckTag.fetch_add(1, std::memory_order_relaxed);
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
+		g_fMeasureStats.globalHits.fetch_add(1, std::memory_order_relaxed);
 		auto& ref = globalTabIter->second;
 		processControlFlowMerge(ref);
 		return false;
@@ -144,14 +194,29 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if we visited the same operation in this execution -> loop
 	auto localTagIter = localTagMap.find(snapshot);
 	if (localTagIter != localTagMap.end()) {
+		g_fMeasureStats.localHits.fetch_add(1, std::memory_order_relaxed);
 		auto& ref = localTagIter->second;
 		processControlFlowMerge(ref);
 		return false;
 	}
+
+	// Miss in both real maps.  If we've ever seen this Tag* before in this
+	// trace, the full-Snapshot mismatch means a merge that the existing scheme
+	// did not unlock.  Split into "alive-var variance" (F-fixable) and "static-var
+	// variance" (F does not help) using the aliveHash published by recordSnapshot.
+	const uint64_t aliveHash = g_lastRecordedAliveHash;
+	auto [it, inserted] = tagSeenAliveHash.try_emplace(snapshot.getTag(), aliveHash);
+	if (inserted) {
+		g_fMeasureStats.trueMisses.fetch_add(1, std::memory_order_relaxed);
+	} else if (it->second != aliveHash) {
+		g_fMeasureStats.nearMissAliveVariance.fetch_add(1, std::memory_order_relaxed);
+	} else {
+		g_fMeasureStats.nearMissStaticVariance.fetch_add(1, std::memory_order_relaxed);
+	}
 	return true;
 }
 
-void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
+operation_identifier ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -168,6 +233,70 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	addTag(snapshot, operationIdentifier);
 
 	returnRefs.emplace_back(operationIdentifier);
+	return operationIdentifier;
+}
+
+operation_identifier ExecutionTrace::mergeReturnIntoExisting(operation_identifier existing, Type resultType,
+                                                             const TypedValueRef& ref) {
+	auto& existingBlock = *blocks[existing.blockIndex];
+	auto* existingReturn = existingBlock.operations[existing.operationIndex];
+	const bool isVoid = existingReturn->input.empty();
+
+	// Detect whether the previous dedup hit has already turned the existing
+	// return into a dedicated merge target.  Such a block is the sole product
+	// of this routine and uniquely contains a single RETURN op as its only
+	// operation; processControlFlowMerge always moves at least one preceding
+	// op alongside any merged op, so the shape check is unambiguous.
+	const bool alreadyMerged = existingBlock.operations.size() == 1 && existingReturn->op == Op::RETURN;
+
+	Block* mergeBlock;
+	operation_identifier canonical = existing;
+
+	if (!alreadyMerged) {
+		// First dedup hit: split the existing block so the RETURN lives alone
+		// in a fresh merge block, mirroring the post-hoc transform performed
+		// by SSACreationPhase::getReturnBlock for the multi-return case.  The
+		// merge block is intentionally left as a Default block — the
+		// Block::Type::ControlFlowMerge marker is reserved for loop headers /
+		// dataflow merges that downstream phases (LoopAnalysisPhase) treat
+		// specially, and a return merge is neither.
+		auto mergeBlockId = createBlock();
+		mergeBlock = blocks[mergeBlockId];
+		mergeBlock->operations.push_back(existingReturn);
+
+		// In the existing block, replace the RETURN with a JMP to the merge
+		// block.  For non-void returns the canonical slot is the original
+		// return value's ref; the first path already produces that value, so
+		// no explicit ASSIGN is needed in this block.
+		existingBlock.operations.erase(existingBlock.operations.begin() + existing.operationIndex);
+		existingBlock.operations.push_back(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergeBlockId)));
+		mergeBlock->predecessors.emplace_back(existing.blockIndex);
+
+		canonical = {mergeBlockId, 0};
+		for (auto& returnRef : returnRefs) {
+			if (returnRef.blockIndex == existing.blockIndex && returnRef.operationIndex == existing.operationIndex) {
+				returnRef = canonical;
+			}
+		}
+	} else {
+		mergeBlock = &existingBlock;
+	}
+
+	// Append this path's contribution: ASSIGN(canonicalSlot, ref) for non-void
+	// returns, then JMP to the merge block.  The ASSIGN lets removeAssignOperations
+	// rewire each path's locally-produced value into the canonical slot during
+	// SSA cleanup, so the resulting CFG has a single RETURN reading a phi.
+	auto& currentBlock = *blocks[currentBlockIndex];
+	if (!isVoid) {
+		auto canonicalSlot = std::get<TypedValueRef>(existingReturn->input[0]);
+		auto snap = Snapshot();
+		auto* assignOp = makeTraceOp(*arena, snap, ASSIGN, resultType, canonicalSlot, ref);
+		currentBlock.operations.push_back(assignOp);
+	}
+	currentBlock.operations.push_back(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergeBlock->blockId)));
+	mergeBlock->predecessors.emplace_back(currentBlockIndex);
+
+	return canonical;
 }
 
 TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const TypedValueRef& targetRef,
@@ -295,6 +424,17 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 			for (auto& returnRef : returnRefs) {
 				if (returnRef.blockIndex == referenceBlock.blockId && returnRef.operationIndex == opIndex) {
 					returnRef = operationReference;
+				}
+			}
+			// Also re-point the call-stack Tag* → opId dedup map, otherwise
+			// subsequent traceReturnOperation hits at the same Tag* would
+			// invoke mergeReturnIntoExisting with a (blockIndex, opIndex) that
+			// no longer points at a RETURN, and the resulting split would
+			// produce malformed control flow (extra empty block with a
+			// dangling RETURN referencing values out of scope).
+			if (auto it = returnTagMap.find(opTag.getTag()); it != returnTagMap.end()) {
+				if (it->second.blockIndex == referenceBlock.blockId && it->second.operationIndex == opIndex) {
+					it->second = operationReference;
 				}
 			}
 		} else {

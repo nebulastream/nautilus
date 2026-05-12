@@ -38,10 +38,14 @@ void LazyTraceContext::resume() {
 	paused_ = false;
 }
 
+extern thread_local uint64_t g_currentPositionId;
+
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
 	}
+	// See ExceptionBasedTraceContext::registerFunctionArgument for rationale.
+	g_currentPositionId = ARG_POSITION_SENTINEL_BASE | static_cast<uint64_t>(index);
 	return state->executionTrace.setArgument(type, index);
 }
 
@@ -53,6 +57,8 @@ TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
+	// See ExceptionBasedTraceContext::follow for rationale.
+	g_currentPositionId = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(currentOperation.tag.getTag()));
 	return currentOperation.resultRef;
 }
 
@@ -206,9 +212,14 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 	if (paused_) {
 		return;
 	}
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
-	});
+	// See ExceptionBasedTraceContext::traceAssignment for rationale on
+	// skipping the merge check for ASSIGN ops post-F.
+	if (isFollowing()) {
+		follow(ASSIGN);
+		return;
+	}
+	auto tag = recordSnapshot();
+	state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 }
 
 void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
@@ -217,10 +228,17 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	}
 	if (isFollowing()) {
 		follow(RETURN);
-	} else {
-		auto tag = recordSnapshot();
-		state->executionTrace.addReturn(tag, resultType, ref);
+		return;
 	}
+	auto tag = recordSnapshot();
+	const auto* callStackTag = tag.getTag();
+	auto it = state->executionTrace.returnTagMap.find(callStackTag);
+	if (it == state->executionTrace.returnTagMap.end()) {
+		auto opId = state->executionTrace.addReturn(tag, resultType, ref);
+		state->executionTrace.returnTagMap.emplace(callStackTag, opId);
+		return;
+	}
+	it->second = state->executionTrace.mergeReturnIntoExisting(it->second, resultType, ref);
 }
 
 TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
@@ -408,18 +426,18 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	return traceModule;
 }
 
-void LazyTraceContext::allocateValRef(ValueRef ref) {
+void LazyTraceContext::allocateValRef(uint64_t positionId) {
 	if (paused_) {
 		return;
 	}
-	aliveVars.increment(ref);
+	aliveVars.increment(positionId);
 }
 
-void LazyTraceContext::freeValRef(ValueRef ref) {
+void LazyTraceContext::freeValRef(uint64_t positionId) {
 	if (paused_) {
 		return;
 	}
-	aliveVars.decrement(ref);
+	aliveVars.decrement(positionId);
 }
 
 void LazyTraceContext::pushStaticVal(void* valPtr, size_t size) {
@@ -451,8 +469,15 @@ std::string LazyTraceContext::formatStaticVars() const {
 	return result;
 }
 
+extern thread_local uint64_t g_lastRecordedAliveHash;
+
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	auto* tag = state->tagRecorder.createTag();
+	const uint64_t aliveHash = aliveVars.hash();
+	g_lastRecordedAliveHash = aliveHash;
+	// See ExceptionBasedTraceContext::recordSnapshot for rationale.
+	g_currentPositionId = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tag));
+	return {tag, hashStaticVector(staticVars) ^ aliveHash};
 }
 
 } // namespace nautilus::tracing

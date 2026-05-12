@@ -18,7 +18,7 @@ B1($5:ptr,$10:ui32,$4:ptr)
 	GT	$25	$24	$23	:bool
 	CMP	$26	$25	B3($5,$10)	B4($5,$10,$4)	:void
 B2()
-	JMP	$0	B9()	:void
+	JMP	$0	B5()	:void
 B3($5:ptr,$10:ui32)
 	CONST	$27	3	:ui32
 	CAST	$28	$10	:i32
@@ -27,7 +27,7 @@ B3($5:ptr,$10:ui32)
 	MUL	$34	$33	$32	:ui64
 	ADD	$35	$5	$34	:ptr
 	STORE	$39	$35	$27	:void
-	JMP	$0	B9()	:void
+	JMP	$0	B5()	:void
 B4($5:ptr,$10:ui32,$4:ptr)
 	CAST	$46	$10	:i32
 	CONST	$50	4	:ui64
@@ -37,8 +37,10 @@ B4($5:ptr,$10:ui32,$4:ptr)
 	CONST	$56	100	:ui32
 	LOAD	$57	$53	:ui32
 	GT	$58	$57	$56	:bool
-	CMP	$59	$58	B5($5,$10)	B6($5,$10,$4)	:void
-B5($5:ptr,$10:ui32)
+	CMP	$59	$58	B6($5,$10)	B7($5,$10,$4)	:void
+B5()
+	RETURN	$0	:void
+B6($5:ptr,$10:ui32)
 	CONST	$60	2	:ui32
 	CAST	$61	$10	:i32
 	CONST	$65	4	:ui64
@@ -46,8 +48,8 @@ B5($5:ptr,$10:ui32)
 	MUL	$67	$66	$65	:ui64
 	ADD	$68	$5	$67	:ptr
 	STORE	$72	$68	$60	:void
-	JMP	$0	B9()	:void
-B6($5:ptr,$10:ui32,$4:ptr)
+	JMP	$0	B5()	:void
+B7($5:ptr,$10:ui32,$4:ptr)
 	CAST	$76	$10	:i32
 	CONST	$80	4	:ui64
 	CAST	$81	$76	:ui64
@@ -56,8 +58,8 @@ B6($5:ptr,$10:ui32,$4:ptr)
 	CONST	$86	0	:ui32
 	LOAD	$87	$83	:ui32
 	GT	$88	$87	$86	:bool
-	CMP	$89	$88	B7($5,$10)	B8($5,$10)	:void
-B7($5:ptr,$10:ui32)
+	CMP	$89	$88	B8($5,$10)	B9($5,$10)	:void
+B8($5:ptr,$10:ui32)
 	CONST	$90	1	:ui32
 	CAST	$91	$10	:i32
 	CONST	$95	4	:ui64
@@ -65,8 +67,8 @@ B7($5:ptr,$10:ui32)
 	MUL	$97	$96	$95	:ui64
 	ADD	$98	$5	$97	:ptr
 	STORE	$102	$98	$90	:void
-	JMP	$0	B9()	:void
-B8($5:ptr,$10:ui32)
+	JMP	$0	B5()	:void
+B9($5:ptr,$10:ui32)
 	CONST	$106	0	:ui32
 	CAST	$107	$10	:i32
 	CONST	$111	4	:ui64
@@ -74,9 +76,7 @@ B8($5:ptr,$10:ui32)
 	MUL	$113	$112	$111	:ui64
 	ADD	$114	$5	$113	:ptr
 	STORE	$118	$114	$106	:void
-	JMP	$0	B9()	:void
-B9()
-	RETURN	$0	:void
+	JMP	$0	B5()	:void
 
 EXECUTE:
 B0($1:ptr,$2:ptr,$3:ui32)
