@@ -3,7 +3,6 @@
 // reference typeinfo symbols that LLVM does not export.
 
 #include "MLIRJitEventListenerTestFixture.hpp"
-
 #include <atomic>
 #include <llvm/ExecutionEngine/JITEventListener.h>
 
