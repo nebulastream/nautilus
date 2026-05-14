@@ -485,7 +485,13 @@ Snapshot ExceptionBasedTraceContext::recordBranchSnapshot() {
 	// invariants intact.  Opting in collapses snapshots of branch points across
 	// call-site duplicates at the cost of needing downstream (block-arg insertion)
 	// work to satisfy SSA.  See plan: tag-scoped alive-vars contribution.
-	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", true)) {
+	// Off by default: the DAG-walk alignment can mis-align CONST literals across
+	// distinct logical branches (e.g. SHORT_CIRCUIT_BOOL's branch tree merges
+	// `value > 15` from two arms whose target blocks differ).  Opting in
+	// collapses the path-explosion patterns documented in
+	// PathExplosionFunctions.hpp; flip when the alignment is tightened to
+	// require structural producer equivalence.
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
 		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
 	}
 	scopeFrames.sync(tag, current_alive_hash);
