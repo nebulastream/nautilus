@@ -1,0 +1,95 @@
+EXECUTE:
+B0($1:i32)
+	CONST	$2	1	:i32
+	EQ	$3	$1	$2	:bool
+	CMP	$4	$3	B1()	B2($1)	:void
+B1()
+	CONST	$5	1	:i32
+	JMP	$0	B23($5)	:void
+B2($1:i32)
+	CONST	$7	10	:i32
+	LT	$8	$1	$7	:bool
+	CMP	$9	$8	B3($1)	B4($1)	:void
+B3($1:i32)
+	CONST	$11	1	:i32
+	EQ	$12	$1	$11	:bool
+	CMP	$13	$12	B5()	B6($1)	:void
+B4($1:i32)
+	ADD	$21	$1	$1	:i32
+	CONST	$22	1	:i32
+	ADD	$23	$21	$22	:i32
+	JMP	$0	B23($23)	:void
+B5()
+	CONST	$14	1	:i32
+	CONST	$15	42	:i32
+	EQ	$16	$14	$15	:bool
+	CMP	$17	$16	B7($14)	B8($14)	:void
+B6($10:i32)
+	CONST	$25	10	:i32
+	LT	$26	$10	$25	:bool
+	CMP	$27	$26	B9($10)	B10($10)	:void
+B7($14:i32)
+	CONST	$18	1	:i32
+	ADD	$19	$14	$18	:i32
+	JMP	$0	B23($19)	:void
+B8($14:i32)
+	JMP	$0	B23($14)	:void
+B9($10:i32)
+	CONST	$29	1	:i32
+	EQ	$30	$10	$29	:bool
+	CMP	$31	$30	B11()	B12($10)	:void
+B10($10:i32)
+	ADD	$40	$10	$10	:i32
+	CONST	$41	1	:i32
+	ADD	$42	$40	$41	:i32
+	CONST	$43	42	:i32
+	EQ	$44	$42	$43	:bool
+	CMP	$45	$44	B15($42)	B16($42)	:void
+B11()
+	CONST	$32	1	:i32
+	CONST	$33	42	:i32
+	EQ	$34	$32	$33	:bool
+	CMP	$35	$34	B13($32)	B14($32)	:void
+B12($28:i32)
+	CONST	$49	10	:i32
+	LT	$50	$28	$49	:bool
+	CMP	$51	$50	B17()	B18($28)	:void
+B13($32:i32)
+	CONST	$36	1	:i32
+	ADD	$37	$32	$36	:i32
+	JMP	$0	B23($37)	:void
+B14($32:i32)
+	JMP	$0	B23($32)	:void
+B15($42:i32)
+	CONST	$46	1	:i32
+	ADD	$47	$42	$46	:i32
+	JMP	$0	B23($47)	:void
+B16($42:i32)
+	JMP	$0	B23($42)	:void
+B17()
+	CONST	$52	42	:i32
+	CONST	$53	42	:i32
+	EQ	$54	$52	$53	:bool
+	CMP	$55	$54	B19($52)	B20($52)	:void
+B18($28:i32)
+	ADD	$61	$28	$28	:i32
+	CONST	$62	1	:i32
+	ADD	$63	$61	$62	:i32
+	CONST	$64	42	:i32
+	EQ	$65	$63	$64	:bool
+	CMP	$66	$65	B21($63)	B22($63)	:void
+B19($52:i32)
+	CONST	$56	1	:i32
+	ADD	$57	$52	$56	:i32
+	JMP	$0	B23($57)	:void
+B20($52:i32)
+	JMP	$0	B23($52)	:void
+B21($63:i32)
+	CONST	$67	1	:i32
+	ADD	$68	$63	$67	:i32
+	JMP	$0	B23($68)	:void
+B22($63:i32)
+	JMP	$0	B23($63)	:void
+B23($5:i32)
+	RETURN	$0	$5	:i32
+

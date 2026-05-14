@@ -221,6 +221,7 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
 	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
 	    {"multipleReturns3", details::createFunctionWrapper(multipleReturns3)},
+	    {"multipleReturns4", details::createFunctionWrapper(multipleReturns4)},
 
 	};
 	runTraceTests("control-flow-tests", tests);
