@@ -410,18 +410,16 @@ bool ScopedTraceContext::traceBool(const TypedValueRef& value, const double prob
 
 		// Path-predicate pruning: if the candidate predicate is already
 		// entailed by the active constraints, the false arm is dead; if it is
-		// contradicted, the true arm is dead.  In the dead-arm case we still
-		// let the symbolic executor advance its state machine for this tag
-		// (so iteration accounting stays correct), but we force the runtime
-		// branch direction to the live arm.  The dead arm's exploration is
-		// then a no-op trace that the SSA pass collapses downstream.
+		// contradicted, the true arm is dead.  recordPrunedNoThrow marks the
+		// tag as fully explored without enqueueing the dead arm, so the
+		// symbolic executor does not waste a future iteration on it.  If no
+		// verdict is available the regular recordNoThrow drives both arms via
+		// the usual worklist.
 		auto pruned = predicates_.evaluate(candidate);
-		auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
-		if (pruned.has_value()) {
-			result = *pruned;
-		} else {
-			result = recordResult.branchDirection;
-		}
+		RecordResult recordResult = pruned.has_value()
+		                                ? state->symbolicExecutionContext.recordPrunedNoThrow(tag, *pruned)
+		                                : state->symbolicExecutionContext.recordNoThrow(tag);
+		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
 	}
 

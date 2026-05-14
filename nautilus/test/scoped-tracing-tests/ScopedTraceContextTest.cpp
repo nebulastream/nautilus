@@ -144,18 +144,20 @@ TEST_CASE("ScopedTraceContext: pathExplosion_independentIfs_4 stays linear", "[s
 	REQUIRE(scoped.cmpOps == lazy.cmpOps);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_constraintBlind_dead completes and is no larger than Lazy",
+TEST_CASE("ScopedTraceContext: pathExplosion_constraintBlind_dead prunes dead arms via PathPredicateStore",
           "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_constraintBlind_dead);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
-	// scoped's safeCheckTag may pause one or more iterations in passive mode
-	// when the predicate store and the per-iteration comparison cache combine
-	// to enter the same-block fallback path; the resulting trace can be
-	// strictly smaller than Lazy's but must always contain at least one
-	// RETURN and never exceed Lazy.
-	REQUIRE(scoped.returnOps >= 1);
-	REQUIRE(scoped.returnOps <= lazy.returnOps);
+	// Lazy records 4 RETURNs because it explores both arms of every CMP,
+	// including the inner `if (x == 1)` arms that the outer `if (x == 1)`
+	// already constrains.  ScopedTraceContext consults PathPredicateStore at
+	// each CMP and asks SymbolicExecutionContext to skip the dead arm via
+	// recordPrunedNoThrow, so only the two logically-reachable paths
+	// (outer-true + inner-true-by-implication, outer-false + inner-false-by-
+	// implication) reach a RETURN.
+	REQUIRE(lazy.returnOps == 4);
+	REQUIRE(scoped.returnOps == 2);
 }
 
 TEST_CASE("ScopedTraceContext: full pipeline (trace -> SSA -> IR) is well-formed on every path-explosion fixture",
@@ -192,6 +194,45 @@ TEST_CASE("ScopedTraceContext: full pipeline (trace -> SSA -> IR) is well-formed
 		traceAndLowerWith(&tracing::ScopedTraceContext::Trace,
 		                  details::createFunctionWrapper(pathExplosion_constraintBlind_dead));
 	}
+}
+
+TEST_CASE("ScopedTraceContext: redundant dominator CMP is pruned via PathPredicateStore",
+          "[scoped-tracing][predicate-pruning]") {
+	// Minimal custom fixture: `if (x == 1) { if (x == 1) return 1; } return 0`
+	// has only two reachable arms but Lazy explores three RETURN sites because
+	// the inner `x == 1` is constraint-blind to the outer.  ScopedTraceContext
+	// should prune the inner false arm.
+	auto redundant = [](val<int32_t> x) -> val<int32_t> {
+		if (x == 1) {
+			if (x == 1) {
+				return val<int32_t>(1);
+			}
+		}
+		return val<int32_t>(0);
+	};
+	auto wrapper = details::createFunctionWrapper(redundant);
+	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
+	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	REQUIRE(scoped.returnOps < lazy.returnOps);
+}
+
+TEST_CASE("ScopedTraceContext: contradicted dominator CMP is pruned via PathPredicateStore",
+          "[scoped-tracing][predicate-pruning]") {
+	// `if (x == 5) { if (x != 5) return -1; } return 0` — the inner CMP is
+	// contradicted by the outer.  Scoped should never reach the inner true
+	// arm.
+	auto contradicted = [](val<int32_t> x) -> val<int32_t> {
+		if (x == 5) {
+			if (x != 5) {
+				return val<int32_t>(-1);
+			}
+		}
+		return val<int32_t>(0);
+	};
+	auto wrapper = details::createFunctionWrapper(contradicted);
+	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
+	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	REQUIRE(scoped.returnOps < lazy.returnOps);
 }
 
 TEST_CASE("ScopedTraceContext: matches existing tracers on a function with no branches",
