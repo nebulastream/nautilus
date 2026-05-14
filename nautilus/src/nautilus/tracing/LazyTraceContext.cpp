@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/config.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -268,14 +269,14 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	} else {
 		// record
 		auto tag = recordCmpSnapshot();
-		const auto& currentAlive = aliveVars.order();
+		auto currentAlive = aliveVars.buildOrder();
 		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
 			state->executionTrace.processControlFlowMerge(*existing, currentAlive, &value);
 			// Control flow merge/loop detected. Enter passive mode.
 			paused_ = true;
 			return false;
 		}
-		state->executionTrace.addCmpOperation(tag, value, probability, currentAlive);
+		state->executionTrace.addCmpOperation(tag, value, probability, std::move(currentAlive));
 		auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
 		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
@@ -458,7 +459,11 @@ Snapshot LazyTraceContext::recordSnapshot() {
 
 Snapshot LazyTraceContext::recordCmpSnapshot() {
 	// See ExceptionBasedTraceContext::recordCmpSnapshot for rationale.
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+#else
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars)};
+#endif
 }
 
 } // namespace nautilus::tracing

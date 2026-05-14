@@ -143,7 +143,7 @@ public:
 	 * @param probability The branch probability for this comparison
 	 */
 	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability,
-	                     const std::vector<TypedValueRef>& alive);
+	                     std::vector<TypedValueRef> alive);
 
 	/**
 	 * @brief Adds an assignment operation to the trace
