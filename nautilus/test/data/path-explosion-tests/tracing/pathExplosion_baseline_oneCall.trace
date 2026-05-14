@@ -1,0 +1,22 @@
+EXECUTE:
+B0($1:i32)
+	ASSIGN	$2	$1	:i32
+	CONST	$3	1	:i32
+	EQ	$4	$2	$3	:bool
+	CMP	$5	$4	B1()	B2()	:void
+B1()
+	CONST	$6	1	:i32
+	RETURN	$0	$6	:i32
+B2()
+	CONST	$8	10	:i32
+	LT	$9	$2	$8	:bool
+	CMP	$10	$9	B3()	B4()	:void
+B3()
+	CONST	$11	42	:i32
+	RETURN	$0	$11	:i32
+B4()
+	ADD	$13	$2	$2	:i32
+	CONST	$14	1	:i32
+	ADD	$15	$13	$14	:i32
+	RETURN	$0	$15	:i32
+

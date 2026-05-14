@@ -7,6 +7,7 @@
 #include "LoopFunctions.hpp"
 #include "NautilusFunction.hpp"
 #include "NestedIfBenchmarks.hpp"
+#include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "ReferenceDumpHelper.hpp"
 #include "RunctimeCallFunctions.hpp"
@@ -691,6 +692,23 @@ TEST_CASE("Function Ptr Trace Test") {
 	    {"fnPtrInlineConstUnary", details::createFunctionWrapper(fnPtrInlineConstUnary)},
 	};
 	runTraceTests("function-ptr-tests", tests);
+}
+
+TEST_CASE("Path Explosion Trace Test") {
+	// Stress fixtures for the symbolic-execution path-explosion behavior;
+	// see nautilus/test/common/PathExplosionFunctions.hpp for the full
+	// taxonomy and the expected path counts per fixture.
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"pathExplosion_baseline_oneCall", details::createFunctionWrapper(pathExplosion_baseline_oneCall)},
+	    {"pathExplosion_baseline_threeCallsNoBranch",
+	     details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch)},
+	    {"pathExplosion_independentIfs_4", details::createFunctionWrapper(pathExplosion_independentIfs_4)},
+	    {"pathExplosion_postCallBranch_1", details::createFunctionWrapper(pathExplosion_postCallBranch_1)},
+	    {"pathExplosion_postCallBranch_2", details::createFunctionWrapper(pathExplosion_postCallBranch_2)},
+	    {"pathExplosion_postCallBranch_3", details::createFunctionWrapper(pathExplosion_postCallBranch_3)},
+	    {"pathExplosion_constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
+	};
+	runTraceTests("path-explosion-tests", tests);
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {
