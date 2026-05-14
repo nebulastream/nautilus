@@ -6,6 +6,7 @@
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
+#include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -18,6 +19,7 @@
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/ScopedTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
@@ -47,6 +49,19 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"trace", tracing::ExceptionBasedTraceContext::trace},
     {"completing_trace", tracing::LazyTraceContext::trace},
+    {"scoped_trace", tracing::ScopedTraceContext::trace},
+};
+
+// Path-explosion fixtures benchmarked separately: these are the shapes where
+// ScopedTraceContext's predicate-store + constant-folding pruning is expected
+// to outperform Lazy / Exception (see the PR description tables).
+static auto pathExplosionTests = std::vector<std::tuple<std::string, std::function<void()>>> {
+    {"baseline_oneCall", details::createFunctionWrapper(pathExplosion_baseline_oneCall)},
+    {"baseline_threeCallsNoBranch", details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch)},
+    {"independentIfs_4", details::createFunctionWrapper(pathExplosion_independentIfs_4)},
+    {"postCallBranch_1", details::createFunctionWrapper(pathExplosion_postCallBranch_1)},
+    {"postCallBranch_3", details::createFunctionWrapper(pathExplosion_postCallBranch_3)},
+    {"constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 };
 
 TEST_CASE("Tracing Benchmark") {
@@ -66,6 +81,29 @@ TEST_CASE("Tracing Benchmark") {
 					    auto trace = fn(func, engine::Options(), *arena);
 					    // Drop the trace first; then the arena handle goes
 					    // out of scope and is recycled into the pool.
+					    trace.reset();
+					    return 0;
+				    });
+			    });
+		}
+	}
+}
+
+TEST_CASE("Path Explosion Tracing Benchmark") {
+	// Runs every path-explosion fixture against all three tracers so the
+	// scoped tracer's predicate-store + constant-folding wins (documented in
+	// PR #288: 27 -> 9 on threeCallsNoBranch, 54 -> 12 on postCallBranch_3,
+	// 4 -> 2 on constraintBlind_dead) show up as concrete wall-time numbers.
+	for (auto& [name, func] : pathExplosionTests) {
+		for (auto& [ctxName, traceFn] : traceContexts) {
+			auto benchName = ctxName + "_pathExplosion_" + name;
+			auto fn = traceFn;
+			common::ArenaPool pool;
+			Catch::Benchmark::Benchmark(std::string(benchName))
+			    .operator=([&func, fn, &pool](Catch::Benchmark::Chronometer meter) {
+				    meter.measure([&func, fn, &pool] {
+					    auto arena = pool.acquire();
+					    auto trace = fn(func, engine::Options(), *arena);
 					    trace.reset();
 					    return 0;
 				    });
