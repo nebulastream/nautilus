@@ -58,6 +58,28 @@ thread_local bool hasIntegerConstants = false;
 thread_local bool hasComparisonCache = false;
 thread_local bool hasStaticBoolValues = false;
 
+// Alias map: for `b = a` (traceCopy or arithmetic-identity), `aliases[b.ref] =
+// canonical ref`.  derivePredicate consults this to canonicalise the var
+// before consulting comparisonCache / PathPredicateStore.  Pay-as-you-go gated
+// by hasAliases.
+thread_local std::unordered_map<ValueRef, ValueRef> aliases;
+thread_local bool hasAliases = false;
+
+// Returns the canonical ValueRef for @p ref by walking the alias chain.  Path
+// compression is intentional — it shortens future lookups and keeps the chain
+// flat across multiple uses of the same val<T>.
+ValueRef canonicalRef(ValueRef ref) noexcept {
+	if (!hasAliases) {
+		return ref;
+	}
+	auto it = aliases.find(ref);
+	while (it != aliases.end() && it->second != ref) {
+		ref = it->second;
+		it = aliases.find(ref);
+	}
+	return ref;
+}
+
 // Evaluates `lhs cmpOp rhs` for integer literals.  Mirrors the signed
 // semantics that Nautilus uses for Op::EQ / NEQ / LT / LTE / GT / GTE.
 bool evaluateConstCmp(Op cmpOp, int64_t lhs, int64_t rhs) noexcept {
@@ -74,6 +96,107 @@ bool evaluateConstCmp(Op cmpOp, int64_t lhs, int64_t rhs) noexcept {
 		return lhs > rhs;
 	case GTE:
 		return lhs >= rhs;
+	default:
+		return false;
+	}
+}
+
+// Returns true if @p op is an arithmetic / bitwise binary op whose result is
+// a deterministic function of two integer literals.
+bool isFoldableArithmeticOp(Op op) noexcept {
+	switch (op) {
+	case ADD:
+	case SUB:
+	case MUL:
+	case DIV:
+	case MOD:
+	case AND:
+	case OR:
+	case BAND:
+	case BOR:
+	case BXOR:
+	case LSH:
+	case RSH:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// Returns true iff @p v fits in the value range of nautilus integer type @p t.
+// Used to decide whether a constant-folded arithmetic result is representable
+// at its declared type — if not, we skip recording it to avoid pushing a
+// predicate that would mismatch the runtime-wrapped value.
+bool fitsInIntegerType(Type t, int64_t v) noexcept {
+	switch (t) {
+	case Type::i8:
+		return v >= INT8_MIN && v <= INT8_MAX;
+	case Type::i16:
+		return v >= INT16_MIN && v <= INT16_MAX;
+	case Type::i32:
+		return v >= INT32_MIN && v <= INT32_MAX;
+	case Type::i64:
+		return true;
+	case Type::ui8:
+		return v >= 0 && v <= UINT8_MAX;
+	case Type::ui16:
+		return v >= 0 && v <= UINT16_MAX;
+	case Type::ui32:
+		return v >= 0 && v <= static_cast<int64_t>(UINT32_MAX);
+	case Type::ui64:
+		return v >= 0;
+	default:
+		return false;
+	}
+}
+
+// Evaluates `lhs op rhs` for two integer literals.  Returns true and writes
+// @p out on success; returns false on overflow, divide-by-zero, or undefined
+// shift amount, in which case the caller skips folding for this op.
+bool evaluateConstArith(Op op, int64_t lhs, int64_t rhs, int64_t& out) noexcept {
+	switch (op) {
+	case ADD:
+		return !__builtin_add_overflow(lhs, rhs, &out);
+	case SUB:
+		return !__builtin_sub_overflow(lhs, rhs, &out);
+	case MUL:
+		return !__builtin_mul_overflow(lhs, rhs, &out);
+	case DIV:
+		if (rhs == 0 || (lhs == INT64_MIN && rhs == -1)) {
+			return false;
+		}
+		out = lhs / rhs;
+		return true;
+	case MOD:
+		if (rhs == 0 || (lhs == INT64_MIN && rhs == -1)) {
+			return false;
+		}
+		out = lhs % rhs;
+		return true;
+	case BAND:
+	case AND:
+		out = lhs & rhs;
+		return true;
+	case BOR:
+	case OR:
+		out = lhs | rhs;
+		return true;
+	case BXOR:
+		out = lhs ^ rhs;
+		return true;
+	case LSH:
+		if (rhs < 0 || rhs >= 64) {
+			return false;
+		}
+		// Use unsigned shift to define behaviour on the sign bit; cast back.
+		out = static_cast<int64_t>(static_cast<uint64_t>(lhs) << rhs);
+		return true;
+	case RSH:
+		if (rhs < 0 || rhs >= 64) {
+			return false;
+		}
+		out = lhs >> rhs; // arithmetic shift for signed lhs
+		return true;
 	default:
 		return false;
 	}
@@ -131,15 +254,15 @@ void ScopedTraceContext::resume() {
 	aliveVars.reset();
 	paused_ = false;
 	// Drop any predicates from the previous iteration; a fresh path begins.
-	while (predicates_.size() > 0) {
-		predicates_.pop();
-	}
+	predicates_.clear();
 	comparisonCache.clear();
 	integerConstants.clear();
 	staticBoolValues.clear();
+	aliases.clear();
 	hasIntegerConstants = false;
 	hasComparisonCache = false;
 	hasStaticBoolValues = false;
+	hasAliases = false;
 }
 
 TypedValueRef& ScopedTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -279,6 +402,13 @@ TypedValueRef& ScopedTraceContext::traceCopy(const TypedValueRef& ref) {
 				staticBoolValues[result.ref] = it->second;
 			}
 		}
+		// Record the alias so derivePredicate can canonicalise the var when
+		// the copy is later compared against a literal.  Resolve through the
+		// existing chain to keep canonical refs flat.
+		if (ref.ref != 0 && ref.ref != result.ref) {
+			aliases[result.ref] = canonicalRef(ref.ref);
+			hasAliases = true;
+		}
 	}
 	return result;
 }
@@ -395,11 +525,66 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 
-	// Pay-as-you-go: the lookups below only fire after at least one
-	// integer-CONST has been recorded.  Workloads with no integer constants
-	// (e.g. nestedIf100 against a symbolic argument) skip the whole block
-	// after a single boolean check.
-	if (!paused_ && hasIntegerConstants && isComparisonOp(op) && result.ref != 0) {
+	if (paused_ || result.ref == 0) {
+		return result;
+	}
+
+	// Reflexive-CMP shortcut: `x cmp x` is statically known for all comparison
+	// operators regardless of any cache state, because the same ValueRef
+	// always holds the same runtime value within a trace iteration.  This
+	// fires before the integerConstants gate so it works even when neither
+	// operand is a known literal.
+	//
+	// Fast path: skip the alias-map probe when the raw refs already match or
+	// when no alias has ever been recorded.  Only canonicalise both refs when
+	// we have aliases AND the refs differ — that's the only case where the
+	// alias map could prove equivalence.
+	bool reflexive = isComparisonOp(op) &&
+	                 (left.ref == right.ref || (hasAliases && canonicalRef(left.ref) == canonicalRef(right.ref)));
+	if (reflexive) {
+		bool reflexive;
+		switch (op) {
+		case EQ:
+		case LTE:
+		case GTE:
+			reflexive = true;
+			break;
+		case NEQ:
+		case LT:
+		case GT:
+			reflexive = false;
+			break;
+		default:
+			return result;
+		}
+		staticBoolValues[result.ref] = reflexive;
+		hasStaticBoolValues = true;
+		return result;
+	}
+
+	// Arithmetic constant folding: if both operands are integer literals (or
+	// were folded from earlier arithmetic), compute the result statically and
+	// record it in integerConstants so any downstream CMP that uses it can be
+	// pruned.  We skip folding on overflow / divide-by-zero / out-of-range
+	// shift to avoid pushing a constant that would diverge from the wrapped
+	// runtime value.
+	if (hasIntegerConstants && isFoldableArithmeticOp(op)) {
+		auto leftIt = integerConstants.find(left.ref);
+		auto rightIt = integerConstants.find(right.ref);
+		if (leftIt != integerConstants.end() && rightIt != integerConstants.end()) {
+			int64_t folded = 0;
+			if (evaluateConstArith(op, leftIt->second, rightIt->second, folded) &&
+			    fitsInIntegerType(resultType, folded)) {
+				integerConstants[result.ref] = folded;
+			}
+		}
+	}
+
+	// Pay-as-you-go: the comparison/predicate lookups below only fire after
+	// at least one integer-CONST has been recorded.  Workloads with no
+	// integer constants (e.g. nestedIf100 against a symbolic argument) skip
+	// the whole block after a single boolean check.
+	if (hasIntegerConstants && isComparisonOp(op)) {
 		auto leftIt = integerConstants.find(left.ref);
 		auto rightIt = integerConstants.find(right.ref);
 		const bool leftKnown = leftIt != integerConstants.end();
@@ -568,7 +753,9 @@ PathPredicateStore::Predicate ScopedTraceContext::derivePredicate(const TypedVal
 		return PathPredicateStore::Predicate {0, EQ, 0, false};
 	}
 	const auto& info = it->second;
-	return PathPredicateStore::Predicate {info.var, info.cmpOp, info.lit, true};
+	// Canonicalise the var so predicates pushed across copies / aliases all
+	// land in the same bucket inside PathPredicateStore.
+	return PathPredicateStore::Predicate {canonicalRef(info.var), info.cmpOp, info.lit, true};
 }
 
 Op ScopedTraceContext::negateOp(Op op) noexcept {

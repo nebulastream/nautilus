@@ -5,6 +5,7 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -48,6 +49,12 @@ public:
 	/// Pop the most recently pushed predicate.
 	void pop();
 
+	/// Drop every active predicate in one shot.  Cheaper than calling pop() in
+	/// a loop because it clears the per-var index in a single sweep.  Used by
+	/// the tracer's resume() to reset state between symbolic-execution
+	/// iterations.
+	void clear() noexcept;
+
 	/// Number of active predicates.  Useful in tests.
 	std::size_t size() const noexcept;
 
@@ -62,7 +69,17 @@ public:
 	}
 
 private:
+	// LIFO of predicates pushed along the current path.  Invalid predicates
+	// are still stored here so push/pop stays balanced with the tracer's
+	// branch-enter / branch-leave callbacks; they never produce verdicts.
 	std::vector<Predicate> active_;
+
+	// Inverted index: var -> indices into `active_` (only for valid entries).
+	// Built incrementally in push() / pop() so evaluate() can walk only the
+	// predicates that mention the same var as the candidate.  Without this
+	// index, evaluate() is O(active_.size()); with it, it's O(predicates that
+	// reference candidate.var).
+	std::unordered_map<ValueRef, std::vector<std::size_t>> byVar_;
 };
 
 } // namespace nautilus::tracing

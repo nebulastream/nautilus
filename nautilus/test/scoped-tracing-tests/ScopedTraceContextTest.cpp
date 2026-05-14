@@ -114,17 +114,18 @@ TEST_CASE("ScopedTraceContext: pathExplosion_baseline_oneCall trace matches Lazy
 	REQUIRE(scoped.returnOps == 3);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_baseline_threeCallsNoBranch shrinks 27 -> 9",
+TEST_CASE("ScopedTraceContext: pathExplosion_baseline_threeCallsNoBranch shrinks 27 -> 7",
           "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
 	// Lazy inlines three times -> 3^3 = 27 RETURN paths.  ScopedTraceContext
 	// folds the CONST returns from the first two leaf calls into the second /
-	// third calls' internal CMPs, so the third call's `v == 1` and `v < 10`
-	// become static for two of the upstream paths.  Result: 9 RETURNs vs 27.
+	// third calls' internal CMPs (constants + arithmetic-folding + aliasing
+	// through the val<T> copy that captures the call result), so most of the
+	// downstream CMPs become static.  Result: 7 RETURNs vs 27.
 	REQUIRE(lazy.returnOps == 27);
-	REQUIRE(scoped.returnOps == 9);
+	REQUIRE(scoped.returnOps == 7);
 }
 
 TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_1 shrinks 6 -> 4", "[scoped-tracing][path-explosion]") {
@@ -138,15 +139,17 @@ TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_1 shrinks 6 -> 4", "
 	REQUIRE(scoped.returnOps == 4);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_3 shrinks 54 -> 12", "[scoped-tracing][path-explosion]") {
+TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_3 shrinks 54 -> 4", "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_postCallBranch_3);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
-	// Lazy: ~54 RETURNs from 3^3 x 2 arms.  Scoped: the constant-folding
-	// cascade through three chained leaf calls collapses most of the dead
-	// arms.  Final RETURN count: 12 (4.5x reduction).
+	// Lazy: ~54 RETURNs from 3^3 x 2 arms.  Scoped: constant-folding combined
+	// with arithmetic propagation (the leaf's `r + 1` after a CONST return)
+	// and alias tracking through the val<T> copy that captures each call
+	// result collapses almost every dead arm.  Final RETURN count: 4 — a
+	// 13x reduction over Lazy.
 	REQUIRE(lazy.returnOps == 54);
-	REQUIRE(scoped.returnOps == 12);
+	REQUIRE(scoped.returnOps == 4);
 }
 
 TEST_CASE("ScopedTraceContext: pathExplosion_independentIfs_4 stays linear", "[scoped-tracing][path-explosion]") {
@@ -207,6 +210,64 @@ TEST_CASE("ScopedTraceContext: full pipeline (trace -> SSA -> IR) is well-formed
 		traceAndLowerWith(&tracing::ScopedTraceContext::Trace,
 		                  details::createFunctionWrapper(pathExplosion_constraintBlind_dead));
 	}
+}
+
+TEST_CASE("ScopedTraceContext: reflexive CMP `x == x` is statically pruned", "[scoped-tracing][predicate-pruning]") {
+	auto reflexive = [](val<int32_t> x) -> val<int32_t> {
+		if (x == x) {
+			return val<int32_t>(1);
+		}
+		return val<int32_t>(0);
+	};
+	auto wrapper = details::createFunctionWrapper(reflexive);
+	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
+	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	// Lazy explores both arms (2 RETURNs).  Scoped statically resolves
+	// `x == x` to true and never enters the false arm.
+	REQUIRE(lazy.returnOps == 2);
+	REQUIRE(scoped.returnOps == 1);
+}
+
+TEST_CASE("ScopedTraceContext: arithmetic on constants flows into subsequent CMPs",
+          "[scoped-tracing][predicate-pruning]") {
+	// `val<int> a = 1; val<int> b = a + 1; if (b == 2) return 1; return 0;`
+	// Lazy: 2 RETURNs (both arms of the CMP).  Scoped: `1 + 1 = 2` folded
+	// into integerConstants, `b == 2` resolves statically to true -> 1
+	// RETURN.
+	auto arith = [](val<int32_t> /*unused*/) -> val<int32_t> {
+		val<int32_t> a = val<int32_t>(1);
+		val<int32_t> b = a + val<int32_t>(1);
+		if (b == val<int32_t>(2)) {
+			return val<int32_t>(1);
+		}
+		return val<int32_t>(0);
+	};
+	auto wrapper = details::createFunctionWrapper(arith);
+	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
+	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	REQUIRE(scoped.returnOps < lazy.returnOps);
+	REQUIRE(scoped.returnOps == 1);
+}
+
+TEST_CASE("ScopedTraceContext: alias through traceCopy lets dominator predicate fire",
+          "[scoped-tracing][predicate-pruning]") {
+	// `if (x == 1) { val<int> y = x; if (y == 1) return 1; } return 0;`
+	// The inner CMP is on `y`, which aliases `x`.  Without alias tracking
+	// the dominator predicate `x == 1` doesn't entail `y == 1`.  With it,
+	// the inner CMP's false arm is dead.
+	auto aliased = [](val<int32_t> x) -> val<int32_t> {
+		if (x == val<int32_t>(1)) {
+			val<int32_t> y = x;
+			if (y == val<int32_t>(1)) {
+				return val<int32_t>(1);
+			}
+		}
+		return val<int32_t>(0);
+	};
+	auto wrapper = details::createFunctionWrapper(aliased);
+	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
+	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	REQUIRE(scoped.returnOps < lazy.returnOps);
 }
 
 TEST_CASE("ScopedTraceContext: redundant dominator CMP is pruned via PathPredicateStore",
