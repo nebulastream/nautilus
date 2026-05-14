@@ -326,6 +326,23 @@ val<int32_t> multipleReturns3(val<int32_t> value) {
 	return value + value + 1;
 }
 
+// Same shape as multipleReturns3 but with a post-call `if` that re-branches
+// on the value returned from the nested call. This stresses how the tracer
+// merges the inlined callee's three possible return values back into the
+// outer CFG before re-splitting on `r == 42`.
+val<int32_t> multipleReturns4(val<int32_t> value) {
+	if (value == 1) {
+		return 1;
+	} else if (value < 10) {
+		val<int32_t> r = multipleReturns2(value);
+		if (r == 42) {
+			return r + 1;
+		}
+		return r;
+	}
+	return value + value + 1;
+}
+
 int32_t returnValue(int32_t value) {
 	return value;
 }
