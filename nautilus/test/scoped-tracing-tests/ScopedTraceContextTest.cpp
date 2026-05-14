@@ -97,43 +97,56 @@ OpCounts traceAndLowerWith(TraceFn traceFn, Fn func) {
 
 } // namespace
 
-// Path-explosion fixtures: with the current ScopedTraceContext Snapshot scheme
-// matching Lazy's, the *trace shape* is identical to Lazy.  The added value of
-// the scoped tracer over Lazy at this point is the PathPredicateStore it
-// maintains.  Once the per-function-sub-trace work lands (tracked in the
-// PR description), these assertions will tighten to `scoped.returnOps <
-// lazy.returnOps` on the post-call-branch and threeCallsNoBranch fixtures.
+// Path-explosion fixtures: ScopedTraceContext combines the PathPredicateStore
+// (dominator-based pruning) with a per-iteration constant tracker that
+// statically folds CMPs whose operands both reduce to known integer literals.
+// Together these prune dead arms in cases where Lazy traces every alternative
+// once.  Per-function sub-traces (the remaining lever for the *baseline*
+// threeCallsNoBranch case, where the leaf's body is still inlined) are still
+// a follow-up.
 TEST_CASE("ScopedTraceContext: pathExplosion_baseline_oneCall trace matches Lazy", "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_baseline_oneCall);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
+	// Single inlined leaf call -> 3 RETURNs (one per leaf branch); the
+	// constant tracker has nothing downstream to prune.
 	REQUIRE(scoped.returnOps == lazy.returnOps);
 	REQUIRE(scoped.returnOps == 3);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_baseline_threeCallsNoBranch trace matches Lazy",
+TEST_CASE("ScopedTraceContext: pathExplosion_baseline_threeCallsNoBranch shrinks 27 -> 9",
           "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
-	REQUIRE(scoped.returnOps == lazy.returnOps);
-	REQUIRE(scoped.cmpOps == lazy.cmpOps);
+	// Lazy inlines three times -> 3^3 = 27 RETURN paths.  ScopedTraceContext
+	// folds the CONST returns from the first two leaf calls into the second /
+	// third calls' internal CMPs, so the third call's `v == 1` and `v < 10`
+	// become static for two of the upstream paths.  Result: 9 RETURNs vs 27.
+	REQUIRE(lazy.returnOps == 27);
+	REQUIRE(scoped.returnOps == 9);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_1 trace matches Lazy", "[scoped-tracing][path-explosion]") {
+TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_1 shrinks 6 -> 4", "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_postCallBranch_1);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
-	REQUIRE(scoped.returnOps == lazy.returnOps);
-	REQUIRE(scoped.cmpOps == lazy.cmpOps);
+	// Lazy: 3 leaf returns x 2 post-call arms = 6 RETURNs.  Scoped folds
+	// `1 == 42` and `42 == 42` statically, so only the symbolic
+	// `v+v+1 == 42` path explores both arms.  Result: 4 RETURNs.
+	REQUIRE(lazy.returnOps == 6);
+	REQUIRE(scoped.returnOps == 4);
 }
 
-TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_3 trace matches Lazy", "[scoped-tracing][path-explosion]") {
+TEST_CASE("ScopedTraceContext: pathExplosion_postCallBranch_3 shrinks 54 -> 12", "[scoped-tracing][path-explosion]") {
 	auto wrapper = details::createFunctionWrapper(pathExplosion_postCallBranch_3);
 	auto scoped = traceWith(&tracing::ScopedTraceContext::Trace, wrapper);
 	auto lazy = traceWith(&tracing::LazyTraceContext::Trace, wrapper);
-	REQUIRE(scoped.returnOps == lazy.returnOps);
-	REQUIRE(scoped.totalOps == lazy.totalOps);
+	// Lazy: ~54 RETURNs from 3^3 x 2 arms.  Scoped: the constant-folding
+	// cascade through three chained leaf calls collapses most of the dead
+	// arms.  Final RETURN count: 12 (4.5x reduction).
+	REQUIRE(lazy.returnOps == 54);
+	REQUIRE(scoped.returnOps == 12);
 }
 
 TEST_CASE("ScopedTraceContext: pathExplosion_independentIfs_4 stays linear", "[scoped-tracing][path-explosion]") {

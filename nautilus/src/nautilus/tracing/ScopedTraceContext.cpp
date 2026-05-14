@@ -33,6 +33,41 @@ struct ComparisonInfo {
 };
 thread_local std::unordered_map<ValueRef, ComparisonInfo> comparisonCache;
 
+// Tracer-local cache mapping a ValueRef produced by Op::CONST to its integer
+// value.  Populated in traceConstant(), propagated through traceCopy() so the
+// taraceBinaryOp() short-circuit can detect `const == const` CMPs and produce
+// a constant-bool predicate even when the user code didn't go through a CMP
+// op (e.g. `r = 1; if (r == 42)` after an inlined return).  Cleared at the
+// top of every trace iteration via resume().
+thread_local std::unordered_map<ValueRef, int64_t> integerConstants;
+
+// Maps a ValueRef whose statically-resolvable bool value is known (because
+// it came from a comparison of two integer constants) to that bool value.
+// traceBool() consults this cache before the PathPredicateStore so we can
+// prune CMPs that don't have a variable side at all.
+thread_local std::unordered_map<ValueRef, bool> staticBoolValues;
+
+// Evaluates `lhs cmpOp rhs` for integer literals.  Mirrors the signed
+// semantics that Nautilus uses for Op::EQ / NEQ / LT / LTE / GT / GTE.
+bool evaluateConstCmp(Op cmpOp, int64_t lhs, int64_t rhs) noexcept {
+	switch (cmpOp) {
+	case EQ:
+		return lhs == rhs;
+	case NEQ:
+		return lhs != rhs;
+	case LT:
+		return lhs < rhs;
+	case LTE:
+		return lhs <= rhs;
+	case GT:
+		return lhs > rhs;
+	case GTE:
+		return lhs >= rhs;
+	default:
+		return false;
+	}
+}
+
 bool extractInt64(const ConstantLiteral& lit, int64_t& out) {
 	bool ok = true;
 	std::visit(
@@ -89,6 +124,8 @@ void ScopedTraceContext::resume() {
 		predicates_.pop();
 	}
 	comparisonCache.clear();
+	integerConstants.clear();
+	staticBoolValues.clear();
 }
 
 TypedValueRef& ScopedTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -116,19 +153,34 @@ TypedValueRef& ScopedTraceContext::traceConstant(Type type, const ConstantLitera
 	log::debug("Trace Constant (scoped)");
 	auto op = Op::CONST;
 	if (isFollowing()) {
-		return follow(op);
+		auto& f = follow(op);
+		// Track integer constants seen during FOLLOW too — they live in the
+		// trace and may feed into a subsequently-recorded CMP / traceBool.
+		int64_t litValue = 0;
+		if (f.ref != 0 && extractInt64(constValue, litValue)) {
+			integerConstants[f.ref] = litValue;
+		}
+		return f;
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
+	TypedValueRef* returned;
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
-		return originalRef->resultRef;
+		returned = &originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		returned = &state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
+	// Populate the integer-constant cache so traceBinaryOp can short-circuit
+	// `const cmp const` comparisons into a known bool.
+	int64_t litValue = 0;
+	if (returned->ref != 0 && extractInt64(constValue, litValue)) {
+		integerConstants[returned->ref] = litValue;
+	}
+	return *returned;
 }
 
 template <typename OnCreation>
@@ -192,10 +244,21 @@ TypedValueRef& ScopedTraceContext::traceCopy(const TypedValueRef& ref) {
 		return dummyRef_;
 	}
 	log::debug("Trace Copy (scoped)");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+	auto& result = traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		auto resultRef = state->executionTrace.getNextValueRef();
 		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 	});
+	// Propagate the source's known integer / bool value to the copy so later
+	// CMPs can still short-circuit even after the val<T> got copied around.
+	if (!paused_ && result.ref != 0) {
+		if (auto it = integerConstants.find(ref.ref); it != integerConstants.end()) {
+			integerConstants[result.ref] = it->second;
+		}
+		if (auto it = staticBoolValues.find(ref.ref); it != staticBoolValues.end()) {
+			staticBoolValues[result.ref] = it->second;
+		}
+	}
+	return result;
 }
 
 TypedValueRef& ScopedTraceContext::traceCall(void* fptn, Type resultType,
@@ -310,46 +373,44 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 
-	// Record comparison-op metadata for traceBool's predicate derivation.
-	// We look up the actual TraceOperation just emitted to find the embedded
-	// ConstantLiteral (if either operand is a CONST). Doing it here keeps the
-	// cache populated incrementally with no extra walk in traceBool.
 	if (!paused_ && isComparisonOp(op) && result.ref != 0) {
-		// Walk inputs of the CMP-producing op we just appended; one of them is
-		// expected to be the same TypedValueRef as left/right.  We need the
-		// CONST input's literal value and the non-CONST input's ValueRef.
-		auto leftConst = comparisonCache.find(left.ref);
-		auto rightConst = comparisonCache.find(right.ref);
-		(void) leftConst;
-		(void) rightConst;
-		// Look up the operations that produced left and right and check whether
-		// either is a CONST.  The cache only stored CMP results, so we walk
-		// recent ops in the current block to find a defining CONST.  This is
-		// O(block-size); for normal trace shapes the block is small.
-		auto& currentBlock = state->executionTrace.getCurrentBlock();
-		ConstantLiteral literal {};
-		bool haveLit = false;
-		ValueRef varRef = 0;
-		for (auto it = currentBlock.operations.rbegin(); it != currentBlock.operations.rend(); ++it) {
-			auto* candidate = *it;
-			if (candidate->op == Op::CONST &&
-			    (candidate->resultRef.ref == left.ref || candidate->resultRef.ref == right.ref)) {
-				if (!candidate->input.empty()) {
-					if (auto* c = std::get_if<ConstantLiteral>(&candidate->input[0])) {
-						literal = *c;
-						haveLit = true;
-						varRef = (candidate->resultRef.ref == left.ref) ? right.ref : left.ref;
-						break;
-					}
-				}
+		auto leftIt = integerConstants.find(left.ref);
+		auto rightIt = integerConstants.find(right.ref);
+		const bool leftKnown = leftIt != integerConstants.end();
+		const bool rightKnown = rightIt != integerConstants.end();
+
+		if (leftKnown && rightKnown) {
+			// Fully constant comparison — record the static bool result so
+			// traceBool can prune the branch without any predicate reasoning.
+			staticBoolValues[result.ref] = evaluateConstCmp(op, leftIt->second, rightIt->second);
+		} else if (leftKnown) {
+			// `lit cmp var` — flip the op so the predicate ends up `var cmp' lit`.
+			comparisonCache[result.ref] =
+			    ComparisonInfo {negateOp(negateOp(op)) /* identity */, right.ref, leftIt->second, false};
+			// Compute the equivalent `var cmp' lit`: swap operands by mirroring op.
+			Op mirrored = op;
+			switch (op) {
+			case LT:
+				mirrored = GT;
+				break;
+			case LTE:
+				mirrored = GTE;
+				break;
+			case GT:
+				mirrored = LT;
+				break;
+			case GTE:
+				mirrored = LTE;
+				break;
+			default:
+				break;
 			}
+			comparisonCache[result.ref] = ComparisonInfo {mirrored, right.ref, leftIt->second, true};
+		} else if (rightKnown) {
+			// Common case: `var cmp lit`.
+			comparisonCache[result.ref] = ComparisonInfo {op, left.ref, rightIt->second, true};
 		}
-		if (haveLit) {
-			int64_t litValue = 0;
-			if (extractInt64(literal, litValue)) {
-				comparisonCache[result.ref] = ComparisonInfo {op, varRef, litValue, true};
-			}
-		}
+		// Otherwise: variable vs variable — no predicate can be derived.
 	}
 
 	return result;
@@ -408,14 +469,18 @@ bool ScopedTraceContext::traceBool(const TypedValueRef& value, const double prob
 		}
 		state->executionTrace.addCmpOperation(tag, value, probability);
 
-		// Path-predicate pruning: if the candidate predicate is already
-		// entailed by the active constraints, the false arm is dead; if it is
-		// contradicted, the true arm is dead.  recordPrunedNoThrow marks the
-		// tag as fully explored without enqueueing the dead arm, so the
-		// symbolic executor does not waste a future iteration on it.  If no
-		// verdict is available the regular recordNoThrow drives both arms via
-		// the usual worklist.
-		auto pruned = predicates_.evaluate(candidate);
+		// Pruning order:
+		//   1. Static bool from constant-folded CMP (left & right both Op::CONST).
+		//      This handles cases like `1 == 42` after an inlined return.
+		//   2. PathPredicateStore for dominator-implied / contradicted CMPs.
+		//   3. Otherwise, hand the decision to the symbolic executor.
+		std::optional<bool> pruned;
+		if (auto sit = staticBoolValues.find(value.ref); sit != staticBoolValues.end()) {
+			pruned = sit->second;
+		} else {
+			pruned = predicates_.evaluate(candidate);
+		}
+
 		RecordResult recordResult = pruned.has_value()
 		                                ? state->symbolicExecutionContext.recordPrunedNoThrow(tag, *pruned)
 		                                : state->symbolicExecutionContext.recordNoThrow(tag);
