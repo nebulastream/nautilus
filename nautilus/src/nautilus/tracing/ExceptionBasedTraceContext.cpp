@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/config.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -97,12 +98,14 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 		return follow(op);
 	} else {
 		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return onCreation(tag);
-		} else {
+		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
+			// Non-CMP merge: skip phi-aware reconciliation (operands belong to
+			// straight-line ops, not branch conditions). Legacy behaviour.
+			state->executionTrace.processControlFlowMerge(*existing, {});
 			// TODO find a way to handle this more graceful.
 			throw TraceTerminationException();
 		}
+		return onCreation(tag);
 	}
 }
 
@@ -265,14 +268,17 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			state->executionTrace.addCmpOperation(tag, value, probability);
-			result = state->symbolicExecutionContext.record(tag);
-		} else {
-			// this is actually the same tag -> throw up
+		auto tag = recordCmpSnapshot();
+		// Build the alive-vars list BEFORE the merge runs so the merge layer
+		// can pair it with the reference-path snapshot for phi reconciliation.
+		// Built lazily here rather than maintained on every val<T> ctor/dtor.
+		auto currentAlive = aliveVars.buildOrder();
+		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
+			state->executionTrace.processControlFlowMerge(*existing, currentAlive, &value);
 			throw TraceTerminationException();
 		}
+		state->executionTrace.addCmpOperation(tag, value, probability, std::move(currentAlive));
+		result = state->symbolicExecutionContext.record(tag);
 	}
 
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
@@ -402,8 +408,8 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	return traceModule;
 }
 
-void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
-	aliveVars.increment(ref);
+void ExceptionBasedTraceContext::allocateValRef(ValueRef ref, Type type) {
+	aliveVars.increment(ref, type);
 }
 void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
@@ -472,6 +478,26 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+Snapshot ExceptionBasedTraceContext::recordCmpSnapshot() {
+	// CMP snapshots intentionally omit aliveVars.hash() so the same logical CMP
+	// collides across sibling upstream paths, letting processControlFlowMerge
+	// fold them with phi-style block-arg insertion instead of enumerating one
+	// path per upstream sibling.
+	//
+	// Under ENABLE_SHORT_CIRCUIT_BOOL, native && / || lowers to nested CMPs
+	// whose merge points produce bool phi block-args. The AsmJit backend
+	// currently mis-lowers conditional branches on bool block-args (the
+	// dual-arm processBlockInvocation in visitIf binds the wrong register at
+	// the merge), so we conservatively keep aliveVars in CMP snapshots in that
+	// build. SHORT_CIRCUIT_BOOL is opt-in; default builds still get the
+	// path-explosion optimisation.
+#ifdef ENABLE_SHORT_CIRCUIT_BOOL
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+#else
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars)};
+#endif
 }
 
 } // namespace nautilus::tracing

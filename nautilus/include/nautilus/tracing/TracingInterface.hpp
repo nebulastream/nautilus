@@ -84,8 +84,9 @@ public:
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
-	/// Increment the reference count of a value.
-	virtual void allocateValRef(ValueRef ref) = 0;
+	/// Increment the reference count of a value. The type is recorded on the 0→1
+	/// transition so the merge layer can later emit phi block-args with correct types.
+	virtual void allocateValRef(ValueRef ref, Type type) = 0;
 
 	/// Decrement the reference count of a value.
 	virtual void freeValRef(ValueRef ref) = 0;

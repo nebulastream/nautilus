@@ -142,7 +142,8 @@ public:
 	 * @param inputs The input value to compare
 	 * @param probability The branch probability for this comparison
 	 */
-	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability);
+	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability,
+	                     std::vector<TypedValueRef> alive);
 
 	/**
 	 * @brief Adds an assignment operation to the trace
@@ -163,12 +164,12 @@ public:
 	 */
 	void addReturn(Snapshot&, Type type, const TypedValueRef& ref);
 
-	/**
-	 * @brief Checks if a tag exists for the given snapshot
-	 * @param snapshot The snapshot to check
-	 * @return bool True if the tag exists, false otherwise
-	 */
-	bool checkTag(Snapshot& snapshot);
+	/// Looks up an existing operation_identifier for the given snapshot without
+	/// triggering a merge. Returns a pointer into globalTagMap/localTagMap or
+	/// nullptr if not found. Callers that want the legacy "find + merge"
+	/// behaviour should call findTag, then processControlFlowMerge with the
+	/// current path's aliveVars to enable phi-aware operand reconciliation.
+	operation_identifier* findTag(Snapshot& snapshot);
 
 	/**
 	 * @brief Resets the execution state of the trace
@@ -255,13 +256,18 @@ public:
 	 */
 	void setCurrentBlock(uint32_t index);
 
-	/**
-	 * @brief Processes a control flow merge
-	 * @param blockIndex
-	 * @param operationIndex
-	 * @return Block&
-	 */
-	Block& processControlFlowMerge(operation_identifier oi);
+	/// Processes a control-flow merge. `currentAlive` is the alive-vars list on
+	/// the current path at the merge point; it is paired with the reference
+	/// path's alive list (captured at first CMP record) so divergent operand
+	/// ValueRefs become phi-style block arguments on the merge block. If
+	/// `currentOperand` is non-null, the merged CMP's operand is always
+	/// reconciled even when it isn't in the alive-vars list (val<bool> temps
+	/// in SHORT_CIRCUIT_BOOL mode have lifetimes too short to appear in
+	/// aliveVars at the moment of traceBool — this carve-out handles them).
+	/// Pass an empty list and a null operand to disable phi reconciliation
+	/// (legacy behaviour, used by non-CMP merges).
+	Block& processControlFlowMerge(operation_identifier oi, const std::vector<TypedValueRef>& currentAlive,
+	                               const TypedValueRef* currentOperand = nullptr);
 
 	/**
 	 * @brief Returns the return reference
@@ -304,6 +310,12 @@ public:
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+
+	/// Side-map of CMP operations to the alive-vars list captured at first record.
+	/// Keyed by the arena-stable TraceOperation pointer so the entry survives
+	/// processControlFlowMerge moving the op between blocks. Populated only
+	/// for CMP ops; consumed by processControlFlowMerge's phi-aware reconciliation.
+	std::unordered_map<const TraceOperation*, std::vector<TypedValueRef>> cmpAliveAtRecord;
 
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the
