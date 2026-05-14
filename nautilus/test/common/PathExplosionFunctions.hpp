@@ -91,7 +91,10 @@
 // Fixture taxonomy
 // -----------------------------------------------------------------------------
 //
-//   pathExplosion_baseline*           — "no explosion" controls (Tier 1)
+//   pathExplosion_baseline_oneCall            — "no explosion" control (Tier 0)
+//   pathExplosion_baseline_threeCallsNoBranch — Tier 3 (no post-call branch
+//                                                still explodes inside the
+//                                                callee chain)
 //   pathExplosion_independentIfs*     — Tier (1): linear
 //   pathExplosion_postCallBranch*     — Tier (2)/(3): multiplicative
 //   pathExplosion_constraintBlind*    — Tier (4): dead-branch
@@ -128,12 +131,19 @@ val<int32_t> pathExplosion_baseline_oneCall(val<int32_t> v) {
 	return peLeafThreeReturns(v);
 }
 
-// Baseline control: chain three leaf calls without post-call branches.
-// Expected: 3 RETURNs (still — each call's three internal paths flow
-// straight into the next call's argument, so they fan in at the call
-// boundary instead of forking the trace).  Useful to demonstrate that
-// the explosion below is caused by the *branch on the result*, not by
-// the call chain itself.
+// Tier 3 demonstration: chain three leaf calls *without* any post-call
+// branch.  Naively this looks like a "no explosion" control — there is no
+// CMP on the inlined return value, and two of the three leaf returns are
+// statically-known constants.  In practice the trace forks O(M^N) anyway
+// because each chained call's *internal* CMPs see a fresh argument
+// ValueRef per upstream path, get fresh tags, and are re-explored both
+// ways even on paths where the argument is a known constant.  See the
+// Tier-3 entry in the intro (`How the tracer enumerates paths`, point 3)
+// for the full mechanism.
+//
+// Expected: 27 RETURNs in the raw trace (= 3^3), 26 CMPs, 53 blocks.
+// Reference: nautilus/test/data/path-explosion-tests/tracing/
+// pathExplosion_baseline_threeCallsNoBranch.trace.
 val<int32_t> pathExplosion_baseline_threeCallsNoBranch(val<int32_t> v) {
 	val<int32_t> a = peLeafThreeReturns(v);
 	val<int32_t> b = peLeafThreeReturns(a);
