@@ -304,6 +304,28 @@ val<int32_t> multipleReturns(val<int32_t> value) {
 	return value + value + 1;
 }
 
+// Direct-call (no NautilusFunction) counterpart of the multipleReturnsRoot
+// chain in NautilusFunction.hpp. multipleReturns3 -> multipleReturns2 ->
+// multipleReturns. Each callee is a plain `val<T>` function so the inner
+// ops fold into the caller's trace at trace time.
+val<int32_t> multipleReturns2(val<int32_t> value) {
+	if (value == 1) {
+		return 1;
+	} else if (value < 10) {
+		return multipleReturns(value);
+	}
+	return value + value + 1;
+}
+
+val<int32_t> multipleReturns3(val<int32_t> value) {
+	if (value == 1) {
+		return 1;
+	} else if (value < 10) {
+		return multipleReturns2(value);
+	}
+	return value + value + 1;
+}
+
 int32_t returnValue(int32_t value) {
 	return value;
 }
