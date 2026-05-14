@@ -708,6 +708,7 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	    {"nautilusFunctionInlineMember", details::createFunctionWrapper(nautilusFunctionInlineMember)},
 	    {"nautilusFunctionMultipleInline", details::createFunctionWrapper(nautilusFunctionMultipleInline)},
 	    {"nautilusFunctionGetFuncPtr", details::createFunctionWrapper(nautilusFunctionGetFuncPtr)},
+	    {"multipleReturnsRoot", details::createFunctionWrapper(multipleReturnsRoot)},
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }
