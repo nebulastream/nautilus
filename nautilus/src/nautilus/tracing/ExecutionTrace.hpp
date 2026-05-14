@@ -171,6 +171,24 @@ public:
 	bool checkTag(Snapshot& snapshot);
 
 	/**
+	 * @brief Branch-aware variant of `checkTag` used by `traceBool`.
+	 *
+	 * When the snapshot duplicates an existing entry, the matched operation (a
+	 * CMP) is about to be moved into a new merge block by `processControlFlowMerge`.
+	 * Its first input is a ValueRef defined locally in the reference predecessor; on
+	 * the *current* predecessor that ValueRef is undefined.  Before triggering the
+	 * merge this method inserts `ASSIGN matchedOperand currentOperand` in the current
+	 * block, so every predecessor of the merge block defines the operand and SSA can
+	 * thread a block argument through cleanly.
+	 *
+	 * @param snapshot        The CMP's snapshot.
+	 * @param currentOperand  The value the current path was about to branch on.
+	 * @return bool True if the tag was new (caller proceeds as usual); false if the
+	 *              CFM fired and the caller must skip recording the CMP.
+	 */
+	bool checkBranchTag(Snapshot& snapshot, const TypedValueRef& currentOperand);
+
+	/**
 	 * @brief Resets the execution state of the trace
 	 */
 	void resetExecution();
@@ -262,6 +280,11 @@ public:
 	 * @return Block&
 	 */
 	Block& processControlFlowMerge(operation_identifier oi);
+
+	/// Insert an ASSIGN in the current block so the matched CMP's operand becomes
+	/// defined on this predecessor edge.  Only emits the ASSIGN when the matched op
+	/// is a CMP and its first input differs from @p currentOperand by ValueRef id.
+	void alignCmpOperandInCurrentBlock(operation_identifier oi, const TypedValueRef& currentOperand);
 
 	/**
 	 * @brief Returns the return reference

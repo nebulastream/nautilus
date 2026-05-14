@@ -131,6 +131,24 @@ Arena& ExecutionTrace::getArena() {
 	return *arena;
 }
 
+bool ExecutionTrace::checkBranchTag(Snapshot& snapshot, const TypedValueRef& currentOperand) {
+	auto globalTabIter = globalTagMap.find(snapshot);
+	if (globalTabIter != globalTagMap.end()) {
+		auto& ref = globalTabIter->second;
+		alignCmpOperandInCurrentBlock(ref, currentOperand);
+		processControlFlowMerge(ref);
+		return false;
+	}
+	auto localTagIter = localTagMap.find(snapshot);
+	if (localTagIter != localTagMap.end()) {
+		auto& ref = localTagIter->second;
+		alignCmpOperandInCurrentBlock(ref, currentOperand);
+		processControlFlowMerge(ref);
+		return false;
+	}
+	return true;
+}
+
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
@@ -264,6 +282,29 @@ uint32_t ExecutionTrace::createBlock() {
 	auto* block = arena->create<Block>(blockId);
 	blocks.push_back(block);
 	return block->blockId;
+}
+
+void ExecutionTrace::alignCmpOperandInCurrentBlock(operation_identifier oi, const TypedValueRef& currentOperand) {
+	auto& referenceBlock = *blocks[oi.blockIndex];
+	if (oi.operationIndex >= referenceBlock.operations.size()) {
+		return;
+	}
+	auto* matchedOp = referenceBlock.operations[oi.operationIndex];
+	if (matchedOp->op != CMP || matchedOp->input.empty()) {
+		return;
+	}
+	auto* matchedOperand = std::get_if<TypedValueRef>(&matchedOp->input[0]);
+	if (matchedOperand == nullptr || matchedOperand->ref == currentOperand.ref) {
+		return;
+	}
+	// Emit `ASSIGN <matchedOperand> <currentOperand>` in the current block so the
+	// CMP that processControlFlowMerge is about to move into the merge block sees
+	// `matchedOperand` defined on this predecessor edge.  The ASSIGN piggybacks on
+	// the matched CMP's snapshot purely as a placeholder tag; SSA's removeAssign
+	// pass eliminates it after threading the value through block arguments.
+	auto& currentBlock = *blocks[currentBlockIndex];
+	auto* assignOp = makeTraceOp(*arena, matchedOp->tag, ASSIGN, matchedOperand->type, *matchedOperand, currentOperand);
+	currentBlock.operations.push_back(assignOp);
 }
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
