@@ -67,66 +67,65 @@ class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
 	std::unordered_map<uint32_t, uint32_t> counts;
+	// Position of each ID inside active_order (swap-and-pop on 1→0 transitions).
+	std::unordered_map<uint32_t, uint32_t> orderIndex;
+	// Ordered list of live ValueRefs (id + type). Updated on 0→1 (push_back) and
+	// 1→0 (swap-and-pop) transitions. Used by the phi-aware merge to pair up
+	// alive slots across sibling Tag*-equal paths.
+	std::vector<TypedValueRef> active_order;
 	uint64_t alive_hash = 0;
 
 public:
-	/**
-	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
-	 */
 	AliveVariableHash() = default;
 
-	/**
-	 * @brief Increments the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
-	inline void increment(uint32_t id) noexcept {
+	inline void increment(uint32_t id, Type type) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			orderIndex[id] = static_cast<uint32_t>(active_order.size());
+			active_order.emplace_back(id, type);
+		}
 		++c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 	}
 
-	/**
-	 * @brief Decrements the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
 	inline void decrement(uint32_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		--c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			auto it = orderIndex.find(id);
+			if (it != orderIndex.end()) {
+				uint32_t idx = it->second;
+				uint32_t lastIdx = static_cast<uint32_t>(active_order.size() - 1);
+				if (idx != lastIdx) {
+					active_order[idx] = active_order[lastIdx];
+					orderIndex[active_order[idx].ref] = idx;
+				}
+				active_order.pop_back();
+				orderIndex.erase(it);
+			}
+		}
 	}
 
-	/**
-	 * @brief Returns the current hash value representing the state of alive variables.
-	 *
-	 * The hash reflects both which variables have non-zero reference counts and the
-	 * magnitude of those counts. This value is maintained incrementally and can be
-	 * retrieved in O(1) time.
-	 *
-	 * @return 64-bit hash value representing current variable state
-	 */
 	inline uint64_t hash() const noexcept {
 		return alive_hash;
 	}
 
-	/**
-	 * @brief Resets all reference counts and hash to initial state.
-	 *
-	 * This efficiently clears all counts without creating a temporary object.
-	 * Optimized: if hash is already 0, we assume counts are already empty and skip the clear.
-	 */
+	/// Ordered snapshot of currently-live (ref, type) pairs. Stable across sibling
+	/// Tag*-equal paths to the extent that both paths execute the same val<T>
+	/// construction/destruction sequence (best-effort; the merge layer falls back
+	/// gracefully on size or type mismatch).
+	inline const std::vector<TypedValueRef>& order() const noexcept {
+		return active_order;
+	}
+
 	inline void reset() noexcept {
-		if (alive_hash != 0) {
+		if (alive_hash != 0 || !active_order.empty()) {
 			counts.clear();
+			orderIndex.clear();
+			active_order.clear();
 			alive_hash = 0;
 		}
 	}
@@ -233,7 +232,7 @@ public:
 
 	bool traceBool(const TypedValueRef& value, double probability) override;
 
-	void allocateValRef(ValueRef ref) override;
+	void allocateValRef(ValueRef ref, Type type) override;
 	void freeValRef(ValueRef ref) override;
 
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
@@ -296,6 +295,7 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
+	Snapshot recordCmpSnapshot();
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()

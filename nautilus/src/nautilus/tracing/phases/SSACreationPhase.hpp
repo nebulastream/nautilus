@@ -107,7 +107,9 @@ private:
 		// replacing the O(n) std::find on predBlock.arguments.
 		std::unordered_set<uint64_t> propagatedValues;
 		// Reused across propagateValue calls to avoid repeated heap allocation.
-		std::vector<uint32_t> propWorklist;
+		// Each entry is (blockId, ref-as-it-appears-in-that-block) — the ref can
+		// be rewritten as we cross phi-aware merge boundaries.
+		std::vector<std::pair<uint32_t, TypedValueRef>> propWorklist;
 	};
 };
 

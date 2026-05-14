@@ -16,27 +16,27 @@ TypedValueRefHolder::operator const TypedValueRef&() const {
 
 TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRef valueRef) : valueRef(valueRef) {
 #ifdef ENABLE_TRACING
-	tracing::allocateValRef(valueRef.ref);
+	tracing::allocateValRef(valueRef.ref, valueRef.type);
 #endif
 }
 
 TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder& other)
     : valueRef(other.valueRef) {
 #ifdef ENABLE_TRACING
-	tracing::allocateValRef(valueRef.ref);
+	tracing::allocateValRef(valueRef.ref, valueRef.type);
 #endif
 }
 
 TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder&& other)
     : valueRef(other.valueRef) {
 #ifdef ENABLE_TRACING
-	tracing::allocateValRef(valueRef.ref);
+	tracing::allocateValRef(valueRef.ref, valueRef.type);
 #endif
 }
 
 TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::TypedValueRefHolder& other) {
 #ifdef ENABLE_TRACING
-	tracing::allocateValRef(valueRef.ref);
+	tracing::allocateValRef(valueRef.ref, valueRef.type);
 #endif
 	valueRef = other.valueRef;
 	return *this;

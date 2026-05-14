@@ -97,12 +97,14 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 		return follow(op);
 	} else {
 		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return onCreation(tag);
-		} else {
+		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
+			// Non-CMP merge: skip phi-aware reconciliation (operands belong to
+			// straight-line ops, not branch conditions). Legacy behaviour.
+			state->executionTrace.processControlFlowMerge(*existing, {});
 			// TODO find a way to handle this more graceful.
 			throw TraceTerminationException();
 		}
+		return onCreation(tag);
 	}
 }
 
@@ -265,14 +267,16 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			state->executionTrace.addCmpOperation(tag, value, probability);
-			result = state->symbolicExecutionContext.record(tag);
-		} else {
-			// this is actually the same tag -> throw up
+		auto tag = recordCmpSnapshot();
+		// Capture the alive-vars list BEFORE the merge runs so the merge layer
+		// can pair it with the reference-path snapshot for phi reconciliation.
+		const auto& currentAlive = aliveVars.order();
+		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
+			state->executionTrace.processControlFlowMerge(*existing, currentAlive);
 			throw TraceTerminationException();
 		}
+		state->executionTrace.addCmpOperation(tag, value, probability, currentAlive);
+		result = state->symbolicExecutionContext.record(tag);
 	}
 
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
@@ -402,8 +406,8 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	return traceModule;
 }
 
-void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
-	aliveVars.increment(ref);
+void ExceptionBasedTraceContext::allocateValRef(ValueRef ref, Type type) {
+	aliveVars.increment(ref, type);
 }
 void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
@@ -472,6 +476,16 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+Snapshot ExceptionBasedTraceContext::recordCmpSnapshot() {
+	// CMP snapshots intentionally omit aliveVars.hash(). Tag* alone (encoding
+	// source-line + call-chain) makes the same logical CMP collide across
+	// sibling upstream paths, letting processControlFlowMerge fold them with
+	// phi-style block-arg insertion instead of enumerating one path per
+	// upstream sibling. The phi reconciliation handles the divergent operand
+	// ValueRefs (see ExecutionTrace::processControlFlowMerge).
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars)};
 }
 
 } // namespace nautilus::tracing
