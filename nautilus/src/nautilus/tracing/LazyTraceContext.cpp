@@ -270,7 +270,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		auto tag = recordCmpSnapshot();
 		const auto& currentAlive = aliveVars.order();
 		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
-			state->executionTrace.processControlFlowMerge(*existing, currentAlive);
+			state->executionTrace.processControlFlowMerge(*existing, currentAlive, &value);
 			// Control flow merge/loop detected. Enter passive mode.
 			paused_ = true;
 			return false;

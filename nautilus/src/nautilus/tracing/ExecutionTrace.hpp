@@ -259,9 +259,15 @@ public:
 	/// Processes a control-flow merge. `currentAlive` is the alive-vars list on
 	/// the current path at the merge point; it is paired with the reference
 	/// path's alive list (captured at first CMP record) so divergent operand
-	/// ValueRefs become phi-style block arguments on the merge block. Pass an
-	/// empty list to disable phi reconciliation (legacy behaviour).
-	Block& processControlFlowMerge(operation_identifier oi, const std::vector<TypedValueRef>& currentAlive);
+	/// ValueRefs become phi-style block arguments on the merge block. If
+	/// `currentOperand` is non-null, the merged CMP's operand is always
+	/// reconciled even when it isn't in the alive-vars list (val<bool> temps
+	/// in SHORT_CIRCUIT_BOOL mode have lifetimes too short to appear in
+	/// aliveVars at the moment of traceBool — this carve-out handles them).
+	/// Pass an empty list and a null operand to disable phi reconciliation
+	/// (legacy behaviour, used by non-CMP merges).
+	Block& processControlFlowMerge(operation_identifier oi, const std::vector<TypedValueRef>& currentAlive,
+	                               const TypedValueRef* currentOperand = nullptr);
 
 	/**
 	 * @brief Returns the return reference

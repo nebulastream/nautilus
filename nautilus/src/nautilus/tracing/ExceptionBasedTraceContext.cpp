@@ -272,7 +272,7 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		// can pair it with the reference-path snapshot for phi reconciliation.
 		const auto& currentAlive = aliveVars.order();
 		if (auto* existing = state->executionTrace.findTag(tag); existing != nullptr) {
-			state->executionTrace.processControlFlowMerge(*existing, currentAlive);
+			state->executionTrace.processControlFlowMerge(*existing, currentAlive, &value);
 			throw TraceTerminationException();
 		}
 		state->executionTrace.addCmpOperation(tag, value, probability, currentAlive);

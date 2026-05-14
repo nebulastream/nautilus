@@ -13,37 +13,31 @@ Block_1($1:i32, $2:i32):
 
 Block_3():
 	$9 = 1 :i32
-	br Block_15($9) :void
+	br Block_11($9) :void
 
-Block_15($2:i32):
+Block_11($2:i32):
 	return ($2) :i32
 
 Block_4($1:i32, $2:i32):
 	$19 = 15 :i32
 	$20 = $1 > $19 :bool
-	if $20 ? Block_10($1, $2) : Block_15($2) :void
+	br Block_10($20, $1, $2) :void
 
-Block_10($1:i32, $2:i32):
-	$22 = 20 :i32
-	$23 = $1 < $22 :bool
-	if $23 ? Block_12() : Block_15($2) :void
-
-Block_12():
-	$25 = 1 :i32
-	br Block_15($25) :void
-
-Block_2($1:i32, $2:i32):
-	$11 = 15 :i32
-	$12 = $1 > $11 :bool
-	if $12 ? Block_5($1, $2) : Block_15($2) :void
+Block_10($12:bool, $1:i32, $2:i32):
+	if $12 ? Block_5($1, $2) : Block_11($2) :void
 
 Block_5($1:i32, $2:i32):
 	$14 = 20 :i32
 	$15 = $1 < $14 :bool
-	if $15 ? Block_7() : Block_15($2) :void
+	if $15 ? Block_7() : Block_11($2) :void
 
 Block_7():
 	$17 = 1 :i32
-	br Block_15($17) :void
+	br Block_11($17) :void
+
+Block_2($1:i32, $2:i32):
+	$11 = 15 :i32
+	$12 = $1 > $11 :bool
+	br Block_10($12, $1, $2) :void
 }
 } //nautilus

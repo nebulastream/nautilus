@@ -264,8 +264,8 @@ uint32_t ExecutionTrace::createBlock() {
 	return block->blockId;
 }
 
-Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi,
-                                               const std::vector<TypedValueRef>& currentAlive) {
+Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi, const std::vector<TypedValueRef>& currentAlive,
+                                               const TypedValueRef* currentOperand) {
 	if (oi.blockIndex == currentBlockIndex) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
 	}
@@ -280,15 +280,22 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi,
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
 
-	// Capture the reference-path CMP op's alive list BEFORE moving the op so we
-	// can pair it with currentAlive for phi reconciliation. Only meaningful when
-	// the merge point is a CMP op (lookup returns empty otherwise).
+	// Capture the reference-path CMP op's alive list and operand BEFORE moving
+	// the op so we can pair them with currentAlive / currentOperand for phi
+	// reconciliation. Only meaningful when the merge point is a CMP op (lookup
+	// returns empty otherwise).
 	std::vector<TypedValueRef> refAlive;
+	const TypedValueRef* refOperand = nullptr;
 	if (oi.operationIndex < referenceBlock.operations.size()) {
 		auto* refOp = referenceBlock.operations[oi.operationIndex];
 		auto it = cmpAliveAtRecord.find(refOp);
 		if (it != cmpAliveAtRecord.end()) {
 			refAlive = it->second;
+		}
+		if (refOp->op == Op::CMP && !refOp->input.empty()) {
+			if (auto* p = std::get_if<TypedValueRef>(&refOp->input[0])) {
+				refOperand = p;
+			}
 		}
 	}
 
@@ -335,6 +342,13 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi,
 	// were supplied and have matching length. On any size or type mismatch we
 	// fall back to the legacy behaviour (no phi args, SSA propagateValue may
 	// then succeed or throw — never strictly worse than before).
+	auto addPhi = [&](const TypedValueRef& r, const TypedValueRef& c) {
+		mergeBlock.arguments.push_back(r);
+		++mergeBlock.phiArgCount;
+		refJmpBlockRef->arguments.push_back(r);
+		curJmpBlockRef->arguments.push_back(c);
+	};
+	bool operandHandled = false;
 	if (!refAlive.empty() && refAlive.size() == currentAlive.size()) {
 		for (size_t i = 0; i < refAlive.size(); ++i) {
 			const TypedValueRef& r = refAlive[i];
@@ -350,11 +364,21 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi,
 			// Reuse the reference path's ValueRef ID as the phi block-arg name so
 			// existing references inside the merge block and downstream resolve
 			// via the block-arg lookup in SSACreationPhase::isLocalValueRef.
-			mergeBlock.arguments.push_back(r);
-			++mergeBlock.phiArgCount;
-			refJmpBlockRef->arguments.push_back(r);
-			curJmpBlockRef->arguments.push_back(c);
+			addPhi(r, c);
+			if (refOperand && r.ref == refOperand->ref) {
+				operandHandled = true;
+			}
 		}
+	}
+	// Explicit operand carve-out: the val<bool> wrapping a comparison result
+	// can have a lifetime too short to appear in aliveVars.order() at the
+	// moment of traceBool (notably under ENABLE_SHORT_CIRCUIT_BOOL where the
+	// val<bool> is a full-expression temporary in a native && / ||). Without
+	// this, the CMP's operand would diverge across paths with no phi,
+	// breaking SSA. Always reconcile the operand even when aliveVars missed it.
+	if (!operandHandled && refOperand && currentOperand && refOperand->ref != currentOperand->ref &&
+	    refOperand->type == currentOperand->type) {
+		addPhi(*refOperand, *currentOperand);
 	}
 
 	setCurrentBlock(mergedBlockId);
