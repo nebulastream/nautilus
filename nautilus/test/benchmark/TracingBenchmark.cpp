@@ -55,13 +55,19 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
 // Path-explosion fixtures benchmarked separately: these are the shapes where
 // ScopedTraceContext's predicate-store + constant-folding pruning is expected
 // to outperform Lazy / Exception (see the PR description tables).
+//
+// Benchmark names MUST stay short.  Catch2 wraps long benchmark names onto a
+// continuation line which breaks github-action-benchmark's regex parser
+// ("No benchmark found for bench suite" failure).  The longest combined name
+// (`completing_trace_<key>`) must fit on one row, so each key here is <=11
+// chars.  Cross-reference: `pe3` => baseline_threeCallsNoBranch, etc.
 static auto pathExplosionTests = std::vector<std::tuple<std::string, std::function<void()>>> {
-    {"baseline_oneCall", details::createFunctionWrapper(pathExplosion_baseline_oneCall)},
-    {"baseline_threeCallsNoBranch", details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch)},
-    {"independentIfs_4", details::createFunctionWrapper(pathExplosion_independentIfs_4)},
-    {"postCallBranch_1", details::createFunctionWrapper(pathExplosion_postCallBranch_1)},
-    {"postCallBranch_3", details::createFunctionWrapper(pathExplosion_postCallBranch_3)},
-    {"constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
+    {"peOne", details::createFunctionWrapper(pathExplosion_baseline_oneCall)},
+    {"pe3Calls", details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch)},
+    {"peIndIfs", details::createFunctionWrapper(pathExplosion_independentIfs_4)},
+    {"pePost1", details::createFunctionWrapper(pathExplosion_postCallBranch_1)},
+    {"pePost3", details::createFunctionWrapper(pathExplosion_postCallBranch_3)},
+    {"peBlind", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 };
 
 TEST_CASE("Tracing Benchmark") {
@@ -96,7 +102,10 @@ TEST_CASE("Path Explosion Tracing Benchmark") {
 	// 4 -> 2 on constraintBlind_dead) show up as concrete wall-time numbers.
 	for (auto& [name, func] : pathExplosionTests) {
 		for (auto& [ctxName, traceFn] : traceContexts) {
-			auto benchName = ctxName + "_pathExplosion_" + name;
+			// Short combined name (`scoped_trace_pe_3calls`) so the line stays
+			// on one row in Catch2's output — long names wrap and break the
+			// github-action-benchmark regex.
+			auto benchName = ctxName + "_" + name;
 			auto fn = traceFn;
 			common::ArenaPool pool;
 			Catch::Benchmark::Benchmark(std::string(benchName))

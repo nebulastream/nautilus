@@ -47,6 +47,17 @@ thread_local std::unordered_map<ValueRef, int64_t> integerConstants;
 // prune CMPs that don't have a variable side at all.
 thread_local std::unordered_map<ValueRef, bool> staticBoolValues;
 
+// Pay-as-you-go gates.  Each cache lookup in the hot path (traceBinaryOp,
+// traceBool, traceCopy, traceUnaryOp) is guarded by a boolean flag that flips
+// the first time the corresponding cache receives a useful entry.  For
+// workloads with many CMPs against purely symbolic operands (e.g.
+// `nestedIf100`, `chainedIf100`), the maps stay empty and the flags stay
+// false — every op pays one branch on a bool instead of an unordered_map
+// lookup.  Reset in resume() alongside the caches.
+thread_local bool hasIntegerConstants = false;
+thread_local bool hasComparisonCache = false;
+thread_local bool hasStaticBoolValues = false;
+
 // Evaluates `lhs cmpOp rhs` for integer literals.  Mirrors the signed
 // semantics that Nautilus uses for Op::EQ / NEQ / LT / LTE / GT / GTE.
 bool evaluateConstCmp(Op cmpOp, int64_t lhs, int64_t rhs) noexcept {
@@ -126,6 +137,9 @@ void ScopedTraceContext::resume() {
 	comparisonCache.clear();
 	integerConstants.clear();
 	staticBoolValues.clear();
+	hasIntegerConstants = false;
+	hasComparisonCache = false;
+	hasStaticBoolValues = false;
 }
 
 TypedValueRef& ScopedTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -159,6 +173,7 @@ TypedValueRef& ScopedTraceContext::traceConstant(Type type, const ConstantLitera
 		int64_t litValue = 0;
 		if (f.ref != 0 && extractInt64(constValue, litValue)) {
 			integerConstants[f.ref] = litValue;
+			hasIntegerConstants = true;
 		}
 		return f;
 	}
@@ -179,6 +194,7 @@ TypedValueRef& ScopedTraceContext::traceConstant(Type type, const ConstantLitera
 	int64_t litValue = 0;
 	if (returned->ref != 0 && extractInt64(constValue, litValue)) {
 		integerConstants[returned->ref] = litValue;
+		hasIntegerConstants = true;
 	}
 	return *returned;
 }
@@ -250,12 +266,18 @@ TypedValueRef& ScopedTraceContext::traceCopy(const TypedValueRef& ref) {
 	});
 	// Propagate the source's known integer / bool value to the copy so later
 	// CMPs can still short-circuit even after the val<T> got copied around.
+	// Pay-as-you-go: skip the lookups entirely until the corresponding cache
+	// has received at least one entry.
 	if (!paused_ && result.ref != 0) {
-		if (auto it = integerConstants.find(ref.ref); it != integerConstants.end()) {
-			integerConstants[result.ref] = it->second;
+		if (hasIntegerConstants) {
+			if (auto it = integerConstants.find(ref.ref); it != integerConstants.end()) {
+				integerConstants[result.ref] = it->second;
+			}
 		}
-		if (auto it = staticBoolValues.find(ref.ref); it != staticBoolValues.end()) {
-			staticBoolValues[result.ref] = it->second;
+		if (hasStaticBoolValues) {
+			if (auto it = staticBoolValues.find(ref.ref); it != staticBoolValues.end()) {
+				staticBoolValues[result.ref] = it->second;
+			}
 		}
 	}
 	return result;
@@ -373,7 +395,11 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 
-	if (!paused_ && isComparisonOp(op) && result.ref != 0) {
+	// Pay-as-you-go: the lookups below only fire after at least one
+	// integer-CONST has been recorded.  Workloads with no integer constants
+	// (e.g. nestedIf100 against a symbolic argument) skip the whole block
+	// after a single boolean check.
+	if (!paused_ && hasIntegerConstants && isComparisonOp(op) && result.ref != 0) {
 		auto leftIt = integerConstants.find(left.ref);
 		auto rightIt = integerConstants.find(right.ref);
 		const bool leftKnown = leftIt != integerConstants.end();
@@ -383,11 +409,10 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 			// Fully constant comparison — record the static bool result so
 			// traceBool can prune the branch without any predicate reasoning.
 			staticBoolValues[result.ref] = evaluateConstCmp(op, leftIt->second, rightIt->second);
+			hasStaticBoolValues = true;
 		} else if (leftKnown) {
-			// `lit cmp var` — flip the op so the predicate ends up `var cmp' lit`.
-			comparisonCache[result.ref] =
-			    ComparisonInfo {negateOp(negateOp(op)) /* identity */, right.ref, leftIt->second, false};
-			// Compute the equivalent `var cmp' lit`: swap operands by mirroring op.
+			// `lit cmp var` — compute the equivalent `var cmp' lit` by mirroring
+			// the comparison operator.
 			Op mirrored = op;
 			switch (op) {
 			case LT:
@@ -406,9 +431,11 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 				break;
 			}
 			comparisonCache[result.ref] = ComparisonInfo {mirrored, right.ref, leftIt->second, true};
+			hasComparisonCache = true;
 		} else if (rightKnown) {
 			// Common case: `var cmp lit`.
 			comparisonCache[result.ref] = ComparisonInfo {op, left.ref, rightIt->second, true};
+			hasComparisonCache = true;
 		}
 		// Otherwise: variable vs variable — no predicate can be derived.
 	}
@@ -424,12 +451,14 @@ TypedValueRef& ScopedTraceContext::traceUnaryOp(Op op, Type resultType, const Ty
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
 	});
 
-	// Propagate predicate info across a NOT: `!(x == c)` is `x != c`.
-	if (!paused_ && op == NOT && result.ref != 0) {
+	// Propagate predicate info across a NOT: `!(x == c)` is `x != c`.  Skipped
+	// entirely if no comparison-cache entry has been recorded yet.
+	if (!paused_ && hasComparisonCache && op == NOT && result.ref != 0) {
 		auto it = comparisonCache.find(input.ref);
 		if (it != comparisonCache.end() && it->second.valid) {
 			comparisonCache[result.ref] =
 			    ComparisonInfo {negateOp(it->second.cmpOp), it->second.var, it->second.lit, true};
+			// hasComparisonCache already true (we're inside the gate).
 		}
 	}
 	return result;
@@ -474,10 +503,16 @@ bool ScopedTraceContext::traceBool(const TypedValueRef& value, const double prob
 		//      This handles cases like `1 == 42` after an inlined return.
 		//   2. PathPredicateStore for dominator-implied / contradicted CMPs.
 		//   3. Otherwise, hand the decision to the symbolic executor.
+		//
+		// Both lookups are gated so workloads without integer constants or
+		// dominator predicates skip them with a single boolean check.
 		std::optional<bool> pruned;
-		if (auto sit = staticBoolValues.find(value.ref); sit != staticBoolValues.end()) {
-			pruned = sit->second;
-		} else {
+		if (hasStaticBoolValues) {
+			if (auto sit = staticBoolValues.find(value.ref); sit != staticBoolValues.end()) {
+				pruned = sit->second;
+			}
+		}
+		if (!pruned.has_value() && candidate.isValid && predicates_.size() > 0) {
 			pruned = predicates_.evaluate(candidate);
 		}
 
@@ -522,6 +557,12 @@ bool ScopedTraceContext::traceBool(const TypedValueRef& value, const double prob
 }
 
 PathPredicateStore::Predicate ScopedTraceContext::derivePredicate(const TypedValueRef& boolRef) const {
+	// Gate the map lookup behind the comparison-cache flag.  When no CMP op
+	// has produced a useful predicate yet, we return the invalid sentinel
+	// directly without paying the hash-map probe.
+	if (!hasComparisonCache) {
+		return PathPredicateStore::Predicate {0, EQ, 0, false};
+	}
 	auto it = comparisonCache.find(boolRef.ref);
 	if (it == comparisonCache.end() || !it->second.valid) {
 		return PathPredicateStore::Predicate {0, EQ, 0, false};
