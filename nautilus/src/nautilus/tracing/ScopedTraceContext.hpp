@@ -129,6 +129,14 @@ private:
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 
+	/// Defensive variant of `ExecutionTrace::checkTag`: detects the same-block
+	/// self-merge that the stable-snapshot scheme can produce (e.g. nested
+	/// sibling CMPs at the same `__builtin_return_address` chain) and signals
+	/// the caller to enter passive mode instead of letting
+	/// `processControlFlowMerge` throw.  Returns true if the snapshot is
+	/// fresh (no merge applied), false otherwise.
+	bool safeCheckTag(Snapshot& snapshot);
+
 	/// Derives a Predicate from the CMP op that produced @p boolRef, when that
 	/// CMP compares a non-constant value to an integer constant.  Returns an
 	/// invalid predicate if no useful constraint can be extracted (e.g. the

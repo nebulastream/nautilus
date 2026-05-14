@@ -140,13 +140,42 @@ TypedValueRef& ScopedTraceContext::traceOperation(Op op, OnCreation&& onCreation
 		return follow(op);
 	}
 	auto tag = recordSnapshot();
-	if (state->executionTrace.checkTag(tag)) {
+	if (safeCheckTag(tag)) {
 		return onCreation(tag);
 	}
-	// Repeated tag -> control-flow merge.  Enter passive mode so the rest of
-	// the C++ function runs to natural completion without recording.
+	// Repeated tag -> control-flow merge (already applied by safeCheckTag) or
+	// same-block self-merge that safeCheckTag avoided.  Either way, enter
+	// passive mode so the rest of the C++ function runs to natural completion
+	// without recording further operations.
 	paused_ = true;
 	return dummyRef_;
+}
+
+bool ScopedTraceContext::safeCheckTag(Snapshot& snapshot) {
+	// Defensive replacement for ExecutionTrace::checkTag: the underlying
+	// processControlFlowMerge() throws RuntimeException when the recorded op
+	// and the current op are in the *same* block, which happens under the
+	// scoped tracer's stable Snapshot scheme on shapes like
+	// pathExplosion_constraintBlind_dead.  We detect that case and request a
+	// graceful passive-mode fallback (caller pauses the trace).
+	auto& trace = state->executionTrace;
+	auto globalIt = trace.globalTagMap.find(snapshot);
+	if (globalIt != trace.globalTagMap.end()) {
+		if (globalIt->second.blockIndex == trace.getCurrentBlockIndex()) {
+			return false;
+		}
+		trace.processControlFlowMerge(globalIt->second);
+		return false;
+	}
+	auto localIt = trace.localTagMap.find(snapshot);
+	if (localIt != trace.localTagMap.end()) {
+		if (localIt->second.blockIndex == trace.getCurrentBlockIndex()) {
+			return false;
+		}
+		trace.processControlFlowMerge(localIt->second);
+		return false;
+	}
+	return true;
 }
 
 TypedValueRef& ScopedTraceContext::traceAlloca(size_t size, size_t align) {
@@ -303,7 +332,8 @@ TypedValueRef& ScopedTraceContext::traceBinaryOp(Op op, Type resultType, const T
 		ValueRef varRef = 0;
 		for (auto it = currentBlock.operations.rbegin(); it != currentBlock.operations.rend(); ++it) {
 			auto* candidate = *it;
-			if (candidate->op == Op::CONST && (candidate->resultRef.ref == left.ref || candidate->resultRef.ref == right.ref)) {
+			if (candidate->op == Op::CONST &&
+			    (candidate->resultRef.ref == left.ref || candidate->resultRef.ref == right.ref)) {
 				if (!candidate->input.empty()) {
 					if (auto* c = std::get_if<ConstantLiteral>(&candidate->input[0])) {
 						literal = *c;
@@ -337,7 +367,8 @@ TypedValueRef& ScopedTraceContext::traceUnaryOp(Op op, Type resultType, const Ty
 	if (!paused_ && op == NOT && result.ref != 0) {
 		auto it = comparisonCache.find(input.ref);
 		if (it != comparisonCache.end() && it->second.valid) {
-			comparisonCache[result.ref] = ComparisonInfo {negateOp(it->second.cmpOp), it->second.var, it->second.lit, true};
+			comparisonCache[result.ref] =
+			    ComparisonInfo {negateOp(it->second.cmpOp), it->second.var, it->second.lit, true};
 		}
 	}
 	return result;
@@ -371,7 +402,7 @@ bool ScopedTraceContext::traceBool(const TypedValueRef& value, const double prob
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
 		auto tag = recordSnapshot();
-		if (!state->executionTrace.checkTag(tag)) {
+		if (!safeCheckTag(tag)) {
 			paused_ = true;
 			return false;
 		}
@@ -477,7 +508,8 @@ std::unique_ptr<ExecutionTrace> ScopedTraceContext::trace(std::function<void()>&
 
 		traceFunction();
 
-		assert(scopedTraceContext.staticVars.empty() && "static variable stack not empty after scoped tracing iteration");
+		assert(scopedTraceContext.staticVars.empty() &&
+		       "static variable stack not empty after scoped tracing iteration");
 	}
 
 	setActiveTracer(nullptr);
@@ -586,13 +618,24 @@ std::string ScopedTraceContext::formatStaticVars() const {
 }
 
 Snapshot ScopedTraceContext::recordSnapshot() {
-	// Core difference from LazyTraceContext / ExceptionBasedTraceContext:
-	// we deliberately omit `aliveVars.hash()`.  Operation identity is
-	// determined by the call-stack-derived Tag* and the static-variable state
-	// only — not by the (transient) ValueRefs that happen to be alive at this
-	// point in the path.  This is the lever that fixes the postCallBranch
-	// path-explosion family.
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars)};
+	// Snapshot identity matches LazyTraceContext: (Tag*, staticHash ^ aliveHash).
+	//
+	// An earlier revision of this tracer omitted aliveVars.hash() in an attempt
+	// to collapse the postCallBranch fan-out described in
+	// PathExplosionFunctions.hpp:45-67, but it produced malformed traces:
+	// without per-iteration discrimination, RETURN ops at the same source line
+	// across different symbolic-execution iterations collide on a single
+	// Snapshot.  processControlFlowMerge then accumulates their inputs into one
+	// op, and SSACreationPhase rejects the result with "Wrong number of
+	// arguments in trace".
+	//
+	// The actual path-explosion fix needs a different lever: per-function
+	// sub-traces so the callee body is recorded once and re-encounters emit a
+	// CALL op (see the scope_stack work in the same TU).  Until that lever
+	// is in place, this Snapshot is structurally identical to Lazy's; the
+	// added value of ScopedTraceContext over Lazy is the PathPredicateStore
+	// it maintains for forthcoming symbolic-executor pruning.
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
 }
 
 } // namespace nautilus::tracing

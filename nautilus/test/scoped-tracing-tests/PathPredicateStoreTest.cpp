@@ -58,7 +58,8 @@ TEST_CASE("PathPredicateStore: x < c entails / contradicts neighbouring constrai
 	PathPredicateStore store;
 	store.push(make(1, Op::LT, 10));
 
-	// x < 10  =>  x < 11 is implied (well, not strictly — entailment requires that the candidate is implied for ALL satisfying x)
+	// x < 10  =>  x < 11 is implied (well, not strictly — entailment requires that the candidate is implied for ALL
+	// satisfying x)
 	REQUIRE(*store.evaluate(make(1, Op::LT, 11)) == true);
 	REQUIRE(*store.evaluate(make(1, Op::LT, 10)) == true);
 	REQUIRE(*store.evaluate(make(1, Op::LTE, 9)) == true);
