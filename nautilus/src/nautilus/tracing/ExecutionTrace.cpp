@@ -3,9 +3,11 @@
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
 #include <fmt/format.h>
+#include <limits>
 #include <nautilus/config.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
+#include <unordered_set>
 
 namespace nautilus::tracing {
 
@@ -284,6 +286,33 @@ uint32_t ExecutionTrace::createBlock() {
 	return block->blockId;
 }
 
+namespace {
+
+// Searches @p blockIndex (and, when not found locally, its first-predecessor chain)
+// for the operation that produced @p ref.  Returns nullptr if no producer is found.
+// The search is bounded by @p opLimit on the starting block so that we do not look
+// past the merge point; cascade CFM blocks whose own prefix is empty fall through
+// into the predecessor chain laid down by the first arm of the merge sequence.
+TraceOperation* findProducer(const std::vector<Block*>& blocks, uint32_t blockIndex, size_t opLimit, ValueRef ref) {
+	while (true) {
+		auto& block = *blocks[blockIndex];
+		size_t limit = std::min(opLimit, block.operations.size());
+		for (size_t i = 0; i < limit; ++i) {
+			auto* op = block.operations[i];
+			if (op->resultRef.ref == ref) {
+				return op;
+			}
+		}
+		if (block.predecessors.empty()) {
+			return nullptr;
+		}
+		blockIndex = block.predecessors.front();
+		opLimit = std::numeric_limits<size_t>::max();
+	}
+}
+
+} // namespace
+
 void ExecutionTrace::alignCmpOperandInCurrentBlock(operation_identifier oi, const TypedValueRef& currentOperand) {
 	auto& referenceBlock = *blocks[oi.blockIndex];
 	if (oi.operationIndex >= referenceBlock.operations.size()) {
@@ -294,17 +323,58 @@ void ExecutionTrace::alignCmpOperandInCurrentBlock(operation_identifier oi, cons
 		return;
 	}
 	auto* matchedOperand = std::get_if<TypedValueRef>(&matchedOp->input[0]);
-	if (matchedOperand == nullptr || matchedOperand->ref == currentOperand.ref) {
+	if (matchedOperand == nullptr) {
 		return;
 	}
-	// Emit `ASSIGN <matchedOperand> <currentOperand>` in the current block so the
-	// CMP that processControlFlowMerge is about to move into the merge block sees
-	// `matchedOperand` defined on this predecessor edge.  The ASSIGN piggybacks on
-	// the matched CMP's snapshot purely as a placeholder tag; SSA's removeAssign
-	// pass eliminates it after threading the value through block arguments.
 	auto& currentBlock = *blocks[currentBlockIndex];
-	auto* assignOp = makeTraceOp(*arena, matchedOp->tag, ASSIGN, matchedOperand->type, *matchedOperand, currentOperand);
-	currentBlock.operations.push_back(assignOp);
+	// Snapshot the current block's pre-existing prefix size BEFORE inserting any
+	// alignment ASSIGNs.  findProducer must not pick up the ASSIGNs this method
+	// inserts, otherwise the DAG walk would loop and align junk.
+	const size_t curOriginalPrefixSize = currentBlock.operations.size();
+	const uint32_t refBlockIndex = oi.blockIndex;
+	const size_t refOpLimit = oi.operationIndex;
+
+	// Walk the data-flow DAG of the matched CMP's operand together with the current
+	// path's would-be-CMP operand, pairing structurally equivalent ops.  When the
+	// two producers share an op type, recurse into their inputs to align the
+	// user-visible operands (e.g. the `val<T> r` LHS of `r == 42`).  When they
+	// diverge in op type, emit the alias here and stop the walk on that branch.
+	//
+	// `removeAssignOperations` rewrites uses and removes the emitted ASSIGNs at the
+	// end of the SSA pass, so over-aligning is harmless — the worst case is a few
+	// extra ASSIGNs in the trace dump before the SSA cleanup.
+	std::unordered_set<uint64_t> visited;
+	std::vector<std::pair<TypedValueRef, TypedValueRef>> work;
+	work.emplace_back(*matchedOperand, currentOperand);
+	while (!work.empty()) {
+		auto [refRef, curRef] = work.back();
+		work.pop_back();
+		if (refRef.ref == curRef.ref || refRef.type != curRef.type) {
+			continue;
+		}
+		uint64_t key = (uint64_t(refRef.ref) << 32) | curRef.ref;
+		if (!visited.insert(key).second) {
+			continue;
+		}
+		auto* assignOp = makeTraceOp(*arena, matchedOp->tag, ASSIGN, refRef.type, refRef, curRef);
+		currentBlock.operations.push_back(assignOp);
+		auto* refProducer = findProducer(blocks, refBlockIndex, refOpLimit, refRef.ref);
+		auto* curProducer = findProducer(blocks, currentBlockIndex, curOriginalPrefixSize, curRef.ref);
+		if (refProducer == nullptr || curProducer == nullptr) {
+			continue;
+		}
+		if (refProducer->op != curProducer->op) {
+			continue;
+		}
+		size_t arity = std::min(refProducer->input.size(), curProducer->input.size());
+		for (size_t i = 0; i < arity; ++i) {
+			auto* refIn = std::get_if<TypedValueRef>(&refProducer->input[i]);
+			auto* curIn = std::get_if<TypedValueRef>(&curProducer->input[i]);
+			if (refIn != nullptr && curIn != nullptr) {
+				work.emplace_back(*refIn, *curIn);
+			}
+		}
+	}
 }
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {

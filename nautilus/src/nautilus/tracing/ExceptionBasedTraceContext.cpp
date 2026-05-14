@@ -485,7 +485,7 @@ Snapshot ExceptionBasedTraceContext::recordBranchSnapshot() {
 	// invariants intact.  Opting in collapses snapshots of branch points across
 	// call-site duplicates at the cost of needing downstream (block-arg insertion)
 	// work to satisfy SSA.  See plan: tag-scoped alive-vars contribution.
-	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", true)) {
 		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
 	}
 	scopeFrames.sync(tag, current_alive_hash);
