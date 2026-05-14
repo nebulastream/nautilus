@@ -113,11 +113,13 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
+	Snapshot recordBranchSnapshot();
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
+	ScopeFrameStack scopeFrames; // Scope-relative view of aliveVars, keyed on the Tag chain
 
 	// Passive mode state
 	bool paused_ = false;

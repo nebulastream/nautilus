@@ -53,6 +53,10 @@ void ExceptionBasedTraceContext::resume() {
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
 
+	// Drop any scope frames carried over from the previous iteration; they reference
+	// Tag nodes that may no longer be on the active path.
+	scopeFrames.reset();
+
 	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
 	// as it needs to persist across trace iterations
 }
@@ -265,8 +269,8 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
+		auto tag = recordBranchSnapshot();
+		if (state->executionTrace.checkBranchTag(tag, value)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			result = state->symbolicExecutionContext.record(tag);
 		} else {
@@ -472,6 +476,27 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+Snapshot ExceptionBasedTraceContext::recordBranchSnapshot() {
+	auto* tag = state->tagRecorder.createTag();
+	const uint64_t current_alive_hash = aliveVars.hash();
+	// Off by default: the original aliveVars term keeps the established SSA-merge
+	// invariants intact.  Opting in collapses snapshots of branch points across
+	// call-site duplicates at the cost of needing downstream (block-arg insertion)
+	// work to satisfy SSA.  See plan: tag-scoped alive-vars contribution.
+	// Off by default: the DAG-walk alignment can mis-align CONST literals across
+	// distinct logical branches (e.g. SHORT_CIRCUIT_BOOL's branch tree merges
+	// `value > 15` from two arms whose target blocks differ).  Opting in
+	// collapses the path-explosion patterns documented in
+	// PathExplosionFunctions.hpp; flip when the alignment is tightened to
+	// require structural producer equivalence.
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
+		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
+	}
+	scopeFrames.sync(tag, current_alive_hash);
+	const uint64_t alive_contribution = current_alive_hash ^ scopeFrames.entryHash();
+	return {tag, hashStaticVector(staticVars) ^ alive_contribution};
 }
 
 } // namespace nautilus::tracing
