@@ -1,0 +1,70 @@
+nautilus {
+execute($1:i32) :i32 {
+Block_0($1:i32):
+	$2 = 1 :i32
+	$3 = $1 == $2 :bool
+	if $3 ? Block_1() : Block_2($1) :void
+
+Block_1():
+	$5 = 1 :i32
+	br Block_13($5) :void
+
+Block_13($5:i32):
+	return ($5) :i32
+
+Block_2($1:i32):
+	$7 = 10 :i32
+	$8 = $1 < $7 :bool
+	if $8 ? Block_3($1) : Block_4($1) :void
+
+Block_3($1:i32):
+	$11 = 1 :i32
+	$12 = $1 == $11 :bool
+	if $12 ? Block_5() : Block_6($1) :void
+
+Block_5():
+	$14 = 1 :i32
+	br Block_13($14) :void
+
+Block_6($10:i32):
+	$20 = 10 :i32
+	$21 = $10 < $20 :bool
+	if $21 ? Block_7($10) : Block_8($10) :void
+
+Block_7($10:i32):
+	$24 = 1 :i32
+	$25 = $10 == $24 :bool
+	if $25 ? Block_9() : Block_10($10) :void
+
+Block_9():
+	$27 = 1 :i32
+	br Block_13($27) :void
+
+Block_10($23:i32):
+	$33 = 10 :i32
+	$34 = $23 < $33 :bool
+	if $34 ? Block_11() : Block_12($23) :void
+
+Block_11():
+	$36 = 42 :i32
+	br Block_13($36) :void
+
+Block_12($23:i32):
+	$38 = $23 + $23 :i32
+	$39 = 1 :i32
+	$40 = $38 + $39 :i32
+	br Block_13($40) :void
+
+Block_8($10:i32):
+	$29 = $10 + $10 :i32
+	$30 = 1 :i32
+	$31 = $29 + $30 :i32
+	br Block_13($31) :void
+
+Block_4($1:i32):
+	$16 = $1 + $1 :i32
+	$17 = 1 :i32
+	$18 = $16 + $17 :i32
+	br Block_13($18) :void
+}
+} //nautilus

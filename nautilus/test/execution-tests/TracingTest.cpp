@@ -219,7 +219,8 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
 	    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
 	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
-	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)}
+	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
+	    {"multipleReturns3", details::createFunctionWrapper(multipleReturns3)},
 
 	};
 	runTraceTests("control-flow-tests", tests);
