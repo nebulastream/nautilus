@@ -481,11 +481,11 @@ Snapshot ExceptionBasedTraceContext::recordSnapshot() {
 Snapshot ExceptionBasedTraceContext::recordBranchSnapshot() {
 	auto* tag = state->tagRecorder.createTag();
 	const uint64_t current_alive_hash = aliveVars.hash();
-	// Off by default: the original aliveVars term keeps the established SSA-merge
-	// invariants intact.  Opting in collapses snapshots of branch points across
-	// call-site duplicates at the cost of needing downstream (block-arg insertion)
-	// work to satisfy SSA.  See plan: tag-scoped alive-vars contribution.
-	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
+	// Default on: collapses snapshots of branch points across call-site duplicates,
+	// reducing path explosion for chains of inlined helpers (see
+	// pathExplosion_baseline_threeCallsNoBranch).  Set to false to fall back to the
+	// pre-existing aliveVars-based snapshot.
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", true)) {
 		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
 	}
 	scopeFrames.sync(tag, current_alive_hash);

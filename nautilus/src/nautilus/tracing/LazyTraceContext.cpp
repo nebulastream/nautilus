@@ -459,7 +459,7 @@ Snapshot LazyTraceContext::recordSnapshot() {
 Snapshot LazyTraceContext::recordBranchSnapshot() {
 	auto* tag = state->tagRecorder.createTag();
 	const uint64_t current_alive_hash = aliveVars.hash();
-	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", true)) {
 		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
 	}
 	scopeFrames.sync(tag, current_alive_hash);
