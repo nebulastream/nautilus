@@ -205,43 +205,4 @@ val<int32_t> nautilusFunctionGetFuncPtr(val<int32_t> a, val<int32_t> b) {
 	return invoke(applyFnPtr, fnPtr, a, b);
 }
 
-// ---------------------------------------------------------------------------
-// Multi-return + nested NautilusFunction stack (user investigation fixture).
-// multipleReturns3 → multipleReturns2 → multipleReturns. Each callee has
-// three return statements. The intent is to surface how the tracer handles
-// multi-return shapes when they appear at every level of a NautilusFunction
-// call tree.
-// ---------------------------------------------------------------------------
-
-val<int32_t> multipleReturnsLeaf(val<int32_t> value) {
-	if (value == 1) {
-		return 1;
-	} else if (value < 10) {
-		return 42;
-	}
-	return value + value + 1;
-}
-
-static auto nautilusMultipleReturnsLeaf = NautilusFunction {"multipleReturnsLeaf", multipleReturnsLeaf};
-
-val<int32_t> multipleReturnsMid(val<int32_t> value) {
-	if (value == 1) {
-		return 1;
-	} else if (value < 10) {
-		return nautilusMultipleReturnsLeaf(value);
-	}
-	return value + value + 1;
-}
-
-static auto nautilusMultipleReturnsMid = NautilusFunction {"multipleReturnsMid", multipleReturnsMid};
-
-val<int32_t> multipleReturnsRoot(val<int32_t> value) {
-	if (value == 1) {
-		return 1;
-	} else if (value < 10) {
-		return nautilusMultipleReturnsMid(value);
-	}
-	return value + value + 1;
-}
-
 } // namespace nautilus::engine

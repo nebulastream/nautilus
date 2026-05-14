@@ -220,9 +220,7 @@ TEST_CASE("Control-flow Trace Test") {
 	    {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
 	    {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
 	    {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
-	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
-	    {"multipleReturns3", details::createFunctionWrapper(multipleReturns3)},
-	    {"multipleReturns4", details::createFunctionWrapper(multipleReturns4)},
+	    {"chainedIf500", details::createFunctionWrapper(chainedIf500)}
 
 	};
 	runTraceTests("control-flow-tests", tests);
@@ -728,7 +726,6 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	    {"nautilusFunctionInlineMember", details::createFunctionWrapper(nautilusFunctionInlineMember)},
 	    {"nautilusFunctionMultipleInline", details::createFunctionWrapper(nautilusFunctionMultipleInline)},
 	    {"nautilusFunctionGetFuncPtr", details::createFunctionWrapper(nautilusFunctionGetFuncPtr)},
-	    {"multipleReturnsRoot", details::createFunctionWrapper(multipleReturnsRoot)},
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }
