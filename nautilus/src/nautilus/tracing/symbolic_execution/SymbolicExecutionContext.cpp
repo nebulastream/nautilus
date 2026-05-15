@@ -74,6 +74,41 @@ RecordResult SymbolicExecutionContext::recordNoThrow(const Snapshot& tag) {
 	return {false, true};
 }
 
+RecordResult SymbolicExecutionContext::recordPrunedNoThrow(const Snapshot& tag, bool takenDirection) {
+	// Mirror recordNoThrow's FOLLOW->RECORD transition so the
+	// currentExecutionPath bookkeeping stays consistent if the caller invokes
+	// this from inside a replay.
+	if (currentMode == SymbolicExecutionContext::MODE::FOLLOW) {
+		currentMode = SymbolicExecutionContext::MODE::RECORD;
+		currentExecutionPath.getPath().pop_back();
+	}
+
+	auto foundTag = tagMap.find(tag);
+	if (foundTag == tagMap.end()) {
+		// First sight of this tag, but the caller has proven one arm is dead.
+		// Skip directly to SecondVisit so shouldContinue() will not re-enqueue
+		// the dead arm.  Note we deliberately do *not* push onto
+		// inflightExecutionPaths.
+		tagMap.emplace(tag, SymbolicExecutionContext::TagState::SecondVisit);
+		currentExecutionPath.append(takenDirection);
+		currentExecutionPath.setFinalTag(tag);
+		return {takenDirection, false};
+	}
+	switch (foundTag->second) {
+	case SymbolicExecutionContext::TagState::FirstVisit: {
+		// Previously visited once (the true arm was queued).  Mark as fully
+		// explored and take the live direction.
+		foundTag->second = SymbolicExecutionContext::TagState::SecondVisit;
+		currentExecutionPath.append(takenDirection);
+		return {takenDirection, false};
+	};
+	case SymbolicExecutionContext::TagState::SecondVisit: {
+		return {takenDirection, true};
+	};
+	}
+	return {takenDirection, true};
+}
+
 RecordResult SymbolicExecutionContext::followNoThrow() {
 	assert(getCurrentMode() == MODE::FOLLOW);
 	if (currentOperation >= currentExecutionPath.getSize() - 1) {
