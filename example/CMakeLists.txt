@@ -17,6 +17,7 @@ set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_INLINING_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_PROFILE_PLUGIN ON CACHE BOOL "" FORCE)
 # Enable the AsmJit backend so demo_backends can include it in its comparison.
 # This is OFF by default in the top-level nautilus build but is safe on
 # x86-64 Linux / macOS and ARM64 Linux.
@@ -64,6 +65,16 @@ target_link_libraries(demo_simd_plugin PRIVATE
 add_executable(demo_specialization_plugin src/DemoSpecializationPlugin.cpp)
 target_link_libraries(demo_specialization_plugin PRIVATE
         nautilus ${WHOLE_ARCHIVE_PREFIX} nautilus-specialization ${WHOLE_ARCHIVE_SUFFIX})
+
+# Profile plugin demo — exercises nested Nautilus functions, native invoke(),
+# per-module tracks, and the SIGPROF sampler. Writes a Chrome Trace JSON
+# that loads natively in https://ui.perfetto.dev.
+# ENABLE_EXPORTS (i.e. -rdynamic on GNU/Clang) lets the sampler's dladdr see
+# local functions such as nativeMix in backtraces.
+add_executable(demo_profile src/DemoProfile.cpp)
+set_target_properties(demo_profile PROPERTIES ENABLE_EXPORTS TRUE)
+target_link_libraries(demo_profile PRIVATE
+        nautilus ${WHOLE_ARCHIVE_PREFIX} nautilus-profile ${WHOLE_ARCHIVE_SUFFIX})
 
 # Inlining plugin demo — needs both the plugin library AND the Clang pass
 # plugin attached to this TU so NAUTILUS_INLINE-annotated helpers get their
