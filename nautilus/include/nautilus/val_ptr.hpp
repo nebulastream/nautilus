@@ -481,14 +481,14 @@ val<ValueType> inline operator-(val<ValueType>& left, IndexType&& offset) {
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator==(val<ValueType> left, val<ValueType> right) {
-
+	auto result = left.value == right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value == right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
@@ -508,61 +508,66 @@ val<bool> inline operator==(std::nullptr_t, val<ValueType> right) {
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator<=(val<ValueType> left, val<ValueType> right) {
+	auto result = left.value <= right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LTE, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value <= right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator<(val<ValueType> left, val<ValueType> right) {
+	auto result = left.value < right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::LT, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value < right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator>(val<ValueType> left, val<ValueType> right) {
+	auto result = left.value > right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GT, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value > right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator>=(val<ValueType> left, val<ValueType> right) {
+	auto result = left.value >= right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::GTE, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value >= right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
     requires std::is_pointer_v<ValueType>
 val<bool> inline operator!=(val<ValueType> left, val<ValueType> right) {
+	auto result = left.value != right.value;
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
-		return val<bool>(tc);
+		return val<bool>(tc, result);
 	}
 #endif
-	return val<bool>(left.value != right.value);
+	return val<bool>(result);
 }
 
 template <typename ValueType>
@@ -639,14 +644,15 @@ public:
 
 	operator val<baseType>() {
 		// load
+		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
+		auto result = *rawPtr;
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<baseType>::to_type(), ptr.state);
-			return val<baseType>(ref);
+			return val<baseType>(ref, result);
 		}
 #endif
-		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
-		return val<baseType>(*rawPtr);
+		return val<baseType>(result);
 	}
 
 	operator bool() {

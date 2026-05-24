@@ -291,15 +291,21 @@ DEFINE_BINARY_OPERATOR_HELPER_WITH_PROMOTION(<<, shl, LSH)
 		auto&& lValue = cast_value<LHS, commonType>(std::forward<LHS>(left));                                          \
 		auto&& rValue = cast_value<RHS, commonType>(std::forward<RHS>(right));                                         \
                                                                                                                        \
+		auto result = RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(lValue))                \
+		    OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue));                      \
+                                                                                                                       \
 		if SHOULD_TRACE () {                                                                                           \
 			auto tc = tracing::traceBinaryOp(tracing::OP_TRACE, tracing::TypeResolver<RES_TYPE>::to_type(),            \
 			                                 StateResolver<decltype(lValue)>::getState(lValue),                        \
 			                                 StateResolver<decltype(rValue)>::getState(rValue));                       \
-			return val<RES_TYPE>(tc);                                                                                  \
+			if constexpr (std::is_same_v<RES_TYPE, bool>) {                                                            \
+				return val<bool>(tc, result);                                                                          \
+			} else {                                                                                                   \
+				return val<RES_TYPE>(tc);                                                                              \
+			}                                                                                                          \
 		}                                                                                                              \
                                                                                                                        \
-		return val<RES_TYPE>(RawValueResolver<commonType>::getRawValue(std::forward<decltype(lValue)>(                 \
-		    lValue)) OP RawValueResolver<commonType>::getRawValue(std::forward<decltype(rValue)>(rValue)));            \
+		return val<RES_TYPE>(result);                                                                                  \
 	}
 
 DEFINE_BINARY_OPERATOR_HELPER(==, eq, EQ, bool)
