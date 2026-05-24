@@ -136,6 +136,9 @@ public:
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
 
+	TypedValueRef& addOperationWithResultNoTag(Op& operation, Type& resultType,
+	                                           std::initializer_list<InputVariant> inputs);
+
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
 	 * @param snapshot The current execution snapshot
@@ -154,6 +157,9 @@ public:
 	 */
 	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
 	                                      Type resultType);
+
+	TypedValueRef& addAssignmentOperationNoTag(const TypedValueRef& targetRef, const TypedValueRef& srcRef,
+	                                           Type resultType);
 
 	/**
 	 * @brief Adds a return operation to the trace

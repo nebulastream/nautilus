@@ -112,12 +112,15 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	template <typename FastPath, typename CheckpointPath>
+	TypedValueRef& traceOperationFast(Op op, FastPath&& fast, CheckpointPath&& checkpoint);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
+	bool needsCheckpoint_ = true;
 
 	// Passive mode state
 	bool paused_ = false;

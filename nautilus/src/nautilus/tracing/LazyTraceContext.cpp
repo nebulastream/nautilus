@@ -36,6 +36,7 @@ void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
 	paused_ = false;
+	needsCheckpoint_ = true;
 }
 
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -65,17 +66,17 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	if (isFollowing()) {
 		return follow(op);
 	}
-	auto tag = recordSnapshot();
-	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
-	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
-		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
-		return originalRef->resultRef;
-	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+	if (needsCheckpoint_) {
+		needsCheckpoint_ = false;
+		auto tag = recordSnapshot();
+		if (state->executionTrace.checkTag(tag)) {
+			return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		} else {
+			paused_ = true;
+			return dummyRef_;
+		}
 	}
+	return state->executionTrace.addOperationWithResultNoTag(op, type, {constValue});
 }
 
 template <typename OnCreation>
@@ -90,20 +91,46 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
-			// Instead of throwing TraceTerminationException, enter passive mode.
 			paused_ = true;
 			return dummyRef_;
 		}
 	}
 }
 
+template <typename FastPath, typename CheckpointPath>
+TypedValueRef& LazyTraceContext::traceOperationFast(Op op, FastPath&& fast, CheckpointPath&& checkpoint) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	if (isFollowing()) {
+		return follow(op);
+	}
+	if (needsCheckpoint_) {
+		needsCheckpoint_ = false;
+		auto tag = recordSnapshot();
+		if (state->executionTrace.checkTag(tag)) {
+			return checkpoint(tag);
+		} else {
+			paused_ = true;
+			return dummyRef_;
+		}
+	}
+	return fast();
+}
+
 TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
-		auto index = state->executionTrace.addAllocaSpec(size, align);
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
-	});
+	return traceOperationFast(
+	    op,
+	    [&, size, align]() -> TypedValueRef& {
+		    auto index = state->executionTrace.addAllocaSpec(size, align);
+		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {index});
+	    },
+	    [&, size, align](Snapshot& tag) -> TypedValueRef& {
+		    auto index = state->executionTrace.addAllocaSpec(size, align);
+		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
+	    });
 }
 
 TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -111,10 +138,16 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 		return dummyRef_;
 	}
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = state->executionTrace.getNextValueRef();
-		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
-	});
+	return traceOperationFast(
+	    ASSIGN,
+	    [&]() -> TypedValueRef& {
+		    auto resultRef = state->executionTrace.getNextValueRef();
+		    return state->executionTrace.addAssignmentOperationNoTag({resultRef, ref.type}, ref, ref.type);
+	    },
+	    [&](Snapshot& tag) -> TypedValueRef& {
+		    auto resultRef = state->executionTrace.getNextValueRef();
+		    return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+	    });
 }
 
 TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
@@ -206,9 +239,14 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 	if (paused_) {
 		return;
 	}
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
-	});
+	traceOperationFast(
+	    ASSIGN,
+	    [&]() -> TypedValueRef& {
+		    return state->executionTrace.addAssignmentOperationNoTag(target, source, resultType);
+	    },
+	    [&](Snapshot& tag) -> TypedValueRef& {
+		    return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
+	    });
 }
 
 void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
@@ -228,18 +266,26 @@ TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const Typ
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
-	});
+	return traceOperationFast(
+	    op,
+	    [&]() -> TypedValueRef& {
+		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {left, right});
+	    },
+	    [&](Snapshot& tag) -> TypedValueRef& {
+		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
+	    });
 }
 
 TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
-	});
+	return traceOperationFast(
+	    op,
+	    [&]() -> TypedValueRef& { return state->executionTrace.addOperationWithResultNoTag(op, resultType, {input}); },
+	    [&](Snapshot& tag) -> TypedValueRef& {
+		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
+	    });
 }
 
 TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
@@ -247,9 +293,14 @@ TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const Ty
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
-	});
+	return traceOperationFast(
+	    op,
+	    [&]() -> TypedValueRef& {
+		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {first, second, third});
+	    },
+	    [&](Snapshot& tag) -> TypedValueRef& {
+		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
+	    });
 }
 
 bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probability) {
@@ -297,6 +348,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		nextBlock = std::get<BlockRef*>(currentOperation.input[2])->block;
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
+	needsCheckpoint_ = true;
 	return result;
 }
 

@@ -184,6 +184,20 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	return operation->resultRef;
 }
 
+TypedValueRef& ExecutionTrace::addAssignmentOperationNoTag(const TypedValueRef& targetRef, const TypedValueRef& srcRef,
+                                                           Type resultType) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	Snapshot nullSnapshot;
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto op = ASSIGN;
+	auto* operation = makeTraceOp(*arena, nullSnapshot, op, resultType, targetRef, srcRef);
+	operations.push_back(operation);
+	getNextOperationIdentifier();
+	return operation->resultRef;
+}
+
 void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initializer_list<InputVariant> inputs) {
 	if (blocks.empty()) {
 		createBlock();
@@ -206,6 +220,21 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
+	return to->resultRef;
+}
+
+TypedValueRef& ExecutionTrace::addOperationWithResultNoTag(Op& operation, Type& resultType,
+                                                           std::initializer_list<InputVariant> inputs) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+
+	Snapshot nullSnapshot;
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto* to =
+	    makeTraceOp(*arena, nullSnapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	operations.push_back(to);
+	getNextOperationIdentifier();
 	return to->resultRef;
 }
 
@@ -297,7 +326,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 					returnRef = operationReference;
 				}
 			}
-		} else {
+		} else if (opTag.getTag() != nullptr) {
 			globalTagMap[opTag] = operationReference;
 			localTagMap[opTag] = operationReference;
 		}

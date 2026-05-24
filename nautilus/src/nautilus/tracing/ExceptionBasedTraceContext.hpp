@@ -295,12 +295,15 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	template <typename FastPath, typename CheckpointPath>
+	TypedValueRef& traceOperationFast(Op op, FastPath&& fast, CheckpointPath&& checkpoint);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	bool needsCheckpoint_ = true;            // True after block switch, forces tag check on next op
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;
 };
