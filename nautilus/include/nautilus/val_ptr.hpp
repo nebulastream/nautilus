@@ -644,15 +644,14 @@ public:
 
 	operator val<baseType>() {
 		// load
-		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
-		auto result = *rawPtr;
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto& ref = tracing::traceUnaryOp(tracing::LOAD, tracing::TypeResolver<baseType>::to_type(), ptr.state);
-			return val<baseType>(ref, result);
+			return val<baseType>(ref);
 		}
 #endif
-		return val<baseType>(result);
+		auto rawPtr = details::RawValueResolver<bool*>::getRawValue(ptr);
+		return val<baseType>(*rawPtr);
 	}
 
 	operator bool() {
