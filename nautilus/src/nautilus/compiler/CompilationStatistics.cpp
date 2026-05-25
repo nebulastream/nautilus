@@ -164,7 +164,8 @@ std::string CompilationStatistics::formatReport(std::string_view compilationId, 
 
 	// Inside each group: total* subkeys first, then insertion order.
 	for (auto& [_, list] : groups) {
-		std::stable_partition(list.begin(), list.end(), [](const Entry& e) { return isTotalSubkey(e.first); });
+		std::stable_partition(list.begin(), list.end(),
+		                      [](const Entry& e) { return isTotalSubkey(e.first); });
 	}
 
 	// Column width per group for aligned `key = value`.

@@ -47,9 +47,11 @@ ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& 
 }
 
 void ExceptionBasedTraceContext::resume() {
+	// Clear dynamic containers
 	staticVars.clear();
+
+	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
-	needsCheckpoint_ = true;
 
 	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
 	// as it needs to persist across trace iterations
@@ -76,16 +78,17 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	if (isFollowing()) {
 		return follow(op);
 	}
-	if (needsCheckpoint_) {
-		needsCheckpoint_ = false;
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		} else {
-			throw TraceTerminationException();
-		}
+	auto tag = recordSnapshot();
+	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
+	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
+		auto& ref = globalTabIter->second;
+		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
+		return originalRef->resultRef;
+	} else {
+		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
-	return state->executionTrace.addOperationWithResultNoTag(op, type, {constValue});
 }
 
 template <typename OnCreation>
@@ -97,55 +100,27 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
+			// TODO find a way to handle this more graceful.
 			throw TraceTerminationException();
 		}
 	}
-}
-
-template <typename FastPath, typename CheckpointPath>
-TypedValueRef& ExceptionBasedTraceContext::traceOperationFast(Op op, FastPath&& fast, CheckpointPath&& checkpoint) {
-	if (isFollowing()) {
-		return follow(op);
-	}
-	if (needsCheckpoint_) {
-		needsCheckpoint_ = false;
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return checkpoint(tag);
-		} else {
-			throw TraceTerminationException();
-		}
-	}
-	return fast();
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperationFast(
-	    op,
-	    [&, size, align]() -> TypedValueRef& {
-		    auto index = state->executionTrace.addAllocaSpec(size, align);
-		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {index});
-	    },
-	    [&, size, align](Snapshot& tag) -> TypedValueRef& {
-		    auto index = state->executionTrace.addAllocaSpec(size, align);
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
-	    });
+	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+		auto index = state->executionTrace.addAllocaSpec(size, align);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
-	return traceOperationFast(
-	    ASSIGN,
-	    [&]() -> TypedValueRef& {
-		    auto resultRef = state->executionTrace.getNextValueRef();
-		    return state->executionTrace.addAssignmentOperationNoTag({resultRef, ref.type}, ref, ref.type);
-	    },
-	    [&](Snapshot& tag) -> TypedValueRef& {
-		    auto resultRef = state->executionTrace.getNextValueRef();
-		    return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
-	    });
+	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+		auto resultRef = state->executionTrace.getNextValueRef();
+		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
@@ -223,14 +198,9 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 
 void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
                                                  Type resultType) {
-	traceOperationFast(
-	    ASSIGN,
-	    [&]() -> TypedValueRef& {
-		    return state->executionTrace.addAssignmentOperationNoTag(target, source, resultType);
-	    },
-	    [&](Snapshot& tag) -> TypedValueRef& {
-		    return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
-	    });
+	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
+	});
 }
 
 void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
@@ -244,35 +214,22 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 
 TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
                                                          const TypedValueRef& right) {
-	return traceOperationFast(
-	    op,
-	    [&]() -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {left, right});
-	    },
-	    [&](Snapshot& tag) -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
-	    });
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
-	return traceOperationFast(
-	    op,
-	    [&]() -> TypedValueRef& { return state->executionTrace.addOperationWithResultNoTag(op, resultType, {input}); },
-	    [&](Snapshot& tag) -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
-	    });
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
+	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
                                                           const TypedValueRef& second, const TypedValueRef& third) {
-	return traceOperationFast(
-	    op,
-	    [&]() -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResultNoTag(op, resultType, {first, second, third});
-	    },
-	    [&](Snapshot& tag) -> TypedValueRef& {
-		    return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
-	    });
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
+	});
 }
 
 std::string ExceptionBasedTraceContext::formatStaticVars() const {
@@ -328,7 +285,6 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		nextBlock = std::get<BlockRef*>(currentOperation.input[2])->block;
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
-	needsCheckpoint_ = true;
 	return result;
 }
 

@@ -1,8 +1,9 @@
 #include <cstdint>
 #include <iostream>
+#include <vector>
+
 #include <nautilus/Engine.hpp>
 #include <nautilus/gpu/gpu.hpp>
-#include <vector>
 
 #ifdef GPU_DEMO_USE_CUDA
 #include <cuda_runtime.h>
@@ -12,10 +13,11 @@ using namespace nautilus;
 
 // vecAdd kernel: c[tid] = a[tid] + b[tid]
 // One thread per element, single block of 256 threads.
-static auto vecAddKernel = gpu::NautilusKernelFunction {"vecAdd", [](val<float*> a, val<float*> b, val<float*> c) {
-	                                                        auto tid = gpu::threadIdx_x();
-	                                                        c[tid] = a[tid] + b[tid];
-                                                        }};
+static auto vecAddKernel = gpu::NautilusKernelFunction {
+    "vecAdd", [](val<float*> a, val<float*> b, val<float*> c) {
+	    auto tid = gpu::threadIdx_x();
+	    c[tid] = a[tid] + b[tid];
+    }};
 
 // Host function traced into a launch wrapper that dispatches the kernel.
 void launchVecAdd(val<float*> a, val<float*> b, val<float*> c) {
