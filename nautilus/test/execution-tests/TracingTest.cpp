@@ -23,6 +23,7 @@
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TwoPassTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -53,6 +54,7 @@ using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::Co
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
+    {"TwoPassTraceContext", tracing::TwoPassTraceContext::Trace},
 };
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
