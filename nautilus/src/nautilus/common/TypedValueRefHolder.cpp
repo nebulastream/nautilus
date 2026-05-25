@@ -27,11 +27,9 @@ TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefH
 #endif
 }
 
-TypedValueRefHolder::TypedValueRefHolder(const nautilus::tracing::TypedValueRefHolder&& other)
+TypedValueRefHolder::TypedValueRefHolder(nautilus::tracing::TypedValueRefHolder&& other) noexcept
     : valueRef(other.valueRef) {
-#ifdef ENABLE_TRACING
-	tracing::allocateValRef(valueRef.ref);
-#endif
+	other.valueRef = TypedValueRef();
 }
 
 TypedValueRefHolder& TypedValueRefHolder::operator=(const nautilus::tracing::TypedValueRefHolder& other) {
@@ -49,7 +47,9 @@ TypedValueRefHolder& TypedValueRefHolder::operator=(nautilus::tracing::TypedValu
 
 TypedValueRefHolder::~TypedValueRefHolder() {
 #ifdef ENABLE_TRACING
-	tracing::freeValRef(valueRef.ref);
+	if (valueRef.type != Type::v) {
+		tracing::freeValRef(valueRef.ref);
+	}
 #endif
 }
 

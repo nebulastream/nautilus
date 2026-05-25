@@ -134,18 +134,9 @@ Arena& ExecutionTrace::getArena() {
 bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
-	auto globalTabIter = globalTagMap.find(snapshot);
-	if (globalTabIter != globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
-		processControlFlowMerge(ref);
-		return false;
-	}
-
-	// check if we visited the same operation in this execution -> loop
-	auto localTagIter = localTagMap.find(snapshot);
-	if (localTagIter != localTagMap.end()) {
-		auto& ref = localTagIter->second;
-		processControlFlowMerge(ref);
+	auto it = tagMap.find(snapshot);
+	if (it != tagMap.end()) {
+		processControlFlowMerge(it->second);
 		return false;
 	}
 	return true;
@@ -298,8 +289,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 				}
 			}
 		} else {
-			globalTagMap[opTag] = operationReference;
-			localTagMap[opTag] = operationReference;
+			tagMap[opTag] = operationReference;
 		}
 	}
 
@@ -360,8 +350,7 @@ operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 void ExecutionTrace::resetExecution() {
 	currentBlockIndex = 0;
 	currentOperationIndex = 0;
-	globalTagMap.merge(localTagMap);
-	localTagMap.clear();
+	// tagMap persists across iterations — no merge/clear needed
 }
 
 const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
@@ -369,8 +358,7 @@ const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
 }
 
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
-	globalTagMap[snapshot] = identifier;
-	localTagMap[snapshot] = identifier;
+	tagMap[snapshot] = identifier;
 }
 
 AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
