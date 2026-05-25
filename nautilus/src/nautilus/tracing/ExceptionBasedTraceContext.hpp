@@ -99,6 +99,10 @@ public:
 			alive_hash = 0;
 		}
 	}
+
+	inline void restoreHash(uint64_t h) noexcept {
+		alive_hash = h;
+	}
 };
 
 /**

@@ -36,6 +36,7 @@ void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
 	paused_ = false;
+	following_ = true;
 }
 
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -65,6 +66,9 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	if (isFollowing()) {
 		return follow(op);
 	}
+	if (following_) {
+		following_ = false;
+	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.tagMap.find(tag);
 	if (globalTabIter != state->executionTrace.tagMap.end()) {
@@ -85,15 +89,16 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	}
 	if (isFollowing()) {
 		return follow(op);
+	}
+	if (following_) {
+		following_ = false;
+	}
+	auto tag = recordSnapshot();
+	if (state->executionTrace.checkTag(tag)) {
+		return onCreation(tag);
 	} else {
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
-			return onCreation(tag);
-		} else {
-			// Instead of throwing TraceTerminationException, enter passive mode.
-			paused_ = true;
-			return dummyRef_;
-		}
+		paused_ = true;
+		return dummyRef_;
 	}
 }
 
@@ -218,6 +223,9 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
+		if (following_) {
+			following_ = false;
+		}
 		auto tag = recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
@@ -262,11 +270,13 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	bool shouldTerminate = false;
 
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
+		auto& cmpOp = state->executionTrace.getCurrentOperation();
+		aliveVars.restoreHash(cmpOp.tag.getAliveHash());
 		auto recordResult = state->symbolicExecutionContext.followNoThrow();
 		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
-		// record
+		following_ = false;
 		auto tag = recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
@@ -409,14 +419,14 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 }
 
 void LazyTraceContext::allocateValRef(ValueRef ref) {
-	if (paused_) {
+	if (paused_ || following_) {
 		return;
 	}
 	aliveVars.increment(ref);
 }
 
 void LazyTraceContext::freeValRef(ValueRef ref) {
-	if (paused_) {
+	if (paused_ || following_) {
 		return;
 	}
 	aliveVars.decrement(ref);
@@ -452,7 +462,8 @@ std::string LazyTraceContext::formatStaticVars() const {
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	auto ah = aliveVars.hash();
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ ah, ah};
 }
 
 } // namespace nautilus::tracing

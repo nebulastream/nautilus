@@ -378,7 +378,8 @@ std::string TwoPassTraceContext::formatStaticVars() const {
 }
 
 Snapshot TwoPassTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	auto ah = aliveVars.hash();
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ ah, ah};
 }
 
 } // namespace nautilus::tracing

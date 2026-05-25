@@ -119,8 +119,9 @@ private:
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
 
-	// Passive mode state
+	// Mode flags
 	bool paused_ = false;
+	bool following_ = false;
 	// Returned by all trace methods when paused. Safe because callers (val<T> constructors)
 	// always copy the TypedValueRef by value — no one holds the reference across calls.
 	TypedValueRef dummyRef_ = {0, Type::v};
