@@ -64,40 +64,24 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
  * @note Changed from fixed array to hash map to support uint32_t ValueRef (was uint16_t).
  */
 class AliveVariableHash {
-	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
+	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15;
 
-	std::unordered_map<uint32_t, uint32_t> counts;
+	std::vector<uint32_t> counts;
 	uint64_t alive_hash = 0;
 
 public:
-	/**
-	 * @brief Default constructor. No initialization needed as counts are zero-initialized.
-	 */
 	AliveVariableHash() = default;
 
-	/**
-	 * @brief Increments the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
 	inline void increment(uint32_t id) noexcept {
+		if (id >= counts.size()) {
+			counts.resize(id + 1, 0);
+		}
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		++c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 	}
 
-	/**
-	 * @brief Decrements the reference count for a variable and updates the hash.
-	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
-	 * @param id Variable identifier (32-bit value)
-	 */
 	inline void decrement(uint32_t id) noexcept {
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
@@ -105,30 +89,19 @@ public:
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 	}
 
-	/**
-	 * @brief Returns the current hash value representing the state of alive variables.
-	 *
-	 * The hash reflects both which variables have non-zero reference counts and the
-	 * magnitude of those counts. This value is maintained incrementally and can be
-	 * retrieved in O(1) time.
-	 *
-	 * @return 64-bit hash value representing current variable state
-	 */
 	inline uint64_t hash() const noexcept {
 		return alive_hash;
 	}
 
-	/**
-	 * @brief Resets all reference counts and hash to initial state.
-	 *
-	 * This efficiently clears all counts without creating a temporary object.
-	 * Optimized: if hash is already 0, we assume counts are already empty and skip the clear.
-	 */
 	inline void reset() noexcept {
 		if (alive_hash != 0) {
-			counts.clear();
+			std::fill(counts.begin(), counts.end(), 0);
 			alive_hash = 0;
 		}
+	}
+
+	inline void restoreHash(uint64_t h) noexcept {
+		alive_hash = h;
 	}
 };
 

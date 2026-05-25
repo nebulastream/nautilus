@@ -42,7 +42,7 @@ public:
 	TypedValueRefHolder(TypedValueRef valueRef);
 	TypedValueRefHolder(const TypedValueRefHolder&);
 	TypedValueRefHolder& operator=(const TypedValueRefHolder& other);
-	TypedValueRefHolder(const TypedValueRefHolder&&);
+	TypedValueRefHolder(TypedValueRefHolder&&) noexcept;
 	TypedValueRefHolder& operator=(TypedValueRefHolder&& other);
 	~TypedValueRefHolder();
 	operator const TypedValueRef&() const;

@@ -2,10 +2,11 @@
 
 namespace nautilus::tracing {
 
-Snapshot::Snapshot(Tag* tag, uint64_t staticValueHash) : staticValueHash(staticValueHash), tag(tag) {
+Snapshot::Snapshot(Tag* tag, uint64_t staticValueHash, uint64_t aliveHash)
+    : staticValueHash(staticValueHash), tag(tag), aliveHash(aliveHash) {
 }
 
-Snapshot::Snapshot() : staticValueHash(), tag() {
+Snapshot::Snapshot() : staticValueHash(), tag(), aliveHash() {
 }
 
 bool Snapshot::operator==(const nautilus::tracing::Snapshot& rhs) const {

@@ -1,5 +1,5 @@
 
-#include "LazyTraceContext.hpp"
+#include "TwoPassTraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -19,79 +19,49 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 
 namespace nautilus::tracing {
 
-// Thread-local LazyTraceContext object (not a pointer)
-static thread_local LazyTraceContext completingTraceContext;
+static thread_local TwoPassTraceContext twoPassTraceContext;
 
-LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                               SymbolicExecutionContext& symbolicExecutionContext,
-                                               const engine::Options& options) {
-	completingTraceContext.state =
+TwoPassTraceContext* TwoPassTraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+                                                     SymbolicExecutionContext& symbolicExecutionContext,
+                                                     const engine::Options& options) {
+	twoPassTraceContext.state =
 	    std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
-	completingTraceContext.paused_ = false;
-	setActiveTracer(&completingTraceContext);
-	return &completingTraceContext;
+	twoPassTraceContext.paused_ = false;
+	setActiveTracer(&twoPassTraceContext);
+	return &twoPassTraceContext;
 }
 
-void LazyTraceContext::resume() {
+void TwoPassTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
 	paused_ = false;
-	following_ = true;
 }
 
-TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef& TwoPassTraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	return state->executionTrace.setArgument(type, index);
 }
 
-bool LazyTraceContext::isFollowing() {
+bool TwoPassTraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
+TypedValueRef& TwoPassTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
 	return currentOperation.resultRef;
 }
 
-TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
-	if (paused_) {
-		return dummyRef_;
-	}
-	log::debug("Trace Constant");
-	auto op = Op::CONST;
-	if (isFollowing()) {
-		return follow(op);
-	}
-	if (following_) {
-		following_ = false;
-	}
-	auto tag = recordSnapshot();
-	auto globalTabIter = state->executionTrace.tagMap.find(tag);
-	if (globalTabIter != state->executionTrace.tagMap.end()) {
-		auto& ref = globalTabIter->second;
-		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
-		return originalRef->resultRef;
-	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
-	}
-}
-
 template <typename OnCreation>
-TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) {
+TypedValueRef& TwoPassTraceContext::traceOp(Op op, OnCreation&& onCreation) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	if (isFollowing()) {
 		return follow(op);
-	}
-	if (following_) {
-		following_ = false;
 	}
 	auto tag = recordSnapshot();
 	if (state->executionTrace.checkTag(tag)) {
@@ -102,36 +72,47 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
+TypedValueRef& TwoPassTraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	log::debug("Trace Constant");
+	auto op = Op::CONST;
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
+		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+	});
+}
+
+TypedValueRef& TwoPassTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef& TwoPassTraceContext::traceCopy(const TypedValueRef& ref) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		auto resultRef = state->executionTrace.getNextValueRef();
 		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
-                                           const std::vector<tracing::TypedValueRef>& arguments,
-                                           FunctionAttributes fnAttrs) {
+TypedValueRef& TwoPassTraceContext::traceCall(void* fptn, Type resultType,
+                                              const std::vector<tracing::TypedValueRef>& arguments,
+                                              FunctionAttributes fnAttrs) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = mangledName,
@@ -142,24 +123,24 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-                                                   const std::vector<tracing::TypedValueRef>& arguments,
-                                                   FunctionAttributes fnAttrs) {
+TypedValueRef& TwoPassTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
-                                                   std::function<void()> fwrapper, Type resultType,
-                                                   const std::vector<tracing::TypedValueRef>& arguments,
-                                                   FunctionAttributes fnAttrs) {
+TypedValueRef& TwoPassTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
+                                                      std::function<void()> fwrapper, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -171,7 +152,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		           functionsToTrace.size());
 	}
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -182,8 +163,8 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
-                                                          std::function<void()> fwrapper) {
+TypedValueRef& TwoPassTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+                                                             std::function<void()> fwrapper) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -196,7 +177,7 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	}
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -207,62 +188,58 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	});
 }
 
-void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
+void TwoPassTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	if (paused_) {
 		return;
 	}
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+	traceOp(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 	});
 }
 
-void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
+void TwoPassTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (paused_) {
 		return;
 	}
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
-		if (following_) {
-			following_ = false;
-		}
 		auto tag = recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
-                                               const TypedValueRef& right) {
+TypedValueRef& TwoPassTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                                  const TypedValueRef& right) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+TypedValueRef& TwoPassTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
-                                                const TypedValueRef& second, const TypedValueRef& third) {
+TypedValueRef& TwoPassTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
+                                                   const TypedValueRef& second, const TypedValueRef& third) {
 	if (paused_) {
 		return dummyRef_;
 	}
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOp(op, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
 	});
 }
 
-bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probability) {
+bool TwoPassTraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	if (paused_) {
-		// In passive mode, return false to guarantee loop termination.
 		return false;
 	}
 
@@ -270,13 +247,10 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	bool shouldTerminate = false;
 
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto& cmpOp = state->executionTrace.getCurrentOperation();
-		aliveVars.restoreHash(cmpOp.tag.getAliveHash());
 		auto recordResult = state->symbolicExecutionContext.followNoThrow();
 		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
-		following_ = false;
 		auto tag = recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
@@ -284,15 +258,12 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 			result = recordResult.branchDirection;
 			shouldTerminate = recordResult.shouldTerminate;
 		} else {
-			// Control flow merge/loop detected. Enter passive mode.
 			paused_ = true;
 			return false;
 		}
 	}
 
 	if (shouldTerminate) {
-		// The symbolic execution signals termination (SecondVisit).
-		// Enter passive mode instead of throwing.
 		paused_ = true;
 		return false;
 	}
@@ -310,59 +281,14 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	return result;
 }
 
-std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& traceFunction,
+std::unique_ptr<TraceModule> TwoPassTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
                                                         const engine::Options& options, Arena& arena) {
-	log::debug("Initialize Completing Tracing");
-	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
-
-	// The ExecutionTrace borrows the caller-provided arena for all
-	// allocations; the arena must outlive the returned trace.
-	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
-	SymbolicExecutionContext symbolicExecutionContext;
-
-	// Initialize LazyTraceContext with references to our objects
-	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
-	auto traceIteration = 0;
-
-	// Symbolic execution loop: explore all execution paths
-	// No try/catch needed - the traced function always returns normally
-	while (symbolicExecutionContext.shouldContinue()) {
-		traceIteration = traceIteration + 1;
-		log::trace("Completing Trace Iteration {}", traceIteration);
-		log::trace("{}", *executionTrace);
-
-		// Prepare for next iteration
-		symbolicExecutionContext.next();
-		executionTrace->resetExecution();
-		tc->resume(); // Reset persistent state (staticVars, aliveVars, paused_)
-
-		// Execute the traced function - it always returns normally
-		traceFunction();
-
-		// After each iteration, the static variable stack must be empty.
-		// Since the function completes normally, all destructors fire in order.
-		assert(completingTraceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
-	}
-
-	// Clean up: deregister active tracer and reset state pointer
-	setActiveTracer(nullptr);
-	tc->state.reset();
-
-	log::debug("Completing Tracing Terminated with {} iterations", traceIteration);
-	log::trace("Final trace: {}", *executionTrace);
-
-	return executionTrace;
+	return twoPassTraceContext.startTrace(functions, options, arena);
 }
 
-std::unique_ptr<TraceModule> LazyTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                     const engine::Options& options, Arena& arena) {
-	return completingTraceContext.startTrace(functions, options, arena);
-}
-
-std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                          const engine::Options& options, Arena& arena) {
-	log::debug("Initialize Lazy Tracing");
+std::unique_ptr<TraceModule> TwoPassTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
+                                                             const engine::Options& options, Arena& arena) {
+	log::debug("Initialize Two-Pass Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
@@ -378,12 +304,6 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		}
 
 		auto& executionTrace = traceModule->addNewFunction(currentFunction.getName(), arena);
-		// Tag the first popped function as the entry point. Everything else in
-		// the queue was `invoke`d by some other traced function; that alone
-		// cannot tell us host-vs-device side (a plain NautilusFunction may be
-		// invoked from either), so non-entry classification is left to a
-		// downstream call-graph pass. `kernel` rides through unchanged from
-		// NautilusKernelFunction.
 		auto attributes = currentFunction.getAttributes();
 		if (isFirstFunction) {
 			attributes["entry"] = "true";
@@ -400,7 +320,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 
 		while (symbolicExecutionContext.shouldContinue()) {
 			traceIteration = traceIteration + 1;
-			log::trace("Lazy Trace Iteration {}", traceIteration);
+			log::trace("Two-Pass Trace Iteration {}", traceIteration);
 			log::trace("{}", executionTrace);
 			symbolicExecutionContext.next();
 			executionTrace.resetExecution();
@@ -410,7 +330,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		}
 
 		state.reset();
-		log::debug("Lazy Tracing Terminated with {} iterations", traceIteration);
+		log::debug("Two-Pass Tracing Terminated with {} iterations", traceIteration);
 		log::trace("Final trace: {}", executionTrace);
 	}
 
@@ -418,39 +338,35 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	return traceModule;
 }
 
-void LazyTraceContext::allocateValRef(ValueRef ref) {
-	if (paused_ || following_) {
+void TwoPassTraceContext::allocateValRef(ValueRef ref) {
+	if (paused_) {
 		return;
 	}
 	aliveVars.increment(ref);
 }
 
-void LazyTraceContext::freeValRef(ValueRef ref) {
-	if (paused_ || following_) {
+void TwoPassTraceContext::freeValRef(ValueRef ref) {
+	if (paused_) {
 		return;
 	}
 	aliveVars.decrement(ref);
 }
 
-void LazyTraceContext::pushStaticVal(void* valPtr, size_t size) {
-	// Always maintain the static variable stack, even in passive mode.
-	// Static variables may have been pushed before entering passive mode,
-	// and their destructors will call popStaticVal after.
+void TwoPassTraceContext::pushStaticVal(void* valPtr, size_t size) {
 	staticVars.emplace_back(valPtr, size);
 	if (!paused_ && log::options::getLogStaticVars()) {
 		log::info("pushStaticVal: [{}]", formatStaticVars());
 	}
 }
 
-void LazyTraceContext::popStaticVal() {
-	// Always maintain the static variable stack, even in passive mode.
+void TwoPassTraceContext::popStaticVal() {
 	if (!paused_ && log::options::getLogStaticVars()) {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
 	}
 	staticVars.pop_back();
 }
 
-std::string LazyTraceContext::formatStaticVars() const {
+std::string TwoPassTraceContext::formatStaticVars() const {
 	std::string result;
 	for (size_t i = 0; i < staticVars.size(); i++) {
 		if (i > 0) {
@@ -461,7 +377,7 @@ std::string LazyTraceContext::formatStaticVars() const {
 	return result;
 }
 
-Snapshot LazyTraceContext::recordSnapshot() {
+Snapshot TwoPassTraceContext::recordSnapshot() {
 	auto ah = aliveVars.hash();
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ ah, ah};
 }
