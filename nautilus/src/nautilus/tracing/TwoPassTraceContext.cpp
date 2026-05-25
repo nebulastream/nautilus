@@ -37,7 +37,6 @@ void TwoPassTraceContext::resume() {
 	paused_ = false;
 }
 
-
 TypedValueRef& TwoPassTraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
@@ -211,7 +210,7 @@ void TwoPassTraceContext::traceReturnOperation(Type resultType, const TypedValue
 }
 
 TypedValueRef& TwoPassTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
-                                                   const TypedValueRef& right) {
+                                                  const TypedValueRef& right) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -230,7 +229,7 @@ TypedValueRef& TwoPassTraceContext::traceUnaryOp(Op op, Type resultType, const T
 }
 
 TypedValueRef& TwoPassTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
-                                                    const TypedValueRef& second, const TypedValueRef& third) {
+                                                   const TypedValueRef& second, const TypedValueRef& third) {
 	if (paused_) {
 		return dummyRef_;
 	}
