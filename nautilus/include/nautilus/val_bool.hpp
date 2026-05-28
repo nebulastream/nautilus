@@ -264,6 +264,8 @@ public:
 #ifdef ENABLE_TRACING
 	val(tracing::TypedValueRef& tc) : state(tc), value(false) {
 	}
+	val(tracing::TypedValueRef& tc, bool actualValue) : state(tc), value(actualValue) {
+	}
 #endif
 
 	/// Copy assignment operator.
@@ -436,57 +438,62 @@ namespace details {
 
 /// Logical OR operation for boolean values
 val<bool> inline lOr(const val<bool>& left, const val<bool>& right) {
+	auto result = RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right);
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::OR, Type::b, left.state, right.state);
-		return val<bool> {tc};
+		return val<bool> {tc, result};
 	}
 #endif
-	return RawValueResolver<bool>::getRawValue(left) || RawValueResolver<bool>::getRawValue(right);
+	return result;
 }
 
 /// Logical AND operation for boolean values
 val<bool> inline lAnd(const val<bool>& left, const val<bool>& right) {
+	auto result = RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right);
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::AND, Type::b, left.state, right.state);
-		return val<bool> {tc};
+		return val<bool> {tc, result};
 	}
 #endif
-	return RawValueResolver<bool>::getRawValue(left) && RawValueResolver<bool>::getRawValue(right);
+	return result;
 }
 
 /// Logical NOT operation for boolean values
 val<bool> inline lNot(const val<bool>& arg) {
+	auto result = !RawValueResolver<bool>::getRawValue(arg);
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceUnaryOp(tracing::NOT, Type::b, arg.state);
-		return val<bool> {tc};
+		return val<bool> {tc, result};
 	}
 #endif
-	return !RawValueResolver<bool>::getRawValue(arg);
+	return result;
 }
 
 /// Equality comparison for boolean values
 val<bool> inline eq(const val<bool>& left, const val<bool>& right) {
+	auto result = RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right);
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, left.state, right.state);
-		return val<bool> {tc};
+		return val<bool> {tc, result};
 	}
 #endif
-	return RawValueResolver<bool>::getRawValue(left) == RawValueResolver<bool>::getRawValue(right);
+	return result;
 }
 
 /// Inequality comparison for boolean values
 val<bool> inline neq(const val<bool>& left, const val<bool>& right) {
+	auto result = RawValueResolver<bool>::getRawValue(left) != RawValueResolver<bool>::getRawValue(right);
 #ifdef ENABLE_TRACING
 	if SHOULD_TRACE () {
 		auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, left.state, right.state);
-		return val<bool> {tc};
+		return val<bool> {tc, result};
 	}
 #endif
-	return RawValueResolver<bool>::getRawValue(left) != RawValueResolver<bool>::getRawValue(right);
+	return result;
 }
 
 } // namespace details
