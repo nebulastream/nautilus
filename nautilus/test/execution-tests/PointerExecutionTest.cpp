@@ -303,6 +303,18 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[1]) == 5); // values[4] = 5
 		REQUIRE(f(&values[5]) == 9); // values[8] = 9
 	}
+
+	SECTION("sumWhileNotDone guards a null pointer in a `ptr && !flag` loop") {
+		auto f = engine.registerFunction(sumWhileNotDone);
+		// Non-null pointer: sums the first `limit` elements (values = 1..9).
+		REQUIRE(f(values, (int32_t) 1) == 1);
+		REQUIRE(f(values, (int32_t) 5) == 15); // 1+2+3+4+5
+		// Null pointer: the `ptr` truthiness in the loop condition must hold, so
+		// the body (which would dereference null) never runs and the result is 0.
+		// Before the val<bool> value-propagation fix the guard was folded away on
+		// the loop back-edge, dereferencing the null pointer.
+		REQUIRE(f((int32_t*) nullptr, (int32_t) 5) == 0);
+	}
 }
 
 TEST_CASE("Pointer Test") {
