@@ -584,7 +584,8 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 							}
 							auto scopeStart = scopeKey + std::string("scope: !").size();
 							auto scopeEnd = scopeStart;
-							while (scopeEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
+							while (scopeEnd < line.size() &&
+							       std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
 								++scopeEnd;
 							}
 							auto scopeId = line.substr(scopeStart, scopeEnd - scopeStart);
@@ -797,7 +798,8 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 	REQUIRE(std::filesystem::exists(sourcePath));
 	const auto ir = readFile(sourcePath);
 	REQUIRE(ir.find("debug_helper(") != std::string::npos);
-	const bool hasOuterFn = ir.find("execute(") != std::string::npos || ir.find("debugCaller(") != std::string::npos;
+	const bool hasOuterFn =
+	    ir.find("execute(") != std::string::npos || ir.find("debugCaller(") != std::string::npos;
 	REQUIRE(hasOuterFn);
 
 	// Parse the pre-optimization LLVM IR to map subprograms to their
@@ -848,7 +850,8 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 						if (dbgKey != std::string::npos) {
 							auto idStart = dbgKey + std::string("!dbg !").size();
 							auto idEnd = idStart;
-							while (idEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
+							while (idEnd < line.size() &&
+							       std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
 								++idEnd;
 							}
 							callDbgScope = line.substr(idStart, idEnd - idStart);
@@ -882,7 +885,8 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 						auto nameEnd = line.find('"', nameStart);
 						auto lineStart = lineKey + std::string("line: ").size();
 						auto lineNumEnd = lineStart;
-						while (lineNumEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[lineNumEnd]))) {
+						while (lineNumEnd < line.size() &&
+						       std::isdigit(static_cast<unsigned char>(line[lineNumEnd]))) {
 							++lineNumEnd;
 						}
 						subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
@@ -1062,7 +1066,8 @@ TEST_CASE("Debug info: block terminators carry non-zero !dbg lines") {
 					REQUIRE(it != dilocationLine.end());
 					++terminatorsChecked;
 					if (it->second == "0") {
-						INFO("terminator in @" << currentFunction << " has !dbg !" << id << " line: 0 — " << line);
+						INFO("terminator in @" << currentFunction << " has !dbg !" << id << " line: 0 — "
+						                       << line);
 						sawLineZero = true;
 					}
 				}
