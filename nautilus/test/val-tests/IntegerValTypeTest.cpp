@@ -76,6 +76,31 @@ TEMPLATE_TEST_CASE("Integer Val Operation Test", "[value][template]", int8_t, in
 			auto ref = static_cast<TestType>(42) >> static_cast<TestType>(2);
 			REQUIRE(res == ref);
 		}
+		SECTION(">> highbit lhs") {
+			auto highbit = std::numeric_limits<TestType>::max();
+			auto f1 = val<TestType>(highbit);
+			auto f2 = val<TestType>(static_cast<TestType>(1));
+			auto res = f1 >> f2;
+			auto ref = static_cast<TestType>(highbit >> static_cast<TestType>(1));
+			REQUIRE(res == ref);
+		}
+		SECTION(">> highbit rhs") {
+			auto f1 = val<TestType>(static_cast<TestType>(42));
+			auto shift = static_cast<TestType>(sizeof(TestType) * 8 - 1);
+			auto f2 = val<TestType>(shift);
+			auto res = f1 >> f2;
+			auto ref = static_cast<TestType>(static_cast<TestType>(42) >> shift);
+			REQUIRE(res == ref);
+		}
+		SECTION(">> highbit both") {
+			auto highbit = std::numeric_limits<TestType>::max();
+			auto shift = static_cast<TestType>(sizeof(TestType) * 8 - 1);
+			auto f1 = val<TestType>(highbit);
+			auto f2 = val<TestType>(shift);
+			auto res = f1 >> f2;
+			auto ref = static_cast<TestType>(highbit >> shift);
+			REQUIRE(res == ref);
+		}
 	}
 	SECTION("arithmetic operators") {
 		SECTION("+") {

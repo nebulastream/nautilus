@@ -1277,7 +1277,11 @@ void MLIRLoweringProvider::visitShift(ir::ShiftOperation* shiftOperation,
 		op = builder->create<mlir::arith::ShLIOp>(getNameLoc("location"), leftInput, rightInput);
 		break;
 	case ir::ShiftOperation::RS:
-		op = builder->create<mlir::arith::ShRSIOp>(getNameLoc("location"), leftInput, rightInput);
+		if (isSignedInteger(shiftOperation->getStamp())) {
+			op = builder->create<mlir::arith::ShRSIOp>(getNameLoc("location"), leftInput, rightInput);
+		} else {
+			op = builder->create<mlir::arith::ShRUIOp>(getNameLoc("location"), leftInput, rightInput);
+		}
 		break;
 	}
 	frame.setValue(shiftOperation->getIdentifier(), op);
