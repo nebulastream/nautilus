@@ -1,0 +1,5 @@
+EXECUTE:
+B0($1:ui64,$2:ui64)
+	RSH	$3	$1	$2	:ui64
+	RETURN	$0	$3	:ui64
+

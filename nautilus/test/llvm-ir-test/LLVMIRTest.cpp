@@ -76,6 +76,30 @@ TEST_CASE("LLVM IR Test: int8AddExpression", "[expressions]") {
 	testLLVMIR("int8AddExpression", int8AddExpression);
 }
 
+TEST_CASE("LLVM IR Test: shiftRight_int8", "[expressions][shift]") {
+	testLLVMIR("shiftRight_int8", shiftRight<int8_t>);
+}
+
+TEST_CASE("LLVM IR Test: shiftRight_uint8", "[expressions][shift]") {
+	testLLVMIR("shiftRight_uint8", shiftRight<uint8_t>);
+}
+
+TEST_CASE("LLVM IR Test: shiftRight_int32", "[expressions][shift]") {
+	testLLVMIR("shiftRight_int32", shiftRight<int32_t>);
+}
+
+TEST_CASE("LLVM IR Test: shiftRight_uint32", "[expressions][shift]") {
+	testLLVMIR("shiftRight_uint32", shiftRight<uint32_t>);
+}
+
+TEST_CASE("LLVM IR Test: shiftRight_int64", "[expressions][shift]") {
+	testLLVMIR("shiftRight_int64", shiftRight<int64_t>);
+}
+
+TEST_CASE("LLVM IR Test: shiftRight_uint64", "[expressions][shift]") {
+	testLLVMIR("shiftRight_uint64", shiftRight<uint64_t>);
+}
+
 // ============================================================================
 // Enum Tests
 // ============================================================================
