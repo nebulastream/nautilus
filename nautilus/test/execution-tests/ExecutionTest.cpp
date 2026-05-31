@@ -201,6 +201,42 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(7) == 0);
 		REQUIRE(f(5) == 0);
 	}
+	SECTION("shiftRight_int8_highbit") {
+		auto f = engine.registerFunction(shiftRight<int8_t>);
+		REQUIRE(f((int8_t) -128, (int8_t) 1) == (int8_t) (-128 >> 1));
+		REQUIRE(f((int8_t) -1, (int8_t) 1) == (int8_t) (-1 >> 1));
+		REQUIRE(f((int8_t) -128, (int8_t) 7) == (int8_t) (-128 >> 7));
+	}
+	SECTION("shiftRight_uint8_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint8_t>);
+		REQUIRE(f((uint8_t) 0x80, (uint8_t) 1) == (uint8_t) (0x80 >> 1));
+		REQUIRE(f((uint8_t) 0xFF, (uint8_t) 1) == (uint8_t) (0xFF >> 1));
+		REQUIRE(f((uint8_t) 0x80, (uint8_t) 7) == (uint8_t) (0x80 >> 7));
+	}
+	SECTION("shiftRight_int32_highbit") {
+		auto f = engine.registerFunction(shiftRight<int32_t>);
+		REQUIRE(f(INT32_MIN, (int32_t) 1) == (INT32_MIN >> 1));
+		REQUIRE(f((int32_t) -1, (int32_t) 1) == ((int32_t) -1 >> 1));
+		REQUIRE(f(INT32_MIN, (int32_t) 31) == (INT32_MIN >> 31));
+	}
+	SECTION("shiftRight_uint32_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint32_t>);
+		REQUIRE(f((uint32_t) 0x80000000, (uint32_t) 1) == (uint32_t) (0x80000000u >> 1));
+		REQUIRE(f((uint32_t) 0xFFFFFFFF, (uint32_t) 1) == (uint32_t) (0xFFFFFFFFu >> 1));
+		REQUIRE(f((uint32_t) 0x80000000, (uint32_t) 31) == (uint32_t) (0x80000000u >> 31));
+	}
+	SECTION("shiftRight_int64_highbit") {
+		auto f = engine.registerFunction(shiftRight<int64_t>);
+		REQUIRE(f(INT64_MIN, (int64_t) 1) == (INT64_MIN >> 1));
+		REQUIRE(f((int64_t) -1, (int64_t) 1) == ((int64_t) -1 >> 1));
+		REQUIRE(f(INT64_MIN, (int64_t) 63) == (INT64_MIN >> 63));
+	}
+	SECTION("shiftRight_uint64_highbit") {
+		auto f = engine.registerFunction(shiftRight<uint64_t>);
+		REQUIRE(f((uint64_t) 0x8000000000000000ULL, (uint64_t) 1) == (uint64_t) (0x8000000000000000ULL >> 1));
+		REQUIRE(f((uint64_t) 0xFFFFFFFFFFFFFFFFULL, (uint64_t) 1) == (uint64_t) (0xFFFFFFFFFFFFFFFFULL >> 1));
+		REQUIRE(f((uint64_t) 0x8000000000000000ULL, (uint64_t) 63) == (uint64_t) (0x8000000000000000ULL >> 63));
+	}
 	SECTION("assignment1") {
 		auto f = engine.registerFunction(assignment1);
 		REQUIRE(f(1) == 1);
