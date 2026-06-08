@@ -28,6 +28,21 @@ TracingInterface* getActiveTracer();
 /// Pass nullptr to indicate that tracing is no longer active.
 void setActiveTracer(TracingInterface* tracer);
 
+/// RAII guard that clears the active tracer on scope exit. Use in tracing entry
+/// points so an exception escaping the symbolic-execution loop (RuntimeException
+/// from ExecutionTrace, TagCreationException, or any exception from the traced
+/// function) still deregisters the thread-local tracer.
+struct ActiveTracerGuard {
+	ActiveTracerGuard() = default;
+	~ActiveTracerGuard() noexcept {
+		setActiveTracer(nullptr);
+	}
+	ActiveTracerGuard(const ActiveTracerGuard&) = delete;
+	ActiveTracerGuard& operator=(const ActiveTracerGuard&) = delete;
+	ActiveTracerGuard(ActiveTracerGuard&&) = delete;
+	ActiveTracerGuard& operator=(ActiveTracerGuard&&) = delete;
+};
+
 TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right);
 TypedValueRef& traceUnaryOp(Op op, Type resultType, const TypedValueRef& input);
 TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,

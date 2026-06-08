@@ -302,6 +302,9 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 
 	// Initialize ExceptionBasedTraceContext with references to our objects
 	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
+	// Ensure the thread-local active tracer is cleared even if an exception
+	// other than TraceTerminationException escapes the loop below.
+	ActiveTracerGuard activeTracerGuard;
 	auto traceIteration = 0;
 
 	// Symbolic execution loop: explore all execution paths
@@ -326,8 +329,7 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 		assert(traceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 
-	// Clean up: deregister active tracer and reset state pointer
-	setActiveTracer(nullptr);
+	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
 
 	log::debug("Tracing Terminated with {} iterations", traceIteration);
@@ -348,6 +350,9 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	setActiveTracer(this);
+	// Ensure the thread-local active tracer is cleared even if an exception
+	// other than TraceTerminationException escapes the per-function loop below.
+	ActiveTracerGuard activeTracerGuard;
 
 	bool isFirstFunction = true;
 	while (!functionsToTrace.empty()) {
@@ -398,7 +403,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		log::trace("Final trace: {}", executionTrace);
 	}
 
-	setActiveTracer(nullptr);
+	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
 }
 
