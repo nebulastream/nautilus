@@ -313,6 +313,10 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 
 	// Initialize LazyTraceContext with references to our objects
 	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
+	// Ensure the thread-local active tracer is cleared even if an exception
+	// (e.g. RuntimeException from ExecutionTrace or from the traced function)
+	// escapes the loop below - this variant has no try/catch by design.
+	ActiveTracerGuard activeTracerGuard;
 	auto traceIteration = 0;
 
 	// Symbolic execution loop: explore all execution paths
@@ -335,8 +339,7 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 		assert(completingTraceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
 	}
 
-	// Clean up: deregister active tracer and reset state pointer
-	setActiveTracer(nullptr);
+	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
 
 	log::debug("Completing Tracing Terminated with {} iterations", traceIteration);
@@ -357,6 +360,9 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	functionsToTrace = functions;
 	registeredFunctions.clear();
 	setActiveTracer(this);
+	// Ensure the thread-local active tracer is cleared even if an exception
+	// escapes the per-function loop below.
+	ActiveTracerGuard activeTracerGuard;
 
 	bool isFirstFunction = true;
 	while (!functionsToTrace.empty()) {
@@ -404,7 +410,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		log::trace("Final trace: {}", executionTrace);
 	}
 
-	setActiveTracer(nullptr);
+	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
 }
 
