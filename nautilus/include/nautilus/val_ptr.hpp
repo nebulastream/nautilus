@@ -178,9 +178,12 @@ public:
 	}
 #endif
 
-	operator bool() const {
-		return *this != static_cast<val<ValuePtrType>>(nullptr);
-	}
+	// Intentionally no implicit `operator bool()`. Converting a pointer to a native
+	// bool materializes the null test into a control-flow branch (traceBool) that can
+	// be split from the dereference it guards -- in particular across loop back-edges
+	// where the pointer is reassigned -- leaving an unchecked load that LLVM assumes
+	// non-null and miscompiles at -O3. Use explicit `== nullptr` / `!= nullptr`, which
+	// stay symbolic `val<bool>` data values feeding a single condition branch.
 
 	/// Conversion from pointer to arithmetic type (ptr→int, ptr→float).
 	/// Treats the pointer value as a uintptr_t and casts to the target type.
@@ -365,9 +368,12 @@ public:
 		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(this->value)));
 	}
 
-	operator bool() const {
-		return *this != static_cast<val<ValuePtrType>>(nullptr);
-	}
+	// Intentionally no implicit `operator bool()`. Converting a pointer to a native
+	// bool materializes the null test into a control-flow branch (traceBool) that can
+	// be split from the dereference it guards -- in particular across loop back-edges
+	// where the pointer is reassigned -- leaving an unchecked load that LLVM assumes
+	// non-null and miscompiles at -O3. Use explicit `== nullptr` / `!= nullptr`, which
+	// stay symbolic `val<bool>` data values feeding a single condition branch.
 
 	template <typename IndexType>
 	    requires is_integral<IndexType> || is_fundamental_val<IndexType>
@@ -438,9 +444,12 @@ public:
 		return val<OtherType>(static_cast<OtherType>(reinterpret_cast<uintptr_t>(this->value)));
 	}
 
-	operator bool() const {
-		return *this != static_cast<val<ValuePtrType>>(nullptr);
-	}
+	// Intentionally no implicit `operator bool()`. Converting a pointer to a native
+	// bool materializes the null test into a control-flow branch (traceBool) that can
+	// be split from the dereference it guards -- in particular across loop back-edges
+	// where the pointer is reassigned -- leaving an unchecked load that LLVM assumes
+	// non-null and miscompiles at -O3. Use explicit `== nullptr` / `!= nullptr`, which
+	// stay symbolic `val<bool>` data values feeding a single condition branch.
 };
 
 template <is_ptr ValueType, is_fundamental_val IndexType>

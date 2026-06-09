@@ -68,6 +68,19 @@ val<bool> operatorBool(val<T> x) {
 	}
 }
 
+// Pointer null check in the explicit, symbolic form. `p != nullptr` stays a
+// val<bool> data value feeding a single condition branch. val<T*> deliberately
+// has no implicit `operator bool()`: that conversion materializes the null test
+// into a separate control-flow branch which can be split from the dereference it
+// guards, leaving an unchecked load that LLVM miscompiles at -O3.
+val<bool> ptrIsNonNull(val<int32_t*> p) {
+	if (p != nullptr) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 // Comparison operators with raw bool (testing NEW operators added to val_bool.hpp)
 val<bool> boolEqualsMixed(val<bool> x, val<bool> y) {
 	// Convert y to raw bool to test mixed operations
@@ -266,6 +279,42 @@ val<uint64_t> invokeU32ThenCastToU64(val<uint32_t> v) {
 	(void) dirty;
 	auto narrow = invoke(returnsU32, v);
 	return static_cast<val<uint64_t>>(narrow);
+}
+
+// --- Pointer null-guard loop regression -------------------------------------
+//
+// Walks a singly linked list, reassigning the cursor inside the loop. This is
+// the shape that crashed in NebulaStream's chained-hash-map probe: the loop
+// condition tests a pointer that is overwritten every iteration
+// (`node = node->next`, which can become null). Written with the explicit
+// `node != nullptr`, the null test stays a symbolic val<bool> feeding the loop
+// condition, so the guard dominates every iteration's load. (The implicit
+// pointer `operator bool()` was removed precisely because, combined with the
+// eager &&/|| operators, it could split the per-iteration null guard from the
+// load and let LLVM treat the dereference as unchecked at -O3.) This kernel must
+// return the correct sum and never dereference a null cursor -- in BOTH bool
+// configs and at the engine's full optimization level.
+struct ListNode {
+	int32_t value;
+	ListNode* next;
+};
+
+inline int32_t listNodeValue(ListNode* n) {
+	return n->value;
+}
+
+inline ListNode* listNodeNext(ListNode* n) {
+	return n->next;
+}
+
+val<int32_t> sumLinkedList(val<ListNode*> head) {
+	val<int32_t> sum = 0;
+	val<ListNode*> node = head;
+	while (node != nullptr) {
+		sum += invoke(listNodeValue, node);
+		node = invoke(listNodeNext, node);
+	}
+	return sum;
 }
 
 #ifdef ENABLE_SHORT_CIRCUIT_BOOL
