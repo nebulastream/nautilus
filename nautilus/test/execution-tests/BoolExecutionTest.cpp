@@ -91,13 +91,24 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(false) == false);
 	}
 
-	SECTION("operatorBoolPtr") {
-		auto f = engine.registerFunction(operatorBool<int*>);
-		int* x = nullptr;
-		int tmp = 1234;
-		int* y = &tmp;
-		REQUIRE(f(x) == false);
-		REQUIRE(f(y) == true);
+	SECTION("ptrIsNonNull") {
+		auto f = engine.registerFunction(ptrIsNonNull);
+		int32_t tmp = 1234;
+		REQUIRE(f(nullptr) == false);
+		REQUIRE(f(&tmp) == true);
+	}
+
+	SECTION("sumLinkedList null head") {
+		auto f = engine.registerFunction(sumLinkedList);
+		REQUIRE(f(nullptr) == 0);
+	}
+
+	SECTION("sumLinkedList walks and reassigns cursor") {
+		auto f = engine.registerFunction(sumLinkedList);
+		ListNode n2 {30, nullptr};
+		ListNode n1 {20, &n2};
+		ListNode n0 {10, &n1};
+		REQUIRE(f(&n0) == 60);
 	}
 
 	SECTION("boolEqualsMixed") {

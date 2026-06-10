@@ -22,7 +22,7 @@ namespace nautilus {
 ///     which handles both tracing and non-tracing paths.  At trace time the
 ///     concrete runtime address is used, so the traced ProxyCallOperation is
 ///     specialised for that specific address.
-///   - Null / boolean check: operator bool(), == nullptr, != nullptr
+///   - Null check via explicit == nullptr / != nullptr (no implicit operator bool())
 ///   - Pointer equality: == and != with another val<FuncPtr> of the same type
 ///   - Implicit conversion to val<void*> for passing to runtime functions that
 ///     accept a generic opaque callback pointer
@@ -100,11 +100,12 @@ public:
 	const tracing::TypedValueRefHolder& state = ptr.state;
 #endif
 
-	// ---- Bool / null check ----
-
-	operator bool() const {
-		return *this != nullptr;
-	}
+	// ---- Null check ----
+	// Intentionally no implicit `operator bool()`. Converting a function pointer to a
+	// native bool materializes the null test into a control-flow branch (traceBool)
+	// that can be split from the call/dereference it guards, leaving an unchecked use
+	// that LLVM assumes non-null and miscompiles at -O3. Use the explicit
+	// `== nullptr` / `!= nullptr` below, which stay symbolic `val<bool>` data values.
 
 	// ---- Equality ----
 

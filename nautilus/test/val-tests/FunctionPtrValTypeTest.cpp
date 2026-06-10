@@ -36,14 +36,17 @@ TEST_CASE("FunctionPtr Val Test") {
 		REQUIRE((fn != nullptr) == true);
 	}
 
-	SECTION("operator bool - null is false") {
+	// val<FuncPtr> has no implicit operator bool() (it would materialize the null
+	// test into a control-flow branch); the null check is the explicit `!= nullptr`,
+	// which stays a symbolic val<bool>.
+	SECTION("null check via != nullptr - null is false") {
 		val<BinFn> fn(nullptr);
-		REQUIRE(!static_cast<bool>(fn));
+		REQUIRE((fn != nullptr) == false);
 	}
 
-	SECTION("operator bool - non-null is true") {
+	SECTION("null check via != nullptr - non-null is true") {
 		val<BinFn> fn(addHelper);
-		REQUIRE(static_cast<bool>(fn));
+		REQUIRE((fn != nullptr) == true);
 	}
 
 	SECTION("copy constructor preserves pointer") {
