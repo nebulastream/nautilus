@@ -13,6 +13,13 @@
 #include <cassert>
 #include <fmt/format.h>
 
+namespace fmt {
+template <>
+struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::ExecutionTrace& trace, format_context& ctx) -> format_context::iterator;
+};
+} // namespace fmt
+
 namespace nautilus::tracing {
 
 // Thread-local ReplayTraceContext object (not a pointer)
@@ -625,8 +632,7 @@ void ReplayTraceContext::checkPostIteration(const std::string& functionName, uin
 	}
 }
 
-void ReplayTraceContext::runExplorationLoop(const std::function<void()>& wrapperFunc,
-                                            const std::string& functionName) {
+void ReplayTraceContext::runExplorationLoop(const std::function<void()>& wrapperFunc, const std::string& functionName) {
 	auto& executionTrace = state->executionTrace;
 	pathLog.clear();
 	worklist.clear();
@@ -695,7 +701,7 @@ std::unique_ptr<ExecutionTrace> ReplayTraceContext::trace(std::function<void()>&
 	tc->runExplorationLoop(traceFunction, "execute");
 
 	tc->state.reset();
-	log::trace("Final trace: {}", executionTrace->toString());
+	log::trace("Final trace: {}", *executionTrace);
 	return executionTrace;
 }
 
@@ -744,7 +750,7 @@ std::unique_ptr<TraceModule> ReplayTraceContext::startTrace(std::list<compiler::
 		runExplorationLoop(wrapperFunc, currentFunction.getName());
 
 		state.reset();
-		log::trace("Final trace: {}", executionTrace.toString());
+		log::trace("Final trace: {}", executionTrace);
 	}
 
 	// activeTracer is cleared by ActiveTracerGuard.
