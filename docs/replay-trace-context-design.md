@@ -1,6 +1,8 @@
 # Design: ReplayTraceContext — a log-based, exception-free tracing context
 
-**Status:** Proposal (design only, no implementation yet)
+**Status:** Implemented (initial version, opt-in via `engine.traceMode = "replayTracing"`). See
+`nautilus/src/nautilus/tracing/ReplayTraceContext.{hpp,cpp}` and
+`nautilus/test/execution-tests/ReplayTracingTest.cpp`.
 
 This document proposes `ReplayTraceContext`, a third implementation of the virtual `TracingInterface`
 (`nautilus/include/nautilus/tracing/TracingInterface.hpp`), selectable via `engine.traceMode = "replayTracing"`.
@@ -305,11 +307,10 @@ is `Const`. This single conservative rule carries the soundness of the whole sch
   (`Unknown → {Const | Runtime} → Runtime`, never back) guarantees a stale entry can only be *more*
   conservative than the truth.
 - *Bounded unrolling.* In `for (val<int> i = 0; i < 10; ++i)`, the increment is an ADD followed by an
-  ASSIGN to `i`, which kills `i`. Only the *first* `i < 10` check folds (provably true ⇒ pruned, sound: the
-  trace becomes do-while-shaped); the second check records a real `CMP` and loop closure proceeds via
-  `localTagMap` exactly as today. Constness tracking therefore cannot cause unbounded trace-time loop
-  unrolling. Users who *want* full unrolling already have `static_val`, which is unaffected by this design
-  (its conditions are raw C++ bools that never reach `traceBool`).
+  ASSIGN to `i`, which kills `i`. Only the *first* `i < 10` check folds (provably true ⇒ pruned); later
+  checks see a `Runtime` ref and record a real `CMP`. Constness tracking therefore cannot cause unbounded
+  trace-time loop unrolling. Users who *want* full unrolling already have `static_val`, which is unaffected
+  by this design (its conditions are raw C++ bools that never reach `traceBool`).
 
 **Pruning in `traceBool` (RECORD mode).** If `constants.tryFoldBool(cond.ref)` yields `b`: append a
 `LogEntry{CMP, PRUNED, decision=b}`, record **nothing** in the trace (no `CMP` operation, no blocks, no
@@ -317,9 +318,42 @@ snapshot, no pending branch), and return `b`. The infeasible side is never execu
 neither recorded nor replayed nor passively walked. In FOLLOW, the pruned entry replays `b` from the log,
 so the tracker is not needed during replay.
 
-**Interaction with merges.** Pruned branches create no blocks and no merge, so nothing can merge "across" a
-pruned branch. Recorded `CMP`s keep both sides exactly as today. Refs flowing into merge blocks as block
-arguments are ASSIGN targets and therefore already `Runtime`. No additional invalidation is needed.
+**Interaction with loop closure (the hard part).** Pruning changes which branches exist as trace
+operations, but the tag-map machinery identifies operations by stack site + state hashes — it cannot see
+that a site was reached under pruned (constant) control flow the first time and under runtime control flow
+later. Two failure modes follow, both found by tests during implementation:
+
+1. *Exit-less loops.* In `for (val<int> start = 0; start < 10; ++start)`, the first `start < 10` check
+   folds and is pruned (no CMP, no block split). After `++start` kills the constness, the second-pass `LT`
+   collides in the local tag map with the first-pass `LT` — the closure machinery then "closes the loop"
+   against an operation from the pruned region, building a loop header *without an exit branch* (observable
+   as a self-block merge: "Invalid trace ... constant loop").
+2. *Frozen pruned bodies.* In `for (i...) { if (i % 2 == 0) ... }` or a pruned `if (i > 5)` inside an
+   unrolled `static_val` loop, the closure can land on an *unaffected* op (the loop head, or an op after a
+   pruned arm), dedup-ing the whole loop body to the first recorded pass — in which the inner branch was
+   pruned for `i = 0`. The pruned decision is then frozen into the loop body for all iterations: a
+   miscompile.
+
+Two snapshot extensions make pruning sound. Both are deterministic functions of the path and the refs, so
+legitimate cross-path and cross-iteration merging is unaffected:
+
+- **Constness fingerprint.** Every operation whose result is determined `Const` (a folded binary/unary op,
+  or a copy/assignment of a `Const` source) mixes the folded literal into its snapshot — analogous to how
+  `static_val` values are hashed. Constant-region instances of a site therefore never collide with runtime
+  re-executions of the same site.
+- **Pruned-instance poisoning.** Each pruned decision registers an instance key
+  `(site tag, static-state hash, decision)` in a per-iteration set whose accumulated hash is mixed into
+  *every* subsequent snapshot of the iteration (rebuilt deterministically during FOLLOW from the log's
+  PRUNED entries). Operations downstream of a pruned decision can then never merge with operations that
+  reached the same site under recorded control flow, while *set* semantics keep the poison stable when the
+  same instance is pruned repeatedly — so loop closure still terminates. Static-state in the key separates
+  the unrolled instances of a pruned branch inside `static_val` loops.
+
+The combined effect on loops whose entry state is constant: the first (all-constant) iteration is **peeled**
+into straight-line code, and the loop closes one pass later over the runtime body, with a real exit `CMP`.
+Loops whose entry check does not fold (e.g. a runtime bound) are traced exactly as today — no peeling.
+Recorded `CMP`s keep both sides exactly as today; refs flowing into merge blocks as block arguments are
+ASSIGN targets and therefore already `Runtime`.
 
 ## 7. Branch scheduling: explicit DFS over a shared-prefix log
 
@@ -402,6 +436,12 @@ while worklist not empty:
 
 `maxIterations` comes from option `engine.traceMaxIterations` (default 100000) and is **enforced** — unlike
 the commented-out check at SymbolicExecutionContext.cpp:134-138.
+
+One implementation constraint discovered while building this: the driver must invoke the traced function
+from **exactly one call site**. Snapshot tags are stack walks that include the return address of the
+driver's own frame, so calling the function from a second site (e.g. a separate "iteration 0" call outside
+the loop) makes tags from different iterations never compare equal — silently disabling all cross-iteration
+control-flow merging.
 
 ## 8. Algorithms (pseudocode)
 

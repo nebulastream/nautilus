@@ -2,6 +2,7 @@
 if (ENABLE_TRACING)
     add_subdirectory(tag)
     add_subdirectory(symbolic_execution)
+    add_subdirectory(replay)
     add_subdirectory(phases)
     add_subdirectory(exceptions)
     add_source_files(nautilus
@@ -10,6 +11,7 @@ if (ENABLE_TRACING)
             TracingUtil.cpp
             ExceptionBasedTraceContext.cpp
             LazyTraceContext.cpp
+            ReplayTraceContext.cpp
             TraceOperation.cpp
             Snapshot.cpp)
 endif ()

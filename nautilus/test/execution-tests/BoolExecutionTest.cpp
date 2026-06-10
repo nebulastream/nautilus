@@ -300,7 +300,7 @@ TEST_CASE("Bool Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Bool Compiler Test") {
-	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing", "replayTracing"};
 	for (const auto& backend : nautilus::testing::availableBackends()) {
 		for (const auto& traceMode : traceModes) {
 			DYNAMIC_SECTION(backend + "_" + traceMode) {

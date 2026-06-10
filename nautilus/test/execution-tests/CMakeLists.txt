@@ -12,6 +12,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         PostRAPeepholeTest.cpp
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
+        ReplayTracingTest.cpp
         SelectExecutionTest.cpp
 )
 
