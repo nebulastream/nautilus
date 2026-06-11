@@ -3,7 +3,7 @@
 
 namespace nautilus::tracing {
 
-TEST_CASE("AliveVariableHash erases entries that reach a zero count", "[AliveVariableHash]") {
+TEST_CASE("AliveVariableHash tracks the number of alive variables", "[AliveVariableHash]") {
 	AliveVariableHash avh;
 	REQUIRE(avh.size() == 0);
 	REQUIRE(avh.hash() == 0);
@@ -62,6 +62,26 @@ TEST_CASE("AliveVariableHash hash reflects reference counts", "[AliveVariableHas
 
 	twice.decrement(9);
 	REQUIRE(twice.hash() == once.hash());
+}
+
+TEST_CASE("AliveVariableHash id churn neither perturbs the hash nor grows the map", "[AliveVariableHash]") {
+	// Monotonically increasing ids that immediately die mimic the tracing access
+	// pattern: value refs are assigned monotonically and never reused. The churn must
+	// not affect the hash or the size while a long-lived entry survives it.
+	AliveVariableHash avh;
+	avh.increment(1000000);
+	const uint64_t hashWithSurvivor = avh.hash();
+
+	for (uint32_t id = 0; id < 10000; ++id) {
+		avh.increment(id);
+		avh.decrement(id);
+		REQUIRE(avh.hash() == hashWithSurvivor);
+	}
+	REQUIRE(avh.size() == 1);
+
+	avh.decrement(1000000);
+	REQUIRE(avh.size() == 0);
+	REQUIRE(avh.hash() == 0);
 }
 
 TEST_CASE("AliveVariableHash reset clears live entries", "[AliveVariableHash]") {
