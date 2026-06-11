@@ -1,0 +1,20 @@
+nautilus {
+execute($1:i32) :i32 {
+Block_0($1:i32):
+	$2 = true :bool
+	if $2 ? Block_1($1) : Block_2($1) :void
+
+Block_1($1:i32):
+	$4 = 1 :i32
+	$5 = $1 + $4 :i32
+	br Block_3($5) :void
+
+Block_3($5:i32):
+	return ($5) :i32
+
+Block_2($1:i32):
+	$7 = 2 :i32
+	$8 = $1 + $7 :i32
+	br Block_3($8) :void
+}
+} //nautilus

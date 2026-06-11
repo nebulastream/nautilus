@@ -13,7 +13,8 @@ FiberStack::FiberStack(size_t size) {
 	mappingSize_ = usable + pageSize; // one guard page at the low end
 	void* mapping = mmap(nullptr, mappingSize_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (mapping == MAP_FAILED) {
-		throw RuntimeException("Failed to allocate the tracing side stack (" + std::to_string(mappingSize_) + " bytes)");
+		throw RuntimeException("Failed to allocate the tracing side stack (" + std::to_string(mappingSize_) +
+		                       " bytes)");
 	}
 	mapping_ = mapping;
 	if (mprotect(mapping, pageSize, PROT_NONE) != 0) {

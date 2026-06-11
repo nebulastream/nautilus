@@ -144,6 +144,10 @@ struct TraceState {
 	const engine::Options& options;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
+	// Cached from "engine.tracePruning": skip exploration of branches whose condition
+	// is a trace-time constant. Cached here because the option lookup is a string-map
+	// access that would otherwise sit on the traceBool hot path.
+	bool pruneConstantBranches = false;
 
 	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };
@@ -168,6 +172,30 @@ protected:
 	std::unique_ptr<TraceState> state;
 
 	std::unordered_map<void*, std::string> mangledNameCache;
+
+	// --- Constant-branch pruning ("engine.tracePruning", default off) ---
+	//
+	// Tracks which value refs hold trace-time-constant booleans (CONST b literals and
+	// their assignment/copy chains). When a traceBool condition is such a constant,
+	// the statically dead side is never explored and no CMP is recorded - the branch
+	// behaves exactly like an untraced plain bool. Branch probability hints are
+	// deliberately NOT used for pruning: they are hints, not guarantees.
+
+	/// Remembers @p ref as a constant boolean when @p value is a bool literal.
+	void trackConstant(const TypedValueRef& ref, Type type, const ConstantLiteral& value);
+	/// Propagates constant-ness through assignments and copies of boolean values.
+	void trackAssignment(const TypedValueRef& target, const TypedValueRef& source, Type type);
+	/// Returns true (and the branch direction in @p result) when @p value is a known
+	/// trace-time constant and pruning is enabled.
+	bool findConstantBranch(const TypedValueRef& value, bool* result);
+	/// Detects constant-condition infinite loops: seeing the same pruned branch tag
+	/// twice within one recorded path means the loop has no traced exit.
+	void guardPrunedTag(const Snapshot& tag);
+	/// Clears the per-iteration pruning containers.
+	void resetPruningState();
+
+	std::unordered_map<ValueRef, bool> constantBools;
+	std::unordered_set<Snapshot> prunedTags;
 };
 
 /**

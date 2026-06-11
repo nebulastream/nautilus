@@ -9,6 +9,7 @@
 #include "NestedIfBenchmarks.hpp"
 #include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
+#include "PruningFunctions.hpp"
 #include "ReferenceDumpHelper.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
@@ -57,7 +58,8 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"StackCopyTraceContext", tracing::StackCopyTraceContext::Trace},
 };
 
-void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
+void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests,
+                   const engine::Options& traceOptions = engine::Options()) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
 	for (auto& [ctxName, traceFn] : traceContexts) {
@@ -71,7 +73,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 					// Trace all functions (initially just "execute", but may include nested functions)
 
 					common::Arena arena;
-					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
+					auto executionTrace = traceFn(functionsToTrace, traceOptions, arena);
 					DYNAMIC_SECTION("tracing") {
 						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
 					}
@@ -103,7 +105,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						std::list<compiler::CompilableFunction> functionsToTrace3;
 						functionsToTrace3.push_back(rootFunction3);
 						common::Arena arena3;
-						auto executionTrace3 = traceFn(functionsToTrace3, engine::Options(), arena3);
+						auto executionTrace3 = traceFn(functionsToTrace3, traceOptions, arena3);
 						auto ssaCreationPhase3 = tracing::SSACreationPhase();
 						auto afterSSA3 =
 						    ssaCreationPhase3.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace3)));
@@ -124,7 +126,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						std::list<compiler::CompilableFunction> functionsToTrace2;
 						functionsToTrace2.push_back(rootFunction2);
 						common::Arena arena2;
-						auto executionTrace2 = traceFn(functionsToTrace2, engine::Options(), arena2);
+						auto executionTrace2 = traceFn(functionsToTrace2, traceOptions, arena2);
 						auto ssaCreationPhase2 = tracing::SSACreationPhase();
 						auto afterSSA2 =
 						    ssaCreationPhase2.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace2)));
@@ -714,6 +716,46 @@ TEST_CASE("Path Explosion Trace Test") {
 	    {"pathExplosion_constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 	};
 	runTraceTests("path-explosion-tests", tests);
+}
+
+TEST_CASE("Constant Branch Pruning Trace Test") {
+	engine::Options pruningOptions;
+	pruningOptions.setOption("engine.tracePruning", true);
+
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"pruneConstantTrueBranch", details::createFunctionWrapper(pruneConstantTrueBranch)},
+	    {"pruneConstantFalseBranch", details::createFunctionWrapper(pruneConstantFalseBranch)},
+	    {"pruneAssignedConstantBranch", details::createFunctionWrapper(pruneAssignedConstantBranch)},
+	    {"pruneMixedConstantAndDynamic", details::createFunctionWrapper(pruneMixedConstantAndDynamic)},
+	    {"pruneOverwrittenConstant", details::createFunctionWrapper(pruneOverwrittenConstant)},
+	    {"pruneConstantTrueLoopWithExit", details::createFunctionWrapper(pruneConstantTrueLoopWithExit)},
+	};
+	runTraceTests("pruning-tests", tests, pruningOptions);
+}
+
+TEST_CASE("Constant Branch Without Pruning Trace Test") {
+	// Without the option, the same functions keep tracing both branch sides; the
+	// fixtures live under distinct names so both shapes stay covered.
+	auto unprunedTests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"unpruned_pruneConstantTrueBranch", details::createFunctionWrapper(pruneConstantTrueBranch)},
+	    {"unpruned_pruneMixedConstantAndDynamic", details::createFunctionWrapper(pruneMixedConstantAndDynamic)},
+	};
+	runTraceTests("pruning-tests", unprunedTests);
+}
+
+TEST_CASE("Constant Branch Pruning detects endless constant loops") {
+	engine::Options pruningOptions;
+	pruningOptions.setOption("engine.tracePruning", true);
+	auto wrapper = details::createFunctionWrapper(pruneConstantTrueEndlessLoop);
+	for (auto& [ctxName, traceFn] : traceContexts) {
+		DYNAMIC_SECTION(ctxName) {
+			std::list<compiler::CompilableFunction> functionsToTrace;
+			functionsToTrace.emplace_back("execute", wrapper);
+			common::Arena arena;
+			REQUIRE_THROWS_WITH(traceFn(functionsToTrace, pruningOptions, arena),
+			                    Catch::Matchers::ContainsSubstring("constant-condition loop"));
+		}
+	}
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {

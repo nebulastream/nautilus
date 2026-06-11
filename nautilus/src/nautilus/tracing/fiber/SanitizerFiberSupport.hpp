@@ -28,7 +28,7 @@
 extern "C" {
 void __sanitizer_start_switch_fiber(void** fake_stack_save, const void* bottom, size_t size);
 void __sanitizer_finish_switch_fiber(void* fake_stack_save, const void** bottom_old, size_t* size_old);
-void __asan_unpoison_memory_region(void const volatile* addr, size_t size);
+void __asan_unpoison_memory_region(const volatile void* addr, size_t size);
 }
 #endif
 
