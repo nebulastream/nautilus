@@ -12,6 +12,15 @@
 #endif
 
 #ifdef HAS_SANITIZER
+// The stack-copy tracer (engine.traceMode=stackCopyTracing) restores stack bytes of
+// frames that already returned, which is incompatible with ASAN's use-after-return
+// detection: the restored frames reference fake-stack frames that were released when
+// the frame first returned. UAR detection must therefore be disabled for the test
+// binaries that exercise stackCopyTracing.
+extern "C" const char* __asan_default_options() {
+	return "detect_stack_use_after_return=0";
+}
+
 extern "C" const char* __lsan_default_suppressions() {
 	return "leak:llvm::orc::LLJIT\n"
 	       "leak:llvm::orc::SelfExecutorProcessControl\n"

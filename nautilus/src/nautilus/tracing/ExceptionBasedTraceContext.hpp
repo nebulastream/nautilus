@@ -96,13 +96,29 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
+	 * Entries whose count returns to zero are erased: a zero count contributes
+	 * nothing to the hash, and keeping the map at the size of the currently alive
+	 * set (instead of every ref ever seen) keeps the per-branch state copies of the
+	 * snapshotting tracers O(live values).
+	 *
 	 * @param id Variable identifier (32-bit value)
 	 */
 	inline void decrement(uint32_t id) noexcept {
-		uint32_t& c = counts[id];
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
-		--c;
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		auto it = counts.find(id);
+		if (it == counts.end()) {
+			// Unbalanced free; mirror the previous behavior (count wraps from 0).
+			uint32_t& c = counts[id];
+			--c;
+			alive_hash ^= (id * HASH_MULTIPLIER) * c;
+			return;
+		}
+		alive_hash ^= (id * HASH_MULTIPLIER) * it->second;
+		--it->second;
+		if (it->second == 0) {
+			counts.erase(it);
+		} else {
+			alive_hash ^= (id * HASH_MULTIPLIER) * it->second;
+		}
 	}
 
 	/**

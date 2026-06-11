@@ -63,12 +63,13 @@ struct SnapshotFixture : FiberFixture {
 	void captureRegion() {
 		auto* stackPointer = static_cast<std::byte*>(capturedStackPointer(branchContext));
 		stackBase = stackPointer - 128;
-		stackCopy.assign(stackBase, static_cast<std::byte*>(static_cast<void*>(stack.top())));
+		stackCopy.resize(static_cast<size_t>(stack.top() - stackBase));
+		rawStackCopy(stackCopy.data(), stackBase, stackCopy.size());
 	}
 
 	[[noreturn]] void restoreAndResume() {
 		sanitizerUnpoisonStack(stackBase, static_cast<size_t>(stack.top() - stackBase));
-		std::memcpy(stackBase, stackCopy.data(), stackCopy.size());
+		rawStackCopy(stackBase, stackCopy.data(), stackCopy.size());
 		CapturedContext target = branchContext;
 		sanitizerStartSwitchFiber(&hostFakeStack, stack.bottom(), stack.usableSize());
 		nautilus_resumeContext(&target);

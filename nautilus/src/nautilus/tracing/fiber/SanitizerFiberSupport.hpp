@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 // AddressSanitizer needs to be told about stack switches: without the
 // start/finish_switch_fiber annotations its shadow-memory bookkeeping is bound
@@ -60,6 +61,30 @@ inline void sanitizerUnpoisonStack([[maybe_unused]] const void* addr, [[maybe_un
 #ifdef NAUTILUS_HAS_ASAN
 	__asan_unpoison_memory_region(addr, size);
 #endif
+}
+
+/**
+ * @brief memcpy for raw stack regions that deliberately include ASAN redzones.
+ *
+ * Snapshotting copies the live stack byte-for-byte, poisoned redzones between
+ * frames included; the libc memcpy is intercepted by ASAN and would report a
+ * stack-buffer access for those bytes. This helper is exempt from instrumentation
+ * and must not be lowered to a memcpy libcall (hence the word-wise loop and the
+ * no_builtin attribute).
+ */
+__attribute__((no_sanitize("address"))) __attribute__((no_builtin("memcpy", "memmove"))) inline void
+rawStackCopy(void* destination, const void* source, size_t size) {
+	auto* dst = static_cast<unsigned char*>(destination);
+	const auto* src = static_cast<const unsigned char*>(source);
+	size_t i = 0;
+	for (; i + sizeof(uintptr_t) <= size; i += sizeof(uintptr_t)) {
+		uintptr_t word;
+		__builtin_memcpy(&word, src + i, sizeof(word));
+		__builtin_memcpy(dst + i, &word, sizeof(word));
+	}
+	for (; i < size; i++) {
+		dst[i] = src[i];
+	}
 }
 
 } // namespace nautilus::tracing::detail

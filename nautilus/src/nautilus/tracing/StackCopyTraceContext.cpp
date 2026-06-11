@@ -255,7 +255,6 @@ bool StackCopyTraceContext::traceBool(const TypedValueRef& valueRef, const doubl
 		return false;
 	}
 	state->executionTrace.addCmpOperation(tag, valueRef, probability);
-
 	auto& snap = pendingSnapshots_.emplace_back();
 	snap.cmpTag = tag;
 	snap.staticVarsCopy = staticVars;
@@ -289,7 +288,10 @@ void StackCopyTraceContext::captureStackInto(PathSnapshot& snap) {
 		base = stack_->bottom();
 	}
 	snap.stackBase = base;
-	snap.stackCopy.assign(base, static_cast<std::byte*>(static_cast<void*>(stack_->top())));
+	// The copied region intentionally includes the (possibly poisoned) redzones
+	// between frames; go through the sanitizer-exempt raw copy.
+	snap.stackCopy.resize(static_cast<size_t>(stack_->top() - base));
+	detail::rawStackCopy(snap.stackCopy.data(), base, snap.stackCopy.size());
 }
 
 void StackCopyTraceContext::runTraced() {
@@ -377,7 +379,7 @@ void StackCopyTraceContext::traceFunction(std::function<void()>& wrapper) {
 		// Restore the stack bytes (we run on the host stack, the target region is the
 		// side stack - no overlap) and jump back into traceBool's resumed branch.
 		detail::sanitizerUnpoisonStack(snap.stackBase, static_cast<size_t>(stack_->top() - snap.stackBase));
-		std::memcpy(snap.stackBase, snap.stackCopy.data(), snap.stackCopy.size());
+		detail::rawStackCopy(snap.stackBase, snap.stackCopy.data(), snap.stackCopy.size());
 		detail::CapturedContext resumeTarget = snap.context;
 		pendingSnapshots_.pop_front();
 		detail::sanitizerStartSwitchFiber(&hostFakeStack_, stack_->bottom(), stack_->usableSize());
