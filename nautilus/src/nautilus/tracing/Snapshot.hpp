@@ -23,6 +23,12 @@ public:
 		return tag;
 	}
 
+	/// State component of the snapshot (hash over static and alive variables).
+	/// Exposed for the fork tracer's cross-process trace serialization.
+	[[nodiscard]] uint64_t getStateHash() const {
+		return staticValueHash;
+	}
+
 private:
 	friend std::hash<Snapshot>;
 	uint64_t staticValueHash;

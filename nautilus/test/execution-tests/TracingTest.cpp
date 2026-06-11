@@ -23,6 +23,7 @@
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
+#include "nautilus/tracing/ForkTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/StackCopyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -33,6 +34,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <unordered_set>
 
 namespace nautilus::log::options {
 
@@ -56,6 +58,18 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
     {"StackCopyTraceContext", tracing::StackCopyTraceContext::Trace},
+    {"ForkTraceContext", tracing::ForkTraceContext::Trace},
+};
+
+// forkTracing cannot reconstruct trace wrappers of NautilusFunction objects that are
+// constructed inside the traced function (their definitions live on the stack of one
+// tracing process only). These fixtures assert the documented limitation in
+// "Fork tracing rejects traced-function-local NautilusFunctions" instead.
+static const std::unordered_set<std::string> forkUnsupportedTests = {
+    "nautilusFunctionInline",
+    "nautilusFunctionInlineLambda",
+    "nautilusFunctionInlineMember",
+    "nautilusFunctionMultipleInline",
 };
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests,
@@ -65,6 +79,9 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 	for (auto& [ctxName, traceFn] : traceContexts) {
 		DYNAMIC_SECTION(ctxName) {
 			for (auto& [name, func] : tests) {
+				if (ctxName == "ForkTraceContext" && forkUnsupportedTests.contains(name)) {
+					continue;
+				}
 				DYNAMIC_SECTION(name) {
 					auto rootFunction = compiler::CompilableFunction("execute", func);
 					std::list<compiler::CompilableFunction> functionsToTrace;
@@ -756,6 +773,15 @@ TEST_CASE("Constant Branch Pruning detects endless constant loops") {
 			                    Catch::Matchers::ContainsSubstring("constant-condition loop"));
 		}
 	}
+}
+
+TEST_CASE("Fork tracing rejects traced-function-local NautilusFunctions") {
+	auto wrapper = details::createFunctionWrapper(nautilusFunctionInline);
+	std::list<compiler::CompilableFunction> functionsToTrace;
+	functionsToTrace.emplace_back("execute", wrapper);
+	common::Arena arena;
+	REQUIRE_THROWS_WITH(tracing::ForkTraceContext::Trace(functionsToTrace, engine::Options(), arena),
+	                    Catch::Matchers::ContainsSubstring("constructed inside the traced function"));
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {

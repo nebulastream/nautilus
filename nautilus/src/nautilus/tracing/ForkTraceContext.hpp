@@ -13,6 +13,11 @@ namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
 
+namespace serialization {
+struct ByteWriter;
+struct ByteReader;
+} // namespace serialization
+
 /**
  * @brief Tracing context that executes every path through a function exactly once by
  * snapshotting the whole process with fork() at each recorded branch.
@@ -98,6 +103,16 @@ private:
 		int handoverFd = -1;
 	};
 
+	/// A nested function discovered during tracing. Name and attributes are captured
+	/// at discovery time (while the definition is certainly valid in the discovering
+	/// process); the wrapper pointer refers into the static NautilusFunction object,
+	/// which lives at the same address in every process of the same binary.
+	struct WorklistAddition {
+		std::string name;
+		std::unordered_map<std::string, std::string> attributes;
+		const std::function<void()>* wrapper = nullptr;
+	};
+
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
@@ -105,13 +120,18 @@ private:
 	/// Runs the per-function exploration in a forked worker tree; called in the root.
 	void traceFunctionInWorkerTree(std::function<void()>& wrapper);
 	/// Worker side: explores paths, forking a continuation at every recorded CMP.
+	/// Never returns - every path ends in finishPath() or an error _exit.
 	void runWorker(std::function<void()>& wrapper);
 	/// Worker side: called when the current path terminated; hands the trace state to
 	/// the oldest pending continuation (or the final result to the root) and exits.
 	[[noreturn]] void finishPath();
-	/// Continuation side: blocks until resumed, then adopts the handed-over state.
-	/// Returns the CMP snapshot position so traceBool can take the false branch.
-	void awaitResume(int receiveFd);
+	/// Continuation side: blocks until resumed, adopts the handed-over state and
+	/// re-positions the trace at the CMP identified by @p cmpTag.
+	void awaitResume(int receiveFd, const Snapshot& cmpTag);
+	/// Serializes/deserializes the trace plus per-function exploration state
+	/// (work-list discoveries, normalized-name cache, path budget).
+	void serializeWorkerState(serialization::ByteWriter& writer);
+	void deserializeWorkerState(serialization::ByteReader& reader);
 
 	// Persistent per-path state
 	std::vector<StaticVarHolder> staticVars;
@@ -119,8 +139,13 @@ private:
 	bool paused_ = false;
 	TypedValueRef dummyRef_ = {0, Type::v};
 
+	/// Validates that @p definition can be referenced across processes; throws a
+	/// descriptive error for NautilusFunction objects local to the traced function.
+	void checkDefinitionIsShareable(const NautilusFunctionDefinition* definition);
+
 	// Process orchestration (worker side)
 	std::deque<PendingContinuation> pendingContinuations_;
+	std::vector<WorklistAddition> worklistAdditions_;
 	int resultFd_ = -1;
 	uint64_t pathCount_ = 0;
 	ExecutionTrace* currentTrace_ = nullptr;
@@ -128,7 +153,7 @@ private:
 	std::unique_ptr<TagRecorder> tagRecorder_;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext_;
 
-	// Work-list for multi-function tracing
+	// Work-list for multi-function tracing (drained by the root process only)
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	std::unordered_set<std::string> registeredFunctions;
 };

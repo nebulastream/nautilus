@@ -40,6 +40,14 @@ public:
 	 */
 	explicit TagRecorder(TagAddress startAddress);
 
+	/**
+	 * @brief Re-interns a tag serialized as its root-first address path into this
+	 * recorder's trie. Used by the fork tracer to transfer tags between processes;
+	 * paths over addresses already present yield the existing nodes, so tag identity
+	 * is preserved across the handoff.
+	 */
+	Tag* internTagPath(const TagAddress* addresses, size_t count);
+
 private:
 	static TagAddress getBaseAddress(TagVector& tag1, TagVector& tag2);
 
