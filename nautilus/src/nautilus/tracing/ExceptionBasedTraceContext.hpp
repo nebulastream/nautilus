@@ -96,13 +96,29 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
+	 * Entries whose count returns to zero are erased: a zero count contributes
+	 * nothing to the hash, and keeping the map at the size of the currently alive
+	 * set (instead of every ref ever seen) keeps the per-branch state copies of the
+	 * snapshotting tracers O(live values).
+	 *
 	 * @param id Variable identifier (32-bit value)
 	 */
 	inline void decrement(uint32_t id) noexcept {
-		uint32_t& c = counts[id];
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
-		--c;
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		auto it = counts.find(id);
+		if (it == counts.end()) {
+			// Unbalanced free; mirror the previous behavior (count wraps from 0).
+			uint32_t& c = counts[id];
+			--c;
+			alive_hash ^= (id * HASH_MULTIPLIER) * c;
+			return;
+		}
+		alive_hash ^= (id * HASH_MULTIPLIER) * it->second;
+		--it->second;
+		if (it->second == 0) {
+			counts.erase(it);
+		} else {
+			alive_hash ^= (id * HASH_MULTIPLIER) * it->second;
+		}
 	}
 
 	/**
@@ -144,6 +160,10 @@ struct TraceState {
 	const engine::Options& options;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
+	// Cached from "engine.tracePruning": skip exploration of branches whose condition
+	// is a trace-time constant. Cached here because the option lookup is a string-map
+	// access that would otherwise sit on the traceBool hot path.
+	bool pruneConstantBranches = false;
 
 	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };
@@ -168,6 +188,30 @@ protected:
 	std::unique_ptr<TraceState> state;
 
 	std::unordered_map<void*, std::string> mangledNameCache;
+
+	// --- Constant-branch pruning ("engine.tracePruning", default off) ---
+	//
+	// Tracks which value refs hold trace-time-constant booleans (CONST b literals and
+	// their assignment/copy chains). When a traceBool condition is such a constant,
+	// the statically dead side is never explored and no CMP is recorded - the branch
+	// behaves exactly like an untraced plain bool. Branch probability hints are
+	// deliberately NOT used for pruning: they are hints, not guarantees.
+
+	/// Remembers @p ref as a constant boolean when @p value is a bool literal.
+	void trackConstant(const TypedValueRef& ref, Type type, const ConstantLiteral& value);
+	/// Propagates constant-ness through assignments and copies of boolean values.
+	void trackAssignment(const TypedValueRef& target, const TypedValueRef& source, Type type);
+	/// Returns true (and the branch direction in @p result) when @p value is a known
+	/// trace-time constant and pruning is enabled.
+	bool findConstantBranch(const TypedValueRef& value, bool* result);
+	/// Detects constant-condition infinite loops: seeing the same pruned branch tag
+	/// twice within one recorded path means the loop has no traced exit.
+	void guardPrunedTag(const Snapshot& tag);
+	/// Clears the per-iteration pruning containers.
+	void resetPruningState();
+
+	std::unordered_map<ValueRef, bool> constantBools;
+	std::unordered_set<Snapshot> prunedTags;
 };
 
 /**

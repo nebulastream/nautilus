@@ -2,6 +2,7 @@ if (ENABLE_TRACING AND ENABLE_BENCHMARKS)
     add_executable(nautilus-benchmarks
             TracingBenchmark.cpp
             ExecutionBenchmark.cpp
+            SnapshotMechanismBenchmark.cpp
             TieredCompilationBenchmark.cpp
     )
     target_include_directories(nautilus-benchmarks PRIVATE

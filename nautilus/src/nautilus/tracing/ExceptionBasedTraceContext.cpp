@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -29,8 +30,52 @@ namespace nautilus::tracing {
 static thread_local ExceptionBasedTraceContext traceContext;
 
 TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
+    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts),
+      pruneConstantBranches(opts.getOptionOrDefault("engine.tracePruning", false)) {
 	// TraceState only holds references - the actual objects are stack-allocated in trace()
+}
+
+void TraceContextBase::trackConstant(const TypedValueRef& ref, Type type, const ConstantLiteral& value) {
+	if (state == nullptr || !state->pruneConstantBranches || type != Type::b) {
+		return;
+	}
+	if (const auto* boolValue = std::get_if<bool>(&value)) {
+		constantBools[ref.ref] = *boolValue;
+	}
+}
+
+void TraceContextBase::trackAssignment(const TypedValueRef& target, const TypedValueRef& source, Type type) {
+	if (state == nullptr || !state->pruneConstantBranches || type != Type::b) {
+		return;
+	}
+	if (const auto it = constantBools.find(source.ref); it != constantBools.end()) {
+		constantBools[target.ref] = it->second;
+	} else {
+		constantBools.erase(target.ref);
+	}
+}
+
+bool TraceContextBase::findConstantBranch(const TypedValueRef& value, bool* result) {
+	if (state == nullptr || !state->pruneConstantBranches) {
+		return false;
+	}
+	const auto it = constantBools.find(value.ref);
+	if (it == constantBools.end()) {
+		return false;
+	}
+	*result = it->second;
+	return true;
+}
+
+void TraceContextBase::guardPrunedTag(const Snapshot& tag) {
+	if (!prunedTags.insert(tag).second) {
+		throw RuntimeException("Tracing detected a constant-condition loop without a traced exit.");
+	}
+}
+
+void TraceContextBase::resetPruningState() {
+	constantBools.clear();
+	prunedTags.clear();
 }
 
 bool ExceptionBasedTraceContext::isActive() const {
@@ -52,6 +97,9 @@ void ExceptionBasedTraceContext::resume() {
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
+
+	// Constant tracking is re-derived during the FOLLOW replay of each iteration.
+	resetPruningState();
 
 	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
 	// as it needs to persist across trace iterations
@@ -76,7 +124,9 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
-		return follow(op);
+		auto& resultRef = follow(op);
+		trackConstant(resultRef, type, constValue);
+		return resultRef;
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
@@ -85,9 +135,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
+		trackConstant(originalRef->resultRef, type, constValue);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto& resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		trackConstant(resultRef, type, constValue);
+		return resultRef;
 	}
 }
 
@@ -117,10 +170,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = state->executionTrace.getNextValueRef();
-		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+	auto& resultRef = traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+		auto newRef = state->executionTrace.getNextValueRef();
+		return state->executionTrace.addAssignmentOperation(tag, {newRef, ref.type}, ref, ref.type);
 	});
+	trackAssignment(resultRef, ref, ref.type);
+	return resultRef;
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
@@ -198,6 +253,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 
 void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
                                                  Type resultType) {
+	trackAssignment(target, source, resultType);
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 	});
@@ -258,6 +314,16 @@ void ExceptionBasedTraceContext::popStaticVal() {
 }
 
 bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {
+	if (bool constantResult; findConstantBranch(value, &constantResult)) {
+		// Constant-condition branch: record nothing and take the only feasible side,
+		// exactly like an untraced plain bool. The path decisions of the symbolic
+		// execution are not consumed, so FOLLOW replays stay aligned.
+		if (state->symbolicExecutionContext.getCurrentMode() != SymbolicExecutionContext::MODE::FOLLOW) {
+			auto tag = recordSnapshot();
+			guardPrunedTag(tag);
+		}
+		return constantResult;
+	}
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step

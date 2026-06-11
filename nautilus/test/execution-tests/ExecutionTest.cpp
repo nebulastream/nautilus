@@ -929,37 +929,42 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 	}
 }
 
-void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
+// forkTracing cannot trace NautilusFunction objects constructed inside the traced
+// function (they only exist in one tracing process); the corresponding sections are
+// skipped for that mode via @p supportsTracedLocalFunctions.
+void nautilusFunctionExecutionTest(engine::NautilusEngine& engine, bool supportsTracedLocalFunctions = true) {
 	SECTION("nautilusFunction") {
 		auto f = engine.registerFunction(nautilusFunction);
 		REQUIRE(f(3, 4) == 7);
 		REQUIRE(f(0, 0) == 0);
 		REQUIRE(f(-5, 5) == 0);
 	}
-	SECTION("nautilusFunctionInline") {
-		auto f = engine.registerFunction(nautilusFunctionInline);
-		REQUIRE(f(3, 4) == 7);
-		REQUIRE(f(0, 0) == 0);
-		REQUIRE(f(-5, 5) == 0);
-	}
-	SECTION("nautilusFunctionInlineLambda") {
-		auto f = engine.registerFunction(nautilusFunctionInlineLambda);
-		REQUIRE(f(3, 4) == 12);
-		REQUIRE(f(0, 5) == 0);
-		REQUIRE(f(-2, 3) == -6);
-	}
-	SECTION("nautilusFunctionInlineMember") {
-		auto f = engine.registerFunction(nautilusFunctionInlineMember);
-		REQUIRE(f(10, 3) == 7);
-		REQUIRE(f(5, 5) == 0);
-		REQUIRE(f(0, 1) == -1);
-	}
-	SECTION("nautilusFunctionMultipleInline") {
-		auto f = engine.registerFunction(nautilusFunctionMultipleInline);
-		// result = (a + b) + (a * b)
-		REQUIRE(f(3, 4) == 19); // 7 + 12
-		REQUIRE(f(0, 5) == 5);  // 5 + 0
-		REQUIRE(f(2, 3) == 11); // 5 + 6
+	if (supportsTracedLocalFunctions) {
+		SECTION("nautilusFunctionInline") {
+			auto f = engine.registerFunction(nautilusFunctionInline);
+			REQUIRE(f(3, 4) == 7);
+			REQUIRE(f(0, 0) == 0);
+			REQUIRE(f(-5, 5) == 0);
+		}
+		SECTION("nautilusFunctionInlineLambda") {
+			auto f = engine.registerFunction(nautilusFunctionInlineLambda);
+			REQUIRE(f(3, 4) == 12);
+			REQUIRE(f(0, 5) == 0);
+			REQUIRE(f(-2, 3) == -6);
+		}
+		SECTION("nautilusFunctionInlineMember") {
+			auto f = engine.registerFunction(nautilusFunctionInlineMember);
+			REQUIRE(f(10, 3) == 7);
+			REQUIRE(f(5, 5) == 0);
+			REQUIRE(f(0, 1) == -1);
+		}
+		SECTION("nautilusFunctionMultipleInline") {
+			auto f = engine.registerFunction(nautilusFunctionMultipleInline);
+			// result = (a + b) + (a * b)
+			REQUIRE(f(3, 4) == 19); // 7 + 12
+			REQUIRE(f(0, 5) == 5);  // 5 + 0
+			REQUIRE(f(2, 3) == 11); // 5 + 6
+		}
 	}
 
 	SECTION("nautilusFunctionGetFuncPtr") {
@@ -1474,14 +1479,22 @@ TEST_CASE("NautilusFunction Interpretation Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("NautilusFunction Compiled Execution Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { nautilusFunctionExecutionTest(engine); },
-	    [](engine::Options& options) {
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-		    }
-	    });
+	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing", "stackCopyTracing",
+	                                             "forkTracing"};
+	for (const auto& backend : nautilus::testing::availableBackends()) {
+		for (const auto& traceMode : traceModes) {
+			DYNAMIC_SECTION(backend + "_" + traceMode) {
+				auto engine = nautilus::testing::makeEngine(backend, [&](engine::Options& options) {
+					options.setOption("engine.traceMode", traceMode);
+					if (backend == "mlir") {
+						options.setOption("engine.Compilation", true);
+						options.setOption("mlir.enableMultithreading", false);
+					}
+				});
+				nautilusFunctionExecutionTest(engine, traceMode != "forkTracing");
+			}
+		}
+	}
 }
 #endif
 

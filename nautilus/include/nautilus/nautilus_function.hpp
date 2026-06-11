@@ -85,9 +85,25 @@ public:
 		return attributes_;
 	}
 
+	/**
+	 * @brief Non-owning pointer to the trace wrapper of the NautilusFunction that owns
+	 * this definition (set at construction). The fork tracer uses it to reconstruct
+	 * work-list entries in a process that did not inherit the discovering process'
+	 * heap: NautilusFunction objects are static, so the pointed-to wrapper lives at
+	 * the same address in every process forked from the same binary.
+	 */
+	const std::function<void()>* traceWrapper() const noexcept {
+		return traceWrapper_;
+	}
+
+	void setTraceWrapper(const std::function<void()>* wrapper) noexcept {
+		traceWrapper_ = wrapper;
+	}
+
 private:
 	std::string name_;
 	std::unordered_map<std::string, std::string> attributes_;
+	const std::function<void()>* traceWrapper_ = nullptr;
 };
 
 // -----------------------------
@@ -108,6 +124,10 @@ public:
 	      fwrapper(engine::details::createFunctionWrapper(f_))
 #endif
 	{
+#ifdef ENABLE_TRACING
+		// NautilusFunction is non-copyable/non-movable, so the address is stable.
+		definition_.setTraceWrapper(&fwrapper);
+#endif
 	}
 
 	// NautilusFunction is non-copyable because fwrapper captures a copy of f_ at
