@@ -7,6 +7,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         CompilationStatisticsTest.cpp
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
+        FiberContextTest.cpp
         FunctionPtrExecutionTest.cpp
         ModuleTest.cpp
         PostRAPeepholeTest.cpp
