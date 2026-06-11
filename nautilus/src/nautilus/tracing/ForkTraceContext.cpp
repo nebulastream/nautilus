@@ -458,21 +458,32 @@ void ForkTraceContext::finishPath() {
 		auto next = pendingContinuations_.front();
 		pendingContinuations_.pop_front();
 
-		serialization::ByteWriter writer;
-		writer.write<uint8_t>(static_cast<uint8_t>(MessageKind::PathHandoff));
-		serializeWorkerState(writer);
 		// The remaining pending continuations travel with the handoff: their pids in
 		// the payload, their descriptors via SCM_RIGHTS (a continuation forked before
 		// a younger sibling never inherited the sibling's descriptor).
-		writer.write<uint64_t>(pendingContinuations_.size());
+		//
+		// Protocol order matters: a small header and the descriptors go FIRST, the
+		// large state payload last. Ancillary (SCM_RIGHTS) sends fail with EMSGSIZE
+		// on some kernels (xnu) when the peer's receive buffer is occupied instead
+		// of blocking like plain data, so the descriptors must hit an empty socket.
+		serialization::ByteWriter header;
+		header.write<uint8_t>(static_cast<uint8_t>(MessageKind::PathHandoff));
+		header.write<uint64_t>(pendingContinuations_.size());
+		serialization::writeMessage(next.handoverFd, header.buffer);
+
 		std::vector<int> descriptors;
 		descriptors.reserve(pendingContinuations_.size());
 		for (const auto& pending : pendingContinuations_) {
-			writer.write<int32_t>(pending.pid);
 			descriptors.push_back(pending.handoverFd);
 		}
-		serialization::writeMessage(next.handoverFd, writer.buffer);
 		serialization::sendFds(next.handoverFd, descriptors.data(), descriptors.size());
+
+		serialization::ByteWriter body;
+		serializeWorkerState(body);
+		for (const auto& pending : pendingContinuations_) {
+			body.write<int32_t>(pending.pid);
+		}
+		serialization::writeMessage(next.handoverFd, body.buffer);
 		_exit(0);
 	}
 
@@ -484,12 +495,13 @@ void ForkTraceContext::finishPath() {
 }
 
 void ForkTraceContext::awaitResume(int receiveFd, const Snapshot& cmpTag) {
-	auto payload = serialization::readMessage(receiveFd);
-	serialization::ByteReader reader {payload};
-	auto kind = static_cast<MessageKind>(reader.read<uint8_t>());
+	auto headerPayload = serialization::readMessage(receiveFd);
+	serialization::ByteReader header {headerPayload};
+	auto kind = static_cast<MessageKind>(header.read<uint8_t>());
 	if (kind != MessageKind::PathHandoff) {
 		throw RuntimeException("forkTracing: unexpected message kind on continuation resume");
 	}
+	auto pendingCount = header.read<uint64_t>();
 
 	// Descriptors inherited from the fork parent's pending deque are superseded by
 	// the ones arriving with the handoff; close them to avoid descriptor leaks.
@@ -498,20 +510,19 @@ void ForkTraceContext::awaitResume(int receiveFd, const Snapshot& cmpTag) {
 	}
 	pendingContinuations_.clear();
 
+	std::vector<int> descriptors(pendingCount);
+	serialization::receiveFds(receiveFd, descriptors.data(), pendingCount);
+
+	auto payload = serialization::readMessage(receiveFd);
+	serialization::ByteReader reader {payload};
 	deserializeWorkerState(reader);
 	if (++pathCount_ > SymbolicExecutionContext::MAX_ITERATIONS) {
 		throw RuntimeException("Tracing got lost and reached the max number of iterations.");
 	}
 
-	auto pendingCount = reader.read<uint64_t>();
-	std::vector<int32_t> pids(pendingCount);
 	for (uint64_t i = 0; i < pendingCount; i++) {
-		pids[i] = reader.read<int32_t>();
-	}
-	std::vector<int> descriptors(pendingCount);
-	serialization::receiveFds(receiveFd, descriptors.data(), pendingCount);
-	for (uint64_t i = 0; i < pendingCount; i++) {
-		pendingContinuations_.push_back({pids[i], descriptors[i]});
+		auto pid = reader.read<int32_t>();
+		pendingContinuations_.push_back({pid, descriptors[i]});
 	}
 
 	auto& trace = state->executionTrace;

@@ -388,11 +388,19 @@ void sendFds(int socketFd, const int* fds, size_t count) {
 		header->cmsg_type = SCM_RIGHTS;
 		header->cmsg_len = CMSG_LEN(chunk * sizeof(int));
 		std::memcpy(CMSG_DATA(header), fds + sent, chunk * sizeof(int));
+		// Ancillary sends do not block when the peer's receive buffer is full; some
+		// kernels (xnu) report EMSGSIZE instead. Give the receiver time to drain.
+		int backoffBudget = 5000; // x 1ms = 5s
 		while (sendmsg(socketFd, &message, MSG_NOSIGNAL) < 0) {
-			if (errno != EINTR) {
-				throw RuntimeException("forkTracing: failed to transfer continuation descriptors: " +
-				                       std::string(std::strerror(errno)));
+			if (errno == EINTR) {
+				continue;
 			}
+			if ((errno == EMSGSIZE || errno == ENOBUFS || errno == EAGAIN) && backoffBudget-- > 0) {
+				usleep(1000);
+				continue;
+			}
+			throw RuntimeException("forkTracing: failed to transfer continuation descriptors: " +
+			                       std::string(std::strerror(errno)));
 		}
 		sent += chunk;
 	}
