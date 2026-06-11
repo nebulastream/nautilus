@@ -75,7 +75,8 @@ inline void forEachBackend(Body&& body, bool include_interpreter = true, const O
 template <typename Body>
 inline void forEachBackendWithTraceMode(Body&& body, const OptionsTweak& tweak = {}, bool include_asmjit = true) {
 #ifdef ENABLE_TRACING
-	static const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing", "stackCopyTracing"};
+	static const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing", "stackCopyTracing",
+	                                                    "forkTracing"};
 	for (const auto& backend : availableBackends(include_asmjit)) {
 		for (const auto& traceMode : traceModes) {
 			DYNAMIC_SECTION(backend + "_" + traceMode) {
