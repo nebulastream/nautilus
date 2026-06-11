@@ -24,7 +24,9 @@
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
+#include "nautilus/tracing/ForkTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/StackCopyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
@@ -78,6 +80,8 @@ std::string createCompilationUnitID() {
 static constexpr auto ROOT_FUNCTION_NAME = "execute";
 static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
 static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
+static constexpr auto TRACE_MODE_STACK_COPY = "stackCopyTracing";
+static constexpr auto TRACE_MODE_FORK = "forkTracing";
 
 namespace {
 
@@ -126,9 +130,18 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 	// Any TraceModule from a previous compilation has already been
 	// destroyed by the time we get here, so no live pointers remain.
 	arena_->softReset();
-	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, options, *arena_)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, options, *arena_);
+	std::shared_ptr<tracing::TraceModule> traceModule = [&]() -> std::shared_ptr<tracing::TraceModule> {
+		if (traceMode == TRACE_MODE_STACK_COPY) {
+			return tracing::StackCopyTraceContext::Trace(functions, options, *arena_);
+		}
+		if (traceMode == TRACE_MODE_FORK) {
+			return tracing::ForkTraceContext::Trace(functions, options, *arena_);
+		}
+		if (traceMode == TRACE_MODE_LAZY) {
+			return tracing::LazyTraceContext::Trace(functions, options, *arena_);
+		}
+		return tracing::ExceptionBasedTraceContext::Trace(functions, options, *arena_);
+	}();
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}

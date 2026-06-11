@@ -1246,7 +1246,7 @@ TEST_CASE("VectorTest - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("VectorTest - Compiler") {
-	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
+	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing", "stackCopyTracing"};
 	for (const auto& backend : nautilus::testing::availableBackends()) {
 		for (const auto& traceMode : traceModes) {
 			DYNAMIC_SECTION(backend + "_" + traceMode) {
