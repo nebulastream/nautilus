@@ -31,8 +31,7 @@ struct ByteWriter {
 	template <typename T>
 	    requires std::is_trivially_copyable_v<T>
 	void write(const T& value) {
-		const auto* bytes = reinterpret_cast<const std::byte*>(&value);
-		buffer.insert(buffer.end(), bytes, bytes + sizeof(T));
+		writeBytes(&value, sizeof(T));
 	}
 
 	void writeBytes(const void* data, size_t size) {

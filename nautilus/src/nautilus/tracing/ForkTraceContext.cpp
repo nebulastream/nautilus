@@ -11,6 +11,7 @@
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include <cassert>
 #include <cerrno>
+#include <climits>
 #include <csignal>
 #include <cstring>
 #include <fmt/format.h>
@@ -47,12 +48,18 @@ public:
 		if (getrlimit(RLIMIT_NOFILE, &original_) != 0) {
 			return;
 		}
-		constexpr rlim_t target = 65536;
+		rlim_t cap = original_.rlim_max;
+#ifdef __APPLE__
+		// macOS rejects soft limits above OPEN_MAX even when the hard limit is
+		// unlimited.
+		cap = std::min<rlim_t>(cap, OPEN_MAX);
+#endif
+		rlim_t target = std::min<rlim_t>(65536, cap);
 		if (original_.rlim_cur >= target) {
 			return;
 		}
 		rlimit raised = original_;
-		raised.rlim_cur = std::min<rlim_t>(target, original_.rlim_max);
+		raised.rlim_cur = target;
 		if (setrlimit(RLIMIT_NOFILE, &raised) == 0) {
 			raised_ = true;
 		}
@@ -75,6 +82,15 @@ private:
 } // namespace
 
 namespace {
+
+/// Disables SIGPIPE on @p fd where supported (macOS has no reliable MSG_NOSIGNAL;
+/// a SIGPIPE would kill a tracing process silently and mask the actual error).
+void disableSigpipe([[maybe_unused]] int fd) {
+#ifdef SO_NOSIGPIPE
+	int enable = 1;
+	setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enable, sizeof(enable));
+#endif
+}
 
 /// Detects whether @p address lies on the current thread's stack. Definitions on the
 /// stack belong to NautilusFunction objects constructed inside the traced function;
@@ -346,6 +362,8 @@ bool ForkTraceContext::traceBool(const TypedValueRef& valueRef, const double pro
 		throw RuntimeException("forkTracing: failed to create a continuation socket: " +
 		                       std::string(std::strerror(errno)));
 	}
+	disableSigpipe(handoverPair[0]);
+	disableSigpipe(handoverPair[1]);
 	auto childPid = fork();
 	if (childPid < 0) {
 		::close(handoverPair[0]);
@@ -515,6 +533,17 @@ void ForkTraceContext::awaitResume(int receiveFd, const Snapshot& cmpTag) {
 	prunedTags.clear();
 }
 
+void ForkTraceContext::reportErrorAndExit(const std::string& message) {
+	serialization::ByteWriter writer;
+	writer.write<uint8_t>(static_cast<uint8_t>(MessageKind::Error));
+	writer.writeString(message);
+	try {
+		serialization::writeMessage(resultFd_, writer.buffer);
+	} catch (...) { // NOLINT(bugprone-empty-catch) - the root reports via timeout
+	}
+	_exit(1);
+}
+
 void ForkTraceContext::runWorker(std::function<void()>& wrapper) {
 	try {
 		auto rootAddress = (TagAddress) __builtin_return_address(0);
@@ -524,28 +553,18 @@ void ForkTraceContext::runWorker(std::function<void()>& wrapper) {
 		resume();
 		wrapper();
 	} catch (const std::exception& exception) {
-		serialization::ByteWriter writer;
-		writer.write<uint8_t>(static_cast<uint8_t>(MessageKind::Error));
-		writer.writeString(exception.what());
-		try {
-			serialization::writeMessage(resultFd_, writer.buffer);
-		} catch (...) { // NOLINT(bugprone-empty-catch) - the root reports via timeout
-		}
-		_exit(1);
+		reportErrorAndExit(exception.what());
 	} catch (...) {
-		serialization::ByteWriter writer;
-		writer.write<uint8_t>(static_cast<uint8_t>(MessageKind::Error));
-		writer.writeString("forkTracing: traced function threw a non-standard exception");
-		try {
-			serialization::writeMessage(resultFd_, writer.buffer);
-		} catch (...) { // NOLINT(bugprone-empty-catch)
-		}
-		_exit(1);
+		reportErrorAndExit("forkTracing: traced function threw a non-standard exception");
 	}
 	try {
 		finishPath();
+	} catch (const std::exception& exception) {
+		// Broken handoff chain; surface the root cause instead of letting the EOF
+		// cascade of the orphaned continuations mask it.
+		reportErrorAndExit(exception.what());
 	} catch (...) {
-		_exit(3); // broken handoff chain; the root reports via timeout / EOF
+		reportErrorAndExit("forkTracing: handoff failed with a non-standard exception");
 	}
 }
 
@@ -556,6 +575,8 @@ void ForkTraceContext::traceFunctionInWorkerTree(std::function<void()>& wrapper)
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, resultPair) != 0) {
 		throw RuntimeException("forkTracing: failed to create the result socket: " + std::string(std::strerror(errno)));
 	}
+	disableSigpipe(resultPair[0]);
+	disableSigpipe(resultPair[1]);
 
 	// Created before the fork so the worker tree inherits the objects at stable
 	// addresses; the root reuses the tag recorder's trie to re-intern the result.

@@ -365,15 +365,18 @@ std::vector<std::byte> readMessageWithTimeout(int fd, int timeoutMs) {
 	return payload;
 }
 
+// Small SCM_RIGHTS chunks: Linux caps a single message at SCM_MAX_FD (253) but other
+// kernels are less forgiving with large ancillary payloads; 16 per message is safely
+// below every platform limit at negligible cost.
+constexpr size_t FD_CHUNK_SIZE = 16;
+
 void sendFds(int socketFd, const int* fds, size_t count) {
-	// Stay well below the kernel's SCM_RIGHTS per-message limit (SCM_MAX_FD = 253).
-	constexpr size_t chunkSize = 32;
 	size_t sent = 0;
 	while (sent < count) {
-		auto chunk = std::min(chunkSize, count - sent);
+		auto chunk = std::min(FD_CHUNK_SIZE, count - sent);
 		char token = 'f';
 		iovec io {&token, 1};
-		alignas(cmsghdr) char control[CMSG_SPACE(chunkSize * sizeof(int))];
+		alignas(cmsghdr) char control[CMSG_SPACE(FD_CHUNK_SIZE * sizeof(int))];
 		std::memset(control, 0, sizeof(control));
 		msghdr message {};
 		message.msg_iov = &io;
@@ -396,13 +399,11 @@ void sendFds(int socketFd, const int* fds, size_t count) {
 }
 
 void receiveFds(int socketFd, int* fds, size_t count) {
-	constexpr size_t chunkSize = 32;
 	size_t received = 0;
 	while (received < count) {
-		auto chunk = std::min(chunkSize, count - received);
 		char token = 0;
 		iovec io {&token, 1};
-		alignas(cmsghdr) char control[CMSG_SPACE(chunkSize * sizeof(int))];
+		alignas(cmsghdr) char control[CMSG_SPACE(FD_CHUNK_SIZE * sizeof(int))];
 		msghdr message {};
 		message.msg_iov = &io;
 		message.msg_iovlen = 1;
@@ -418,9 +419,18 @@ void receiveFds(int socketFd, int* fds, size_t count) {
 		if (result == 0) {
 			throw RuntimeException("forkTracing: handoff socket closed during descriptor transfer");
 		}
+		if ((message.msg_flags & MSG_CTRUNC) != 0) {
+			throw RuntimeException("forkTracing: descriptor transfer message was truncated");
+		}
 		auto* header = CMSG_FIRSTHDR(&message);
 		if (header == nullptr || header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS) {
 			throw RuntimeException("forkTracing: malformed descriptor transfer message");
+		}
+		// Derive the actual descriptor count from the message instead of assuming the
+		// sender's chunking; kernels may deliver fewer per message than were sent.
+		auto chunk = (header->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+		if (chunk == 0 || received + chunk > count) {
+			throw RuntimeException("forkTracing: unexpected descriptor count in transfer message");
 		}
 		std::memcpy(fds + received, CMSG_DATA(header), chunk * sizeof(int));
 		received += chunk;

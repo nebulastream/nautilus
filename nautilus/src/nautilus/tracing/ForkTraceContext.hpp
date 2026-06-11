@@ -125,6 +125,8 @@ private:
 	/// Worker side: called when the current path terminated; hands the trace state to
 	/// the oldest pending continuation (or the final result to the root) and exits.
 	[[noreturn]] void finishPath();
+	/// Worker side: sends an Error message to the root (best effort) and exits.
+	[[noreturn]] void reportErrorAndExit(const std::string& message);
 	/// Continuation side: blocks until resumed, adopts the handed-over state and
 	/// re-positions the trace at the CMP identified by @p cmpTag.
 	void awaitResume(int receiveFd, const Snapshot& cmpTag);

@@ -63,16 +63,26 @@ inline void sanitizerUnpoisonStack([[maybe_unused]] const void* addr, [[maybe_un
 #endif
 }
 
+// Prevents the compiler from recognizing the copy loop below as a memcpy idiom and
+// lowering it to the (ASAN-intercepted) libc call.
+#if defined(__clang__)
+#define NAUTILUS_NO_MEMCPY_LOWERING __attribute__((no_builtin("memcpy", "memmove")))
+#elif defined(__GNUC__)
+#define NAUTILUS_NO_MEMCPY_LOWERING __attribute__((optimize("no-tree-loop-distribute-patterns")))
+#else
+#define NAUTILUS_NO_MEMCPY_LOWERING
+#endif
+
 /**
  * @brief memcpy for raw stack regions that deliberately include ASAN redzones.
  *
  * Snapshotting copies the live stack byte-for-byte, poisoned redzones between
  * frames included; the libc memcpy is intercepted by ASAN and would report a
  * stack-buffer access for those bytes. This helper is exempt from instrumentation
- * and must not be lowered to a memcpy libcall (hence the word-wise loop and the
- * no_builtin attribute).
+ * and must not be lowered to a memcpy libcall (hence the word-wise loop and
+ * NAUTILUS_NO_MEMCPY_LOWERING).
  */
-__attribute__((no_sanitize("address"))) __attribute__((no_builtin("memcpy", "memmove"))) inline void
+__attribute__((no_sanitize("address"))) NAUTILUS_NO_MEMCPY_LOWERING inline void
 rawStackCopy(void* destination, const void* source, size_t size) {
 	auto* dst = static_cast<unsigned char*>(destination);
 	const auto* src = static_cast<const unsigned char*>(source);
