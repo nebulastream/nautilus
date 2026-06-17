@@ -302,8 +302,7 @@ public:
 	std::vector<Block*> blocks;
 	std::vector<operation_identifier> returnRefs;
 	ValueRef lastValueRef = 0;
-	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
-	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+	std::unordered_map<Snapshot, operation_identifier> tagMap;
 
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the
