@@ -35,6 +35,7 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
+	scopeFrames.reset();
 	paused_ = false;
 }
 
@@ -267,8 +268,8 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
 		// record
-		auto tag = recordSnapshot();
-		if (state->executionTrace.checkTag(tag)) {
+		auto tag = recordBranchSnapshot();
+		if (state->executionTrace.checkBranchTag(tag, value)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
 			result = recordResult.branchDirection;
@@ -459,6 +460,17 @@ std::string LazyTraceContext::formatStaticVars() const {
 
 Snapshot LazyTraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+}
+
+Snapshot LazyTraceContext::recordBranchSnapshot() {
+	auto* tag = state->tagRecorder.createTag();
+	const uint64_t current_alive_hash = aliveVars.hash();
+	if (!state->options.getOptionOrDefault("engine.callsiteScopedBranchSnapshots", false)) {
+		return {tag, hashStaticVector(staticVars) ^ current_alive_hash};
+	}
+	scopeFrames.sync(tag, current_alive_hash);
+	const uint64_t alive_contribution = current_alive_hash ^ scopeFrames.entryHash();
+	return {tag, hashStaticVector(staticVars) ^ alive_contribution};
 }
 
 } // namespace nautilus::tracing
