@@ -32,6 +32,13 @@ void trace([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 }
 
 template <typename... Args>
+void warn([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
+#ifdef ENABLE_LOGGING
+	spdlog::warn("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));
+#endif
+}
+
+template <typename... Args>
 void error([[maybe_unused]] const char* fmt, [[maybe_unused]] Args&&... args) {
 #ifdef ENABLE_LOGGING
 	spdlog::error("{}", fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...));

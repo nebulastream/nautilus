@@ -297,7 +297,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	auto get(F T::* pm) {
+	auto get(F T::*pm) {
 		return value_ptr.get(pm);
 	}
 
@@ -309,7 +309,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, val<F> value) {
+	void set(F T::*pm, val<F> value) {
 		return value_ptr.set(pm, value);
 	}
 
@@ -324,7 +324,7 @@ public:
 	 */
 	template <typename F, typename T = ValueType>
 	    requires std::is_class_v<T>
-	void set(F T::* pm, F value) {
+	void set(F T::*pm, F value) {
 		return value_ptr.set(pm, value);
 	}
 
