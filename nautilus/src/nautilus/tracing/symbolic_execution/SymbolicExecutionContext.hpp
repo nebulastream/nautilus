@@ -83,6 +83,22 @@ public:
 	 */
 	RecordResult followNoThrow();
 
+	/**
+	 * @brief Records a CMP whose outcome has already been determined by the
+	 * caller (e.g. via PathPredicateStore::evaluate).  Marks the tag as
+	 * fully explored (both arms accounted for) so the symbolic executor
+	 * does not enqueue the dead arm for later exploration.  Appends the
+	 * taken direction to the current execution path so FOLLOW-mode replays
+	 * stay aligned.
+	 *
+	 * Returns the taken direction and a termination signal if this tag has
+	 * already been observed twice.
+	 *
+	 * @param tag             The snapshot tag for this branch.
+	 * @param takenDirection  The arm the caller knows is live.
+	 */
+	RecordResult recordPrunedNoThrow(const Snapshot& tag, bool takenDirection);
+
 private:
 	friend ExceptionBasedTraceContext;
 	friend LazyTraceContext;

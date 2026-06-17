@@ -6,6 +6,7 @@
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
+#include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -18,6 +19,7 @@
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/ScopedTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
@@ -47,6 +49,25 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"trace", tracing::ExceptionBasedTraceContext::trace},
     {"completing_trace", tracing::LazyTraceContext::trace},
+    {"scoped_trace", tracing::ScopedTraceContext::trace},
+};
+
+// Path-explosion fixtures benchmarked separately: these are the shapes where
+// ScopedTraceContext's predicate-store + constant-folding pruning is expected
+// to outperform Lazy / Exception (see the PR description tables).
+//
+// Benchmark names MUST stay short.  Catch2 wraps long benchmark names onto a
+// continuation line which breaks github-action-benchmark's regex parser
+// ("No benchmark found for bench suite" failure).  The longest combined name
+// (`completing_trace_<key>`) must fit on one row, so each key here is <=11
+// chars.  Cross-reference: `pe3` => baseline_threeCallsNoBranch, etc.
+static auto pathExplosionTests = std::vector<std::tuple<std::string, std::function<void()>>> {
+    {"peOne", details::createFunctionWrapper(pathExplosion_baseline_oneCall)},
+    {"pe3Calls", details::createFunctionWrapper(pathExplosion_baseline_threeCallsNoBranch)},
+    {"peIndIfs", details::createFunctionWrapper(pathExplosion_independentIfs_4)},
+    {"pePost1", details::createFunctionWrapper(pathExplosion_postCallBranch_1)},
+    {"pePost3", details::createFunctionWrapper(pathExplosion_postCallBranch_3)},
+    {"peBlind", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 };
 
 TEST_CASE("Tracing Benchmark") {
@@ -66,6 +87,32 @@ TEST_CASE("Tracing Benchmark") {
 					    auto trace = fn(func, engine::Options(), *arena);
 					    // Drop the trace first; then the arena handle goes
 					    // out of scope and is recycled into the pool.
+					    trace.reset();
+					    return 0;
+				    });
+			    });
+		}
+	}
+}
+
+TEST_CASE("Path Explosion Tracing Benchmark") {
+	// Runs every path-explosion fixture against all three tracers so the
+	// scoped tracer's predicate-store + constant-folding wins (documented in
+	// PR #288: 27 -> 9 on threeCallsNoBranch, 54 -> 12 on postCallBranch_3,
+	// 4 -> 2 on constraintBlind_dead) show up as concrete wall-time numbers.
+	for (auto& [name, func] : pathExplosionTests) {
+		for (auto& [ctxName, traceFn] : traceContexts) {
+			// Short combined name (`scoped_trace_pe_3calls`) so the line stays
+			// on one row in Catch2's output — long names wrap and break the
+			// github-action-benchmark regex.
+			auto benchName = ctxName + "_" + name;
+			auto fn = traceFn;
+			common::ArenaPool pool;
+			Catch::Benchmark::Benchmark(std::string(benchName))
+			    .operator=([&func, fn, &pool](Catch::Benchmark::Chronometer meter) {
+				    meter.measure([&func, fn, &pool] {
+					    auto arena = pool.acquire();
+					    auto trace = fn(func, engine::Options(), *arena);
 					    trace.reset();
 					    return 0;
 				    });
