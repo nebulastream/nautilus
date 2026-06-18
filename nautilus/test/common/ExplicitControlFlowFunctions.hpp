@@ -13,8 +13,7 @@ namespace nautilus::engine {
 // if-then-else; twin of ControlFlowFunctions.hpp::ifThenElseCondition.
 inline val<int32_t> ifThenElseExplicit(val<int32_t> value) {
 	val<int32_t> iw = 1;
-	If(
-	    value == 42, [&]() { iw = iw + 1; }, [&]() { iw = iw + 42; });
+	If(value == 42, [&]() { iw = iw + 1; }, [&]() { iw = iw + 42; });
 	return iw + 42;
 }
 
@@ -32,8 +31,7 @@ inline val<int32_t> nestedIfExplicit(val<int32_t> x) {
 	    x > 0,
 	    [&]() {
 		    r = r + 1;
-		    If(
-		        x > 10, [&]() { r = r + 10; }, [&]() { r = r + 5; });
+		    If(x > 10, [&]() { r = r + 10; }, [&]() { r = r + 5; });
 	    },
 	    [&]() { r = r - 1; });
 	return r;
@@ -96,19 +94,15 @@ inline val<int32_t> gcdExplicit(val<int32_t> a, val<int32_t> b) {
 // Nested counted loops.
 inline val<int32_t> nestedLoopExplicit(val<int32_t> n) {
 	val<int32_t> sum = 0;
-	For(val<int32_t>(0), n, [&](val<int32_t>) {
-		For(val<int32_t>(0), n, [&](val<int32_t>) { sum = sum + 1; });
-	});
+	For(val<int32_t>(0), n, [&](val<int32_t>) { For(val<int32_t>(0), n, [&](val<int32_t>) { sum = sum + 1; }); });
 	return sum;
 }
 
 // If inside a loop body.
 inline val<int32_t> ifInsideLoopExplicit(val<int32_t> n) {
 	val<int32_t> sum = 0;
-	For(val<int32_t>(0), n, [&](val<int32_t> i) {
-		If(
-		    i % 2 == 0, [&]() { sum = sum + 10; }, [&]() { sum = sum + 20; });
-	});
+	For(val<int32_t>(0), n,
+	    [&](val<int32_t> i) { If(i % 2 == 0, [&]() { sum = sum + 10; }, [&]() { sum = sum + 20; }); });
 	return sum;
 }
 
@@ -116,8 +110,7 @@ inline val<int32_t> ifInsideLoopExplicit(val<int32_t> n) {
 inline val<int32_t> generalForExplicit(val<int32_t> n) {
 	val<int32_t> sum = 0;
 	val<int32_t> i = 0;
-	For([&]() { i = val<int32_t>(0); }, [&]() { return i < n; }, [&]() { i = i + 1; },
-	    [&]() { sum = sum + i; });
+	For([&]() { i = val<int32_t>(0); }, [&]() { return i < n; }, [&]() { i = i + 1; }, [&]() { sum = sum + i; });
 	return sum;
 }
 

@@ -2,6 +2,7 @@
 
 #include <nautilus/Engine.hpp>
 #include <nautilus/control_flow.hpp>
+#include <nautilus/static.hpp>
 
 // Explicit-control-flow twins of the path-explosion / loop benchmark kernels in
 // NestedIfBenchmarks.hpp and LoopFunctions.hpp. They let the tracing benchmark emit
@@ -10,13 +11,15 @@
 // twins trace in a single pass.
 namespace nautilus::engine {
 
-// A chain of n independent explicit ifs. The host for-loop over the plain int k runs
+// A chain of n independent explicit ifs. The host for-loop over the static_val k runs
 // at trace time, emitting n explicit If constructs in sequence during the single
-// trace pass (k is not a val, so this is not implicit control flow).
+// trace pass. k is a static_val so each unrolled iteration gets a distinct snapshot
+// hash for the body operations (just like static_iterable loops) — without it, the
+// repeated body ops on the same source line would alias and corrupt the trace.
 inline val<int32_t> chainedIfExplicitN(val<int32_t> x, int32_t n) {
 	val<int32_t> result = 0;
-	for (int32_t k = 0; k < n; k++) {
-		If(x > val<int32_t>(k), [&]() { result = result + 1; });
+	for (static_val<int32_t> k = 0; k < n; ++k) {
+		If(x > val<int32_t>(static_cast<int32_t>(k)), [&]() { result = result + 1; });
 	}
 	return result;
 }
