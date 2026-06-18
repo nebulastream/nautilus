@@ -57,12 +57,25 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"completing_trace", tracing::LazyTraceContext::trace},
 };
 
+// Extra kernels charted only in the Tracing Benchmark to show how tracing time
+// scales with branch count. Kept out of the shared `tests` vector so the
+// expensive SSA/IR/backend-compilation benchmarks don't run the 500-branch
+// kernels. Together with chainedIf10/chainedIf100 (in `tests`) these give
+// implicit points at 10/100/500 (super-linear) and explicit points at
+// 10/50/100/250/500 (linear).
+static auto scalingTracingTests = std::vector<std::tuple<std::string, std::function<void()>>> {
+    {"chainedIf500", details::createFunctionWrapper(chainedIf500)},
+    {"chainedIf50Explicit", details::createFunctionWrapper(chainedIf50Explicit)},
+    {"chainedIf250Explicit", details::createFunctionWrapper(chainedIf250Explicit)},
+    {"chainedIf500Explicit", details::createFunctionWrapper(chainedIf500Explicit)},
+};
+
 TEST_CASE("Tracing Benchmark") {
 	// Route every sample's arena through a single ArenaPool so chunk memory
 	// is recycled across samples (and across the many iterations within each
 	// sample).  This matches the intended Engine/JIT integration where a
 	// long-lived ArenaPool serves many compilations.
-	for (auto& [name, func] : tests) {
+	auto runTracing = [](const std::string& name, std::function<void()>& func) {
 		for (auto& [ctxName, traceFn] : traceContexts) {
 			auto benchName = ctxName + "_" + name;
 			auto fn = traceFn;
@@ -79,6 +92,12 @@ TEST_CASE("Tracing Benchmark") {
 				    });
 			    });
 		}
+	};
+	for (auto& [name, func] : tests) {
+		runTracing(name, func);
+	}
+	for (auto& [name, func] : scalingTracingTests) {
+		runTracing(name, func);
 	}
 }
 

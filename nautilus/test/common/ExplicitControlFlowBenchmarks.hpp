@@ -32,6 +32,20 @@ inline val<int32_t> chainedIf100Explicit(val<int32_t> x) {
 	return chainedIfExplicitN(x, 100);
 }
 
+// Larger sizes used to chart how tracing time scales with branch count: the
+// explicit twins stay linear while the implicit kernels grow super-linearly.
+inline val<int32_t> chainedIf50Explicit(val<int32_t> x) {
+	return chainedIfExplicitN(x, 50);
+}
+
+inline val<int32_t> chainedIf250Explicit(val<int32_t> x) {
+	return chainedIfExplicitN(x, 250);
+}
+
+inline val<int32_t> chainedIf500Explicit(val<int32_t> x) {
+	return chainedIfExplicitN(x, 500);
+}
+
 // n nested explicit ifs (each guarded by x > k), built by host recursion at trace time.
 inline void nestedIfExplicitRec(val<int32_t>& x, val<int32_t>& result, int32_t k, int32_t n) {
 	if (k >= n) {
