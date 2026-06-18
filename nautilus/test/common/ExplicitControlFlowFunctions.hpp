@@ -128,4 +128,36 @@ inline val<int32_t> mixedExplicitAndNativeIf(val<int32_t> x) {
 	return r;
 }
 
+// An explicit For loop whose body uses an implicit native if. The native branch
+// inside the loop body triggers symbolic re-execution of the whole function, which
+// re-enters the explicit loop's emitters on the second iteration — detected and
+// rejected with the same clear RuntimeException.
+inline val<int32_t> explicitLoopWithNativeIf(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	For(val<int32_t>(0), n, [&](val<int32_t> i) {
+		if (i % 2 == 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+	});
+	return sum;
+}
+
+// An explicit While loop whose body uses an implicit native if (same rejection).
+inline val<int32_t> explicitWhileWithNativeIf(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	val<int32_t> i = 0;
+	While([&]() { return i < n; },
+	      [&]() {
+		      if (i % 2 == 0) {
+			      sum = sum + 10;
+		      } else {
+			      sum = sum + 20;
+		      }
+		      i = i + 1;
+	      });
+	return sum;
+}
+
 } // namespace nautilus::engine

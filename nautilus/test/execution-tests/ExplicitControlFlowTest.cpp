@@ -126,8 +126,12 @@ TEST_CASE("Explicit Control Flow Compiler Test") {
 // function is rejected with a clear error. (In the interpreter there is no tracing,
 // so the function runs natively and is not rejected — hence this is compiled-only.)
 TEST_CASE("Explicit Control Flow Mixing Rejected") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { REQUIRE_THROWS(engine.registerFunction(mixedExplicitAndNativeIf)); });
+	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) {
+		REQUIRE_THROWS(engine.registerFunction(mixedExplicitAndNativeIf));
+		// An implicit native if inside an explicit loop body is also rejected.
+		REQUIRE_THROWS(engine.registerFunction(explicitLoopWithNativeIf));
+		REQUIRE_THROWS(engine.registerFunction(explicitWhileWithNativeIf));
+	});
 }
 #endif
 
