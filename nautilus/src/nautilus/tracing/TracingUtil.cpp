@@ -86,6 +86,26 @@ bool traceBool(const TypedValueRef& value, double probability) {
 	return activeTracer->traceBool(value, probability);
 }
 
+ExplicitCmpBlocks emitExplicitCmp(const TypedValueRef& condition, double probability) {
+	return activeTracer->emitExplicitCmp(condition, probability);
+}
+
+uint32_t openMergeBlock() {
+	return activeTracer->openMergeBlock();
+}
+
+void switchToBlock(uint32_t blockId) {
+	activeTracer->switchToBlock(blockId);
+}
+
+uint32_t currentBlock() {
+	return activeTracer->currentBlock();
+}
+
+void jumpTo(uint32_t fromBlock, uint32_t targetBlock) {
+	activeTracer->jumpTo(fromBlock, targetBlock);
+}
+
 TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
 	return activeTracer->traceBinaryOp(op, resultType, left, right);
 }

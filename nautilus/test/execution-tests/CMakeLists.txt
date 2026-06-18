@@ -14,6 +14,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
         SelectExecutionTest.cpp
+        ExplicitControlFlowTest.cpp
 )
 
 if (ENABLE_MLIR_BACKEND)

@@ -231,6 +231,41 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	addTag(snapshot, operationIdentifier);
 }
 
+// Emits a CMP without registering a tag (see header). Mirrors addCmpOperation
+// but skips addTag()/getNextOperationIdentifier(), so explicit control flow never
+// participates in tag-driven control-flow merging.
+ExplicitCmpBlocks ExecutionTrace::emitCmpNoRecord(const TypedValueRef& condition, const double probability) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+
+	auto trueBlock = createBlock();
+	getBlock(trueBlock).predecessors.emplace_back(getCurrentBlockIndex());
+	auto falseBlock = createBlock();
+	getBlock(falseBlock).predecessors.emplace_back(getCurrentBlockIndex());
+
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto* trueBlockRef = arena->create<BlockRef>(trueBlock);
+	auto* falseBlockRef = arena->create<BlockRef>(falseBlock);
+	Snapshot snapshot; // untagged: never added to globalTagMap/localTagMap
+	auto* cmpOp = makeTraceOp(*arena, snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
+	                          trueBlockRef, falseBlockRef, probability);
+	operations.push_back(cmpOp);
+	return {trueBlock, falseBlock};
+}
+
+void ExecutionTrace::emitJmp(uint32_t fromBlock, uint32_t targetBlock) {
+	auto& from = getBlock(fromBlock);
+	from.addOperation(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(targetBlock)));
+	getBlock(targetBlock).predecessors.emplace_back(fromBlock);
+}
+
+uint32_t ExecutionTrace::createMergeBlock() {
+	auto blockId = createBlock();
+	getBlock(blockId).type = Block::Type::ControlFlowMerge;
+	return blockId;
+}
+
 void ExecutionTrace::nextOperation() {
 	this->currentOperationIndex++;
 	auto& block = getCurrentBlock();

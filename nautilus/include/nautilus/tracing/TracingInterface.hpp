@@ -84,6 +84,32 @@ public:
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
+	// --- Explicit control-flow primitives ---
+	//
+	// These power the closure-style If/While/For constructs in control_flow.hpp.
+	// Unlike traceBool, they emit CMP/JMP blocks directly in a single pass and
+	// never enqueue a symbolic execution path, so a function built purely from
+	// explicit control flow is traced in exactly one iteration. They are not
+	// supported by every tracer (e.g. lazy tracing) and default to throwing.
+
+	/// Emit a conditional branch on @p condition with taken-probability @p
+	/// probability, returning the ids of the created true/false blocks. Implementations
+	/// must reject use while symbolic re-execution is in progress (i.e. mixing with
+	/// implicit native control flow in the same function).
+	virtual ExplicitCmpBlocks emitExplicitCmp(const TypedValueRef& condition, double probability) = 0;
+
+	/// Create a fresh control-flow-merge block (used for If merges and loop headers).
+	virtual uint32_t openMergeBlock() = 0;
+
+	/// Make @p blockId the block subsequent operations are emitted into.
+	virtual void switchToBlock(uint32_t blockId) = 0;
+
+	/// Return the id of the block operations are currently emitted into.
+	virtual uint32_t currentBlock() = 0;
+
+	/// Emit an unconditional jump from @p fromBlock to @p targetBlock.
+	virtual void jumpTo(uint32_t fromBlock, uint32_t targetBlock) = 0;
+
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;
 

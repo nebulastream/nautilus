@@ -145,6 +145,38 @@ public:
 	void addCmpOperation(Snapshot& snapshot, const TypedValueRef& inputs, const double probability);
 
 	/**
+	 * @brief Emits a conditional branch (CMP) in the current block WITHOUT
+	 * registering a snapshot tag or driving symbolic execution.
+	 *
+	 * Mirrors addCmpOperation (it creates a true block and a false block, wires
+	 * both predecessors to the current block, and pushes a CMP operation), but
+	 * deliberately omits addTag(): the resulting CMP never enters globalTagMap /
+	 * localTagMap, so it can never trigger processControlFlowMerge.  This is the
+	 * primitive used by the explicit control-flow API (If/While/For), which emits
+	 * both branch bodies in a single pass instead of relying on symbolic
+	 * re-execution.
+	 *
+	 * @param condition The boolean value reference to branch on.
+	 * @param probability The taken-probability hint for the branch.
+	 * @return The ids of the newly created true and false blocks.
+	 */
+	ExplicitCmpBlocks emitCmpNoRecord(const TypedValueRef& condition, double probability);
+
+	/**
+	 * @brief Emits an unconditional JMP from @p fromBlock to @p targetBlock and
+	 * appends @p fromBlock to the target's predecessor list.  Uses the tag-less
+	 * makeTraceOp overload (the same one processControlFlowMerge uses), so the JMP
+	 * does not participate in the tag map.
+	 */
+	void emitJmp(uint32_t fromBlock, uint32_t targetBlock);
+
+	/**
+	 * @brief Creates a new block marked as Block::Type::ControlFlowMerge and
+	 * returns its id.  Used for explicit If merge blocks and While/For headers.
+	 */
+	uint32_t createMergeBlock();
+
+	/**
 	 * @brief Adds an assignment operation to the trace
 	 * @param snapshot The current execution snapshot
 	 * @param targetRef The target value reference

@@ -162,7 +162,21 @@ public:
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
+	// Explicit control-flow primitives (see control_flow.hpp). Implemented here on
+	// the shared base because they only touch state->executionTrace /
+	// state->symbolicExecutionContext, so every trace mode (exception-based and
+	// lazy) supports explicit control flow uniformly.
+	ExplicitCmpBlocks emitExplicitCmp(const TypedValueRef& condition, double probability) override;
+	uint32_t openMergeBlock() override;
+	void switchToBlock(uint32_t blockId) override;
+	uint32_t currentBlock() override;
+	void jumpTo(uint32_t fromBlock, uint32_t targetBlock) override;
+
 protected:
+	/// Throws if explicit control flow is used in a function that also uses
+	/// implicit native control flow (detected via a symbolic re-execution).
+	void rejectIfMixedWithImplicitControlFlow();
+
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
 	// nullptr when not tracing, set during initialize()
 	std::unique_ptr<TraceState> state;

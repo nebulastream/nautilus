@@ -3,6 +3,7 @@
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
+#include "ExplicitControlFlowBenchmarks.hpp"
 #include "ExpressionFunctions.hpp"
 #include "LoopFunctions.hpp"
 #include "NestedIfBenchmarks.hpp"
@@ -42,6 +43,13 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
     {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
+    // Explicit-control-flow twins: emitted in a single trace pass (no symbolic
+    // path explosion). Compare trace_<name> against trace_<name>Explicit.
+    {"loopExplicit", details::createFunctionWrapper(sumLoopExplicitBench)},
+    {"gcdExplicit", details::createFunctionWrapper(gcdExplicitBench)},
+    {"nestedIf10Explicit", details::createFunctionWrapper(nestedIf10Explicit)},
+    {"chainedIf10Explicit", details::createFunctionWrapper(chainedIf10Explicit)},
+    {"chainedIf100Explicit", details::createFunctionWrapper(chainedIf100Explicit)},
 };
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {

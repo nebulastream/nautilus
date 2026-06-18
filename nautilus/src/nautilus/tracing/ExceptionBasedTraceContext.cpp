@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -286,6 +287,48 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;
+}
+
+// --- Explicit control-flow primitives ---
+//
+// Implemented on the shared TraceContextBase: they only touch state->executionTrace
+// and state->symbolicExecutionContext, both of which exist for every trace mode, so
+// exception-based and lazy tracing support explicit control flow uniformly.
+//
+// Explicit control flow emits both branch bodies in a single trace pass and never
+// enqueues a symbolic execution path, so a purely-explicit function traces in one
+// iteration. Mixing with implicit native control flow (a val<bool> used in a native
+// if/for) would make the symbolic driver re-run the whole function, re-entering and
+// double-emitting these constructs. We detect that here: any iteration beyond the
+// first means an implicit branch enqueued a path, which is unsupported.
+void TraceContextBase::rejectIfMixedWithImplicitControlFlow() {
+	if (state->symbolicExecutionContext.getIterations() > 1) {
+		throw RuntimeException("Explicit control-flow constructs (If/While/For) cannot be mixed with implicit native "
+		                       "control flow (a native if/for/while over a val<bool>) in the same traced function. "
+		                       "Express all control flow in the function with explicit constructs instead.");
+	}
+}
+
+ExplicitCmpBlocks TraceContextBase::emitExplicitCmp(const TypedValueRef& condition, double probability) {
+	rejectIfMixedWithImplicitControlFlow();
+	return state->executionTrace.emitCmpNoRecord(condition, probability);
+}
+
+uint32_t TraceContextBase::openMergeBlock() {
+	rejectIfMixedWithImplicitControlFlow();
+	return state->executionTrace.createMergeBlock();
+}
+
+void TraceContextBase::switchToBlock(uint32_t blockId) {
+	state->executionTrace.setCurrentBlock(blockId);
+}
+
+uint32_t TraceContextBase::currentBlock() {
+	return state->executionTrace.getCurrentBlockIndex();
+}
+
+void TraceContextBase::jumpTo(uint32_t fromBlock, uint32_t targetBlock) {
+	state->executionTrace.emitJmp(fromBlock, targetBlock);
 }
 
 std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<void()>& traceFunction,
