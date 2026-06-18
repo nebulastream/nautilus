@@ -32,16 +32,22 @@ public:
 	/**
 	 * @brief Compile a single wrapper function.
 	 * @param function The traced wrapper function to compile
+	 * @param moduleOptions Per-module options for this compilation (overrides
+	 *        of the engine-wide defaults). Defaults to empty.
 	 * @return Compiled executable
 	 */
-	[[nodiscard]] virtual std::unique_ptr<Executable> compile(wrapper_function function) const = 0;
+	[[nodiscard]] virtual std::unique_ptr<Executable>
+	compile(wrapper_function function, const engine::ModuleOptions& moduleOptions = {}) const = 0;
 
 	/**
 	 * @brief Compile multiple named functions together as one compilation unit.
 	 * @param functions List of named compilable functions to trace and compile together
+	 * @param moduleOptions Per-module options for this compilation (overrides
+	 *        of the engine-wide defaults). Defaults to empty.
 	 * @return Executable containing all compiled functions, accessible by name
 	 */
-	[[nodiscard]] virtual std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const = 0;
+	[[nodiscard]] virtual std::unique_ptr<Executable>
+	compile(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions = {}) const = 0;
 
 	/**
 	 * @brief Get the name of the primary compilation backend.

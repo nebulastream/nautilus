@@ -33,8 +33,10 @@ public:
 	LegacyCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool);
 	~LegacyCompiler() override;
 
-	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
-	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const override;
+	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
+	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
+	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions,
+	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
 
 	std::string getName() const override;
 	const engine::Options& getOptions() const override {
@@ -52,6 +54,7 @@ public:
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
 	[[nodiscard]] std::shared_ptr<ir::IRGraph> compileToIR(std::list<CompilableFunction>& functions,
+	                                                       const engine::ModuleOptions& moduleOptions,
 	                                                       CompilationStatistics* statistics = nullptr) const;
 
 	/**
@@ -67,6 +70,7 @@ public:
 	 */
 	[[nodiscard]] std::unique_ptr<Executable> compileIR(const std::shared_ptr<ir::IRGraph>& ir,
 	                                                    const std::string& backendName,
+	                                                    const engine::ModuleOptions& moduleOptions,
 	                                                    CompilationStatistics* statistics = nullptr) const;
 
 private:

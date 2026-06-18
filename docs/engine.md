@@ -122,6 +122,56 @@ int64_t r2 = sum(10, 20); // Returns 30
 
 The `registerFunction` template parameter specifies the val-typed function signature (e.g., `val<int32_t>(val<int32_t>)`), while `getFunction` uses the corresponding raw C++ signature (e.g., `int32_t(int32_t)`).
 
+### Reusing One Engine for Many Modules
+
+A single engine is designed to be reused to compile many modules over its lifetime. The engine owns the
+compiler infrastructure (and shared arenas); each `CompiledModule` owns its executable and frees it — together with
+its JIT-allocated code memory — when the module is destroyed, while the engine stays alive and ready to compile more
+modules.
+
+```cpp
+engine::NautilusEngine engine; // build once
+
+for (...) {
+    auto module = engine.createModule();
+    module.registerFunction("execute", myFunc);
+    auto compiled = module.compile();
+    // use compiled ...
+} // each `compiled` (and its executable) is freed here; the engine lives on
+```
+
+### Per-Module Options
+
+Options have two scopes (see [options.md](options.md)): engine-wide options configure the built-once compiler
+(backend, compilation strategy, tiers — these cannot change per module), while the per-compile *module* options
+(`dump.*`, `ir.*`, `mlir.optimizationLevel`, debug info, tracing flags, ...) can be overridden for an individual
+module. A module inherits all engine-wide values and overrides only what it sets.
+
+Override options when creating the module, or with `setOption` before compiling:
+
+```cpp
+// Engine-wide defaults
+engine::Options options;
+options.setOption("mlir.optimizationLevel", 3);
+engine::NautilusEngine engine(options);
+
+// Module A inherits the engine defaults (optimizationLevel = 3)
+auto moduleA = engine.createModule();
+moduleA.registerFunction("execute", myFunc);
+auto compiledA = moduleA.compile();
+
+// Module B overrides a single option for itself only
+engine::ModuleOptions overrides;
+overrides.setOption("mlir.optimizationLevel", 0);
+auto moduleB = engine.createModule(overrides);
+moduleB.registerFunction("execute", myFunc);
+auto compiledB = moduleB.compile();
+
+// ...or override after creation:
+auto moduleC = engine.createModule();
+moduleC.setOption("dump.after_ir_creation", true);
+```
+
 ## Runtime Options Reference
 
 The following table lists all available runtime options.
