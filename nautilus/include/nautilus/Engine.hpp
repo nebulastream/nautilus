@@ -185,9 +185,20 @@ public:
 
 	/**
 	 * @brief Creates a new module for registering multiple functions to be compiled together.
+	 *
+	 * The module inherits the engine-wide option values; override the
+	 * per-module subset via NautilusModule::setOption() or the overload below.
 	 * @return NautilusModule builder
 	 */
 	NautilusModule createModule() const;
+
+	/**
+	 * @brief Creates a new module, layering @p overrides on top of the
+	 * engine-wide option values.
+	 * @param overrides Per-module option overrides.
+	 * @return NautilusModule builder
+	 */
+	NautilusModule createModule(ModuleOptions overrides) const;
 
 	std::string getNameOfBackend() const {
 		return jit_->getName();
@@ -244,12 +255,32 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::JITCompiler& jit, bool compiled) : jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::JITCompiler& jit, bool compiled, ModuleOptions moduleOptions)
+	    : moduleOptions_(std::move(moduleOptions)), jit_(jit), compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/) {
+	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/, ModuleOptions moduleOptions)
+	    : moduleOptions_(std::move(moduleOptions)) {
 	}
 #endif
+
+	/**
+	 * @brief Override a per-module option before compiling.
+	 *
+	 * The module starts from the engine-wide option values; this overrides a
+	 * single value for this module only. Engine-only options (e.g.
+	 * `engine.backend`) cannot be changed here because the compiler is already
+	 * built.
+	 */
+	template <typename T>
+	void setOption(const std::string& name, const T& value) {
+		moduleOptions_.setOption(name, value);
+	}
+
+	/// Access this module's effective options (engine defaults + overrides).
+	[[nodiscard]] const ModuleOptions& getOptions() const {
+		return moduleOptions_;
+	}
 
 	/**
 	 * @brief Register a function with an explicit signature (needed for lambdas).
@@ -306,7 +337,7 @@ public:
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
-			auto executable = jit_.compile(functions_);
+			auto executable = jit_.compile(functions_, moduleOptions_);
 			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
 
 			// If using tiered compilation, start background promotion.
@@ -324,6 +355,7 @@ public:
 
 private:
 	std::unordered_map<std::string, std::any> interpretedFunctions_;
+	ModuleOptions moduleOptions_;
 #ifdef ENABLE_TRACING
 	const compiler::JITCompiler& jit_;
 	bool compiled_;
@@ -332,7 +364,13 @@ private:
 };
 
 inline NautilusModule NautilusEngine::createModule() const {
-	return NautilusModule(*jit_, isCompiled());
+	return NautilusModule(*jit_, isCompiled(), options.deriveModuleOptions());
+}
+
+inline NautilusModule NautilusEngine::createModule(ModuleOptions overrides) const {
+	auto moduleOptions = options.deriveModuleOptions();
+	moduleOptions.applyOverrides(overrides);
+	return NautilusModule(*jit_, isCompiled(), std::move(moduleOptions));
 }
 
 namespace details {

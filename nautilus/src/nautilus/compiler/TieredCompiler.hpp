@@ -59,8 +59,10 @@ public:
 	                  common::ArenaPool& irArenaPool);
 	~TieredJITCompiler() override;
 
-	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function) const override;
-	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions) const override;
+	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
+	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
+	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions,
+	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
 
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
@@ -93,6 +95,9 @@ private:
 
 	// Mutable because compile() is const but needs to cache IR for promotion
 	mutable std::shared_ptr<ir::IRGraph> lastCachedIR_;
+	// Per-module options used by the most recent compile(), captured so the
+	// background tier-1 promotion compiles with the same module configuration.
+	mutable engine::ModuleOptions lastModuleOptions_;
 	mutable std::vector<std::thread> promotionThreads_;
 	mutable std::mutex threadsMutex_;
 	mutable std::atomic<int> pendingPromotions_ {0};
