@@ -14,6 +14,7 @@ add_subdirectory(benchmark)
 add_subdirectory(execution-tests)
 if (ENABLE_TRACING)
     add_subdirectory(ir-pass-tests)
+    add_subdirectory(tracing-tests)
 endif ()
 add_subdirectory(val-tests)
 
