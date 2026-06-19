@@ -28,8 +28,9 @@ static std::string createPromotionUnitID() {
 
 // --- TieredJITCompiler ---
 
-TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool)
-    : baseCompiler_(options, arena, irArenaPool) {
+TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool,
+                                     common::ArenaPool& irArenaPool)
+    : baseCompiler_(options, traceArenaPool, irArenaPool) {
 	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
 	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
 	if (!tier0.empty() && !tier1.empty()) {
@@ -39,8 +40,8 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::Arena& are
 }
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
-                                     common::Arena& arena, common::ArenaPool& irArenaPool)
-    : baseCompiler_(options, arena, irArenaPool), config_(std::move(config)) {
+                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
+    : baseCompiler_(options, traceArenaPool, irArenaPool), config_(std::move(config)) {
 }
 
 TieredJITCompiler::~TieredJITCompiler() {
@@ -56,8 +57,9 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function
 	return compile(functionsToTrace, moduleOptions);
 }
 
-std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions,
-                                                       const engine::ModuleOptions& moduleOptions) const {
+std::unique_ptr<Executable> TieredJITCompiler::compileTier0(std::list<CompilableFunction>& functions,
+                                                            const engine::ModuleOptions& moduleOptions,
+                                                            std::shared_ptr<ir::IRGraph>& outIR) const {
 	// One shared statistics object covers the entire tier-0 compile so the
 	// user's CompiledModule::getStatistics() reflects tracing + IR passes +
 	// tier-0 backend work in a single report.
@@ -80,26 +82,40 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
 	tier0Executable->setCompilationStatistics(
 	    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
 
-	// Cache the IR and module options for the upcoming promoteAsync() call
-	lastCachedIR_ = std::move(ir);
-	lastModuleOptions_ = moduleOptions;
-
+	// Hand the IR back to the caller so it can drive background promotion.
+	outIR = std::move(ir);
 	return tier0Executable;
 }
 
-void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState> state) const {
-	auto cachedIR = std::move(lastCachedIR_);
-	if (!cachedIR) {
+std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions,
+                                                       const engine::ModuleOptions& moduleOptions) const {
+	// Tier-0 only: no module state to promote into.
+	std::shared_ptr<ir::IRGraph> ir;
+	return compileTier0(functions, moduleOptions, ir);
+}
+
+void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
+                                      const engine::ModuleOptions& moduleOptions,
+                                      std::shared_ptr<engine::details::ModuleState> state) const {
+	std::shared_ptr<ir::IRGraph> ir;
+	state->executable = compileTier0(functions, moduleOptions, ir);
+	// Start background tier-1 promotion using this module's own IR.
+	promoteAsync(state, std::move(ir), moduleOptions);
+}
+
+void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
+                                     engine::ModuleOptions options) const {
+	if (!ir) {
 		return;
 	}
 
 	pendingPromotions_.fetch_add(1, std::memory_order_relaxed);
 
 	std::lock_guard<std::mutex> lock(threadsMutex_);
-	// Capture the per-module options used at compile time by value so the
-	// background thread compiles tier-1 with the same module configuration.
-	promotionThreads_.emplace_back([weakState = std::move(state), ir = std::move(cachedIR), config = config_,
-	                                options = lastModuleOptions_, &pendingCount = pendingPromotions_]() {
+	// The IR and per-module options are owned per call and moved into the
+	// background thread, so concurrent promotions never share state.
+	promotionThreads_.emplace_back([weakState = std::move(state), ir = std::move(ir), config = config_,
+	                                options = std::move(options), &pendingCount = pendingPromotions_]() {
 		try {
 			auto* registry = CompilationBackendRegistry::getInstance();
 			auto* backend = registry->getBackend(config.tier1.backend);
@@ -167,12 +183,12 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 
 namespace nautilus::compiler {
 
-TieredJITCompiler::TieredJITCompiler(engine::Options, common::Arena& arena, common::ArenaPool& irArenaPool)
-    : baseCompiler_(engine::Options(), arena, irArenaPool) {
+TieredJITCompiler::TieredJITCompiler(engine::Options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
+    : baseCompiler_(engine::Options(), traceArenaPool, irArenaPool) {
 }
-TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig, common::Arena& arena,
-                                     common::ArenaPool& irArenaPool)
-    : baseCompiler_(engine::Options(), arena, irArenaPool) {
+TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig,
+                                     common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
+    : baseCompiler_(engine::Options(), traceArenaPool, irArenaPool) {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function, const engine::ModuleOptions&) const {
@@ -182,7 +198,17 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
                                                        const engine::ModuleOptions&) const {
 	throw RuntimeException("Jit not initialised");
 }
-void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>) const {
+std::unique_ptr<Executable> TieredJITCompiler::compileTier0(std::list<CompilableFunction>&,
+                                                            const engine::ModuleOptions&,
+                                                            std::shared_ptr<ir::IRGraph>&) const {
+	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::compileModule(std::list<CompilableFunction>&, const engine::ModuleOptions&,
+                                      std::shared_ptr<engine::details::ModuleState>) const {
+	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>, std::shared_ptr<ir::IRGraph>,
+                                     engine::ModuleOptions) const {
 }
 void TieredJITCompiler::waitForPendingPromotions() const {
 }
