@@ -106,6 +106,11 @@ TEST_CASE("GPU CUDA Codegen Test") {
 		auto code = gpu::lowerToCUDA(ir, options);
 		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuLaunchPrefixSum", ".cu"));
 	}
+	SECTION("gpuLaunchBlockSum") {
+		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchBlockSum));
+		auto code = gpu::lowerToCUDA(ir, options);
+		REQUIRE(checkCodegenFile(code, "gpu-tests", "cuda", "gpuLaunchBlockSum", ".cu"));
+	}
 }
 #endif
 
@@ -185,6 +190,16 @@ TEST_CASE("GPU Metal Codegen Test") {
 		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchVecScale));
 		auto out = gpu::lowerToMetal(ir, options);
 		REQUIRE(checkCodegenFile(out.hostCode, "gpu-tests", "metal", "gpuLaunchVecScale.host", ".cpp"));
+	}
+	SECTION("gpuLaunchBlockSum - device") {
+		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchBlockSum));
+		auto out = gpu::lowerToMetal(ir, options);
+		REQUIRE(checkCodegenFile(out.deviceCode, "gpu-tests", "metal", "gpuLaunchBlockSum.device", ".metal"));
+	}
+	SECTION("gpuLaunchBlockSum - host") {
+		auto ir = traceToIR(details::createFunctionWrapper(gpuLaunchBlockSum));
+		auto out = gpu::lowerToMetal(ir, options);
+		REQUIRE(checkCodegenFile(out.hostCode, "gpu-tests", "metal", "gpuLaunchBlockSum.host", ".cpp"));
 	}
 }
 #endif

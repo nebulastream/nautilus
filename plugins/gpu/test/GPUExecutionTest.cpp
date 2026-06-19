@@ -280,6 +280,23 @@ TEST_CASE("GPU Metal Execution Test") {
 		gpu::freeUnified(out);
 	}
 
+	SECTION("shared memory + barriers: block reduction on GPU") {
+		auto in = zeroedUnified<uint32_t>(N);
+		auto out = zeroedUnified<uint32_t>(N);
+		// in = [1, 2, ..., 256]; one block of 256 sums to out[0].
+		for (size_t i = 0; i < N; i++) {
+			in.data()[i] = static_cast<uint32_t>(i + 1);
+		}
+
+		auto f = engine.registerFunction(gpuLaunchBlockSum);
+		f(in, out, (uint32_t) N);
+
+		// sum(1..256) = 256*257/2 = 32896
+		REQUIRE(out.data()[0] == 32896);
+		gpu::freeUnified(in);
+		gpu::freeUnified(out);
+	}
+
 	SECTION("large batch: 4096 elements across 16 blocks (no fixed buffer size)") {
 		// Exceeds the old 4096-byte / 1024-float ceiling that previously
 		// truncated results; data-driven unified buffers size each allocation

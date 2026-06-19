@@ -30,6 +30,11 @@ uint32_t nautilus_gpu_grid_dim_z();
 
 void nautilus_gpu_sync_threads();
 
+// Block-shared memory allocation. The device backends emit a threadgroup /
+// __shared__ array of `bytes` (read from the constant argument) and return its
+// address. CPU fallback: thread-local arena allocation.
+void* nautilus_gpu_shared_alloc(uint64_t bytes, uint64_t align);
+
 // Launch configuration intrinsics.
 // The backend consumes these to configure the next kernel launch.
 // CPU fallback: no-op (ignored, kernel runs as single thread).
