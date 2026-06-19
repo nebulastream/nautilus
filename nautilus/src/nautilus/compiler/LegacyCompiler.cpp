@@ -1,6 +1,7 @@
 #include "nautilus/compiler/LegacyCompiler.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Executable.hpp"
+#include "nautilus/Module.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/backends/CompilationBackend.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
@@ -32,9 +33,10 @@
 
 namespace nautilus::compiler {
 
-LegacyCompiler::LegacyCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool)
-    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()), arena_(&arena),
-      irArenaPool_(&irArenaPool) {
+LegacyCompiler::LegacyCompiler(engine::Options options, common::ArenaPool& traceArenaPool,
+                               common::ArenaPool& irArenaPool)
+    : options(std::move(options)), backends(CompilationBackendRegistry::getInstance()),
+      traceArenaPool_(&traceArenaPool), irArenaPool_(&irArenaPool) {
 }
 
 LegacyCompiler::~LegacyCompiler() = default;
@@ -124,13 +126,17 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	const auto tracingStart = std::chrono::steady_clock::now();
 	auto traceMode = moduleOptions.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
-	// Recycle the chunks from the previous compile before this one starts.
-	// Any TraceModule from a previous compilation has already been
-	// destroyed by the time we get here, so no live pointers remain.
-	arena_->softReset();
+	// Acquire a fresh trace arena for the lifetime of this compile.  Each
+	// concurrent compile() gets its own arena from the synchronized pool, so
+	// there is no shared bump allocator to race on.  The handle stays alive
+	// until the end of this function; on release the arena is softReset and
+	// recycled back into the pool.  Trace data is dead once IR generation has
+	// finished, so this is safe (the IRGraph owns a separate IR arena).
+	auto traceArenaHandle = traceArenaPool_->acquire();
+	common::Arena& arena = *traceArenaHandle;
 	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, moduleOptions, *arena_)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, moduleOptions, *arena_);
+	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, moduleOptions, arena)
+	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, moduleOptions, arena);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}
@@ -217,6 +223,12 @@ std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction
 	return executable;
 }
 
+void LegacyCompiler::compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+                                   std::shared_ptr<engine::details::ModuleState> state) const {
+	// Single-tier: compile and publish. No background promotion.
+	state->executable = compile(functions, moduleOptions);
+}
+
 #else
 
 std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_function, const engine::ModuleOptions&) const {
@@ -225,6 +237,11 @@ std::unique_ptr<Executable> LegacyCompiler::compile(JITCompiler::wrapper_functio
 
 std::unique_ptr<Executable> LegacyCompiler::compile(std::list<CompilableFunction>&,
                                                     const engine::ModuleOptions&) const {
+	throw RuntimeException("Jit not initialised");
+}
+
+void LegacyCompiler::compileModule(std::list<CompilableFunction>&, const engine::ModuleOptions&,
+                                   std::shared_ptr<engine::details::ModuleState>) const {
 	throw RuntimeException("Jit not initialised");
 }
 
