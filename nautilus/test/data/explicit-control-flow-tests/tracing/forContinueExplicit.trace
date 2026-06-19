@@ -17,23 +17,22 @@ B2()
 	MOD	$13	$11	$12	:i32
 	CONST	$14	0	:i32
 	EQ	$15	$13	$14	:bool
-	CMP	$16	$15	B5()	B6()	:void
+	ASSIGN	$16	$15	:bool
+	CMP	$17	$16	B5()	B6()	:void
 B3()
 	RETURN	$0	$2	:i32
 B4() ControlFlowMerge
-	ADD	$21	$8	$7	:i32
-	ASSIGN	$8	$21	:i32
+	ADD	$19	$8	$7	:i32
+	ASSIGN	$8	$19	:i32
 	JMP	$0	B1()	:void
 B5()
-	CONST	$17	10	:i32
-	ADD	$18	$2	$17	:i32
-	ASSIGN	$2	$18	:i32
-	JMP	$0	B7()	:void
+	JMP	$0	B4()	:void
 B6()
-	CONST	$19	20	:i32
-	ADD	$20	$2	$19	:i32
-	ASSIGN	$2	$20	:i32
-	JMP	$0	B7()	:void
-B7() ControlFlowMerge
+	JMP	$0	B8()	:void
+B7()
+	JMP	$0	B8()	:void
+B8() ControlFlowMerge
+	ADD	$18	$2	$11	:i32
+	ASSIGN	$2	$18	:i32
 	JMP	$0	B4()	:void
 

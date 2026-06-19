@@ -11,10 +11,12 @@ B1() ControlFlowMerge
 B2()
 	ADD	$7	$2	$3	:i32
 	ASSIGN	$2	$7	:i32
+	JMP	$0	B4()	:void
+B3()
+	RETURN	$0	$2	:i32
+B4() ControlFlowMerge
 	CONST	$8	1	:i32
 	ADD	$9	$3	$8	:i32
 	ASSIGN	$3	$9	:i32
 	JMP	$0	B1()	:void
-B3()
-	RETURN	$0	$2	:i32
 

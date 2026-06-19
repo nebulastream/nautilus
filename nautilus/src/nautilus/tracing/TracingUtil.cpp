@@ -106,6 +106,22 @@ void jumpTo(uint32_t fromBlock, uint32_t targetBlock) {
 	activeTracer->jumpTo(fromBlock, targetBlock);
 }
 
+void pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock) {
+	activeTracer->pushLoopFrame(continueTarget, exitBlock);
+}
+
+void popLoopFrame() {
+	activeTracer->popLoopFrame();
+}
+
+void breakLoop() {
+	activeTracer->breakLoop();
+}
+
+void continueLoop() {
+	activeTracer->continueLoop();
+}
+
 TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left, const TypedValueRef& right) {
 	return activeTracer->traceBinaryOp(op, resultType, left, right);
 }

@@ -7,9 +7,9 @@ Block_0($1:i32):
 	if $4 ? Block_1($2) : Block_3($2) :void
 
 Block_1($2:i32):
-	$6 = 10 :i32
-	$7 = $2 + $6 :i32
-	br Block_3($7) :void
+	$7 = 10 :i32
+	$8 = $2 + $7 :i32
+	br Block_3($8) :void
 
 Block_3($2:i32):
 	return ($2) :i32

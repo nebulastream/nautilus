@@ -61,6 +61,10 @@ uint32_t openMergeBlock();
 void switchToBlock(uint32_t blockId);
 uint32_t currentBlock();
 void jumpTo(uint32_t fromBlock, uint32_t targetBlock);
+void pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock);
+void popLoopFrame();
+void breakLoop();
+void continueLoop();
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {

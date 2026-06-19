@@ -730,6 +730,10 @@ TEST_CASE("Explicit Control-flow Trace Test") {
 	    {"gcdExplicit", details::createFunctionWrapper(gcdExplicit)},
 	    {"ifInsideLoopExplicit", details::createFunctionWrapper(ifInsideLoopExplicit)},
 	    {"generalForExplicit", details::createFunctionWrapper(generalForExplicit)},
+	    {"whileBreakExplicit", details::createFunctionWrapper(whileBreakExplicit)},
+	    {"forContinueExplicit", details::createFunctionWrapper(forContinueExplicit)},
+	    {"maxExplicit", details::createFunctionWrapper(maxExplicit)},
+	    {"forStrideExplicit", details::createFunctionWrapper(forStrideExplicit)},
 	};
 	runTraceTests("explicit-control-flow-tests", tests);
 }

@@ -114,6 +114,82 @@ inline val<int32_t> generalForExplicit(val<int32_t> n) {
 	return sum;
 }
 
+// --- Early exit: Break / Continue -------------------------------------------
+
+// Break out of a While loop early.
+inline val<int32_t> whileBreakExplicit(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	val<int32_t> i = 0;
+	While([&]() { return i < n; },
+	      [&]() {
+		      If(i == 5, [&]() { Break(); });
+		      sum = sum + i;
+		      i = i + 1;
+	      });
+	return sum;
+}
+
+// Break out of a counted For loop early.
+inline val<int32_t> forBreakExplicit(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	For(val<int32_t>(0), n, [&](val<int32_t> i) {
+		If(i == 5, [&]() { Break(); });
+		sum = sum + i;
+	});
+	return sum;
+}
+
+// Continue in a For loop: the step still runs (C for-loop semantics), summing odds.
+inline val<int32_t> forContinueExplicit(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	For(val<int32_t>(0), n, [&](val<int32_t> i) {
+		If(i % 2 == 0, [&]() { Continue(); });
+		sum = sum + i;
+	});
+	return sum;
+}
+
+// Continue in a While loop: counts odd values in [0, n). The induction variable is
+// advanced before the potential Continue (While's continue re-checks the condition).
+inline val<int32_t> whileContinueExplicit(val<int32_t> n) {
+	val<int32_t> count = 0;
+	val<int32_t> i = 0;
+	While([&]() { return i < n; },
+	      [&]() {
+		      val<int32_t> cur = i;
+		      i = i + 1;
+		      If(cur % 2 == 0, [&]() { Continue(); });
+		      count = count + 1;
+	      });
+	return count;
+}
+
+// Break only escapes the innermost loop.
+inline val<int32_t> nestedBreakExplicit(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	For(val<int32_t>(0), n, [&](val<int32_t>) {
+		For(val<int32_t>(0), n, [&](val<int32_t> j) {
+			If(j == 2, [&]() { Break(); });
+			sum = sum + 1;
+		});
+	});
+	return sum;
+}
+
+// --- Value-yielding If ------------------------------------------------------
+
+inline val<int32_t> maxExplicit(val<int32_t> a, val<int32_t> b) {
+	return If(a > b, [&]() { return a; }, [&]() { return b; });
+}
+
+// --- Strided For ------------------------------------------------------------
+
+inline val<int32_t> forStrideExplicit(val<int32_t> n) {
+	val<int32_t> sum = 0;
+	For(val<int32_t>(0), n, val<int32_t>(2), [&](val<int32_t> i) { sum = sum + i; });
+	return sum;
+}
+
 // --- Mixing (must be rejected when compiled/traced) -------------------------
 
 // Combines an explicit If with an implicit native if in the same function. This
@@ -142,6 +218,17 @@ inline val<int32_t> explicitLoopWithNativeIf(val<int32_t> n) {
 		}
 	});
 	return sum;
+}
+
+// A native (implicit) if placed BEFORE the explicit construct. Still rejected:
+// the implicit branch is detected and the explicit construct refuses to mix.
+inline val<int32_t> nativeIfThenExplicit(val<int32_t> x) {
+	val<int32_t> r = 0;
+	if (x > 5) {
+		r = r + 100;
+	}
+	If(x > 0, [&]() { r = r + 1; });
+	return r;
 }
 
 // An explicit While loop whose body uses an implicit native if (same rejection).

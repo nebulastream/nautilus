@@ -7,29 +7,29 @@ Block_0($1:i32):
 	if $4 ? Block_1($1, $2) : Block_3($2, $1) :void
 
 Block_1($1:i32, $2:i32):
-	$6 = 1 :i32
-	$7 = $2 + $6 :i32
-	br Block_3($7, $1) :void
+	$7 = 1 :i32
+	$8 = $2 + $7 :i32
+	br Block_3($8, $1) :void
 
 Block_3($2:i32, $1:i32):
-	$8 = 1 :i32
-	$9 = $1 > $8 :bool
-	if $9 ? Block_4($1, $2) : Block_6($2, $1) :void
+	$9 = 1 :i32
+	$10 = $1 > $9 :bool
+	if $10 ? Block_4($1, $2) : Block_6($2, $1) :void
 
 Block_4($1:i32, $2:i32):
-	$11 = 1 :i32
-	$12 = $2 + $11 :i32
-	br Block_6($12, $1) :void
+	$13 = 1 :i32
+	$14 = $2 + $13 :i32
+	br Block_6($14, $1) :void
 
 Block_6($2:i32, $1:i32):
-	$13 = 2 :i32
-	$14 = $1 > $13 :bool
-	if $14 ? Block_7($2) : Block_9($2) :void
+	$15 = 2 :i32
+	$16 = $1 > $15 :bool
+	if $16 ? Block_7($2) : Block_9($2) :void
 
 Block_7($2:i32):
-	$16 = 1 :i32
-	$17 = $2 + $16 :i32
-	br Block_9($17) :void
+	$19 = 1 :i32
+	$20 = $2 + $19 :i32
+	br Block_9($20) :void
 
 Block_9($2:i32):
 	return ($2) :i32

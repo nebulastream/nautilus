@@ -110,6 +110,25 @@ public:
 	/// Emit an unconditional jump from @p fromBlock to @p targetBlock.
 	virtual void jumpTo(uint32_t fromBlock, uint32_t targetBlock) = 0;
 
+	// --- Explicit loop frames (power Break()/Continue()) ---
+	// While/For push a frame holding the blocks Break() and Continue() jump to;
+	// Break()/Continue() target the innermost frame.
+
+	/// Push a loop frame. @p continueTarget is the block Continue() jumps to (the
+	/// loop header for While, the step block for For); @p exitBlock is the block
+	/// Break() jumps to (the loop's exit).
+	virtual void pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock) = 0;
+
+	/// Pop the innermost loop frame.
+	virtual void popLoopFrame() = 0;
+
+	/// Emit a jump to the innermost loop's exit, then continue emitting into a
+	/// fresh (unreachable) block so any trailing ops on the dead path are isolated.
+	virtual void breakLoop() = 0;
+
+	/// Like breakLoop(), but jumps to the innermost loop's continue target.
+	virtual void continueLoop() = 0;
+
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;
 
