@@ -18,15 +18,14 @@ static std::string fixMetalDeviceCode(const std::string& code) {
 	return std::regex_replace(code, ptrCastRe, "((device $1*)(");
 }
 
-MetalLoweringResult MetalLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const engine::Options& options) {
+MetalLoweringResult MetalLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const engine::Options& /*options*/) {
 	MetalLoweringResult result;
 	// Device code (MSL)
 	auto deviceCtx = DeviceContext(ir);
 	result.deviceCode = fixMetalDeviceCode(deviceCtx.process().str());
 	// Host code (C++ with Metal API)
 	auto hostCtx = HostContext(std::move(ir));
-	auto bufferSize = options.getOptionOrDefault<int>("gpu.metal.bufferSize", 4096);
-	result.hostCode = hostCtx.process(bufferSize).str();
+	result.hostCode = hostCtx.process().str();
 	return result;
 }
 
@@ -325,12 +324,17 @@ std::string MetalLoweringProvider::HostContext::getType(const Type& stamp) {
 	return "unknown";
 }
 
-MetalLoweringProvider::HostContext::Code MetalLoweringProvider::HostContext::process(int bufferSize) {
+MetalLoweringProvider::HostContext::Code MetalLoweringProvider::HostContext::process() {
 	Code code;
 	code << "#include <cstdint>\n";
-	code << "#include <cstring>\n";
 	code << "#include <Metal/Metal.h>\n\n";
-	code << "#define NAUTILUS_BUFFER_SIZE " << bufferSize << "\n\n";
+
+	// Resolve each unified buffer's page-rounded length at dispatch time via the
+	// runtime size table. Declared as an external symbol resolved against the
+	// loading process at dlopen (the host dylib is linked with
+	// -undefined dynamic_lookup), which keeps the generated code deterministic
+	// — unlike embedding the runtime address as a literal.
+	code << "extern \"C\" uint64_t nautilus_gpu_buffer_bytes(void*);\n\n";
 
 	classifyKernelFunctions();
 
@@ -433,18 +437,18 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 		blocks[blockIndex] << "    id<MTLComputeCommandEncoder> encoder = [cmdBuf computeCommandEncoder];\n";
 		blocks[blockIndex] << "    [encoder setComputePipelineState:pipeline];\n";
 
-		// Track pointer buffer indices for copy-back after execution
-		std::vector<std::pair<size_t, std::string>> ptrBuffers;
-
-		// Set buffer arguments
+		// Set buffer arguments. Pointer arguments are unified buffers
+		// (gpu::allocUnified/copy/wrap); wrap the caller's memory with no copy
+		// using its page-rounded length from the runtime size table. The GPU
+		// reads and writes the host memory directly, so no copy-back is needed.
 		for (size_t i = 0; i < argList.size(); i++) {
 			auto argVar = frame.getValue(argList[i]->getIdentifier());
 			auto argStamp = argList[i]->getStamp();
 			if (argStamp == Type::ptr) {
-				blocks[blockIndex] << "    id<MTLBuffer> buf_" << i << " = [device newBufferWithBytes:(void*)" << argVar
-				                   << " length:NAUTILUS_BUFFER_SIZE options:MTLResourceStorageModeShared];\n";
+				blocks[blockIndex] << "    id<MTLBuffer> buf_" << i << " = [device newBufferWithBytesNoCopy:(void*)"
+				                   << argVar << " length:nautilus_gpu_buffer_bytes((void*)" << argVar
+				                   << ") options:MTLResourceStorageModeShared deallocator:nil];\n";
 				blocks[blockIndex] << "    [encoder setBuffer:buf_" << i << " offset:0 atIndex:" << i << "];\n";
-				ptrBuffers.emplace_back(i, argVar);
 			} else {
 				blocks[blockIndex] << "    [encoder setBytes:&" << argVar << " length:sizeof(" << getType(argStamp)
 				                   << ") atIndex:" << i << "];\n";
@@ -465,12 +469,6 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 		blocks[blockIndex] << "    [encoder endEncoding];\n";
 		blocks[blockIndex] << "    [cmdBuf commit];\n";
 		blocks[blockIndex] << "    [cmdBuf waitUntilCompleted];\n";
-
-		// Copy back results from GPU buffers to host memory
-		for (auto& [bufIdx, argVar] : ptrBuffers) {
-			blocks[blockIndex] << "    memcpy((void*)" << argVar << ", [buf_" << bufIdx
-			                   << " contents], NAUTILUS_BUFFER_SIZE);\n";
-		}
 
 		blocks[blockIndex] << "}\n";
 		hasLaunchConfig = false;
