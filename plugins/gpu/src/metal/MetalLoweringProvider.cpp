@@ -423,16 +423,20 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 
 		blocks[blockIndex] << "// Metal kernel dispatch: " << kernelName << "\n";
 		blocks[blockIndex] << "{\n";
-		blocks[blockIndex] << "    id<MTLDevice> device = MTLCreateSystemDefaultDevice();\n";
+		// Device, command queue, library, and compute pipeline state are built
+		// once and cached in function-local statics (thread-safe one-time init).
+		// Rebuilding them per launch — especially the pipeline-state compile and
+		// the on-disk metallib reload — dominates the cost of looped/multi-kernel
+		// batch workloads. Only the command buffer, encoder, buffer binding, and
+		// dispatch happen per call.
+		blocks[blockIndex] << "    static id<MTLDevice> device = MTLCreateSystemDefaultDevice();\n";
+		blocks[blockIndex] << "    static id<MTLCommandQueue> queue = [device newCommandQueue];\n";
 		blocks[blockIndex] << "    NSError* error = nil;\n";
-		blocks[blockIndex] << "    NSURL* libURL = [NSURL fileURLWithPath:@\"__METALLIB_PATH__\"];\n";
-		blocks[blockIndex] << "    id<MTLLibrary> library = [device newLibraryWithURL:libURL error:&error];\n";
-		blocks[blockIndex] << "    id<MTLFunction> kernelFunc = [library newFunctionWithName:@\"" << kernelName
-		                   << "\"];\n";
-		blocks[blockIndex]
-		    << "    id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:kernelFunc "
-		       "error:&error];\n";
-		blocks[blockIndex] << "    id<MTLCommandQueue> queue = [device newCommandQueue];\n";
+		blocks[blockIndex] << "    static id<MTLLibrary> library = [device newLibraryWithURL:[NSURL "
+		                      "fileURLWithPath:@\"__METALLIB_PATH__\"] error:&error];\n";
+		blocks[blockIndex] << "    static id<MTLComputePipelineState> pipeline = [device "
+		                      "newComputePipelineStateWithFunction:[library newFunctionWithName:@\""
+		                   << kernelName << "\"] error:&error];\n";
 		blocks[blockIndex] << "    id<MTLCommandBuffer> cmdBuf = [queue commandBuffer];\n";
 		blocks[blockIndex] << "    id<MTLComputeCommandEncoder> encoder = [cmdBuf computeCommandEncoder];\n";
 		blocks[blockIndex] << "    [encoder setComputePipelineState:pipeline];\n";
