@@ -59,6 +59,28 @@ void launchVecAdd(val<float*> a, val<float*> b, val<float*> c, val<uint32_t> n) 
 	gpu::launch(benchVecAdd, gpu::GridDim {blocks}, gpu::BlockDim {(uint32_t) 256}, a, b, c, n);
 }
 
+// Compute-heavy kernel: `iters` logistic-map steps per element. Each element is
+// 1 read + 1 write but iters*3 flops, so it is arithmetic-bound rather than
+// bandwidth-bound. The logistic map (v = 3.9*v*(1-v)) is a chaotic recurrence
+// with no closed form, so the inner loop cannot be optimized away. This is the
+// regime where the GPU's parallelism beats the single-threaded CPU loop.
+static auto benchCompute = gpu::NautilusKernelFunction {
+    "benchCompute", [](gpu::Array<float> x, gpu::Array<float> y, val<uint32_t> iters, val<uint32_t> n) {
+	    auto stride = gpu::gridDim_x() * gpu::blockDim_x();
+	    for (val<uint32_t> i = gpu::blockIdx_x() * gpu::blockDim_x() + gpu::threadIdx_x(); i < n; i = i + stride) {
+		    val<float> v = x[i];
+		    for (val<uint32_t> k = val<uint32_t>((uint32_t) 0); k < iters; k = k + val<uint32_t>((uint32_t) 1)) {
+			    v = val<float>(3.9f) * v * (val<float>(1.0f) - v);
+		    }
+		    y[i] = v;
+	    }
+    }};
+
+void launchCompute(val<float*> x, val<float*> y, val<uint32_t> iters, val<uint32_t> n) {
+	auto blocks = (n + val<uint32_t>((uint32_t) 255)) / val<uint32_t>((uint32_t) 256);
+	gpu::launch(benchCompute, gpu::GridDim {blocks}, gpu::BlockDim {(uint32_t) 256}, x, y, iters, n);
+}
+
 // Shared-memory block reduction (Metal-only: the CPU fallback's single thread
 // would compute only a per-block partial of one element, so it is not part of
 // the CPU-vs-GPU comparison).
@@ -147,6 +169,30 @@ TEST_CASE("GPU vs CPU Execution Benchmark") {
 				gpu::freeUnified(b);
 				gpu::freeUnified(c);
 			});
+		}
+	}
+}
+
+TEST_CASE("Compute-Heavy GPU vs CPU Benchmark") {
+	// Arithmetic-bound: 256K elements, many logistic-map iterations each. The
+	// CPU runs them serially; the GPU runs one element per thread in parallel.
+	constexpr uint32_t N = 1u << 18; // 256K floats
+	for (const auto& backend : comparisonBackends()) {
+		for (uint32_t iters : {uint32_t(256), uint32_t(1024)}) {
+			auto tag = "_" + std::to_string(iters) + "it_" + backend;
+			Catch::Benchmark::Benchmark("compute" + tag)
+			    .operator=([iters, backend](Catch::Benchmark::Chronometer meter) {
+				    auto engine = makeEngine(backend);
+				    auto fn = engine.registerFunction(launchCompute);
+				    auto x = gpu::allocUnified<float>(N);
+				    auto y = gpu::allocUnified<float>(N);
+				    for (uint32_t i = 0; i < N; ++i) {
+					    x.data()[i] = 0.5f;
+				    }
+				    meter.measure([&] { return fn(x, y, iters, N), 0; });
+				    gpu::freeUnified(x);
+				    gpu::freeUnified(y);
+			    });
 		}
 	}
 }
