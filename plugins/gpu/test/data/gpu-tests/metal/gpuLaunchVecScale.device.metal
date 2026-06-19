@@ -4,12 +4,13 @@ using namespace metal;
 kernel void vecScale(
     device uchar* var_$1 [[buffer(0)]],
     device uchar* var_$2 [[buffer(1)]],
-    constant uint& var_$3 [[buffer(2)]],
+    constant uint& var_$3_arg [[buffer(2)]],
     uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],
     uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
+uint var_$3;
 uint var_$4;
 int var_$5;
 ulong var_$9;
@@ -23,6 +24,7 @@ ulong var_$22;
 ulong var_$23;
 ulong var_$24;
 device uchar* var_$25;
+var_$3 = var_$3_arg;
 var_$4 = nautilus_threadIdx.x;
 var_$5 = (int)var_$4;
 var_$9 = (ulong)4;

@@ -5,12 +5,13 @@ kernel void vecAddBounded(
     device uchar* var_$1 [[buffer(0)]],
     device uchar* var_$2 [[buffer(1)]],
     device uchar* var_$3 [[buffer(2)]],
-    constant uint& var_$4 [[buffer(3)]],
+    constant uint& var_$4_arg [[buffer(3)]],
     uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],
     uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
+uint var_$4;
 uint var_$5;
 uint var_$6;
 uint var_$7;
@@ -35,6 +36,7 @@ ulong var_$39;
 ulong var_$40;
 ulong var_$41;
 device uchar* var_$42;
+var_$4 = var_$4_arg;
 int __pc = 0;
 while (true) {
 switch (__pc) {

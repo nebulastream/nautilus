@@ -131,6 +131,9 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 
 		bool isKernel = kernelFunctions.contains(func.getName());
 		std::vector<std::string> arguments;
+		// Mutable copies of scalar kernel args (see below).
+		std::stringstream scalarArgDecls;
+		std::stringstream scalarArgInit;
 		for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
 			auto argument = functionBasicBlock.getArguments()[i];
 			auto var = getVariable(argument->getIdentifier());
@@ -139,9 +142,17 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 				if (argument->getStamp() == Type::ptr) {
 					arguments.emplace_back("device uchar* " + var + " [[buffer(" + std::to_string(i) + ")]]");
 				} else {
-					// Scalar args must be passed as constant references in Metal kernels
-					arguments.emplace_back("constant " + getType(argument->getStamp()) + "& " + var + " [[buffer(" +
-					                       std::to_string(i) + ")]]");
+					// Scalar args are passed as `constant T&` (const). If such a
+					// value is live across control flow it becomes an SSA phi and
+					// the trampoline reassigns it (`var = temp;`), which is illegal
+					// on a const reference. Bind the buffer to a `_arg` parameter
+					// and copy it into a mutable local of the SSA name, so any
+					// later reassignment is well-formed.
+					auto type = getType(argument->getStamp());
+					arguments.emplace_back("constant " + type + "& " + var + "_arg [[buffer(" + std::to_string(i) +
+					                       ")]]");
+					scalarArgDecls << type << " " << var << ";\n";
+					scalarArgInit << var << " = " << var << "_arg;\n";
 				}
 			} else {
 				arguments.emplace_back(getType(argument->getStamp()) + " " + var);
@@ -177,7 +188,7 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 				fnCode << arguments[i] << " ";
 			}
 		}
-		fnCode << ") {\n" << blockArguments.str();
+		fnCode << ") {\n" << scalarArgDecls.str() << blockArguments.str() << scalarArgInit.str();
 		if (blocks.size() > 1) {
 			// Multi-block: emit while(true)/switch dispatch for Metal (no goto/labels).
 			fnCode << "int __pc = 0;\nwhile (true) {\nswitch (__pc) {\n";
