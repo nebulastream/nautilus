@@ -37,6 +37,7 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
 		config_.tier0.backend = tier0;
 		config_.tier1.backend = tier1;
 	}
+	config_.backgroundPromotion = options.getOptionOrDefault("engine.tiered.backgroundPromotion", true);
 }
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
@@ -57,49 +58,59 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function function
 	return compile(functionsToTrace, moduleOptions);
 }
 
-std::unique_ptr<Executable> TieredJITCompiler::compileTier0(std::list<CompilableFunction>& functions,
-                                                            const engine::ModuleOptions& moduleOptions,
-                                                            std::shared_ptr<ir::IRGraph>& outIR) const {
-	// One shared statistics object covers the entire tier-0 compile so the
+std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>& functions,
+                                                           const engine::ModuleOptions& moduleOptions,
+                                                           const std::string& backend, const std::string& tierLabel,
+                                                           std::shared_ptr<ir::IRGraph>& outIR) const {
+	// One shared statistics object covers the entire tier compile so the
 	// user's CompiledModule::getStatistics() reflects tracing + IR passes +
-	// tier-0 backend work in a single report.
+	// backend work in a single report.
 	auto statistics = std::make_shared<CompilationStatistics>();
 	const auto compilationStart = std::chrono::steady_clock::now();
 
 	auto ir = baseCompiler_.compileToIR(functions, moduleOptions, statistics.get());
-	auto tier0Executable = baseCompiler_.compileIR(ir, config_.tier0.backend, moduleOptions, statistics.get());
+	auto executable = baseCompiler_.compileIR(ir, backend, moduleOptions, statistics.get());
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
-	statistics->set("tier", std::string {"tier0"});
+	statistics->set("tier", tierLabel);
 
 	if (moduleOptions.getOptionOrDefault("engine.logStatistics", false)) {
 		const auto id = statistics->find("compilation.unitId") != nullptr
 		                    ? std::get<std::string>(*statistics->find("compilation.unitId"))
 		                    : std::string {};
-		log::info("\n{}", statistics->formatReport(id, config_.tier0.backend));
+		log::info("\n{}", statistics->formatReport(id, backend));
 	}
 
-	tier0Executable->setCompilationStatistics(
-	    std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
 
 	// Hand the IR back to the caller so it can drive background promotion.
 	outIR = std::move(ir);
-	return tier0Executable;
+	return executable;
 }
 
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions,
                                                        const engine::ModuleOptions& moduleOptions) const {
-	// Tier-0 only: no module state to promote into.
 	std::shared_ptr<ir::IRGraph> ir;
-	return compileTier0(functions, moduleOptions, ir);
+	if (!config_.backgroundPromotion) {
+		// Single-tier: compile directly with the high-performance backend.
+		return compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+	}
+	// Two-tier: return the fast tier-0 executable (no module state to promote into).
+	return compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", ir);
 }
 
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
                                       const engine::ModuleOptions& moduleOptions,
                                       std::shared_ptr<engine::details::ModuleState> state) const {
 	std::shared_ptr<ir::IRGraph> ir;
-	state->executable = compileTier0(functions, moduleOptions, ir);
-	// Start background tier-1 promotion using this module's own IR.
+	if (!config_.backgroundPromotion) {
+		// Single-tier: compile directly with the high-performance backend, no promotion.
+		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+		return;
+	}
+	// Two-tier: fast tier-0 now, then promote to tier-1 in the background using
+	// this module's own IR.
+	state->executable = compileTier(functions, moduleOptions, config_.tier0.backend, "tier0", ir);
 	promoteAsync(state, std::move(ir), moduleOptions);
 }
 
@@ -168,6 +179,9 @@ bool TieredJITCompiler::allPromotionsComplete() const {
 }
 
 std::string TieredJITCompiler::getName() const {
+	if (!config_.backgroundPromotion) {
+		return "tiered-single(" + config_.tier1.backend + ")";
+	}
 	return "tiered(" + config_.tier0.backend + "," + config_.tier1.backend + ")";
 }
 
@@ -198,9 +212,9 @@ std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunct
                                                        const engine::ModuleOptions&) const {
 	throw RuntimeException("Jit not initialised");
 }
-std::unique_ptr<Executable> TieredJITCompiler::compileTier0(std::list<CompilableFunction>&,
-                                                            const engine::ModuleOptions&,
-                                                            std::shared_ptr<ir::IRGraph>&) const {
+std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableFunction>&, const engine::ModuleOptions&,
+                                                           const std::string&, const std::string&,
+                                                           std::shared_ptr<ir::IRGraph>&) const {
 	throw RuntimeException("Jit not initialised");
 }
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>&, const engine::ModuleOptions&,
