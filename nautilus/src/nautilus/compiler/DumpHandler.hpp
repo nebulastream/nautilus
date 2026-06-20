@@ -15,8 +15,11 @@ public:
 	void forceDump(std::string_view dumpName, std::string_view extension, const std::string& content) const;
 	[[nodiscard]] const std::map<std::string, std::string>& getGeneratedFiles() const;
 
-private:
+	/// Returns whether a dump with the given name is currently enabled. Backends can use this to
+	/// avoid the cost of producing dump content (e.g. attaching an AsmJit logger) when not requested.
 	[[nodiscard]] bool shouldDump(std::string_view dumpName) const;
+
+private:
 	[[nodiscard]] bool shallCreateFolder() const;
 	[[nodiscard]] bool dumpToConsole() const;
 	[[nodiscard]] bool dumpToFile() const;

@@ -16,6 +16,7 @@
 
 namespace nautilus::compiler {
 class CompilationStatistics;
+class DumpHandler;
 } // namespace nautilus::compiler
 
 namespace nautilus::compiler::asmjit {
@@ -36,6 +37,8 @@ public:
 		void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
 		std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
 		uint64_t codeSize = 0;                          ///< Total emitted machine-code size in bytes.
+		std::string asmjitIR;                           ///< AsmJit builder node list (only captured when dumping).
+		std::string assembly;                           ///< Generated assembly listing (only captured when dumping).
 	};
 
 	/// Compile all functions in the IR graph into one JIT allocation.
@@ -43,8 +46,12 @@ public:
 	/// When @p statistics is non-null, the optional post-RA peephole pass
 	/// (see @ref A64PostRAPeepholePass) records its per-run counters into
 	/// it under the `asmjit.peephole.*` key namespace.
+	///
+	/// When @p dumpHandler requests the `after_asmjit_generation` /
+	/// `after_asmjit_assembly` dumps, the corresponding textual representations
+	/// are captured into @ref LowerResult.
 	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime, const engine::Options& options,
-	                  CompilationStatistics* statistics = nullptr);
+	                  const DumpHandler& dumpHandler, CompilationStatistics* statistics = nullptr);
 
 private:
 	// AsmReg / RegisterFrame come from AsmJitRegister.hpp at namespace scope so
@@ -59,7 +66,10 @@ private:
 		                CompilationStatistics* statistics, const AsmJitIntrinsicManager& intrinsicManager);
 
 		/// Pass 1 + Pass 2 + finalize.
-		void processAll();
+		///
+		/// When @p asmjitIRDump is non-null, the AsmJit builder node list is formatted into it
+		/// just before finalize() (i.e. while virtual registers are still present).
+		void processAll(std::string* asmjitIRDump = nullptr);
 
 		/// Must be called after processAll() and before rt.add() to capture label offsets.
 		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
