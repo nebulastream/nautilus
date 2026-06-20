@@ -36,12 +36,35 @@ TEST_CASE("Tiered Compilation Latency Benchmark") {
 
 	for (auto& [name, registerFn] : testFuncs) {
 #if defined(ENABLE_BC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
-		Catch::Benchmark::Benchmark("tiered_compile_" + name)
+		// Two-tier: fast tier-0 (bc) compile returned immediately plus the
+		// high-performance tier-1 (mlir) promotion, which the engine destructor
+		// joins at the end of the measured region. Measures end-to-end cost.
+		Catch::Benchmark::Benchmark("tiered_twotier_" + name)
 		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
 			    meter.measure([&registerFn] {
 				    TieredCompilationConfig config;
 				    config.tier0.backend = "bc";
 				    config.tier1.backend = "mlir";
+				    config.backgroundPromotion = true;
+				    common::ArenaPool traceArenaPool;
+				    common::ArenaPool irArenaPool;
+				    auto engine = NautilusEngine(
+				        std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool));
+				    auto module = engine.createModule();
+				    registerFn(module);
+				    return module.compile();
+			    });
+		    });
+
+		// Single-tier: compile directly with the high-performance tier-1 (mlir)
+		// backend, no tier-0 and no background promotion.
+		Catch::Benchmark::Benchmark("tiered_singletier_" + name)
+		    .operator=([&registerFn](Catch::Benchmark::Chronometer meter) {
+			    meter.measure([&registerFn] {
+				    TieredCompilationConfig config;
+				    config.tier0.backend = "bc";
+				    config.tier1.backend = "mlir";
+				    config.backgroundPromotion = false;
 				    common::ArenaPool traceArenaPool;
 				    common::ArenaPool irArenaPool;
 				    auto engine = NautilusEngine(

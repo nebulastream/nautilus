@@ -33,6 +33,13 @@ struct TierConfig {
 struct TieredCompilationConfig {
 	TierConfig tier0 {"bc"};   // low-latency tier (compiled synchronously)
 	TierConfig tier1 {"mlir"}; // high-performance tier (compiled in background)
+
+	/// When true (default) the compiler runs two-tier: a fast tier-0 compile is
+	/// returned immediately and the high-performance tier-1 backend is compiled
+	/// in the background. When false the compiler runs single-tier: it compiles
+	/// directly with the high-performance @ref tier1 backend and performs no
+	/// tier-0 compile and no background promotion.
+	bool backgroundPromotion {true};
 };
 
 } // namespace nautilus::engine
@@ -89,12 +96,15 @@ public:
 
 private:
 	/**
-	 * @brief Trace and compile the tier-0 executable, returning the IR via
-	 * @p outIR so callers can hand it to background promotion.
+	 * @brief Trace and compile @p functions with the named @p backend, returning
+	 * the IR via @p outIR so callers can hand it to background promotion.
+	 *
+	 * @p tierLabel is recorded into the compilation statistics ("tier0"/"tier1").
 	 */
-	[[nodiscard]] std::unique_ptr<Executable> compileTier0(std::list<CompilableFunction>& functions,
-	                                                       const engine::ModuleOptions& moduleOptions,
-	                                                       std::shared_ptr<ir::IRGraph>& outIR) const;
+	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
+	                                                      const engine::ModuleOptions& moduleOptions,
+	                                                      const std::string& backend, const std::string& tierLabel,
+	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
 
 	/**
 	 * @brief Start background tier-1 promotion of @p ir targeting @p state.
