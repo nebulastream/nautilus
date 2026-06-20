@@ -36,6 +36,9 @@ namespace nautilus {
 #define DECLARE_VECTOR_SCATTER(T, N, SUFFIX)                               \
 	extern "C" void vector_scatter_##SUFFIX##_impl(T*, const int32_t*, vector_data<T, N>*);
 
+#define DECLARE_VECTOR_COMPRESS_STORE(T, N, SUFFIX)                        \
+	extern "C" int32_t vector_compress_store_##SUFFIX##_impl(T*, vector_data<T, N>*, vector_data<T, N>*);
+
 #define DECLARE_VECTOR_EXTRACT(T, N, SUFFIX)                               \
 	extern "C" T vector_extract_##SUFFIX##_impl(vector_data<T, N>*, int32_t);
 
@@ -68,6 +71,7 @@ namespace nautilus {
 	DECLARE_VECTOR_BROADCAST(T, N, SUFFIX)                                 \
 	DECLARE_VECTOR_GATHER(T, N, SUFFIX)                                    \
 	DECLARE_VECTOR_SCATTER(T, N, SUFFIX)                                   \
+	DECLARE_VECTOR_COMPRESS_STORE(T, N, SUFFIX)                            \
 	DECLARE_VECTOR_EXTRACT(T, N, SUFFIX)                                   \
 	DECLARE_VECTOR_INSERT(T, N, SUFFIX)
 
