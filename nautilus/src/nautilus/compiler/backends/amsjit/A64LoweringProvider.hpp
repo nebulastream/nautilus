@@ -95,6 +95,11 @@ private:
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
 		/// function to keep stale entries from leaking across functions.
 		std::vector<AsmReg> functionAllocaSlots_;
+		/// Per-function SSA use counts (incl. block-arg uses); drives safe skipping.
+		std::unordered_map<ir::OperationIdentifier, uint32_t> useCount_;
+		/// Address-arithmetic ops folded into a load/store addressing mode; their
+		/// visitors emit nothing.
+		std::unordered_set<ir::OperationIdentifier> skipEmit_;
 
 		static ::asmjit::TypeId getTypeId(Type t);
 		static bool isFloatType(Type t);
@@ -107,6 +112,30 @@ private:
 
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
+
+		/// Pure-IR match of `Add(base, Mul(index, C))` with C a power of two equal to
+		/// @p elemBytes (so the AArch64 scaled-index addressing mode is legal). Fills the
+		/// matched sub-operations and returns true on success; touches no registers.
+		static bool classifyIndexedAddress(const ir::Operation* addr, uint32_t elemBytes,
+		                                   const ir::Operation*& baseOp, const ir::Operation*& indexOp,
+		                                   const ir::Operation*& mulOp, const ir::Operation*& scaleOp);
+		/// If @p addr matches and its base/index are in GP registers, build the scaled-index
+		/// memory operand `[base, index, lsl #log2(C)]` and return true.
+		bool tryIndexedAddress(const ir::Operation* addr, RegisterFrame& frame, uint32_t elemBytes,
+		                       ::asmjit::a64::Mem& out);
+		/// Byte width transferred by a load/store of the given type.
+		static uint32_t transferBytes(Type t);
+		/// Returns the integer constant @p op denotes directly, or via a
+		/// value-preserving widening int cast (then @p castOp is that cast), else null.
+		static const ir::ConstIntOperation* asFoldableIntConst(const ir::Operation* op,
+		                                                       const ir::Operation*& castOp);
+		/// Whether @p v fits the AArch64 unsigned 12-bit add/sub/cmp immediate.
+		static bool fitsImm12(int64_t v);
+		/// Populate useCount_ for one function (SSA inputs + block-invocation arguments).
+		void buildUseCounts(const ir::FunctionOperation* funcOp);
+		/// Mark single-use address arithmetic feeding foldable loads/stores in @p block
+		/// so visitAdd/visitMul/visitConstInt skip emitting it (it folds into the access).
+		void markFoldedAddressArithmetic(const ir::BasicBlock* block);
 
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);

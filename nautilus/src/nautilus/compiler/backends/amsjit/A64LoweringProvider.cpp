@@ -22,6 +22,7 @@ public:
 		throw std::runtime_error(std::string("AsmJit/A64 error: ") + (message ? message : "unknown"));
 	}
 };
+
 } // anonymous namespace
 
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
@@ -174,6 +175,202 @@ void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const 
 	}
 }
 
+uint32_t AsmJitLoweringProvider::LoweringContext::transferBytes(Type t) {
+	switch (t) {
+	case Type::b:
+	case Type::i8:
+	case Type::ui8:
+		return 1;
+	case Type::i16:
+	case Type::ui16:
+		return 2;
+	case Type::i32:
+	case Type::ui32:
+	case Type::f32:
+		return 4;
+	default: // i64/ui64/ptr/f64
+		return 8;
+	}
+}
+
+bool AsmJitLoweringProvider::LoweringContext::fitsImm12(int64_t v) {
+	return v >= 0 && v <= 4095;
+}
+
+const ir::ConstIntOperation* AsmJitLoweringProvider::LoweringContext::asFoldableIntConst(const ir::Operation* op,
+                                                                                        const ir::Operation*& castOp) {
+	castOp = nullptr;
+	if (const auto* c = ir::dyn_cast<ir::ConstIntOperation>(op)) {
+		return c;
+	}
+	// A widening int->int cast of a constant preserves the value, so the cast and
+	// its constant can both be replaced by an immediate operand.
+	if (const auto* cast = ir::dyn_cast<ir::CastOperation>(op)) {
+		const Type dst = cast->getStamp();
+		const Type src = cast->getInput()->getStamp();
+		if (!isFloatType(dst) && !isFloatType(src) && transferBytes(dst) >= transferBytes(src)) {
+			if (const auto* c = ir::dyn_cast<ir::ConstIntOperation>(cast->getInput())) {
+				castOp = cast;
+				return c;
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool AsmJitLoweringProvider::LoweringContext::classifyIndexedAddress(const ir::Operation* addr, uint32_t elemBytes,
+                                                                    const ir::Operation*& baseOp,
+                                                                    const ir::Operation*& indexOp,
+                                                                    const ir::Operation*& mulOp,
+                                                                    const ir::Operation*& scaleOp) {
+	// AArch64 scaled-index addressing only permits a shift of 0 or log2(transferSize),
+	// so we only fold when the IR scale equals the access width.
+	if (elemBytes != 1 && elemBytes != 2 && elemBytes != 4 && elemBytes != 8) {
+		return false;
+	}
+	const auto* add = ir::dyn_cast<ir::AddOperation>(addr);
+	if (add == nullptr) {
+		return false;
+	}
+	// One Add input is the base pointer, the other an index*scale multiply.
+	ir::Operation* lhs = add->getLeftInput();
+	ir::Operation* rhs = add->getRightInput();
+	auto* mul = ir::dyn_cast<ir::MulOperation>(rhs);
+	baseOp = lhs;
+	if (mul == nullptr) {
+		mul = ir::dyn_cast<ir::MulOperation>(lhs);
+		baseOp = rhs;
+	}
+	if (mul == nullptr) {
+		return false;
+	}
+	// One Mul input is the scale constant, the other the (possibly cast) index.
+	ir::Operation* ml = mul->getLeftInput();
+	ir::Operation* mr = mul->getRightInput();
+	const auto* scale = ir::dyn_cast<ir::ConstIntOperation>(mr);
+	indexOp = ml;
+	if (scale == nullptr) {
+		scale = ir::dyn_cast<ir::ConstIntOperation>(ml);
+		indexOp = mr;
+	}
+	if (scale == nullptr || scale->getValue() != static_cast<int64_t>(elemBytes)) {
+		return false;
+	}
+	mulOp = mul;
+	scaleOp = scale;
+	return true;
+}
+
+bool AsmJitLoweringProvider::LoweringContext::tryIndexedAddress(const ir::Operation* addr, RegisterFrame& frame,
+                                                               uint32_t elemBytes, a64::Mem& out) {
+	const ir::Operation* baseOp = nullptr;
+	const ir::Operation* indexOp = nullptr;
+	const ir::Operation* mulOp = nullptr;
+	const ir::Operation* scaleOp = nullptr;
+	if (!classifyIndexedAddress(addr, elemBytes, baseOp, indexOp, mulOp, scaleOp)) {
+		return false;
+	}
+	const auto baseReg = frame.getValue(baseOp->getIdentifier());
+	const auto indexReg = frame.getValue(indexOp->getIdentifier());
+	if (!std::holds_alternative<Gp>(baseReg) || !std::holds_alternative<Gp>(indexReg)) {
+		return false;
+	}
+	const uint32_t shift = elemBytes == 1 ? 0 : elemBytes == 2 ? 1 : elemBytes == 4 ? 2 : 3;
+	const auto base = toGp(baseReg).x();
+	const auto index = toGp(indexReg).x();
+	out = shift != 0 ? a64::ptr(base, index, a64::lsl(shift)) : a64::ptr(base, index);
+	return true;
+}
+
+void AsmJitLoweringProvider::LoweringContext::buildUseCounts(const ir::FunctionOperation* funcOp) {
+	useCount_.clear();
+	for (const auto* block : funcOp->getBasicBlocks()) {
+		for (const auto* op : block->getOperations()) {
+			for (const auto* in : op->getInputs()) {
+				++useCount_[in->getIdentifier()];
+			}
+			// Block-invocation arguments are held inside the terminator, not in
+			// getInputs(); count them so loop-carried values are never treated as
+			// single-use (which would let us wrongly skip their definition).
+			if (const auto* br = ir::dyn_cast<ir::BranchOperation>(op)) {
+				for (const auto* a : br->getNextBlockInvocation().getArguments()) {
+					++useCount_[a->getIdentifier()];
+				}
+			} else if (const auto* iff = ir::dyn_cast<ir::IfOperation>(op)) {
+				for (const auto* a : iff->getTrueBlockInvocation().getArguments()) {
+					++useCount_[a->getIdentifier()];
+				}
+				for (const auto* a : iff->getFalseBlockInvocation().getArguments()) {
+					++useCount_[a->getIdentifier()];
+				}
+			}
+		}
+	}
+}
+
+void AsmJitLoweringProvider::LoweringContext::markFoldedAddressArithmetic(const ir::BasicBlock* block) {
+	auto useCount = [&](const ir::Operation* op) -> uint32_t {
+		auto it = useCount_.find(op->getIdentifier());
+		return it == useCount_.end() ? 0 : it->second;
+	};
+	auto markImmConst = [&](const ir::ConstIntOperation* c, const ir::Operation* castOp) {
+		if (c == nullptr || !fitsImm12(c->getValue())) {
+			return;
+		}
+		// Skip the cast (and through it the const) only when each is single-use.
+		if (castOp != nullptr) {
+			if (useCount(castOp) == 1 && useCount(c) == 1) {
+				skipEmit_.insert(castOp->getIdentifier());
+				skipEmit_.insert(c->getIdentifier());
+			}
+		} else if (useCount(c) == 1) {
+			skipEmit_.insert(c->getIdentifier());
+		}
+	};
+	for (const auto* op : block->getOperations()) {
+		// Constants folded into add/cmp immediates become dead once folded.
+		if (const auto* add = ir::dyn_cast<ir::AddOperation>(op); add != nullptr && !isFloatType(add->getStamp())) {
+			const ir::Operation* castOp = nullptr;
+			const auto* c = asFoldableIntConst(add->getRightInput(), castOp);
+			if (c == nullptr) {
+				c = asFoldableIntConst(add->getLeftInput(), castOp);
+			}
+			markImmConst(c, castOp);
+		} else if (const auto* cmp = ir::dyn_cast<ir::CompareOperation>(op);
+		           cmp != nullptr && !isFloatType(cmp->getLeftInput()->getStamp())
+		           && cmp->getLeftInput()->getStamp() != Type::ptr) {
+			const ir::Operation* castOp = nullptr;
+			markImmConst(asFoldableIntConst(cmp->getRightInput(), castOp), castOp);
+		}
+
+		const ir::Operation* addr = nullptr;
+		uint32_t bytes = 0;
+		if (const auto* load = ir::dyn_cast<ir::LoadOperation>(op)) {
+			addr = load->getAddress();
+			bytes = transferBytes(load->getStamp());
+		} else if (const auto* store = ir::dyn_cast<ir::StoreOperation>(op)) {
+			addr = store->getAddress();
+			bytes = transferBytes(store->getValue()->getStamp());
+		} else {
+			continue;
+		}
+		const ir::Operation* baseOp = nullptr;
+		const ir::Operation* indexOp = nullptr;
+		const ir::Operation* mulOp = nullptr;
+		const ir::Operation* scaleOp = nullptr;
+		if (!classifyIndexedAddress(addr, bytes, baseOp, indexOp, mulOp, scaleOp)) {
+			continue;
+		}
+		// Only skip the arithmetic when it is single-use, so dropping its emission
+		// cannot strand a value some other op (or a block argument) still reads.
+		if (useCount(addr) == 1 && useCount(mulOp) == 1 && useCount(scaleOp) == 1) {
+			skipEmit_.insert(addr->getIdentifier());
+			skipEmit_.insert(mulOp->getIdentifier());
+			skipEmit_.insert(scaleOp->getIdentifier());
+		}
+	}
+}
+
 // ── Two-pass compilation ──────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDump) {
@@ -206,6 +403,8 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
+		skipEmit_.clear();
+		buildUseCounts(funcOp);
 
 		// Materialise the function's alloca table into one stack slot per
 		// entry in the prologue.  visitAlloca() then just looks the slot up
@@ -281,6 +480,10 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 
 	cc.bind(getOrCreateLabel(id));
 
+	// Flag single-use address arithmetic that folds into a load/store in this block;
+	// the corresponding visitors then emit nothing.
+	markFoldedAddressArithmetic(block);
+
 	for (auto* op : block->getOperations()) {
 		dispatch(op, frame);
 	}
@@ -303,18 +506,81 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		}
 	}
 
-	std::vector<AsmReg> temps;
-	temps.reserve(srcArgs.size());
-	for (size_t i = 0; i < srcArgs.size(); i++) {
-		auto src = frame.getValue(srcArgs[i]->getIdentifier());
-		auto temp = allocReg(dstArgs[i]->getStamp());
-		emitMove(temp, src);
-		temps.push_back(temp);
+	// Sequentialise the parallel copy dst[i] <- src[i] instead of routing every
+	// argument through a fresh temp. The old 2*N temp round-trip emitted twice
+	// the moves and produced virtual-register chains the allocator could not
+	// coalesce. Here we emit dst<-src directly in dependency order, skip
+	// identity moves, and spend a scratch temp only to break a genuine cycle.
+	const size_t n = srcArgs.size();
+	std::vector<AsmReg> dsts;
+	std::vector<AsmReg> srcs;
+	dsts.reserve(n);
+	srcs.reserve(n);
+	for (size_t i = 0; i < n; i++) {
+		dsts.push_back(frame.getValue(dstArgs[i]->getIdentifier()));
+		srcs.push_back(frame.getValue(srcArgs[i]->getIdentifier()));
 	}
 
-	for (size_t i = 0; i < srcArgs.size(); i++) {
-		auto dst = frame.getValue(dstArgs[i]->getIdentifier());
-		emitMove(dst, temps[i]);
+	auto regId = [](const AsmReg& r) -> uint32_t {
+		return std::holds_alternative<Gp>(r) ? std::get<Gp>(r).id() : std::get<Vec>(r).id();
+	};
+
+	std::vector<bool> done(n, false);
+	size_t remaining = 0;
+	for (size_t i = 0; i < n; i++) {
+		if (regId(dsts[i]) == regId(srcs[i])) {
+			done[i] = true; // identity: src already in dst
+		} else {
+			remaining++;
+		}
+	}
+
+	while (remaining > 0) {
+		// Emit any move whose destination is not still needed as a source.
+		size_t pick = n;
+		for (size_t i = 0; i < n; i++) {
+			if (done[i]) {
+				continue;
+			}
+			bool dstStillNeeded = false;
+			for (size_t j = 0; j < n; j++) {
+				if (done[j] || j == i) {
+					continue;
+				}
+				if (regId(srcs[j]) == regId(dsts[i])) {
+					dstStillNeeded = true;
+					break;
+				}
+			}
+			if (!dstStillNeeded) {
+				pick = i;
+				break;
+			}
+		}
+
+		if (pick != n) {
+			emitMove(dsts[pick], srcs[pick]);
+			done[pick] = true;
+			remaining--;
+			continue;
+		}
+
+		// Only cycles remain: break one by preserving a destination in a temp
+		// and redirecting its readers to that temp.
+		size_t i = 0;
+		while (i < n && done[i]) {
+			i++;
+		}
+		auto temp = allocReg(dstArgs[i]->getStamp());
+		emitMove(temp, dsts[i]);
+		for (size_t j = 0; j < n; j++) {
+			if (!done[j] && regId(srcs[j]) == regId(dsts[i])) {
+				srcs[j] = temp;
+			}
+		}
+		emitMove(dsts[i], srcs[i]);
+		done[i] = true;
+		remaining--;
 	}
 }
 
@@ -327,6 +593,9 @@ void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBoolean
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
+	if (skipEmit_.count(op->getIdentifier())) {
+		return; // address scale constant folded into a load/store addressing mode
+	}
 	auto reg = allocReg(op->getStamp());
 	cc.mov(toGp(reg), op->getValue());
 	frame.setValue(op->getIdentifier(), reg);
@@ -362,12 +631,30 @@ void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperatio
 // ── Arithmetic ────────────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, RegisterFrame& frame) {
-	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
-	auto right = frame.getValue(op->getRightInput()->getIdentifier());
+	if (skipEmit_.count(op->getIdentifier())) {
+		return; // folded into a load/store addressing mode
+	}
 	auto result = allocReg(op->getStamp());
 	if (isFloatType(op->getStamp())) {
+		auto left = frame.getValue(op->getLeftInput()->getIdentifier());
+		auto right = frame.getValue(op->getRightInput()->getIdentifier());
 		cc.fadd(toVec(result), toVec(left), toVec(right));
+		frame.setValue(op->getIdentifier(), result);
+		return;
+	}
+	// Fold a small constant operand into an `add Xd, Xn, #imm` (add is commutative).
+	const ir::Operation* castSkip = nullptr;
+	const auto* c = asFoldableIntConst(op->getRightInput(), castSkip);
+	const ir::Operation* regOperand = op->getLeftInput();
+	if (c == nullptr) {
+		c = asFoldableIntConst(op->getLeftInput(), castSkip);
+		regOperand = op->getRightInput();
+	}
+	if (c != nullptr && fitsImm12(c->getValue())) {
+		cc.add(toGp(result), toGp(frame.getValue(regOperand->getIdentifier())), c->getValue());
 	} else {
+		auto left = frame.getValue(op->getLeftInput()->getIdentifier());
+		auto right = frame.getValue(op->getRightInput()->getIdentifier());
 		cc.add(toGp(result), toGp(left), toGp(right));
 	}
 	frame.setValue(op->getIdentifier(), result);
@@ -386,6 +673,9 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, RegisterFrame& frame) {
+	if (skipEmit_.count(op->getIdentifier())) {
+		return; // index*scale folded into a load/store addressing mode
+	}
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
 	auto right = frame.getValue(op->getRightInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
@@ -431,7 +721,8 @@ void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, Reg
 
 void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* op, RegisterFrame& frame) {
 	auto left = frame.getValue(op->getLeftInput()->getIdentifier());
-	auto right = frame.getValue(op->getRightInput()->getIdentifier());
+	// `right` is fetched lazily: a constant folded into a cmp immediate may have
+	// been skipped (never bound in the frame), so an eager getValue would throw.
 	auto result = allocReg(Type::b);
 	auto resultGp = toGp(result);
 	const bool leftIsFloat = isFloatType(op->getLeftInput()->getStamp());
@@ -443,7 +734,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 	uint32_t condCode;
 
 	if (leftIsFloat) {
-		cc.fcmp(toVec(left), toVec(right));
+		cc.fcmp(toVec(left), toVec(frame.getValue(op->getRightInput()->getIdentifier())));
 		// fcmp sets NZCV; for unordered (NaN), C=1, V=1.
 		// Use unsigned condition codes which give correct IEEE 754 semantics.
 		switch (op->getComparator()) {
@@ -474,7 +765,14 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		else
 			condCode = static_cast<uint32_t>(CC::kNE);
 	} else {
-		cc.cmp(toGp(left), toGp(right));
+		// Fold a small constant right operand into `cmp Xn, #imm`.
+		const ir::Operation* castSkip = nullptr;
+		const auto* rc = asFoldableIntConst(op->getRightInput(), castSkip);
+		if (rc != nullptr && fitsImm12(rc->getValue())) {
+			cc.cmp(toGp(left), rc->getValue());
+		} else {
+			cc.cmp(toGp(left), toGp(frame.getValue(op->getRightInput()->getIdentifier())));
+		}
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
@@ -685,42 +983,48 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 // ── Memory ────────────────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, RegisterFrame& frame) {
-	auto addrGp = toGp(frame.getValue(op->getAddress()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 
+	// Fold `base + index*size` into a scaled-index addressing mode when possible;
+	// otherwise the address is already materialised in a register.
+	a64::Mem mem;
+	if (!tryIndexedAddress(op->getAddress(), frame, transferBytes(op->getStamp()), mem)) {
+		mem = a64::ptr(toGp(frame.getValue(op->getAddress()->getIdentifier())));
+	}
+
 	if (op->getStamp() == Type::f32) {
-		cc.ldr(toVec(result), a64::ptr(addrGp));
+		cc.ldr(toVec(result), mem);
 	} else if (op->getStamp() == Type::f64) {
-		cc.ldr(toVec(result), a64::ptr(addrGp));
+		cc.ldr(toVec(result), mem);
 	} else {
 		auto gDst = toGp(result);
 		switch (op->getStamp()) {
 		case Type::b:
 		case Type::ui8:
-			cc.ldrb(gDst.w(), a64::ptr(addrGp));
+			cc.ldrb(gDst.w(), mem);
 			break;
 		case Type::i8:
-			cc.ldrsb(gDst.x(), a64::ptr(addrGp));
+			cc.ldrsb(gDst.x(), mem);
 			break;
 		case Type::ui16:
-			cc.ldrh(gDst.w(), a64::ptr(addrGp));
+			cc.ldrh(gDst.w(), mem);
 			break;
 		case Type::i16:
-			cc.ldrsh(gDst.x(), a64::ptr(addrGp));
+			cc.ldrsh(gDst.x(), mem);
 			break;
 		case Type::ui32:
-			cc.ldr(gDst.w(), a64::ptr(addrGp));
+			cc.ldr(gDst.w(), mem);
 			break;
 		case Type::i32:
-			cc.ldrsw(gDst.x(), a64::ptr(addrGp));
+			cc.ldrsw(gDst.x(), mem);
 			break;
 		case Type::i64:
 		case Type::ui64:
 		case Type::ptr:
-			cc.ldr(gDst.x(), a64::ptr(addrGp));
+			cc.ldr(gDst.x(), mem);
 			break;
 		default:
-			cc.ldr(gDst.x(), a64::ptr(addrGp));
+			cc.ldr(gDst.x(), mem);
 			break;
 		}
 	}
@@ -728,11 +1032,15 @@ void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, R
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op, RegisterFrame& frame) {
-	auto addrGp = toGp(frame.getValue(op->getAddress()->getIdentifier()));
 	auto valReg = frame.getValue(op->getValue()->getIdentifier());
 
+	a64::Mem mem;
+	if (!tryIndexedAddress(op->getAddress(), frame, transferBytes(op->getValue()->getStamp()), mem)) {
+		mem = a64::ptr(toGp(frame.getValue(op->getAddress()->getIdentifier())));
+	}
+
 	if (op->getValue()->getStamp() == Type::f32 || op->getValue()->getStamp() == Type::f64) {
-		cc.str(toVec(valReg), a64::ptr(addrGp));
+		cc.str(toVec(valReg), mem);
 		return;
 	}
 
@@ -741,18 +1049,18 @@ void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op,
 	case Type::b:
 	case Type::i8:
 	case Type::ui8:
-		cc.strb(valGp.w(), a64::ptr(addrGp));
+		cc.strb(valGp.w(), mem);
 		break;
 	case Type::i16:
 	case Type::ui16:
-		cc.strh(valGp.w(), a64::ptr(addrGp));
+		cc.strh(valGp.w(), mem);
 		break;
 	case Type::i32:
 	case Type::ui32:
-		cc.str(valGp.w(), a64::ptr(addrGp));
+		cc.str(valGp.w(), mem);
 		break;
 	default:
-		cc.str(valGp.x(), a64::ptr(addrGp));
+		cc.str(valGp.x(), mem);
 		break;
 	}
 }
@@ -866,6 +1174,9 @@ void AsmJitLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::Functio
 // ── Type conversion ───────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, RegisterFrame& frame) {
+	if (skipEmit_.count(op->getIdentifier())) {
+		return; // constant cast folded into an immediate operand
+	}
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	const Type srcType = op->getInput()->getStamp();
 	const Type dstType = op->getStamp();
