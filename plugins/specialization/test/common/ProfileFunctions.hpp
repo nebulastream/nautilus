@@ -25,4 +25,11 @@ val<int32_t> assumeAlignedFunction(val<int32_t*> ptr) {
 	return *ptr;
 }
 
+// Test function that uses nautilus_assume_noalias (separate storage)
+val<int32_t> noaliasFunction(val<int32_t*> a, val<int32_t*> b) {
+	nautilus_assume_noalias((val<void*>) a, (val<void*>) b);
+	*a = 1;
+	return *b;
+}
+
 } // namespace nautilus::engine
