@@ -25,4 +25,15 @@ val<int32_t> assumeAlignedFunction(val<int32_t*> ptr) {
 	return *ptr;
 }
 
+// Test function that uses nautilus_assume_noalias. Because `a` and `b` are
+// assumed not to alias, the store through `b` cannot clobber the value stored
+// through `a`, so the final load of `*a` can be folded to the just-stored
+// constant instead of being reloaded from memory.
+val<int32_t> assumeNoaliasFunction(val<int32_t*> a, val<int32_t*> b) {
+	nautilus_assume_noalias(a, b);
+	*a = 1;
+	*b = 2;
+	return *a;
+}
+
 } // namespace nautilus::engine

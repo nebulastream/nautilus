@@ -21,4 +21,13 @@ void nautilus_assume_aligned(val<void*> ptr, int alignment) {
 	invoke(nautilus_assume_aligned_stub, ptr, val<int8_t>(alignment));
 }
 
+void nautilus_assume_noalias_stub(void*, void*) {
+	// This function is a stub for optimization purposes.
+	// It does nothing at runtime.
+}
+
+void nautilus_assume_noalias(val<void*> a, val<void*> b) {
+	invoke(nautilus_assume_noalias_stub, a, b);
+}
+
 } // namespace nautilus

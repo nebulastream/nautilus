@@ -12,6 +12,7 @@ namespace nautilus::engine {
 using nautilus::engine::assumeAlignedFunction;
 using nautilus::engine::assumeComplexCondition;
 using nautilus::engine::assumeFunction;
+using nautilus::engine::assumeNoaliasFunction;
 
 // Wrapper for testLLVMIR that uses the plugin's intrinsic-ir directory
 template <typename Func>
@@ -33,8 +34,17 @@ TEST_CASE("LLVM IR Intrinsic Test: assumeAlignedFunction (MLIR intrinsics enable
 	testIntrinsicLLVMIR("assumeAlignedFunction_with_intrinsics", assumeAlignedFunction, true);
 }
 
+TEST_CASE("LLVM IR Intrinsic Test: assumeNoaliasFunction (MLIR intrinsics enabled)", "[profile][assume][intrinsics]") {
+	testIntrinsicLLVMIR("assumeNoaliasFunction_with_intrinsics", assumeNoaliasFunction, true);
+}
+
 TEST_CASE("LLVM IR Intrinsic Test: assumeFunction (MLIR intrinsics disabled)", "[profile][assume][no-intrinsics]") {
 	testIntrinsicLLVMIR("assumeFunction_without_intrinsics", assumeFunction, false);
+}
+
+TEST_CASE("LLVM IR Intrinsic Test: assumeNoaliasFunction (MLIR intrinsics disabled)",
+          "[profile][assume][no-intrinsics]") {
+	testIntrinsicLLVMIR("assumeNoaliasFunction_without_intrinsics", assumeNoaliasFunction, false);
 }
 
 TEST_CASE("LLVM IR Intrinsic Test: assumeComplexCondition (MLIR intrinsics disabled)",

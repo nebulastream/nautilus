@@ -31,6 +31,14 @@ val<int> cfWithAssumeAlignment(val<int32_t*> a) {
 	return *a + 10;
 }
 
+val<int32_t> cfWithAssumeNoalias(val<int32_t*> a, val<int32_t*> b) {
+	nautilus_assume_noalias(a, b);
+	*a = 1;
+	*b = 2;
+	// With the noalias assumption LLVM may fold this load to the constant 1.
+	return *a;
+}
+
 TEST_CASE("MLIR Intrinsic Function Test") {
 	for (auto useIntrinsics : {false, true}) {
 		DYNAMIC_SECTION("useIntrinsics:" << useIntrinsics) {
@@ -51,6 +59,16 @@ TEST_CASE("MLIR Intrinsic Function Test") {
 					REQUIRE(f(42) == 52);
 					REQUIRE_THROWS(f(0));
 				}
+			}
+
+			SECTION("cfWithAssumeNoalias") {
+				auto f = engine.registerFunction(cfWithAssumeNoalias);
+				// Distinct, non-aliasing pointers: result is always the value stored through `a`.
+				int32_t x = 0;
+				int32_t y = 0;
+				REQUIRE(f(&x, &y) == 1);
+				REQUIRE(x == 1);
+				REQUIRE(y == 2);
 			}
 		}
 	}

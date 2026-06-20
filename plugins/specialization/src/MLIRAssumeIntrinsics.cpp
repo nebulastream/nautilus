@@ -31,6 +31,21 @@ public:
 			                                            ::mlir::LLVM::AssumeAlignTag {}, ptr, align);
 			    return true;
 		    });
+		manager.addIntrinsic(
+		    reinterpret_cast<void*>(&nautilus_assume_noalias_stub),
+		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+		       [[maybe_unused]] compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) -> bool {
+			    // Lower to `llvm.assume(true) ["separate_storage"(a, b)]`, which tells LLVM the
+			    // two pointers point into separate storage, i.e. they do not alias (noalias/restrict).
+			    auto constOp =
+			        builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
+			                                                   builder->getIntegerAttr(builder->getI1Type(), true));
+			    auto a = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+			    auto b = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), constOp,
+			                                            ::mlir::LLVM::AssumeSeparateStorageTag {}, a, b);
+			    return true;
+		    });
 	}
 	~NautilusAssumeIntrinsicPlugin() override = default;
 };
