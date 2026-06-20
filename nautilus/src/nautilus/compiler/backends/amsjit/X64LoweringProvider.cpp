@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -27,11 +28,22 @@ public:
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
                                                                   ::asmjit::JitRuntime& runtime,
                                                                   const engine::Options& options,
+                                                                  const DumpHandler& dumpHandler,
                                                                   CompilationStatistics* statistics) {
 	CodeHolder code;
 	code.init(runtime.environment(), runtime.cpuFeatures());
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
+
+	// Only pay the formatting/logging cost when the corresponding dump is requested.
+	const bool dumpAsmjitIR = dumpHandler.shouldDump("after_asmjit_generation");
+	const bool dumpAssembly = dumpHandler.shouldDump("after_asmjit_assembly");
+
+	// When requested, attach a StringLogger so finalize() records the emitted assembly.
+	StringLogger asmLogger;
+	if (dumpAssembly) {
+		code.setLogger(&asmLogger);
+	}
 
 	// Build the intrinsic manager from the global plugin registry. Gated by
 	// `asmjit.enableIntrinsics` (default true), mirroring `mlir.enableIntrinsics`.
@@ -43,7 +55,8 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	}
 
 	LoweringContext ctx(std::move(ir), code, options, statistics, intrinsicManager);
-	ctx.processAll();
+	std::string asmjitIR;
+	ctx.processAll(dumpAsmjitIR ? &asmjitIR : nullptr);
 
 	// Capture label offsets while code is still in the CodeHolder (before rt.add resets it).
 	std::unordered_map<std::string, uint64_t> offsets;
@@ -63,6 +76,10 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	result.codeSize = codeSize;
 	for (const auto& [name, offset] : offsets) {
 		result.jitPtrs[name] = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(basePtr) + offset);
+	}
+	result.asmjitIR = std::move(asmjitIR);
+	if (dumpAssembly) {
+		result.assembly.assign(asmLogger.data(), asmLogger.dataSize());
 	}
 	return result;
 }
@@ -176,7 +193,7 @@ void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const 
 // Pass 2: for each function, call cc.addFunc(funcNode), emit the body,
 //         and call cc.endFunc(). cc.finalize() resolves all label references.
 
-void AsmJitLoweringProvider::LoweringContext::processAll() {
+void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDump) {
 	const auto& functionOperations = ir->getFunctionOperations();
 	if (functionOperations.empty()) {
 		throw std::runtime_error("AsmJit: no functions found in IR graph");
@@ -260,6 +277,15 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 
 		processBlock(&funcBlock, rootFrame);
 		cc.endFunc();
+	}
+
+	// Format the builder node list before finalize(): at this point the IR still carries
+	// virtual registers, which is the representation users want to inspect as "asmjit IR".
+	if (asmjitIRDump != nullptr) {
+		::asmjit::String sb;
+		::asmjit::FormatOptions formatOptions;
+		::asmjit::Formatter::formatNodeList(sb, formatOptions, &cc);
+		asmjitIRDump->assign(sb.data(), sb.size());
 	}
 
 	cc.finalize();
