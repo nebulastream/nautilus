@@ -873,6 +873,69 @@ void vectorTests(engine::NautilusEngine& engine) {
 	}
 
 	// ================================================================
+	// Compress-store — packed masked store (stream compaction)
+	// ================================================================
+
+	SECTION("compress-store float (even lanes)") {
+		auto f = engine.registerFunction(vectorCompressStoreFloat);
+		alignas(64) float data[FL_MAX], mask[FL_MAX], out[FL_MAX];
+		size_t expected_count = 0;
+		for (size_t i = 0; i < FL; i++) {
+			data[i] = static_cast<float>((i + 1) * 10);
+			out[i] = -1.0f;
+			uint32_t m = (i % 2 == 0) ? 0xFFFFFFFF : 0x00000000;
+			std::memcpy(&mask[i], &m, sizeof(float));
+			if (i % 2 == 0)
+				expected_count++;
+		}
+		int32_t count = f(data, mask, out);
+		REQUIRE(count == static_cast<int32_t>(expected_count));
+		size_t k = 0;
+		for (size_t i = 0; i < FL; i++)
+			if (i % 2 == 0)
+				REQUIRE(out[k++] == data[i]);
+	}
+
+	SECTION("compress-store int32 (manual mask)") {
+		auto f = engine.registerFunction(vectorCompressStoreInt);
+		alignas(64) int32_t data[IL_MAX], mask[IL_MAX], out[IL_MAX];
+		size_t expected_count = 0;
+		for (size_t i = 0; i < IL; i++) {
+			data[i] = static_cast<int32_t>((i + 1) * 100);
+			out[i] = -1;
+			mask[i] = (i % 3 == 0) ? (int32_t) 0xFFFFFFFF : 0;
+			if (i % 3 == 0)
+				expected_count++;
+		}
+		int32_t count = f(data, mask, out);
+		REQUIRE(count == static_cast<int32_t>(expected_count));
+		size_t k = 0;
+		for (size_t i = 0; i < IL; i++)
+			if (i % 3 == 0)
+				REQUIRE(out[k++] == data[i]);
+	}
+
+	SECTION("compress-store int32 filter > threshold (cmp + compress)") {
+		auto f = engine.registerFunction(vectorFilterGtInt);
+		alignas(64) int32_t data[IL_MAX], thresh[IL_MAX], out[IL_MAX];
+		int32_t t = static_cast<int32_t>(IL / 2);
+		size_t expected_count = 0;
+		for (size_t i = 0; i < IL; i++) {
+			data[i] = static_cast<int32_t>(i);
+			thresh[i] = t;
+			out[i] = -1;
+			if (static_cast<int32_t>(i) > t)
+				expected_count++;
+		}
+		int32_t count = f(data, thresh, out);
+		REQUIRE(count == static_cast<int32_t>(expected_count));
+		size_t k = 0;
+		for (size_t i = 0; i < IL; i++)
+			if (static_cast<int32_t>(i) > t)
+				REQUIRE(out[k++] == data[i]);
+	}
+
+	// ================================================================
 	// Extract — get single lane
 	// ================================================================
 

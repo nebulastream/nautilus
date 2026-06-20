@@ -409,6 +409,30 @@ void vectorScatterInt(val<const int32_t*> src, val<int32_t*> base, val<const int
 }
 
 // ============================================================================
+// Compress-store — packed masked store (stream compaction)
+// ============================================================================
+
+val<int32_t> vectorCompressStoreFloat(val<const float*> data, val<const float*> mask, val<float*> out) {
+	auto vdata = val<vec<float>>::Load(data);
+	auto vmask = val<vec<float>>::Load(mask);
+	return vdata.CompressStore(out, vmask);
+}
+
+val<int32_t> vectorCompressStoreInt(val<const int32_t*> data, val<const int32_t*> mask, val<int32_t*> out) {
+	auto vdata = val<vec<int32_t>>::Load(data);
+	auto vmask = val<vec<int32_t>>::Load(mask);
+	return vdata.CompressStore(out, vmask);
+}
+
+// Realistic compaction: keep only elements greater than a threshold, packed
+// contiguously, using a comparison to produce the mask.
+val<int32_t> vectorFilterGtInt(val<const int32_t*> data, val<const int32_t*> thresh, val<int32_t*> out) {
+	auto vdata = val<vec<int32_t>>::Load(data);
+	auto vthresh = val<vec<int32_t>>::Load(thresh);
+	return vdata.CompressStore(out, vdata > vthresh);
+}
+
+// ============================================================================
 // Extract — get a single lane
 // ============================================================================
 
