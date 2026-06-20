@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 include(CMakeDependentOption)
 
-project(nautilus VERSION 0.2)
+project(nautilus VERSION 0.3)
 
 option(ENABLE_LOGGING "Enable logging support" ON)
 option(ENABLE_STACKTRACE "Enable stacktrace support" ON)
