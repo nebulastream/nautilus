@@ -43,9 +43,9 @@ TypedValueRef traceCopy(const TypedValueRef& ref) {
 	return {};
 }
 
-void allocateValRef(ValueRef ref) {
+void allocateValRef(ValueRef ref, Type type) {
 	if (activeTracer) {
-		activeTracer->allocateValRef(ref);
+		activeTracer->allocateValRef(ref, type);
 	}
 }
 

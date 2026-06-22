@@ -65,8 +65,22 @@ public:
 
 	/**
 	 * @brief indicates a list of arguments that this block receives.
+	 *
+	 * The first `phiArgCount` entries (if any) are phi-style arguments
+	 * pre-populated by ExecutionTrace::processControlFlowMerge to reconcile
+	 * divergent ValueRefs from sibling predecessor paths. Predecessor JMP
+	 * BlockRef.arguments[i] supplies the path-local value at position i for
+	 * i < phiArgCount. Any arguments appended later by SSACreationPhase's
+	 * propagateValue land in the suffix and follow the legacy "same value
+	 * across all predecessors" propagation contract.
 	 */
 	std::vector<TypedValueRef> arguments;
+
+	/**
+	 * @brief Number of leading entries in `arguments` that were pre-populated
+	 * by phi-aware control-flow merge. Defaults to 0 (no phi args).
+	 */
+	uint32_t phiArgCount = 0;
 
 	/**
 	 * @brief Defines a list of operations this block contains.

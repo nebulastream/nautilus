@@ -131,24 +131,20 @@ Arena& ExecutionTrace::getArena() {
 	return *arena;
 }
 
-bool ExecutionTrace::checkTag(Snapshot& snapshot) {
+operation_identifier* ExecutionTrace::findTag(Snapshot& snapshot) {
 	// check if operation is in global map -> we have a repeating operation ->
 	// this is a control-flow merge
 	auto globalTabIter = globalTagMap.find(snapshot);
 	if (globalTabIter != globalTagMap.end()) {
-		auto& ref = globalTabIter->second;
-		processControlFlowMerge(ref);
-		return false;
+		return &globalTabIter->second;
 	}
 
 	// check if we visited the same operation in this execution -> loop
 	auto localTagIter = localTagMap.find(snapshot);
 	if (localTagIter != localTagMap.end()) {
-		auto& ref = localTagIter->second;
-		processControlFlowMerge(ref);
-		return false;
+		return &localTagIter->second;
 	}
-	return true;
+	return nullptr;
 }
 
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
@@ -211,7 +207,8 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 
 // Adds a comparison operation to the execution trace
 // This consists of a snapshot, the comparison input, two blocks for true and false branches, and the branch probability
-void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const double probability) {
+void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& condition, const double probability,
+                                     std::vector<TypedValueRef> alive) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -227,6 +224,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto* cmpOp = makeTraceOp(*arena, snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
 	                          trueBlockRef, falseBlockRef, probability);
 	operations.push_back(cmpOp);
+	cmpAliveAtRecord[cmpOp] = std::move(alive);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -266,7 +264,8 @@ uint32_t ExecutionTrace::createBlock() {
 	return block->blockId;
 }
 
-Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
+Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi, const std::vector<TypedValueRef>& currentAlive,
+                                               const TypedValueRef* currentOperand) {
 	if (oi.blockIndex == currentBlockIndex) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
 	}
@@ -280,6 +279,25 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
+
+	// Capture the reference-path CMP op's alive list and operand BEFORE moving
+	// the op so we can pair them with currentAlive / currentOperand for phi
+	// reconciliation. Only meaningful when the merge point is a CMP op (lookup
+	// returns empty otherwise).
+	std::vector<TypedValueRef> refAlive;
+	const TypedValueRef* refOperand = nullptr;
+	if (oi.operationIndex < referenceBlock.operations.size()) {
+		auto* refOp = referenceBlock.operations[oi.operationIndex];
+		auto it = cmpAliveAtRecord.find(refOp);
+		if (it != cmpAliveAtRecord.end()) {
+			refAlive = it->second;
+		}
+		if (refOp->op == Op::CMP && !refOp->input.empty()) {
+			if (auto* p = std::get_if<TypedValueRef>(&refOp->input[0])) {
+				refOperand = p;
+			}
+		}
+	}
 
 	// 1. move operation pointers to new block
 	// Pointers are stable (arena-allocated), so we only move the entries in
@@ -310,13 +328,59 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	// add jump from referenced block to merge block.  Each JMP gets its own
 	// arena-allocated BlockRef so that later phases (e.g. SSA construction)
 	// can mutate the arguments lists independently.
-	referenceBlock.addOperation(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergedBlockId)));
+	auto* refJmpBlockRef = arena->create<BlockRef>(mergedBlockId);
+	referenceBlock.addOperation(makeTraceOp(*arena, Op::JMP, refJmpBlockRef));
 
 	// add jump from current block to merge block
-	currentBlock.addOperation(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(mergedBlockId)));
+	auto* curJmpBlockRef = arena->create<BlockRef>(mergedBlockId);
+	currentBlock.addOperation(makeTraceOp(*arena, Op::JMP, curJmpBlockRef));
 
 	mergeBlock.predecessors.emplace_back(oi.blockIndex);
 	mergeBlock.predecessors.emplace_back(currentBlockIndex);
+
+	// Phi-aware reconciliation. Best-effort: only fires when both alive lists
+	// were supplied and have matching length. On any size or type mismatch we
+	// fall back to the legacy behaviour (no phi args, SSA propagateValue may
+	// then succeed or throw — never strictly worse than before).
+	auto addPhi = [&](const TypedValueRef& r, const TypedValueRef& c) {
+		mergeBlock.arguments.push_back(r);
+		++mergeBlock.phiArgCount;
+		refJmpBlockRef->arguments.push_back(r);
+		curJmpBlockRef->arguments.push_back(c);
+	};
+	bool operandHandled = false;
+	if (!refAlive.empty() && refAlive.size() == currentAlive.size()) {
+		for (size_t i = 0; i < refAlive.size(); ++i) {
+			const TypedValueRef& r = refAlive[i];
+			const TypedValueRef& c = currentAlive[i];
+			if (r.type != c.type) {
+				// Positional invariant broken; abort phi reconciliation for this slot.
+				continue;
+			}
+			if (r.ref == c.ref) {
+				// Same ValueRef on both paths — no phi needed.
+				continue;
+			}
+			// Reuse the reference path's ValueRef ID as the phi block-arg name so
+			// existing references inside the merge block and downstream resolve
+			// via the block-arg lookup in SSACreationPhase::isLocalValueRef.
+			addPhi(r, c);
+			if (refOperand && r.ref == refOperand->ref) {
+				operandHandled = true;
+			}
+		}
+	}
+	// Explicit operand carve-out: the val<bool> wrapping a comparison result
+	// can have a lifetime too short to appear in aliveVars.order() at the
+	// moment of traceBool (notably under ENABLE_SHORT_CIRCUIT_BOOL where the
+	// val<bool> is a full-expression temporary in a native && / ||). Without
+	// this, the CMP's operand would diverge across paths with no phi,
+	// breaking SSA. Always reconcile the operand even when aliveVars missed it.
+	if (!operandHandled && refOperand && currentOperand && refOperand->ref != currentOperand->ref &&
+	    refOperand->type == currentOperand->type) {
+		addPhi(*refOperand, *currentOperand);
+	}
+
 	setCurrentBlock(mergedBlockId);
 
 	// update predecessors of merge merge block

@@ -211,25 +211,42 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 	// Reuse the member worklist to avoid heap allocation per call.
 	propWorklist.clear();
-	propWorklist.push_back(block.blockId);
+	propWorklist.push_back({block.blockId, ref});
 
 	while (!propWorklist.empty()) {
-		auto curBlockId = propWorklist.back();
+		auto [curBlockId, curRef] = propWorklist.back();
 		propWorklist.pop_back();
 
 		auto& curBlock = trace->getBlock(curBlockId);
 
+		// Phi-aware: if curRef matches a phi-pre-populated block-arg of curBlock
+		// (the leading `phiArgCount` entries of curBlock.arguments), each
+		// predecessor's BlockRef.arguments[idx] is already pre-populated with
+		// the path-local equivalent. Substitute it instead of appending curRef.
+		uint32_t phiIdx = curBlock.phiArgCount; // sentinel: no phi match
+		for (uint32_t i = 0; i < curBlock.phiArgCount; ++i) {
+			if (curBlock.arguments[i].ref == curRef.ref) {
+				phiIdx = i;
+				break;
+			}
+		}
+
 		for (auto& predecessor : curBlock.predecessors) {
 			auto& predBlock = trace->getBlock(predecessor);
 			auto& lastOperation = *predBlock.operations.back();
+			TypedValueRef predRef = curRef;
 			if (lastOperation.op == Op::JMP || lastOperation.op == Op::CMP) {
 				for (auto& input : lastOperation.input) {
 					if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
 						BlockRef& blockRef = **blockRefPtr;
 						if (blockRef.block == curBlockId) {
-							if (std::find(blockRef.arguments.begin(), blockRef.arguments.end(), ref) ==
-							    blockRef.arguments.end()) {
-								blockRef.arguments.emplace_back(ref);
+							if (phiIdx < curBlock.phiArgCount && phiIdx < blockRef.arguments.size()) {
+								// Pre-populated phi slot: predecessor already supplies its
+								// path-local value here. Pick it up and propagate THAT.
+								predRef = blockRef.arguments[phiIdx];
+							} else if (std::find(blockRef.arguments.begin(), blockRef.arguments.end(), curRef) ==
+							           blockRef.arguments.end()) {
+								blockRef.arguments.emplace_back(curRef);
 							}
 						}
 					}
@@ -238,22 +255,22 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 			// If the value is defined by an operation in the predecessor, it is
 			// locally available there and no further propagation is needed.
-			if (getOrBuildDefinitions(predecessor).contains(ref.ref)) {
+			if (getOrBuildDefinitions(predecessor).contains(predRef.ref)) {
 				continue;
 			}
 
 			// O(1) check: if we have already propagated this value to this predecessor
 			// (handles loops and diamond merges), skip re-queuing.
-			uint64_t key = (uint64_t(predecessor) << 32) | ref.ref;
+			uint64_t key = (uint64_t(predecessor) << 32) | predRef.ref;
 			if (propagatedValues.contains(key)) {
 				continue;
 			}
 
 			// Value is not local in the predecessor: add as argument and
 			// continue propagating upward.
-			predBlock.addArgument(ref);
+			predBlock.addArgument(predRef);
 			propagatedValues.insert(key);
-			propWorklist.push_back(predecessor);
+			propWorklist.push_back({predecessor, predRef});
 		}
 	}
 }

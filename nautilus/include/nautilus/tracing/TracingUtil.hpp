@@ -82,7 +82,7 @@ void traceReturnOperation(Type type, const TypedValueRef& ref);
 
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();
-void allocateValRef(ValueRef ref);
+void allocateValRef(ValueRef ref, Type type);
 void freeValRef(ValueRef ref);
 
 } // namespace nautilus::tracing

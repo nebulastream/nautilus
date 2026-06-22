@@ -7,7 +7,7 @@ B1()
 	CONST	$6	1	:i32
 	CONST	$8	1	:i32
 	EQ	$9	$6	$8	:bool
-	CMP	$10	$9	B3()	B4($6)	:void
+	JMP	$0	B9($6,$6,$9)	:void
 B2($2:i32)
 	CONST	$18	10	:i32
 	LT	$19	$2	$18	:bool
@@ -16,212 +16,58 @@ B3()
 	CONST	$11	1	:i32
 	CONST	$13	1	:i32
 	EQ	$14	$11	$13	:bool
-	CMP	$15	$14	B5()	B6($11)	:void
+	JMP	$0	B12($11,$11,$14)	:void
 B4($7:i32)
-	CONST	$33	10	:i32
-	LT	$34	$7	$33	:bool
-	CMP	$35	$34	B13()	B14($7)	:void
+	CONST	$26	10	:i32
+	LT	$27	$7	$26	:bool
+	CMP	$28	$27	B10()	B11($7)	:void
 B5()
 	CONST	$16	1	:i32
-	JMP	$0	B53($16)	:void
+	JMP	$0	B17($16)	:void
 B6($12:i32)
-	CONST	$43	10	:i32
-	LT	$44	$12	$43	:bool
-	CMP	$45	$44	B17()	B18($12)	:void
+	CONST	$34	10	:i32
+	LT	$35	$12	$34	:bool
+	CMP	$36	$35	B13()	B14($12)	:void
 B7()
 	CONST	$21	42	:i32
 	CONST	$23	1	:i32
 	EQ	$24	$21	$23	:bool
-	CMP	$25	$24	B9()	B10($21)	:void
+	JMP	$0	B9($21,$21,$24)	:void
 B8($2:i32)
-	ADD	$48	$2	$2	:i32
-	CONST	$49	1	:i32
-	ADD	$50	$48	$49	:i32
-	CONST	$52	1	:i32
-	EQ	$53	$50	$52	:bool
-	CMP	$54	$53	B19()	B20($50)	:void
-B9()
-	CONST	$26	1	:i32
-	CONST	$28	1	:i32
-	EQ	$29	$26	$28	:bool
-	CMP	$30	$29	B11()	B12($26)	:void
-B10($22:i32)
-	CONST	$62	10	:i32
-	LT	$63	$22	$62	:bool
-	CMP	$64	$63	B23()	B24($22)	:void
-B11()
+	ADD	$39	$2	$2	:i32
+	CONST	$40	1	:i32
+	ADD	$41	$39	$40	:i32
+	CONST	$43	1	:i32
+	EQ	$44	$41	$43	:bool
+	JMP	$0	B15($41,$41,$44)	:void
+B9($6:i32,$7:i32,$9:bool) ControlFlowMerge
+	JMP	$0	B15($6,$7,$9)	:void
+B10()
+	CONST	$29	42	:i32
 	CONST	$31	1	:i32
-	JMP	$0	B53($31)	:void
-B12($27:i32)
-	CONST	$72	10	:i32
-	LT	$73	$27	$72	:bool
-	CMP	$74	$73	B27()	B28($27)	:void
+	EQ	$32	$29	$31	:bool
+	JMP	$0	B12($29,$29,$32)	:void
+B11($7:i32)
+	ADD	$46	$7	$7	:i32
+	CONST	$47	1	:i32
+	ADD	$48	$46	$47	:i32
+	CONST	$50	1	:i32
+	EQ	$51	$48	$50	:bool
+	JMP	$0	B16($48,$48,$51)	:void
+B12($11:i32,$12:i32,$14:bool) ControlFlowMerge
+	JMP	$0	B16($11,$12,$14)	:void
 B13()
-	CONST	$36	42	:i32
-	CONST	$38	1	:i32
-	EQ	$39	$36	$38	:bool
-	CMP	$40	$39	B15()	B16($36)	:void
-B14($7:i32)
-	ADD	$77	$7	$7	:i32
-	CONST	$78	1	:i32
-	ADD	$79	$77	$78	:i32
-	CONST	$81	1	:i32
-	EQ	$82	$79	$81	:bool
-	CMP	$83	$82	B29()	B30($79)	:void
-B15()
-	CONST	$41	1	:i32
-	JMP	$0	B53($41)	:void
-B16($37:i32)
-	CONST	$86	10	:i32
-	LT	$87	$37	$86	:bool
-	CMP	$88	$87	B31()	B32($37)	:void
-B17()
-	CONST	$46	42	:i32
-	JMP	$0	B53($46)	:void
-B18($12:i32)
-	ADD	$91	$12	$12	:i32
-	CONST	$92	1	:i32
-	ADD	$93	$91	$92	:i32
-	JMP	$0	B53($93)	:void
-B19()
-	CONST	$55	1	:i32
-	CONST	$57	1	:i32
-	EQ	$58	$55	$57	:bool
-	CMP	$59	$58	B21()	B22($55)	:void
-B20($51:i32)
-	CONST	$95	10	:i32
-	LT	$96	$51	$95	:bool
-	CMP	$97	$96	B33()	B34($51)	:void
-B21()
-	CONST	$60	1	:i32
-	JMP	$0	B53($60)	:void
-B22($56:i32)
-	CONST	$105	10	:i32
-	LT	$106	$56	$105	:bool
-	CMP	$107	$106	B37()	B38($56)	:void
-B23()
-	CONST	$65	42	:i32
-	CONST	$67	1	:i32
-	EQ	$68	$65	$67	:bool
-	CMP	$69	$68	B25()	B26($65)	:void
-B24($22:i32)
-	ADD	$110	$22	$22	:i32
-	CONST	$111	1	:i32
-	ADD	$112	$110	$111	:i32
-	CONST	$114	1	:i32
-	EQ	$115	$112	$114	:bool
-	CMP	$116	$115	B39()	B40($112)	:void
-B25()
-	CONST	$70	1	:i32
-	JMP	$0	B53($70)	:void
-B26($66:i32)
-	CONST	$119	10	:i32
-	LT	$120	$66	$119	:bool
-	CMP	$121	$120	B41()	B42($66)	:void
-B27()
-	CONST	$75	42	:i32
-	JMP	$0	B53($75)	:void
-B28($27:i32)
-	ADD	$124	$27	$27	:i32
-	CONST	$125	1	:i32
-	ADD	$126	$124	$125	:i32
-	JMP	$0	B53($126)	:void
-B29()
-	CONST	$84	1	:i32
-	JMP	$0	B53($84)	:void
-B30($80:i32)
-	CONST	$128	10	:i32
-	LT	$129	$80	$128	:bool
-	CMP	$130	$129	B43()	B44($80)	:void
-B31()
-	CONST	$89	42	:i32
-	JMP	$0	B53($89)	:void
-B32($37:i32)
-	ADD	$133	$37	$37	:i32
-	CONST	$134	1	:i32
-	ADD	$135	$133	$134	:i32
-	JMP	$0	B53($135)	:void
-B33()
-	CONST	$98	42	:i32
-	CONST	$100	1	:i32
-	EQ	$101	$98	$100	:bool
-	CMP	$102	$101	B35()	B36($98)	:void
-B34($51:i32)
-	ADD	$137	$51	$51	:i32
-	CONST	$138	1	:i32
-	ADD	$139	$137	$138	:i32
-	CONST	$141	1	:i32
-	EQ	$142	$139	$141	:bool
-	CMP	$143	$142	B45()	B46($139)	:void
-B35()
-	CONST	$103	1	:i32
-	JMP	$0	B53($103)	:void
-B36($99:i32)
-	CONST	$146	10	:i32
-	LT	$147	$99	$146	:bool
-	CMP	$148	$147	B47()	B48($99)	:void
-B37()
-	CONST	$108	42	:i32
-	JMP	$0	B53($108)	:void
-B38($56:i32)
-	ADD	$151	$56	$56	:i32
-	CONST	$152	1	:i32
-	ADD	$153	$151	$152	:i32
-	JMP	$0	B53($153)	:void
-B39()
-	CONST	$117	1	:i32
-	JMP	$0	B53($117)	:void
-B40($113:i32)
-	CONST	$155	10	:i32
-	LT	$156	$113	$155	:bool
-	CMP	$157	$156	B49()	B50($113)	:void
-B41()
-	CONST	$122	42	:i32
-	JMP	$0	B53($122)	:void
-B42($66:i32)
-	ADD	$160	$66	$66	:i32
-	CONST	$161	1	:i32
-	ADD	$162	$160	$161	:i32
-	JMP	$0	B53($162)	:void
-B43()
-	CONST	$131	42	:i32
-	JMP	$0	B53($131)	:void
-B44($80:i32)
-	ADD	$164	$80	$80	:i32
-	CONST	$165	1	:i32
-	ADD	$166	$164	$165	:i32
-	JMP	$0	B53($166)	:void
-B45()
-	CONST	$144	1	:i32
-	JMP	$0	B53($144)	:void
-B46($140:i32)
-	CONST	$168	10	:i32
-	LT	$169	$140	$168	:bool
-	CMP	$170	$169	B51()	B52($140)	:void
-B47()
-	CONST	$149	42	:i32
-	JMP	$0	B53($149)	:void
-B48($99:i32)
-	ADD	$173	$99	$99	:i32
-	CONST	$174	1	:i32
-	ADD	$175	$173	$174	:i32
-	JMP	$0	B53($175)	:void
-B49()
-	CONST	$158	42	:i32
-	JMP	$0	B53($158)	:void
-B50($113:i32)
-	ADD	$177	$113	$113	:i32
-	CONST	$178	1	:i32
-	ADD	$179	$177	$178	:i32
-	JMP	$0	B53($179)	:void
-B51()
-	CONST	$171	42	:i32
-	JMP	$0	B53($171)	:void
-B52($140:i32)
-	ADD	$181	$140	$140	:i32
-	CONST	$182	1	:i32
-	ADD	$183	$181	$182	:i32
-	JMP	$0	B53($183)	:void
-B53($16:i32)
+	CONST	$37	42	:i32
+	JMP	$0	B17($37)	:void
+B14($12:i32)
+	ADD	$53	$12	$12	:i32
+	CONST	$54	1	:i32
+	ADD	$55	$53	$54	:i32
+	JMP	$0	B17($55)	:void
+B15($6:i32,$7:i32,$9:bool) ControlFlowMerge
+	CMP	$10	$9	B3()	B4($7)	:void
+B16($11:i32,$12:i32,$14:bool) ControlFlowMerge
+	CMP	$15	$14	B5()	B6($12)	:void
+B17($16:i32)
 	RETURN	$0	$16	:i32
 
