@@ -73,13 +73,14 @@ public:
 #endif
 
 	val<bool> operator==(val<T>& other) const {
+		auto result = value == other.value;
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto tc = tracing::traceBinaryOp(tracing::EQ, Type::b, state, other.state);
-			return val<bool>(tc);
+			return val<bool>(tc, result);
 		}
 #endif
-		return value == other.value;
+		return result;
 	}
 
 	val<bool> operator==(const T& other) const {
@@ -88,13 +89,14 @@ public:
 	}
 
 	val<bool> operator!=(val<T>& other) const {
+		auto result = value != other.value;
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto tc = tracing::traceBinaryOp(tracing::NEQ, Type::b, state, other.state);
-			return val<bool>(tc);
+			return val<bool>(tc, result);
 		}
 #endif
-		return value != other.value;
+		return result;
 	}
 
 	val<bool> operator!=(const T& other) const {

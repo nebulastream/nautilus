@@ -166,6 +166,25 @@ inline val<int32_t> pointerMultiStep(val<int32_t*> ptr) {
 	return *p3;
 }
 
+// Regression test for a bug where val<bool>(tracing::TypedValueRef&) hardcoded
+// the traced concrete value to false. With a loop header of the shape
+//   while (val<T*> && !val<bool>) { ... *ptr ... }
+// the pointer null-check (the `val<T*>` truthiness) was wrongly constant-folded
+// during control-flow merging on the loop back-edge, removing the guard and
+// dereferencing a null pointer. With a null pointer the loop must not execute
+// and the function must return 0.
+inline val<int32_t> sumWhileNotDone(val<int32_t*> ptr, val<int32_t> limit) {
+	val<int32_t> sum = 0;
+	val<int32_t> i = 0;
+	val<bool> done = false;
+	while (ptr && !done) {
+		sum = sum + ptr[i];
+		i = i + 1;
+		done = i >= limit;
+	}
+	return sum;
+}
+
 class BaseClass {};
 
 class CustomClass : public BaseClass {
