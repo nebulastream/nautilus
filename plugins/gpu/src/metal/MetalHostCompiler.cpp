@@ -27,6 +27,9 @@ cpp::SharedLibraryPtr MetalHostCompiler::compile(const std::string& identifier, 
 	cmd << " -framework Metal";
 	cmd << " -framework Foundation";
 	cmd << " -lc++";
+	// nautilus_gpu_buffer_bytes is resolved against the loading process (the
+	// nautilus-gpu runtime) at dlopen time rather than linked here.
+	cmd << " -undefined dynamic_lookup";
 #ifdef __APPLE__
 	cmd << " -DTARGET_OS_IPHONE=0";
 	cmd << " -DTARGET_OS_SIMULATOR=0";

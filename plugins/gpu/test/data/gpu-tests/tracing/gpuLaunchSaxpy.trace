@@ -21,48 +21,46 @@ B0($1:ptr,$2:ptr,$3:f32)
 
 SAXPY:
 B0($1:ptr,$2:ptr,$3:f32)
-	ASSIGN	$4	$1	:ptr
-	ASSIGN	$5	$2	:ptr
-	CALL	$6	func_*()	:ui32
+	CALL	$4	func_*()	:ui32
+	CALL	$5	func_*()	:ui32
+	MUL	$6	$4	$5	:ui32
 	CALL	$7	func_*()	:ui32
-	MUL	$8	$6	$7	:ui32
-	CALL	$9	func_*()	:ui32
-	ADD	$10	$8	$9	:ui32
-	CAST	$11	$10	:i32
-	ASSIGN	$12	$4	:ptr
-	ASSIGN	$13	$11	:i32
-	ASSIGN	$14	$13	:i32
-	CONST	$15	4	:ui64
-	CAST	$16	$14	:ui64
-	MUL	$17	$16	$15	:ui64
-	ADD	$18	$12	$17	:ptr
-	ASSIGN	$19	$18	:ptr
-	ASSIGN	$20	$19	:ptr
-	LOAD	$21	$20	:f32
-	MUL	$22	$3	$21	:f32
-	CAST	$23	$10	:i32
-	ASSIGN	$24	$5	:ptr
-	ASSIGN	$25	$23	:i32
-	ASSIGN	$26	$25	:i32
-	CONST	$27	4	:ui64
-	CAST	$28	$26	:ui64
-	MUL	$29	$28	$27	:ui64
-	ADD	$30	$24	$29	:ptr
-	ASSIGN	$31	$30	:ptr
-	ASSIGN	$32	$31	:ptr
-	LOAD	$33	$32	:f32
-	ADD	$34	$22	$33	:f32
-	CAST	$35	$10	:i32
-	ASSIGN	$36	$5	:ptr
-	ASSIGN	$37	$35	:i32
-	ASSIGN	$38	$37	:i32
-	CONST	$39	4	:ui64
-	CAST	$40	$38	:ui64
-	MUL	$41	$40	$39	:ui64
-	ADD	$42	$36	$41	:ptr
-	ASSIGN	$43	$42	:ptr
-	ASSIGN	$44	$43	:ptr
-	ASSIGN	$45	$34	:f32
-	STORE	$46	$44	$45	:void
+	ADD	$8	$6	$7	:ui32
+	CAST	$9	$8	:i32
+	ASSIGN	$10	$1	:ptr
+	ASSIGN	$11	$9	:i32
+	ASSIGN	$12	$11	:i32
+	CONST	$13	4	:ui64
+	CAST	$14	$12	:ui64
+	MUL	$15	$14	$13	:ui64
+	ADD	$16	$10	$15	:ptr
+	ASSIGN	$17	$16	:ptr
+	ASSIGN	$18	$17	:ptr
+	LOAD	$19	$18	:f32
+	MUL	$20	$3	$19	:f32
+	CAST	$21	$8	:i32
+	ASSIGN	$22	$2	:ptr
+	ASSIGN	$23	$21	:i32
+	ASSIGN	$24	$23	:i32
+	CONST	$25	4	:ui64
+	CAST	$26	$24	:ui64
+	MUL	$27	$26	$25	:ui64
+	ADD	$28	$22	$27	:ptr
+	ASSIGN	$29	$28	:ptr
+	ASSIGN	$30	$29	:ptr
+	LOAD	$31	$30	:f32
+	ADD	$32	$20	$31	:f32
+	CAST	$33	$8	:i32
+	ASSIGN	$34	$2	:ptr
+	ASSIGN	$35	$33	:i32
+	ASSIGN	$36	$35	:i32
+	CONST	$37	4	:ui64
+	CAST	$38	$36	:ui64
+	MUL	$39	$38	$37	:ui64
+	ADD	$40	$34	$39	:ptr
+	ASSIGN	$41	$40	:ptr
+	ASSIGN	$42	$41	:ptr
+	ASSIGN	$43	$32	:f32
+	STORE	$44	$42	$43	:void
 	RETURN	$0	:void
 

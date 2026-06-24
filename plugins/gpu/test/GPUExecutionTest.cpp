@@ -119,171 +119,212 @@ TEST_CASE("GPU Compiler Test") {
 #endif
 
 #ifdef ENABLE_METAL_EXECUTION
+// Allocate a zero-initialized unified buffer of `n` elements.
+template <class T>
+static gpu::Array<T> zeroedUnified(size_t n) {
+	auto buf = gpu::allocUnified<T>(n);
+	for (size_t i = 0; i < n; i++) {
+		buf.data()[i] = T {};
+	}
+	return buf;
+}
+
 TEST_CASE("GPU Metal Execution Test") {
 	constexpr size_t N = 256;
-	constexpr size_t bufSizeU32 = N * sizeof(uint32_t);
-	constexpr size_t bufSizeF32 = N * sizeof(float);
+
+	engine::Options options;
+	options.setOption("engine.backend", std::string("metal"));
+	auto engine = engine::NautilusEngine(options);
 
 	SECTION("vector add on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeU32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<uint32_t> a(N, 0);
-		std::vector<uint32_t> b(N, 0);
-		std::vector<uint32_t> c(N, 0);
-		a[0] = 100;
-		a[1] = 200;
-		a[2] = 300;
-		b[0] = 1;
-		b[1] = 2;
-		b[2] = 3;
+		auto a = zeroedUnified<uint32_t>(N);
+		auto b = zeroedUnified<uint32_t>(N);
+		auto c = zeroedUnified<uint32_t>(N);
+		a.data()[0] = 100;
+		a.data()[1] = 200;
+		a.data()[2] = 300;
+		b.data()[0] = 1;
+		b.data()[1] = 2;
+		b.data()[2] = 3;
 
 		auto f = engine.registerFunction(gpuLaunchVecAdd);
-		f(a.data(), b.data(), c.data());
+		f(a, b, c);
 
-		REQUIRE(c[0] == 101);
-		REQUIRE(c[1] == 202);
-		REQUIRE(c[2] == 303);
-		REQUIRE(c[3] == 0);
+		REQUIRE(c.data()[0] == 101);
+		REQUIRE(c.data()[1] == 202);
+		REQUIRE(c.data()[2] == 303);
+		REQUIRE(c.data()[3] == 0);
+		gpu::freeUnified(a);
+		gpu::freeUnified(b);
+		gpu::freeUnified(c);
 	}
 
 	SECTION("SAXPY: y = a*x + y on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeF32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<float> x(N, 0.0f);
-		std::vector<float> y(N, 0.0f);
+		auto x = zeroedUnified<float>(N);
+		auto y = zeroedUnified<float>(N);
 		// Initialize test data: x = [1, 2, 3, ...], y = [10, 20, 30, ...]
 		for (size_t i = 0; i < N; i++) {
-			x[i] = static_cast<float>(i + 1);
-			y[i] = static_cast<float>((i + 1) * 10);
+			x.data()[i] = static_cast<float>(i + 1);
+			y.data()[i] = static_cast<float>((i + 1) * 10);
 		}
 		float a = 2.0f;
 
 		auto f = engine.registerFunction(gpuLaunchSaxpy);
-		f(x.data(), y.data(), a);
+		f(x, y, a);
 
 		// y[i] = a * x[i] + y[i] = 2 * (i+1) + (i+1)*10 = (i+1) * 12
-		REQUIRE(y[0] == Catch::Approx(12.0f));
-		REQUIRE(y[1] == Catch::Approx(24.0f));
-		REQUIRE(y[2] == Catch::Approx(36.0f));
-		REQUIRE(y[9] == Catch::Approx(120.0f));
-		REQUIRE(y[255] == Catch::Approx(256.0f * 12.0f));
+		REQUIRE(y.data()[0] == Catch::Approx(12.0f));
+		REQUIRE(y.data()[1] == Catch::Approx(24.0f));
+		REQUIRE(y.data()[2] == Catch::Approx(36.0f));
+		REQUIRE(y.data()[9] == Catch::Approx(120.0f));
+		REQUIRE(y.data()[255] == Catch::Approx(256.0f * 12.0f));
+		gpu::freeUnified(x);
+		gpu::freeUnified(y);
 	}
 
 	SECTION("vector scale: out = in * scalar on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeU32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<uint32_t> in(N, 0);
-		std::vector<uint32_t> out(N, 0);
+		auto in = zeroedUnified<uint32_t>(N);
+		auto out = zeroedUnified<uint32_t>(N);
 		for (size_t i = 0; i < N; i++) {
-			in[i] = static_cast<uint32_t>(i + 1);
+			in.data()[i] = static_cast<uint32_t>(i + 1);
 		}
 		uint32_t scalar = 7;
 
 		auto f = engine.registerFunction(gpuLaunchVecScale);
-		f(in.data(), out.data(), scalar);
+		f(in, out, scalar);
 
-		REQUIRE(out[0] == 7);
-		REQUIRE(out[1] == 14);
-		REQUIRE(out[2] == 21);
-		REQUIRE(out[255] == 256 * 7);
+		REQUIRE(out.data()[0] == 7);
+		REQUIRE(out.data()[1] == 14);
+		REQUIRE(out.data()[2] == 21);
+		REQUIRE(out.data()[255] == 256 * 7);
+		gpu::freeUnified(in);
+		gpu::freeUnified(out);
 	}
 
 	SECTION("bounded vector add with control flow on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeU32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<uint32_t> a(N, 0);
-		std::vector<uint32_t> b(N, 0);
-		std::vector<uint32_t> c(N, 0);
+		auto a = zeroedUnified<uint32_t>(N);
+		auto b = zeroedUnified<uint32_t>(N);
+		auto c = zeroedUnified<uint32_t>(N);
 		// Only initialize first 10 elements
 		for (size_t i = 0; i < 10; i++) {
-			a[i] = static_cast<uint32_t>(i + 1);
-			b[i] = static_cast<uint32_t>((i + 1) * 10);
+			a.data()[i] = static_cast<uint32_t>(i + 1);
+			b.data()[i] = static_cast<uint32_t>((i + 1) * 10);
 		}
 
 		auto f = engine.registerFunction(gpuLaunchVecAddBounded);
 		// Launch with n=10: only threads 0-9 should write, others skip due to bounds check
-		f(a.data(), b.data(), c.data(), (uint32_t) 10);
+		f(a, b, c, (uint32_t) 10);
 
 		// Threads 0-9 compute c[i] = a[i] + b[i]
-		REQUIRE(c[0] == 11);
-		REQUIRE(c[1] == 22);
-		REQUIRE(c[9] == 110);
+		REQUIRE(c.data()[0] == 11);
+		REQUIRE(c.data()[1] == 22);
+		REQUIRE(c.data()[9] == 110);
 		// Threads 10-255 should NOT write (bounds check)
-		REQUIRE(c[10] == 0);
-		REQUIRE(c[255] == 0);
+		REQUIRE(c.data()[10] == 0);
+		REQUIRE(c.data()[255] == 0);
+		gpu::freeUnified(a);
+		gpu::freeUnified(b);
+		gpu::freeUnified(c);
 	}
 
 	SECTION("nested ifs: classify values into buckets on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeU32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<uint32_t> a(N, 0);
-		std::vector<uint32_t> out(N, 99);
-		a[0] = 0;   // bucket 0
-		a[1] = 50;  // bucket 1 (> 0)
-		a[2] = 150; // bucket 2 (> 100)
-		a[3] = 250; // bucket 3 (> 200)
-		a[4] = 100; // bucket 1 (> 0, == 100 is not > 100)
-		a[5] = 200; // bucket 2 (> 100, == 200 is not > 200)
-		a[6] = 201; // bucket 3
+		auto a = zeroedUnified<uint32_t>(N);
+		auto out = gpu::allocUnified<uint32_t>(N);
+		for (size_t i = 0; i < N; i++) {
+			out.data()[i] = 99;
+		}
+		a.data()[0] = 0;   // bucket 0
+		a.data()[1] = 50;  // bucket 1 (> 0)
+		a.data()[2] = 150; // bucket 2 (> 100)
+		a.data()[3] = 250; // bucket 3 (> 200)
+		a.data()[4] = 100; // bucket 1 (> 0, == 100 is not > 100)
+		a.data()[5] = 200; // bucket 2 (> 100, == 200 is not > 200)
+		a.data()[6] = 201; // bucket 3
 
 		auto f = engine.registerFunction(gpuLaunchClassify);
-		f(a.data(), out.data(), (uint32_t) 7);
+		f(a, out, (uint32_t) 7);
 
-		REQUIRE(out[0] == 0); // a=0, not > 0
-		REQUIRE(out[1] == 1); // a=50, > 0
-		REQUIRE(out[2] == 2); // a=150, > 100
-		REQUIRE(out[3] == 3); // a=250, > 200
-		REQUIRE(out[4] == 1); // a=100, > 0 but not > 100
-		REQUIRE(out[5] == 2); // a=200, > 100 but not > 200
-		REQUIRE(out[6] == 3); // a=201, > 200
+		REQUIRE(out.data()[0] == 0); // a=0, not > 0
+		REQUIRE(out.data()[1] == 1); // a=50, > 0
+		REQUIRE(out.data()[2] == 2); // a=150, > 100
+		REQUIRE(out.data()[3] == 3); // a=250, > 200
+		REQUIRE(out.data()[4] == 1); // a=100, > 0 but not > 100
+		REQUIRE(out.data()[5] == 2); // a=200, > 100 but not > 200
+		REQUIRE(out.data()[6] == 3); // a=201, > 200
 		// Thread 7+ should not write (bounds check), original value 99 stays
-		REQUIRE(out[7] == 99);
+		REQUIRE(out.data()[7] == 99);
+		gpu::freeUnified(a);
+		gpu::freeUnified(out);
 	}
 
 	SECTION("loop: per-thread prefix sum on GPU") {
-		engine::Options options;
-		options.setOption("engine.backend", std::string("metal"));
-		options.setOption("gpu.metal.bufferSize", static_cast<int>(bufSizeU32));
-		auto engine = engine::NautilusEngine(options);
-
-		std::vector<uint32_t> a(N, 0);
-		std::vector<uint32_t> out(N, 0);
+		auto a = zeroedUnified<uint32_t>(N);
+		auto out = zeroedUnified<uint32_t>(N);
 		// a = [1, 2, 3, 4, 5, ...]
 		for (size_t i = 0; i < 10; i++) {
-			a[i] = static_cast<uint32_t>(i + 1);
+			a.data()[i] = static_cast<uint32_t>(i + 1);
 		}
 
 		auto f = engine.registerFunction(gpuLaunchPrefixSum);
-		f(a.data(), out.data(), (uint32_t) 10);
+		f(a, out, (uint32_t) 10);
 
 		// out[tid] = sum(a[0..tid])
-		// out[0] = 1
-		// out[1] = 1+2 = 3
-		// out[2] = 1+2+3 = 6
-		// out[3] = 1+2+3+4 = 10
-		// out[9] = 1+2+...+10 = 55
-		REQUIRE(out[0] == 1);
-		REQUIRE(out[1] == 3);
-		REQUIRE(out[2] == 6);
-		REQUIRE(out[3] == 10);
-		REQUIRE(out[9] == 55);
+		REQUIRE(out.data()[0] == 1);
+		REQUIRE(out.data()[1] == 3);
+		REQUIRE(out.data()[2] == 6);
+		REQUIRE(out.data()[3] == 10);
+		REQUIRE(out.data()[9] == 55);
 		// Thread 10+ should not write (bounds check)
-		REQUIRE(out[10] == 0);
+		REQUIRE(out.data()[10] == 0);
+		gpu::freeUnified(a);
+		gpu::freeUnified(out);
+	}
+
+	SECTION("shared memory + barriers: block reduction on GPU") {
+		auto in = zeroedUnified<uint32_t>(N);
+		auto out = zeroedUnified<uint32_t>(N);
+		// in = [1, 2, ..., 256]; one block of 256 sums to out[0].
+		for (size_t i = 0; i < N; i++) {
+			in.data()[i] = static_cast<uint32_t>(i + 1);
+		}
+
+		auto f = engine.registerFunction(gpuLaunchBlockSum);
+		f(in, out, (uint32_t) N);
+
+		// sum(1..256) = 256*257/2 = 32896
+		REQUIRE(out.data()[0] == 32896);
+		gpu::freeUnified(in);
+		gpu::freeUnified(out);
+	}
+
+	SECTION("large batch: 4096 elements across 16 blocks (no fixed buffer size)") {
+		// Exceeds the old 4096-byte / 1024-float ceiling that previously
+		// truncated results; data-driven unified buffers size each allocation
+		// exactly, with no copy and no size option.
+		constexpr uint32_t M = 4096;
+		auto a = zeroedUnified<uint32_t>(M);
+		auto b = zeroedUnified<uint32_t>(M);
+		auto c = zeroedUnified<uint32_t>(M);
+		for (uint32_t i = 0; i < M; i++) {
+			a.data()[i] = i;
+			b.data()[i] = 2 * i;
+		}
+
+		auto f = engine.registerFunction(gpuLaunchVecAddBounded);
+		f(a, b, c, M);
+
+		bool ok = true;
+		for (uint32_t i = 0; i < M; i++) {
+			if (c.data()[i] != 3 * i) {
+				ok = false;
+				break;
+			}
+		}
+		REQUIRE(ok);
+		REQUIRE(c.data()[M - 1] == 3 * (M - 1));
+		gpu::freeUnified(a);
+		gpu::freeUnified(b);
+		gpu::freeUnified(c);
 	}
 }
 #endif
