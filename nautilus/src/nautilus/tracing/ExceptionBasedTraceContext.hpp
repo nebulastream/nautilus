@@ -132,6 +132,13 @@ public:
 	}
 };
 
+/// One entry of the explicit-control-flow loop stack. Records the blocks that
+/// Break() and Continue() jump to for the enclosing While/For.
+struct LoopFrame {
+	uint32_t continueTarget; // block Continue() jumps to (loop header or step block)
+	uint32_t exitBlock;      // block Break() jumps to (loop exit)
+};
+
 /**
  * @brief State that requires initialization for tracing operations.
  * This is allocated when tracing begins and freed when it ends.
@@ -144,6 +151,13 @@ struct TraceState {
 	const engine::Options& options;
 	std::unordered_map<void*, uint32_t> normalizedFunctionNameCache; // Maps function pointers to normalized indices
 	uint32_t nextNormalizedFunctionIndex = 0;                        // Counter for normalized function names
+
+	/// Stack of active explicit loops; Break()/Continue() target the back().
+	std::vector<LoopFrame> loopStack;
+	/// Set true the first time traceBool fires (i.e. implicit native control flow
+	/// is used). Per-trace (a fresh TraceState is created for each trace), so it
+	/// cannot leak across functions. The explicit-CF guard rejects mixing when set.
+	bool sawImplicitBranch = false;
 
 	TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts);
 };
@@ -162,7 +176,25 @@ public:
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
+	// Explicit control-flow primitives (see control_flow.hpp). Implemented here on
+	// the shared base because they only touch state->executionTrace /
+	// state->symbolicExecutionContext, so every trace mode (exception-based and
+	// lazy) supports explicit control flow uniformly.
+	ExplicitCmpBlocks emitExplicitCmp(const TypedValueRef& condition, double probability) override;
+	uint32_t openMergeBlock() override;
+	void switchToBlock(uint32_t blockId) override;
+	uint32_t currentBlock() override;
+	void jumpTo(uint32_t fromBlock, uint32_t targetBlock) override;
+	void pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock) override;
+	void popLoopFrame() override;
+	void breakLoop() override;
+	void continueLoop() override;
+
 protected:
+	/// Throws if explicit control flow is used in a function that also uses
+	/// implicit native control flow (detected via a symbolic re-execution).
+	void rejectIfMixedWithImplicitControlFlow();
+
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
 	// nullptr when not tracing, set during initialize()
 	std::unique_ptr<TraceState> state;

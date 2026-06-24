@@ -52,6 +52,19 @@ TypedValueRef& traceAlloca(size_t size, size_t align);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);
+
+// --- Explicit control-flow primitives (see control_flow.hpp) ---
+// Thin forwarders to the active tracer. Only called from within SHOULD_TRACE()
+// blocks, so the active tracer is guaranteed non-null.
+ExplicitCmpBlocks emitExplicitCmp(const TypedValueRef& condition, double probability);
+uint32_t openMergeBlock();
+void switchToBlock(uint32_t blockId);
+uint32_t currentBlock();
+void jumpTo(uint32_t fromBlock, uint32_t targetBlock);
+void pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock);
+void popLoopFrame();
+void breakLoop();
+void continueLoop();
 TypedValueRef& traceConstant(Type type, const ConstantLiteral& value);
 template <typename T>
 TypedValueRef traceConstant(T&& value) {

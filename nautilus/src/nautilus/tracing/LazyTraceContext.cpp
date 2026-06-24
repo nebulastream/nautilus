@@ -253,6 +253,9 @@ TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const Ty
 }
 
 bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probability) {
+	// Mark that this function uses implicit native control flow so the explicit-CF
+	// guard can reject mixing the two in one function.
+	state->sawImplicitBranch = true;
 	if (paused_) {
 		// In passive mode, return false to guarantee loop termination.
 		return false;

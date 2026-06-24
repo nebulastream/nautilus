@@ -5,6 +5,16 @@
 namespace nautilus::tracing {
 
 using ValueRef = uint32_t;
+
+/// Identifies the two successor blocks created by an explicit (non-symbolic)
+/// conditional branch. Returned by the explicit control-flow primitives so the
+/// closure-style If/While/For constructs in control_flow.hpp can route their
+/// bodies into the correct trace blocks.
+struct ExplicitCmpBlocks {
+	uint32_t trueBlock = 0;
+	uint32_t falseBlock = 0;
+};
+
 struct TypedValueRef {
 	ValueRef ref;
 	Type type;
