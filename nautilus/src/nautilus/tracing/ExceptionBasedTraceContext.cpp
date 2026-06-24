@@ -408,10 +408,17 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 }
 
 void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
-	aliveVars.increment(ref);
+	// Look up the producing op's content hash so two structurally-equivalent
+	// ValueRefs mix identical bits into the alive hash.  When no trace state
+	// is active (transient TypedValueRefHolder copy/move from outside a trace
+	// session) we mix in 0, which AliveVariableHash treats as "fall back to
+	// ID-based hashing" — preserving the legacy behaviour for those edges.
+	uint64_t contentHash = state ? state->executionTrace.getContentHashForValueRef(ref) : 0;
+	aliveVars.increment(ref, contentHash);
 }
 void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
-	aliveVars.decrement(ref);
+	uint64_t contentHash = state ? state->executionTrace.getContentHashForValueRef(ref) : 0;
+	aliveVars.decrement(ref, contentHash);
 }
 
 std::string TraceContextBase::getMangledName(void* fnptr) {
