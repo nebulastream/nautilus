@@ -119,9 +119,9 @@ var_$35 = var_$5+var_$34;
 *((uint32_t*)(var_$35)) = var_$27;
 {
 }
-goto Block_9;
+goto Block_5;
 
-Block_9:
+Block_5:
 return;
 
 Block_4:
@@ -140,7 +140,7 @@ uint32_t temp_1 = var_$10;
 var_$5 = temp_0;
 var_$10 = temp_1;
 }
-goto Block_5;
+goto Block_6;
 }else{
 {
 uint8_t* temp_0 = var_$5;
@@ -150,9 +150,9 @@ var_$5 = temp_0;
 var_$10 = temp_1;
 var_$4 = temp_2;
 }
-goto Block_6;}
+goto Block_7;}
 
-Block_5:
+Block_6:
 var_$60 = (uint32_t)2;
 var_$61 = (int32_t)var_$10;
 var_$65 = (uint64_t)4;
@@ -162,9 +162,9 @@ var_$68 = var_$5+var_$67;
 *((uint32_t*)(var_$68)) = var_$60;
 {
 }
-goto Block_9;
+goto Block_5;
 
-Block_6:
+Block_7:
 var_$76 = (int32_t)var_$10;
 var_$80 = (uint64_t)4;
 var_$81 = (uint64_t)var_$76;
@@ -180,7 +180,7 @@ uint32_t temp_1 = var_$10;
 var_$5 = temp_0;
 var_$10 = temp_1;
 }
-goto Block_7;
+goto Block_8;
 }else{
 {
 uint8_t* temp_0 = var_$5;
@@ -188,9 +188,9 @@ uint32_t temp_1 = var_$10;
 var_$5 = temp_0;
 var_$10 = temp_1;
 }
-goto Block_8;}
+goto Block_9;}
 
-Block_7:
+Block_8:
 var_$90 = (uint32_t)1;
 var_$91 = (int32_t)var_$10;
 var_$95 = (uint64_t)4;
@@ -200,9 +200,9 @@ var_$98 = var_$5+var_$97;
 *((uint32_t*)(var_$98)) = var_$90;
 {
 }
-goto Block_9;
+goto Block_5;
 
-Block_8:
+Block_9:
 var_$106 = (uint32_t)0;
 var_$107 = (int32_t)var_$10;
 var_$111 = (uint64_t)4;
@@ -212,12 +212,12 @@ var_$114 = var_$5+var_$113;
 *((uint32_t*)(var_$114)) = var_$106;
 {
 }
-goto Block_9;
+goto Block_5;
 
 Block_2:
 {
 }
-goto Block_9;
+goto Block_5;
 
 }
 

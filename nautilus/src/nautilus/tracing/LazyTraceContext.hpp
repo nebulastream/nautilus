@@ -57,8 +57,8 @@ public:
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
-	void allocateValRef(ValueRef ref) override;
-	void freeValRef(ValueRef ref) override;
+	void allocateValRef(uint64_t positionId) override;
+	void freeValRef(uint64_t positionId) override;
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 

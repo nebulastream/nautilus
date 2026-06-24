@@ -10,20 +10,20 @@ B1($1:i32)
 	CMP	$8	$7	B3()	B4($1)	:void
 B2()
 	CONST	$11	-1	:i32
-	JMP	$0	B7($11)	:void
+	JMP	$0	B5($11)	:void
 B3()
 	CONST	$9	1	:i32
-	JMP	$0	B7($9)	:void
+	JMP	$0	B5($9)	:void
 B4($1:i32)
 	CONST	$13	2	:i32
 	CONST	$14	6	:i32
 	EQ	$15	$1	$14	:bool
-	CMP	$16	$15	B5()	B6($13)	:void
-B5()
-	CONST	$17	3	:i32
-	JMP	$0	B7($17)	:void
-B6($2:i32)
-	JMP	$0	B7($2)	:void
-B7($2:i32)
+	CMP	$16	$15	B6()	B7($13)	:void
+B5($2:i32)
 	RETURN	$0	$2	:i32
+B6()
+	CONST	$17	3	:i32
+	JMP	$0	B5($17)	:void
+B7($2:i32)
+	JMP	$0	B5($2)	:void
 

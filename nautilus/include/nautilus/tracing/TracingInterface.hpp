@@ -84,11 +84,15 @@ public:
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
-	/// Increment the reference count of a value.
-	virtual void allocateValRef(ValueRef ref) = 0;
+	/// Increment the reference count for a source-position identity.
+	/// The positionId is derived from the Tag* of the most recently recorded
+	/// snapshot (or an argument sentinel) so AliveVariableHash buckets val<T>s
+	/// by where in the source they materialised, not by their per-iteration
+	/// ValueRef.  See review item F.
+	virtual void allocateValRef(uint64_t positionId) = 0;
 
-	/// Decrement the reference count of a value.
-	virtual void freeValRef(ValueRef ref) = 0;
+	/// Decrement the reference count for a source-position identity.
+	virtual void freeValRef(uint64_t positionId) = 0;
 
 	/// Push a static variable onto the static-variable stack used for snapshot hashing.
 	/// @param ptr   Pointer to the raw value inside the static_val.

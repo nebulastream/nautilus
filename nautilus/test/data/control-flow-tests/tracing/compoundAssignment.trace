@@ -8,7 +8,10 @@ B1()
 	CONST	$6	5	:i32
 	ADD	$7	$2	$6	:i32
 	ASSIGN	$2	$7	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B3()	:void
 B2()
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B3()	:void
+B3()
 	RETURN	$0	$2	:i32
 

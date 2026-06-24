@@ -57,7 +57,14 @@ void ExceptionBasedTraceContext::resume() {
 	// as it needs to persist across trace iterations
 }
 
+extern thread_local uint64_t g_currentPositionId;
+
 TypedValueRef& ExceptionBasedTraceContext::registerFunctionArgument(Type type, size_t index) {
+	// Publish a position sentinel so the imminent TypedValueRefHolder ctor
+	// (inside the val<T> wrapper just above us in createTraceableArgument)
+	// keys this argument's alive-var slot by argument index rather than by
+	// the ephemeral first-tag observed in iteration 0.  See review item F.
+	g_currentPositionId = ARG_POSITION_SENTINEL_BASE | static_cast<uint64_t>(index);
 	return state->executionTrace.setArgument(type, index);
 }
 
@@ -69,6 +76,12 @@ TypedValueRef& ExceptionBasedTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
+	// In follow mode we skip recordSnapshot(), so publish the existing op's
+	// Tag* directly to keep the next TypedValueRefHolder's positionId aligned
+	// with the same source position the original tracing pass used.  Without
+	// this the holder would inherit a stale positionId from the previous
+	// non-follow snapshot, breaking the F invariant.
+	g_currentPositionId = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(currentOperation.tag.getTag()));
 	return currentOperation.resultRef;
 }
 
@@ -198,18 +211,45 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 
 void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
                                                  Type resultType) {
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
-	});
+	// Bypass checkTag for ASSIGN: its "result" aliases the existing target slot,
+	// so processControlFlowMerge cannot safely migrate an ASSIGN to a merge block
+	// without also emitting a reconciling ASSIGN in the current (iteration N)
+	// block — which it doesn't.  Pre-F, alive-var variance kept snapshots from
+	// matching at ASSIGN sites so this never fired in practice.  Post-F the
+	// alive-var hash is iteration-invariant, so an ASSIGN-site dedup *would*
+	// fire and produce a malformed trace where iteration N's source value is
+	// dangling.  Skipping the dedup here lets the merge fall through to the
+	// next op (typically a CONST or a real producer), whose merge logic
+	// correctly emits reconciliation ASSIGNs.
+	if (isFollowing()) {
+		follow(ASSIGN);
+		return;
+	}
+	auto tag = recordSnapshot();
+	state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 }
 
 void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (isFollowing()) {
 		follow(RETURN);
-	} else {
-		auto tag = recordSnapshot();
-		state->executionTrace.addReturn(tag, resultType, ref);
+		return;
 	}
+	auto tag = recordSnapshot();
+	const auto* callStackTag = tag.getTag();
+	auto it = state->executionTrace.returnTagMap.find(callStackTag);
+	if (it == state->executionTrace.returnTagMap.end()) {
+		// First time we hit this call-stack location's return: append a fresh
+		// RETURN op and remember its identifier for future dedup hits.
+		auto opId = state->executionTrace.addReturn(tag, resultType, ref);
+		state->executionTrace.returnTagMap.emplace(callStackTag, opId);
+		return;
+	}
+	// Subsequent return reaching the same source location (different iteration
+	// or different user-level return statement compiled into the same wrapper
+	// site): merge into the existing return block instead of appending a
+	// duplicate RETURN op.  The merge logic creates the dedicated return
+	// merge block on the first dedup hit and reuses it thereafter.
+	it->second = state->executionTrace.mergeReturnIntoExisting(it->second, resultType, ref);
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
@@ -407,11 +447,11 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	return traceModule;
 }
 
-void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
-	aliveVars.increment(ref);
+void ExceptionBasedTraceContext::allocateValRef(uint64_t positionId) {
+	aliveVars.increment(positionId);
 }
-void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
-	aliveVars.decrement(ref);
+void ExceptionBasedTraceContext::freeValRef(uint64_t positionId) {
+	aliveVars.decrement(positionId);
 }
 
 std::string TraceContextBase::getMangledName(void* fnptr) {
@@ -475,8 +515,19 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 	return hash;
 }
 
+extern thread_local uint64_t g_lastRecordedAliveHash;
+
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	auto* tag = state->tagRecorder.createTag();
+	const uint64_t aliveHash = aliveVars.hash();
+	g_lastRecordedAliveHash = aliveHash;
+	// Publish this tag as the position to key any val<T> created between now
+	// and the next recordSnapshot() to.  The Tag* address is stable for the
+	// lifetime of the trace and identical across iterations that reach the
+	// same source position, so the resulting aliveVars hash is iteration-
+	// invariant.  See review item F.
+	g_currentPositionId = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tag));
+	return {tag, hashStaticVector(staticVars) ^ aliveHash};
 }
 
 } // namespace nautilus::tracing

@@ -65,7 +65,8 @@ B3()
 	ASSIGN	$8	$60	:i32
 	JMP	$0	B5()	:void
 B4()
-	RETURN	$0	$7	:i64
+	ASSIGN	$2	$7	:i64
+	JMP	$0	B2()	:void
 B5() ControlFlowMerge
 	LT	$9	$8	$1	:bool
 	CMP	$10	$9	B3()	B4()	:void

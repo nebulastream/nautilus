@@ -127,15 +127,10 @@ var_$45 = var_$5+var_$44;
 *((uint32_t*)(var_$45)) = var_$13;
 {
 }
-goto Block_6;
-
-Block_6:
-return;
+goto Block_2;
 
 Block_2:
-{
-}
-goto Block_6;
+return;
 
 }
 

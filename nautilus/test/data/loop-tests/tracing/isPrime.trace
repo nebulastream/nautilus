@@ -16,9 +16,11 @@ B3()
 	EQ	$14	$12	$13	:bool
 	CMP	$15	$14	B5()	B6()	:void
 B4()
-	RETURN	$0	$3	:bool
+	ASSIGN	$2	$3	:bool
+	JMP	$0	B1()	:void
 B5()
-	RETURN	$0	$2	:bool
+	ASSIGN	$2	$2	:bool
+	JMP	$0	B1()	:void
 B6()
 	CONST	$18	1	:i32
 	ADD	$19	$8	$18	:i32

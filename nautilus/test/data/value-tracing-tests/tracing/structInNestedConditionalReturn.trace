@@ -20,10 +20,13 @@ B1()
 	STORE	$18	$15	$17	:void
 	ASSIGN	$19	$5	:ptr
 	CALL	$20	func_*($19)	:i32
-	RETURN	$0	$20	:i32
+	JMP	$0	B3()	:void
 B2()
 	CONST	$22	0	:i32
-	RETURN	$0	$22	:i32
+	ASSIGN	$20	$22	:i32
+	JMP	$0	B3()	:void
+B3()
+	RETURN	$0	$20	:i32
 
 READFIELDA:
 B0($1:ptr)

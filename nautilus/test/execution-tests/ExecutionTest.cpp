@@ -407,6 +407,21 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(9) == 42);
 		REQUIRE(f(10) == 21);
 	}
+	SECTION("nestedLoopMultipleReturns") {
+		// Trace-explosion regression: complex function with nested branches,
+		// a dynamic loop, and six early-return paths.  Pre-fix, each path
+		// appended its own RETURN op to the trace; post-fix the trace contains
+		// exactly one RETURN with each path feeding the merged exit through
+		// a JMP block-arg.
+		auto f = engine.registerFunction(nestedLoopMultipleReturns);
+		REQUIRE(f(-1) == -1); // n < 0 early return
+		REQUIRE(f(0) == 0);   // n == 0 early return
+		REQUIRE(f(1) == 0);   // loop runs once (i=0): acc=0
+		REQUIRE(f(2) == 1);   // loop runs i=0,1: acc = 0 + 1
+		REQUIRE(f(3) == 3);   // loop runs i=0,1,2: acc = 0+1+2, no early return fires
+		REQUIRE(f(4) == 100); // i=3 fires the early-return at i==3
+		REQUIRE(f(7) == 100); // i=3 fires the early-return before i=5 can match
+	}
 	SECTION("ifThenElseCondition") {
 		auto f = engine.registerFunction(ifThenElseCondition);
 		REQUIRE(f(1) == 85);

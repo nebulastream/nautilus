@@ -98,9 +98,10 @@ B19()
 	CONST	$51	1	:i32
 	ADD	$52	$2	$51	:i32
 	ASSIGN	$2	$52	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B30()	:void
 B20()
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B30()	:void
 B21() ControlFlowMerge
 	GT	$9	$1	$8	:bool
 	CMP	$10	$9	B3()	B4()	:void
@@ -128,4 +129,6 @@ B28() ControlFlowMerge
 B29() ControlFlowMerge
 	GT	$49	$1	$48	:bool
 	CMP	$50	$49	B19()	B20()	:void
+B30()
+	RETURN	$0	$2	:i32
 

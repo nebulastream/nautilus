@@ -6,12 +6,16 @@ B1()
 B2()
 	CONST	$8	false	:bool
 	ASSIGN	$5	$8	:bool
-	RETURN	$0	$5	:bool
+	ASSIGN	$5	$5	:bool
+	JMP	$0	B5()	:void
 B3()
 	CONST	$5	true	:bool
-	RETURN	$0	$5	:bool
+	JMP	$0	B5()	:void
 B4()
 	CONST	$11	false	:bool
 	ASSIGN	$5	$11	:bool
+	ASSIGN	$5	$5	:bool
+	JMP	$0	B5()	:void
+B5()
 	RETURN	$0	$5	:bool
 

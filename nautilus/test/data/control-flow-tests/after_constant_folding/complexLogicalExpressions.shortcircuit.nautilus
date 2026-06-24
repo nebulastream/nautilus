@@ -15,13 +15,7 @@ Block_3():
 	$9 = 1 :i32
 	br Block_9($9) :void
 
-Block_9($9:i32):
-	br Block_14($9) :void
-
-Block_14($9:i32):
-	br Block_15($9) :void
-
-Block_15($2:i32):
+Block_9($2:i32):
 	return ($2) :i32
 
 Block_4($1:i32, $2:i32):
@@ -36,13 +30,13 @@ Block_10($1:i32, $2:i32):
 
 Block_12():
 	$25 = 1 :i32
-	br Block_14($25) :void
+	br Block_9($25) :void
 
 Block_13($2:i32):
-	br Block_15($2) :void
+	br Block_9($2) :void
 
 Block_11($2:i32):
-	br Block_15($2) :void
+	br Block_9($2) :void
 
 Block_2($1:i32, $2:i32):
 	$11 = 15 :i32
@@ -59,9 +53,9 @@ Block_7():
 	br Block_9($17) :void
 
 Block_8($2:i32):
-	br Block_15($2) :void
+	br Block_9($2) :void
 
 Block_6($2:i32):
-	br Block_15($2) :void
+	br Block_9($2) :void
 }
 } //nautilus

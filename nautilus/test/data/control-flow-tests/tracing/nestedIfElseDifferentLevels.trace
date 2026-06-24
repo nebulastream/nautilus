@@ -11,21 +11,26 @@ B1()
 B2()
 	CONST	$11	-1	:i32
 	ASSIGN	$2	$11	:i32
-	RETURN	$0	$2	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B5()	:void
 B3()
 	CONST	$9	1	:i32
 	ASSIGN	$2	$9	:i32
-	RETURN	$0	$2	:i32
+	JMP	$0	B5()	:void
 B4()
 	CONST	$13	2	:i32
 	ASSIGN	$2	$13	:i32
 	CONST	$14	6	:i32
 	EQ	$15	$1	$14	:bool
-	CMP	$16	$15	B5()	B6()	:void
+	CMP	$16	$15	B6()	B7()	:void
 B5()
-	CONST	$17	3	:i32
-	ASSIGN	$2	$17	:i32
 	RETURN	$0	$2	:i32
 B6()
-	RETURN	$0	$2	:i32
+	CONST	$17	3	:i32
+	ASSIGN	$2	$17	:i32
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B5()	:void
+B7()
+	ASSIGN	$2	$2	:i32
+	JMP	$0	B5()	:void
 

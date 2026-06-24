@@ -71,7 +71,9 @@ B1()
 	ASSIGN	$47	$46	:ptr
 	ASSIGN	$48	$37	:ui32
 	STORE	$49	$47	$48	:void
-	RETURN	$0	:void
+	JMP	$0	B3()	:void
 B2()
+	JMP	$0	B3()	:void
+B3()
 	RETURN	$0	:void
 

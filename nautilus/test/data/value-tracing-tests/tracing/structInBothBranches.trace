@@ -27,7 +27,7 @@ B1()
 	ASSIGN	$25	$24	:ptr
 	ASSIGN	$26	$25	:ptr
 	LOAD	$27	$26	:i32
-	RETURN	$0	$27	:i32
+	JMP	$0	B3()	:void
 B2()
 	ALLOCA	$29	:ptr
 	ASSIGN	$30	$29	:ptr
@@ -51,5 +51,8 @@ B2()
 	ASSIGN	$48	$47	:ptr
 	ASSIGN	$49	$48	:ptr
 	LOAD	$50	$49	:i32
-	RETURN	$0	$50	:i32
+	ASSIGN	$27	$50	:i32
+	JMP	$0	B3()	:void
+B3()
+	RETURN	$0	$27	:i32
 

@@ -58,7 +58,7 @@ __pc = 1; continue;
 }else{
 {
 }
-__pc = 6; continue;}
+__pc = 5; continue;}
 }
 case 1: {
 var_$13 = (uint)0;
@@ -141,11 +141,6 @@ __pc = 5; continue;
 }
 case 5: {
 return;
-}
-case 6: {
-{
-}
-__pc = 5; continue;
 }
 }
 }

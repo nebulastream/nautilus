@@ -43,15 +43,25 @@ TypedValueRef traceCopy(const TypedValueRef& ref) {
 	return {};
 }
 
-void allocateValRef(ValueRef ref) {
+// Published by the active trace context inside recordSnapshot() (for op-producing
+// paths) or inside registerFunctionArgument() (for argument-setup paths) and
+// consumed by TypedValueRefHolder construction.  Lives in TLS so concurrent
+// traces on different threads don't trample each other.
+thread_local uint64_t g_currentPositionId = 0;
+
+uint64_t currentPositionId() {
+	return g_currentPositionId;
+}
+
+void allocateValRef(uint64_t positionId) {
 	if (activeTracer) {
-		activeTracer->allocateValRef(ref);
+		activeTracer->allocateValRef(positionId);
 	}
 }
 
-void freeValRef(ValueRef ref) {
+void freeValRef(uint64_t positionId) {
 	if (activeTracer) {
-		activeTracer->freeValRef(ref);
+		activeTracer->freeValRef(positionId);
 	}
 }
 
