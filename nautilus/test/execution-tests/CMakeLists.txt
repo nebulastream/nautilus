@@ -2,6 +2,7 @@ include(CTest)
 include(Catch)
 set(NAUTILUS_EXECUTION_TEST_SOURCES
         ExecutionTest.cpp
+        BCDispatchModeTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
         CompilationStatisticsTest.cpp
