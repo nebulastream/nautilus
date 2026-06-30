@@ -1,37 +1,33 @@
 #pragma once
 
 #include "ByteReader.hpp"
+#include "Types.hpp"
 #include <cstdint>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace nautilus::fuzz {
 
-/// Number of integer parameters every generated kernel takes.
+/// Number of parameters every generated kernel takes.
 inline constexpr uint32_t NUM_PARAMS = 3;
-
-/// All values flow as uint64_t. Unsigned 64-bit avoids C++ integer-promotion
-/// surprises (uint64_t never promotes) and gives fully-defined wraparound
-/// arithmetic, so the native oracle and the traced kernel agree by
-/// construction. See EvalNative.hpp for the matching semantics.
-using Value = uint64_t;
 
 enum class Kind : uint8_t {
 	// Leaves
-	Const, // imm holds the literal value
+	Const, // imm holds the literal value, packed via packImm<T>
 	Param, // imm holds the parameter index in [0, NUM_PARAMS)
-	// Binary arithmetic / bitwise (well-defined for unsigned operands)
+	// Binary arithmetic / bitwise (integer domain only, except Add/Sub/Mul/Div which also apply to floats)
 	Add,
 	Sub,
 	Mul,
-	Div, // divisor forced non-zero
-	Mod, // divisor forced non-zero
-	And,
-	Or,
-	Xor,
-	Shl, // shift amount masked to [0, 64)
-	Shr, // shift amount masked to [0, 64)
-	// Comparisons, each yielding 0 or 1
+	Div, // integer domain: divisor forced non-zero
+	Mod, // integer domain only
+	And, // integer domain only
+	Or,  // integer domain only
+	Xor, // integer domain only
+	Shl, // integer domain only; shift amount masked to [0, bit-width(T))
+	Shr, // integer domain only; shift amount masked to [0, bit-width(T))
+	// Comparisons, each yielding 0 or 1 (as T)
 	Eq,
 	Ne,
 	Lt,
@@ -40,7 +36,16 @@ enum class Kind : uint8_t {
 	Ge,
 	// Ternaries
 	Select, // (cond, t, f): cond != 0 ? t : f, lowered to an IR select
-	If      // (cond, t, e): cond != 0 ? t : e, lowered to real control flow
+	If,     // (cond, t, e): cond != 0 ? t : e, lowered to real control flow
+	// Unary
+	Neg, // integer and float domains: -x
+	Not, // integer domain only: ~x
+	// Cast: round-trips the single child through another same-domain type,
+	// i.e. (T)(To)x. imm holds the target TypeId (an integer TypeId for the
+	// integer domain, a float TypeId for the float domain). int<->float
+	// casts are intentionally unsupported (would need UB-safe range
+	// clamping before casting an out-of-range float to an integer type).
+	Cast
 };
 
 struct Node {
@@ -56,15 +61,22 @@ struct Ast {
 
 namespace detail {
 
-inline constexpr Kind INTERNAL_KINDS[] = {Kind::Add, Kind::Sub, Kind::Mul, Kind::Div, Kind::Mod,    Kind::And,
-                                          Kind::Or,  Kind::Xor, Kind::Shl, Kind::Shr, Kind::Eq,     Kind::Ne,
-                                          Kind::Lt,  Kind::Le,  Kind::Gt,  Kind::Ge,  Kind::Select, Kind::If};
+inline constexpr Kind INT_KINDS[] = {Kind::Add, Kind::Sub, Kind::Mul,    Kind::Div, Kind::Mod, Kind::And, Kind::Or,
+                                     Kind::Xor, Kind::Shl, Kind::Shr,    Kind::Eq,  Kind::Ne,  Kind::Lt,  Kind::Le,
+                                     Kind::Gt,  Kind::Ge,  Kind::Select, Kind::If,  Kind::Neg, Kind::Not, Kind::Cast};
+
+inline constexpr Kind FLOAT_KINDS[] = {Kind::Add, Kind::Sub, Kind::Mul, Kind::Div,    Kind::Eq, Kind::Ne,  Kind::Lt,
+                                       Kind::Le,  Kind::Gt,  Kind::Ge,  Kind::Select, Kind::If, Kind::Neg, Kind::Cast};
 
 inline int arity(Kind k) {
 	switch (k) {
 	case Kind::Const:
 	case Kind::Param:
 		return 0;
+	case Kind::Neg:
+	case Kind::Not:
+	case Kind::Cast:
+		return 1;
 	case Kind::Select:
 	case Kind::If:
 		return 3;
@@ -73,7 +85,8 @@ inline int arity(Kind k) {
 	}
 }
 
-inline int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget) {
+template <typename T>
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget) {
 	const uint8_t sel = reader.byte();
 	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted();
 	if (!leaf) {
@@ -88,22 +101,36 @@ inline int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget) {
 			node.imm = reader.byte() % NUM_PARAMS;
 		} else {
 			node.kind = Kind::Const;
-			node.imm = reader.consume<uint64_t>();
+			node.imm = packImm<T>(reader.consume<T>());
 		}
 		const int idx = static_cast<int>(ast.nodes.size());
 		ast.nodes.push_back(node);
 		return idx;
 	}
 
-	constexpr uint32_t kindCount = sizeof(INTERNAL_KINDS) / sizeof(INTERNAL_KINDS[0]);
-	node.kind = INTERNAL_KINDS[reader.byte() % kindCount];
+	if constexpr (std::is_floating_point_v<T>) {
+		constexpr uint32_t kindCount = sizeof(FLOAT_KINDS) / sizeof(FLOAT_KINDS[0]);
+		node.kind = FLOAT_KINDS[reader.byte() % kindCount];
+	} else {
+		constexpr uint32_t kindCount = sizeof(INT_KINDS) / sizeof(INT_KINDS[0]);
+		node.kind = INT_KINDS[reader.byte() % kindCount];
+	}
 	--budget;
+
+	if (node.kind == Kind::Cast) {
+		if constexpr (std::is_floating_point_v<T>) {
+			node.imm = static_cast<uint64_t>(FLOAT_TYPE_IDS[reader.byte() % 2]);
+		} else {
+			node.imm = static_cast<uint64_t>(INT_TYPE_IDS[reader.byte() % 8]);
+		}
+	}
+
 	const int childCount = arity(node.kind);
 	// Children must be generated before the parent is pushed so that parent
 	// indices stay greater than their children (handy for evaluation/printing).
 	int kids[3] = {-1, -1, -1};
 	for (int i = 0; i < childCount; ++i) {
-		kids[i] = generateNode(ast, reader, depth - 1, budget);
+		kids[i] = generateNode<T>(ast, reader, depth - 1, budget);
 	}
 	node.kid[0] = kids[0];
 	node.kid[1] = kids[1];
@@ -121,13 +148,14 @@ inline int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget) {
 inline constexpr int MAX_DEPTH = 6;
 inline constexpr int MAX_NODES = 64;
 
-/// Build a random, always-valid AST from the reader. Never returns an empty
-/// tree: an empty buffer yields a single Const(0) leaf.
-inline Ast generate(ByteReader& reader) {
+/// Build a random, always-valid AST of type T from the reader. Never returns
+/// an empty tree: an empty buffer yields a single Const(0) leaf.
+template <typename T>
+Ast generate(ByteReader& reader) {
 	Ast ast;
 	ast.nodes.reserve(MAX_NODES + 1);
 	int budget = MAX_NODES;
-	ast.root = detail::generateNode(ast, reader, MAX_DEPTH, budget);
+	ast.root = detail::generateNode<T>(ast, reader, MAX_DEPTH, budget);
 	return ast;
 }
 
@@ -172,31 +200,51 @@ inline const char* opSymbol(Kind k) {
 	}
 }
 
-inline void print(const Ast& ast, int idx, std::string& out) {
+template <typename T>
+void print(const Ast& ast, int idx, std::string& out) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
-		out += std::to_string(n.imm) + "u";
+		out += formatValue<T>(unpackImm<T>(n.imm)) + typeSuffix<T>();
 		return;
 	case Kind::Param:
 		out += "p" + std::to_string(n.imm);
 		return;
+	case Kind::Neg:
+		out += "(-";
+		print<T>(ast, n.kid[0], out);
+		out += ")";
+		return;
+	case Kind::Not:
+		out += "(~";
+		print<T>(ast, n.kid[0], out);
+		out += ")";
+		return;
+	case Kind::Cast: {
+		const TypeId target = static_cast<TypeId>(n.imm);
+		out += "(";
+		out += typeName(target);
+		out += ")(";
+		print<T>(ast, n.kid[0], out);
+		out += ")";
+		return;
+	}
 	case Kind::Select:
 		out += "sel(";
-		print(ast, n.kid[0], out);
+		print<T>(ast, n.kid[0], out);
 		out += " != 0, ";
-		print(ast, n.kid[1], out);
+		print<T>(ast, n.kid[1], out);
 		out += ", ";
-		print(ast, n.kid[2], out);
+		print<T>(ast, n.kid[2], out);
 		out += ")";
 		return;
 	case Kind::If:
 		out += "if(";
-		print(ast, n.kid[0], out);
+		print<T>(ast, n.kid[0], out);
 		out += " != 0, ";
-		print(ast, n.kid[1], out);
+		print<T>(ast, n.kid[1], out);
 		out += ", ";
-		print(ast, n.kid[2], out);
+		print<T>(ast, n.kid[2], out);
 		out += ")";
 		return;
 	default:
@@ -208,14 +256,14 @@ inline void print(const Ast& ast, int idx, std::string& out) {
 		out += "(";
 	}
 	out += "(";
-	print(ast, n.kid[0], out);
+	print<T>(ast, n.kid[0], out);
 	out += " ";
 	out += opSymbol(n.kind);
 	out += " ";
-	print(ast, n.kid[1], out);
+	print<T>(ast, n.kid[1], out);
 	out += ")";
 	if (isCmp) {
-		out += " ? 1u : 0u)";
+		out += " ? 1 : 0)";
 	}
 }
 
@@ -223,10 +271,11 @@ inline void print(const Ast& ast, int idx, std::string& out) {
 
 /// Render the AST as a human-readable expression for failure reports and for
 /// turning a saved crash input into a fixed regression test.
-inline std::string toString(const Ast& ast) {
+template <typename T>
+std::string toString(const Ast& ast) {
 	std::string out;
 	if (ast.root >= 0) {
-		detail::print(ast, ast.root, out);
+		detail::print<T>(ast, ast.root, out);
 	}
 	return out;
 }

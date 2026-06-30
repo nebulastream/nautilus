@@ -263,7 +263,14 @@ mlir::arith::CmpFPredicate convertToFloatMLIRComparison(ir::CompareOperation::Co
 	case (ir::CompareOperation::Comparator::GE):
 		return mlir::arith::CmpFPredicate::OGE;
 	case (ir::CompareOperation::Comparator::NE):
-		return mlir::arith::CmpFPredicate::ONE;
+		// Unlike EQ/LT/LE/GT/GE (which are all false whenever either operand is
+		// NaN, matching C++'s "ordered" float comparison semantics), C++'s `!=`
+		// is true whenever either operand is NaN -- it's the negation of `==`,
+		// not an independently-ordered predicate. ONE ("ordered and not-equal")
+		// is false for NaN operands and would silently disagree with `!=` on
+		// every NaN comparison; UNE ("unordered or not-equal") is the correct
+		// match.
+		return mlir::arith::CmpFPredicate::UNE;
 	default:
 		return mlir::arith::CmpFPredicate::OLT;
 	}
@@ -739,7 +746,7 @@ void MLIRLoweringProvider::visitAdd(ir::AddOperation* addOp, ValueFrame& frame) 
 		frame.setValue(addOp->getIdentifier(), elementAddress);
 	} else if (isFloat(addOp->getStamp())) {
 		auto mlirAddOp = builder->create<mlir::LLVM::FAddOp>(getNameLoc("binOpResult"), leftInput.getType(), leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
+		                                                     rightInput, mlir::LLVM::FastmathFlags::none);
 		frame.setValue(addOp->getIdentifier(), mlirAddOp);
 	} else {
 		if (!inductionVars.contains(addOp->getLeftInput()->getIdentifier())) {
@@ -766,7 +773,7 @@ void MLIRLoweringProvider::visitSub(ir::SubOperation* subIntOp, ValueFrame& fram
 	} else if (isFloat(subIntOp->getStamp())) {
 		auto mlirSubOp = builder->create<mlir::LLVM::FSubOp>(
 		    getNameLoc("binOpResult"), leftInput, rightInput,
-		    mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::fast));
+		    mlir::LLVM::FastmathFlagsAttr::get(context, mlir::LLVM::FastmathFlags::none));
 		frame.setValue(subIntOp->getIdentifier(), mlirSubOp);
 	} else {
 		auto mlirSubOp = builder->create<mlir::LLVM::SubOp>(getNameLoc("binOpResult"), leftInput, rightInput);
@@ -780,7 +787,7 @@ void MLIRLoweringProvider::visitMul(ir::MulOperation* mulOp, ValueFrame& frame) 
 	auto resultType = leftInput.getType();
 	if (isFloat(mulOp->getStamp())) {
 		auto mlirMulOp = builder->create<mlir::LLVM::FMulOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
+		                                                     rightInput, mlir::LLVM::FastmathFlags::none);
 		frame.setValue(mulOp->getIdentifier(), mlirMulOp);
 	} else {
 		auto mlirMulOp =
@@ -795,7 +802,7 @@ void MLIRLoweringProvider::visitDiv(ir::DivOperation* divIntOp, ValueFrame& fram
 	auto resultType = leftInput.getType();
 	if (isFloat(divIntOp->getStamp())) {
 		auto mlirDivOp = builder->create<mlir::LLVM::FDivOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
+		                                                     rightInput, mlir::LLVM::FastmathFlags::none);
 		frame.setValue(divIntOp->getIdentifier(), mlirDivOp);
 	} else {
 		if (isSignedInteger(divIntOp->getStamp())) {
@@ -816,7 +823,7 @@ void MLIRLoweringProvider::visitMod(ir::ModOperation* modIntOp, ValueFrame& fram
 	auto resultType = leftInput.getType();
 	if (isFloat(modIntOp->getStamp())) {
 		auto mlirDivOp = builder->create<mlir::LLVM::FRemOp>(getNameLoc("binOpResult"), resultType, leftInput,
-		                                                     rightInput, mlir::LLVM::FastmathFlags::fast);
+		                                                     rightInput, mlir::LLVM::FastmathFlags::none);
 		frame.setValue(modIntOp->getIdentifier(), mlirDivOp);
 	} else {
 		if (isSignedInteger(modIntOp->getStamp())) {

@@ -142,6 +142,32 @@ bool AsmJitLoweringProvider::LoweringContext::isUnsignedType(Type t) {
 	return t == Type::ui8 || t == Type::ui16 || t == Type::ui32 || t == Type::ui64 || t == Type::b || t == Type::ptr;
 }
 
+void AsmJitLoweringProvider::LoweringContext::narrowToStamp(Gp reg, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		cc.movsx(reg.r64(), reg.r8());
+		break;
+	case Type::b:
+	case Type::ui8:
+		cc.movzx(reg.r32(), reg.r8());
+		break;
+	case Type::i16:
+		cc.movsx(reg.r64(), reg.r16());
+		break;
+	case Type::ui16:
+		cc.movzx(reg.r32(), reg.r16());
+		break;
+	case Type::i32:
+		cc.movsxd(reg.r64(), reg.r32());
+		break;
+	case Type::ui32:
+		cc.mov(reg.r32(), reg.r32());
+		break; // zero-extends to 64
+	default:
+		break; // i64, ui64, ptr -- already full-width, no narrowing needed.
+	}
+}
+
 // ── Register allocation ───────────────────────────────────────────────────────
 // All integer/bool/ptr types are represented as 64-bit GP registers.
 // This avoids size-mismatch issues when combining values across operations,
@@ -405,6 +431,11 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		auto gDst = toGp(result);
 		cc.mov(gDst, toGp(left));
 		cc.add(gDst, toGp(right));
+		// An add that overflows the narrow stamp's width still produces a
+		// "correct" 64-bit sum; re-extend per the result type so its
+		// sign/zero-extension matches the wrapped-around narrow-width value
+		// (see narrowToStamp's doc comment).
+		narrowToStamp(gDst, op->getStamp());
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -424,6 +455,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 		auto gDst = toGp(result);
 		cc.mov(gDst, toGp(left));
 		cc.sub(gDst, toGp(right));
+		narrowToStamp(gDst, op->getStamp());
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -443,6 +475,7 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		auto gDst = toGp(result);
 		cc.mov(gDst, toGp(left));
 		cc.imul(gDst, toGp(right));
+		narrowToStamp(gDst, op->getStamp());
 	}
 	frame.setValue(op->getIdentifier(), result);
 }
@@ -505,29 +538,51 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 	const bool leftIsUnsigned = isUnsignedType(op->getLeftInput()->getStamp());
 
 	if (leftIsFloat) {
-		if (op->getLeftInput()->getStamp() == Type::f32)
-			cc.ucomiss(toXmm(left), toXmm(right));
-		else
-			cc.ucomisd(toXmm(left), toXmm(right));
-		// ucomiss/ucomisd is unordered: NaN operands set CF=1 and ZF=1.
-		// This gives correct IEEE 754 semantics (NaN comparisons always false for EQ/LT/LE/GT/GE, true for NE).
+		const bool isF32 = op->getLeftInput()->getStamp() == Type::f32;
+		auto ucomi = [&](Xmm a, Xmm b) {
+			if (isF32)
+				cc.ucomiss(a, b);
+			else
+				cc.ucomisd(a, b);
+		};
+		// ucomiss/ucomisd sets ZF=1,PF=1,CF=1 for an unordered result (either
+		// operand NaN). A single SETcc can't express "ordered and equal" or
+		// "unordered or not-equal" -- EQ/NE additionally need the parity flag
+		// (PF), which signals "unordered". LT/LE instead compare with the
+		// operands swapped and use the "above"/"above-or-equal" condition
+		// (CF=0 required), which is already false for an unordered result;
+		// GT/GE already get this for free without swapping.
 		switch (op->getComparator()) {
-		case ir::CompareOperation::EQ:
+		case ir::CompareOperation::EQ: {
+			ucomi(toXmm(left), toXmm(right));
 			cc.sete(resultGp);
+			auto parity = toGp(allocReg(Type::b)).r8();
+			cc.setnp(parity);
+			cc.and_(resultGp, parity);
 			break;
-		case ir::CompareOperation::NE:
+		}
+		case ir::CompareOperation::NE: {
+			ucomi(toXmm(left), toXmm(right));
 			cc.setne(resultGp);
+			auto parity = toGp(allocReg(Type::b)).r8();
+			cc.setp(parity);
+			cc.or_(resultGp, parity);
 			break;
+		}
 		case ir::CompareOperation::LT:
-			cc.setb(resultGp);
+			ucomi(toXmm(right), toXmm(left));
+			cc.seta(resultGp);
 			break;
 		case ir::CompareOperation::LE:
-			cc.setbe(resultGp);
+			ucomi(toXmm(right), toXmm(left));
+			cc.setae(resultGp);
 			break;
 		case ir::CompareOperation::GT:
+			ucomi(toXmm(left), toXmm(right));
 			cc.seta(resultGp);
 			break;
 		case ir::CompareOperation::GE:
+			ucomi(toXmm(left), toXmm(right));
 			cc.setae(resultGp);
 			break;
 		}
@@ -629,8 +684,14 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 	// NegateOperation is bitwise NOT (~x): result = input XOR all-ones.
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
-	cc.mov(toGp(result), toGp(src));
-	cc.not_(toGp(result));
+	auto gDst = toGp(result);
+	cc.mov(gDst, toGp(src));
+	cc.not_(gDst);
+	// not_ flips the full 64-bit register, including the extension padding.
+	// That happens to stay correct for signed stamps (flipping a sign bit
+	// flips its replicated extension consistently) but is wrong for unsigned
+	// stamps, whose invariant is a zero-extended (not flipped) upper half.
+	narrowToStamp(gDst, op->getStamp());
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -640,16 +701,26 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	auto left = toGp(frame.getValue(op->getLeftInput()->getIdentifier()));
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
-	cc.mov(toGp(result), left);
+	auto gDst = toGp(result);
+	cc.mov(gDst, left);
 	// The shift count operand must be the CL register; AsmJit's Compiler
 	// handles that constraint when a GP register is given as the count.
 	if (op->getType() == ir::ShiftOperation::LS) {
-		cc.shl(toGp(result), right.r8());
+		cc.shl(gDst, right.r8());
 	} else if (isUnsignedType(op->getStamp())) {
-		cc.shr(toGp(result), right.r8());
+		cc.shr(gDst, right.r8());
 	} else {
-		cc.sar(toGp(result), right.r8());
+		cc.sar(gDst, right.r8());
 	}
+	// Shifting the full 64-bit register (rather than just the narrow stamp's
+	// width) can leave the extension padding inconsistent with the
+	// narrow-width result -- e.g. a left shift that overflows the stamp's
+	// width still computes a "correct" 64-bit shift, whose sign-extension no
+	// longer matches the wrapped-around narrow-width value. sar already
+	// shifts in the sign bit, but a shift can still move that bit into
+	// positions that change the narrow-width result's own sign, so this is
+	// needed for all three shift forms.
+	narrowToStamp(gDst, op->getStamp());
 	frame.setValue(op->getIdentifier(), result);
 }
 
@@ -942,7 +1013,15 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	const bool dstIsFloat = isFloatType(dstType);
 
 	if (!srcIsFloat && !dstIsFloat) {
-		// Integer → integer: sign/zero-extend from source width.
+		// Integer → integer: first extend from source width to get a clean
+		// 64-bit representation, then narrow to destination width. The second
+		// step matters whenever dstWidth <= srcWidth (truncating, or a
+		// same-width signedness change like i16->ui16): the value is then
+		// defined by its low dstWidth bits, and those must be re-extended per
+		// the *destination*'s signedness, not the source's -- e.g. casting
+		// i16(-1) to ui16 must zero-extend the resulting 0xFFFF to produce
+		// 65535, not sign-extend it to 0xFFFFFFFFFFFFFFFF. Mirrors
+		// A64LoweringProvider::visitCast's two-step extend-then-narrow.
 		auto gSrc = toGp(src);
 		auto gDst = toGp(result);
 		switch (srcType) {
@@ -969,6 +1048,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 			cc.mov(gDst, gSrc);
 			break;
 		}
+		narrowToStamp(gDst, dstType);
 	} else if (srcIsFloat && !dstIsFloat) {
 		// Float → integer: truncate toward zero.
 		auto gDst = toGp(result);
