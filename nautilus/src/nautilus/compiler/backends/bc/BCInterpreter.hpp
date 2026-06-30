@@ -2,11 +2,24 @@
 
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
-#include <dyncall_args.h>
-#include <dyncall_callback.h>
+#include "nautilus/config.hpp"
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
+// The bytecode backend hands each compiled function to its caller as a real C
+// function pointer. The default mechanism is a dyncall callback (dcbNewCallback),
+// which writes a trampoline into RWX memory at runtime. When NAUTILUS_BC_LIBFFI is
+// defined the function pointer is instead a libffi closure built with static
+// trampolines (no runtime-executable memory), which is what makes the backend
+// usable on iOS where runtime codegen is banned. The two paths differ only at the
+// closure boundary; the interpreter core is shared.
+#ifdef NAUTILUS_BC_LIBFFI
+#include <ffi.h>
+#else
+#include <dyncall_args.h>
+#include <dyncall_callback.h>
+#endif
 
 namespace nautilus::compiler::bc {
 
@@ -47,12 +60,29 @@ struct BCInterpreterOptions {
 	bool immediates = false;
 };
 
-/// Data passed to the dyncallback handler for each function.
+/// Data passed to the closure handler for each function.
 struct BCCallbackData {
 	std::unique_ptr<class BCInterpreter> interpreter;
 	std::vector<Type> argTypes;
 	Type returnType;
+#ifdef NAUTILUS_BC_LIBFFI
+	// The cif and its argument-type array must outlive the closure: ffi_prep_cif
+	// stores a pointer into argFFITypes, and the closure references the cif.
+	ffi_cif cif {};
+	std::vector<ffi_type*> argFFITypes;
+	ffi_closure* closure = nullptr;
+	void* code = nullptr;
+#endif
 };
+
+#ifdef NAUTILUS_BC_LIBFFI
+/// Handle to the per-function closure that owns the executable thunk; freed when
+/// the executable is destroyed. libffi static-trampoline closure (iOS-safe).
+using BCClosureHandle = ffi_closure*;
+#else
+/// dyncall callback handle (runtime-generated thunk).
+using BCClosureHandle = DCCallback*;
+#endif
 
 /**
  * @brief Interprets a single bytecode function.
@@ -61,10 +91,24 @@ class BCInterpreter {
 public:
 	BCInterpreter(Code code, RegisterFile registerFile, BCInterpreterOptions options = {});
 
+#ifdef NAUTILUS_BC_LIBFFI
+	/// Read arguments from a libffi closure's argument array (args[i] points to the
+	/// i-th argument) into the register file, execute, and return the raw result.
+	int64_t invoke(void** args, const std::vector<Type>& argTypes);
+#else
 	/// Read arguments from DCArgs directly into the register file, execute, and return the raw result.
 	int64_t invoke(DCArgs* args, const std::vector<Type>& argTypes);
+#endif
 
 private:
+	/// Shared invocation core: set up the per-invocation register file (recycled or
+	/// fresh) and alloca buffers, load arguments via @p reader, then execute. The
+	/// @p reader is called once per argument as reader(regs, reg, type, index) and is
+	/// the only part that differs between the dyncall and libffi entry points, so the
+	/// register-file/alloca setup and execution stay identical across both.
+	template <class Reader>
+	int64_t invokeImpl(const std::vector<Type>& argTypes, Reader reader);
+
 	int64_t execute(RegisterFile& regs) const;
 
 	/// Computed-goto (token-threaded) execution path. Only defined on compilers
@@ -98,7 +142,7 @@ private:
 class BCExecutable : public Executable {
 public:
 	BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
-	             std::vector<std::unique_ptr<BCCallbackData>> callbackData, std::vector<DCCallback*> callbacks);
+	             std::vector<std::unique_ptr<BCCallbackData>> callbackData, std::vector<BCClosureHandle> callbacks);
 
 	~BCExecutable() override;
 
@@ -109,7 +153,7 @@ public:
 private:
 	std::unordered_map<std::string, void*> functionPtrs_;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackData_;
-	std::vector<DCCallback*> callbacks_;
+	std::vector<BCClosureHandle> callbacks_;
 };
 
 } // namespace nautilus::compiler::bc
