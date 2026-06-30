@@ -633,6 +633,41 @@ RegisterFile acquireRegisterFile(const RegisterFile& init) {
 void releaseRegisterFile(RegisterFile&& buf) {
 	tlRegisterFilePool.push_back(std::move(buf));
 }
+
+// Same pooling pattern as tlRegisterFilePool, applied to the per-invocation alloca
+// buffers: each entry is one invocation's full set of alloca slots
+// (std::vector<std::vector<uint8_t>>, matching invoke()'s localAllocaBuffers). No
+// keying by Code identity — like the register-file pool, this is a free list of
+// interchangeable buffers; acquire() always resizes and re-zeroes from the calling
+// Code's allocaBuffers sizes, so a buffer shaped for one function is transparently
+// reshaped for another on its next acquire. Unlike the register file (whose `init`
+// carries real default register values to copy), alloca buffers must always come
+// back zeroed, so acquire() re-zeroes every byte via assign() rather than copying
+// `sizes`' contents — assign() still reuses each inner buffer's existing heap
+// capacity, so after warmup no allocation happens. Used only when bc.regfileReuse
+// is enabled.
+thread_local std::vector<std::vector<std::vector<uint8_t>>> tlAllocaBufferPool;
+
+std::vector<std::vector<uint8_t>> acquireAllocaBuffers(const std::vector<std::vector<uint8_t>>& sizes) {
+	if (tlAllocaBufferPool.empty()) {
+		std::vector<std::vector<uint8_t>> bufs(sizes.size());
+		for (size_t i = 0; i < sizes.size(); i++) {
+			bufs[i].resize(sizes[i].size(), 0);
+		}
+		return bufs;
+	}
+	std::vector<std::vector<uint8_t>> bufs = std::move(tlAllocaBufferPool.back());
+	tlAllocaBufferPool.pop_back();
+	bufs.resize(sizes.size());
+	for (size_t i = 0; i < sizes.size(); i++) {
+		bufs[i].assign(sizes[i].size(), 0);
+	}
+	return bufs;
+}
+
+void releaseAllocaBuffers(std::vector<std::vector<uint8_t>>&& bufs) {
+	tlAllocaBufferPool.push_back(std::move(bufs));
+}
 } // namespace
 
 int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
@@ -653,10 +688,29 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 		}
 	} guard {&regs, reuse};
 
-	// Per-invocation alloca buffers, zeroed for a clean stack frame.
-	std::vector<std::vector<uint8_t>> localAllocaBuffers(code.allocaBuffers.size());
+	// Per-invocation alloca buffers, zeroed for a clean stack frame. Recycled from a
+	// thread-local pool under the same bc.regfileReuse flag as the register file —
+	// both are per-invocation scratch state, so there is no reason to want one
+	// pooled without the other.
+	std::vector<std::vector<uint8_t>> localAllocaBuffers =
+	    reuse ? acquireAllocaBuffers(code.allocaBuffers) : std::vector<std::vector<uint8_t>>(code.allocaBuffers.size());
+	if (!reuse) {
+		for (const auto& [reg, bufIdx] : code.allocaRegisterMap) {
+			localAllocaBuffers[bufIdx].resize(code.allocaBuffers[bufIdx].size(), 0);
+		}
+	}
+	// Return the recycled buffers to the pool on every exit path, including if
+	// execute() throws.
+	struct AllocaPoolGuard {
+		std::vector<std::vector<uint8_t>>* bufs;
+		bool active;
+		~AllocaPoolGuard() {
+			if (active) {
+				releaseAllocaBuffers(std::move(*bufs));
+			}
+		}
+	} allocaGuard {&localAllocaBuffers, reuse};
 	for (const auto& [reg, bufIdx] : code.allocaRegisterMap) {
-		localAllocaBuffers[bufIdx].resize(code.allocaBuffers[bufIdx].size(), 0);
 		regs[reg] = reinterpret_cast<int64_t>(localAllocaBuffers[bufIdx].data());
 	}
 

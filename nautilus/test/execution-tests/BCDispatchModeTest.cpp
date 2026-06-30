@@ -1,6 +1,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/val.hpp"
+#include "nautilus/val_std.hpp"
 #include <catch2/catch_all.hpp>
 
 // The bytecode interpreter offers three dispatch strategies selected via the
@@ -63,6 +64,29 @@ val<int64_t> bcModBit(val<int64_t> a, val<int64_t> b) {
 	return m + (a & b) + (a | b) + (a ^ b);
 }
 
+// Plain struct with no user-declared constructor: val<AllocaLocals> default
+// construction does not zero its alloca'd backing memory (val_std.hpp only invokes
+// a constructor for non-trivially-default-constructible types), so its initial
+// contents are exactly whatever the interpreter handed back for that alloca slot.
+// Combined with calling the same compiled function repeatedly below, this is the
+// right shape to catch a regression where pooled alloca buffers (bc.regfileReuse)
+// leak a previous invocation's bytes into the next instead of being re-zeroed.
+struct AllocaLocals {
+	int32_t a;
+	int32_t b;
+};
+
+val<int32_t> bcAllocaReuse(val<int32_t> x) {
+	val<AllocaLocals> value;
+	if (x > 0) {
+		value.set(&AllocaLocals::a, x);
+		value.set(&AllocaLocals::b, x * 2);
+	}
+	// When x <= 0 neither field is written, so a correct implementation must
+	// observe zero-initialized memory here, not leftover values from a prior call.
+	return value.get(&AllocaLocals::a) + value.get(&AllocaLocals::b);
+}
+
 engine::NautilusEngine bcEngine(const std::string& dispatch, bool reuseRegisterFile = false,
                                 bool superinstructions = false, bool immediates = false) {
 	engine::Options options;
@@ -116,6 +140,8 @@ TEST_CASE("BC dispatch modes produce identical results") {
 			auto aCast = alt.registerFunction(bcCasts);
 			auto cMod = call.registerFunction(bcModBit);
 			auto aMod = alt.registerFunction(bcModBit);
+			auto cAllocaReuse = call.registerFunction(bcAllocaReuse);
+			auto aAllocaReuse = alt.registerFunction(bcAllocaReuse);
 
 			for (int64_t a = -20; a <= 20; a += 3) {
 				REQUIRE(aFib(a) == cFib(a));
@@ -129,7 +155,49 @@ TEST_CASE("BC dispatch modes produce identical results") {
 			for (int32_t n = 0; n <= 5000; n += 777) {
 				REQUIRE(aSum(n) == cSum(n));
 			}
+
+			// Call the same compiled function repeatedly, alternating between an input
+			// that writes the alloca-backed struct's fields and one that doesn't. A
+			// regfileReuse=true variant that pooled the alloca buffer without re-zeroing
+			// it would leak the prior call's fields into this call's "untouched" reads.
+			for (int32_t i = 0; i < 4; i++) {
+				REQUIRE(aAllocaReuse(50 + i) == cAllocaReuse(50 + i));
+				REQUIRE(aAllocaReuse(-1) == cAllocaReuse(-1));
+			}
 		}
+	}
+}
+
+TEST_CASE("BC backend with no bc.* options set matches the explicit call/false/false/false reference") {
+	// Pins BCInterpreterBackend's shipped defaults (threaded/true/true/true) against
+	// the same reference used above, without constructing the engine through
+	// bcEngine() — i.e. leaving every "bc.*" option unset, exactly as a production
+	// caller that never heard of these options would.
+	engine::Options defaultOptions;
+	defaultOptions.setOption("engine.backend", std::string("bc"));
+	engine::NautilusEngine withDefaults(defaultOptions);
+
+	auto call = bcEngine("call");
+
+	auto cArith = call.registerFunction(bcArith);
+	auto dArith = withDefaults.registerFunction(bcArith);
+	auto cFib = call.registerFunction(bcFib);
+	auto dFib = withDefaults.registerFunction(bcFib);
+	auto cBranch = call.registerFunction(bcBranchy);
+	auto dBranch = withDefaults.registerFunction(bcBranchy);
+	auto cAllocaReuse = call.registerFunction(bcAllocaReuse);
+	auto dAllocaReuse = withDefaults.registerFunction(bcAllocaReuse);
+
+	for (int64_t a = -20; a <= 20; a += 3) {
+		REQUIRE(dFib(a) == cFib(a));
+		REQUIRE(dBranch(a) == cBranch(a));
+		for (int64_t b = -20; b <= 20; b += 5) {
+			REQUIRE(dArith(a, b) == cArith(a, b));
+		}
+	}
+	for (int32_t i = 0; i < 4; i++) {
+		REQUIRE(dAllocaReuse(50 + i) == cAllocaReuse(50 + i));
+		REQUIRE(dAllocaReuse(-1) == cAllocaReuse(-1));
 	}
 }
 

@@ -40,6 +40,10 @@ See [engine.md](engine.md) for how to create modules and override options per mo
 | mlir.enableIntrinsics=[true,false]          | true     | Module  | Registers the MLIR intrinsic plugins for this compilation.                                                                                            |
 | mlir.inline_invoke_calls=[true,false]       | false    | Module  | Allow MLIR Backend to inline functions that were tagged with NAUTILUS_INLINE                                                                          |
 | bc.registerAllocator=[true,false]           | true     | Module  | Enables the linear register allocator in the bytecode backend.                                                                                        |
+| bc.dispatch=[call,switch,threaded]          | threaded | Module  | Selects how the bytecode interpreter dispatches operations. `threaded` (computed-goto) is fastest and falls back to `switch` on compilers without labels-as-values; `call` is the legacy indirect-call table. |
+| bc.regfileReuse=[true,false]                | true     | Module  | Recycles the per-invocation register file (and alloca buffers) from a thread-local pool instead of heap-allocating fresh ones each call. Applies to all dispatch modes. |
+| bc.superinstructions=[true,false]           | true     | Module  | Fuses a single-use trailing compare into the conditional branch. Only takes effect when `bc.dispatch=threaded`.                                       |
+| bc.immediates=[true,false]                  | true     | Module  | Folds small constant operands directly into arithmetic ops. Only takes effect when `bc.dispatch=threaded`.                                            |
 | asmjit.enableIntrinsics=[true,false]        | true     | Module  | Registers the AsmJit intrinsic plugins for this compilation.                                                                                          |
 | asmjit.enablePostRAPeephole=[true,false]    | true     | Module  | Enables post-register-allocation peephole optimizations in the AsmJit backend.                                                                        |
 

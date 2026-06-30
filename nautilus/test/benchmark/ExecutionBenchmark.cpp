@@ -1,6 +1,7 @@
 
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/val_std.hpp"
 #include <catch2/catch_all.hpp>
 
 namespace nautilus::engine {
@@ -9,6 +10,36 @@ val<int8_t> addExpression(val<int8_t> x) {
 	val<int8_t> y = (int8_t) 2;
 	return y + x;
 }
+
+#ifdef ENABLE_BC_BACKEND
+// A small struct local forces the bytecode backend to allocate a stack slot
+// (AllocaOperation) per invocation. Like addExpression, the rest of the function
+// body is cheap, so per-call allocation/zeroing cost dominates and is isolated by
+// this kernel — used by the bc.regfileReuse A/B benchmark below to show the win
+// from also pooling alloca buffers, not just the register file.
+struct AllocaScratch {
+	int32_t a;
+	int32_t b;
+	int32_t c;
+	int32_t d;
+};
+
+val<int32_t> allocaHeavy(val<int32_t> x) {
+	val<AllocaScratch> scratch;
+	scratch.set(&AllocaScratch::a, x);
+	scratch.set(&AllocaScratch::b, x + 1);
+	scratch.set(&AllocaScratch::c, x + 2);
+	scratch.set(&AllocaScratch::d, x + 3);
+	return scratch.get(&AllocaScratch::a) + scratch.get(&AllocaScratch::b) + scratch.get(&AllocaScratch::c) +
+	       scratch.get(&AllocaScratch::d);
+}
+
+void runAllocaHeavyBenchmark(Catch::Benchmark::Chronometer& meter, Options& options) {
+	auto engine = engine::NautilusEngine(options);
+	auto func = engine.registerFunction(allocaHeavy);
+	meter.measure([&] { return func(42); });
+}
+#endif
 
 val<int32_t> fib(val<int32_t> n) {
 	val<int32_t> a = 0, b = 1, c;
@@ -147,6 +178,24 @@ TEST_CASE("Execution Benchmark") {
 				    func(meter, op);
 			    });
 		}
+	}
+
+	// BC-only A/B benchmark isolating the bc.regfileReuse win for alloca-backed
+	// locals specifically (as opposed to the register file): allocaHeavy's struct
+	// local forces a per-invocation stack-slot allocation that the register-file-only
+	// A/B block above does not exercise.
+	for (bool reuse : {false, true}) {
+		std::string tag = reuse ? "reuse" : "noReuse";
+		Catch::Benchmark::Benchmark("exec_bc_allocaHeavy_threaded_" + tag)
+		    .operator=([reuse](Catch::Benchmark::Chronometer meter) {
+			    auto op = engine::Options();
+			    op.setOption("mlir.eager_compilation", true);
+			    op.setOption("engine.backend", std::string("bc"));
+			    op.setOption("engine.traceMode", "lazyTracing");
+			    op.setOption("bc.dispatch", std::string("threaded"));
+			    op.setOption("bc.regfileReuse", reuse);
+			    runAllocaHeavyBenchmark(meter, op);
+		    });
 	}
 
 	// BC-only A/B for compare+branch superinstructions on the threaded path

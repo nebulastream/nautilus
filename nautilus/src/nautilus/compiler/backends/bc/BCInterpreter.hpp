@@ -13,7 +13,7 @@ namespace nautilus::compiler::bc {
 /**
  * @brief Selects how the interpreter dispatches bytecode operations.
  *
- * Call:     indirect call through the OpTable function-pointer table (legacy default).
+ * Call:     indirect call through the OpTable function-pointer table (legacy, slowest).
  * Switch:   an inlined switch over the opcode, which lets the compiler inline the
  *           operation bodies and keep the register base hot instead of paying a
  *           non-inlined indirect call per instruction.
@@ -23,6 +23,7 @@ namespace nautilus::compiler::bc {
  *           on compilers without the computed-goto extension (e.g. MSVC). This
  *           is still a pure interpreter — the label table is data, not generated
  *           machine code, so it remains usable where runtime codegen is banned.
+ *           This is the default dispatch mode.
  */
 enum class DispatchMode { Call, Switch, Threaded };
 
@@ -33,18 +34,19 @@ DispatchMode parseDispatchMode(const std::string& value);
  * @brief Per-interpreter options resolved from engine options at compile time.
  *
  * dispatch:           how operations are dispatched (see DispatchMode).
- * reuseRegisterFile:  recycle the per-invocation register file from a thread-local
- *                     pool instead of heap-allocating a fresh copy each call.
+ * reuseRegisterFile:  recycle the per-invocation register file and alloca buffers
+ *                     from thread-local pools instead of heap-allocating fresh
+ *                     copies each call.
  * superinstructions:  fuse compare+branch into a single op in the flattened
  *                     threaded stream (threaded path only).
  * immediates:         fold compile-time-constant operands directly into ops in the
  *                     flattened threaded stream (threaded path only).
  */
 struct BCInterpreterOptions {
-	DispatchMode dispatch = DispatchMode::Call;
-	bool reuseRegisterFile = false;
-	bool superinstructions = false;
-	bool immediates = false;
+	DispatchMode dispatch = DispatchMode::Threaded;
+	bool reuseRegisterFile = true;
+	bool superinstructions = true;
+	bool immediates = true;
 };
 
 /// Data passed to the dyncallback handler for each function.
