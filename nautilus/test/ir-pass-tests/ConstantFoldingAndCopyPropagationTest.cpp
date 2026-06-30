@@ -270,6 +270,119 @@ TEST_CASE("ConstantFolding: shift by negative amount is skipped") {
 	REQUIRE(stillShift->getRightInput() == cNeg);
 }
 
+// Regression tests for issue #312: folding unsigned integer operations must use
+// unsigned semantics. Each uses an operand whose value exceeds INT64_MAX, so a
+// signed fold would give a different (wrong) result. Found by the differential
+// AST fuzzer (test/fuzz).
+
+TEST_CASE("ConstantFolding: ui64 less-than folds with unsigned semantics (#312)") {
+	auto ir = std::make_shared<IRGraph>("cf-ui64-lt");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	// 0x8000000000000000 (2^63) is INT64_MIN when read as signed, so a signed
+	// comparison would say (big < 5) == true. Unsigned, big is huge: false.
+	auto* big = entry->addOperation<compiler::ir::ConstIntOperation>(
+	    OperationIdentifier {1}, static_cast<int64_t>(0x8000000000000000ULL), Type::ui64);
+	auto* small =
+	    entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {5}, Type::ui64);
+	auto* cmp = entry->addOperation<compiler::ir::CompareOperation>(OperationIdentifier {3}, big, small,
+	                                                                compiler::ir::CompareOperation::LT);
+	entry->addOperation<compiler::ir::ReturnOperation>(cmp);
+	wrapInGraph(ir, entry, Type::b);
+
+	runPass(*ir);
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CompareOp) == 0);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[2]);
+	REQUIRE(folded != nullptr);
+	REQUIRE(folded->getValue() == false);
+}
+
+TEST_CASE("ConstantFolding: ui64 division folds with unsigned semantics (#312)") {
+	auto ir = std::make_shared<IRGraph>("cf-ui64-div");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	// 0xC000000000000000 = 13835058055282163712; / 3 == 4611686018427387904.
+	auto* big = entry->addOperation<compiler::ir::ConstIntOperation>(
+	    OperationIdentifier {1}, static_cast<int64_t>(0xC000000000000000ULL), Type::ui64);
+	auto* three =
+	    entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {3}, Type::ui64);
+	auto* div = entry->addOperation<compiler::ir::DivOperation>(OperationIdentifier {3}, big, three);
+	entry->addOperation<compiler::ir::ReturnOperation>(div);
+	wrapInGraph(ir, entry, Type::ui64);
+
+	runPass(*ir);
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::DivOp) == 0);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	REQUIRE(folded != nullptr);
+	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 4611686018427387904ULL);
+	REQUIRE(folded->getStamp() == Type::ui64);
+}
+
+TEST_CASE("ConstantFolding: ui64 modulo folds with unsigned semantics (#312)") {
+	auto ir = std::make_shared<IRGraph>("cf-ui64-mod");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	// 13835058055282163712 % 7 == 5 (unsigned).
+	auto* big = entry->addOperation<compiler::ir::ConstIntOperation>(
+	    OperationIdentifier {1}, static_cast<int64_t>(0xC000000000000000ULL), Type::ui64);
+	auto* seven =
+	    entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {7}, Type::ui64);
+	auto* mod = entry->addOperation<compiler::ir::ModOperation>(OperationIdentifier {3}, big, seven);
+	entry->addOperation<compiler::ir::ReturnOperation>(mod);
+	wrapInGraph(ir, entry, Type::ui64);
+
+	runPass(*ir);
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ModOp) == 0);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	REQUIRE(folded != nullptr);
+	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 5ULL);
+}
+
+TEST_CASE("ConstantFolding: ui64 right shift is logical, not arithmetic (#312)") {
+	auto ir = std::make_shared<IRGraph>("cf-ui64-shr");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	// 0xC000000000000000 >> 1: logical == 0x6000000000000000 (6917529027641081856);
+	// arithmetic would sign-fill to 0xE000000000000000.
+	auto* big = entry->addOperation<compiler::ir::ConstIntOperation>(
+	    OperationIdentifier {1}, static_cast<int64_t>(0xC000000000000000ULL), Type::ui64);
+	auto* one = entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {1}, Type::ui64);
+	auto* shift = entry->addOperation<compiler::ir::ShiftOperation>(OperationIdentifier {3}, big, one,
+	                                                                compiler::ir::ShiftOperation::RS);
+	entry->addOperation<compiler::ir::ReturnOperation>(shift);
+	wrapInGraph(ir, entry, Type::ui64);
+
+	runPass(*ir);
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ShiftOp) == 0);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	REQUIRE(folded != nullptr);
+	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 0x6000000000000000ULL);
+}
+
+TEST_CASE("ConstantFolding: signed i64 less-than still folds with signed semantics") {
+	auto ir = std::make_shared<IRGraph>("cf-i64-lt-signed");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	// Same bit patterns as the ui64 case, but a signed stamp: -2^63 < 5 == true.
+	auto* neg = entry->addOperation<compiler::ir::ConstIntOperation>(
+	    OperationIdentifier {1}, static_cast<int64_t>(0x8000000000000000ULL), Type::i64);
+	auto* five = entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {5}, Type::i64);
+	auto* cmp = entry->addOperation<compiler::ir::CompareOperation>(OperationIdentifier {3}, neg, five,
+	                                                                compiler::ir::CompareOperation::LT);
+	entry->addOperation<compiler::ir::ReturnOperation>(cmp);
+	wrapInGraph(ir, entry, Type::b);
+
+	runPass(*ir);
+
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[2]);
+	REQUIRE(folded != nullptr);
+	REQUIRE(folded->getValue() == true);
+}
+
 TEST_CASE("ConstantFolding: boolean And folds") {
 	auto ir = std::make_shared<IRGraph>("cf-bool-and");
 	auto& arena = ir->getArena();
