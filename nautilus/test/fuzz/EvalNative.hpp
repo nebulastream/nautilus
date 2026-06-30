@@ -184,7 +184,14 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args) : e;
 	}
 	case Kind::Neg:
-		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args));
+		// Nautilus's val<T>::operator-() is implemented as `(T)0 - x`, not a
+		// true sign-bit flip (see val_arith.hpp) -- for almost every value
+		// that's indistinguishable from real negation, but it means negating
+		// +0.0 gives +0.0, not -0.0 (since x - x is +0.0 in round-to-nearest,
+		// while a true sign flip would give -0.0). Match that exactly, not
+		// C++'s unary minus, since the difference is directly observable
+		// through later operations like division-by-the-result.
+		return static_cast<T>(T(0) - evalNativeFloat<T>(ast, n.kid[0], args));
 	case Kind::Cast:
 		return castThroughFloat<T>(evalNativeFloat<T>(ast, n.kid[0], args), static_cast<TypeId>(n.imm));
 	default:

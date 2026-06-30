@@ -15,7 +15,7 @@ namespace nautilus::fuzz {
 /// these ten types, mirroring how the original uint64_t-only fuzzer worked.
 enum class TypeId : uint8_t { I8, I16, I32, I64, U8, U16, U32, U64, F32, F64 };
 
-inline constexpr TypeId ALL_TYPES[] = {TypeId::I8, TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,
+inline constexpr TypeId ALL_TYPES[] = {TypeId::I8,  TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,
                                        TypeId::U16, TypeId::U32, TypeId::U64, TypeId::F32, TypeId::F64};
 
 /// The eight integer TypeIds, used to pick Cast targets for the integer
