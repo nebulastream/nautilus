@@ -788,10 +788,15 @@ void AsmJitLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* o
 void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* op, RegisterFrame& frame) {
 	if (op->hasReturnValue()) {
 		auto retReg = frame.getValue(op->getReturnValue()->getIdentifier());
-		if (std::holds_alternative<Xmm>(retReg))
+		if (std::holds_alternative<Xmm>(retReg)) {
 			cc.ret(toXmm(retReg));
-		else
-			cc.ret(toGp(retReg));
+		} else {
+			auto gp = toGp(retReg);
+			// Narrow the value to its declared stamp so the caller sees a clean
+			// register matching the ABI contract (mirrors A64's visitReturn).
+			narrowToStamp(gp, op->getReturnValue()->getStamp());
+			cc.ret(gp);
+		}
 	} else {
 		cc.ret();
 	}
@@ -1024,6 +1029,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		// A64LoweringProvider::visitCast's two-step extend-then-narrow.
 		auto gSrc = toGp(src);
 		auto gDst = toGp(result);
+		// Step 1: extend from source width.
 		switch (srcType) {
 		case Type::i8:
 			cc.movsx(gDst.r64(), gSrc.r8());
@@ -1050,13 +1056,16 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		}
 		narrowToStamp(gDst, dstType);
 	} else if (srcIsFloat && !dstIsFloat) {
-		// Float → integer: truncate toward zero.
+		// Float → integer: truncate toward zero, then narrow to the destination
+		// width so the value is defined by its low dstWidth bits (see the
+		// integer→integer path above). Mirrors A64LoweringProvider::visitCast.
 		auto gDst = toGp(result);
 		auto xSrc = toXmm(src);
 		if (srcType == Type::f32)
 			cc.cvttss2si(gDst.r64(), xSrc);
 		else
 			cc.cvttsd2si(gDst.r64(), xSrc);
+		narrowToStamp(gDst, dstType);
 	} else if (!srcIsFloat && dstIsFloat) {
 		// Integer → float.
 		auto gSrc = toGp(src);

@@ -474,7 +474,15 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		else
 			condCode = static_cast<uint32_t>(CC::kNE);
 	} else {
-		cc.cmp(toGp(left), toGp(right));
+		// Peephole: `cmp x, <const 0>` → `cmp x, #0` (immediate form). Same
+		// NZCV output, and it avoids depending on a separately-materialized
+		// zero register, which lets that constant be dead-code-eliminated.
+		const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(op->getRightInput());
+		if (rightConst != nullptr && rightConst->getValue() == 0) {
+			cc.cmp(toGp(left), Imm(0));
+		} else {
+			cc.cmp(toGp(left), toGp(right));
+		}
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
