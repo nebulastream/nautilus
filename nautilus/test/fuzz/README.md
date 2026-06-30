@@ -18,7 +18,22 @@ bug because every generated program is fully defined by construction.
 | `Ast.hpp`          | Tagged AST, depth/node-budgeted generator, and a pretty printer. |
 | `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle). |
 | `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation. |
-| `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: build program + args, run the differential check. |
+| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers. |
+| `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
+| `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
+
+## Two drivers
+
+* **`nautilus-fuzz`** — coverage-guided libFuzzer binary (Clang + libFuzzer
+  runtime). Built with `-DENABLE_FUZZING=ON`.
+* **`nautilus-fuzz-replay`** — libFuzzer-free; runs on any compiler. Built with
+  `-DENABLE_FUZZER_REPLAY=ON` (also built by `-DENABLE_FUZZING=ON`). Modes:
+  * `nautilus-fuzz-replay` — deterministic built-in smoke corpus (aborts on the
+    first finding, like libFuzzer).
+  * `nautilus-fuzz-replay <file> ...` — replay specific saved inputs.
+  * `nautilus-fuzz-replay --survey [N]` — run N inputs **without** aborting and
+    print findings bucketed by `(backend, kind)`, to triage how many distinct
+    bug classes exist.
 
 ## Soundness model
 
@@ -63,3 +78,12 @@ On a mismatch the harness prints the offending **backend**, the pretty-printed
 **program**, the **args**, and the expected/actual values. Drop the printed
 program + args into a fixed `forEachBackend` case under
 `test/execution-tests/` so the bug stays covered after it is fixed.
+
+## Known finding
+
+On its first run this fuzzer reproduces a real bug: the IR constant-folding pass
+folds unsigned integer comparison/division/modulo/right-shift with **signed**
+semantics, so all compiled backends disagree with the interpreter for
+constant-foldable `ui64` operands above `INT64_MAX`. Tracked in
+nebulastream/nautilus#312. `--survey` confirms every finding reduces to this one
+root cause.

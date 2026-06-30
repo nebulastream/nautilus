@@ -50,7 +50,7 @@ if (ENABLE_TESTS)
     add_subdirectory(test)
 endif ()
 
-if (ENABLE_FUZZING)
+if (ENABLE_FUZZING OR ENABLE_FUZZER_REPLAY)
     add_subdirectory(test/fuzz)
 endif ()
 
