@@ -13,12 +13,18 @@ namespace nautilus::compiler::bc {
 /**
  * @brief Selects how the interpreter dispatches bytecode operations.
  *
- * Call:   indirect call through the OpTable function-pointer table (legacy default).
- * Switch: an inlined switch over the opcode, which lets the compiler inline the
- *         operation bodies and keep the register base hot instead of paying a
- *         non-inlined indirect call per instruction.
+ * Call:     indirect call through the OpTable function-pointer table (legacy default).
+ * Switch:   an inlined switch over the opcode, which lets the compiler inline the
+ *           operation bodies and keep the register base hot instead of paying a
+ *           non-inlined indirect call per instruction.
+ * Threaded: token-threaded dispatch via computed goto (labels-as-values). Each
+ *           handler jumps directly to the next handler, giving the branch
+ *           predictor a separate dispatch site per opcode. Falls back to Switch
+ *           on compilers without the computed-goto extension (e.g. MSVC). This
+ *           is still a pure interpreter — the label table is data, not generated
+ *           machine code, so it remains usable where runtime codegen is banned.
  */
-enum class DispatchMode { Call, Switch };
+enum class DispatchMode { Call, Switch, Threaded };
 
 /// Parse a "bc.dispatch" option value into a DispatchMode (defaults to Call on unknown input).
 DispatchMode parseDispatchMode(const std::string& value);
@@ -42,6 +48,10 @@ public:
 
 private:
 	int64_t execute(RegisterFile& regs) const;
+
+	/// Computed-goto (token-threaded) execution path. Only defined on compilers
+	/// that support labels-as-values; execute() routes here only when supported.
+	int64_t executeThreaded(RegisterFile& regs) const;
 
 	Code code;
 	RegisterFile registerFile;

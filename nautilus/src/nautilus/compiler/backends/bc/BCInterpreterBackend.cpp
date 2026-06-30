@@ -189,7 +189,10 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		statistics->set("bc.registers.max", maxRegisters);
 		statistics->set("bc.registerAllocator.enabled",
 		                std::string(loweringOptions.enableRegisterAllocator ? "true" : "false"));
-		statistics->set("bc.dispatch", std::string(dispatchMode == DispatchMode::Switch ? "switch" : "call"));
+		const auto* dispatchName = dispatchMode == DispatchMode::Threaded ? "threaded"
+		                           : dispatchMode == DispatchMode::Switch ? "switch"
+		                                                                  : "call";
+		statistics->set("bc.dispatch", std::string(dispatchName));
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
