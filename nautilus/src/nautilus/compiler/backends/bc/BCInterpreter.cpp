@@ -471,8 +471,8 @@ DispatchMode parseDispatchMode(const std::string& value) {
 	return DispatchMode::Call;
 }
 
-BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, DispatchMode dispatchMode)
-    : code(std::move(code)), registerFile(std::move(registerFile)), dispatchMode(dispatchMode) {
+BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, BCInterpreterOptions options)
+    : code(std::move(code)), registerFile(std::move(registerFile)), options(options) {
 	// The register file was built against a temporary Code instance whose allocaBuffers
 	// may have been copied (and thus relocated) before reaching this constructor.
 	// Re-point each alloca register at the actual buffer in *this* code object.
@@ -480,7 +480,7 @@ BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, DispatchMode 
 		this->registerFile[reg] = reinterpret_cast<int64_t>(this->code.allocaBuffers[bufIdx].data());
 	}
 #ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
-	if (this->dispatchMode == DispatchMode::Threaded) {
+	if (this->options.dispatch == DispatchMode::Threaded) {
 		buildFlatCode();
 	}
 #endif
@@ -535,9 +535,47 @@ bool BCExecutable::hasInvocableFunctionPtr() {
 	return true;
 }
 
+namespace {
+// Thread-local pool that recycles per-invocation register files so repeated calls
+// avoid a heap allocation (the dominant cost for tiny functions). Each acquire()
+// hands back a distinct buffer, so nested bc->bc calls on one thread never alias;
+// the pool is thread_local, so concurrent threads stay independent. Used only when
+// bc.regfileReuse is enabled. The copy-assign in acquire reuses the buffer's heap
+// capacity, so after warmup no allocation happens.
+thread_local std::vector<RegisterFile> tlRegisterFilePool;
+
+RegisterFile acquireRegisterFile(const RegisterFile& init) {
+	if (tlRegisterFilePool.empty()) {
+		return init;
+	}
+	RegisterFile buf = std::move(tlRegisterFilePool.back());
+	tlRegisterFilePool.pop_back();
+	buf = init;
+	return buf;
+}
+
+void releaseRegisterFile(RegisterFile&& buf) {
+	tlRegisterFilePool.push_back(std::move(buf));
+}
+} // namespace
+
 int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
-	// Per-invocation copy of the register file (thread-safe + reentrant).
-	RegisterFile regs = registerFile;
+	// Per-invocation register file: a fresh copy by default, or one recycled from a
+	// thread-local pool when bc.regfileReuse is set. Both give each invocation its
+	// own buffer, so nested and concurrent calls remain correct.
+	const bool reuse = options.reuseRegisterFile;
+	RegisterFile regs = reuse ? acquireRegisterFile(registerFile) : registerFile;
+	// Return the recycled buffer to the pool on every exit path, including if
+	// execute() throws.
+	struct PoolGuard {
+		RegisterFile* regs;
+		bool active;
+		~PoolGuard() {
+			if (active) {
+				releaseRegisterFile(std::move(*regs));
+			}
+		}
+	} guard {&regs, reuse};
 
 	// Per-invocation alloca buffers, zeroed for a clean stack frame.
 	std::vector<std::vector<uint8_t>> localAllocaBuffers(code.allocaBuffers.size());
@@ -598,14 +636,14 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
 #ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
-	if (dispatchMode == DispatchMode::Threaded) {
+	if (options.dispatch == DispatchMode::Threaded) {
 		return executeThreaded(regs);
 	}
 #endif
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
 	// Threaded falls here when computed goto is unavailable, behaving as Switch.
-	const bool useSwitch = dispatchMode != DispatchMode::Call;
+	const bool useSwitch = options.dispatch != DispatchMode::Call;
 	while (true) {
 		// execute operations in block. The dispatch mode is constant for the whole
 		// run, so this branch is perfectly predicted; it picks between the legacy

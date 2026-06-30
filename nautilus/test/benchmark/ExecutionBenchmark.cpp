@@ -127,6 +127,27 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// BC-only A/B benchmark for recycling the per-invocation register file from a
+	// thread-local pool (bc.regfileReuse) instead of heap-allocating a fresh copy.
+	// Most visible on the per-call-dominated "add" workload.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool reuse : {false, true}) {
+			std::string tag = reuse ? "reuse" : "noReuse";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, reuse](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.regfileReuse", reuse);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 

@@ -29,6 +29,24 @@ enum class DispatchMode { Call, Switch, Threaded };
 /// Parse a "bc.dispatch" option value into a DispatchMode (defaults to Call on unknown input).
 DispatchMode parseDispatchMode(const std::string& value);
 
+/**
+ * @brief Per-interpreter options resolved from engine options at compile time.
+ *
+ * dispatch:           how operations are dispatched (see DispatchMode).
+ * reuseRegisterFile:  recycle the per-invocation register file from a thread-local
+ *                     pool instead of heap-allocating a fresh copy each call.
+ * superinstructions:  fuse compare+branch into a single op in the flattened
+ *                     threaded stream (threaded path only).
+ * immediates:         fold compile-time-constant operands directly into ops in the
+ *                     flattened threaded stream (threaded path only).
+ */
+struct BCInterpreterOptions {
+	DispatchMode dispatch = DispatchMode::Call;
+	bool reuseRegisterFile = false;
+	bool superinstructions = false;
+	bool immediates = false;
+};
+
 /// Data passed to the dyncallback handler for each function.
 struct BCCallbackData {
 	std::unique_ptr<class BCInterpreter> interpreter;
@@ -41,7 +59,7 @@ struct BCCallbackData {
  */
 class BCInterpreter {
 public:
-	BCInterpreter(Code code, RegisterFile registerFile, DispatchMode dispatchMode = DispatchMode::Call);
+	BCInterpreter(Code code, RegisterFile registerFile, BCInterpreterOptions options = {});
 
 	/// Read arguments from DCArgs directly into the register file, execute, and return the raw result.
 	int64_t invoke(DCArgs* args, const std::vector<Type>& argTypes);
@@ -61,13 +79,17 @@ private:
 
 	Code code;
 	RegisterFile registerFile;
-	DispatchMode dispatchMode;
+	BCInterpreterOptions options;
 
 	/// Flattened form of `code` for the threaded path (empty otherwise). Reuses
 	/// OpCode for value ops; terminators are JMP/CJMP/RET whose targets are block
 	/// indices resolved to flat offsets via blockStart_.
 	std::vector<OpCode> flatCode_;
 	std::vector<int32_t> blockStart_;
+
+	/// Per-instruction immediates for the threaded path's *_imm opcodes, indexed by
+	/// position in flatCode_ (ip - base). Empty unless immediate folding is active.
+	std::vector<int64_t> flatImm_;
 };
 
 /**
