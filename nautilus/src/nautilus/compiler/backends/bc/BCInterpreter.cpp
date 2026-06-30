@@ -454,9 +454,19 @@ FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> argum
     : arguments(std::move(arguments)), functionPtr(functionPtr) {
 }
 
+// Computed goto (labels-as-values) is a GCC/Clang extension. Where it is not
+// available we fall back to the switch path, so "threaded" stays selectable
+// everywhere and simply degrades to "switch".
+#if defined(__GNUC__) || defined(__clang__)
+#define NAUTILUS_BC_HAS_COMPUTED_GOTO 1
+#endif
+
 DispatchMode parseDispatchMode(const std::string& value) {
 	if (value == "switch") {
 		return DispatchMode::Switch;
+	}
+	if (value == "threaded") {
+		return DispatchMode::Threaded;
 	}
 	return DispatchMode::Call;
 }
@@ -557,14 +567,21 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 }
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+	if (dispatchMode == DispatchMode::Threaded) {
+		return executeThreaded(regs);
+	}
+#endif
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
+	// Threaded falls here when computed goto is unavailable, behaving as Switch.
+	const bool useSwitch = dispatchMode != DispatchMode::Call;
 	while (true) {
 		// execute operations in block. The dispatch mode is constant for the whole
 		// run, so this branch is perfectly predicted; it picks between the legacy
 		// indirect-call table and the inlined switch (which avoids a non-inlined
 		// call per instruction and lets the compiler keep the register base hot).
-		if (dispatchMode == DispatchMode::Switch) {
+		if (useSwitch) {
 			for (const auto& c : currentBlock->code) {
 				switch (c.op) {
 #define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
@@ -597,6 +614,70 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		}
 	}
 }
+
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+// Token-threaded execution: each handler computes its result and jumps straight
+// to the next handler via a computed goto, instead of returning to a central
+// loop. This gives the CPU a distinct indirect-branch site per opcode (better
+// prediction) and removes the per-op loop bookkeeping. The label table is plain
+// data (addresses of labels in this function), so this stays a pure interpreter
+// with no runtime code generation. labels-as-values is a GCC/Clang extension, so
+// the pedantic diagnostic is locally suppressed.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wgnu-label-as-value"
+#endif
+int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
+	// Address table indexed by opcode, in the same order as the ByteCode enum.
+	// Built once at first entry (label addresses are not constant expressions).
+	static void* const labels[] = {
+#define NAUTILUS_BC_LABEL(name, ...) &&L_##name,
+	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
+#undef NAUTILUS_BC_LABEL
+	};
+
+	const CodeBlock* currentBlock = &code.blocks[0];
+	const OpCode* ip = currentBlock->code.data();
+	const OpCode* end = ip + currentBlock->code.size();
+
+// Dispatch the next op, or fall through to the terminator at end of block.
+#define NAUTILUS_BC_NEXT()                                                                                             \
+	if (ip >= end)                                                                                                     \
+		goto terminator;                                                                                               \
+	goto* labels[(int16_t) ip->op]
+
+	NAUTILUS_BC_NEXT();
+
+#define NAUTILUS_BC_HANDLER(name, ...)                                                                                 \
+	L_##name : {                                                                                                       \
+		__VA_ARGS__(*ip, regs);                                                                                        \
+		++ip;                                                                                                          \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_HANDLER)
+#undef NAUTILUS_BC_HANDLER
+
+terminator:
+	if (const auto* res = std::get_if<BranchOp>(&currentBlock->terminatorOp)) {
+		currentBlock = &code.blocks[res->nextBlock];
+	} else if (const auto* res = std::get_if<ConditionalJumpOp>(&currentBlock->terminatorOp)) {
+		currentBlock =
+		    readReg<bool>(regs, res->conditionalReg) ? &code.blocks[res->trueBlock] : &code.blocks[res->falseBlock];
+	} else {
+		const auto& ret = std::get<ReturnOp>(currentBlock->terminatorOp);
+		if (ret.resultReg < 0) {
+			return 0;
+		}
+		return regs[ret.resultReg];
+	}
+	ip = currentBlock->code.data();
+	end = ip + currentBlock->code.size();
+	NAUTILUS_BC_NEXT();
+#undef NAUTILUS_BC_NEXT
+}
+#pragma GCC diagnostic pop
+#endif // NAUTILUS_BC_HAS_COMPUTED_GOTO
 
 std::ostream& operator<<(std::ostream& os, const Code& code) {
 	for (size_t i = 0; i < code.blocks.size(); i++) {

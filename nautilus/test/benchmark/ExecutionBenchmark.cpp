@@ -115,7 +115,7 @@ TEST_CASE("Execution Benchmark") {
 	for (auto& test : benchmarks) {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
-		for (const auto& dispatch : {std::string("call"), std::string("switch")}) {
+		for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + dispatch)
 			    .operator=([&func, dispatch](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
