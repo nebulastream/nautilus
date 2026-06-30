@@ -84,6 +84,10 @@ Operation* foldIntArithmetic(common::Arena& arena, const Operation& op, Operatio
                              int64_t r) {
 	const auto stamp = op.getStamp();
 	const auto id = op.getIdentifier();
+	// Division and modulo are sign-sensitive: an unsigned stamp must fold with
+	// unsigned semantics, otherwise operands above INT64_MAX are treated as
+	// negative. Add/Sub/Mul share the same bit pattern for both signednesses.
+	const bool isUnsigned = isUnsignedInteger(stamp);
 	switch (kind) {
 	case Operation::OperationType::AddOp:
 		return makeIntConst(arena, id, static_cast<int64_t>(static_cast<uint64_t>(l) + static_cast<uint64_t>(r)),
@@ -98,10 +102,18 @@ Operation* foldIntArithmetic(common::Arena& arena, const Operation& op, Operatio
 		if (r == 0) {
 			return nullptr;
 		}
+		if (isUnsigned) {
+			return makeIntConst(arena, id, static_cast<int64_t>(static_cast<uint64_t>(l) / static_cast<uint64_t>(r)),
+			                    stamp);
+		}
 		return makeIntConst(arena, id, l / r, stamp);
 	case Operation::OperationType::ModOp:
 		if (r == 0) {
 			return nullptr;
+		}
+		if (isUnsigned) {
+			return makeIntConst(arena, id, static_cast<int64_t>(static_cast<uint64_t>(l) % static_cast<uint64_t>(r)),
+			                    stamp);
 		}
 		return makeIntConst(arena, id, l % r, stamp);
 	default:
@@ -136,21 +148,26 @@ Operation* foldFloatArithmetic(common::Arena& arena, const Operation& op, Operat
 }
 
 Operation* foldCompareInt(common::Arena& arena, const Operation& op, CompareOperation::Comparator cmp, int64_t l,
-                          int64_t r) {
+                          int64_t r, bool isUnsigned) {
 	const auto id = op.getIdentifier();
+	// Ordered comparisons are sign-sensitive. EQ/NE compare bit patterns and are
+	// the same either way; LT/LE/GT/GE must use unsigned comparison for unsigned
+	// operands, otherwise values above INT64_MAX compare as negative.
+	const auto ul = static_cast<uint64_t>(l);
+	const auto ur = static_cast<uint64_t>(r);
 	switch (cmp) {
 	case CompareOperation::EQ:
 		return makeBoolConst(arena, id, l == r);
 	case CompareOperation::NE:
 		return makeBoolConst(arena, id, l != r);
 	case CompareOperation::LT:
-		return makeBoolConst(arena, id, l < r);
+		return makeBoolConst(arena, id, isUnsigned ? ul < ur : l < r);
 	case CompareOperation::LE:
-		return makeBoolConst(arena, id, l <= r);
+		return makeBoolConst(arena, id, isUnsigned ? ul <= ur : l <= r);
 	case CompareOperation::GT:
-		return makeBoolConst(arena, id, l > r);
+		return makeBoolConst(arena, id, isUnsigned ? ul > ur : l > r);
 	case CompareOperation::GE:
-		return makeBoolConst(arena, id, l >= r);
+		return makeBoolConst(arena, id, isUnsigned ? ul >= ur : l >= r);
 	}
 	return nullptr;
 }
@@ -246,6 +263,11 @@ Operation* tryFold(common::Arena& arena, Operation* op) {
 			const auto shifted = static_cast<int64_t>(static_cast<uint64_t>(left.i) << amount);
 			return makeIntConst(arena, id, shifted, stamp);
 		}
+		// Right shift is sign-sensitive: unsigned operands need a logical shift
+		// (zero-fill), signed operands an arithmetic shift (sign-fill).
+		if (isUnsignedInteger(stamp)) {
+			return makeIntConst(arena, id, static_cast<int64_t>(static_cast<uint64_t>(left.i) >> amount), stamp);
+		}
 		return makeIntConst(arena, id, left.i >> amount, stamp);
 	}
 
@@ -280,7 +302,10 @@ Operation* tryFold(common::Arena& arena, Operation* op) {
 		const auto cmpOp = as<CompareOperation>(op);
 		const auto cmp = cmpOp->getComparator();
 		if (left.kind == ConstKind::Int && right.kind == ConstKind::Int) {
-			return foldCompareInt(arena, *op, cmp, left.i, right.i);
+			// CompareOperation's stamp is bool; signedness comes from the
+			// operand type instead.
+			const bool isUnsigned = isUnsignedInteger(binary->getLeftInput()->getStamp());
+			return foldCompareInt(arena, *op, cmp, left.i, right.i, isUnsigned);
 		}
 		if (left.kind == ConstKind::Float && right.kind == ConstKind::Float) {
 			return foldCompareFloat(arena, *op, cmp, left.f, right.f);
