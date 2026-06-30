@@ -63,19 +63,22 @@ val<int64_t> bcModBit(val<int64_t> a, val<int64_t> b) {
 	return m + (a & b) + (a | b) + (a ^ b);
 }
 
-engine::NautilusEngine bcEngine(const std::string& dispatch, bool reuseRegisterFile = false) {
+engine::NautilusEngine bcEngine(const std::string& dispatch, bool reuseRegisterFile = false,
+                                bool superinstructions = false) {
 	engine::Options options;
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("bc.dispatch", dispatch);
 	options.setOption("bc.regfileReuse", reuseRegisterFile);
+	options.setOption("bc.superinstructions", superinstructions);
 	return engine::NautilusEngine(options);
 }
 
 struct Variant {
 	std::string dispatch;
 	bool reuse;
+	bool super;
 	std::string name() const {
-		return dispatch + (reuse ? "_regfileReuse" : "");
+		return dispatch + (reuse ? "_regfileReuse" : "") + (super ? "_superinstructions" : "");
 	}
 };
 
@@ -83,14 +86,16 @@ struct Variant {
 
 TEST_CASE("BC dispatch modes produce identical results") {
 	auto call = bcEngine("call");
-	// Every (dispatch, regfileReuse) combination must match the plain "call"
-	// reference. regfileReuse recycles the per-invocation register file, so this
-	// also guards that recycling does not leak state between invocations.
+	// Every (dispatch, regfileReuse, superinstructions) combination must match the
+	// plain "call" reference. regfileReuse recycles the per-invocation register file
+	// (guards against state leaking between invocations); superinstructions fuses
+	// compare+branch on the threaded path (guards the fusion against the reference).
 	const std::vector<Variant> variants = {
-	    {"call", true}, {"switch", false}, {"switch", true}, {"threaded", false}, {"threaded", true}};
+	    {"call", true, false},     {"switch", false, false},  {"switch", true, false},  {"threaded", false, false},
+	    {"threaded", true, false}, {"threaded", false, true}, {"threaded", true, true}, {"switch", false, true}};
 	for (const auto& variant : variants) {
 		DYNAMIC_SECTION(variant.name()) {
-			auto alt = bcEngine(variant.dispatch, variant.reuse);
+			auto alt = bcEngine(variant.dispatch, variant.reuse, variant.super);
 
 			auto cArith = call.registerFunction(bcArith);
 			auto aArith = alt.registerFunction(bcArith);

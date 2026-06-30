@@ -11,6 +11,27 @@
 
 namespace nautilus::compiler::bc {
 
+// Fused compare-and-branch superinstructions for the flattened threaded path
+// (Step 5). Each entry fuses a single-use integer comparison feeding a
+// conditional branch into one opcode, removing a dispatch and the separate
+// branch per loop iteration. Columns: fused opcode, the source comparison opcode
+// it replaces, the C++ operand type, and the comparison operator. This one list
+// generates the enum entries, the threaded label table, the handlers, the
+// source→fused mapping, and the defensive switch cases — so they cannot drift.
+#define NAUTILUS_BC_FUSED_BRANCH_LIST(X)                                                                               \
+	X(CJMP_LT_i32, LESS_THAN_i32, int32_t, <)                                                                          \
+	X(CJMP_LT_i64, LESS_THAN_i64, int64_t, <)                                                                          \
+	X(CJMP_LE_i32, LESS_THAN_EQUALS_i32, int32_t, <=)                                                                  \
+	X(CJMP_LE_i64, LESS_THAN_EQUALS_i64, int64_t, <=)                                                                  \
+	X(CJMP_GT_i32, GREATER_THAN_i32, int32_t, >)                                                                       \
+	X(CJMP_GT_i64, GREATER_THAN_i64, int64_t, >)                                                                       \
+	X(CJMP_GE_i32, GREATER_THAN_EQUALS_i32, int32_t, >=)                                                               \
+	X(CJMP_GE_i64, GREATER_THAN_EQUALS_i64, int64_t, >=)                                                               \
+	X(CJMP_EQ_i32, EQ_i32, int32_t, ==)                                                                                \
+	X(CJMP_EQ_i64, EQ_i64, int64_t, ==)                                                                                \
+	X(CJMP_NE_i32, NOT_EQUALS_i32, int32_t, !=)                                                                        \
+	X(CJMP_NE_i64, NOT_EQUALS_i64, int64_t, !=)
+
 /**
  * @brief This defines the central register file for the byte-code interpreter.
  * Uses a dynamic vector sized based on actual register usage.
@@ -356,6 +377,12 @@ enum class ByteCode : short {
 	JMP,  // unconditional jump: reg1 = target block index
 	CJMP, // conditional jump:   reg1 = condition reg, reg2 = true block, reg3 = false block
 	RET,  // return:             reg1 = result reg (< 0 for void)
+	      // Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
+	      // reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
+	      // after the plain terminators so earlier opcode values never shift.
+#define NAUTILUS_BC_FUSED_ENUM_ENTRY(fused, src, ctype, cmp) fused,
+	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_ENUM_ENTRY)
+#undef NAUTILUS_BC_FUSED_ENUM_ENTRY
 };
 
 /**
@@ -729,6 +756,12 @@ public:
 
 	std::vector<OpCode> code = std::vector<OpCode>();
 	std::variant<BranchOp, ConditionalJumpOp, ReturnOp> terminatorOp = ReturnOp {0};
+
+	// Set by the lowering when this block ends in a ConditionalJumpOp whose
+	// condition is a single-use CompareOperation. Signals that the flattened
+	// threaded path may fuse the trailing compare into the branch (Step 5). Only
+	// consulted when bc.superinstructions is enabled; call/switch ignore it.
+	bool fuseCompareIntoBranch = false;
 
 	friend std::ostream& operator<<(std::ostream& os, const CodeBlock& block);
 };
