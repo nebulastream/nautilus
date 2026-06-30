@@ -63,20 +63,34 @@ val<int64_t> bcModBit(val<int64_t> a, val<int64_t> b) {
 	return m + (a & b) + (a | b) + (a ^ b);
 }
 
-engine::NautilusEngine bcEngine(const std::string& dispatch) {
+engine::NautilusEngine bcEngine(const std::string& dispatch, bool reuseRegisterFile = false) {
 	engine::Options options;
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("bc.dispatch", dispatch);
+	options.setOption("bc.regfileReuse", reuseRegisterFile);
 	return engine::NautilusEngine(options);
 }
+
+struct Variant {
+	std::string dispatch;
+	bool reuse;
+	std::string name() const {
+		return dispatch + (reuse ? "_regfileReuse" : "");
+	}
+};
 
 } // namespace
 
 TEST_CASE("BC dispatch modes produce identical results") {
 	auto call = bcEngine("call");
-	for (const auto& mode : {std::string("switch"), std::string("threaded")}) {
-		DYNAMIC_SECTION(mode) {
-			auto alt = bcEngine(mode);
+	// Every (dispatch, regfileReuse) combination must match the plain "call"
+	// reference. regfileReuse recycles the per-invocation register file, so this
+	// also guards that recycling does not leak state between invocations.
+	const std::vector<Variant> variants = {
+	    {"call", true}, {"switch", false}, {"switch", true}, {"threaded", false}, {"threaded", true}};
+	for (const auto& variant : variants) {
+		DYNAMIC_SECTION(variant.name()) {
+			auto alt = bcEngine(variant.dispatch, variant.reuse);
 
 			auto cArith = call.registerFunction(bcArith);
 			auto aArith = alt.registerFunction(bcArith);

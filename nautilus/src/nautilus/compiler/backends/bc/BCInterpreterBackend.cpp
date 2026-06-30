@@ -125,11 +125,17 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	LoweringOptions loweringOptions;
 	loweringOptions.enableRegisterAllocator = options.getOptionOrDefault("bc.registerAllocator", true);
 
-	// Execution-time option: how the interpreter dispatches each bytecode op.
-	// "call" (default) uses the indirect-call OpTable; "switch" uses an inlined
-	// switch that removes the per-instruction non-inlined call. Selectable here
-	// so the existing A/B benchmark harness can compare the two.
-	const auto dispatchMode = parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "call"));
+	// Execution-time options for the interpreter, mirroring the bc.registerAllocator
+	// plumbing so the A/B benchmark harness can compare each in isolation.
+	//   bc.dispatch          how each op is dispatched (call / switch / threaded)
+	//   bc.regfileReuse      recycle the per-invocation register file from a pool
+	//   bc.superinstructions fuse compare+branch in the threaded stream
+	//   bc.immediates        fold constant operands in the threaded stream
+	BCInterpreterOptions interpreterOptions;
+	interpreterOptions.dispatch = parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "call"));
+	interpreterOptions.reuseRegisterFile = options.getOptionOrDefault("bc.regfileReuse", false);
+	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", false);
+	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", false);
 
 	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.
@@ -179,7 +185,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		}
 
 		callbackDataStore[i]->interpreter =
-		    std::make_unique<BCInterpreter>(std::move(code), std::move(regFile), dispatchMode);
+		    std::make_unique<BCInterpreter>(std::move(code), std::move(regFile), interpreterOptions);
 	}
 
 	if (statistics != nullptr) {
@@ -189,10 +195,11 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		statistics->set("bc.registers.max", maxRegisters);
 		statistics->set("bc.registerAllocator.enabled",
 		                std::string(loweringOptions.enableRegisterAllocator ? "true" : "false"));
-		const auto* dispatchName = dispatchMode == DispatchMode::Threaded ? "threaded"
-		                           : dispatchMode == DispatchMode::Switch ? "switch"
-		                                                                  : "call";
+		const auto* dispatchName = interpreterOptions.dispatch == DispatchMode::Threaded ? "threaded"
+		                           : interpreterOptions.dispatch == DispatchMode::Switch ? "switch"
+		                                                                                 : "call";
 		statistics->set("bc.dispatch", std::string(dispatchName));
+		statistics->set("bc.regfileReuse", std::string(interpreterOptions.reuseRegisterFile ? "true" : "false"));
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
