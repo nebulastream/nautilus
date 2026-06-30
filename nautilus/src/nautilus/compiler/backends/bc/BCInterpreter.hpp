@@ -53,9 +53,21 @@ private:
 	/// that support labels-as-values; execute() routes here only when supported.
 	int64_t executeThreaded(RegisterFile& regs) const;
 
+	/// Build the flattened instruction stream used by the threaded path: all block
+	/// operations concatenated in order, each block followed by its terminator
+	/// translated into a JMP/CJMP/RET pseudo-opcode. Called once at construction
+	/// when the threaded path is active.
+	void buildFlatCode();
+
 	Code code;
 	RegisterFile registerFile;
 	DispatchMode dispatchMode;
+
+	/// Flattened form of `code` for the threaded path (empty otherwise). Reuses
+	/// OpCode for value ops; terminators are JMP/CJMP/RET whose targets are block
+	/// indices resolved to flat offsets via blockStart_.
+	std::vector<OpCode> flatCode_;
+	std::vector<int32_t> blockStart_;
 };
 
 /**
