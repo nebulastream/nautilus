@@ -501,6 +501,21 @@ bool fusedBranchFor(ByteCode cmp, ByteCode& out) {
 		return false;
 	}
 }
+
+// Map an arithmetic opcode to its immediate-folded opcode, if one exists.
+// Returns true and sets `out` on success. Drives the Step 6 folding.
+bool immOpcodeFor(ByteCode op, ByteCode& out) {
+	switch (op) {
+#define NAUTILUS_BC_IMM_MAP(immOp, src, ctype, oper)                                                                   \
+	case ByteCode::src:                                                                                                \
+		out = ByteCode::immOp;                                                                                         \
+		return true;
+		NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_MAP)
+#undef NAUTILUS_BC_IMM_MAP
+	default:
+		return false;
+	}
+}
 } // namespace
 
 void BCInterpreter::buildFlatCode() {
@@ -514,6 +529,29 @@ void BCInterpreter::buildFlatCode() {
 		const auto& block = code.blocks[i];
 		blockStart_[i] = static_cast<int32_t>(flatCode_.size());
 
+		// Step 6: emit op `k` of this block, folding a recorded small constant right
+		// operand into an *_imm opcode (operand in reg1, immediate in reg2) when
+		// enabled. foldableImmediates is sorted by index, so a single cursor suffices.
+		size_t foldCursor = 0;
+		auto emitOp = [&](size_t k) {
+			const OpCode& op = block.code[k];
+			if (options.immediates) {
+				while (foldCursor < block.foldableImmediates.size() && block.foldableImmediates[foldCursor].first < k) {
+					foldCursor++;
+				}
+				if (foldCursor < block.foldableImmediates.size() && block.foldableImmediates[foldCursor].first == k) {
+					ByteCode immOp {};
+					if (immOpcodeFor(op.op, immOp)) {
+						const int16_t imm = block.foldableImmediates[foldCursor].second;
+						// reg1 = operand, reg2 = immediate, output = result.
+						flatCode_.emplace_back(immOp, op.reg1, imm, op.output);
+						return;
+					}
+				}
+			}
+			flatCode_.push_back(op);
+		};
+
 		// Step 5: fuse a single-use trailing compare into the conditional jump when
 		// enabled. Sound only if (a) the lowering marked the compare single-use and
 		// (b) the compare is the block's last op (so its operands are not clobbered
@@ -525,7 +563,7 @@ void BCInterpreter::buildFlatCode() {
 				ByteCode fused {};
 				if (last.output == res->conditionalReg && fusedBranchFor(last.op, fused)) {
 					for (size_t k = 0; k + 1 < block.code.size(); k++) {
-						flatCode_.push_back(block.code[k]);
+						emitOp(k);
 					}
 					// reg1 = left, reg2 = right, output = true block, reg3 = false block.
 					flatCode_.emplace_back(fused, last.reg1, last.reg2, res->trueBlock, res->falseBlock);
@@ -534,8 +572,8 @@ void BCInterpreter::buildFlatCode() {
 			}
 		}
 
-		for (const auto& op : block.code) {
-			flatCode_.push_back(op);
+		for (size_t k = 0; k < block.code.size(); k++) {
+			emitOp(k);
 		}
 		if (const auto* res = std::get_if<BranchOp>(&block.terminatorOp)) {
 			flatCode_.emplace_back(ByteCode::JMP, res->nextBlock, -1, -1);
@@ -705,6 +743,9 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 #define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
 					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
 #undef NAUTILUS_BC_FUSED_SWITCH
+#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
+					NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
+#undef NAUTILUS_BC_IMM_SWITCH
 					break;
 				}
 			}
@@ -760,6 +801,10 @@ int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 #define NAUTILUS_BC_FUSED_LABEL(fused, src, ctype, cmp) &&L_##fused,
 	    NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_LABEL)
 #undef NAUTILUS_BC_FUSED_LABEL
+	// Immediate-folded labels, in the same order they were appended to the enum.
+#define NAUTILUS_BC_IMM_LABEL(immOp, src, ctype, oper) &&L_##immOp,
+	        NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_LABEL)
+#undef NAUTILUS_BC_IMM_LABEL
 	};
 
 	// Flattened stream: blocks concatenated in order, each ended by a JMP/CJMP/RET.
@@ -804,6 +849,18 @@ L_RET:
 	}
 	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_HANDLER)
 #undef NAUTILUS_BC_FUSED_HANDLER
+
+	// Immediate-folded arithmetic handlers (Step 6): operand in reg1, signed 16-bit
+	// immediate in reg2 (widened to the op type), result in output.
+#define NAUTILUS_BC_IMM_HANDLER(immOp, src, ctype, oper)                                                               \
+	L_##immOp : {                                                                                                      \
+		writeReg<ctype>(regs, ip->output,                                                                              \
+		                static_cast<ctype>(readReg<ctype>(regs, ip->reg1) oper static_cast<ctype>(ip->reg2)));         \
+		++ip;                                                                                                          \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_HANDLER)
+#undef NAUTILUS_BC_IMM_HANDLER
 #undef NAUTILUS_BC_NEXT
 }
 #pragma GCC diagnostic pop

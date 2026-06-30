@@ -86,10 +86,6 @@ private:
 	/// indices resolved to flat offsets via blockStart_.
 	std::vector<OpCode> flatCode_;
 	std::vector<int32_t> blockStart_;
-
-	/// Per-instruction immediates for the threaded path's *_imm opcodes, indexed by
-	/// position in flatCode_ (ip - base). Empty unless immediate folding is active.
-	std::vector<int64_t> flatImm_;
 };
 
 /**

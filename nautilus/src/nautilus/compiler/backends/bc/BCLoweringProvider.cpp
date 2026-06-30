@@ -9,6 +9,28 @@
 
 namespace nautilus::compiler::bc {
 
+namespace {
+// Record an arithmetic op's right operand as a foldable immediate (Step 6) when it
+// is an integer constant that fits the 16-bit immediate slot. The recorded index is
+// the op's about-to-be-emitted position in the block. Only i32/i64 are folded; the
+// flattened threaded path consumes these when bc.immediates is enabled.
+void recordFoldableImmediate(CodeBlock& codeBlock, ir::Operation* rightInput, Type type) {
+	if (type != Type::i32 && type != Type::i64) {
+		return;
+	}
+	const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(rightInput);
+	if (constInt == nullptr) {
+		return;
+	}
+	const int64_t value = constInt->getValue();
+	if (value < -32768 || value > 32767) {
+		return;
+	}
+	codeBlock.foldableImmediates.emplace_back(static_cast<uint32_t>(codeBlock.code.size()),
+	                                          static_cast<int16_t>(value));
+}
+} // namespace
+
 BCLoweringProvider::BCLoweringProvider() {
 }
 
@@ -257,6 +279,7 @@ void BCLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* addOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], addOpt->getRightInput(), type);
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -307,6 +330,7 @@ void BCLoweringProvider::LoweringContext::visitSub(ir::SubOperation* subOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], subOpt->getRightInput(), subOpt->getStamp());
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -358,6 +382,7 @@ void BCLoweringProvider::LoweringContext::visitMul(ir::MulOperation* mulOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], mulOpt->getRightInput(), mulOpt->getStamp());
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }

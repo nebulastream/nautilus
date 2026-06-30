@@ -32,6 +32,22 @@ namespace nautilus::compiler::bc {
 	X(CJMP_NE_i32, NOT_EQUALS_i32, int32_t, !=)                                                                        \
 	X(CJMP_NE_i64, NOT_EQUALS_i64, int64_t, !=)
 
+// Immediate-folding superinstructions for the flattened threaded path (Step 6).
+// Each fuses a compile-time-constant right operand directly into an arithmetic op,
+// removing one register read per use. The immediate is packed into the OpCode's
+// reg2 field (a 16-bit short), so only constants that fit are folded — which
+// covers the dominant loop-increment idiom (i = i + 1). Columns: immediate opcode,
+// the source opcode it replaces, the C++ operand type, the operator. This one list
+// generates the enum entries, threaded labels/handlers, source→imm mapping, and
+// the defensive switch cases.
+#define NAUTILUS_BC_IMM_LIST(X)                                                                                        \
+	X(ADD_imm_i32, ADD_i32, int32_t, +)                                                                                \
+	X(ADD_imm_i64, ADD_i64, int64_t, +)                                                                                \
+	X(SUB_imm_i32, SUB_i32, int32_t, -)                                                                                \
+	X(SUB_imm_i64, SUB_i64, int64_t, -)                                                                                \
+	X(MUL_imm_i32, MUL_i32, int32_t, *)                                                                                \
+	X(MUL_imm_i64, MUL_i64, int64_t, *)
+
 /**
  * @brief This defines the central register file for the byte-code interpreter.
  * Uses a dynamic vector sized based on actual register usage.
@@ -383,6 +399,11 @@ enum class ByteCode : short {
 #define NAUTILUS_BC_FUSED_ENUM_ENTRY(fused, src, ctype, cmp) fused,
 	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_ENUM_ENTRY)
 #undef NAUTILUS_BC_FUSED_ENUM_ENTRY
+// Immediate-folding pseudo-opcodes (Step 6), threaded path only. Packed as
+// reg1 = operand, reg2 = signed 16-bit immediate, output = result. Appended last.
+#define NAUTILUS_BC_IMM_ENUM_ENTRY(immOp, src, ctype, op) immOp,
+	    NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_ENUM_ENTRY)
+#undef NAUTILUS_BC_IMM_ENUM_ENTRY
 };
 
 /**
@@ -762,6 +783,12 @@ public:
 	// threaded path may fuse the trailing compare into the branch (Step 5). Only
 	// consulted when bc.superinstructions is enabled; call/switch ignore it.
 	bool fuseCompareIntoBranch = false;
+
+	// Recorded by the lowering for arithmetic ops whose right operand is a small
+	// integer constant: (index of the op within `code`, the immediate). The
+	// flattened threaded path uses these to fold the constant into the op (Step 6)
+	// when bc.immediates is enabled; call/switch ignore them.
+	std::vector<std::pair<uint32_t, int16_t>> foldableImmediates = {};
 
 	friend std::ostream& operator<<(std::ostream& os, const CodeBlock& block);
 };

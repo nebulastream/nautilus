@@ -168,6 +168,27 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// BC-only comparison of the threaded baseline against all threaded-path
+	// optimizations stacked (superinstructions + immediate folding).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allOpts : {false, true}) {
+			std::string tag = allOpts ? "allOpts" : "baseline";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.superinstructions", allOpts);
+				    op.setOption("bc.immediates", allOpts);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 

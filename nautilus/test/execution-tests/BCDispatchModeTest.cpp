@@ -64,12 +64,13 @@ val<int64_t> bcModBit(val<int64_t> a, val<int64_t> b) {
 }
 
 engine::NautilusEngine bcEngine(const std::string& dispatch, bool reuseRegisterFile = false,
-                                bool superinstructions = false) {
+                                bool superinstructions = false, bool immediates = false) {
 	engine::Options options;
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("bc.dispatch", dispatch);
 	options.setOption("bc.regfileReuse", reuseRegisterFile);
 	options.setOption("bc.superinstructions", superinstructions);
+	options.setOption("bc.immediates", immediates);
 	return engine::NautilusEngine(options);
 }
 
@@ -77,8 +78,10 @@ struct Variant {
 	std::string dispatch;
 	bool reuse;
 	bool super;
+	bool imm;
 	std::string name() const {
-		return dispatch + (reuse ? "_regfileReuse" : "") + (super ? "_superinstructions" : "");
+		return dispatch + (reuse ? "_regfileReuse" : "") + (super ? "_superinstructions" : "") +
+		       (imm ? "_immediates" : "");
 	}
 };
 
@@ -86,16 +89,20 @@ struct Variant {
 
 TEST_CASE("BC dispatch modes produce identical results") {
 	auto call = bcEngine("call");
-	// Every (dispatch, regfileReuse, superinstructions) combination must match the
-	// plain "call" reference. regfileReuse recycles the per-invocation register file
-	// (guards against state leaking between invocations); superinstructions fuses
-	// compare+branch on the threaded path (guards the fusion against the reference).
+	// Every (dispatch, regfileReuse, superinstructions, immediates) combination must
+	// match the plain "call" reference. regfileReuse recycles the per-invocation
+	// register file (guards against leaked state); superinstructions fuses
+	// compare+branch and immediates folds constant operands on the threaded path
+	// (both guarded against the reference). The kernels below contain constant
+	// operands (i+1, b+7, x-100, …) so immediate folding is actually exercised.
 	const std::vector<Variant> variants = {
-	    {"call", true, false},     {"switch", false, false},  {"switch", true, false},  {"threaded", false, false},
-	    {"threaded", true, false}, {"threaded", false, true}, {"threaded", true, true}, {"switch", false, true}};
+	    {"call", true, false, false},     {"switch", false, false, false},   {"switch", true, false, false},
+	    {"switch", false, true, false},   {"threaded", false, false, false}, {"threaded", true, false, false},
+	    {"threaded", false, true, false}, {"threaded", true, true, false},   {"threaded", false, false, true},
+	    {"threaded", false, true, true},  {"threaded", true, true, true}};
 	for (const auto& variant : variants) {
 		DYNAMIC_SECTION(variant.name()) {
-			auto alt = bcEngine(variant.dispatch, variant.reuse, variant.super);
+			auto alt = bcEngine(variant.dispatch, variant.reuse, variant.super, variant.imm);
 
 			auto cArith = call.registerFunction(bcArith);
 			auto aArith = alt.registerFunction(bcArith);
