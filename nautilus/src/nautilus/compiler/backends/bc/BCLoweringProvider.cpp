@@ -1154,6 +1154,19 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 
 void BCLoweringProvider::LoweringContext::visitIf(ir::IfOperation* ifOpt, short block, RegisterFrame& frame) {
 	auto conditionalReg = frame.getValue(ifOpt->getValue()->getIdentifier());
+
+	// Step 5 (superinstructions): if the condition is a comparison used nowhere but
+	// this branch, mark the block so the flattened threaded path may fuse the
+	// trailing compare into the conditional jump. Checked before useValue() runs, so
+	// the static count still reflects the original number of uses. The flat builder
+	// additionally verifies the compare is the block's last op (operand-safety) and
+	// only acts when bc.superinstructions is set, so call/switch are unaffected.
+	if (const auto* cmp = ir::dyn_cast<ir::CompareOperation>(ifOpt->getValue())) {
+		const auto it = usageCounts.find(cmp->getIdentifier());
+		if (it != usageCounts.end() && it->second == 1) {
+			program.blocks[block].fuseCompareIntoBranch = true;
+		}
+	}
 	// The conditional jump is this block's terminator, so no further
 	// operation in `block` will read the condition once we have
 	// captured its register number. The landing pads created below

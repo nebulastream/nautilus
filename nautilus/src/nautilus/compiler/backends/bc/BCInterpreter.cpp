@@ -486,6 +486,23 @@ BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, BCInterpreter
 #endif
 }
 
+namespace {
+// Map a comparison opcode to its fused compare+branch opcode, if one exists.
+// Returns true and sets `out` on success. Drives the Step 5 fusion.
+bool fusedBranchFor(ByteCode cmp, ByteCode& out) {
+	switch (cmp) {
+#define NAUTILUS_BC_FUSED_MAP(fused, src, ctype, cmpOp)                                                                \
+	case ByteCode::src:                                                                                                \
+		out = ByteCode::fused;                                                                                         \
+		return true;
+		NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_MAP)
+#undef NAUTILUS_BC_FUSED_MAP
+	default:
+		return false;
+	}
+}
+} // namespace
+
 void BCInterpreter::buildFlatCode() {
 	// Concatenate every block's operations in their existing order (block order
 	// matters: visitIf emits landing-pad blocks inline, so offsets are correct by
@@ -496,6 +513,27 @@ void BCInterpreter::buildFlatCode() {
 	for (size_t i = 0; i < code.blocks.size(); i++) {
 		const auto& block = code.blocks[i];
 		blockStart_[i] = static_cast<int32_t>(flatCode_.size());
+
+		// Step 5: fuse a single-use trailing compare into the conditional jump when
+		// enabled. Sound only if (a) the lowering marked the compare single-use and
+		// (b) the compare is the block's last op (so its operands are not clobbered
+		// before the branch) writing the condition register, and (c) the comparison
+		// has a fused form. Otherwise fall through to the plain emission below.
+		if (options.superinstructions && block.fuseCompareIntoBranch && !block.code.empty()) {
+			if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
+				const OpCode& last = block.code.back();
+				ByteCode fused {};
+				if (last.output == res->conditionalReg && fusedBranchFor(last.op, fused)) {
+					for (size_t k = 0; k + 1 < block.code.size(); k++) {
+						flatCode_.push_back(block.code[k]);
+					}
+					// reg1 = left, reg2 = right, output = true block, reg3 = false block.
+					flatCode_.emplace_back(fused, last.reg1, last.reg2, res->trueBlock, res->falseBlock);
+					continue;
+				}
+			}
+		}
+
 		for (const auto& op : block.code) {
 			flatCode_.push_back(op);
 		}
@@ -664,6 +702,9 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 				case ByteCode::JMP:
 				case ByteCode::CJMP:
 				case ByteCode::RET:
+#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
+					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
+#undef NAUTILUS_BC_FUSED_SWITCH
 					break;
 				}
 			}
@@ -714,8 +755,11 @@ int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
 #undef NAUTILUS_BC_LABEL
 	        && L_JMP,
-	    &&L_CJMP,
-	    &&L_RET,
+	    &&L_CJMP, &&L_RET,
+	// Fused compare+branch labels, in the same order they were appended to the enum.
+#define NAUTILUS_BC_FUSED_LABEL(fused, src, ctype, cmp) &&L_##fused,
+	    NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_LABEL)
+#undef NAUTILUS_BC_FUSED_LABEL
 	};
 
 	// Flattened stream: blocks concatenated in order, each ended by a JMP/CJMP/RET.
@@ -748,6 +792,18 @@ L_RET:
 		return 0;
 	}
 	return regs[ip->reg1];
+
+	// Fused compare+branch handlers (Step 5): read both operands, compare, and jump
+	// to the true/false block in one step. reg1 = left, reg2 = right, output = true
+	// block, reg3 = false block. Only reached via the label table.
+#define NAUTILUS_BC_FUSED_HANDLER(fused, src, ctype, cmp)                                                              \
+	L_##fused : {                                                                                                      \
+		const bool taken = readReg<ctype>(regs, ip->reg1) cmp readReg<ctype>(regs, ip->reg2);                          \
+		ip = base + blockStart_[taken ? ip->output : ip->reg3];                                                        \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_HANDLER)
+#undef NAUTILUS_BC_FUSED_HANDLER
 #undef NAUTILUS_BC_NEXT
 }
 #pragma GCC diagnostic pop

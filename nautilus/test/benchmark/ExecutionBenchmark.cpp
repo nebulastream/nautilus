@@ -148,6 +148,26 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// BC-only A/B for compare+branch superinstructions on the threaded path
+	// (bc.superinstructions). Most visible on branch-heavy loops (fibonacci).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool super : {false, true}) {
+			std::string tag = super ? "superinstr" : "noSuperinstr";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, super](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.superinstructions", super);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 
