@@ -6,6 +6,9 @@ if (ENABLE_TESTS)
     set(TEST_DATA_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/test/data/")
 endif ()
 # create config file with all compile time options
+# The libffi closure path is selected by the ENABLE_BC_LIBFFI option but exposed to
+# source as NAUTILUS_BC_LIBFFI; mirror the value so #cmakedefine emits the define.
+set(NAUTILUS_BC_LIBFFI ${ENABLE_BC_LIBFFI})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/nautilus/common/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/nautilus/config.hpp)
 
 add_subdirectory(src)
@@ -58,7 +61,7 @@ endif ()
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME}::nautilus ALIAS nautilus)
 
-if (ENABLE_BC_BACKEND AND TARGET dyncallback_s)
+if (ENABLE_BC_BACKEND AND NOT ENABLE_BC_LIBFFI AND TARGET dyncallback_s)
     list(APPEND EXPORT_TARGETS dyncallback_s)
 endif ()
 
