@@ -17,6 +17,7 @@ cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
+cmake_dependent_option(ENABLE_BC_LIBFFI "Use libffi static-trampoline closures for the bytecode backend instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
 
@@ -156,6 +157,19 @@ endif ()
 if (ENABLE_BC_BACKEND)
     add_subdirectory(${THIRD_PARTY_DIR}/dyncall)
     list(APPEND EXPORT_TARGETS dyncall_s)
+
+    if (ENABLE_BC_LIBFFI)
+        # The bytecode backend exposes each compiled function as a real C
+        # function pointer. By default this uses a dyncall callback, which
+        # writes a trampoline into RWX memory at runtime — forbidden on iOS.
+        # libffi (>= 3.4) builds closures via static trampolines (a read-only
+        # code page + a separate writable data page, no runtime PROT_EXEC), so
+        # the closure pointer stays usable where runtime codegen is banned.
+        # We locate libffi rather than vendor it: desktop/CI provide it via the
+        # system package; an iOS toolchain points at Apple's static-trampoline
+        # libffi the same way.
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindNautilusFFI.cmake)
+    endif ()
 endif ()
 
 if (ENABLE_ASMJIT_BACKEND)

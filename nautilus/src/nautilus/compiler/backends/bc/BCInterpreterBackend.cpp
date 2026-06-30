@@ -2,15 +2,119 @@
 
 #include <chrono>
 #include <cstdint>
-#include <dyncall_callback.h>
+#include <cstring>
 #include <nautilus/CompilationStatistics.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreterBackend.hpp>
 #include <nautilus/compiler/backends/bc/BCLoweringProvider.hpp>
 #include <nautilus/compiler/backends/bc/ByteCode.hpp>
 #include <nautilus/compiler/ir/operations/FunctionOperation.hpp>
+#include <nautilus/config.hpp>
+#include <stdexcept>
+
+#ifdef NAUTILUS_BC_LIBFFI
+#include <ffi.h>
+#else
+#include <dyncall_callback.h>
+#endif
 
 namespace nautilus::compiler::bc {
+
+#ifdef NAUTILUS_BC_LIBFFI
+
+/// Map a nautilus Type to the libffi type used in the closure signature.
+static ffi_type* typeToFFIType(Type type) {
+	switch (type) {
+	case Type::b:
+		// C++ bool is one byte; there is no ffi_type_bool.
+		return &ffi_type_uint8;
+	case Type::i8:
+		return &ffi_type_sint8;
+	case Type::i16:
+		return &ffi_type_sint16;
+	case Type::i32:
+		return &ffi_type_sint32;
+	case Type::i64:
+		return &ffi_type_sint64;
+	case Type::ui8:
+		return &ffi_type_uint8;
+	case Type::ui16:
+		return &ffi_type_uint16;
+	case Type::ui32:
+		return &ffi_type_uint32;
+	case Type::ui64:
+		return &ffi_type_uint64;
+	case Type::f32:
+		return &ffi_type_float;
+	case Type::f64:
+		return &ffi_type_double;
+	case Type::ptr:
+		return &ffi_type_pointer;
+	case Type::v:
+		return &ffi_type_void;
+	}
+	return &ffi_type_void;
+}
+
+/// libffi closure handler: reads arguments from the libffi argument array into the
+/// interpreter's register file, executes, and writes the typed result to `ret`.
+static void bcFFIHandler(ffi_cif* /*cif*/, void* ret, void** args, void* userdata) {
+	auto* data = static_cast<BCCallbackData*>(userdata);
+	auto raw = data->interpreter->invoke(args, data->argTypes);
+
+	switch (data->returnType) {
+	case Type::v:
+		return;
+	case Type::b:
+		// Integral/pointer returns must be written at ffi_arg width; cast through
+		// the concrete type first so libffi's truncation yields the right value.
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<bool>(raw));
+		return;
+	case Type::i8:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int8_t>(raw));
+		return;
+	case Type::i16:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int16_t>(raw));
+		return;
+	case Type::i32:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int32_t>(raw));
+		return;
+	case Type::i64:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int64_t>(raw));
+		return;
+	case Type::ui8:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint8_t>(raw));
+		return;
+	case Type::ui16:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint16_t>(raw));
+		return;
+	case Type::ui32:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint32_t>(raw));
+		return;
+	case Type::ui64:
+		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint64_t>(raw));
+		return;
+	case Type::f32: {
+		// The result register holds the float's bit pattern; reinterpret, do not
+		// numerically convert.
+		float value;
+		std::memcpy(&value, &raw, sizeof(float));
+		*static_cast<float*>(ret) = value;
+		return;
+	}
+	case Type::f64: {
+		double value;
+		std::memcpy(&value, &raw, sizeof(double));
+		*static_cast<double*>(ret) = value;
+		return;
+	}
+	case Type::ptr:
+		*static_cast<void**>(ret) = reinterpret_cast<void*>(raw);
+		return;
+	}
+}
+
+#else
 
 static char typeToDCSigChar(Type type) {
 	switch (type) {
@@ -107,6 +211,8 @@ static DCsigchar bcCallbackHandler(DCCallback* /*pcb*/, DCArgs* args, DCValue* r
 	return DC_SIGCHAR_VOID;
 }
 
+#endif // NAUTILUS_BC_LIBFFI
+
 std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                           const DumpHandler& dumpHandler,
                                                           const engine::Options& options,
@@ -116,7 +222,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 
 	std::unordered_map<std::string, void*> functionPtrs;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackDataStore;
-	std::vector<DCCallback*> callbackPtrs;
+	std::vector<BCClosureHandle> callbackPtrs;
 
 	// Lowering-time option: the simple linear register allocator is
 	// enabled by default but can be turned off via "bc.registerAllocator"
@@ -137,7 +243,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", false);
 	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", false);
 
-	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
+	// Phase 1: Allocate callback data and closure thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.
 	for (const auto& funcOp : functionOperations) {
 		auto data = std::make_unique<BCCallbackData>();
@@ -147,10 +253,35 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		}
 		data->returnType = funcOp->getOutputArg();
 
+#ifdef NAUTILUS_BC_LIBFFI
+		// Build a libffi closure with a static-trampoline thunk (no runtime RWX
+		// memory). The cif and its argument-type array are stored in `data` so they
+		// outlive the closure.
+		data->argFFITypes.reserve(data->argTypes.size());
+		for (auto argType : data->argTypes) {
+			data->argFFITypes.push_back(typeToFFIType(argType));
+		}
+		void* code = nullptr;
+		data->closure = static_cast<ffi_closure*>(ffi_closure_alloc(sizeof(ffi_closure), &code));
+		if (data->closure == nullptr) {
+			throw std::runtime_error("Failed to allocate libffi closure for bytecode function");
+		}
+		if (ffi_prep_cif(&data->cif, FFI_DEFAULT_ABI, static_cast<unsigned int>(data->argFFITypes.size()),
+		                 typeToFFIType(data->returnType), data->argFFITypes.data()) != FFI_OK) {
+			throw std::runtime_error("Failed to prepare libffi call interface for bytecode function");
+		}
+		if (ffi_prep_closure_loc(data->closure, &data->cif, bcFFIHandler, data.get(), code) != FFI_OK) {
+			throw std::runtime_error("Failed to prepare libffi closure for bytecode function");
+		}
+		data->code = code;
+		functionPtrs[funcOp->getName()] = code;
+		callbackPtrs.push_back(data->closure);
+#else
 		auto sig = buildDCSignature(data->argTypes, data->returnType);
 		auto* cb = dcbNewCallback(sig.c_str(), bcCallbackHandler, data.get());
 		functionPtrs[funcOp->getName()] = reinterpret_cast<void*>(cb);
 		callbackPtrs.push_back(cb);
+#endif
 		callbackDataStore.push_back(std::move(data));
 	}
 
