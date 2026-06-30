@@ -27,6 +27,7 @@ option(ENABLE_THREAD_SANITIZER "Enable thread sanitizer." OFF)
 option(ENABLE_UB_SANITIZER "Enable undefined behavior sanitizer." OFF)
 option(ENABLE_LEAK_SANITIZER "Enable leak sanitizer." OFF)
 option(ENABLE_LLVM_IR_TEST "Enable LLVM IR comparison tests (requires llvm-diff-19 or later)" OFF)
+cmake_dependent_option(ENABLE_FUZZING "Build the libFuzzer differential fuzz harness (Clang only)" OFF "ENABLE_TRACING" OFF)
 option(ENABLE_SIMD_PLUGIN "Enable the SIMD vector plugin" ON)
 option(ENABLE_STD_PLUGIN "Enable the standard library wrapper plugin" ON)
 option(ENABLE_SPECIALIZATION_PLUGIN "Enable the code specialization hint plugin (profile + assume)" ON)
@@ -96,6 +97,17 @@ elseif (ENABLE_UB_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
 elseif (ENABLE_LEAK_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
+endif ()
+
+if (ENABLE_FUZZING)
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ENABLE_FUZZING requires Clang (libFuzzer is not available on this compiler).")
+    endif ()
+    # Instrument the whole build with SanitizerCoverage so libFuzzer gets
+    # coverage feedback through the Nautilus library, not just the harness TU.
+    # The fuzz executable itself links the libFuzzer runtime via -fsanitize=fuzzer
+    # (see nautilus/test/fuzz/CMakeLists.txt).
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=fuzzer-no-link")
 endif ()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
