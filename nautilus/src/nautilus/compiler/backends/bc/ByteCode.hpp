@@ -347,6 +347,15 @@ enum class ByteCode : short {
 	SELECT_d,
 	SELECT_b,
 	SELECT_ptr,
+	// Terminator pseudo-opcodes used only by the flattened threaded execution
+	// path (Step 3). They are appended last so the value-opcode indices above —
+	// and therefore the OpTable layout — never shift. They are intentionally NOT
+	// part of NAUTILUS_BC_OPCODE_LIST: the call/switch paths keep the structured
+	// per-block terminators (BranchOp/ConditionalJumpOp/ReturnOp) and never see
+	// these in a block's operation stream.
+	JMP,  // unconditional jump: reg1 = target block index
+	CJMP, // conditional jump:   reg1 = condition reg, reg2 = true block, reg3 = false block
+	RET,  // return:             reg1 = result reg (< 0 for void)
 };
 
 /**

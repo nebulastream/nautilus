@@ -479,6 +479,36 @@ BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, DispatchMode 
 	for (const auto& [reg, bufIdx] : this->code.allocaRegisterMap) {
 		this->registerFile[reg] = reinterpret_cast<int64_t>(this->code.allocaBuffers[bufIdx].data());
 	}
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+	if (this->dispatchMode == DispatchMode::Threaded) {
+		buildFlatCode();
+	}
+#endif
+}
+
+void BCInterpreter::buildFlatCode() {
+	// Concatenate every block's operations in their existing order (block order
+	// matters: visitIf emits landing-pad blocks inline, so offsets are correct by
+	// construction). After each block's ops, append its terminator as a JMP/CJMP/
+	// RET pseudo-op. Terminator targets stay block indices here; they are mapped to
+	// flat offsets through blockStart_ at run time.
+	blockStart_.resize(code.blocks.size());
+	for (size_t i = 0; i < code.blocks.size(); i++) {
+		const auto& block = code.blocks[i];
+		blockStart_[i] = static_cast<int32_t>(flatCode_.size());
+		for (const auto& op : block.code) {
+			flatCode_.push_back(op);
+		}
+		if (const auto* res = std::get_if<BranchOp>(&block.terminatorOp)) {
+			flatCode_.emplace_back(ByteCode::JMP, res->nextBlock, -1, -1);
+		} else if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
+			// OpCode ctor order is (op, reg1, reg2, output, reg3).
+			flatCode_.emplace_back(ByteCode::CJMP, res->conditionalReg, res->trueBlock, -1, res->falseBlock);
+		} else {
+			const auto& ret = std::get<ReturnOp>(block.terminatorOp);
+			flatCode_.emplace_back(ByteCode::RET, ret.resultReg, -1, -1);
+		}
+	}
 }
 
 BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
@@ -590,6 +620,13 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		break;
 					NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
 #undef NAUTILUS_BC_SWITCH_CASE
+				// Terminator pseudo-opcodes never appear in a block's operation stream
+				// in the call/switch paths (they keep the structured terminators); these
+				// cases exist only so the switch covers the whole ByteCode enum.
+				case ByteCode::JMP:
+				case ByteCode::CJMP:
+				case ByteCode::RET:
+					break;
 				}
 			}
 		} else {
@@ -631,21 +668,25 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 	// Address table indexed by opcode, in the same order as the ByteCode enum.
 	// Built once at first entry (label addresses are not constant expressions).
+	// The value ops come from NAUTILUS_BC_OPCODE_LIST; the three terminator
+	// pseudo-opcodes (JMP/CJMP/RET) are appended in the same order they were added
+	// to the enum, so labels[(int) op] stays correct for every opcode.
 	static void* const labels[] = {
 #define NAUTILUS_BC_LABEL(name, ...) &&L_##name,
 	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
 #undef NAUTILUS_BC_LABEL
+	        && L_JMP,
+	    &&L_CJMP,
+	    &&L_RET,
 	};
 
-	const CodeBlock* currentBlock = &code.blocks[0];
-	const OpCode* ip = currentBlock->code.data();
-	const OpCode* end = ip + currentBlock->code.size();
+	// Flattened stream: blocks concatenated in order, each ended by a JMP/CJMP/RET.
+	// There is no end-of-block check and no variant dispatch — every block ends in
+	// a terminator op, so control always leaves via L_JMP/L_CJMP/L_RET.
+	const OpCode* const base = flatCode_.data();
+	const OpCode* ip = base;
 
-// Dispatch the next op, or fall through to the terminator at end of block.
-#define NAUTILUS_BC_NEXT()                                                                                             \
-	if (ip >= end)                                                                                                     \
-		goto terminator;                                                                                               \
-	goto* labels[(int16_t) ip->op]
+#define NAUTILUS_BC_NEXT() goto* labels[(int16_t) ip->op]
 
 	NAUTILUS_BC_NEXT();
 
@@ -658,22 +699,17 @@ int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 	NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_HANDLER)
 #undef NAUTILUS_BC_HANDLER
 
-terminator:
-	if (const auto* res = std::get_if<BranchOp>(&currentBlock->terminatorOp)) {
-		currentBlock = &code.blocks[res->nextBlock];
-	} else if (const auto* res = std::get_if<ConditionalJumpOp>(&currentBlock->terminatorOp)) {
-		currentBlock =
-		    readReg<bool>(regs, res->conditionalReg) ? &code.blocks[res->trueBlock] : &code.blocks[res->falseBlock];
-	} else {
-		const auto& ret = std::get<ReturnOp>(currentBlock->terminatorOp);
-		if (ret.resultReg < 0) {
-			return 0;
-		}
-		return regs[ret.resultReg];
-	}
-	ip = currentBlock->code.data();
-	end = ip + currentBlock->code.size();
+L_JMP:
+	ip = base + blockStart_[ip->reg1];
 	NAUTILUS_BC_NEXT();
+L_CJMP:
+	ip = base + blockStart_[readReg<bool>(regs, ip->reg1) ? ip->reg2 : ip->reg3];
+	NAUTILUS_BC_NEXT();
+L_RET:
+	if (ip->reg1 < 0) {
+		return 0;
+	}
+	return regs[ip->reg1];
 #undef NAUTILUS_BC_NEXT
 }
 #pragma GCC diagnostic pop
