@@ -65,8 +65,38 @@ ConstValue readConstant(const Operation* op) {
 	}
 }
 
+/// Truncate a 64-bit-computed fold result down to its stamp's actual bit
+/// width. Every fold below (Add/Sub/Mul/Div/Mod/Shl/Shr) computes correct
+/// 64-bit-wraparound arithmetic, but a narrower stamp (e.g. i32) needs the
+/// result wrapped to *its* width too -- otherwise the resulting
+/// ConstIntOperation holds a value outside its declared stamp's range (e.g.
+/// folding `-613191811i32 << 2` gives the 64-bit value -2452767244, which
+/// doesn't fit in an i32). Most backends happen to re-truncate when they
+/// materialize a typed constant (an explicit cast around a C++ literal, an
+/// MLIR typed attribute, ...), which is why this stayed masked everywhere
+/// except a backend that loads the raw 64-bit value into a same-width
+/// register unmodified.
+int64_t truncateToStamp(int64_t value, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		return static_cast<int64_t>(static_cast<int8_t>(value));
+	case Type::ui8:
+		return static_cast<int64_t>(static_cast<uint8_t>(value));
+	case Type::i16:
+		return static_cast<int64_t>(static_cast<int16_t>(value));
+	case Type::ui16:
+		return static_cast<int64_t>(static_cast<uint16_t>(value));
+	case Type::i32:
+		return static_cast<int64_t>(static_cast<int32_t>(value));
+	case Type::ui32:
+		return static_cast<int64_t>(static_cast<uint32_t>(value));
+	default:
+		return value; // i64, ui64 -- already full width.
+	}
+}
+
 Operation* makeIntConst(common::Arena& arena, OperationIdentifier id, int64_t value, Type stamp) {
-	return arena.create<ConstIntOperation>(arena, id, value, stamp);
+	return arena.create<ConstIntOperation>(arena, id, truncateToStamp(value, stamp), stamp);
 }
 
 Operation* makeFloatConst(common::Arena& arena, OperationIdentifier id, double value, Type stamp) {

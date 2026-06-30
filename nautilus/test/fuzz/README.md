@@ -14,11 +14,12 @@ bug because every generated program is fully defined by construction.
 
 | File | Role |
 |------|------|
+| `Types.hpp`        | The `TypeId` domain (10 types), imm pack/unpack, type dispatch helpers, value formatting/equality. |
 | `ByteReader.hpp`   | Deterministic `FuzzedDataProvider`-style view over the fuzzer buffer. |
-| `Ast.hpp`          | Tagged AST, depth/node-budgeted generator, and a pretty printer. |
-| `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle). |
+| `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type), and a pretty printer. |
+| `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type. |
 | `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation. |
-| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers. |
+| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T`. |
 | `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
 | `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
 
@@ -32,17 +33,57 @@ bug because every generated program is fully defined by construction.
     first finding, like libFuzzer).
   * `nautilus-fuzz-replay <file> ...` — replay specific saved inputs.
   * `nautilus-fuzz-replay --survey [N]` — run N inputs **without** aborting and
-    print findings bucketed by `(backend, kind)`, to triage how many distinct
-    bug classes exist.
+    print findings bucketed by `(backend, type, kind)`, to triage how many
+    distinct bug classes exist (e.g. an `i8`-only bug breaks out from an
+    `f64`-only one instead of merging into one bucket).
+
+## Scope: ten value domains
+
+Each generated program is monomorphic in one of ten types, picked from the
+first byte of the fuzzer input: `int8_t/16/32/64_t`, `uint8/16/32/64_t`,
+`float`, `double` (`TypeId` in `Types.hpp`). The rest of the input (AST shape,
+constants, parameters) is generated and evaluated entirely in that one type,
+mirroring how the original `uint64_t`-only fuzzer worked.
+
+* **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
+  (`& | ^ << >> ~`), unary negate, comparisons, `Select`/`If`, and `Cast`
+  (round-trips the value through another *integer* type, e.g. `(T)(To)v`,
+  exercising sign/zero-extension and truncation codegen).
+* **Float domain** (`float`, `double`): arithmetic (`+ - * /`), unary
+  negate, comparisons, `Select`/`If`, and `Cast` (round-trips through the
+  *other* float type only).
+* **Not generated, by design**: casts between the integer and float domains.
+  Casting an out-of-range float to an integer type is undefined behavior in
+  C++, which would need explicit range clamping (matching the native and
+  traced sides exactly) to fuzz safely -- left as a follow-up rather than
+  built half-way. Loops/control-flow-loop generation are likewise out of
+  scope for now -- today's `If`/`Select` already exercise branch lowering;
+  loop generation needs a data-dependent, bounded trip count threaded through
+  both the oracle and the traced kernel and is a separate piece of work.
 
 ## Soundness model
 
-All values are `uint64_t`, which never integer-promotes and has defined
-wraparound, so native and traced arithmetic match by construction. Partial
-operations are made total during generation: division/modulo divisors are
-`| 1` (never zero) and shift amounts are masked to `[0, 64)`. This is what makes
-the native oracle a valid reference. Floating point and signed overflow are
-intentionally excluded (see the plan / follow-ups).
+Within the integer domain, unsigned arithmetic uses plain operators (defined
+wraparound). Signed arithmetic (`Add`/`Sub`/`Mul`/`Neg`) is computed by
+promoting to the type's unsigned counterpart, operating there (defined
+wraparound), and converting back (well-defined modulo 2^n) -- plain signed
+overflow is still undefined behavior in C++20 even though two's-complement
+representation is mandated, so the oracle avoids it explicitly while still
+producing the same bit pattern every backend's two's-complement codegen
+actually computes. Division/modulo divisors are forced non-zero (`| T(1)`),
+and for signed types additionally forced away from `-1` -- the one divisor
+value for which `TYPE_MIN / divisor` overflows (and traps via `idiv` on
+x86) -- and shift amounts are masked to `[0, bit-width(T))`.
+
+The float domain needs none of this: IEEE 754 arithmetic (including division
+by zero, which produces `+-inf`/`NaN` rather than trapping) is fully defined,
+so `+ - * /` and comparisons are generated unconstrained. Oracle-vs-backend
+equality is NaN-aware (`a == b || (isnan(a) && isnan(b))`), since a generated
+program routinely producing `NaN` on both sides is expected behavior, not a
+mismatch.
+
+This is what makes the native oracle (`EvalNative.hpp`) a valid reference for
+every one of the ten domains.
 
 ## Build & run
 
@@ -54,6 +95,11 @@ cmake -DENABLE_FUZZING=ON -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_BUILD_TYPE=Rel
 cmake --build . --target nautilus-fuzz
 ./nautilus/test/fuzz/nautilus-fuzz -max_total_time=120        # or -runs=100000
 ```
+
+`nautilus-fuzz` needs `-fsanitize=fuzzer` support, so it specifically needs a
+recent Clang; `clang++-21` is the project default but any reasonably-recent
+Clang works. `nautilus-fuzz-replay` (`-DENABLE_FUZZER_REPLAY=ON`) has no
+libFuzzer dependency and builds with any C++20 compiler.
 
 Add memory/UB checking by also configuring with `-DENABLE_ADDRESS_SANITIZER=ON`
 (or `-DENABLE_UB_SANITIZER=ON`); those flags are applied globally and compose

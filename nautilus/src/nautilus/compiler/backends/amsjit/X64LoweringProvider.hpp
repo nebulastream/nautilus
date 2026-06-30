@@ -105,6 +105,19 @@ private:
 		static ::asmjit::x86::Gp toGp(const AsmReg& r);
 		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
 
+		// Re-sign/zero-extend a GP register's low `stamp`-width bits across the
+		// full 64-bit register per `stamp`'s signedness. Integer arithmetic on
+		// sub-64-bit types is computed at full 64-bit width (see the class
+		// comment), which can leave the upper bits inconsistent with the
+		// narrow-width invariant (e.g. an i32 add that overflows 32 bits still
+		// produces a "correct" 64-bit sum, whose 64-bit sign-extension no
+		// longer matches the sign-extension of the wrapped-around 32-bit
+		// result). Every op whose narrow-width result can differ from its
+		// 64-bit computation -- Add/Sub/Mul/Negate(bitwise not)/Shift -- must
+		// restore the invariant afterward so later consumers (comparisons,
+		// casts, ...) that read the full register see the right value.
+		void narrowToStamp(::asmjit::x86::Gp reg, Type stamp);
+
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
 

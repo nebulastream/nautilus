@@ -38,7 +38,11 @@ std::vector<uint8_t> readFile(const char* path) {
 }
 
 std::vector<uint8_t> randomBuffer() {
-	const size_t len = nextRand() % 96;
+	// 128, not the original 96: a type-select byte and (for Cast nodes) an
+	// extra target-type byte now eat into the same fixed budget, so a
+	// slightly larger buffer keeps tree richness comparable to before across
+	// ten type domains instead of one.
+	const size_t len = nextRand() % 128;
 	std::vector<uint8_t> buf(len);
 	for (size_t i = 0; i < len; ++i) {
 		buf[i] = static_cast<uint8_t>(nextRand());
@@ -60,9 +64,10 @@ int builtinCorpus() {
 }
 
 // Survey mode: run many inputs WITHOUT aborting, bucketing findings by
-// (backend, has-runtime-parameter) and keeping one example per bucket. Used to
-// see whether distinct bug classes exist (e.g. a mismatch involving a runtime
-// parameter would point to a codegen bug rather than constant folding).
+// (backend, type, has-runtime-parameter) and keeping one example per bucket.
+// Used to see whether distinct bug classes exist (e.g. a mismatch involving a
+// runtime parameter would point to a codegen bug rather than constant
+// folding; the type breaks out e.g. an i8-only bug from an f64-only one).
 int survey(int iterations) {
 	std::map<std::string, nautilus::fuzz::Finding> buckets;
 	std::map<std::string, int> counts;
@@ -72,8 +77,8 @@ int survey(int iterations) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& f : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			++totalFindings;
-			const std::string key =
-			    f.backend + (f.exception ? "|exception" : (f.hasParam ? "|has-param" : "|all-const"));
+			const std::string key = f.backend + "|" + f.typeName +
+			                        (f.exception ? "|exception" : (f.hasParam ? "|has-param" : "|all-const"));
 			counts[key]++;
 			if (!buckets.count(key)) {
 				buckets.emplace(key, f);
@@ -89,10 +94,9 @@ int survey(int iterations) {
 	for (const auto& [key, example] : buckets) {
 		std::printf("\n[%s]  x%d\n  example: %s\n", key.c_str(), counts[key], example.program.c_str());
 		if (!example.exception) {
-			std::printf("  args p0=%llu p1=%llu p2=%llu  expected=%llu got=%llu\n",
-			            (unsigned long long) example.args[0], (unsigned long long) example.args[1],
-			            (unsigned long long) example.args[2], (unsigned long long) example.expected,
-			            (unsigned long long) example.got);
+			std::printf("  args p0=%s p1=%s p2=%s  expected=%s got=%s\n", example.args[0].c_str(),
+			            example.args[1].c_str(), example.args[2].c_str(), example.expected.c_str(),
+			            example.got.c_str());
 		} else {
 			std::printf("  exception: %s\n", example.what.c_str());
 		}
