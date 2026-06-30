@@ -10,6 +10,19 @@
 
 namespace nautilus::compiler::bc {
 
+/**
+ * @brief Selects how the interpreter dispatches bytecode operations.
+ *
+ * Call:   indirect call through the OpTable function-pointer table (legacy default).
+ * Switch: an inlined switch over the opcode, which lets the compiler inline the
+ *         operation bodies and keep the register base hot instead of paying a
+ *         non-inlined indirect call per instruction.
+ */
+enum class DispatchMode { Call, Switch };
+
+/// Parse a "bc.dispatch" option value into a DispatchMode (defaults to Call on unknown input).
+DispatchMode parseDispatchMode(const std::string& value);
+
 /// Data passed to the dyncallback handler for each function.
 struct BCCallbackData {
 	std::unique_ptr<class BCInterpreter> interpreter;
@@ -22,7 +35,7 @@ struct BCCallbackData {
  */
 class BCInterpreter {
 public:
-	BCInterpreter(Code code, RegisterFile registerFile);
+	BCInterpreter(Code code, RegisterFile registerFile, DispatchMode dispatchMode = DispatchMode::Call);
 
 	/// Read arguments from DCArgs directly into the register file, execute, and return the raw result.
 	int64_t invoke(DCArgs* args, const std::vector<Type>& argTypes);
@@ -32,6 +45,7 @@ private:
 
 	Code code;
 	RegisterFile registerFile;
+	DispatchMode dispatchMode;
 };
 
 /**

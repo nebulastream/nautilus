@@ -108,6 +108,25 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// BC-only A/B benchmark comparing the bytecode dispatch strategies:
+	// "call" indirect-calls through the OpTable, "switch" uses an inlined
+	// switch that removes the per-instruction non-inlined call.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (const auto& dispatch : {std::string("call"), std::string("switch")}) {
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + dispatch)
+			    .operator=([&func, dispatch](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", dispatch);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 

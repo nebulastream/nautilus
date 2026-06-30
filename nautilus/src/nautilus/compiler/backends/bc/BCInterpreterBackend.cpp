@@ -125,6 +125,12 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	LoweringOptions loweringOptions;
 	loweringOptions.enableRegisterAllocator = options.getOptionOrDefault("bc.registerAllocator", true);
 
+	// Execution-time option: how the interpreter dispatches each bytecode op.
+	// "call" (default) uses the indirect-call OpTable; "switch" uses an inlined
+	// switch that removes the per-instruction non-inlined call. Selectable here
+	// so the existing A/B benchmark harness can compare the two.
+	const auto dispatchMode = parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "call"));
+
 	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.
 	for (const auto& funcOp : functionOperations) {
@@ -172,7 +178,8 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 			maxRegisters = std::max(maxRegisters, regCount);
 		}
 
-		callbackDataStore[i]->interpreter = std::make_unique<BCInterpreter>(std::move(code), std::move(regFile));
+		callbackDataStore[i]->interpreter =
+		    std::make_unique<BCInterpreter>(std::move(code), std::move(regFile), dispatchMode);
 	}
 
 	if (statistics != nullptr) {
@@ -182,6 +189,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		statistics->set("bc.registers.max", maxRegisters);
 		statistics->set("bc.registerAllocator.enabled",
 		                std::string(loweringOptions.enableRegisterAllocator ? "true" : "false"));
+		statistics->set("bc.dispatch", std::string(dispatchMode == DispatchMode::Switch ? "switch" : "call"));
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
