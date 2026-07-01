@@ -227,6 +227,10 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return -evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 	case Kind::Not:
 		return ~evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+	case Kind::LNot: {
+		val<bool> b = evalNautilusInt<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
+		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -300,6 +304,19 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return l << (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
 	case Kind::Shr:
 		return l >> (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+	case Kind::LAnd: {
+		// Real val<bool> conjunction under test. l and r are both already
+		// evaluated (side-effect parity with the native oracle regardless of
+		// whether && lowers short-circuiting), only the bool combine varies.
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb && rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::LOr: {
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:
@@ -356,6 +373,10 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 	}
 	case Kind::Neg:
 		return -evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+	case Kind::LNot: {
+		val<bool> b = evalNautilusFloat<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
+		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -417,6 +438,17 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		return l * r;
 	case Kind::Div:
 		return l / r; // well-defined IEEE 754: produces +-inf / NaN for r == 0
+	case Kind::LAnd: {
+		// See the Kind::LAnd comment in evalNautilusInt.
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb && rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::LOr: {
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:

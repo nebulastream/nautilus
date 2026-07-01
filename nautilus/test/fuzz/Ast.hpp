@@ -40,6 +40,15 @@ enum class Kind : uint8_t {
 	// Unary
 	Neg, // integer and float domains: -x
 	Not, // integer domain only: ~x
+	// Logical ops on val<bool>: each operand is first turned into a bool via
+	// `!= 0`, the bools are combined with the real val<bool> operator
+	// (&&/||/!), and the result is selected back to 0/1 as T -- the same 0/1
+	// convention as the comparisons above. Both operands are always evaluated
+	// (they are value-domain subtrees evaluated *before* the bool op), so even
+	// a short-circuiting && lowering cannot skip a Store side effect.
+	LAnd,
+	LOr,
+	LNot,
 	// Cast: round-trips the single child through another type, i.e. (T)(To)x.
 	// imm holds the target TypeId, drawn from any of the ten types -- this
 	// can cross the int/float domain boundary (the output type is always T,
@@ -119,16 +128,18 @@ namespace detail {
 // both INT_KINDS and FLOAT_KINDS: a buffer of T is equally meaningful (and
 // equally safe, given generatePtrNode's bounded construction) regardless of
 // T's domain.
-inline constexpr Kind INT_KINDS[] = {
-    Kind::Add,      Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Mod,   Kind::And,   Kind::Or,   Kind::Xor,
-    Kind::Shl,      Kind::Shr,   Kind::Eq,    Kind::Ne,    Kind::Lt,    Kind::Le,    Kind::Gt,   Kind::Ge,
-    Kind::Select,   Kind::If,    Kind::Neg,   Kind::Not,   Kind::Cast,  Kind::Loop,  Kind::Load, Kind::Store,
-    Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
+inline constexpr Kind INT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,      Kind::Mod,    Kind::And,
+                                     Kind::Or,    Kind::Xor,   Kind::Shl,   Kind::Shr,      Kind::Eq,     Kind::Ne,
+                                     Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,       Kind::Select, Kind::If,
+                                     Kind::Neg,   Kind::Not,   Kind::LAnd,  Kind::LOr,      Kind::LNot,   Kind::Cast,
+                                     Kind::Loop,  Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq,  Kind::PtrNe,
+                                     Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
 
-inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Eq,     Kind::Ne,
-                                       Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,
-                                       Kind::Neg,   Kind::Cast,  Kind::Loop,  Kind::Load,  Kind::Store,  Kind::PtrToInt,
-                                       Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt,  Kind::PtrGe};
+inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,      Kind::Div,   Kind::Eq,     Kind::Ne,
+                                       Kind::Lt,    Kind::Le,    Kind::Gt,       Kind::Ge,    Kind::Select, Kind::If,
+                                       Kind::Neg,   Kind::LAnd,  Kind::LOr,      Kind::LNot,  Kind::Cast,   Kind::Loop,
+                                       Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,  Kind::PtrLt,
+                                       Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -140,6 +151,7 @@ inline int arity(Kind k) {
 		return 0;
 	case Kind::Neg:
 	case Kind::Not:
+	case Kind::LNot:
 	case Kind::Cast:
 	case Kind::Load:
 	case Kind::PtrToInt:
@@ -375,6 +387,21 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += "(~";
 		print<T>(ast, n.kid[0], out);
 		out += ")";
+		return;
+	case Kind::LNot:
+		out += "(!(";
+		print<T>(ast, n.kid[0], out);
+		out += " != 0) ? 1 : 0)";
+		return;
+	case Kind::LAnd:
+	case Kind::LOr:
+		out += "((";
+		print<T>(ast, n.kid[0], out);
+		out += " != 0 ";
+		out += (n.kind == Kind::LAnd) ? "&&" : "||";
+		out += " ";
+		print<T>(ast, n.kid[1], out);
+		out += " != 0) ? 1 : 0)";
 		return;
 	case Kind::Cast: {
 		const TypeId target = static_cast<TypeId>(n.imm);

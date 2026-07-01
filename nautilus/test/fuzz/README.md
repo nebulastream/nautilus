@@ -46,13 +46,19 @@ constants, parameters) is generated and evaluated entirely in that one type,
 mirroring how the original `uint64_t`-only fuzzer worked.
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
-  (`& | ^ << >> ~`), unary negate, comparisons, `Select`/`If`, `Loop`, and
-  `Cast` (round-trips the value through another type, e.g. `(T)(To)v`,
-  exercising sign/zero-extension/truncation codegen *and* int<->float
-  boundary conversion).
+  (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
+  `Loop`, and `Cast` (round-trips the value through another type, e.g.
+  `(T)(To)v`, exercising sign/zero-extension/truncation codegen *and*
+  int<->float boundary conversion).
 * **Float domain** (`float`, `double`): arithmetic (`+ - * /`), unary
-  negate, comparisons, `Select`/`If`, `Loop`, and `Cast` (round-trips through
-  another integer *or* float type).
+  negate, comparisons, logical ops, `Select`/`If`, `Loop`, and `Cast`
+  (round-trips through another integer *or* float type).
+* **Logical ops** (`LAnd`/`LOr`/`LNot`, both domains): each operand becomes a
+  `val<bool>` via `!= 0`, the bools are combined with the real
+  `val<bool>` `&&`/`||`/`!` operator under test, and the result is selected
+  back to 0/1 as `T` (the comparisons' convention). Operands are evaluated
+  *before* the bool op on both sides, so even a short-circuiting `&&`
+  lowering (`ENABLE_SHORT_CIRCUIT_BOOL`) cannot skip a `Store` side effect.
 * **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
   produces a `T` result, exactly like a same-domain cast -- only the
   intermediate type's domain changes. Whichever leg of the round trip is

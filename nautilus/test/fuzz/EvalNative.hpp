@@ -270,6 +270,8 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 	}
 	case Kind::Not:
 		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args, ctx));
+	case Kind::LNot:
+		return evalNativeInt<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
 		return castThrough<T>(evalNativeInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -356,6 +358,12 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return static_cast<T>(l << (r & T(sizeof(T) * 8 - 1)));
 	case Kind::Shr:
 		return static_cast<T>(l >> (r & T(sizeof(T) * 8 - 1)));
+	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
+	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
+	case Kind::LAnd:
+		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
+	case Kind::LOr:
+		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
@@ -412,6 +420,8 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 	}
 	case Kind::Neg:
 		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args, ctx));
+	case Kind::LNot:
+		return evalNativeFloat<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
 		return castThrough<T>(evalNativeFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -474,6 +484,12 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return static_cast<T>(l * r);
 	case Kind::Div:
 		return static_cast<T>(l / r); // well-defined IEEE 754: produces +-inf / NaN for r == 0
+	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
+	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
+	case Kind::LAnd:
+		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
+	case Kind::LOr:
+		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
