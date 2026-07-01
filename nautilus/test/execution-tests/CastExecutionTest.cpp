@@ -147,10 +147,47 @@ void ptrCastTest(engine::NautilusEngine& engine) {
 	}
 }
 
+// Regression for the AsmJit narrowing-cast lowering. A narrowing integer cast
+// must drop the stale high bits *before* the value reaches a full-width
+// consumer. The x64 backend previously only sign/zero-extended from the source
+// width and skipped the narrow-to-destination step, so a value like
+// (int8_t)200 stayed 200 in its 64-bit register instead of -56. Widening casts
+// and re-narrowing casts read sub-registers and therefore masked the bug; a
+// signed comparison reads the full register and exposes it. The ARM backend
+// already performed the narrowing, so this also pins the two backends to the
+// same observable behavior.
+template <typename In, typename Narrow>
+val<int32_t> narrowCastThenSignTest(val<In> x) {
+	val<Narrow> n = static_cast<val<Narrow>>(x);
+	if (n > val<Narrow>(0)) {
+		return val<int32_t>(1);
+	}
+	return val<int32_t>(0);
+}
+
+template <typename In, typename Narrow>
+void checkNarrowCastSign(engine::NautilusEngine& engine, std::string name, std::initializer_list<In> inputs) {
+	DYNAMIC_SECTION(name) {
+		auto f = engine.registerFunction(narrowCastThenSignTest<In, Narrow>);
+		for (In in : inputs) {
+			const int32_t reference = (static_cast<Narrow>(in) > static_cast<Narrow>(0)) ? 1 : 0;
+			REQUIRE(f(in) == reference);
+		}
+	}
+}
+
+void narrowCastSignTest(engine::NautilusEngine& engine) {
+	// Inputs chosen so the narrowed value differs in sign from the source.
+	checkNarrowCastSign<int32_t, int8_t>(engine, "i32_to_i8", {0, 100, 200, 384, -200});
+	checkNarrowCastSign<int32_t, int16_t>(engine, "i32_to_i16", {0, 1000, 40000, 100000, -40000});
+	checkNarrowCastSign<int64_t, int8_t>(engine, "i64_to_i8", {0, 127, 128, 255, 256});
+}
+
 TEST_CASE("Cast Interpreter Test") {
 	auto engine = nautilus::testing::makeEngine("interpreter");
 	castTest(engine);
 	ptrCastTest(engine);
+	narrowCastSignTest(engine);
 }
 
 #ifdef ENABLE_TRACING
@@ -160,6 +197,10 @@ TEST_CASE("Cast Compiler Test") {
 
 TEST_CASE("Pointer Cast Compiler Test") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { ptrCastTest(engine); });
+}
+
+TEST_CASE("Narrowing Cast Sign Compiler Test") {
+	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { narrowCastSignTest(engine); });
 }
 #endif
 } // namespace nautilus::engine
