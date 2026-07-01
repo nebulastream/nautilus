@@ -1122,58 +1122,141 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
                                                   RegisterFrame& parentFrame) {
 	// Two-phase emission so the callers can route the writes into a
 	// different block than the reads when needed (see `visitIf`).
-	// Phase-1 (reads) snapshots every input value into a fresh temp
-	// register inside `block`; phase-2 either binds the target
-	// identifier to that temp (first invocation wins) or emits a MOV
-	// from the temp into the already-bound target register, also into
-	// `block`. For unconditional branches both phases live in the same
-	// BC block, which is what the original implementation did.
-	//
-	// Phase-2 then emits a sequence of parallel-copy MOVs
-	// (tempArg -> bound target). If any tempArg aliased a bound target
-	// register a later MOV in the same phase would read a value that an
-	// earlier MOV already overwrote, silently corrupting the edge. The
-	// free list holds exactly the registers that previous ops released
-	// — a set that can include already-bound target slots — so tempArgs
-	// must come from a *fresh* counter to guarantee no aliasing. The
-	// cost is two or three extra register slots per block invocation;
-	// all other operations still enjoy the full benefit of free-list
-	// reuse.
+	// Phase-1 reads every input value; phase-2 does the writes. Keeping
+	// all reads strictly before all writes guarantees a target register
+	// that is also the source of another argument in this same edge
+	// (which is the common case on a loop back-edge: e.g. fibonacci's
+	// `a = b; b = c`) is read before it can be overwritten.
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
-	std::vector<short> tempArgs;
-	tempArgs.reserve(blockInputArguments.size());
-	for (auto* input : blockInputArguments) {
-		auto sourceReg = parentFrame.getValue(input->getIdentifier());
-		auto tempReg = registerProvider.allocFreshRegister();
-		tempArgs.push_back(tempReg);
-		program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
-		// The block-invocation REG_MOV is the final consumer of the
-		// value for this edge, so release its register once it has
-		// been copied into the successor's temporary slot.
-		useValue(input->getIdentifier(), parentFrame);
-	}
-	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
-		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
-		if (!parentFrame.contains(blockTargetArgument)) {
-			// First invocation to target this block-arg id wins the
-			// register; subsequent invocations MOV into it.
-			parentFrame.setValue(blockTargetArgument, tempArgs[i]);
-		} else {
-			auto targetReg = parentFrame.getValue(blockTargetArgument);
-			if (targetReg != tempArgs[i]) {
-				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
-			}
-			// The tempArg was only a parallel-copy staging slot; once
-			// MOVed into the bound target it is never read again, so
-			// hand it back to the free list for future normal ops to
-			// reuse. Skipped when the allocator is disabled so the
-			// baseline behaviour (no register reuse at all) is
-			// reproduced faithfully.
-			if (loweringOptions.enableRegisterAllocator) {
-				registerProvider.freeRegister(tempArgs[i]);
+
+	if (!loweringOptions.enableRegisterAllocator) {
+		// Legacy behaviour reproduced exactly: every argument round-trips
+		// through a fresh temp register, regardless of whether a cheaper
+		// direct/parallel-copy sequencing would be correct. Kept bit-for-bit
+		// so bc.registerAllocator=false stays a faithful, unoptimized A/B
+		// baseline (freeRegister() is a no-op in this mode anyway).
+		std::vector<short> tempArgs;
+		tempArgs.reserve(blockInputArguments.size());
+		for (auto* input : blockInputArguments) {
+			auto sourceReg = parentFrame.getValue(input->getIdentifier());
+			auto tempReg = registerProvider.allocFreshRegister();
+			tempArgs.push_back(tempReg);
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
+			useValue(input->getIdentifier(), parentFrame);
+		}
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			if (!parentFrame.contains(blockTargetArgument)) {
+				parentFrame.setValue(blockTargetArgument, tempArgs[i]);
+			} else {
+				auto targetReg = parentFrame.getValue(blockTargetArgument);
+				if (targetReg != tempArgs[i]) {
+					program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
+				}
 			}
 		}
+		return;
+	}
+
+	// Register allocator enabled: a target that is not yet bound still gets a
+	// fresh register up front (mirrors the legacy path — its slot can never
+	// alias anything a sibling argument in this same edge freed below, since
+	// allocFreshRegister() bypasses the free list). A target that is already
+	// bound (the loop-back-edge case) is instead collected as a
+	// (targetReg, sourceReg) pair and handed to emitParallelCopy, which
+	// sequences the whole edge with the minimum number of REG_MOVs instead of
+	// unconditionally staging every argument through a temp — turning e.g.
+	// fibonacci's 3-argument back-edge (a, b, i) from 6 MOVs into 3.
+	std::vector<std::pair<short, short>> boundPairs;
+	std::vector<std::pair<ir::OperationIdentifier, short>> freshBindings;
+	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+		auto* input = blockInputArguments[i];
+		auto sourceReg = parentFrame.getValue(input->getIdentifier());
+		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+		if (!parentFrame.contains(blockTargetArgument)) {
+			auto freshReg = registerProvider.allocFreshRegister();
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, freshReg});
+			freshBindings.emplace_back(blockTargetArgument, freshReg);
+		} else {
+			auto targetReg = parentFrame.getValue(blockTargetArgument);
+			if (targetReg != sourceReg) {
+				boundPairs.emplace_back(targetReg, sourceReg);
+			}
+		}
+		// The block-invocation read is the final consumer of the value for
+		// this edge, so release its register once captured above.
+		useValue(input->getIdentifier(), parentFrame);
+	}
+	// First invocation to target a block-arg id wins the register; deferred
+	// until every read above has run, matching the original two-phase order.
+	for (auto& [identifier, reg] : freshBindings) {
+		parentFrame.setValue(identifier, reg);
+	}
+	emitParallelCopy(block, std::move(boundPairs));
+}
+
+void BCLoweringProvider::LoweringContext::emitParallelCopy(short block, std::vector<std::pair<short, short>> pairs) {
+	if (pairs.empty()) {
+		return;
+	}
+	// Classic parallel-copy sequentialization (as used for SSA-destruction /
+	// phi-node lowering): repeatedly emit any move whose destination is not
+	// needed as a source by another still-pending move — nothing left needs
+	// that register's old value, so overwriting it now is safe. When no such
+	// move exists, every remaining move is part of a cycle (e.g. a literal
+	// swap: dst1<-src1=dst2, dst2<-src2=dst1): break one by stashing its
+	// destination's current value in a fresh temp and redirecting whichever
+	// pending move(s) were reading that destination to read the temp
+	// instead — this frees the destination, which the outer loop then
+	// drains normally. `dst` values are pairwise distinct (each is the
+	// unique physical register of a distinct already-bound SSA identifier),
+	// so this is a well-formed functional-graph sequentialization problem.
+	std::unordered_map<short, int> pendingReads;
+	for (auto& p : pairs) {
+		pendingReads[p.second]++;
+	}
+	std::vector<char> done(pairs.size(), 0);
+	std::vector<short> cycleTemps;
+	std::size_t remaining = pairs.size();
+	while (remaining > 0) {
+		bool progressed = false;
+		for (std::size_t i = 0; i < pairs.size(); i++) {
+			if (done[i]) {
+				continue;
+			}
+			auto [dst, src] = pairs[i];
+			if (pendingReads[dst] == 0) {
+				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, src, -1, dst});
+				done[i] = 1;
+				remaining--;
+				progressed = true;
+				pendingReads[src]--;
+			}
+		}
+		if (progressed || remaining == 0) {
+			continue;
+		}
+		// Stuck: break the first pending cycle member.
+		for (std::size_t i = 0; i < pairs.size(); i++) {
+			if (done[i]) {
+				continue;
+			}
+			short dst = pairs[i].first;
+			short temp = registerProvider.allocFreshRegister();
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, dst, -1, temp});
+			cycleTemps.push_back(temp);
+			for (std::size_t j = 0; j < pairs.size(); j++) {
+				if (!done[j] && pairs[j].second == dst) {
+					pairs[j].second = temp;
+				}
+			}
+			pendingReads[dst] = 0;
+			break;
+		}
+	}
+	for (short temp : cycleTemps) {
+		registerProvider.freeRegister(temp);
 	}
 }
 

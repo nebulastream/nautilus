@@ -125,6 +125,15 @@ private:
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
+		/// Sequentialize a parallel register-to-register copy (dst_i <- src_i, as if
+		/// every read happened before any write) into an ordered list of REG_MOVs,
+		/// using a fresh temp only to break a genuine permutation cycle. `dst` values
+		/// must be pairwise distinct and each pair must have dst != src. Used by
+		/// process() to move values into already-bound block-invocation targets
+		/// (e.g. loop back-edges) without unconditionally staging every argument
+		/// through a temp register.
+		void emitParallelCopy(short block, std::vector<std::pair<short, short>> pairs);
+
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitAdd(ir::AddOperation* opt, short block, RegisterFrame& frame);
 		void visitMul(ir::MulOperation* opt, short block, RegisterFrame& frame);
