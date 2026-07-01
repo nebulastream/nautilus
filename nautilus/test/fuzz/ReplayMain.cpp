@@ -38,13 +38,16 @@ std::vector<uint8_t> readFile(const char* path) {
 }
 
 std::vector<uint8_t> randomBuffer() {
-	// 160, not the original 96/128: a type-select byte, a Cast target-type
-	// byte (now drawn from all ten types instead of one domain's eight/two),
-	// and Loop/LoopIndex/LoopAcc kind-selection plus loopDepth-gated leaf
-	// selection all now compete for the same fixed budget, so a larger
-	// buffer keeps tree richness -- and the odds of generating a nontrivial
-	// or nested Loop -- comparable to before.
-	const size_t len = nextRand() % 160;
+	// 256, not the original 96/128/160: on top of the type-select byte, the
+	// Cast target-type byte, and Loop/LoopIndex/LoopAcc kind-selection, the
+	// memory domain (Load/Store/PtrToInt/Ptr-comparisons, each drawing a
+	// pointer-domain subexpression) now consumes its own kind-selection
+	// bytes, and after AST generation every input additionally pays for
+	// BUFFER_ELEMS*sizeof(T) bytes of initial buffer contents (up to 8*8=64
+	// bytes for i64/f64) on top of the three existing NUM_PARAMS args. A
+	// larger buffer keeps tree richness -- and the odds of generating a
+	// nontrivial Load/Store/pointer comparison -- comparable to before.
+	const size_t len = nextRand() % 256;
 	std::vector<uint8_t> buf(len);
 	for (size_t i = 0; i < len; ++i) {
 		buf[i] = static_cast<uint8_t>(nextRand());

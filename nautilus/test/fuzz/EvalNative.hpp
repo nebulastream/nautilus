@@ -141,6 +141,23 @@ int clampTripCount(T raw) {
 	return static_cast<int>(u % static_cast<uint64_t>(LOOP_MAX_TRIPS + 1));
 }
 
+/// Reduce a raw pointer-offset value of type T to a defined index in
+/// [0, BUFFER_ELEMS), via the identical reinterpret-then-modulo recipe as
+/// clampTripCount, just against BUFFER_ELEMS instead of LOOP_MAX_TRIPS + 1.
+/// Shared verbatim (mod constant aside) with clampBufferIndexTraced in
+/// EvalNautilus.hpp so a pointer built from the same raw offset always lands
+/// on the same buffer slot on both the native and traced sides.
+template <typename T>
+int clampBufferIndex(T raw) {
+	uint64_t u;
+	if constexpr (std::is_floating_point_v<T>) {
+		u = clampFloatToInt<T, uint64_t>(raw);
+	} else {
+		u = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(raw));
+	}
+	return static_cast<int>(u % static_cast<uint64_t>(BUFFER_ELEMS));
+}
+
 /// Mutable per-evaluation scratch state, separate from the read-only kernel
 /// `args`: the stack of enclosing Loop frames, innermost last. LoopIndex /
 /// LoopAcc always read `loopStack.back()` -- nesting is plain shadowing, the
@@ -151,10 +168,53 @@ struct LoopFrame {
 	T acc;
 };
 
+/// The shared buffer every generated program's pointer-domain nodes index
+/// into (see Kind::PtrBase in Ast.hpp). A raw, non-owning pointer: the
+/// harness owns the storage and resets its contents between the native-oracle
+/// run and each backend run so Store side effects from one run never leak
+/// into the next.
 template <typename T>
 struct EvalContext {
 	std::vector<LoopFrame<T>> loopStack;
+	std::array<T, BUFFER_ELEMS>* memory = nullptr;
 };
+
+template <typename T>
+T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
+template <typename T>
+T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
+
+/// Dispatches to whichever of evalNativeInt/evalNativeFloat matches T's
+/// domain. Used by the memory-domain helpers below (evalNativePtr, and the
+/// Load/Store cases inside evalNativeInt/evalNativeFloat) since they are
+/// shared between both domains and need to evaluate value-domain
+/// subexpressions (offsets, stored values) generated in that same domain.
+template <typename T>
+T evalNativeValue(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return evalNativeFloat<T>(ast, idx, args, ctx);
+	} else {
+		return evalNativeInt<T>(ast, idx, args, ctx);
+	}
+}
+
+/// Evaluate a pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub, see Ast.hpp)
+/// to a buffer index. Always in [0, BUFFER_ELEMS) by construction --
+/// generatePtrNode never nests, so there is no "current pointer" state to
+/// track, just a single offset off of index 0 or BUFFER_ELEMS - 1.
+template <typename T>
+int evalNativePtr(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
+	const Node& n = ast.nodes[idx];
+	switch (n.kind) {
+	case Kind::PtrAdd:
+		return clampBufferIndex<T>(evalNativeValue<T>(ast, n.kid[0], args, ctx));
+	case Kind::PtrSub:
+		return (BUFFER_ELEMS - 1) - clampBufferIndex<T>(evalNativeValue<T>(ast, n.kid[0], args, ctx));
+	case Kind::PtrBase:
+	default:
+		return 0;
+	}
+}
 
 template <typename T>
 T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
@@ -169,8 +229,18 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
 	case Kind::Select: {
+		// Both branches are evaluated unconditionally, matching the traced
+		// kernel's `select(cond, t, f)` (a data mux, not real branching -- see
+		// EvalNautilus.hpp). This must hold even though a plain C++ ternary
+		// would short-circuit: now that Store can appear inside t/f, only
+		// evaluating one side here would silently skip the other's memory
+		// side effect while the traced kernel still performs it, breaking
+		// oracle/traced parity for any program that stores inside a Select
+		// branch.
 		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
-		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args, ctx) : evalNativeInt<T>(ast, n.kid[2], args, ctx);
+		const T t = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		const T f = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+		return c != T(0) ? t : f;
 	}
 	case Kind::If: {
 		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
@@ -202,6 +272,51 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args, ctx));
 	case Kind::Cast:
 		return castThrough<T>(evalNativeInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+	case Kind::Load: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		return (*ctx.memory)[static_cast<size_t>(i)];
+	}
+	case Kind::Store: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const T v = evalNativeValue<T>(ast, n.kid[1], args, ctx);
+		(*ctx.memory)[static_cast<size_t>(i)] = v;
+		return v;
+	}
+	case Kind::PtrToInt: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		return static_cast<T>(reinterpret_cast<uintptr_t>(&(*ctx.memory)[static_cast<size_t>(i)]));
+	}
+	case Kind::PtrEq:
+	case Kind::PtrNe:
+	case Kind::PtrLt:
+	case Kind::PtrLe:
+	case Kind::PtrGt:
+	case Kind::PtrGe: {
+		const int a = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const int b = evalNativePtr<T>(ast, n.kid[1], args, ctx);
+		bool r = false;
+		switch (n.kind) {
+		case Kind::PtrEq:
+			r = (a == b);
+			break;
+		case Kind::PtrNe:
+			r = (a != b);
+			break;
+		case Kind::PtrLt:
+			r = (a < b);
+			break;
+		case Kind::PtrLe:
+			r = (a <= b);
+			break;
+		case Kind::PtrGt:
+			r = (a > b);
+			break;
+		default:
+			r = (a >= b);
+			break;
+		}
+		return r ? T(1) : T(0);
+	}
 	default:
 		break;
 	}
@@ -271,8 +386,13 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
 	case Kind::Select: {
+		// See the identical comment in evalNativeInt's Select case: both
+		// branches must be evaluated unconditionally to match the traced
+		// kernel's data-mux `select`, now that Store can live inside them.
 		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args, ctx) : evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+		const T t = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+		const T f = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+		return c != T(0) ? t : f;
 	}
 	case Kind::If: {
 		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
@@ -294,6 +414,51 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args, ctx));
 	case Kind::Cast:
 		return castThrough<T>(evalNativeFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+	case Kind::Load: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		return (*ctx.memory)[static_cast<size_t>(i)];
+	}
+	case Kind::Store: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const T v = evalNativeValue<T>(ast, n.kid[1], args, ctx);
+		(*ctx.memory)[static_cast<size_t>(i)] = v;
+		return v;
+	}
+	case Kind::PtrToInt: {
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		return static_cast<T>(reinterpret_cast<uintptr_t>(&(*ctx.memory)[static_cast<size_t>(i)]));
+	}
+	case Kind::PtrEq:
+	case Kind::PtrNe:
+	case Kind::PtrLt:
+	case Kind::PtrLe:
+	case Kind::PtrGt:
+	case Kind::PtrGe: {
+		const int a = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const int b = evalNativePtr<T>(ast, n.kid[1], args, ctx);
+		bool r = false;
+		switch (n.kind) {
+		case Kind::PtrEq:
+			r = (a == b);
+			break;
+		case Kind::PtrNe:
+			r = (a != b);
+			break;
+		case Kind::PtrLt:
+			r = (a < b);
+			break;
+		case Kind::PtrLe:
+			r = (a <= b);
+			break;
+		case Kind::PtrGt:
+			r = (a > b);
+			break;
+		default:
+			r = (a >= b);
+			break;
+		}
+		return r ? T(1) : T(0);
+	}
 	default:
 		break;
 	}
@@ -329,8 +494,9 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 } // namespace detail
 
 template <typename T>
-T evalNative(const Ast& ast, const std::array<T, NUM_PARAMS>& args) {
+T evalNative(const Ast& ast, const std::array<T, NUM_PARAMS>& args, std::array<T, BUFFER_ELEMS>& memory) {
 	detail::EvalContext<T> ctx;
+	ctx.memory = &memory;
 	if constexpr (std::is_floating_point_v<T>) {
 		return detail::evalNativeFloat<T>(ast, ast.root, args, ctx);
 	} else {
