@@ -41,10 +41,10 @@ DispatchMode parseDispatchMode(const std::string& value);
  *                     flattened threaded stream (threaded path only).
  */
 struct BCInterpreterOptions {
-	DispatchMode dispatch = DispatchMode::Call;
-	bool reuseRegisterFile = false;
-	bool superinstructions = false;
-	bool immediates = false;
+	DispatchMode dispatch = DispatchMode::Threaded;
+	bool reuseRegisterFile = true;
+	bool superinstructions = true;
+	bool immediates = true;
 };
 
 /// Data passed to the dyncallback handler for each function.

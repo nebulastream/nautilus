@@ -131,11 +131,16 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	//   bc.regfileReuse      recycle the per-invocation register file from a pool
 	//   bc.superinstructions fuse compare+branch in the threaded stream
 	//   bc.immediates        fold constant operands in the threaded stream
+	// "threaded" with reuse/superinstructions/immediates all enabled is the fastest
+	// validated combination (see BCDispatchModeTest's {threaded,true,true,true}
+	// case, checked against the "call" baseline) and is now the default; callers can
+	// still override each option for A/B benchmarking or to reproduce legacy paths.
 	BCInterpreterOptions interpreterOptions;
-	interpreterOptions.dispatch = parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "call"));
-	interpreterOptions.reuseRegisterFile = options.getOptionOrDefault("bc.regfileReuse", false);
-	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", false);
-	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", false);
+	interpreterOptions.dispatch =
+	    parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "threaded"));
+	interpreterOptions.reuseRegisterFile = options.getOptionOrDefault("bc.regfileReuse", true);
+	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", true);
+	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", true);
 
 	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.
