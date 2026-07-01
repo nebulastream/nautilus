@@ -388,6 +388,15 @@ void expressionTests(engine::NautilusEngine& engine) {
 
 void controlFlowTest(engine::NautilusEngine& engine) {
 
+	// Regression (differential fuzzer): see zeroTripLoopMergeThenAddConstant
+	// in ControlFlowFunctions.hpp.
+	SECTION("zeroTripLoopMergeThenAddConstant") {
+		auto f = engine.registerFunction(zeroTripLoopMergeThenAddConstant);
+		REQUIRE(f(uint64_t(0), uint64_t(0)) == 119);
+		REQUIRE(f(uint64_t(0), uint64_t(23)) == 142);
+		REQUIRE(f(uint64_t(1), uint64_t(23)) == 119); // then-arm: zero-trip loop leaves acc == 0
+	}
+
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
 		REQUIRE(f(42) == 42);

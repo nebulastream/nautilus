@@ -300,6 +300,22 @@ replayable and inspectable. Pinned by `i16NarrowCallArgCompare` in
 `test/common/RunctimeCallFunctions.hpp` (the truncation-folding shape LLVM
 optimizes into the failing form deterministically).
 
+A larger survey with the `StaticLoop` extension then hit the BC backend's
+variant of the issue #321 merged-value bug -- now fixed: the merge block's
+parameter reuses the SSA identifier that one arm re-defines, the other arm's
+earlier-emitted edge binds that identifier to a fresh register first, and the
+BC translator's emplace-only `Frame::setValue` silently dropped the later
+definition -- so a constant folded after the merge read a register nobody
+ever wrote (zero), e.g. `if(...) - 5808310683196811127` returned the merged
+value unmodified. The AsmJit backends got `bindResult` for this in #322; the
+BC translator now routes result registers through `getResultRegister`, which
+returns the already-bound merge-parameter register so definitions write
+straight into it. Minimized with plain input-file truncation + byte zeroing
+(the saved `fuzz-finding-<n>.bin` shrank from 234 bytes to a 3-block
+program); pinned by `zeroTripLoopMergeThenAddConstant` in
+`test/common/ControlFlowFunctions.hpp`, verified to fail on the pre-fix
+translator.
+
 (An early investigation of this bug also observed every compiling backend
 segfaulting on the same minimal kernel; that turned out to be an artifact of
 the ad hoc standalone reproduction harness's own call-stack depth tripping
