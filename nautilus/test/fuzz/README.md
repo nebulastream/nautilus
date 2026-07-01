@@ -65,6 +65,13 @@ mirroring how the original `uint64_t`-only fuzzer worked.
   execute the same native code and the differential surface is exclusively
   the backend's call lowering: argument/return marshalling, narrow-integer
   ABI extension, float register passing.
+* **`StaticLoop`** (both domains): the trace-time counterpart of `Loop`. The
+  trip count is a generation-time constant (imm, in `[0, LOOP_MAX_TRIPS]`),
+  and the loop control is a plain C++ `for` over a `static_val<int64_t>`
+  counter -- the tracer unrolls the body once per trip, each iteration
+  seeing its `LoopIndex` as a constant, exercising `static_val`'s
+  snapshot-hash machinery and trace-time unrolling instead of loop
+  lowering (the `static-loop-tests` feature).
 * **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
   produces a `T` result, exactly like a same-domain cast -- only the
   intermediate type's domain changes. Whichever leg of the round trip is

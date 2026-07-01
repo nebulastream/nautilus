@@ -7,6 +7,7 @@
 #include <limits>
 #include <nautilus/function.hpp>
 #include <nautilus/select.hpp>
+#include <nautilus/static.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
 #include <type_traits>
@@ -225,6 +226,20 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		// Plain C++ loop control over a static_val counter: the tracer
+		// unrolls the body, one copy per trip, each seeing its index as a
+		// constant (the static_val makes every iteration's snapshot hash
+		// unique -- the same pattern as test/common/StaticLoopFunctions.hpp).
+		const int64_t trips = static_cast<int64_t>(n.imm);
+		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		for (static_val<int64_t> i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg:
 		return -evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 	case Kind::Not:
@@ -373,6 +388,17 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		for (val<int32_t> i = 0; i < trips; i = i + 1) {
 			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
 			acc = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::StaticLoop: {
+		// See the Kind::StaticLoop comment in evalNautilusInt.
+		const int64_t trips = static_cast<int64_t>(n.imm);
+		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+		for (static_val<int64_t> i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;

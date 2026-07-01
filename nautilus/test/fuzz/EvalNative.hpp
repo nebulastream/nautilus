@@ -261,6 +261,16 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		const int trips = static_cast<int>(n.imm);
+		T acc = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg: {
 		const T v = evalNativeInt<T>(ast, n.kid[0], args, ctx);
 		if constexpr (std::is_signed_v<T>) {
@@ -418,6 +428,16 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		for (int i = 0; i < trips; ++i) {
 			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
 			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::StaticLoop: {
+		const int trips = static_cast<int>(n.imm);
+		T acc = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
