@@ -49,6 +49,10 @@ const std::vector<BasicBlockArgument*>& BasicBlock::getArguments() const {
 	return arguments;
 }
 
+void BasicBlock::addArgument(BasicBlockArgument* argument) {
+	arguments.push_back(argument);
+}
+
 uint64_t BasicBlock::getIndexOfArgument(Operation* arg) {
 	for (uint64_t i = 0; i < arguments.size(); i++) {
 		if (arguments[i] == arg) {
