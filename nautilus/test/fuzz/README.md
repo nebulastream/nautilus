@@ -152,29 +152,35 @@ constant-foldable `ui64` operands above `INT64_MAX`. Tracked in
 nebulastream/nautilus#312. `--survey` confirms every finding reduces to this one
 root cause.
 
-The `Loop`/cross-domain-`Cast` extension surfaced a second, pre-existing
-finding, **not specific to `Loop` or `Cast`**: minimal repro (no Loop, no
-Params, no runtime input at all) --
+The `Loop`/cross-domain-`Cast` extension surfaced a second, pre-existing bug,
+**not specific to `Loop` or `Cast`** (confirmed by reproducing it with a
+minimal, hand-built AST containing no `Loop`, no `Params`, no runtime input
+at all) -- now fixed:
 
 ```
--4.8245185693378968e-132 / (-(0.0 + 0.0))
+-4.8245185693378968e-132 / (-(0.0 + 0.0))          // f64
 ```
 
-evaluated as `f64` arithmetic. Every native-C++/IEEE-754-faithful evaluation
-gives `+inf` (`0.0 + 0.0` is `+0.0`; negating it gives the exactly-defined
-`-0.0`; `negative / -0.0` is `+inf`) -- confirmed independently with a plain
-C++ program outside Nautilus entirely. Nautilus disagrees in two distinct
-ways:
+Every native-C++/IEEE-754-faithful evaluation gives `+inf` (`0.0 + 0.0` is
+`+0.0`; negating it gives the exactly-defined `-0.0`; `negative / -0.0` is
+`+inf`). Nautilus's interpreter silently returned `-inf` instead -- a
+signed-zero handling bug reachable purely through IR interpretation, with no
+backend codegen involved.
 
-* The **interpreter** backend (`engine.Compilation = false`, no native
-  codegen at all) silently returns `-inf` instead of `+inf` -- a signed-zero
-  handling bug reachable purely through IR interpretation.
-* Every **compiling** backend (`mlir`, `cpp`, `bc`, `asmjit`) **segfaults**
-  during `registerFunction` on the exact same minimal kernel, with an
-  identical crash signature regardless of which backend is selected --
-  strongly suggesting the crash lives in the shared trace-to-IR/optimization
-  pipeline that runs before backend-specific lowering, not in any one
-  backend's codegen.
+Root cause: `val<T>::operator-()` (`include/nautilus/val_arith.hpp`)
+implemented unary negation as `(ValueType)0 - *this`. For floats this is not
+IEEE-754 negation: subtracting two exactly-equal-magnitude operands rounds to
+`+0.0` in the default round-to-nearest mode, so `0.0 - 0.0` is `+0.0`, not
+the `-0.0` that negating `+0.0` must produce. This wasn't limited to the
+interpreter -- the shared `ConstantFoldingAndCopyPropagationPass`'s `SubOp`
+fold (plain `l - r`) reproduces the identical `+0.0` for the same reason,
+so the wrong sign was already baked into the IR as a folded constant before
+any backend-specific lowering ran. Fixed by negating floats via
+multiplication by `-1` instead (`(ValueType)-1 * *this`): IEEE-754
+multiplication's sign is always the XOR of its operands' signs, so it
+flips the sign bit correctly for zero (and everything else) without going
+through cancellation. Integer negation is untouched (`0 - x` is exact
+two's-complement negation, no signed-zero concept applies).
 
 This was never hit by the fuzzer before this change because generating a
 literal `0.0` used to require an exact 64-bit-zero random draw (vanishingly
@@ -184,4 +190,15 @@ running out of buffer -- and thus landing on an exact `0.0` constant -- far
 more common. `Loop` merely made this easy to *stumble into* via survey
 (a `Loop` with a zero trip count folds to its `init`, which is often exactly
 `0.0` for the same reason); the minimal repro above proves the bug itself
-predates and is independent of `Loop`/`Cast`.
+predated and was independent of `Loop`/`Cast`.
+
+(An early investigation of this bug also observed every compiling backend
+segfaulting on the same minimal kernel; that turned out to be an artifact of
+the ad hoc standalone reproduction harness's own call-stack depth tripping
+`TagRecorder`'s `__builtin_return_address`-based frame walk
+(`src/nautilus/tracing/tag/TagRecorder.cpp`), not a defect introduced by this
+PR -- a trivial `a + b` kernel crashes the same way through that harness, and
+`--survey` never observed it through the real fuzz harness across 5000+
+runs. Worth a maintainer's attention separately, since `__builtin_return_address(N)`
+for `N > 0` is documented as unreliable beyond very small `N` by both GCC and
+Clang, but out of scope here.)
