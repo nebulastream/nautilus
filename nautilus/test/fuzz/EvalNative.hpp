@@ -3,9 +3,11 @@
 #include "Ast.hpp"
 #include "Types.hpp"
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <type_traits>
+#include <vector>
 
 namespace nautilus::fuzz {
 
@@ -24,8 +26,15 @@ namespace nautilus::fuzz {
  *     signed types additionally forced away from -1 (the one divisor value
  *     for which TYPE_MIN / divisor overflows and traps via `idiv` on x86),
  *   - shift amounts are masked to [0, bit-width(T)),
- *   - the float domain needs none of the above: IEEE 754 arithmetic
- *     (including division by zero, producing +-inf/NaN) is fully defined.
+ *   - float->int casts (directly, or as one leg of a Cast node routed
+ *     through the other domain) clamp out-of-range/NaN inputs to a defined
+ *     result instead of invoking C++'s float-to-int UB; int->float casts
+ *     need no such handling (precision loss only, never UB),
+ *   - Loop trip counts are clamped to [0, LOOP_MAX_TRIPS] via the same
+ *     unsigned-reinterpret-then-modulo on both the native and traced side,
+ *   - the float domain otherwise needs none of the above: IEEE 754
+ *     arithmetic (including division by zero, producing +-inf/NaN) is
+ *     fully defined.
  * Because every operation is well-defined, a disagreement between this
  * oracle and any Nautilus backend is an unambiguous miscompile (or tracing
  * bug).
@@ -69,37 +78,120 @@ T safeDivisor(T r) {
 	return d;
 }
 
-template <typename From>
-From castThroughInt(From v, TypeId target) {
-	return dispatchIntType(target, [&]<typename To>() -> From { return static_cast<From>(static_cast<To>(v)); });
+/// The only UB-prone leg of any cast crossing the int/float domain: clamp a
+/// float into To's representable range before truncating, using the
+/// power-of-two boundary helpers from Types.hpp (shared verbatim with
+/// EvalNautilus.hpp so the boundary math can't drift between the two).
+/// NaN maps to 0; out-of-range maps to To's min/max.
+template <typename From, typename To>
+To clampFloatToInt(From v) {
+	if (std::isnan(v)) {
+		return To(0);
+	}
+	if (v < loLimitInclusive<From, To>()) {
+		return std::numeric_limits<To>::min();
+	}
+	if (v >= hiLimitExclusive<From, To>()) {
+		return std::numeric_limits<To>::max();
+	}
+	return static_cast<To>(v);
 }
 
+/// Unified "cast through" dispatch: (From)(To)v for any target TypeId,
+/// same-domain or crossing int<->float. Exactly one leg of a
+/// domain-crossing round trip is float->int (the only UB-prone direction);
+/// that leg always goes through clampFloatToInt, the other leg is a plain
+/// (always-safe) static_cast.
 template <typename From>
-From castThroughFloat(From v, TypeId target) {
-	return dispatchFloatType(target, [&]<typename To>() -> From { return static_cast<From>(static_cast<To>(v)); });
+From castThrough(From v, TypeId target) {
+	if constexpr (std::is_floating_point_v<From>) {
+		if (isFloatType(target)) {
+			return dispatchFloatType(target,
+			                         [&]<typename To>() -> From { return static_cast<From>(static_cast<To>(v)); });
+		}
+		// From=float, target=int: clamp v into the integer range, then cast
+		// that integer back up to From (always safe, no clamp needed).
+		return dispatchIntType(target,
+		                       [&]<typename To>() -> From { return static_cast<From>(clampFloatToInt<From, To>(v)); });
+	} else {
+		if (!isFloatType(target)) {
+			return dispatchIntType(target,
+			                       [&]<typename To>() -> From { return static_cast<From>(static_cast<To>(v)); });
+		}
+		// From=int, target=float: int->float is safe; the *return* leg
+		// (float back down to the integer From) is what needs clamping.
+		return dispatchFloatType(target,
+		                         [&]<typename To>() -> From { return clampFloatToInt<To, From>(static_cast<To>(v)); });
+	}
 }
+
+/// Reduce a raw loop-count value of type T to a small, defined trip count in
+/// [0, LOOP_MAX_TRIPS]. Reinterprets to the unsigned-width representation
+/// first (well-defined bit-pattern reinterpret for ints; clamp-through-u64
+/// for floats) so the final modulo is taken in the same domain on both the
+/// native and traced sides, then narrows only at the very end.
+template <typename T>
+int clampTripCount(T raw) {
+	uint64_t u;
+	if constexpr (std::is_floating_point_v<T>) {
+		u = clampFloatToInt<T, uint64_t>(raw);
+	} else {
+		u = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(raw));
+	}
+	return static_cast<int>(u % static_cast<uint64_t>(LOOP_MAX_TRIPS + 1));
+}
+
+/// Mutable per-evaluation scratch state, separate from the read-only kernel
+/// `args`: the stack of enclosing Loop frames, innermost last. LoopIndex /
+/// LoopAcc always read `loopStack.back()` -- nesting is plain shadowing, the
+/// generator guarantees the stack is non-empty wherever they appear.
+template <typename T>
+struct LoopFrame {
+	T index;
+	T acc;
+};
 
 template <typename T>
-T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args) {
+struct EvalContext {
+	std::vector<LoopFrame<T>> loopStack;
+};
+
+template <typename T>
+T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
 		return unpackImm<T>(n.imm);
 	case Kind::Param:
 		return args[n.imm % NUM_PARAMS];
+	case Kind::LoopIndex:
+		return ctx.loopStack.back().index;
+	case Kind::LoopAcc:
+		return ctx.loopStack.back().acc;
 	case Kind::Select: {
-		const T c = evalNativeInt<T>(ast, n.kid[0], args);
-		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args) : evalNativeInt<T>(ast, n.kid[2], args);
+		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args, ctx) : evalNativeInt<T>(ast, n.kid[2], args, ctx);
 	}
 	case Kind::If: {
-		const T c = evalNativeInt<T>(ast, n.kid[0], args);
+		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
 		// Mirror the traced kernel: the else-branch is evaluated unconditionally,
 		// the then-branch only when the condition holds.
-		const T e = evalNativeInt<T>(ast, n.kid[2], args);
-		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args) : e;
+		const T e = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args, ctx) : e;
+	}
+	case Kind::Loop: {
+		const T rawCount = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
 	}
 	case Kind::Neg: {
-		const T v = evalNativeInt<T>(ast, n.kid[0], args);
+		const T v = evalNativeInt<T>(ast, n.kid[0], args, ctx);
 		if constexpr (std::is_signed_v<T>) {
 			return wrappingNeg<T>(v);
 		} else {
@@ -107,15 +199,15 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args) 
 		}
 	}
 	case Kind::Not:
-		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args));
+		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args, ctx));
 	case Kind::Cast:
-		return castThroughInt<T>(evalNativeInt<T>(ast, n.kid[0], args), static_cast<TypeId>(n.imm));
+		return castThrough<T>(evalNativeInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	default:
 		break;
 	}
 
-	const T l = evalNativeInt<T>(ast, n.kid[0], args);
-	const T r = evalNativeInt<T>(ast, n.kid[1], args);
+	const T l = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+	const T r = evalNativeInt<T>(ast, n.kid[1], args, ctx);
 	switch (n.kind) {
 	case Kind::Add:
 		if constexpr (std::is_signed_v<T>) {
@@ -167,32 +259,47 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args) 
 }
 
 template <typename T>
-T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args) {
+T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
 		return unpackImm<T>(n.imm);
 	case Kind::Param:
 		return args[n.imm % NUM_PARAMS];
+	case Kind::LoopIndex:
+		return ctx.loopStack.back().index;
+	case Kind::LoopAcc:
+		return ctx.loopStack.back().acc;
 	case Kind::Select: {
-		const T c = evalNativeFloat<T>(ast, n.kid[0], args);
-		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args) : evalNativeFloat<T>(ast, n.kid[2], args);
+		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args, ctx) : evalNativeFloat<T>(ast, n.kid[2], args, ctx);
 	}
 	case Kind::If: {
-		const T c = evalNativeFloat<T>(ast, n.kid[0], args);
-		const T e = evalNativeFloat<T>(ast, n.kid[2], args);
-		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args) : e;
+		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		const T e = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args, ctx) : e;
+	}
+	case Kind::Loop: {
+		const T rawCount = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
 	}
 	case Kind::Neg:
-		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args));
+		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args, ctx));
 	case Kind::Cast:
-		return castThroughFloat<T>(evalNativeFloat<T>(ast, n.kid[0], args), static_cast<TypeId>(n.imm));
+		return castThrough<T>(evalNativeFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	default:
 		break;
 	}
 
-	const T l = evalNativeFloat<T>(ast, n.kid[0], args);
-	const T r = evalNativeFloat<T>(ast, n.kid[1], args);
+	const T l = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+	const T r = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
 	switch (n.kind) {
 	case Kind::Add:
 		return static_cast<T>(l + r);
@@ -222,17 +329,13 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 } // namespace detail
 
 template <typename T>
-T evalNative(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args) {
-	if constexpr (std::is_floating_point_v<T>) {
-		return detail::evalNativeFloat<T>(ast, idx, args);
-	} else {
-		return detail::evalNativeInt<T>(ast, idx, args);
-	}
-}
-
-template <typename T>
 T evalNative(const Ast& ast, const std::array<T, NUM_PARAMS>& args) {
-	return evalNative<T>(ast, ast.root, args);
+	detail::EvalContext<T> ctx;
+	if constexpr (std::is_floating_point_v<T>) {
+		return detail::evalNativeFloat<T>(ast, ast.root, args, ctx);
+	} else {
+		return detail::evalNativeInt<T>(ast, ast.root, args, ctx);
+	}
 }
 
 } // namespace nautilus::fuzz
