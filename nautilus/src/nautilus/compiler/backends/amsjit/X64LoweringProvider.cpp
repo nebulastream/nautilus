@@ -210,6 +210,18 @@ void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const 
 	}
 }
 
+// See the header for the rationale (issue #321). When the identifier is
+// already bound it is a downstream merge-block parameter register; copy the
+// result into it rather than dropping the definition.
+void AsmJitLoweringProvider::LoweringContext::bindResult(const ir::OperationIdentifier& id, const AsmReg& reg,
+                                                         RegisterFrame& frame) {
+	if (frame.contains(id)) {
+		emitMove(frame.getValue(id), reg);
+	} else {
+		frame.setValue(id, reg);
+	}
+}
+
 // ── Two-pass compilation ──────────────────────────────────────────────────────
 //
 // Pass 1: call cc.newFunc() for every FunctionOperation, storing each FuncNode*.
@@ -378,13 +390,13 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::b);
 	cc.mov(toGp(reg), static_cast<int64_t>(op->getValue() ? 1 : 0));
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(op->getStamp());
 	cc.mov(toGp(reg), op->getValue());
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
@@ -405,13 +417,13 @@ void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOper
 		cc.mov(tempGp, bits);
 		cc.movq(xmmReg, tempGp);
 	}
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::ptr);
 	cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getValue()));
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 // ── Arithmetic ────────────────────────────────────────────────────────────────
@@ -437,7 +449,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		// (see narrowToStamp's doc comment).
 		narrowToStamp(gDst, op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, RegisterFrame& frame) {
@@ -457,7 +469,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 		cc.sub(gDst, toGp(right));
 		narrowToStamp(gDst, op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, RegisterFrame& frame) {
@@ -477,7 +489,7 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		cc.imul(gDst, toGp(right));
 		narrowToStamp(gDst, op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, RegisterFrame& frame) {
@@ -506,7 +518,7 @@ void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, Reg
 		}
 		cc.mov(toGp(result), quot);
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, RegisterFrame& frame) {
@@ -524,7 +536,7 @@ void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, Reg
 		cc.idiv(rem, quot, toGp(right));
 	}
 	cc.mov(toGp(result), rem);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Logical / compare ─────────────────────────────────────────────────────────
@@ -650,7 +662,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 	}
 	// Zero-extend the 8-bit result into the full 64-bit virtual register.
 	cc.movzx(toGp(result).r32(), resultGp);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, RegisterFrame& frame) {
@@ -659,7 +671,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, Reg
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), left);
 	cc.and_(toGp(result), right);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, RegisterFrame& frame) {
@@ -668,7 +680,7 @@ void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, Regis
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), left);
 	cc.or_(toGp(result), right);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, RegisterFrame& frame) {
@@ -677,7 +689,7 @@ void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, Reg
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), input);
 	cc.xor_(toGp(result), 1);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* op, RegisterFrame& frame) {
@@ -692,7 +704,7 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 	// flips its replicated extension consistently) but is wrong for unsigned
 	// stamps, whose invariant is a zero-extended (not flipped) upper half.
 	narrowToStamp(gDst, op->getStamp());
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Binary bit operations ─────────────────────────────────────────────────────
@@ -721,7 +733,7 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	// positions that change the narrow-width result's own sign, so this is
 	// needed for all three shift forms.
 	narrowToStamp(gDst, op->getStamp());
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
@@ -740,7 +752,7 @@ void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOper
 		cc.xor_(toGp(result), right);
 		break;
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Control flow ──────────────────────────────────────────────────────────────
@@ -819,7 +831,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 	emitMove(result, falseVal);
 	cc.bind(donePath);
 
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────────
@@ -864,7 +876,7 @@ void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, R
 			break;
 		}
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op, RegisterFrame& frame) {
@@ -907,7 +919,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 	// pointer register.
 	auto index = op->getIndex();
 	assert(index < functionAllocaSlots_.size() && "AllocaOperation index out of range for function");
-	frame.setValue(op->getIdentifier(), functionAllocaSlots_[index]);
+	bindResult(op->getIdentifier(), functionAllocaSlots_[index], frame);
 }
 
 // ── External function calls ───────────────────────────────────────────────────
@@ -955,7 +967,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 			invokeNode->setRet(0, toXmm(result));
 		else
 			invokeNode->setRet(0, toGp(result));
-		frame.setValue(op->getIdentifier(), result);
+		bindResult(op->getIdentifier(), result, frame);
 	}
 }
 
@@ -988,7 +1000,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 			invokeNode->setRet(0, toXmm(result));
 		else
 			invokeNode->setRet(0, toGp(result));
-		frame.setValue(op->getIdentifier(), result);
+		bindResult(op->getIdentifier(), result, frame);
 	}
 }
 
@@ -1003,7 +1015,7 @@ void AsmJitLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::Functio
 		// External function: embed the raw pointer as a compile-time constant.
 		cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getFunctionPtr()));
 	}
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 // ── Type conversion ───────────────────────────────────────────────────────────
@@ -1114,7 +1126,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		else
 			cc.cvtsd2ss(xDst, xSrc);
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 } // namespace nautilus::compiler::asmjit

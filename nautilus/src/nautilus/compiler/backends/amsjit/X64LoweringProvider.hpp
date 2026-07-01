@@ -121,6 +121,21 @@ private:
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
 
+		// Bind an operation's freshly computed result to its SSA identifier.
+		// For a normal (single) definition this just records the register.
+		// But a value's identifier can coincide with a downstream merge
+		// block's parameter whose register was already allocated by an
+		// earlier-emitted predecessor edge -- Nautilus SSA reuses an incoming
+		// value's name for the block parameter, and the diamond/loop CFG can
+		// emit that predecessor before this definition. In that case the
+		// identifier is already bound to the parameter register, and this
+		// definition is the value flowing in along *this* edge, so its result
+		// must be copied into the parameter register. Frame::setValue is
+		// emplace-only and would silently ignore the rebind, orphaning the
+		// computed value and leaving the merge parameter uninitialised along
+		// this path (issue #321).
+		void bindResult(const ir::OperationIdentifier& id, const AsmReg& reg, RegisterFrame& frame);
+
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
 

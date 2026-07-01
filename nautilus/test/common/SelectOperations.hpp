@@ -81,4 +81,22 @@ val<int32_t> selectPointerAndDeref(val<bool> condition, val<int32_t*> ptr1, val<
 	return *selected;
 }
 
+// Regression (issue #321): a zero-trip Loop nested inside a never-taken If
+// branch, whose result is merged after the If and fed into a Select. The
+// merge block's parameters reuse the SSA identifiers that the else-arm block
+// also defines; the AsmJit backend used to emit the never-taken arm's merge
+// block before the else arm and then silently drop the else arm's
+// definitions, so the merged value was left uninitialised on the taken path.
+val<float> zeroTripLoopInUntakenIfMerge(val<float> p) {
+	val<float> result = 0.0f;
+	if (p != 0.0f) { // never taken when p == 0
+		val<float> acc = 0.0f;
+		for (val<int32_t> i = 0; i < val<int32_t>(0); i = i + 1) { // zero-trip loop
+			acc = 0.0f;
+		}
+		result = acc;
+	}
+	return select(result != 0.0f, val<float>(1.0f), val<float>(0.0f));
+}
+
 } // namespace nautilus::engine

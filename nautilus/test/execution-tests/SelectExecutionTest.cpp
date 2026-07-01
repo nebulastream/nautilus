@@ -116,6 +116,18 @@ void selectTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(true, &a, &b) == 42);
 		REQUIRE(f(false, &a, &b) == 100);
 	}
+
+	// Regression for issue #321: a zero-trip loop inside a never-taken if,
+	// merged after the if and consumed by a select. The runtime result is
+	// always 0.0f (the loop never runs, so result stays 0.0f and the select
+	// picks its false value). The AsmJit backend previously returned garbage
+	// for the p == 0 case.
+	SECTION("zeroTripLoopInUntakenIfMerge") {
+		auto f = engine.registerFunction(zeroTripLoopInUntakenIfMerge);
+		REQUIRE(f(0.0f) == 0.0f); // if not taken
+		REQUIRE(f(1.0f) == 0.0f); // if taken, but loop is zero-trip -> still 0.0f
+		REQUIRE(f(-3.5f) == 0.0f);
+	}
 }
 
 TEST_CASE("Select Interpreter Test") {
