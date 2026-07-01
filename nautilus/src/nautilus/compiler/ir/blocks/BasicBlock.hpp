@@ -127,6 +127,14 @@ public:
 
 	uint64_t getIndexOfArgument(Operation* arg);
 
+	/// Appends a new loop-carried block argument (phi) to this block. Every
+	/// existing predecessor's `BasicBlockInvocation` targeting this block must
+	/// grow an argument in the same slot to keep arity consistent -- this
+	/// method only owns the block-argument side of that invariant; callers
+	/// are responsible for the invocation side (`BasicBlockInvocation::
+	/// addArgument`).
+	void addArgument(BasicBlockArgument* argument);
+
 	void replaceTerminatorOperation(Operation* newTerminatorOperation);
 
 	[[nodiscard]] std::pair<const BasicBlock*, const BasicBlock*> getNextBlocks();

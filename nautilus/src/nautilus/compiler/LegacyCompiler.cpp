@@ -22,6 +22,7 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
+#include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
@@ -166,6 +167,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
+		}
+		// Opt-in (default off), unlike the two passes above: correct, but
+		// measured to regress the BC interpreter's dispatch-bound cost model
+		// (see StrengthReductionPass.hpp) -- may still be worth enabling for
+		// an ALU-bound backend.
+		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
+			passManager.addPass(std::make_unique<ir::StrengthReductionPass>());
 		}
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });

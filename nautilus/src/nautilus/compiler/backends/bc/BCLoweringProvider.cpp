@@ -1159,15 +1159,46 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 		return;
 	}
 
-	// Register allocator enabled: a target that is not yet bound still gets a
-	// fresh register up front (mirrors the legacy path — its slot can never
-	// alias anything a sibling argument in this same edge freed below, since
-	// allocFreshRegister() bypasses the free list). A target that is already
-	// bound (the loop-back-edge case) is instead collected as a
-	// (targetReg, sourceReg) pair and handed to emitParallelCopy, which
-	// sequences the whole edge with the minimum number of REG_MOVs instead of
-	// unconditionally staging every argument through a temp — turning e.g.
-	// fibonacci's 3-argument back-edge (a, b, i) from 6 MOVs into 3.
+	if (!loweringOptions.enableRegisterCoalescing) {
+		// Register allocator enabled, coalescing not opted into: same
+		// temp-staging structure as the legacy path above, but the temp is
+		// returned to the free list once consumed (the allocator's normal
+		// reuse behavior). This is the pre-coalescing baseline: every
+		// argument still round-trips through a fresh temp register.
+		std::vector<short> tempArgs;
+		tempArgs.reserve(blockInputArguments.size());
+		for (auto* input : blockInputArguments) {
+			auto sourceReg = parentFrame.getValue(input->getIdentifier());
+			auto tempReg = registerProvider.allocFreshRegister();
+			tempArgs.push_back(tempReg);
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
+			useValue(input->getIdentifier(), parentFrame);
+		}
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			if (!parentFrame.contains(blockTargetArgument)) {
+				parentFrame.setValue(blockTargetArgument, tempArgs[i]);
+			} else {
+				auto targetReg = parentFrame.getValue(blockTargetArgument);
+				if (targetReg != tempArgs[i]) {
+					program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
+				}
+				registerProvider.freeRegister(tempArgs[i]);
+			}
+		}
+		return;
+	}
+
+	// Register allocator and coalescing both enabled: a target that is not
+	// yet bound still gets a fresh register up front (mirrors the legacy
+	// path — its slot can never alias anything a sibling argument in this
+	// same edge freed below, since allocFreshRegister() bypasses the free
+	// list). A target that is already bound (the loop-back-edge case) is
+	// instead collected as a (targetReg, sourceReg) pair and handed to
+	// emitParallelCopy, which sequences the whole edge with the minimum
+	// number of REG_MOVs instead of unconditionally staging every argument
+	// through a temp — turning e.g. fibonacci's 3-argument back-edge (a, b, i)
+	// from 6 MOVs into 3.
 	std::vector<std::pair<short, short>> boundPairs;
 	std::vector<std::pair<ir::OperationIdentifier, short>> freshBindings;
 	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {

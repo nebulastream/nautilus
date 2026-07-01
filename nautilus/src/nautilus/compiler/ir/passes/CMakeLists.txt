@@ -5,4 +5,5 @@ add_source_files(nautilus
         IRPassManager.cpp
         EmptyBlockEliminationPass.cpp
         ConstantFoldingAndCopyPropagationPass.cpp
+        StrengthReductionPass.cpp
 )

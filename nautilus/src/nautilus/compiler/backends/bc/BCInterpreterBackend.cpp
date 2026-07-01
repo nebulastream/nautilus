@@ -121,9 +121,13 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	// Lowering-time option: the simple linear register allocator is
 	// enabled by default but can be turned off via "bc.registerAllocator"
 	// for A/B benchmarking or if a caller wants to reproduce the legacy
-	// one-slot-per-value behaviour.
+	// one-slot-per-value behaviour. "bc.registerCoalescing" opts into
+	// sequencing block-invocation arguments as a parallel copy (fewer
+	// REG_MOVs on loop back-edges) instead of always staging through a
+	// temp; off by default so existing callers see no behavior change.
 	LoweringOptions loweringOptions;
 	loweringOptions.enableRegisterAllocator = options.getOptionOrDefault("bc.registerAllocator", true);
+	loweringOptions.enableRegisterCoalescing = options.getOptionOrDefault("bc.registerCoalescing", false);
 
 	// Execution-time options for the interpreter, mirroring the bc.registerAllocator
 	// plumbing so the A/B benchmark harness can compare each in isolation.
@@ -131,16 +135,16 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	//   bc.regfileReuse      recycle the per-invocation register file from a pool
 	//   bc.superinstructions fuse compare+branch in the threaded stream
 	//   bc.immediates        fold constant operands in the threaded stream
-	// "threaded" with reuse/superinstructions/immediates all enabled is the fastest
-	// validated combination (see BCDispatchModeTest's {threaded,true,true,true}
-	// case, checked against the "call" baseline) and is now the default; callers can
-	// still override each option for A/B benchmarking or to reproduce legacy paths.
+	// All default off/legacy so existing callers see no behavior change; opt in
+	// per option (or all four -- "threaded" with reuse/superinstructions/immediates
+	// is the fastest validated combination, see BCDispatchModeTest's
+	// {threaded,true,true,true} case, checked against the "call" baseline) for the
+	// speedup.
 	BCInterpreterOptions interpreterOptions;
-	interpreterOptions.dispatch =
-	    parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "threaded"));
-	interpreterOptions.reuseRegisterFile = options.getOptionOrDefault("bc.regfileReuse", true);
-	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", true);
-	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", true);
+	interpreterOptions.dispatch = parseDispatchMode(options.getOptionOrDefault<std::string>("bc.dispatch", "call"));
+	interpreterOptions.reuseRegisterFile = options.getOptionOrDefault("bc.regfileReuse", false);
+	interpreterOptions.superinstructions = options.getOptionOrDefault("bc.superinstructions", false);
+	interpreterOptions.immediates = options.getOptionOrDefault("bc.immediates", false);
 
 	// Phase 1: Allocate callback data and dyncallback thunks for all functions.
 	// The interpreter is not yet set — we need all function pointers resolved first.

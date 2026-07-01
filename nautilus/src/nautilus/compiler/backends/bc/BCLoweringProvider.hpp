@@ -11,13 +11,25 @@
 namespace nautilus::compiler::bc {
 
 /**
- * @brief Configuration for the BCLoweringProvider. Currently selects
- * whether the simple linear register allocator runs; disabling it
- * reproduces the "one fresh register per SSA value" behaviour and is
- * useful for A/B performance comparisons.
+ * @brief Configuration for the BCLoweringProvider.
+ *
+ * enableRegisterAllocator: whether the simple linear register allocator
+ * runs; disabling it reproduces the "one fresh register per SSA value"
+ * behaviour and is useful for A/B performance comparisons.
+ *
+ * enableRegisterCoalescing: when the allocator is enabled, whether
+ * block-invocation arguments that are already bound (the common case on a
+ * loop back-edge, e.g. a/b/i in a fibonacci-style loop) are sequenced as a
+ * parallel copy (fewer REG_MOVs -- one per argument in the common
+ * non-cyclic case, one temp only for a genuine permutation cycle) instead
+ * of unconditionally staging every argument through a fresh temp register.
+ * Off by default so existing callers see no behavior change; the
+ * transformation only ever changes which registers a value visits, never
+ * program semantics, so it is always safe to opt into.
  */
 struct LoweringOptions {
 	bool enableRegisterAllocator = true;
+	bool enableRegisterCoalescing = false;
 };
 
 /**

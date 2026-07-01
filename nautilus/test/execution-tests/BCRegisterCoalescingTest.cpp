@@ -67,6 +67,10 @@ val<int64_t> mixedCycleAndChain(val<int64_t> a0, val<int64_t> b0, val<int64_t> c
 TEST_CASE("BC register coalescing handles loop-carried permutation cycles") {
 	engine::Options bcOptions;
 	bcOptions.setOption("engine.backend", std::string("bc"));
+	// Coalescing is opt-in (off by default); enable it explicitly so this
+	// test actually exercises emitParallelCopy instead of the default
+	// always-stage-through-a-temp path.
+	bcOptions.setOption("bc.registerCoalescing", true);
 	engine::NautilusEngine bc(bcOptions);
 
 	engine::Options refOptions;
