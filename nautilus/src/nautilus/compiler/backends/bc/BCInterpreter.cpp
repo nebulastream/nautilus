@@ -1,5 +1,7 @@
 
 #include <cassert>
+#include <cstring>
+#include <nautilus/common/Arena.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/Dyncall.hpp>
 #include <sstream>
@@ -634,40 +636,18 @@ void releaseRegisterFile(RegisterFile&& buf) {
 	tlRegisterFilePool.push_back(std::move(buf));
 }
 
-// Same pooling pattern as tlRegisterFilePool, applied to the per-invocation alloca
-// buffers: each entry is one invocation's full set of alloca slots
-// (std::vector<std::vector<uint8_t>>, matching invoke()'s localAllocaBuffers). No
-// keying by Code identity — like the register-file pool, this is a free list of
-// interchangeable buffers; acquire() always resizes and re-zeroes from the calling
-// Code's allocaBuffers sizes, so a buffer shaped for one function is transparently
-// reshaped for another on its next acquire. Unlike the register file (whose `init`
-// carries real default register values to copy), alloca buffers must always come
-// back zeroed, so acquire() re-zeroes every byte via assign() rather than copying
-// `sizes`' contents — assign() still reuses each inner buffer's existing heap
-// capacity, so after warmup no allocation happens. Used only when bc.regfileReuse
-// is enabled.
-thread_local std::vector<std::vector<std::vector<uint8_t>>> tlAllocaBufferPool;
-
-std::vector<std::vector<uint8_t>> acquireAllocaBuffers(const std::vector<std::vector<uint8_t>>& sizes) {
-	if (tlAllocaBufferPool.empty()) {
-		std::vector<std::vector<uint8_t>> bufs(sizes.size());
-		for (size_t i = 0; i < sizes.size(); i++) {
-			bufs[i].resize(sizes[i].size(), 0);
-		}
-		return bufs;
-	}
-	std::vector<std::vector<uint8_t>> bufs = std::move(tlAllocaBufferPool.back());
-	tlAllocaBufferPool.pop_back();
-	bufs.resize(sizes.size());
-	for (size_t i = 0; i < sizes.size(); i++) {
-		bufs[i].assign(sizes[i].size(), 0);
-	}
-	return bufs;
-}
-
-void releaseAllocaBuffers(std::vector<std::vector<uint8_t>>&& bufs) {
-	tlAllocaBufferPool.push_back(std::move(bufs));
-}
+// Per-invocation alloca buffers are allocated from a pooled bump-pointer arena
+// (nautilus::common::Arena/ArenaPool, already used elsewhere for exactly this
+// "recycle scratch storage across cycles instead of going through malloc every
+// time" pattern — see Arena.hpp) instead of a hand-rolled buffer pool. The pool
+// is thread_local so concurrent threads stay independent; each acquire() hands
+// back a distinct Arena::Handle, so nested bc->bc calls on one thread never
+// alias. Returning a Handle runs Arena::softReset, which resets the bump
+// pointer but keeps the arena's heap chunks for the next acquire to bump into,
+// so after warmup no allocation happens. Used only when bc.regfileReuse is
+// enabled; unlike RegisterFile there is no "default contents" to copy in, so
+// each alloca slot is explicitly zeroed after allocation (see invoke()).
+thread_local common::ArenaPool tlAllocaArenaPool;
 } // namespace
 
 int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
@@ -688,30 +668,18 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 		}
 	} guard {&regs, reuse};
 
-	// Per-invocation alloca buffers, zeroed for a clean stack frame. Recycled from a
-	// thread-local pool under the same bc.regfileReuse flag as the register file —
-	// both are per-invocation scratch state, so there is no reason to want one
-	// pooled without the other.
-	std::vector<std::vector<uint8_t>> localAllocaBuffers =
-	    reuse ? acquireAllocaBuffers(code.allocaBuffers) : std::vector<std::vector<uint8_t>>(code.allocaBuffers.size());
-	if (!reuse) {
-		for (const auto& [reg, bufIdx] : code.allocaRegisterMap) {
-			localAllocaBuffers[bufIdx].resize(code.allocaBuffers[bufIdx].size(), 0);
-		}
-	}
-	// Return the recycled buffers to the pool on every exit path, including if
-	// execute() throws.
-	struct AllocaPoolGuard {
-		std::vector<std::vector<uint8_t>>* bufs;
-		bool active;
-		~AllocaPoolGuard() {
-			if (active) {
-				releaseAllocaBuffers(std::move(*bufs));
-			}
-		}
-	} allocaGuard {&localAllocaBuffers, reuse};
+	// Per-invocation alloca buffers, allocated from a pooled bump-pointer arena and
+	// zeroed for a clean stack frame. Recycled from the same thread-local pool under
+	// bc.regfileReuse as the register file — both are per-invocation scratch state, so
+	// there is no reason to want one pooled without the other. The Handle's destructor
+	// returns the arena to the pool (or deletes it, if standalone) on every exit path,
+	// including if execute() throws.
+	common::ArenaPool::Handle allocaArena = reuse ? tlAllocaArenaPool.acquire() : common::ArenaPool::makeStandalone();
 	for (const auto& [reg, bufIdx] : code.allocaRegisterMap) {
-		regs[reg] = reinterpret_cast<int64_t>(localAllocaBuffers[bufIdx].data());
+		auto size = code.allocaBuffers[bufIdx].size();
+		void* mem = allocaArena->allocate(size, alignof(std::max_align_t));
+		std::memset(mem, 0, size);
+		regs[reg] = reinterpret_cast<int64_t>(mem);
 	}
 
 	// Read arguments from DCArgs directly into the local register file.
