@@ -46,20 +46,38 @@ constants, parameters) is generated and evaluated entirely in that one type,
 mirroring how the original `uint64_t`-only fuzzer worked.
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
-  (`& | ^ << >> ~`), unary negate, comparisons, `Select`/`If`, and `Cast`
-  (round-trips the value through another *integer* type, e.g. `(T)(To)v`,
-  exercising sign/zero-extension and truncation codegen).
+  (`& | ^ << >> ~`), unary negate, comparisons, `Select`/`If`, `Loop`, and
+  `Cast` (round-trips the value through another type, e.g. `(T)(To)v`,
+  exercising sign/zero-extension/truncation codegen *and* int<->float
+  boundary conversion).
 * **Float domain** (`float`, `double`): arithmetic (`+ - * /`), unary
-  negate, comparisons, `Select`/`If`, and `Cast` (round-trips through the
-  *other* float type only).
-* **Not generated, by design**: casts between the integer and float domains.
-  Casting an out-of-range float to an integer type is undefined behavior in
-  C++, which would need explicit range clamping (matching the native and
-  traced sides exactly) to fuzz safely -- left as a follow-up rather than
-  built half-way. Loops/control-flow-loop generation are likewise out of
-  scope for now -- today's `If`/`Select` already exercise branch lowering;
-  loop generation needs a data-dependent, bounded trip count threaded through
-  both the oracle and the traced kernel and is a separate piece of work.
+  negate, comparisons, `Select`/`If`, `Loop`, and `Cast` (round-trips through
+  another integer *or* float type).
+* **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
+  produces a `T` result, exactly like a same-domain cast -- only the
+  intermediate type's domain changes. Whichever leg of the round trip is
+  float->int (the only UB-prone direction; int->float is precision loss
+  only, never UB) is range-clamped instead of invoking C++'s float-to-int
+  UB: `NaN -> 0`, out-of-range -> the target type's min/max. The clamp
+  compares against a power-of-two boundary rather than
+  `static_cast<From>(numeric_limits<To>::max())`, since for wide integer
+  types the latter is not exactly representable in `float`/`double` and
+  rounds *up* past the true max (e.g. `(double)INT64_MAX` rounds to `2^63`).
+  See `hiLimitExclusive`/`loLimitInclusive` in `Types.hpp`, shared verbatim
+  by the native oracle (`EvalNative.hpp`) and the traced kernel
+  (`EvalNautilus.hpp`) so the boundary math can't drift between the two.
+* **`Loop`**: a bounded, data-dependent fold -- `kid[0]` = trip-count
+  expression (clamped to `[0, LOOP_MAX_TRIPS]` via the same
+  reinterpret-to-unsigned-then-modulo on both sides), `kid[1]` = initial
+  accumulator, `kid[2]` = body, re-evaluated `trips` times with `LoopIndex`/
+  `LoopAcc` leaves bound to the current iteration (nesting uses simple
+  innermost-wins shadowing, no De Bruijn indices). Lowered to a real traced
+  `for` loop with a mutated accumulator on the Nautilus side -- the same
+  pattern used by `test/common/LoopFunctions.hpp` -- so loop lowering itself
+  is under test, not an unrolled approximation. Trip count is bounded but
+  the loop body is traced exactly once regardless of how many times the
+  compiled loop executes it at runtime, so this doesn't blow up compile
+  time.
 
 ## Soundness model
 
@@ -125,7 +143,7 @@ On a mismatch the harness prints the offending **backend**, the pretty-printed
 program + args into a fixed `forEachBackend` case under
 `test/execution-tests/` so the bug stays covered after it is fixed.
 
-## Known finding
+## Known findings
 
 On its first run this fuzzer reproduces a real bug: the IR constant-folding pass
 folds unsigned integer comparison/division/modulo/right-shift with **signed**
@@ -133,3 +151,54 @@ semantics, so all compiled backends disagree with the interpreter for
 constant-foldable `ui64` operands above `INT64_MAX`. Tracked in
 nebulastream/nautilus#312. `--survey` confirms every finding reduces to this one
 root cause.
+
+The `Loop`/cross-domain-`Cast` extension surfaced a second, pre-existing bug,
+**not specific to `Loop` or `Cast`** (confirmed by reproducing it with a
+minimal, hand-built AST containing no `Loop`, no `Params`, no runtime input
+at all) -- now fixed:
+
+```
+-4.8245185693378968e-132 / (-(0.0 + 0.0))          // f64
+```
+
+Every native-C++/IEEE-754-faithful evaluation gives `+inf` (`0.0 + 0.0` is
+`+0.0`; negating it gives the exactly-defined `-0.0`; `negative / -0.0` is
+`+inf`). Nautilus's interpreter silently returned `-inf` instead -- a
+signed-zero handling bug reachable purely through IR interpretation, with no
+backend codegen involved.
+
+Root cause: `val<T>::operator-()` (`include/nautilus/val_arith.hpp`)
+implemented unary negation as `(ValueType)0 - *this`. For floats this is not
+IEEE-754 negation: subtracting two exactly-equal-magnitude operands rounds to
+`+0.0` in the default round-to-nearest mode, so `0.0 - 0.0` is `+0.0`, not
+the `-0.0` that negating `+0.0` must produce. This wasn't limited to the
+interpreter -- the shared `ConstantFoldingAndCopyPropagationPass`'s `SubOp`
+fold (plain `l - r`) reproduces the identical `+0.0` for the same reason,
+so the wrong sign was already baked into the IR as a folded constant before
+any backend-specific lowering ran. Fixed by negating floats via
+multiplication by `-1` instead (`(ValueType)-1 * *this`): IEEE-754
+multiplication's sign is always the XOR of its operands' signs, so it
+flips the sign bit correctly for zero (and everything else) without going
+through cancellation. Integer negation is untouched (`0 - x` is exact
+two's-complement negation, no signed-zero concept applies).
+
+This was never hit by the fuzzer before this change because generating a
+literal `0.0` used to require an exact 64-bit-zero random draw (vanishingly
+unlikely); `ByteReader` returns zero once its buffer is exhausted (see
+`ByteReader.hpp`), and the wider/deeper trees this extension generates make
+running out of buffer -- and thus landing on an exact `0.0` constant -- far
+more common. `Loop` merely made this easy to *stumble into* via survey
+(a `Loop` with a zero trip count folds to its `init`, which is often exactly
+`0.0` for the same reason); the minimal repro above proves the bug itself
+predated and was independent of `Loop`/`Cast`.
+
+(An early investigation of this bug also observed every compiling backend
+segfaulting on the same minimal kernel; that turned out to be an artifact of
+the ad hoc standalone reproduction harness's own call-stack depth tripping
+`TagRecorder`'s `__builtin_return_address`-based frame walk
+(`src/nautilus/tracing/tag/TagRecorder.cpp`), not a defect introduced by this
+PR -- a trivial `a + b` kernel crashes the same way through that harness, and
+`--survey` never observed it through the real fuzz harness across 5000+
+runs. Worth a maintainer's attention separately, since `__builtin_return_address(N)`
+for `N > 0` is documented as unreliable beyond very small `N` by both GCC and
+Clang, but out of scope here.)

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -15,7 +16,7 @@ namespace nautilus::fuzz {
 /// these ten types, mirroring how the original uint64_t-only fuzzer worked.
 enum class TypeId : uint8_t { I8, I16, I32, I64, U8, U16, U32, U64, F32, F64 };
 
-inline constexpr TypeId ALL_TYPES[] = {TypeId::I8, TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,
+inline constexpr TypeId ALL_TYPES[] = {TypeId::I8,  TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,
                                        TypeId::U16, TypeId::U32, TypeId::U64, TypeId::F32, TypeId::F64};
 
 /// The eight integer TypeIds, used to pick Cast targets for the integer
@@ -207,6 +208,36 @@ bool valuesEqual(T a, T b) {
 		return a == b || (std::isnan(a) && std::isnan(b));
 	} else {
 		return a == b;
+	}
+}
+
+/// Smallest `From` value that is already out of range for `To` (i.e. the
+/// first representative for which a float->int cast is UB). Deliberately
+/// compared against a power-of-two boundary rather than
+/// `static_cast<From>(numeric_limits<To>::max())`: for wide integer types
+/// the latter is not exactly representable in `float`/`double` and rounds
+/// *up* past the true max (e.g. `(double)INT64_MAX` rounds to `2^63`), which
+/// would let an out-of-range value slip past a naive `<=` check. `2^bits` is
+/// always exactly representable in IEEE-754 binary float for every
+/// `(From, To)` combination used by this fuzzer (bits <= 64). Shared by
+/// EvalNative.hpp (native oracle) and EvalNautilus.hpp (traced kernel) so
+/// the float<->int cast clamp is sound identically on both sides -- this
+/// boundary math must never be re-derived independently in two places.
+template <typename From, typename To>
+constexpr From hiLimitExclusive() {
+	constexpr int bits = sizeof(To) * 8 - (std::is_signed_v<To> ? 1 : 0);
+	return static_cast<From>(std::ldexp(From(1), bits));
+}
+
+/// Largest representable-as-`From` lower bound for `To`: `To`'s minimum is
+/// always a power of two (or zero for unsigned types), so it is exactly
+/// representable in `From` and needs no power-of-two-boundary trick.
+template <typename From, typename To>
+constexpr From loLimitInclusive() {
+	if constexpr (std::is_signed_v<To>) {
+		return static_cast<From>(std::numeric_limits<To>::min());
+	} else {
+		return From(0);
 	}
 }
 

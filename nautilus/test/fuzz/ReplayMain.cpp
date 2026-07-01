@@ -38,11 +38,13 @@ std::vector<uint8_t> readFile(const char* path) {
 }
 
 std::vector<uint8_t> randomBuffer() {
-	// 128, not the original 96: a type-select byte and (for Cast nodes) an
-	// extra target-type byte now eat into the same fixed budget, so a
-	// slightly larger buffer keeps tree richness comparable to before across
-	// ten type domains instead of one.
-	const size_t len = nextRand() % 128;
+	// 160, not the original 96/128: a type-select byte, a Cast target-type
+	// byte (now drawn from all ten types instead of one domain's eight/two),
+	// and Loop/LoopIndex/LoopAcc kind-selection plus loopDepth-gated leaf
+	// selection all now compete for the same fixed budget, so a larger
+	// buffer keeps tree richness -- and the odds of generating a nontrivial
+	// or nested Loop -- comparable to before.
+	const size_t len = nextRand() % 160;
 	std::vector<uint8_t> buf(len);
 	for (size_t i = 0; i < len; ++i) {
 		buf[i] = static_cast<uint8_t>(nextRand());

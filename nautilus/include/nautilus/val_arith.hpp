@@ -175,7 +175,18 @@ public:
 	/// Unary negation operator.
 	/// Const-qualified to work on const values, matching C++ semantics.
 	val<ValueType> operator-() const {
-		return (ValueType) 0 - *this;
+		if constexpr (std::floating_point<ValueType>) {
+			// `0 - x` is not IEEE-754 negation: subtraction of two exactly
+			// equal-magnitude operands rounds to +0.0 in the default
+			// round-to-nearest mode, so `0.0 - 0.0` is `+0.0`, not the `-0.0`
+			// that negating `+0.0` must produce. Multiplication's sign is
+			// always the XOR of its operands' signs, so `-1 * x` flips the
+			// sign bit correctly for zero (and every other value) instead of
+			// going through cancellation.
+			return (ValueType) -1 * *this;
+		} else {
+			return (ValueType) 0 - *this;
+		}
 	}
 
 	/// Prefix decrement operator.
