@@ -207,4 +207,25 @@ val<int32_t> incrementFuncCallFiveTimesWithRef(val<bool> isFirstCall) {
 	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 }
 
+int16_t mixI16(int16_t x, int16_t y) {
+	// int promotion makes x * 3 + y well-defined; the cast wraps it back to
+	// 16 bits, so the interesting outputs are ones whose 32-bit intermediate
+	// (e.g. 25158 * 3 - 24951 = 50523) differs from the wrapped i16 result.
+	return static_cast<int16_t>(x * 3 + y);
+}
+
+// Regression (differential fuzzer): the ABI leaves the upper bits of a narrow
+// integer return value unspecified, so a backend keeping integers in
+// full-width registers must re-extend a call's narrow result before using it.
+// The AsmJit backends used to skip that, so a negative i16 return whose raw
+// register bits were a positive 32-bit intermediate compared as positive.
+val<int16_t> i16NarrowCallReturnCompare(val<int16_t> x, val<int16_t> y) {
+	val<int16_t> mixed = invoke(mixI16, x, y);
+	val<int16_t> result = 0;
+	if (mixed < val<int16_t>(int16_t(0))) {
+		result = 1;
+	}
+	return result;
+}
+
 } // namespace nautilus::engine

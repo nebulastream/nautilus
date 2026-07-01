@@ -269,6 +269,15 @@ narrow-width wraparound. Fixed by mirroring the x64 provider's
 returns); pinned by `u32WrapSubThenCompare` in
 `test/common/ExpressionFunctions.hpp`.
 
+The `Call` extension immediately surfaced the same invariant's fourth hole,
+in **both** AsmJit providers -- now fixed: narrow integer return values of
+`ProxyCall`/`IndirectCall` were bound without re-extension, but the ABI
+(AAPCS64 and SysV alike) leaves the upper bits of a sub-register-width
+return unspecified. An `i16` helper returning a wrapped-negative value came
+back with its positive 32-bit intermediate still in the register, and the
+next comparison answered for that instead. Pinned by
+`i16NarrowCallReturnCompare` in `test/common/RunctimeCallFunctions.hpp`.
+
 (An early investigation of this bug also observed every compiling backend
 segfaulting on the same minimal kernel; that turned out to be an artifact of
 the ad hoc standalone reproduction harness's own call-stack depth tripping

@@ -940,6 +940,18 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 			REQUIRE(f(true) == 5);
 		}
 	}
+	// Regression (differential fuzzer): narrow i16 return value of a proxy
+	// call feeding a signed comparison; see i16NarrowCallReturnCompare in
+	// RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallReturnCompare") {
+		auto f = engine.registerFunction(i16NarrowCallReturnCompare);
+		// 25158 * 3 - 24951 = 50523 -> wraps to -15013 < 0.
+		REQUIRE(f(int16_t(25158), int16_t(-24951)) == 1);
+		// 100 * 3 + 5 = 305, no wrap, not negative.
+		REQUIRE(f(int16_t(100), int16_t(5)) == 0);
+		// -100 * 3 + 5 = -295, negative without wrapping.
+		REQUIRE(f(int16_t(-100), int16_t(5)) == 1);
+	}
 }
 
 void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {

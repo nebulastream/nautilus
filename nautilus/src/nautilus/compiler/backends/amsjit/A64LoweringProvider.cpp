@@ -862,10 +862,16 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
+		if (std::holds_alternative<Vec>(result)) {
 			invokeNode->setRet(0, toVec(result));
-		else
+		} else {
 			invokeNode->setRet(0, toGp(result));
+			// The ABI leaves the upper bits of a narrow integer return value
+			// unspecified (the callee only guarantees the stamp's own width),
+			// so re-establish the extension invariant before anything reads
+			// the full X register.
+			narrowToStamp(toGp(result), op->getStamp());
+		}
 		bindResult(op->getIdentifier(), result, frame);
 	}
 }
@@ -893,10 +899,14 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
+		if (std::holds_alternative<Vec>(result)) {
 			invokeNode->setRet(0, toVec(result));
-		else
+		} else {
 			invokeNode->setRet(0, toGp(result));
+			// See visitProxyCall: narrow integer returns arrive with
+			// unspecified upper bits and must be re-extended.
+			narrowToStamp(toGp(result), op->getStamp());
+		}
 		bindResult(op->getIdentifier(), result, frame);
 	}
 }
