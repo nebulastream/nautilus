@@ -59,6 +59,12 @@ mirroring how the original `uint64_t`-only fuzzer worked.
   back to 0/1 as `T` (the comparisons' convention). Operands are evaluated
   *before* the bool op on both sides, so even a short-circuiting `&&`
   lowering (`ENABLE_SHORT_CIRCUIT_BOOL`) cannot skip a `Store` side effect.
+* **Runtime calls** (`Call`, both domains): a real `nautilus::invoke()` of a
+  pure native helper (`Callees.hpp`, selected by the node's imm). The native
+  oracle calls the *identical instantiation* directly, so the two legs
+  execute the same native code and the differential surface is exclusively
+  the backend's call lowering: argument/return marshalling, narrow-integer
+  ABI extension, float register passing.
 * **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
   produces a `T` result, exactly like a same-domain cast -- only the
   intermediate type's domain changes. Whichever leg of the round trip is

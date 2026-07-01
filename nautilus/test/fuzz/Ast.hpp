@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ByteReader.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <cstdint>
 #include <string>
@@ -49,6 +50,13 @@ enum class Kind : uint8_t {
 	LAnd,
 	LOr,
 	LNot,
+	// Call: a real nautilus::invoke() of a pure native helper (Callees.hpp),
+	// imm selects which one (modulo NUM_CALLEES). Both kids are value-domain
+	// operands passed as val<T>; the result is the helper's T return value.
+	// The native oracle calls the identical instantiation directly, so the
+	// differential surface is exactly the backend's ProxyCall lowering
+	// (argument/return marshalling and narrow-integer ABI extension).
+	Call,
 	// Cast: round-trips the single child through another type, i.e. (T)(To)x.
 	// imm holds the target TypeId, drawn from any of the ten types -- this
 	// can cross the int/float domain boundary (the output type is always T,
@@ -128,18 +136,18 @@ namespace detail {
 // both INT_KINDS and FLOAT_KINDS: a buffer of T is equally meaningful (and
 // equally safe, given generatePtrNode's bounded construction) regardless of
 // T's domain.
-inline constexpr Kind INT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,      Kind::Mod,    Kind::And,
-                                     Kind::Or,    Kind::Xor,   Kind::Shl,   Kind::Shr,      Kind::Eq,     Kind::Ne,
-                                     Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,       Kind::Select, Kind::If,
-                                     Kind::Neg,   Kind::Not,   Kind::LAnd,  Kind::LOr,      Kind::LNot,   Kind::Cast,
-                                     Kind::Loop,  Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq,  Kind::PtrNe,
-                                     Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
+inline constexpr Kind INT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Mod,      Kind::And,
+                                     Kind::Or,    Kind::Xor,   Kind::Shl,   Kind::Shr,   Kind::Eq,       Kind::Ne,
+                                     Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,    Kind::Select,   Kind::If,
+                                     Kind::Neg,   Kind::Not,   Kind::LAnd,  Kind::LOr,   Kind::LNot,     Kind::Call,
+                                     Kind::Cast,  Kind::Loop,  Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq,
+                                     Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
 
-inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,      Kind::Div,   Kind::Eq,     Kind::Ne,
-                                       Kind::Lt,    Kind::Le,    Kind::Gt,       Kind::Ge,    Kind::Select, Kind::If,
-                                       Kind::Neg,   Kind::LAnd,  Kind::LOr,      Kind::LNot,  Kind::Cast,   Kind::Loop,
-                                       Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,  Kind::PtrLt,
-                                       Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
+inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,      Kind::Eq,     Kind::Ne,
+                                       Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,       Kind::Select, Kind::If,
+                                       Kind::Neg,   Kind::LAnd,  Kind::LOr,   Kind::LNot,     Kind::Call,   Kind::Cast,
+                                       Kind::Loop,  Kind::Load,  Kind::Store, Kind::PtrToInt, Kind::PtrEq,  Kind::PtrNe,
+                                       Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -250,6 +258,8 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		// boundary (see the Kind::Cast comment for why this stays sound).
 		constexpr uint32_t typeCount = sizeof(ALL_TYPES) / sizeof(ALL_TYPES[0]);
 		node.imm = static_cast<uint64_t>(ALL_TYPES[reader.byte() % typeCount]);
+	} else if (node.kind == Kind::Call) {
+		node.imm = reader.byte() % NUM_CALLEES;
 	}
 
 	const int childCount = arity(node.kind);
@@ -402,6 +412,14 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += " ";
 		print<T>(ast, n.kid[1], out);
 		out += " != 0) ? 1 : 0)";
+		return;
+	case Kind::Call:
+		out += calleeName(n.imm);
+		out += "(";
+		print<T>(ast, n.kid[0], out);
+		out += ", ";
+		print<T>(ast, n.kid[1], out);
+		out += ")";
 		return;
 	case Kind::Cast: {
 		const TypeId target = static_cast<TypeId>(n.imm);

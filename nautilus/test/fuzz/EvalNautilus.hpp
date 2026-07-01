@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Ast.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <array>
 #include <limits>
+#include <nautilus/function.hpp>
 #include <nautilus/select.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
@@ -317,6 +319,10 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		val<bool> rb = r != TracedValue<T>(T(0));
 		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
+	case Kind::Call:
+		// Real nautilus::invoke() of the same instantiation the native oracle
+		// calls directly -- the backend's ProxyCall lowering is under test.
+		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:
@@ -449,6 +455,9 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		val<bool> rb = r != TracedValue<T>(T(0));
 		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
+	case Kind::Call:
+		// See the Kind::Call comment in evalNautilusInt.
+		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:

@@ -73,10 +73,16 @@ int builtinCorpus() {
 // Used to see whether distinct bug classes exist (e.g. a mismatch involving a
 // runtime parameter would point to a codegen bug rather than constant
 // folding; the type breaks out e.g. an i8-only bug from an f64-only one).
+// Each bucket's first input is also saved to fuzz-finding-<n>.bin in the
+// working directory so it can be replayed (`nautilus-fuzz-replay <file>`)
+// and minimized -- essential when a finding depends on the runtime buffer
+// address (Kind::PtrToInt) and is therefore not reproducible from the
+// printed program text alone.
 int survey(int iterations) {
 	std::map<std::string, nautilus::fuzz::Finding> buckets;
 	std::map<std::string, int> counts;
 	int totalFindings = 0;
+	int savedInputs = 0;
 
 	for (int it = 0; it < iterations; ++it) {
 		const std::vector<uint8_t> buf = randomBuffer();
@@ -87,6 +93,11 @@ int survey(int iterations) {
 			counts[key]++;
 			if (!buckets.count(key)) {
 				buckets.emplace(key, f);
+				char name[64];
+				std::snprintf(name, sizeof(name), "fuzz-finding-%d.bin", savedInputs++);
+				std::ofstream out(name, std::ios::binary);
+				out.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+				std::printf("  [%s] input saved to %s\n", key.c_str(), name);
 			}
 		}
 		if ((it + 1) % 500 == 0) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ast.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <array>
 #include <cmath>
@@ -364,6 +365,9 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
 	case Kind::LOr:
 		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
+	case Kind::Call:
+		// Direct call of the same instantiation the traced kernel invoke()s.
+		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
@@ -490,6 +494,9 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
 	case Kind::LOr:
 		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
+	case Kind::Call:
+		// Direct call of the same instantiation the traced kernel invoke()s.
+		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
