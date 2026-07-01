@@ -79,6 +79,56 @@ mirroring how the original `uint64_t`-only fuzzer worked.
   compiled loop executes it at runtime, so this doesn't blow up compile
   time.
 
+## Memory and pointer domain
+
+Every generated program is additionally handed a pointer (`val<T*>`) to a
+shared, `BUFFER_ELEMS`-element buffer of `T` (`Ast.hpp`), so `val<T*>`
+arithmetic, comparisons, casts, and loads/stores are fuzzed identically to
+the rest of the value domain -- following the same well-defined-by-construction
+principle as everything else here.
+
+* **`Load`/`Store`**: `kid[0]` (both) is a *pointer-domain* node (see below),
+  `kid[1]` (`Store` only) is a value-domain node. `Load` yields `*ptr`; `Store`
+  writes through the pointer and yields the stored value, i.e. the value of
+  the C++ assignment expression `*ptr = v`.
+* **`PtrToInt`**: `(T)(uintptr_t)ptr`, the same pointer -> arithmetic
+  conversion `base_ptr_val` already exposes (`val_ptr.hpp`). Because the
+  harness reuses one buffer object -- reset, not reallocated, between the
+  native-oracle run and every backend run (see below) -- its address is
+  identical across every leg of the differential check, so this is directly
+  comparable rather than merely "equivalent."
+* **`PtrEq`/`PtrNe`/`PtrLt`/`PtrLe`/`PtrGt`/`PtrGe`**: both kids are
+  pointer-domain nodes; yields 0/1 as `T`, the same convention as the
+  value-domain comparisons.
+* **Pointer-domain nodes** (`PtrBase`/`PtrAdd`/`PtrSub`, `generatePtrNode` in
+  `Ast.hpp`): never chosen as the AST root or by the value-domain generator
+  directly -- only ever a kid of one of the nodes above. Deliberately never
+  nest (`PtrAdd`'s own child is always a *value*-domain offset expression,
+  never another pointer-domain node), so every pointer this can produce is
+  directly `base + clampBufferIndex(x)` or `end - clampBufferIndex(x)` for
+  some single offset expression `x` -- always an in-bounds buffer index by
+  construction, with no need to reason about compounding offsets across
+  hops. `clampBufferIndex`/`clampBufferIndexTraced` reduce the raw offset the
+  same reinterpret-to-unsigned-then-modulo way as `Loop`'s trip count, just
+  modulo `BUFFER_ELEMS` -- exercising real `val<T*>::operator+`/`operator-`
+  (scaled by `sizeof(T)`) while staying safe regardless of what value the
+  offset expression evaluates to.
+* **Buffer lifecycle**: the harness declares the buffer once per
+  `checkOneTyped<T>` call and resets its contents (not its storage) to the
+  same initial values before the native-oracle run and before each backend
+  run, so Store side effects from one run never leak into the next, while
+  `PtrToInt` still observes one stable address throughout.
+* **`Select` and memory side effects**: `Select`'s traced form
+  (`select(cond, t, f)`) is a data mux -- both `t` and `f` are always
+  evaluated/lowered, unlike a real C++ ternary or `If`. Once `Store` could
+  appear inside a `Select` branch, the native oracle's original ternary
+  short-circuit (evaluating only the taken branch) would silently skip a
+  memory write that the traced kernel still performs. The oracle's `Select`
+  case now evaluates both branches unconditionally, matching the traced
+  kernel exactly; `If` needed no change since its native/traced forms
+  already evaluate the else-branch unconditionally and the then-branch only
+  when taken (see the `Kind::If` comment in `EvalNative.hpp`).
+
 ## Soundness model
 
 Within the integer domain, unsigned arithmetic uses plain operators (defined

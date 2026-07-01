@@ -59,7 +59,47 @@ enum class Kind : uint8_t {
 	// iteration index / accumulator of the innermost enclosing Loop. No imm
 	// payload -- nesting uses simple shadowing (innermost wins).
 	LoopIndex,
-	LoopAcc
+	LoopAcc,
+	// --- Memory / pointer domain -------------------------------------------
+	// A generated program owns one shared, fixed-size `T` buffer (BUFFER_ELEMS
+	// elements). kid[0] of Load/Store/PtrToInt and both kids of the Ptr*
+	// comparisons are *pointer-domain* nodes (Kind::PtrBase/PtrAdd/PtrSub, see
+	// below) built by generatePtrNode, not by generateNode -- they evaluate to
+	// a `T*` (val<T*> when traced), never to a `T`.
+	//
+	// Load: kid[0] = ptr-domain node. Value-domain result: *ptr.
+	Load,
+	// Store: kid[0] = ptr-domain node, kid[1] = value-domain node. Writes
+	// through the pointer and yields the stored value, mirroring the value of
+	// a C++ assignment expression (`*ptr = v` evaluates to `v`).
+	Store,
+	// PtrToInt: kid[0] = ptr-domain node. `(T)(uintptr_t)ptr`, exactly
+	// `base_ptr_val`'s pointer -> arithmetic conversion.
+	PtrToInt,
+	// PtrEq/Ne/Lt/Le/Gt/Ge: both kids are ptr-domain nodes; yields 0/1 as T,
+	// same convention as the value-domain comparisons above.
+	PtrEq,
+	PtrNe,
+	PtrLt,
+	PtrLe,
+	PtrGt,
+	PtrGe,
+	// --- Pointer-domain nodes -----------------------------------------------
+	// Never chosen directly by generateNode/INT_KINDS/FLOAT_KINDS, and never
+	// the AST root -- only reachable as a kid of one of the memory-domain
+	// nodes above, built by generatePtrNode. Always resolve to an in-bounds
+	// index of the shared buffer (no nesting -- see generatePtrNode), so every
+	// Load/Store/comparison is guaranteed well-defined by construction.
+	//
+	// PtrBase: the raw pointer parameter, i.e. `&memory[0]`.
+	PtrBase,
+	// PtrAdd: kid[0] = value-domain offset expression (type T). Result =
+	// `base + clampBufferIndex<T>(offset)`, exercising val<T*>::operator+.
+	PtrAdd,
+	// PtrSub: kid[0] = value-domain offset expression (type T). Result =
+	// `(base + (BUFFER_ELEMS - 1)) - clampBufferIndex<T>(offset)`, exercising
+	// val<T*>::operator-.
+	PtrSub
 };
 
 struct Node {
@@ -75,14 +115,20 @@ struct Ast {
 
 namespace detail {
 
-inline constexpr Kind INT_KINDS[] = {Kind::Add, Kind::Sub, Kind::Mul,  Kind::Div, Kind::Mod,    Kind::And,
-                                     Kind::Or,  Kind::Xor, Kind::Shl,  Kind::Shr, Kind::Eq,     Kind::Ne,
-                                     Kind::Lt,  Kind::Le,  Kind::Gt,   Kind::Ge,  Kind::Select, Kind::If,
-                                     Kind::Neg, Kind::Not, Kind::Cast, Kind::Loop};
+// Load/Store/PtrToInt/Ptr-comparisons (below) are appended identically to
+// both INT_KINDS and FLOAT_KINDS: a buffer of T is equally meaningful (and
+// equally safe, given generatePtrNode's bounded construction) regardless of
+// T's domain.
+inline constexpr Kind INT_KINDS[] = {
+    Kind::Add,      Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Mod,   Kind::And,   Kind::Or,   Kind::Xor,
+    Kind::Shl,      Kind::Shr,   Kind::Eq,    Kind::Ne,    Kind::Lt,    Kind::Le,    Kind::Gt,   Kind::Ge,
+    Kind::Select,   Kind::If,    Kind::Neg,   Kind::Not,   Kind::Cast,  Kind::Loop,  Kind::Load, Kind::Store,
+    Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
 
-inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,    Kind::Sub, Kind::Mul, Kind::Div,  Kind::Eq,
-                                       Kind::Ne,     Kind::Lt,  Kind::Le,  Kind::Gt,   Kind::Ge,
-                                       Kind::Select, Kind::If,  Kind::Neg, Kind::Cast, Kind::Loop};
+inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Eq,     Kind::Ne,
+                                       Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,
+                                       Kind::Neg,   Kind::Cast,  Kind::Loop,  Kind::Load,  Kind::Store,  Kind::PtrToInt,
+                                       Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt,  Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -90,10 +136,15 @@ inline int arity(Kind k) {
 	case Kind::Param:
 	case Kind::LoopIndex:
 	case Kind::LoopAcc:
+	case Kind::PtrBase:
 		return 0;
 	case Kind::Neg:
 	case Kind::Not:
 	case Kind::Cast:
+	case Kind::Load:
+	case Kind::PtrToInt:
+	case Kind::PtrAdd:
+	case Kind::PtrSub:
 		return 1;
 	case Kind::Select:
 	case Kind::If:
@@ -102,6 +153,45 @@ inline int arity(Kind k) {
 	default:
 		return 2;
 	}
+}
+
+/// True for the six pointer-domain comparison kinds (both kids are
+/// pointer-domain nodes, unlike Eq..Ge whose kids are value-domain).
+inline bool isPtrCompare(Kind k) {
+	return k >= Kind::PtrEq && k <= Kind::PtrGe;
+}
+
+template <typename T>
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth);
+
+/// Build a bounded pointer-domain expression: either the raw base pointer, or
+/// a single-hop offset from it (`Kind::PtrAdd`/`Kind::PtrSub`) computed from a
+/// value-domain offset expression. Deliberately never nests (a PtrAdd's own
+/// child is always a value-domain node, never another pointer-domain node),
+/// so every pointer this can produce is directly `base + clampBufferIndex(x)`
+/// or `end - clampBufferIndex(x)` -- always an in-bounds index into the
+/// shared buffer, with no need to reason about compounding offsets across
+/// hops. `depth`/`budget`/`loopDepth` are threaded through exactly like
+/// generateNode's, so the shared node budget still bounds total tree size.
+template <typename T>
+int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth) {
+	const uint8_t sel = reader.byte();
+	const bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
+
+	Node node;
+	if (leaf) {
+		node.kind = Kind::PtrBase;
+		const int idx = static_cast<int>(ast.nodes.size());
+		ast.nodes.push_back(node);
+		return idx;
+	}
+
+	node.kind = (sel & 0x2) ? Kind::PtrAdd : Kind::PtrSub;
+	--budget;
+	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+	const int idx = static_cast<int>(ast.nodes.size());
+	ast.nodes.push_back(node);
+	return idx;
 }
 
 /// `loopDepth` counts how many Loop bodies the recursion is currently
@@ -161,6 +251,14 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+	} else if (node.kind == Kind::Load || node.kind == Kind::PtrToInt) {
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
+	} else if (node.kind == Kind::Store) {
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+	} else if (isPtrCompare(node.kind)) {
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[1] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
 	} else {
 		for (int i = 0; i < childCount; ++i) {
 			kids[i] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
@@ -188,6 +286,14 @@ inline constexpr int MAX_NODES = 64;
 /// many times the compiled loop executes it -- so this only bounds oracle
 /// interpretation cost (which multiplies with loop nesting).
 inline constexpr int LOOP_MAX_TRIPS = 8;
+
+/// Number of `T` elements in the shared buffer every generated program is
+/// handed a pointer to (see Kind::PtrBase). Every pointer-domain node
+/// (generatePtrNode) is constructed so it always lands in [0, BUFFER_ELEMS),
+/// so Load/Store/PtrToInt/Ptr-comparisons never read or write out of bounds --
+/// small enough to keep the oracle/traced buffers cheap, large enough to make
+/// pointer differences/comparisons non-trivial.
+inline constexpr int BUFFER_ELEMS = 8;
 
 /// Build a random, always-valid AST of type T from the reader. Never returns
 /// an empty tree: an empty buffer yields a single Const(0) leaf.
@@ -305,6 +411,72 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += ", body=";
 		print<T>(ast, n.kid[2], out);
 		out += ")";
+		return;
+	case Kind::Load:
+		out += "*(";
+		print<T>(ast, n.kid[0], out);
+		out += ")";
+		return;
+	case Kind::Store:
+		out += "(*(";
+		print<T>(ast, n.kid[0], out);
+		out += ") = ";
+		print<T>(ast, n.kid[1], out);
+		out += ")";
+		return;
+	case Kind::PtrToInt:
+		out += "(uintptr_t)(";
+		print<T>(ast, n.kid[0], out);
+		out += ")";
+		return;
+	case Kind::PtrEq:
+	case Kind::PtrNe:
+	case Kind::PtrLt:
+	case Kind::PtrLe:
+	case Kind::PtrGt:
+	case Kind::PtrGe: {
+		const char* sym = "?";
+		switch (n.kind) {
+		case Kind::PtrEq:
+			sym = "==";
+			break;
+		case Kind::PtrNe:
+			sym = "!=";
+			break;
+		case Kind::PtrLt:
+			sym = "<";
+			break;
+		case Kind::PtrLe:
+			sym = "<=";
+			break;
+		case Kind::PtrGt:
+			sym = ">";
+			break;
+		default:
+			sym = ">=";
+			break;
+		}
+		out += "((";
+		print<T>(ast, n.kid[0], out);
+		out += " ";
+		out += sym;
+		out += " ";
+		print<T>(ast, n.kid[1], out);
+		out += ") ? 1 : 0)";
+		return;
+	}
+	case Kind::PtrBase:
+		out += "mem";
+		return;
+	case Kind::PtrAdd:
+		out += "(mem + idx(";
+		print<T>(ast, n.kid[0], out);
+		out += "))";
+		return;
+	case Kind::PtrSub:
+		out += "(mem_end - idx(";
+		print<T>(ast, n.kid[0], out);
+		out += "))";
 		return;
 	default:
 		break;

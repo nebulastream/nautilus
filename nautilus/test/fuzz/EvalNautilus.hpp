@@ -6,6 +6,7 @@
 #include <limits>
 #include <nautilus/select.hpp>
 #include <nautilus/val.hpp>
+#include <nautilus/val_ptr.hpp>
 #include <type_traits>
 #include <vector>
 
@@ -111,8 +112,26 @@ val<int32_t> clampTripCountTraced(TracedValue<T> raw) {
 	return static_cast<val<int32_t>>(trips);
 }
 
+/// Traced mirror of EvalNative.hpp's clampBufferIndex: same recipe as
+/// clampTripCountTraced, just against BUFFER_ELEMS instead of
+/// LOOP_MAX_TRIPS + 1, so a pointer built from the same raw offset lands on
+/// the same buffer slot as the native oracle.
+template <typename T>
+val<int32_t> clampBufferIndexTraced(TracedValue<T> raw) {
+	TracedValue<uint64_t> u(uint64_t(0));
+	if constexpr (std::is_floating_point_v<T>) {
+		u = clampFloatToIntTraced<T, uint64_t>(raw);
+	} else {
+		u = static_cast<TracedValue<uint64_t>>(static_cast<TracedValue<std::make_unsigned_t<T>>>(raw));
+	}
+	TracedValue<uint64_t> index = u % TracedValue<uint64_t>(uint64_t(BUFFER_ELEMS));
+	return static_cast<val<int32_t>>(index);
+}
+
 /// Mutable per-evaluation scratch state mirroring EvalNative.hpp's
-/// EvalContext: the stack of enclosing traced Loop frames, innermost last.
+/// EvalContext: the stack of enclosing traced Loop frames (innermost last),
+/// plus the base/one-past-last pointer into the shared buffer that every
+/// pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub) is built from.
 template <typename T>
 struct TracedLoopFrame {
 	TracedValue<T> index;
@@ -122,7 +141,48 @@ struct TracedLoopFrame {
 template <typename T>
 struct TracedEvalContext {
 	std::vector<TracedLoopFrame<T>> loopStack;
+	val<T*> basePtr;
+	val<T*> lastPtr; // basePtr + (BUFFER_ELEMS - 1), precomputed once
 };
+
+template <typename T>
+TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
+template <typename T>
+TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
+
+/// Dispatches to whichever of evalNautilusInt/evalNautilusFloat matches T's
+/// domain -- the traced mirror of EvalNative.hpp's evalNativeValue, needed
+/// for the same reason (evalNautilusPtr and the Load/Store cases below are
+/// shared between both domains).
+template <typename T>
+TracedValue<T> evalNautilusValue(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return evalNautilusFloat<T>(ast, idx, args, ctx);
+	} else {
+		return evalNautilusInt<T>(ast, idx, args, ctx);
+	}
+}
+
+/// Traced mirror of EvalNative.hpp's evalNativePtr: evaluates a
+/// pointer-domain node to a real val<T*>, using the exact same
+/// operator+/operator- val<T*> arithmetic under test.
+template <typename T>
+val<T*> evalNautilusPtr(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
+	const Node& n = ast.nodes[idx];
+	switch (n.kind) {
+	case Kind::PtrAdd: {
+		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusValue<T>(ast, n.kid[0], args, ctx));
+		return ctx.basePtr + off;
+	}
+	case Kind::PtrSub: {
+		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusValue<T>(ast, n.kid[0], args, ctx));
+		return ctx.lastPtr - off;
+	}
+	case Kind::PtrBase:
+	default:
+		return ctx.basePtr;
+	}
+}
 
 template <typename T>
 TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
@@ -169,6 +229,50 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return ~evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+	case Kind::Load: {
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> v = *p;
+		return v;
+	}
+	case Kind::Store: {
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> v = evalNautilusValue<T>(ast, n.kid[1], args, ctx);
+		*p = v;
+		return v;
+	}
+	case Kind::PtrToInt:
+		return static_cast<TracedValue<T>>(evalNautilusPtr<T>(ast, n.kid[0], args, ctx));
+	case Kind::PtrEq:
+	case Kind::PtrNe:
+	case Kind::PtrLt:
+	case Kind::PtrLe:
+	case Kind::PtrGt:
+	case Kind::PtrGe: {
+		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx);
+		val<bool> cmp(false);
+		switch (n.kind) {
+		case Kind::PtrEq:
+			cmp = (a == b);
+			break;
+		case Kind::PtrNe:
+			cmp = (a != b);
+			break;
+		case Kind::PtrLt:
+			cmp = (a < b);
+			break;
+		case Kind::PtrLe:
+			cmp = (a <= b);
+			break;
+		case Kind::PtrGt:
+			cmp = (a > b);
+			break;
+		default:
+			cmp = (a >= b);
+			break;
+		}
+		return select(cmp, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	default:
 		break;
 	}
@@ -254,6 +358,50 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		return -evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+	case Kind::Load: {
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> v = *p;
+		return v;
+	}
+	case Kind::Store: {
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> v = evalNautilusValue<T>(ast, n.kid[1], args, ctx);
+		*p = v;
+		return v;
+	}
+	case Kind::PtrToInt:
+		return static_cast<TracedValue<T>>(evalNautilusPtr<T>(ast, n.kid[0], args, ctx));
+	case Kind::PtrEq:
+	case Kind::PtrNe:
+	case Kind::PtrLt:
+	case Kind::PtrLe:
+	case Kind::PtrGt:
+	case Kind::PtrGe: {
+		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx);
+		val<bool> cmp(false);
+		switch (n.kind) {
+		case Kind::PtrEq:
+			cmp = (a == b);
+			break;
+		case Kind::PtrNe:
+			cmp = (a != b);
+			break;
+		case Kind::PtrLt:
+			cmp = (a < b);
+			break;
+		case Kind::PtrLe:
+			cmp = (a <= b);
+			break;
+		case Kind::PtrGt:
+			cmp = (a > b);
+			break;
+		default:
+			cmp = (a >= b);
+			break;
+		}
+		return select(cmp, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	default:
 		break;
 	}
@@ -289,8 +437,10 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 } // namespace detail
 
 template <typename T>
-TracedValue<T> evalNautilus(const Ast& ast, const TracedArgs<T>& args) {
+TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, const TracedArgs<T>& args) {
 	detail::TracedEvalContext<T> ctx;
+	ctx.basePtr = basePtr;
+	ctx.lastPtr = basePtr + static_cast<int32_t>(BUFFER_ELEMS - 1);
 	if constexpr (std::is_floating_point_v<T>) {
 		return detail::evalNautilusFloat<T>(ast, ast.root, args, ctx);
 	} else {
