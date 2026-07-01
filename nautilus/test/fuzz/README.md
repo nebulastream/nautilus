@@ -278,6 +278,21 @@ back with its positive 32-bit intermediate still in the register, and the
 next comparison answered for that instead. Pinned by
 `i16NarrowCallReturnCompare` in `test/common/RunctimeCallFunctions.hpp`.
 
+The same `Call` extension then caught the argument-direction twin of that
+bug in the **MLIR backend** -- now fixed: `insertExternalFunction` declared
+external callees without `llvm.signext`/`llvm.zeroext` argument attributes,
+but several C ABIs (Darwin AArch64, x86-64 SysV) require the *caller* to
+extend sub-32-bit integer arguments, and the natively compiled callee
+assumes it happened. LLVM, seeing no attribute, folded the truncation away
+and passed an `i16` argument with live upper register bits (in the fuzzed
+case, bits of a `PtrToInt`-derived address -- which also made the mismatch
+address-dependent and only reproducible ~5 out of 6 runs). Survey mode's
+saved `fuzz-finding-<n>.bin` inputs plus `NAUTILUS_FUZZ_DUMP=1` were added
+during this hunt precisely to make such address-dependent findings
+replayable and inspectable. Pinned by `i16NarrowCallArgCompare` in
+`test/common/RunctimeCallFunctions.hpp` (the truncation-folding shape LLVM
+optimizes into the failing form deterministically).
+
 (An early investigation of this bug also observed every compiling backend
 segfaulting on the same minimal kernel; that turned out to be an artifact of
 the ad hoc standalone reproduction harness's own call-stack depth tripping

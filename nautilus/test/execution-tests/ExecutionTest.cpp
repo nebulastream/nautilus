@@ -952,6 +952,19 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		// -100 * 3 + 5 = -295, negative without wrapping.
 		REQUIRE(f(int16_t(-100), int16_t(5)) == 1);
 	}
+	// Regression (differential fuzzer): narrow i16 *argument* of a proxy call
+	// truncated from a wider value with live upper bits; see
+	// i16NarrowCallArgCompare in RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallArgCompare") {
+		auto f = engine.registerFunction(i16NarrowCallArgCompare);
+		// 65537 truncates to 1; a caller that skips the extension hands the
+		// callee 65537, which is no longer < 5.
+		REQUIRE(f(int64_t(65537), int16_t(5)) == 1);
+		// 0xFFFE0003 truncates to 3.
+		REQUIRE(f(int64_t(0xFFFE0003), int16_t(7)) == 3);
+		// Negative wide value truncating to a negative narrow one.
+		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
+	}
 }
 
 void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {

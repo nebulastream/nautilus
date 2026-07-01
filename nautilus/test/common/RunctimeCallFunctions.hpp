@@ -228,4 +228,20 @@ val<int16_t> i16NarrowCallReturnCompare(val<int16_t> x, val<int16_t> y) {
 	return result;
 }
 
+int16_t minI16(int16_t x, int16_t y) {
+	return x < y ? x : y;
+}
+
+// Regression (differential fuzzer): sub-32-bit integer *arguments* of a proxy
+// call must be extended by the caller on several C ABIs (Darwin AArch64,
+// x86-64 SysV) -- the natively compiled callee assumes that happened. The
+// MLIR backend used to declare external callees without llvm.signext /
+// llvm.zeroext argument attributes, so an i16 argument whose truncation LLVM
+// folded away (here: from a wider value with live upper bits) reached the
+// callee with garbage in the upper register bits and compared wrongly.
+val<int16_t> i16NarrowCallArgCompare(val<int64_t> x, val<int16_t> y) {
+	val<int16_t> truncated = static_cast<val<int16_t>>(x);
+	return invoke(minI16, truncated, y);
+}
+
 } // namespace nautilus::engine

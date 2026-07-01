@@ -204,12 +204,17 @@ private:
 	 * @param name: Function name.
 	 * @param numResultBits: Number of bits of returned Integer.
 	 * @param argTypes: Argument types of function.
+	 * @param argStamps: The Nautilus IR types of the arguments, used to attach
+	 *        the ABI-mandated llvm.signext/llvm.zeroext attribute to narrow
+	 *        integer arguments (MLIR types are signless, so the signedness
+	 *        must travel separately).
 	 * @param fnAttrs: Information on attributes, such as 'memory' (access)
 	 * @return FlatSymbolRefAttr: Reference to function used in CallOps.
 	 */
 	::mlir::FlatSymbolRefAttr insertExternalFunction(const std::string& name, void* functionPtr,
 	                                                 const ::mlir::Type& resultType,
 	                                                 const std::vector<::mlir::Type>& argTypes,
+	                                                 const std::vector<Type>& argStamps,
 	                                                 const FunctionAttributes& fnAttrs);
 
 	/**
