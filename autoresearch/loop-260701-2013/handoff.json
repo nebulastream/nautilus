@@ -1,0 +1,20 @@
+{
+  "version": "2.1.0",
+  "source": "loop",
+  "status": "USER_INTERRUPT",
+  "results_tsv": "autoresearch/loop-260701-2013/results.tsv",
+  "findings": [
+    "The BC interpreter already had every major execution-speed optimization implemented from prior work (threaded/computed-goto dispatch, per-invocation register-file pooling, fused compare+branch superinstructions, constant-operand immediate folding, a linear register allocator) but none were the default -- BCInterpreterBackend.cpp resolved bc.dispatch/bc.regfileReuse/bc.superinstructions/bc.immediates to the slowest ('call' dispatch, no reuse, no fusion) unless a caller explicitly opted in.",
+    "Flipping those four defaults to the fastest already-validated combination (threaded, regfileReuse=true, superinstructions=true, immediates=true) cut the geomean of exec_bc_add/fibonacci/sum from 82455ns to 57424ns, a 30.4% reduction, with zero code-path changes -- only existing, already-tested logic.",
+    "Validated via: the full BC-only execution-test suite (32/32 passing, same as baseline) and a 50000-case differential fuzzer survey against a native C++ oracle. The fuzzer surfaced 2 findings, but both reproduce identically on the pre-change baseline commit (verified via a throwaway worktree), confirming they are pre-existing latent bugs unrelated to this change, not regressions.",
+    "Remaining optimization headroom identified but NOT attempted: BCLoweringProvider::process(BasicBlockInvocation) always routes block-argument passing (loop-carried values like fibonacci's a/b/i) through a fresh temp register and up to 2 REG_MOV ops per argument, even when a cheaper direct/topologically-ordered parallel-copy (0-1 moves per argument, temps only for genuine cycles) would be correct. This is a classic SSA-destruction coalescing optimization that could meaningfully speed up loop-heavy kernels like fibonacci further, but it touches core register-liveness/free-list logic shared by every control-flow edge the BC backend compiles, so a correctness bug there has a large blast radius. Implementing and validating it properly (unit tests + large-scale differential fuzzing at the level done here) is a bigger, riskier unit of work than fit safely in this loop's iteration budget."
+  ],
+  "config": {
+    "goal": "improve execution performance of the nautilus bytecode interpreter, using the nautilus benchmarks as reference",
+    "scope": "nautilus/src/nautilus/compiler/backends/bc/** and nautilus/src/nautilus/compiler/ir/phases/**",
+    "metric": "geomean(ns) of exec_bc_add, exec_bc_fibonacci, exec_bc_sum from nautilus-benchmarks",
+    "direction": "lower_is_better",
+    "verify": "python3 tools/bc_perf_verify.py",
+    "guard": "tools/bc_guard.sh (BC-only nautilus-execution-tests)"
+  }
+}
