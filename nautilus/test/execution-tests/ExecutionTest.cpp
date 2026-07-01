@@ -371,6 +371,19 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(5) == 5);
 		REQUIRE(f(0) == 0);
 	}
+	// Regression (differential fuzzer): wrapped u32 subtraction feeding an
+	// unsigned compare; see u32WrapSubThenCompare in ExpressionFunctions.hpp.
+	SECTION("u32WrapSubThenCompare") {
+		auto f = engine.registerFunction(u32WrapSubThenCompare);
+		// Wrapped: 159212978 - 4279714710 = 174465564 (mod 2^32) <= 882064733.
+		REQUIRE(f(159212978u, 882064733u) == 1u);
+		// Not wrapped: 4279714711 - 4279714710 = 1.
+		REQUIRE(f(4279714711u, 0u) == 0u);
+		REQUIRE(f(4279714711u, 1u) == 1u);
+		// Wrapped from zero: 0 - 4279714710 = 15252586 (mod 2^32).
+		REQUIRE(f(0u, 15252585u) == 0u);
+		REQUIRE(f(0u, 15252586u) == 1u);
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {

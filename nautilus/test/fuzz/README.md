@@ -248,6 +248,21 @@ more common. `Loop` merely made this easy to *stumble into* via survey
 `0.0` for the same reason); the minimal repro above proves the bug itself
 predated and was independent of `Loop`/`Cast`.
 
+Running the harness with the AsmJit backend enabled on ARM (it is off in the
+default CI configuration) surfaced a third bug -- now fixed: the A64 lowering
+kept every integer in a 64-bit register and re-established the "narrow values
+stay sign/zero-extended to 64 bits" invariant only at function entry and
+casts, never after arithmetic. A u32 subtraction that wraps (e.g. `p0 -
+4279714710u`) left the un-wrapped negative difference in the full X register,
+and the next 64-bit `cmp` answered for that value instead of the wrapped
+32-bit one -- so `asmjit|u8/u16/u32` (and the signed narrow widths, via left
+shift and multiply overflow) could disagree with every other backend on any
+comparison, division, modulo, right shift, or int->float conversion fed by
+narrow-width wraparound. Fixed by mirroring the x64 provider's
+`narrowToStamp` re-normalization after add/sub/mul/shift/bitwise-not (and at
+returns); pinned by `u32WrapSubThenCompare` in
+`test/common/ExpressionFunctions.hpp`.
+
 (An early investigation of this bug also observed every compiling backend
 segfaulting on the same minimal kernel; that turned out to be an artifact of
 the ad hoc standalone reproduction harness's own call-stack depth tripping

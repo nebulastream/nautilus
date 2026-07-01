@@ -135,6 +135,32 @@ bool AsmJitLoweringProvider::LoweringContext::isUnsignedType(Type t) {
 	return t == Type::ui8 || t == Type::ui16 || t == Type::ui32 || t == Type::ui64 || t == Type::b || t == Type::ptr;
 }
 
+void AsmJitLoweringProvider::LoweringContext::narrowToStamp(Gp reg, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		cc.sxtb(reg.x(), reg.w());
+		break;
+	case Type::b:
+	case Type::ui8:
+		cc.uxtb(reg.w(), reg.w());
+		break;
+	case Type::i16:
+		cc.sxth(reg.x(), reg.w());
+		break;
+	case Type::ui16:
+		cc.uxth(reg.w(), reg.w());
+		break;
+	case Type::i32:
+		cc.sxtw(reg.x(), reg.w());
+		break;
+	case Type::ui32:
+		cc.mov(reg.w(), reg.w()); // zero-extends upper 32 bits
+		break;
+	default:
+		break; // i64, ui64, ptr -- already full-width, no narrowing needed.
+	}
+}
+
 // ── Register allocation ───────────────────────────────────────────────────────
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::allocReg(Type t) {
@@ -381,6 +407,11 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		cc.fadd(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.add(toGp(result), toGp(left), toGp(right));
+		// An add that overflows the narrow stamp's width still produces a
+		// "correct" 64-bit sum; re-extend per the result type so its
+		// sign/zero-extension matches the wrapped-around narrow-width value
+		// (see narrowToStamp's doc comment).
+		narrowToStamp(toGp(result), op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
@@ -393,6 +424,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 		cc.fsub(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.sub(toGp(result), toGp(left), toGp(right));
+		narrowToStamp(toGp(result), op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
@@ -405,6 +437,7 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		cc.fmul(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.mul(toGp(result), toGp(left), toGp(right));
+		narrowToStamp(toGp(result), op->getStamp());
 	}
 	bindResult(op->getIdentifier(), result, frame);
 }
@@ -570,6 +603,11 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
 	cc.mvn(toGp(result), toGp(src));
+	// mvn flips the full 64-bit register, including the extension padding.
+	// That happens to stay correct for signed stamps (flipping a sign bit
+	// flips its replicated extension consistently) but is wrong for unsigned
+	// stamps, whose invariant is a zero-extended (not flipped) upper half.
+	narrowToStamp(toGp(result), op->getStamp());
 	bindResult(op->getIdentifier(), result, frame);
 }
 
@@ -586,6 +624,15 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	} else {
 		cc.asr(toGp(result), left, right);
 	}
+	// Shifting the full 64-bit register (rather than just the narrow stamp's
+	// width) can leave the extension padding inconsistent with the
+	// narrow-width result -- e.g. a left shift that overflows the stamp's
+	// width still computes a "correct" 64-bit shift, whose sign-extension no
+	// longer matches the wrapped-around narrow-width value. asr already
+	// shifts in the sign bit, but a shift can still move that bit into
+	// positions that change the narrow-width result's own sign, so this is
+	// needed for all three shift forms.
+	narrowToStamp(toGp(result), op->getStamp());
 	bindResult(op->getIdentifier(), result, frame);
 }
 
@@ -655,26 +702,9 @@ void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* o
 			cc.ret(toVec(retReg));
 		} else {
 			auto gp = toGp(retReg);
-			// Ensure sub-32-bit return values are properly narrowed so the
-			// caller sees a clean W0 value that matches the ABI contract.
-			auto retType = op->getReturnValue()->getStamp();
-			switch (retType) {
-			case Type::i8:
-				cc.sxtb(gp.x(), gp.w());
-				break;
-			case Type::b:
-			case Type::ui8:
-				cc.uxtb(gp.w(), gp.w());
-				break;
-			case Type::i16:
-				cc.sxth(gp.x(), gp.w());
-				break;
-			case Type::ui16:
-				cc.uxth(gp.w(), gp.w());
-				break;
-			default:
-				break;
-			}
+			// Ensure narrow return values are properly extended so the caller
+			// sees a clean W0/X0 value that matches the ABI contract.
+			narrowToStamp(gp, op->getReturnValue()->getStamp());
 			cc.ret(gp);
 		}
 	} else {
