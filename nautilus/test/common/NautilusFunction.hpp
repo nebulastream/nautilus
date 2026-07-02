@@ -205,4 +205,162 @@ val<int32_t> nautilusFunctionGetFuncPtr(val<int32_t> a, val<int32_t> b) {
 	return invoke(applyFnPtr, fnPtr, a, b);
 }
 
+// ---------------------------------------------------------------------------
+// Data-type coverage: one NautilusFunction call per val<T> specialization
+// (signed/unsigned integers of every width, floating point, bool, pointer,
+// and enum), so the NautilusFunction call path is exercised for all types.
+// ---------------------------------------------------------------------------
+
+// Test: NautilusFunction over val<int8_t>
+val<int8_t> addInt8Helper(val<int8_t> a, val<int8_t> b) {
+	return a + b;
+}
+
+static auto nautilusAddInt8 = NautilusFunction {"addInt8", addInt8Helper};
+
+val<int8_t> nautilusFunctionInt8(val<int8_t> a, val<int8_t> b) {
+	return nautilusAddInt8(a, b);
+}
+
+// Test: NautilusFunction over val<uint8_t>
+val<uint8_t> mulUInt8Helper(val<uint8_t> a, val<uint8_t> b) {
+	return a * b;
+}
+
+static auto nautilusMulUInt8 = NautilusFunction {"mulUInt8", mulUInt8Helper};
+
+val<uint8_t> nautilusFunctionUInt8(val<uint8_t> a, val<uint8_t> b) {
+	return nautilusMulUInt8(a, b);
+}
+
+// Test: NautilusFunction over val<int16_t>
+val<int16_t> subInt16Helper(val<int16_t> a, val<int16_t> b) {
+	return a - b;
+}
+
+static auto nautilusSubInt16 = NautilusFunction {"subInt16", subInt16Helper};
+
+val<int16_t> nautilusFunctionInt16(val<int16_t> a, val<int16_t> b) {
+	return nautilusSubInt16(a, b);
+}
+
+// Test: NautilusFunction over val<uint16_t>
+val<uint16_t> addUInt16Helper(val<uint16_t> a, val<uint16_t> b) {
+	return a + b;
+}
+
+static auto nautilusAddUInt16 = NautilusFunction {"addUInt16", addUInt16Helper};
+
+val<uint16_t> nautilusFunctionUInt16(val<uint16_t> a, val<uint16_t> b) {
+	return nautilusAddUInt16(a, b);
+}
+
+// Test: NautilusFunction over val<uint32_t>
+val<uint32_t> mulUInt32Helper(val<uint32_t> a, val<uint32_t> b) {
+	return a * b;
+}
+
+static auto nautilusMulUInt32 = NautilusFunction {"mulUInt32", mulUInt32Helper};
+
+val<uint32_t> nautilusFunctionUInt32(val<uint32_t> a, val<uint32_t> b) {
+	return nautilusMulUInt32(a, b);
+}
+
+// Test: NautilusFunction over val<int64_t>
+val<int64_t> addInt64Helper(val<int64_t> a, val<int64_t> b) {
+	return a + b;
+}
+
+static auto nautilusAddInt64 = NautilusFunction {"addInt64", addInt64Helper};
+
+val<int64_t> nautilusFunctionInt64(val<int64_t> a, val<int64_t> b) {
+	return nautilusAddInt64(a, b);
+}
+
+// Test: NautilusFunction over val<uint64_t>
+val<uint64_t> mulUInt64Helper(val<uint64_t> a, val<uint64_t> b) {
+	return a * b;
+}
+
+static auto nautilusMulUInt64 = NautilusFunction {"mulUInt64", mulUInt64Helper};
+
+val<uint64_t> nautilusFunctionUInt64(val<uint64_t> a, val<uint64_t> b) {
+	return nautilusMulUInt64(a, b);
+}
+
+// Test: NautilusFunction over val<float>
+val<float> addFloatHelper(val<float> a, val<float> b) {
+	return a + b;
+}
+
+static auto nautilusAddFloat = NautilusFunction {"addFloat", addFloatHelper};
+
+val<float> nautilusFunctionFloat(val<float> a, val<float> b) {
+	return nautilusAddFloat(a, b);
+}
+
+// Test: NautilusFunction over val<double>
+val<double> mulDoubleHelper(val<double> a, val<double> b) {
+	return a * b;
+}
+
+static auto nautilusMulDouble = NautilusFunction {"mulDouble", mulDoubleHelper};
+
+val<double> nautilusFunctionDouble(val<double> a, val<double> b) {
+	return nautilusMulDouble(a, b);
+}
+
+// Test: NautilusFunction over val<bool>
+val<bool> andBoolHelper(val<bool> a, val<bool> b) {
+	return a && b;
+}
+
+static auto nautilusAndBool = NautilusFunction {"andBool", andBoolHelper};
+
+val<bool> nautilusFunctionBool(val<bool> a, val<bool> b) {
+	return nautilusAndBool(a, b);
+}
+
+// Test: NautilusFunction reading through a val<int32_t*> pointer argument
+val<int32_t> derefAddHelper(val<int32_t*> ptr, val<int32_t> addend) {
+	return *ptr + addend;
+}
+
+static auto nautilusDerefAdd = NautilusFunction {"derefAdd", derefAddHelper};
+
+val<int32_t> nautilusFunctionPtr(val<int32_t*> ptr, val<int32_t> addend) {
+	return nautilusDerefAdd(ptr, addend);
+}
+
+// Test: NautilusFunction writing through a val<double*> pointer argument
+void writeDoubleHelper(val<double*> ptr, val<double> value) {
+	*ptr = value;
+}
+
+static auto nautilusWriteDouble = NautilusFunction {"writeDouble", writeDoubleHelper};
+
+val<double> nautilusFunctionPtrWrite(val<double*> ptr, val<double> value) {
+	nautilusWriteDouble(ptr, value);
+	return *ptr;
+}
+
+// Test: NautilusFunction over an enum-typed val<T> argument
+enum class NautilusFunctionColor : int32_t { RED, GREEN, BLUE };
+
+val<int32_t> colorToCodeHelper(val<NautilusFunctionColor> color) {
+	if (color == NautilusFunctionColor::RED) {
+		return val<int32_t>(1);
+	} else if (color == NautilusFunctionColor::GREEN) {
+		return val<int32_t>(2);
+	} else {
+		return val<int32_t>(3);
+	}
+}
+
+static auto nautilusColorToCode = NautilusFunction {"colorToCode", colorToCodeHelper};
+
+val<int32_t> nautilusFunctionEnum(val<NautilusFunctionColor> color) {
+	return nautilusColorToCode(color);
+}
+
 } // namespace nautilus::engine

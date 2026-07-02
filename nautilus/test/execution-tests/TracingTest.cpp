@@ -731,6 +731,19 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	    {"nautilusFunctionInlineMember", details::createFunctionWrapper(nautilusFunctionInlineMember)},
 	    {"nautilusFunctionMultipleInline", details::createFunctionWrapper(nautilusFunctionMultipleInline)},
 	    {"nautilusFunctionGetFuncPtr", details::createFunctionWrapper(nautilusFunctionGetFuncPtr)},
+	    {"nautilusFunctionInt8", details::createFunctionWrapper(nautilusFunctionInt8)},
+	    {"nautilusFunctionUInt8", details::createFunctionWrapper(nautilusFunctionUInt8)},
+	    {"nautilusFunctionInt16", details::createFunctionWrapper(nautilusFunctionInt16)},
+	    {"nautilusFunctionUInt16", details::createFunctionWrapper(nautilusFunctionUInt16)},
+	    {"nautilusFunctionUInt32", details::createFunctionWrapper(nautilusFunctionUInt32)},
+	    {"nautilusFunctionInt64", details::createFunctionWrapper(nautilusFunctionInt64)},
+	    {"nautilusFunctionUInt64", details::createFunctionWrapper(nautilusFunctionUInt64)},
+	    {"nautilusFunctionFloat", details::createFunctionWrapper(nautilusFunctionFloat)},
+	    {"nautilusFunctionDouble", details::createFunctionWrapper(nautilusFunctionDouble)},
+	    {"nautilusFunctionBool", details::createFunctionWrapper(nautilusFunctionBool)},
+	    {"nautilusFunctionPtr", details::createFunctionWrapper(nautilusFunctionPtr)},
+	    {"nautilusFunctionPtrWrite", details::createFunctionWrapper(nautilusFunctionPtrWrite)},
+	    {"nautilusFunctionEnum", details::createFunctionWrapper(nautilusFunctionEnum)},
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }

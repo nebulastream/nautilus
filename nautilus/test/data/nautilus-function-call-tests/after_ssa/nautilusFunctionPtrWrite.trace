@@ -1,0 +1,11 @@
+EXECUTE:
+B0($1:ptr,$2:f64)
+	CALL	$3	func_*($1,$2)	:void
+	LOAD	$6	$1	:f64
+	RETURN	$0	$6	:f64
+
+WRITEDOUBLE:
+B0($1:ptr,$2:f64)
+	STORE	$7	$1	$2	:void
+	RETURN	$0	:void
+

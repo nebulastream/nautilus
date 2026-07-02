@@ -1,0 +1,12 @@
+nautilus {
+andBool($1:bool, $2:bool) :bool {
+Block_0($1:bool, $2:bool):
+	$3 = $1 and $2 :bool
+	return ($3) :bool
+}
+execute($1:bool, $2:bool) :bool {
+Block_0($1:bool, $2:bool):
+	$3 = func_*($1,$2) :bool
+	return ($3) :bool
+}
+} //nautilus
