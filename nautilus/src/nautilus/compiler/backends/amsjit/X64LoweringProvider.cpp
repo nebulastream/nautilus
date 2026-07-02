@@ -2,6 +2,7 @@
 #include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/ir/Usages.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -90,7 +91,7 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
                                                          const engine::Options& options,
                                                          CompilationStatistics* statistics,
                                                          const AsmJitIntrinsicManager& intrinsicManager)
-    : cc(&code), ir(std::move(ir)), intrinsicManager_(intrinsicManager) {
+    : cc(&code), ir(std::move(ir)), intrinsicManager_(intrinsicManager), statistics_(statistics) {
 	// Register the optional post-RA peephole pass. It appends to the
 	// Compiler's pass list *after* X86RAPass (which was installed during
 	// `cc(&code)` via x86::Compiler::onAttach), so it sees physical-register
@@ -99,6 +100,7 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
 	if (options.getOptionOrDefault<bool>("asmjit.enablePostRAPeephole", true)) {
 		cc.addPassT<X64PostRAPeepholePass>(statistics);
 	}
+	enableBranchFusion_ = options.getOptionOrDefault<bool>("asmjit.enableBranchFusion", true);
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
@@ -263,6 +265,11 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
 
+		// Static usage counts feed the compare→branch fusion decision; only
+		// pay for the walk when the fusion is enabled.
+		usageCounts_ = enableBranchFusion_ ? ir::countUsages(&funcBlock)
+		                                   : std::unordered_map<ir::OperationIdentifier, uint32_t> {};
+
 		// Materialise the function's alloca table into one stack slot per
 		// entry, captured in a pointer register.  visitAlloca() then just
 		// looks the slot up by index.  Doing this here (rather than per
@@ -317,6 +324,13 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		cc.endFunc();
 	}
 
+	// Publish the lowering counters into the pipeline-wide statistics sink,
+	// mirroring the `asmjit.peephole.*` namespace: keys are present exactly
+	// when the corresponding optimization is enabled.
+	if (statistics_ != nullptr && enableBranchFusion_) {
+		statistics_->add("asmjit.lowering.fusedBranches", fusedBranches_);
+	}
+
 	// Format the builder node list before finalize(): at this point the IR still carries
 	// virtual registers, which is the representation users want to inspect as "asmjit IR".
 	if (asmjitIRDump != nullptr) {
@@ -340,9 +354,50 @@ void AsmJitLoweringProvider::LoweringContext::processBlock(const ir::BasicBlock*
 	// Bind the pre-created label for this block.
 	cc.bind(getOrCreateLabel(id));
 
-	for (auto* op : block->getOperations()) {
-		dispatch(op, frame);
+	// visitIf consumes a pending fused compare before recursing back here.
+	assert(pendingFusedCompare_ == nullptr && "fused compare leaked across blocks");
+
+	const auto& ops = block->getOperations();
+	for (size_t i = 0; i < ops.size(); i++) {
+		// Compare→branch fusion handshake: when the compare's flags can be
+		// consumed directly by the IfOperation that follows it, skip the
+		// compare's own lowering and let visitIf emit a fused cmp+jcc.
+		// Adjacency guarantees no instruction between cmp and jcc can
+		// clobber EFLAGS or retarget an operand register.
+		if (enableBranchFusion_ && i + 1 < ops.size()) {
+			if (auto* cmp = ir::dyn_cast<ir::CompareOperation>(ops[i])) {
+				if (isFusibleCompare(cmp, ops[i + 1], frame)) {
+					pendingFusedCompare_ = cmp;
+					continue;
+				}
+			}
+		}
+		dispatch(ops[i], frame);
 	}
+}
+
+bool AsmJitLoweringProvider::LoweringContext::isFusibleCompare(const ir::CompareOperation* cmp,
+                                                               const ir::Operation* next, RegisterFrame& frame) {
+	const auto* ifOp = ir::dyn_cast<ir::IfOperation>(next);
+	if (ifOp == nullptr || ifOp->getValue() != cmp) {
+		return false;
+	}
+	// Float EQ/NE needs the parity flag on top of the primary condition
+	// (see visitCompare); fusing those requires a two-jump sequence, so the
+	// first version keeps float compares on the materialising path.
+	if (isFloatType(cmp->getLeftInput()->getStamp())) {
+		return false;
+	}
+	// The if must be the sole consumer; any other use still needs the
+	// materialised boolean.
+	const auto it = usageCounts_.find(cmp->getIdentifier());
+	if (it == usageCounts_.end() || it->second != 1) {
+		return false;
+	}
+	// If the identifier is already bound it doubles as a downstream merge
+	// block's parameter register (issue #321); that register must be written,
+	// so the compare cannot skip materialisation.
+	return !frame.contains(cmp->getIdentifier());
 }
 
 // ── Block-argument passing ────────────────────────────────────────────────────
@@ -758,13 +813,25 @@ void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOper
 // ── Control flow ──────────────────────────────────────────────────────────────
 
 void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, RegisterFrame& frame) {
-	auto condGp = toGp(frame.getValue(op->getValue()->getIdentifier()));
 	auto trueLabel = getOrCreateLabel(op->getTrueBlockInvocation().getBlock()->getIdentifier());
 	auto falseLabel = getOrCreateLabel(op->getFalseBlockInvocation().getBlock()->getIdentifier());
 
 	auto elsePath = cc.newLabel();
-	cc.test(condGp, condGp);
-	cc.jz(elsePath);
+	if (pendingFusedCompare_ != nullptr) {
+		// processBlock proved this compare's only consumer is this if and
+		// skipped its lowering; emit the compare and the negated conditional
+		// jump in one fused step. The block-argument copies below sit after
+		// the jcc, so they cannot disturb the flags.
+		assert(op->getValue() == pendingFusedCompare_ && "pending fused compare does not feed this if");
+		const auto* cmp = pendingFusedCompare_;
+		pendingFusedCompare_ = nullptr;
+		emitFusedCompareBranch(cmp, elsePath, frame);
+		fusedBranches_++;
+	} else {
+		auto condGp = toGp(frame.getValue(op->getValue()->getIdentifier()));
+		cc.test(condGp, condGp);
+		cc.jz(elsePath);
+	}
 
 	// True branch: copy arguments then jump.
 	processBlockInvocation(op->getTrueBlockInvocation(), frame);
@@ -788,6 +855,80 @@ void AsmJitLoweringProvider::LoweringContext::visitIf(ir::IfOperation* op, Regis
 	cc.jmp(falseLabel);
 
 	processBlock(op->getFalseBlockInvocation().getBlock(), frame);
+}
+
+// Fused replacement for visitCompare + the test/jz in visitIf: emits the
+// compare and jumps to @p falseTarget when the condition is false. Mirrors
+// visitCompare's integer paths (the float path is excluded by
+// isFusibleCompare); the condition codes are the negation of the setcc the
+// unfused lowering would have used.
+void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::CompareOperation* cmp, Label falseTarget,
+                                                                     RegisterFrame& frame) {
+	auto left = toGp(frame.getValue(cmp->getLeftInput()->getIdentifier()));
+
+	if (cmp->getLeftInput()->getStamp() == Type::ptr && isInteger(cmp->getRightInput()->getStamp())) {
+		// Null-pointer check (see visitCompare): only EQ/NE are meaningful.
+		cc.test(left, left);
+		if (cmp->getComparator() == ir::CompareOperation::EQ) {
+			cc.jnz(falseTarget);
+		} else {
+			cc.jz(falseTarget);
+		}
+		return;
+	}
+
+	// Keep visitCompare's `cmp x, 0` → `test x, x` peephole.
+	const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(cmp->getRightInput());
+	if (rightConst != nullptr && rightConst->getValue() == 0) {
+		cc.test(left, left);
+	} else {
+		auto right = toGp(frame.getValue(cmp->getRightInput()->getIdentifier()));
+		cc.cmp(left, right);
+	}
+
+	if (isUnsignedType(cmp->getLeftInput()->getStamp())) {
+		switch (cmp->getComparator()) {
+		case ir::CompareOperation::EQ:
+			cc.jne(falseTarget);
+			break;
+		case ir::CompareOperation::NE:
+			cc.je(falseTarget);
+			break;
+		case ir::CompareOperation::LT:
+			cc.jae(falseTarget);
+			break;
+		case ir::CompareOperation::LE:
+			cc.ja(falseTarget);
+			break;
+		case ir::CompareOperation::GT:
+			cc.jbe(falseTarget);
+			break;
+		case ir::CompareOperation::GE:
+			cc.jb(falseTarget);
+			break;
+		}
+	} else {
+		switch (cmp->getComparator()) {
+		case ir::CompareOperation::EQ:
+			cc.jne(falseTarget);
+			break;
+		case ir::CompareOperation::NE:
+			cc.je(falseTarget);
+			break;
+		case ir::CompareOperation::LT:
+			cc.jge(falseTarget);
+			break;
+		case ir::CompareOperation::LE:
+			cc.jg(falseTarget);
+			break;
+		case ir::CompareOperation::GT:
+			cc.jle(falseTarget);
+			break;
+		case ir::CompareOperation::GE:
+			cc.jl(falseTarget);
+			break;
+		}
+	}
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitBranch(ir::BranchOperation* op, RegisterFrame& frame) {

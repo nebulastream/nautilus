@@ -190,6 +190,29 @@ TEST_CASE("Execution Benchmark") {
 		}
 	}
 #endif
+
+#ifdef ENABLE_ASMJIT_BACKEND
+	// AsmJit-only A/B benchmark for the compare→branch fusion in the lowering
+	// (asmjit.enableBranchFusion). Most visible on branch-heavy loops
+	// (fibonacci), where fusion removes the setcc+movzx+test round-trip per
+	// iteration.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fusion : {false, true}) {
+			std::string tag = fusion ? "branchFusion" : "noBranchFusion";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fusion](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", fusion);
+				    func(meter, op);
+			    });
+		}
+	}
+#endif
 }
 
 } // namespace nautilus::engine

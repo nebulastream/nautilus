@@ -90,6 +90,20 @@ private:
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
 		std::unordered_set<ir::BlockIdentifier> processedBlocks;
+		/// Static SSA usage counts for the current function (see ir::countUsages).
+		/// Only populated when branch fusion is enabled; used to prove that a
+		/// compare's sole consumer is the IfOperation that follows it.
+		std::unordered_map<ir::OperationIdentifier, uint32_t> usageCounts_;
+		/// Set by processBlock when the next dispatched operation is an
+		/// IfOperation that can consume this compare's EFLAGS directly. The
+		/// compare's own lowering (cmp+setcc+movzx) is skipped and visitIf
+		/// emits a fused cmp+jcc instead.
+		const ir::CompareOperation* pendingFusedCompare_ = nullptr;
+		/// Gates the compare→branch fusion (option `asmjit.enableBranchFusion`).
+		bool enableBranchFusion_ = true;
+		/// Statistics sink shared with the rest of the pipeline; may be null.
+		CompilationStatistics* statistics_ = nullptr;
+		int64_t fusedBranches_ = 0;
 		/// Pointer registers for the current function's alloca slots, indexed
 		/// by AllocaOperation::getIndex(). Materialised once in the function
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
@@ -138,6 +152,14 @@ private:
 
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+
+		// True when `cmp` may skip materialising its boolean because the
+		// immediately following IfOperation is its only consumer and can read
+		// the flags directly.
+		bool isFusibleCompare(const ir::CompareOperation* cmp, const ir::Operation* next, RegisterFrame& frame);
+		// Emit the compare and the negated conditional jump to @p falseTarget
+		// in place of the unfused cmp+setcc+movzx / test+jz sequence.
+		void emitFusedCompareBranch(const ir::CompareOperation* cmp, ::asmjit::Label falseTarget, RegisterFrame& frame);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame);
