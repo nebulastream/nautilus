@@ -127,6 +127,9 @@ namespace nautilus::compiler::tbc {
 	TBC_INT8(X, SHL, opShl)                                                                                            \
 	TBC_INT8(X, SHR, opShr)                                                                                            \
 	X(BNOT_i64, (opBnot))                                                                                              \
+	/* negate: float sign-flip */                                                                                      \
+	X(NEG_f32, (opNeg<float>) )                                                                                        \
+	X(NEG_f64, (opNeg<double>) )                                                                                       \
 	TBC_CAST_GRID(X)                                                                                                   \
 	TBC_IMM_ARITH_LIST(X)
 

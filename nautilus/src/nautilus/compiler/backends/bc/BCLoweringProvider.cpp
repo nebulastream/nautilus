@@ -1709,7 +1709,18 @@ void BCLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* negat
 	useValue(negateOperation->getInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
-	ByteCode bc = ByteCode::BNEGATE_I64;
+	ByteCode bc;
+	switch (negateOperation->getStamp()) {
+	case Type::f32:
+		bc = ByteCode::NEG_f;
+		break;
+	case Type::f64:
+		bc = ByteCode::NEG_d;
+		break;
+	default:
+		bc = ByteCode::BNEGATE_I64;
+		break;
+	}
 	OpCode oc = {bc, input, -1, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }

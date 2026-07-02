@@ -602,6 +602,13 @@ void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, Reg
 void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* op, RegisterFrame& frame) {
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
+	if (isFloatType(op->getStamp())) {
+		// ARM64 has a native FNEG vector instruction: a real IEEE-754
+		// sign-flip, correct for every input including zero.
+		cc.fneg(toVec(result), toVec(src));
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 	cc.mvn(toGp(result), toGp(src));
 	// mvn flips the full 64-bit register, including the extension padding.
 	// That happens to stay correct for signed stamps (flipping a sign bit

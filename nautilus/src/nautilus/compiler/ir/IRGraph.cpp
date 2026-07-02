@@ -157,8 +157,8 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 
 template <>
 struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::OperationIdentifier& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", op.getId());
 		return out;
@@ -176,8 +176,8 @@ struct formatter<nautilus::compiler::ir::BlockIdentifier> : formatter<std::strin
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlockInvocation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "Block_{}(", op.getBlock()->getIdentifier());
 		const auto args = op.getArguments();
@@ -204,8 +204,8 @@ struct formatter<nautilus::compiler::ir::IfOperation> : formatter<std::string_vi
 
 template <>
 struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 
 		if (op.getStamp() != nautilus::Type::v) {
@@ -319,7 +319,9 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	}
 	case OpType::NegateOp: {
 		const auto* negateOp = nautilus::compiler::ir::cast<NegateOperation>(&op);
-		fmt::format_to(out, "{} = ~{}", op.getIdentifier(), negateOp->getInput()->getIdentifier());
+		const char* symbol =
+		    (negateOp->getStamp() == nautilus::Type::f32 || negateOp->getStamp() == nautilus::Type::f64) ? "-" : "~";
+		fmt::format_to(out, "{} = {}{}", op.getIdentifier(), symbol, negateOp->getInput()->getIdentifier());
 		break;
 	}
 	case OpType::AllocaOp: {
@@ -356,8 +358,8 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlock& block,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "\nBlock_{}(", block.getIdentifier());
 		const auto& args = block.getArguments();
@@ -378,8 +380,8 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 
 template <>
 struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::FunctionOperation& func,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}(", func.getName());
 		// The trace-to-IR conversion leaves `inputArgs`/`inputArgNames` empty;

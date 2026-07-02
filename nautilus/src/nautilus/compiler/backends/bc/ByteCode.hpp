@@ -371,6 +371,8 @@ enum class ByteCode : short {
 	BRSH_ui64,
 	// negate
 	BNEGATE_I64,
+	NEG_f,
+	NEG_d,
 	// select
 	SELECT_i8,
 	SELECT_i16,
@@ -746,6 +748,18 @@ template <class RegisterType>
 void bitwiseNot(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	writeReg(regs, c.output, ~l);
+}
+
+/**
+ * @brief Defines an IEEE-754 sign-flip negate in the bytecode interpreter
+ * @tparam RegisterType
+ * @param c
+ * @param regs
+ */
+template <class RegisterType>
+void neg(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	writeReg(regs, c.output, -l);
 }
 
 /**

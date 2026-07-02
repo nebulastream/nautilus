@@ -170,6 +170,11 @@ inline void opBnot(const Instr& i, uint64_t* fp) {
 	writeReg<int64_t>(fp, i.a, ~readReg<int64_t>(fp, i.b));
 }
 
+template <class T>
+inline void opNeg(const Instr& i, uint64_t* fp) {
+	writeReg<T>(fp, i.a, -readReg<T>(fp, i.b));
+}
+
 template <class S, class D>
 inline void opCast(const Instr& i, uint64_t* fp) {
 	writeReg<D>(fp, i.a, static_cast<D>(readReg<S>(fp, i.b)));

@@ -51,6 +51,14 @@ namespace nautilus {
 /// @see val_bool.hpp for the bool specialization
 /// @see val_details.hpp for implementation utilities
 
+namespace details {
+/// Forward declaration: negation (bitwise NOT for integral types, IEEE-754
+/// sign-flip for floating-point types). Defined below; declared here so
+/// `operator-()`'s inline float branch can call it by qualified name.
+template <is_arithmetic LHS>
+val<LHS> neg(const val<LHS>& value);
+} // namespace details
+
 // Partial specialization for arithmetic types only
 template <typename ValueType>
     requires is_arithmetic<ValueType>
@@ -179,11 +187,10 @@ public:
 			// `0 - x` is not IEEE-754 negation: subtraction of two exactly
 			// equal-magnitude operands rounds to +0.0 in the default
 			// round-to-nearest mode, so `0.0 - 0.0` is `+0.0`, not the `-0.0`
-			// that negating `+0.0` must produce. Multiplication's sign is
-			// always the XOR of its operands' signs, so `-1 * x` flips the
-			// sign bit correctly for zero (and every other value) instead of
-			// going through cancellation.
-			return (ValueType) -1 * *this;
+			// that negating `+0.0` must produce. Route through NEGATE instead,
+			// a real sign-bit flip that is correct for zero (and every other
+			// value) instead of going through cancellation.
+			return details::neg(*this);
 		} else {
 			return (ValueType) 0 - *this;
 		}
@@ -234,8 +241,9 @@ private:
 
 namespace details {
 
-/// Bitwise negation (NOT) operation for integral types
-template <is_integral LHS>
+/// Negation operation: bitwise NOT (~x) for integral types, IEEE-754
+/// sign-flip (-x) for floating-point types.
+template <is_arithmetic LHS>
 val<LHS> neg(const val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -243,7 +251,11 @@ val<LHS> neg(const val<LHS>& val) {
 		return tc;
 	}
 #endif
-	return ~RawValueResolver<LHS>::getRawValue(val);
+	if constexpr (std::floating_point<LHS>) {
+		return -RawValueResolver<LHS>::getRawValue(val);
+	} else {
+		return ~RawValueResolver<LHS>::getRawValue(val);
+	}
 }
 
 // Type helper for integer promotion rules
