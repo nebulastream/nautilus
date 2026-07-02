@@ -139,7 +139,28 @@ template <typename T>
 struct TracedLoopFrame {
 	TracedValue<T> index;
 	TracedValue<T> acc;
+	TracedValue<T> acc2; // == acc for single-accumulator loop kinds
 };
+
+/// Traced twin of EvalNative.hpp's breakPredicate -- must never drift.
+template <typename T>
+val<bool> breakPredicateTraced(TracedValue<T> acc) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return acc < TracedValue<T>(T(0));
+	} else {
+		return (acc & TracedValue<T>(T(1))) != TracedValue<T>(T(0));
+	}
+}
+
+/// Traced twin of EvalNative.hpp's whilePredicate -- must never drift.
+template <typename T>
+val<bool> whilePredicateTraced(TracedValue<T> acc) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return acc >= TracedValue<T>(T(0));
+	} else {
+		return (acc & TracedValue<T>(T(3))) != TracedValue<T>(T(3));
+	}
+}
 
 template <typename T>
 struct TracedEvalContext {
@@ -199,6 +220,10 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::LoopAcc2:
+		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		TracedValue<T> c = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
@@ -220,7 +245,54 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
 		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
 		for (val<int32_t> i = 0; i < trips; i = i + 1) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
+			acc = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::Loop2: {
+		TracedValue<T> rawCount = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> accA = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+		TracedValue<T> accB = rawCount;
+		for (val<int32_t> i = 0; i < trips; i = i + 1) {
+			// Parallel update mirroring the oracle: both bodies see the OLD
+			// (index, A, B) frame, then both commit -- two loop-carried values
+			// force a genuine parallel copy on the back edge (a swap when
+			// bodyA = lb and bodyB = la, the fibonacci shape).
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), accA, accB});
+			TracedValue<T> newA = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+			TracedValue<T> newB = evalNautilusInt<T>(ast, n.kid[3], args, ctx);
+			ctx.loopStack.pop_back();
+			accA = newA;
+			accB = newB;
+		}
+		return accA + accB;
+	}
+	case Kind::LoopBreak: {
+		TracedValue<T> rawCount = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+		for (val<int32_t> i = 0; i < trips; i = i + 1) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
+			acc = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			// Real traced early exit: the loop body's CFG splits mid-block.
+			if (breakPredicateTraced<T>(acc)) {
+				break;
+			}
+		}
+		return acc;
+	}
+	case Kind::WhileLoop: {
+		TracedValue<T> rawCount = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+		// Compound data-dependent header condition (counter bound && acc
+		// predicate), re-evaluated every iteration like the oracle's.
+		for (val<int32_t> i = 0; i < trips && whilePredicateTraced<T>(acc); i = i + 1) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
 			acc = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
@@ -234,7 +306,8 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		const int64_t trips = static_cast<int64_t>(n.imm);
 		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 		for (static_val<int64_t> i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			ctx.loopStack.push_back(
+			    TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc, acc});
 			acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}
@@ -367,6 +440,10 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::LoopAcc2:
+		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		TracedValue<T> c = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
@@ -386,7 +463,54 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
 		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
 		for (val<int32_t> i = 0; i < trips; i = i + 1) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
+			acc = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::Loop2: {
+		TracedValue<T> rawCount = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> accA = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
+		TracedValue<T> accB = rawCount;
+		for (val<int32_t> i = 0; i < trips; i = i + 1) {
+			// Parallel update mirroring the oracle: both bodies see the OLD
+			// (index, A, B) frame, then both commit -- two loop-carried values
+			// force a genuine parallel copy on the back edge (a swap when
+			// bodyA = lb and bodyB = la, the fibonacci shape).
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), accA, accB});
+			TracedValue<T> newA = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
+			TracedValue<T> newB = evalNautilusFloat<T>(ast, n.kid[3], args, ctx);
+			ctx.loopStack.pop_back();
+			accA = newA;
+			accB = newB;
+		}
+		return accA + accB;
+	}
+	case Kind::LoopBreak: {
+		TracedValue<T> rawCount = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
+		for (val<int32_t> i = 0; i < trips; i = i + 1) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
+			acc = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			// Real traced early exit: the loop body's CFG splits mid-block.
+			if (breakPredicateTraced<T>(acc)) {
+				break;
+			}
+		}
+		return acc;
+	}
+	case Kind::WhileLoop: {
+		TracedValue<T> rawCount = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
+		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
+		// Compound data-dependent header condition (counter bound && acc
+		// predicate), re-evaluated every iteration like the oracle's.
+		for (val<int32_t> i = 0; i < trips && whilePredicateTraced<T>(acc); i = i + 1) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc, acc});
 			acc = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
@@ -397,7 +521,8 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		const int64_t trips = static_cast<int64_t>(n.imm);
 		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
 		for (static_val<int64_t> i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			ctx.loopStack.push_back(
+			    TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc, acc});
 			acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}

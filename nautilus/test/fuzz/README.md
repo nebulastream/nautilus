@@ -72,6 +72,26 @@ mirroring how the original `uint64_t`-only fuzzer worked.
   seeing its `LoopIndex` as a constant, exercising `static_val`'s
   snapshot-hash machinery and trace-time unrolling instead of loop
   lowering (the `static-loop-tests` feature).
+* **Richer loop shapes** (both domains):
+  * `Loop2` -- two loop-carried accumulators updated with parallel
+    semantics (both bodies see the old `(index, A, B)` frame, then both
+    commit), so `bodyA = lb` / `bodyB = la` generates a genuine register
+    swap on the back edge: the sharpest probe for parallel-copy sequencing
+    and multi-argument block-invocation passing, where the asmjit #321 and
+    BC merge bugs lived. Bodies can read `LoopAcc` (`la`), `LoopAcc2`
+    (`lb`), `LoopIndex` (`li`); single-accumulator loops publish
+    `acc2 == acc` so `lb` is legal in any loop body.
+  * `LoopBreak` -- a real traced `if (...) break;` mid-body on a fixed
+    accumulator predicate (ints: odd, floats: negative; NaN-safe),
+    splitting the loop body's CFG.
+  * `WhileLoop` -- a compound data-dependent header condition
+    (`i < trips && pred(acc)`, re-evaluated per iteration), exercising
+    `val<bool>` conjunctions in loop headers.
+  * `LoopIndexOuter` (`lio`) -- reads the *enclosing* loop's index from a
+    doubly-nested body, forcing outer-frame values to survive across the
+    inner loop's back edge as extra block arguments.
+  All predicates are fixed and mirrored exactly between `EvalNative.hpp`
+  and `EvalNautilus.hpp`, keeping every program fully defined.
 * **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
   produces a `T` result, exactly like a same-domain cast -- only the
   intermediate type's domain changes. Whichever leg of the round trip is
