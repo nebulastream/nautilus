@@ -8,6 +8,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
         CompilationStatisticsTest.cpp
+        ConcurrentCompilationTest.cpp
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp

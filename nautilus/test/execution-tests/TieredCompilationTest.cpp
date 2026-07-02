@@ -43,9 +43,9 @@ TEST_CASE("Tiered Compilation - Tier 0 Executes Correctly") {
 	config.tier0.backend = tier0Backend;
 	config.tier1.backend = tier1Backend;
 
-	common::Arena arena;
+	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -82,9 +82,9 @@ TEST_CASE("Tiered Compilation - Background Promotion Completes") {
 	config.tier0.backend = tier0Backend;
 	config.tier1.backend = tier1Backend;
 
-	common::Arena arena;
+	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -116,9 +116,9 @@ TEST_CASE("Tiered Compilation - Results Correct After Promotion") {
 	config.tier0.backend = tier0Backend;
 	config.tier1.backend = tier1Backend;
 
-	common::Arena arena;
+	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -166,9 +166,10 @@ TEST_CASE("Tiered Compilation - Custom Backend Per Tier") {
 			config.tier0.backend = t0;
 			config.tier1.backend = t1;
 
-			common::Arena arena;
+			common::ArenaPool traceArenaPool;
 			common::ArenaPool irArenaPool;
-			auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
+			auto tieredJit =
+			    std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
 			auto* jit = tieredJit.get();
 			auto engine = NautilusEngine(std::move(tieredJit));
 			auto module = engine.createModule();
@@ -225,9 +226,9 @@ TEST_CASE("Tiered Compilation - Multiple Functions In Module") {
 	config.tier0.backend = tier0Backend;
 	config.tier1.backend = tier1Backend;
 
-	common::Arena arena;
+	common::ArenaPool traceArenaPool;
 	common::ArenaPool irArenaPool;
-	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, arena, irArenaPool);
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
 	auto* jit = tieredJit.get();
 	auto engine = NautilusEngine(std::move(tieredJit));
 	auto module = engine.createModule();
@@ -253,6 +254,69 @@ TEST_CASE("Tiered Compilation - Multiple Functions In Module") {
 	REQUIRE(addFn(99) == 100);
 	REQUIRE(sumFn(100, 200) == 300);
 	REQUIRE(mulFn(7, 8) == 56);
+}
+
+TEST_CASE("Tiered Compilation - Single Tier Mode") {
+	auto [tier0Backend, tier1Backend] = getTieredBackends();
+	if (tier0Backend.empty()) {
+		SKIP("Need at least two compilation backends for tiered compilation");
+	}
+
+	// Single-tier mode: the compiler should compile directly with the
+	// high-performance tier-1 backend and perform no background promotion.
+	TieredCompilationConfig config;
+	config.tier0.backend = tier0Backend;
+	config.tier1.backend = tier1Backend;
+	config.backgroundPromotion = false;
+
+	common::ArenaPool traceArenaPool;
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
+	auto* jit = tieredJit.get();
+	auto engine = NautilusEngine(std::move(tieredJit));
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+	module.registerFunction("sum", tieredSum);
+
+	auto compiled = module.compile();
+	auto addOneFn = compiled.getFunction<int32_t(int32_t)>("add_one");
+	auto sumFn = compiled.getFunction<int64_t(int64_t, int64_t)>("sum");
+
+	REQUIRE(addOneFn(5) == 6);
+	REQUIRE(sumFn(3, 4) == 7);
+
+	// No background promotion was started, so it is immediately complete and
+	// waiting is a no-op.
+	REQUIRE(jit->allPromotionsComplete());
+	jit->waitForPendingPromotions();
+	REQUIRE(jit->allPromotionsComplete());
+
+	// Results remain correct.
+	REQUIRE(addOneFn(0) == 1);
+	REQUIRE(sumFn(-5, 10) == 5);
+}
+
+TEST_CASE("Tiered Compilation - Single Tier Mode Via Option") {
+	auto [tier0Backend, tier1Backend] = getTieredBackends();
+	if (tier0Backend.empty()) {
+		SKIP("Need at least two compilation backends for tiered compilation");
+	}
+
+	// Configure single-tier mode purely through engine options.
+	Options options;
+	options.setOption("engine.tier0.backend", tier0Backend);
+	options.setOption("engine.tier1.backend", tier1Backend);
+	options.setOption("engine.tiered.backgroundPromotion", false);
+
+	auto engine = NautilusEngine(options);
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+
+	auto compiled = module.compile();
+	auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
+
+	REQUIRE(fn(100) == 101);
+	REQUIRE(fn(-1) == 0);
 }
 
 TEST_CASE("Tiered Compilation - Standard JITCompiler Still Works") {

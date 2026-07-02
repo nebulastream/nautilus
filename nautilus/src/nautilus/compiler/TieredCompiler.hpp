@@ -33,6 +33,13 @@ struct TierConfig {
 struct TieredCompilationConfig {
 	TierConfig tier0 {"bc"};   // low-latency tier (compiled synchronously)
 	TierConfig tier1 {"mlir"}; // high-performance tier (compiled in background)
+
+	/// When true (default) the compiler runs two-tier: a fast tier-0 compile is
+	/// returned immediately and the high-performance tier-1 backend is compiled
+	/// in the background. When false the compiler runs single-tier: it compiles
+	/// directly with the high-performance @ref tier1 backend and performs no
+	/// tier-0 compile and no background promotion.
+	bool backgroundPromotion {true};
 };
 
 } // namespace nautilus::engine
@@ -51,12 +58,12 @@ namespace nautilus::compiler {
  */
 class TieredJITCompiler : public JITCompiler {
 public:
-	/// Construct a tiered compiler that borrows the supplied Arena for
-	/// every tier-0 trace-and-compile cycle and the supplied ArenaPool
-	/// for IR-graph arenas.  Both must outlive the compiler.
-	TieredJITCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool);
-	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config, common::Arena& arena,
-	                  common::ArenaPool& irArenaPool);
+	/// Construct a tiered compiler that draws tier-0 trace arenas from
+	/// @p traceArenaPool and IR-graph arenas from @p irArenaPool.  Both pools
+	/// are internally synchronized and must outlive the compiler.
+	TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
+	TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
+	                  common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
 	~TieredJITCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
@@ -64,20 +71,18 @@ public:
 	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions,
 	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
 
+	/**
+	 * @brief Compile tier-0 into @p state and start background tier-1 promotion.
+	 *
+	 * The IR produced for tier-0 is handed directly to the promotion for this
+	 * module — no compiler-level cache is shared between calls, so concurrent
+	 * compileModule() invocations on a single shared compiler are race-free.
+	 */
+	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+	                   std::shared_ptr<engine::details::ModuleState> state) const override;
+
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
-
-	/**
-	 * @brief Start background tier-1 promotion targeting the given module state.
-	 *
-	 * Uses the IR cached from the most recent compile() call to compile with the
-	 * tier-1 backend in a background thread. When compilation completes, the
-	 * executable in the module state is swapped and the version counter is
-	 * incremented, causing all ModuleFunction handles to re-resolve.
-	 *
-	 * @param state Weak reference to the module state to promote
-	 */
-	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state) const;
 
 	/**
 	 * @brief Block until all pending background promotions have completed.
@@ -90,14 +95,32 @@ public:
 	bool allPromotionsComplete() const;
 
 private:
+	/**
+	 * @brief Trace and compile @p functions with the named @p backend, returning
+	 * the IR via @p outIR so callers can hand it to background promotion.
+	 *
+	 * @p tierLabel is recorded into the compilation statistics ("tier0"/"tier1").
+	 */
+	[[nodiscard]] std::unique_ptr<Executable> compileTier(std::list<CompilableFunction>& functions,
+	                                                      const engine::ModuleOptions& moduleOptions,
+	                                                      const std::string& backend, const std::string& tierLabel,
+	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
+
+	/**
+	 * @brief Start background tier-1 promotion of @p ir targeting @p state.
+	 *
+	 * Compiles @p ir with the tier-1 backend on a background thread using
+	 * @p options.  When done, the executable in the module state is swapped and
+	 * the version counter is incremented, causing all ModuleFunction handles to
+	 * re-resolve.  The IR and options are owned per call, so nothing is shared
+	 * between concurrent compiles.
+	 */
+	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
+	                  engine::ModuleOptions options) const;
+
 	LegacyCompiler baseCompiler_;
 	engine::TieredCompilationConfig config_;
 
-	// Mutable because compile() is const but needs to cache IR for promotion
-	mutable std::shared_ptr<ir::IRGraph> lastCachedIR_;
-	// Per-module options used by the most recent compile(), captured so the
-	// background tier-1 promotion compiles with the same module configuration.
-	mutable engine::ModuleOptions lastModuleOptions_;
 	mutable std::vector<std::thread> promotionThreads_;
 	mutable std::mutex threadsMutex_;
 	mutable std::atomic<int> pendingPromotions_ {0};

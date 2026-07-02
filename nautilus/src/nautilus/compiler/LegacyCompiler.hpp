@@ -16,27 +16,28 @@ class CompilationStatistics;
  * Compiles functions using a single backend (selected via options).
  * This is the original Nautilus compilation strategy.
  *
- * The compiler never owns an Arena; callers must supply one that
- * outlives the compiler.  The same Arena is reused across every
- * compile() invocation: softReset() is called at the start of each
- * compilation so chunk memory from the previous compile is recycled
- * instead of being freed and reallocated.  This amortises allocation
- * cost over many compilations and is the reason compile() is not
- * thread-safe (callers that need concurrent compilation should hold
- * one LegacyCompiler per thread, each with its own Arena).
+ * The compiler never owns an Arena.  It draws a fresh trace arena from the
+ * supplied trace ArenaPool for the duration of each compile() and returns it
+ * (softReset and recycled) when done.  Because the pool is internally
+ * synchronized and hands every concurrent compile() a distinct arena,
+ * compile() is safe to call from multiple threads on a single shared
+ * compiler.  Both the trace pool and the IR-arena pool must outlive the
+ * compiler.
  */
 class LegacyCompiler : public JITCompiler {
 public:
-	/// Construct a compiler that uses the supplied Arena for every trace
-	/// and the supplied ArenaPool for IR-graph arenas.  Both must outlive
-	/// the compiler.
-	LegacyCompiler(engine::Options options, common::Arena& arena, common::ArenaPool& irArenaPool);
+	/// Construct a compiler that draws trace arenas from @p traceArenaPool and
+	/// IR-graph arenas from @p irArenaPool.  Both must outlive the compiler.
+	LegacyCompiler(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
 	~LegacyCompiler() override;
 
 	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
 	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
 	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions,
 	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
+
+	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+	                   std::shared_ptr<engine::details::ModuleState> state) const override;
 
 	std::string getName() const override;
 	const engine::Options& getOptions() const override {
@@ -77,10 +78,11 @@ private:
 	const engine::Options options;
 	const CompilationBackendRegistry* backends;
 
-	/// Non-owning pointer to the externally supplied Arena.  softReset()'d
-	/// at the start of each compile() invocation.  Marked mutable because
-	/// compile() is const but needs to recycle the arena between calls.
-	mutable common::Arena* arena_;
+	/// Non-owning pointer to the externally supplied trace-arena pool.  Each
+	/// compile() acquires a fresh arena from it for the duration of tracing
+	/// and IR generation, then returns it.  Marked mutable because compile()
+	/// is const but acquire() mutates the pool.
+	mutable common::ArenaPool* traceArenaPool_;
 	/// Non-owning pointer to the externally supplied IR-arena pool.  Each
 	/// IRGraph created during compileToIR acquires its arena from here, so
 	/// successive compiles reuse heap chunks across IR graphs.
