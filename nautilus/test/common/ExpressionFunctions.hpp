@@ -183,7 +183,11 @@ val<T> shiftRight(val<T> x, val<T> y) {
 
 template <typename T>
 val<T> negate(val<T> x) {
-	return ~x;
+	if constexpr (std::is_floating_point_v<T>) {
+		return -x;
+	} else {
+		return ~x;
+	}
 }
 
 template <typename T>
@@ -212,9 +216,7 @@ val<int32_t> constructComplexReturnObject(val<int32_t> a, val<int32_t> b) {
 
 val<int32_t> constructComplexReturnObject2(val<int32_t> a, val<int32_t> b) {
 	val<int32_t> t = 0;
-	{
-		t = constructComplexReturnObject(a, b);
-	}
+	{ t = constructComplexReturnObject(a, b); }
 	return t + 42;
 }
 

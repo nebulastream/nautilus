@@ -430,6 +430,9 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	X(BRSH_ui64, bitwiseRSH<uint64_t>)                                                                                 \
 	/* bitwise: bnot */                                                                                                \
 	X(BNEGATE_I64, bitwiseNot<int64_t>)                                                                                \
+	/* negate: float sign-flip */                                                                                      \
+	X(NEG_f, neg<float>)                                                                                               \
+	X(NEG_d, neg<double>)                                                                                              \
 	/* select */                                                                                                       \
 	X(SELECT_i8, selectOp<int8_t>)                                                                                     \
 	X(SELECT_i16, selectOp<int16_t>)                                                                                   \

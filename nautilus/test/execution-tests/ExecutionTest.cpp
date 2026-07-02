@@ -46,6 +46,24 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(INT_MIN) == INT_MAX);
 	}
 
+	SECTION("floatUnaryMinus") {
+		auto f = engine.registerFunction(negate<float>);
+		REQUIRE(f(42.5f) == -42.5f);
+		REQUIRE(f(-42.5f) == 42.5f);
+		// IEEE-754 sign-flip must be exact for zero, not just numerically equal
+		// (0.0f == -0.0f, so the value alone can't distinguish them).
+		REQUIRE(std::signbit(f(0.0f)));
+		REQUIRE_FALSE(std::signbit(f(-0.0f)));
+	}
+
+	SECTION("doubleUnaryMinus") {
+		auto f = engine.registerFunction(negate<double>);
+		REQUIRE(f(42.5) == -42.5);
+		REQUIRE(f(-42.5) == 42.5);
+		REQUIRE(std::signbit(f(0.0)));
+		REQUIRE_FALSE(std::signbit(f(-0.0)));
+	}
+
 	SECTION("uintBitwiseNegate") {
 		auto f = engine.registerFunction(negate<uint32_t>);
 		REQUIRE(f((uint32_t) 0) == UINT_MAX);

@@ -960,8 +960,40 @@ void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, Reg
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* op, RegisterFrame& frame) {
+	auto stamp = op->getStamp();
+	if (isFloatType(stamp)) {
+		// IEEE-754 sign-flip: XOR the sign bit against a mask constant. This is
+		// correct for every input including zero, unlike bitwise NOT (undefined
+		// on floats) or `0 - x` (mis-signs zero).
+		auto input = frame.getValue(op->getInput()->getIdentifier());
+		auto result = allocReg(stamp);
+		auto xDst = toXmm(result);
+		cc.movaps(xDst, toXmm(input));
+		// Load the mask into a register first (matching visitConstFloat's
+		// established pattern) rather than using it as a direct memory operand
+		// to the XOR itself.
+		auto maskReg = allocReg(stamp);
+		auto xMask = toXmm(maskReg);
+		if (stamp == Type::f32) {
+			uint32_t bits = 0x80000000u;
+			float mask;
+			memcpy(&mask, &bits, sizeof(mask));
+			auto mem = cc.newFloatConst(ConstPoolScope::kLocal, mask);
+			cc.movss(xMask, mem);
+			cc.xorps(xDst, xMask);
+		} else {
+			uint64_t bits = 0x8000000000000000ULL;
+			double mask;
+			memcpy(&mask, &bits, sizeof(mask));
+			auto mem = cc.newDoubleConst(ConstPoolScope::kLocal, mask);
+			cc.movsd(xMask, mem);
+			cc.xorpd(xDst, xMask);
+		}
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 	// NegateOperation is bitwise NOT (~x): result = input XOR all-ones.
-	auto result = allocReg(op->getStamp());
+	auto result = allocReg(stamp);
 	auto gDst = toGp(result);
 	cc.mov(gDst, gpOperand(op->getInput(), frame));
 	cc.not_(gDst);
@@ -969,7 +1001,7 @@ void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* o
 	// That happens to stay correct for signed stamps (flipping a sign bit
 	// flips its replicated extension consistently) but is wrong for unsigned
 	// stamps, whose invariant is a zero-extended (not flipped) upper half.
-	narrowToStamp(gDst, op->getStamp());
+	narrowToStamp(gDst, stamp);
 	bindResult(op->getIdentifier(), result, frame);
 }
 

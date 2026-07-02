@@ -512,9 +512,15 @@ private:
 		useValue(opt->getInput()->getIdentifier(), frame);
 		const auto result = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), result);
-		// Bitwise negation runs on the full 64-bit slot (bc parity: consumers
-		// always read their exact width, so high garbage is unobservable).
-		emit(block, Op::BNOT_i64, result, input);
+		if (opt->getStamp() == Type::f32) {
+			emit(block, Op::NEG_f32, result, input);
+		} else if (opt->getStamp() == Type::f64) {
+			emit(block, Op::NEG_f64, result, input);
+		} else {
+			// Bitwise negation runs on the full 64-bit slot (bc parity: consumers
+			// always read their exact width, so high garbage is unobservable).
+			emit(block, Op::BNOT_i64, result, input);
+		}
 	}
 
 	// ── Memory ───────────────────────────────────────────────────────────────

@@ -554,10 +554,16 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 
 void MLIRLoweringProvider::visitNegate(ir::NegateOperation* negateOperation, ValueFrame& frame) {
 	auto input = frame.getValue(negateOperation->getInput()->getIdentifier());
-	auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
-	                                                         builder->getIntegerAttr(input.getType(), ~0));
-	auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
-	frame.setValue(negateOperation->getIdentifier(), negate);
+	if (isFloat(negateOperation->getStamp())) {
+		auto negate = builder->create<mlir::LLVM::FNegOp>(getNameLoc("binOpResult"), input.getType(), input,
+		                                                  mlir::LLVM::FastmathFlags::none);
+		frame.setValue(negateOperation->getIdentifier(), negate);
+	} else {
+		auto constInt = builder->create<mlir::arith::ConstantOp>(getNameLoc("location"), input.getType(),
+		                                                         builder->getIntegerAttr(input.getType(), ~0));
+		auto negate = builder->create<mlir::arith::XOrIOp>(getNameLoc("comparison"), input, constInt);
+		frame.setValue(negateOperation->getIdentifier(), negate);
+	}
 }
 
 void MLIRLoweringProvider::visitNot(ir::NotOperation* notOperation, ValueFrame& frame) {
