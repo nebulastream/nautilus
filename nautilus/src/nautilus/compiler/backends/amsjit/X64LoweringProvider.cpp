@@ -1501,14 +1501,51 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	} else if (srcIsFloat && !dstIsFloat) {
 		// Float → integer: truncate toward zero, then narrow to the destination
 		// width so the value is defined by its low dstWidth bits (see the
-		// integer→integer path above). Mirrors A64LoweringProvider::visitCast.
+		// integer→integer path above). Mirrors A64LoweringProvider::visitCast
+		// (which uses fcvtzu/fcvtzs and needs no ui64 special case).
 		auto gDst = toGp(result);
 		auto xSrc = toXmm(src);
-		if (srcType == Type::f32)
-			cc.cvttss2si(gDst.r64(), xSrc);
-		else
-			cc.cvttsd2si(gDst.r64(), xSrc);
-		narrowToStamp(gDst, dstType);
+		if (dstType == Type::ui64) {
+			// cvttss2si/cvttsd2si is signed; inputs in [2^63, 2^64) would
+			// overflow to the indefinite value 2^63 (issue #328). Standard
+			// unsigned sequence: below 2^63 convert directly; otherwise
+			// subtract 2^63 in the float domain (exact, 2^63 is representable
+			// in f32 and f64), convert, and set bit 63 back. Narrower unsigned
+			// destinations fit the signed conversion and need no special case.
+			Label big = cc.newLabel();
+			Label done = cc.newLabel();
+			if (srcType == Type::f32) {
+				auto threshold = cc.newFloatConst(ConstPoolScope::kLocal, 9223372036854775808.0f);
+				cc.ucomiss(xSrc, threshold);
+				cc.jae(big);
+				cc.cvttss2si(gDst.r64(), xSrc);
+				cc.jmp(done);
+				cc.bind(big);
+				auto xAdj = cc.newXmmSs();
+				cc.movss(xAdj, xSrc);
+				cc.subss(xAdj, threshold);
+				cc.cvttss2si(gDst.r64(), xAdj);
+			} else {
+				auto threshold = cc.newDoubleConst(ConstPoolScope::kLocal, 9223372036854775808.0);
+				cc.ucomisd(xSrc, threshold);
+				cc.jae(big);
+				cc.cvttsd2si(gDst.r64(), xSrc);
+				cc.jmp(done);
+				cc.bind(big);
+				auto xAdj = cc.newXmmSd();
+				cc.movsd(xAdj, xSrc);
+				cc.subsd(xAdj, threshold);
+				cc.cvttsd2si(gDst.r64(), xAdj);
+			}
+			cc.btc(gDst.r64(), 63);
+			cc.bind(done);
+		} else {
+			if (srcType == Type::f32)
+				cc.cvttss2si(gDst.r64(), xSrc);
+			else
+				cc.cvttsd2si(gDst.r64(), xSrc);
+			narrowToStamp(gDst, dstType);
+		}
 	} else if (!srcIsFloat && dstIsFloat) {
 		// Integer → float.
 		auto gSrc = toGp(src);
