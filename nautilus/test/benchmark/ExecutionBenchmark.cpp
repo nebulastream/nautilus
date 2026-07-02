@@ -190,6 +190,70 @@ TEST_CASE("Execution Benchmark") {
 		}
 	}
 #endif
+
+#ifdef ENABLE_ASMJIT_BACKEND
+	// AsmJit-only A/B benchmark for the compare→branch fusion in the lowering
+	// (asmjit.enableBranchFusion). Most visible on branch-heavy loops
+	// (fibonacci), where fusion removes the setcc+movzx+test round-trip per
+	// iteration.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fusion : {false, true}) {
+			std::string tag = fusion ? "branchFusion" : "noBranchFusion";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fusion](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", fusion);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// AsmJit-only A/B benchmark for constant deferral + immediate folding
+	// (asmjit.enableConstFolding). Most visible where loop bodies contain
+	// constant operands (i = i + 1, cmp i, n).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fold : {false, true}) {
+			std::string tag = fold ? "constFold" : "noConstFold";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fold](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableConstFolding", fold);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// AsmJit-only comparison of the lowering baseline against all lowering
+	// optimizations stacked (branch fusion + const folding + select cmov).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allOpts : {false, true}) {
+			std::string tag = allOpts ? "allOpts" : "baseline";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", allOpts);
+				    op.setOption("asmjit.enableConstFolding", allOpts);
+				    op.setOption("asmjit.enableSelectCmov", allOpts);
+				    func(meter, op);
+			    });
+		}
+	}
+#endif
 }
 
 } // namespace nautilus::engine

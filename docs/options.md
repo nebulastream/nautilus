@@ -42,6 +42,9 @@ See [engine.md](engine.md) for how to create modules and override options per mo
 | bc.registerAllocator=[true,false]           | true     | Module  | Enables the linear register allocator in the bytecode backend.                                                                                        |
 | asmjit.enableIntrinsics=[true,false]        | true     | Module  | Registers the AsmJit intrinsic plugins for this compilation.                                                                                          |
 | asmjit.enablePostRAPeephole=[true,false]    | true     | Module  | Enables post-register-allocation peephole optimizations in the AsmJit backend.                                                                        |
+| asmjit.enableBranchFusion=[true,false]      | true     | Module  | Fuses a compare into the conditional branch that is its only consumer (cmp+jcc instead of cmp+setcc+movzx+test+jz) in the AsmJit x86-64 backend.      |
+| asmjit.enableConstFolding=[true,false]      | true     | Module  | Defers integer/bool/ptr constants in the AsmJit x86-64 backend; consumers fold them as immediate operands (add/sub/cmp/shift/imul/and/or/xor) or rematerialise per use. |
+| asmjit.enableSelectCmov=[true,false]        | true     | Module  | Lowers integer selects branch-free via cmov in the AsmJit x86-64 backend (mirrors the A64 backend's csel).                                            |
 
 > **Note:** The JIT event listeners registered via `Options::addMLIRJitEventListener` are an engine-scoped resource
 > (their lifetime is tied to the engine) and are inherited by every module.
