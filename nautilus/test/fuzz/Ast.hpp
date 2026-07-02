@@ -80,12 +80,39 @@ enum class Kind : uint8_t {
 	// index as a *constant*) -- exercising static_val's snapshot-hash
 	// machinery and trace-time unrolling instead of loop lowering.
 	StaticLoop,
-	// Leaves, only legal while generating inside a Loop/StaticLoop body:
-	// current iteration index / accumulator of the innermost enclosing
-	// loop. No imm payload -- nesting uses simple shadowing (innermost
-	// wins).
+	// Two loop-carried accumulators (the fibonacci shape): kid[0] = count,
+	// kid[1] = initA, kid[2] = bodyA, kid[3] = bodyB. accB starts at the
+	// *raw* (unclamped) count value -- already evaluated, so no extra kid is
+	// needed. Each trip evaluates both bodies against the OLD (A, B, index)
+	// and then commits both -- parallel update semantics, so bodyA = accB /
+	// bodyB = accA generates a genuine register swap on the back edge. The
+	// result is A + B (wrapping for signed ints) after the loop. This is
+	// the sharpest probe for back-edge parallel-copy sequencing and
+	// multi-argument block-invocation passing, where two previous merge
+	// bugs (asmjit #321, the BC collision) lived.
+	Loop2,
+	// Bounded loop with a conditional mid-body early exit: kid[0] = count,
+	// kid[1] = init, kid[2] = body. Each trip: acc = body, then break when
+	// a fixed predicate on acc holds (ints: acc & 1, floats: acc < 0 --
+	// NaN compares false, so it is well-defined). Traced as a real
+	// `if (...) break;` inside the for body, so the loop body's CFG splits
+	// mid-block -- a shape none of the other loop kinds produce.
+	LoopBreak,
+	// Bounded loop whose *header* condition is a conjunction of the counter
+	// bound and a data-dependent predicate on the accumulator:
+	// `i < trips && pred(acc)` (ints: (acc & 3) != 3, floats: acc >= 0 --
+	// NaN exits, well-defined). kid[0] = count, kid[1] = init,
+	// kid[2] = body. Exercises compound val<bool> loop conditions.
+	WhileLoop,
+	// Leaves, only legal while generating inside a loop body: current
+	// iteration index / accumulator(s) of the innermost enclosing loop.
+	// No imm payload -- nesting uses simple shadowing (innermost wins).
+	// LoopAcc2 reads the innermost frame's second accumulator; every
+	// single-accumulator loop kind publishes acc2 == acc, so it is legal
+	// (and identically defined on both sides) inside any loop body.
 	LoopIndex,
 	LoopAcc,
+	LoopAcc2,
 	// --- Memory / pointer domain -------------------------------------------
 	// A generated program owns one shared, fixed-size `T` buffer (BUFFER_ELEMS
 	// elements). kid[0] of Load/Store/PtrToInt and both kids of the Ptr*
@@ -131,7 +158,7 @@ enum class Kind : uint8_t {
 struct Node {
 	Kind kind;
 	uint64_t imm = 0;
-	int kid[3] = {-1, -1, -1};
+	int kid[4] = {-1, -1, -1, -1}; // slot 3 is only used by Kind::Loop2
 };
 
 struct Ast {
@@ -168,17 +195,19 @@ namespace detail {
 // equally safe, given generatePtrNode's bounded construction) regardless of
 // T's domain.
 inline constexpr Kind INT_KINDS[] = {
-    Kind::Add,    Kind::Sub,   Kind::Mul,        Kind::Div,  Kind::Mod,   Kind::And,      Kind::Or,    Kind::Xor,
-    Kind::Shl,    Kind::Shr,   Kind::Eq,         Kind::Ne,   Kind::Lt,    Kind::Le,       Kind::Gt,    Kind::Ge,
-    Kind::Select, Kind::If,    Kind::Neg,        Kind::Not,  Kind::LAnd,  Kind::LOr,      Kind::LNot,  Kind::Call,
-    Kind::Cast,   Kind::Loop,  Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,
-    Kind::PtrLt,  Kind::PtrLe, Kind::PtrGt,      Kind::PtrGe};
+    Kind::Add,       Kind::Sub,        Kind::Mul,    Kind::Div,   Kind::Mod,      Kind::And,   Kind::Or,
+    Kind::Xor,       Kind::Shl,        Kind::Shr,    Kind::Eq,    Kind::Ne,       Kind::Lt,    Kind::Le,
+    Kind::Gt,        Kind::Ge,         Kind::Select, Kind::If,    Kind::Neg,      Kind::Not,   Kind::LAnd,
+    Kind::LOr,       Kind::LNot,       Kind::Call,   Kind::Cast,  Kind::Loop,     Kind::Loop2, Kind::LoopBreak,
+    Kind::WhileLoop, Kind::StaticLoop, Kind::Load,   Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,
+    Kind::PtrLt,     Kind::PtrLe,      Kind::PtrGt,  Kind::PtrGe};
 
 inline constexpr Kind FLOAT_KINDS[] = {
-    Kind::Add,   Kind::Sub,   Kind::Mul,    Kind::Div,        Kind::Eq,   Kind::Ne,    Kind::Lt,       Kind::Le,
-    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,         Kind::Neg,  Kind::LAnd,  Kind::LOr,      Kind::LNot,
-    Kind::Call,  Kind::Cast,  Kind::Loop,   Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq,
-    Kind::PtrNe, Kind::PtrLt, Kind::PtrLe,  Kind::PtrGt,      Kind::PtrGe};
+    Kind::Add,       Kind::Sub,        Kind::Mul,   Kind::Div,    Kind::Eq,       Kind::Ne,    Kind::Lt,
+    Kind::Le,        Kind::Gt,         Kind::Ge,    Kind::Select, Kind::If,       Kind::Neg,   Kind::LAnd,
+    Kind::LOr,       Kind::LNot,       Kind::Call,  Kind::Cast,   Kind::Loop,     Kind::Loop2, Kind::LoopBreak,
+    Kind::WhileLoop, Kind::StaticLoop, Kind::Load,  Kind::Store,  Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,
+    Kind::PtrLt,     Kind::PtrLe,      Kind::PtrGt, Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -186,6 +215,7 @@ inline int arity(Kind k) {
 	case Kind::Param:
 	case Kind::LoopIndex:
 	case Kind::LoopAcc:
+	case Kind::LoopAcc2:
 	case Kind::PtrBase:
 		return 0;
 	case Kind::Neg:
@@ -200,7 +230,11 @@ inline int arity(Kind k) {
 	case Kind::Select:
 	case Kind::If:
 	case Kind::Loop:
+	case Kind::LoopBreak:
+	case Kind::WhileLoop:
 		return 3;
+	case Kind::Loop2:
+		return 4;
 	default:
 		return 2;
 	}
@@ -261,8 +295,9 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 	Node node;
 	if (leaf) {
 		if (loopDepth > 0 && (sel & 0x6) == 0x6) {
-			// ~1/4 of in-loop leaves reference the innermost loop's index/acc.
-			node.kind = (sel & 0x1) ? Kind::LoopAcc : Kind::LoopIndex;
+			// ~1/4 of in-loop leaves reference the innermost loop's
+			// index/accumulator(s); LoopAcc2 is acc for the single-acc kinds.
+			node.kind = (sel & 0x1) ? ((sel & 0x8) ? Kind::LoopAcc2 : Kind::LoopAcc) : Kind::LoopIndex;
 		} else if (sel & 0x4) {
 			node.kind = Kind::Param;
 			node.imm = reader.byte() % NUM_PARAMS;
@@ -296,14 +331,19 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 	const int childCount = arity(node.kind);
 	// Children must be generated before the parent is pushed so that parent
 	// indices stay greater than their children (handy for evaluation/printing).
-	int kids[3] = {-1, -1, -1};
-	if (node.kind == Kind::Loop) {
+	int kids[4] = {-1, -1, -1, -1};
+	if (node.kind == Kind::Loop || node.kind == Kind::LoopBreak || node.kind == Kind::WhileLoop) {
 		// count (kid[0]) and init (kid[1]) live in the *outer* scope -- they
 		// must not see this loop's own LoopIndex/LoopAcc. Only the body
 		// (kid[2]) is generated one loop deeper.
 		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+	} else if (node.kind == Kind::Loop2) {
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+		kids[3] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
 	} else if (node.kind == Kind::StaticLoop) {
 		// Trip count is a generation-time constant (imm), not an expression:
 		// a trace-time loop cannot depend on runtime data by definition.
@@ -326,6 +366,7 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 	node.kid[0] = kids[0];
 	node.kid[1] = kids[1];
 	node.kid[2] = kids[2];
+	node.kid[3] = kids[3];
 	const int idx = static_cast<int>(ast.nodes.size());
 	ast.nodes.push_back(node);
 	return idx;
@@ -404,6 +445,9 @@ void print(const Ast& ast, int idx, std::string& out) {
 	case Kind::LoopAcc:
 		out += "la";
 		return;
+	case Kind::LoopAcc2:
+		out += "lb";
+		return;
 	case Kind::Neg:
 		out += "(-";
 		print<T>(ast, n.kid[0], out);
@@ -478,6 +522,35 @@ void print(const Ast& ast, int idx, std::string& out) {
 		print<T>(ast, n.kid[0], out);
 		out += ", body=";
 		print<T>(ast, n.kid[1], out);
+		out += ")";
+		return;
+	case Kind::Loop2:
+		out += "loop2(count=";
+		print<T>(ast, n.kid[0], out);
+		out += ", initA=";
+		print<T>(ast, n.kid[1], out);
+		out += ", bodyA=";
+		print<T>(ast, n.kid[2], out);
+		out += ", bodyB=";
+		print<T>(ast, n.kid[3], out);
+		out += ")";
+		return;
+	case Kind::LoopBreak:
+		out += "loopbrk(count=";
+		print<T>(ast, n.kid[0], out);
+		out += ", init=";
+		print<T>(ast, n.kid[1], out);
+		out += ", body=";
+		print<T>(ast, n.kid[2], out);
+		out += ")";
+		return;
+	case Kind::WhileLoop:
+		out += "while(count=";
+		print<T>(ast, n.kid[0], out);
+		out += ", init=";
+		print<T>(ast, n.kid[1], out);
+		out += ", body=";
+		print<T>(ast, n.kid[2], out);
 		out += ")";
 		return;
 	case Kind::Load:

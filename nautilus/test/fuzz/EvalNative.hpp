@@ -161,13 +161,43 @@ int clampBufferIndex(T raw) {
 
 /// Mutable per-evaluation scratch state, separate from the read-only kernel
 /// `args`: the stack of enclosing Loop frames, innermost last. LoopIndex /
-/// LoopAcc always read `loopStack.back()` -- nesting is plain shadowing, the
-/// generator guarantees the stack is non-empty wherever they appear.
+/// LoopAcc / LoopAcc2 always read `loopStack.back()` -- nesting is plain
+/// shadowing, the generator guarantees the stack is non-empty wherever they
+/// appear. Single-accumulator loop kinds publish acc2 == acc so LoopAcc2 is
+/// well-defined inside any loop body; only Kind::Loop2 carries a distinct
+/// second accumulator.
 template <typename T>
 struct LoopFrame {
 	T index;
 	T acc;
+	T acc2;
 };
+
+/// Fixed early-exit predicate for Kind::LoopBreak, mirrored exactly by
+/// EvalNautilus.hpp's traced twin: break once the accumulator is odd (ints)
+/// or negative (floats; NaN compares false, so it never breaks -- fully
+/// defined either way).
+template <typename T>
+bool breakPredicate(T acc) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return acc < T(0);
+	} else {
+		return (acc & T(1)) != T(0);
+	}
+}
+
+/// Fixed continuation predicate for Kind::WhileLoop's compound header
+/// condition (`i < trips && whilePredicate(acc)`), mirrored exactly by the
+/// traced twin: keep running while the accumulator's low bits aren't all
+/// set (ints) or it is non-negative (floats; NaN exits).
+template <typename T>
+bool whilePredicate(T acc) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return acc >= T(0);
+	} else {
+		return (acc & T(3)) != T(3);
+	}
+}
 
 /// The shared buffer every generated program's pointer-domain nodes index
 /// into (see Kind::PtrBase in Ast.hpp). A raw, non-owning pointer: the
@@ -229,6 +259,8 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::LoopAcc2:
+		return ctx.loopStack.back().acc2;
 	case Kind::Select: {
 		// Both branches are evaluated unconditionally, matching the traced
 		// kernel's `select(cond, t, f)` (a data mux, not real branching -- see
@@ -255,7 +287,7 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		const int trips = clampTripCount<T>(rawCount);
 		T acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
 		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
 			acc = evalNativeInt<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
@@ -265,8 +297,54 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		const int trips = static_cast<int>(n.imm);
 		T acc = evalNativeInt<T>(ast, n.kid[0], args, ctx);
 		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
 			acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::Loop2: {
+		const T rawCount = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T accA = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		T accB = rawCount;
+		for (int i = 0; i < trips; ++i) {
+			// Parallel update: both bodies see the OLD (index, A, B) frame,
+			// then both commit -- bodyA = lb / bodyB = la is a real swap.
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), accA, accB});
+			const T newA = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+			const T newB = evalNativeInt<T>(ast, n.kid[3], args, ctx);
+			ctx.loopStack.pop_back();
+			accA = newA;
+			accB = newB;
+		}
+		if constexpr (std::is_signed_v<T> && !std::is_floating_point_v<T>) {
+			return wrappingAdd<T>(accA, accB);
+		} else {
+			return static_cast<T>(accA + accB);
+		}
+	}
+	case Kind::LoopBreak: {
+		const T rawCount = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
+			acc = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			if (breakPredicate<T>(acc)) {
+				break;
+			}
+		}
+		return acc;
+	}
+	case Kind::WhileLoop: {
+		const T rawCount = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips && whilePredicate<T>(acc); ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
+			acc = evalNativeInt<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
@@ -407,6 +485,8 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::LoopAcc2:
+		return ctx.loopStack.back().acc2;
 	case Kind::Select: {
 		// See the identical comment in evalNativeInt's Select case: both
 		// branches must be evaluated unconditionally to match the traced
@@ -426,7 +506,7 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		const int trips = clampTripCount<T>(rawCount);
 		T acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
 		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
 			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
@@ -436,8 +516,54 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		const int trips = static_cast<int>(n.imm);
 		T acc = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
 		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
 			acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
+	case Kind::Loop2: {
+		const T rawCount = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T accA = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+		T accB = rawCount;
+		for (int i = 0; i < trips; ++i) {
+			// Parallel update: both bodies see the OLD (index, A, B) frame,
+			// then both commit -- bodyA = lb / bodyB = la is a real swap.
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), accA, accB});
+			const T newA = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+			const T newB = evalNativeFloat<T>(ast, n.kid[3], args, ctx);
+			ctx.loopStack.pop_back();
+			accA = newA;
+			accB = newB;
+		}
+		if constexpr (std::is_signed_v<T> && !std::is_floating_point_v<T>) {
+			return wrappingAdd<T>(accA, accB);
+		} else {
+			return static_cast<T>(accA + accB);
+		}
+	}
+	case Kind::LoopBreak: {
+		const T rawCount = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
+			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			if (breakPredicate<T>(acc)) {
+				break;
+			}
+		}
+		return acc;
+	}
+	case Kind::WhileLoop: {
+		const T rawCount = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		const int trips = clampTripCount<T>(rawCount);
+		T acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+		for (int i = 0; i < trips && whilePredicate<T>(acc); ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc, acc});
+			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
