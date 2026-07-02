@@ -397,6 +397,7 @@ void setFuncAttributes(mlir::func::FuncOp funcOp, const FunctionAttributes& fnAt
 mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
                                                                      const mlir::Type& resultType,
                                                                      const std::vector<mlir::Type>& argTypes,
+                                                                     const std::vector<Type>& argStamps,
                                                                      const FunctionAttributes& fnAttrs) {
 	// The InsertionGuard saves the current insertion point (IP) and restores it
 	// after scope is left.
@@ -429,6 +430,31 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 
 	// Mark as private (will be converted to external linkage during lowering if needed)
 	funcOp.setPrivate();
+
+	// Sub-32-bit integer arguments must carry an explicit extension attribute:
+	// several C ABIs (Darwin AArch64, x86-64 SysV) require the *caller* to
+	// sign/zero-extend them, and the natively compiled callee assumes that
+	// happened. Without the attribute LLVM emits the call with whatever the
+	// register's upper bits held (e.g. bits of a truncated pointer), and the
+	// callee mis-reads the argument. The *result* deliberately gets no such
+	// attribute: not every ABI guarantees the callee extends a narrow return
+	// (AAPCS64 does not), and an unattributed narrow result is always safe --
+	// LLVM re-extends it itself before any wider use.
+	for (size_t i = 0; i < argStamps.size() && i < argTypes.size(); ++i) {
+		switch (argStamps[i]) {
+		case Type::i8:
+		case Type::i16:
+			funcOp.setArgAttr(static_cast<unsigned>(i), "llvm.signext", mlir::UnitAttr::get(context));
+			break;
+		case Type::b:
+		case Type::ui8:
+		case Type::ui16:
+			funcOp.setArgAttr(static_cast<unsigned>(i), "llvm.zeroext", mlir::UnitAttr::get(context));
+			break;
+		default:
+			break;
+		}
+	}
 
 	// Set function attributes
 	setFuncAttributes(funcOp, fnAttrs);
@@ -896,8 +922,14 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	}
 
 	// Function doesn't exist yet - create external function declaration using func dialect
+	std::vector<Type> argStamps;
+	argStamps.reserve(proxyCallOp->getInputArguments().size());
+	for (const auto& arg : proxyCallOp->getInputArguments()) {
+		argStamps.push_back(arg->getStamp());
+	}
 	insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
-	                       getMLIRType(proxyCallOp->getInputArguments()), proxyCallOp->getFunctionAttributes());
+	                       getMLIRType(proxyCallOp->getInputArguments()), argStamps,
+	                       proxyCallOp->getFunctionAttributes());
 
 	// Now lookup the function we just created and call it using func::CallOp
 	auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ast.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <array>
 #include <cmath>
@@ -260,6 +261,16 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		const int trips = static_cast<int>(n.imm);
+		T acc = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg: {
 		const T v = evalNativeInt<T>(ast, n.kid[0], args, ctx);
 		if constexpr (std::is_signed_v<T>) {
@@ -270,6 +281,8 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 	}
 	case Kind::Not:
 		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args, ctx));
+	case Kind::LNot:
+		return evalNativeInt<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
 		return castThrough<T>(evalNativeInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -356,6 +369,15 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return static_cast<T>(l << (r & T(sizeof(T) * 8 - 1)));
 	case Kind::Shr:
 		return static_cast<T>(l >> (r & T(sizeof(T) * 8 - 1)));
+	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
+	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
+	case Kind::LAnd:
+		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
+	case Kind::LOr:
+		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
+	case Kind::Call:
+		// Direct call of the same instantiation the traced kernel invoke()s.
+		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
@@ -410,8 +432,20 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		const int trips = static_cast<int>(n.imm);
+		T acc = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
+		for (int i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
+			acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg:
 		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args, ctx));
+	case Kind::LNot:
+		return evalNativeFloat<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
 		return castThrough<T>(evalNativeFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -474,6 +508,15 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return static_cast<T>(l * r);
 	case Kind::Div:
 		return static_cast<T>(l / r); // well-defined IEEE 754: produces +-inf / NaN for r == 0
+	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
+	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
+	case Kind::LAnd:
+		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
+	case Kind::LOr:
+		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
+	case Kind::Call:
+		// Direct call of the same instantiation the traced kernel invoke()s.
+		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:

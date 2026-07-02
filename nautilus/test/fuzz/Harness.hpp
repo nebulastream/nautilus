@@ -54,6 +54,13 @@ inline engine::NautilusEngine makeEngine(const std::string& backend) {
 	} else {
 		options.setOption("engine.backend", backend);
 	}
+	// Triage aid: NAUTILUS_FUZZ_DUMP=1 dumps every compilation stage to the
+	// console while replaying a saved finding, so the IR a mismatching
+	// backend actually saw can be inspected without editing the harness.
+	if (std::getenv("NAUTILUS_FUZZ_DUMP") != nullptr) {
+		options.setOption("dump.all", true);
+		options.setOption("dump.console", true);
+	}
 	return engine::NautilusEngine(options);
 }
 

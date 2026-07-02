@@ -207,4 +207,41 @@ val<int32_t> incrementFuncCallFiveTimesWithRef(val<bool> isFirstCall) {
 	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 }
 
+int16_t mixI16(int16_t x, int16_t y) {
+	// int promotion makes x * 3 + y well-defined; the cast wraps it back to
+	// 16 bits, so the interesting outputs are ones whose 32-bit intermediate
+	// (e.g. 25158 * 3 - 24951 = 50523) differs from the wrapped i16 result.
+	return static_cast<int16_t>(x * 3 + y);
+}
+
+// Regression (differential fuzzer): the ABI leaves the upper bits of a narrow
+// integer return value unspecified, so a backend keeping integers in
+// full-width registers must re-extend a call's narrow result before using it.
+// The AsmJit backends used to skip that, so a negative i16 return whose raw
+// register bits were a positive 32-bit intermediate compared as positive.
+val<int16_t> i16NarrowCallReturnCompare(val<int16_t> x, val<int16_t> y) {
+	val<int16_t> mixed = invoke(mixI16, x, y);
+	val<int16_t> result = 0;
+	if (mixed < val<int16_t>(int16_t(0))) {
+		result = 1;
+	}
+	return result;
+}
+
+int16_t minI16(int16_t x, int16_t y) {
+	return x < y ? x : y;
+}
+
+// Regression (differential fuzzer): sub-32-bit integer *arguments* of a proxy
+// call must be extended by the caller on several C ABIs (Darwin AArch64,
+// x86-64 SysV) -- the natively compiled callee assumes that happened. The
+// MLIR backend used to declare external callees without llvm.signext /
+// llvm.zeroext argument attributes, so an i16 argument whose truncation LLVM
+// folded away (here: from a wider value with live upper bits) reached the
+// callee with garbage in the upper register bits and compared wrongly.
+val<int16_t> i16NarrowCallArgCompare(val<int64_t> x, val<int16_t> y) {
+	val<int16_t> truncated = static_cast<val<int16_t>>(x);
+	return invoke(minI16, truncated, y);
+}
+
 } // namespace nautilus::engine

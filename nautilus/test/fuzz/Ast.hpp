@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ByteReader.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <cstdint>
 #include <string>
@@ -40,6 +41,22 @@ enum class Kind : uint8_t {
 	// Unary
 	Neg, // integer and float domains: -x
 	Not, // integer domain only: ~x
+	// Logical ops on val<bool>: each operand is first turned into a bool via
+	// `!= 0`, the bools are combined with the real val<bool> operator
+	// (&&/||/!), and the result is selected back to 0/1 as T -- the same 0/1
+	// convention as the comparisons above. Both operands are always evaluated
+	// (they are value-domain subtrees evaluated *before* the bool op), so even
+	// a short-circuiting && lowering cannot skip a Store side effect.
+	LAnd,
+	LOr,
+	LNot,
+	// Call: a real nautilus::invoke() of a pure native helper (Callees.hpp),
+	// imm selects which one (modulo NUM_CALLEES). Both kids are value-domain
+	// operands passed as val<T>; the result is the helper's T return value.
+	// The native oracle calls the identical instantiation directly, so the
+	// differential surface is exactly the backend's ProxyCall lowering
+	// (argument/return marshalling and narrow-integer ABI extension).
+	Call,
 	// Cast: round-trips the single child through another type, i.e. (T)(To)x.
 	// imm holds the target TypeId, drawn from any of the ten types -- this
 	// can cross the int/float domain boundary (the output type is always T,
@@ -55,9 +72,18 @@ enum class Kind : uint8_t {
 	// to the current iteration inside body. Lowered to a real traced `for`
 	// loop on the Nautilus side, exercising loop-lowering (not unrolling).
 	Loop,
-	// Leaves, only legal while generating inside a Loop body: current
-	// iteration index / accumulator of the innermost enclosing Loop. No imm
-	// payload -- nesting uses simple shadowing (innermost wins).
+	// Trace-time unrolled fold: imm = trip count (already in
+	// [0, LOOP_MAX_TRIPS], fixed at generation time), kid[0] = init,
+	// kid[1] = body. Same LoopIndex/LoopAcc binding as Loop, but the loop
+	// control is a plain C++ `for` over a static_val<int64_t> counter, so
+	// the tracer unrolls the body once per trip (each iteration sees its
+	// index as a *constant*) -- exercising static_val's snapshot-hash
+	// machinery and trace-time unrolling instead of loop lowering.
+	StaticLoop,
+	// Leaves, only legal while generating inside a Loop/StaticLoop body:
+	// current iteration index / accumulator of the innermost enclosing
+	// loop. No imm payload -- nesting uses simple shadowing (innermost
+	// wins).
 	LoopIndex,
 	LoopAcc,
 	// --- Memory / pointer domain -------------------------------------------
@@ -113,6 +139,28 @@ struct Ast {
 	int root = -1;
 };
 
+/// Depth / node budget bounds. Kept small so each program compiles quickly
+/// (this is a soundness fuzzer, not a throughput one) and generation always
+/// terminates even on huge inputs.
+inline constexpr int MAX_DEPTH = 6;
+inline constexpr int MAX_NODES = 64;
+
+/// Upper bound on a Loop node's trip count (inclusive), enforced identically
+/// by EvalNative.hpp and EvalNautilus.hpp (and used directly as the bound of
+/// StaticLoop's generation-time constant trip count). Compile cost is
+/// governed by AST node count for Loop (its body is traced once regardless
+/// of how many times the compiled loop executes it), but multiplies trace
+/// size for StaticLoop, whose body is unrolled at trace time.
+inline constexpr int LOOP_MAX_TRIPS = 8;
+
+/// Number of `T` elements in the shared buffer every generated program is
+/// handed a pointer to (see Kind::PtrBase). Every pointer-domain node
+/// (generatePtrNode) is constructed so it always lands in [0, BUFFER_ELEMS),
+/// so Load/Store/PtrToInt/Ptr-comparisons never read or write out of bounds --
+/// small enough to keep the oracle/traced buffers cheap, large enough to make
+/// pointer differences/comparisons non-trivial.
+inline constexpr int BUFFER_ELEMS = 8;
+
 namespace detail {
 
 // Load/Store/PtrToInt/Ptr-comparisons (below) are appended identically to
@@ -120,15 +168,17 @@ namespace detail {
 // equally safe, given generatePtrNode's bounded construction) regardless of
 // T's domain.
 inline constexpr Kind INT_KINDS[] = {
-    Kind::Add,      Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Mod,   Kind::And,   Kind::Or,   Kind::Xor,
-    Kind::Shl,      Kind::Shr,   Kind::Eq,    Kind::Ne,    Kind::Lt,    Kind::Le,    Kind::Gt,   Kind::Ge,
-    Kind::Select,   Kind::If,    Kind::Neg,   Kind::Not,   Kind::Cast,  Kind::Loop,  Kind::Load, Kind::Store,
-    Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt, Kind::PtrGe};
+    Kind::Add,    Kind::Sub,   Kind::Mul,        Kind::Div,  Kind::Mod,   Kind::And,      Kind::Or,    Kind::Xor,
+    Kind::Shl,    Kind::Shr,   Kind::Eq,         Kind::Ne,   Kind::Lt,    Kind::Le,       Kind::Gt,    Kind::Ge,
+    Kind::Select, Kind::If,    Kind::Neg,        Kind::Not,  Kind::LAnd,  Kind::LOr,      Kind::LNot,  Kind::Call,
+    Kind::Cast,   Kind::Loop,  Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,
+    Kind::PtrLt,  Kind::PtrLe, Kind::PtrGt,      Kind::PtrGe};
 
-inline constexpr Kind FLOAT_KINDS[] = {Kind::Add,   Kind::Sub,   Kind::Mul,   Kind::Div,   Kind::Eq,     Kind::Ne,
-                                       Kind::Lt,    Kind::Le,    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,
-                                       Kind::Neg,   Kind::Cast,  Kind::Loop,  Kind::Load,  Kind::Store,  Kind::PtrToInt,
-                                       Kind::PtrEq, Kind::PtrNe, Kind::PtrLt, Kind::PtrLe, Kind::PtrGt,  Kind::PtrGe};
+inline constexpr Kind FLOAT_KINDS[] = {
+    Kind::Add,   Kind::Sub,   Kind::Mul,    Kind::Div,        Kind::Eq,   Kind::Ne,    Kind::Lt,       Kind::Le,
+    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,         Kind::Neg,  Kind::LAnd,  Kind::LOr,      Kind::LNot,
+    Kind::Call,  Kind::Cast,  Kind::Loop,   Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq,
+    Kind::PtrNe, Kind::PtrLt, Kind::PtrLe,  Kind::PtrGt,      Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -140,6 +190,7 @@ inline int arity(Kind k) {
 		return 0;
 	case Kind::Neg:
 	case Kind::Not:
+	case Kind::LNot:
 	case Kind::Cast:
 	case Kind::Load:
 	case Kind::PtrToInt:
@@ -238,6 +289,8 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		// boundary (see the Kind::Cast comment for why this stays sound).
 		constexpr uint32_t typeCount = sizeof(ALL_TYPES) / sizeof(ALL_TYPES[0]);
 		node.imm = static_cast<uint64_t>(ALL_TYPES[reader.byte() % typeCount]);
+	} else if (node.kind == Kind::Call) {
+		node.imm = reader.byte() % NUM_CALLEES;
 	}
 
 	const int childCount = arity(node.kind);
@@ -251,6 +304,12 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
 		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+	} else if (node.kind == Kind::StaticLoop) {
+		// Trip count is a generation-time constant (imm), not an expression:
+		// a trace-time loop cannot depend on runtime data by definition.
+		node.imm = reader.byte() % (LOOP_MAX_TRIPS + 1);
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
 	} else if (node.kind == Kind::Load || node.kind == Kind::PtrToInt) {
 		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
 	} else if (node.kind == Kind::Store) {
@@ -273,27 +332,6 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 }
 
 } // namespace detail
-
-/// Depth / node budget bounds. Kept small so each program compiles quickly
-/// (this is a soundness fuzzer, not a throughput one) and generation always
-/// terminates even on huge inputs.
-inline constexpr int MAX_DEPTH = 6;
-inline constexpr int MAX_NODES = 64;
-
-/// Upper bound on a Loop node's trip count (inclusive), enforced identically
-/// by EvalNative.hpp and EvalNautilus.hpp. Compile cost is governed by AST
-/// node count, not trip count -- the body is traced once regardless of how
-/// many times the compiled loop executes it -- so this only bounds oracle
-/// interpretation cost (which multiplies with loop nesting).
-inline constexpr int LOOP_MAX_TRIPS = 8;
-
-/// Number of `T` elements in the shared buffer every generated program is
-/// handed a pointer to (see Kind::PtrBase). Every pointer-domain node
-/// (generatePtrNode) is constructed so it always lands in [0, BUFFER_ELEMS),
-/// so Load/Store/PtrToInt/Ptr-comparisons never read or write out of bounds --
-/// small enough to keep the oracle/traced buffers cheap, large enough to make
-/// pointer differences/comparisons non-trivial.
-inline constexpr int BUFFER_ELEMS = 8;
 
 /// Build a random, always-valid AST of type T from the reader. Never returns
 /// an empty tree: an empty buffer yields a single Const(0) leaf.
@@ -376,6 +414,29 @@ void print(const Ast& ast, int idx, std::string& out) {
 		print<T>(ast, n.kid[0], out);
 		out += ")";
 		return;
+	case Kind::LNot:
+		out += "(!(";
+		print<T>(ast, n.kid[0], out);
+		out += " != 0) ? 1 : 0)";
+		return;
+	case Kind::LAnd:
+	case Kind::LOr:
+		out += "((";
+		print<T>(ast, n.kid[0], out);
+		out += " != 0 ";
+		out += (n.kind == Kind::LAnd) ? "&&" : "||";
+		out += " ";
+		print<T>(ast, n.kid[1], out);
+		out += " != 0) ? 1 : 0)";
+		return;
+	case Kind::Call:
+		out += calleeName(n.imm);
+		out += "(";
+		print<T>(ast, n.kid[0], out);
+		out += ", ";
+		print<T>(ast, n.kid[1], out);
+		out += ")";
+		return;
 	case Kind::Cast: {
 		const TypeId target = static_cast<TypeId>(n.imm);
 		out += "(";
@@ -410,6 +471,13 @@ void print(const Ast& ast, int idx, std::string& out) {
 		print<T>(ast, n.kid[1], out);
 		out += ", body=";
 		print<T>(ast, n.kid[2], out);
+		out += ")";
+		return;
+	case Kind::StaticLoop:
+		out += "sloop(trips=" + std::to_string(n.imm) + ", init=";
+		print<T>(ast, n.kid[0], out);
+		out += ", body=";
+		print<T>(ast, n.kid[1], out);
 		out += ")";
 		return;
 	case Kind::Load:

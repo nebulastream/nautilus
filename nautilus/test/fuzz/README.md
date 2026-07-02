@@ -46,13 +46,32 @@ constants, parameters) is generated and evaluated entirely in that one type,
 mirroring how the original `uint64_t`-only fuzzer worked.
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
-  (`& | ^ << >> ~`), unary negate, comparisons, `Select`/`If`, `Loop`, and
-  `Cast` (round-trips the value through another type, e.g. `(T)(To)v`,
-  exercising sign/zero-extension/truncation codegen *and* int<->float
-  boundary conversion).
+  (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
+  `Loop`, and `Cast` (round-trips the value through another type, e.g.
+  `(T)(To)v`, exercising sign/zero-extension/truncation codegen *and*
+  int<->float boundary conversion).
 * **Float domain** (`float`, `double`): arithmetic (`+ - * /`), unary
-  negate, comparisons, `Select`/`If`, `Loop`, and `Cast` (round-trips through
-  another integer *or* float type).
+  negate, comparisons, logical ops, `Select`/`If`, `Loop`, and `Cast`
+  (round-trips through another integer *or* float type).
+* **Logical ops** (`LAnd`/`LOr`/`LNot`, both domains): each operand becomes a
+  `val<bool>` via `!= 0`, the bools are combined with the real
+  `val<bool>` `&&`/`||`/`!` operator under test, and the result is selected
+  back to 0/1 as `T` (the comparisons' convention). Operands are evaluated
+  *before* the bool op on both sides, so even a short-circuiting `&&`
+  lowering (`ENABLE_SHORT_CIRCUIT_BOOL`) cannot skip a `Store` side effect.
+* **Runtime calls** (`Call`, both domains): a real `nautilus::invoke()` of a
+  pure native helper (`Callees.hpp`, selected by the node's imm). The native
+  oracle calls the *identical instantiation* directly, so the two legs
+  execute the same native code and the differential surface is exclusively
+  the backend's call lowering: argument/return marshalling, narrow-integer
+  ABI extension, float register passing.
+* **`StaticLoop`** (both domains): the trace-time counterpart of `Loop`. The
+  trip count is a generation-time constant (imm, in `[0, LOOP_MAX_TRIPS]`),
+  and the loop control is a plain C++ `for` over a `static_val<int64_t>`
+  counter -- the tracer unrolls the body once per trip, each iteration
+  seeing its `LoopIndex` as a constant, exercising `static_val`'s
+  snapshot-hash machinery and trace-time unrolling instead of loop
+  lowering (the `static-loop-tests` feature).
 * **`Cast` across the int/float domain boundary**: `(T)(To)v` still always
   produces a `T` result, exactly like a same-domain cast -- only the
   intermediate type's domain changes. Whichever leg of the round trip is
@@ -241,6 +260,61 @@ more common. `Loop` merely made this easy to *stumble into* via survey
 (a `Loop` with a zero trip count folds to its `init`, which is often exactly
 `0.0` for the same reason); the minimal repro above proves the bug itself
 predated and was independent of `Loop`/`Cast`.
+
+Running the harness with the AsmJit backend enabled on ARM (it is off in the
+default CI configuration) surfaced a third bug -- now fixed: the A64 lowering
+kept every integer in a 64-bit register and re-established the "narrow values
+stay sign/zero-extended to 64 bits" invariant only at function entry and
+casts, never after arithmetic. A u32 subtraction that wraps (e.g. `p0 -
+4279714710u`) left the un-wrapped negative difference in the full X register,
+and the next 64-bit `cmp` answered for that value instead of the wrapped
+32-bit one -- so `asmjit|u8/u16/u32` (and the signed narrow widths, via left
+shift and multiply overflow) could disagree with every other backend on any
+comparison, division, modulo, right shift, or int->float conversion fed by
+narrow-width wraparound. Fixed by mirroring the x64 provider's
+`narrowToStamp` re-normalization after add/sub/mul/shift/bitwise-not (and at
+returns); pinned by `u32WrapSubThenCompare` in
+`test/common/ExpressionFunctions.hpp`.
+
+The `Call` extension immediately surfaced the same invariant's fourth hole,
+in **both** AsmJit providers -- now fixed: narrow integer return values of
+`ProxyCall`/`IndirectCall` were bound without re-extension, but the ABI
+(AAPCS64 and SysV alike) leaves the upper bits of a sub-register-width
+return unspecified. An `i16` helper returning a wrapped-negative value came
+back with its positive 32-bit intermediate still in the register, and the
+next comparison answered for that instead. Pinned by
+`i16NarrowCallReturnCompare` in `test/common/RunctimeCallFunctions.hpp`.
+
+The same `Call` extension then caught the argument-direction twin of that
+bug in the **MLIR backend** -- now fixed: `insertExternalFunction` declared
+external callees without `llvm.signext`/`llvm.zeroext` argument attributes,
+but several C ABIs (Darwin AArch64, x86-64 SysV) require the *caller* to
+extend sub-32-bit integer arguments, and the natively compiled callee
+assumes it happened. LLVM, seeing no attribute, folded the truncation away
+and passed an `i16` argument with live upper register bits (in the fuzzed
+case, bits of a `PtrToInt`-derived address -- which also made the mismatch
+address-dependent and only reproducible ~5 out of 6 runs). Survey mode's
+saved `fuzz-finding-<n>.bin` inputs plus `NAUTILUS_FUZZ_DUMP=1` were added
+during this hunt precisely to make such address-dependent findings
+replayable and inspectable. Pinned by `i16NarrowCallArgCompare` in
+`test/common/RunctimeCallFunctions.hpp` (the truncation-folding shape LLVM
+optimizes into the failing form deterministically).
+
+A larger survey with the `StaticLoop` extension then hit the BC backend's
+variant of the issue #321 merged-value bug -- now fixed: the merge block's
+parameter reuses the SSA identifier that one arm re-defines, the other arm's
+earlier-emitted edge binds that identifier to a fresh register first, and the
+BC translator's emplace-only `Frame::setValue` silently dropped the later
+definition -- so a constant folded after the merge read a register nobody
+ever wrote (zero), e.g. `if(...) - 5808310683196811127` returned the merged
+value unmodified. The AsmJit backends got `bindResult` for this in #322; the
+BC translator now routes result registers through `getResultRegister`, which
+returns the already-bound merge-parameter register so definitions write
+straight into it. Minimized with plain input-file truncation + byte zeroing
+(the saved `fuzz-finding-<n>.bin` shrank from 234 bytes to a 3-block
+program); pinned by `zeroTripLoopMergeThenAddConstant` in
+`test/common/ControlFlowFunctions.hpp`, verified to fail on the pre-fix
+translator.
 
 (An early investigation of this bug also observed every compiling backend
 segfaulting on the same minimal kernel; that turned out to be an artifact of

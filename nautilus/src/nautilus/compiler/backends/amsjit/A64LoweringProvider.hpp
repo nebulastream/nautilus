@@ -100,6 +100,17 @@ private:
 		static bool isFloatType(Type t);
 		static bool isUnsignedType(Type t);
 
+		// Re-establish the register invariant for narrow integer stamps: every
+		// value register holds its narrow value sign-extended (signed stamps) or
+		// zero-extended (unsigned stamps) to the full 64 bits. Entry arguments
+		// and casts establish it; any op whose 64-bit result can exceed the
+		// stamp's width (add/sub/mul wraparound, left shift, bitwise not) must
+		// call this afterwards, because downstream consumers (cmp, udiv/sdiv,
+		// msub, ucvtf/scvtf) operate on the full X register and silently
+		// mis-evaluate a non-canonical value. Mirrors X64LoweringProvider's
+		// narrowToStamp.
+		void narrowToStamp(::asmjit::a64::Gp reg, Type stamp);
+
 		// All integer types are mapped to 64-bit GP (X); floats to Vec (S/D).
 		AsmReg allocReg(Type t);
 		static ::asmjit::a64::Gp toGp(const AsmReg& r);

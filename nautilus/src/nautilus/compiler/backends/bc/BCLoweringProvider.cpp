@@ -1371,7 +1371,10 @@ void BCLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* c
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
-	auto targetRegister = registerProvider.allocRegister();
+	// getResultRegister (not a plain allocRegister) so a definition whose SSA
+	// name doubles as an already-bound merge-block parameter writes into that
+	// parameter's register; setValue is emplace-only and keeps the binding.
+	auto targetRegister = getResultRegister(constPtr, frame);
 	frame.setValue(constPtr->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1383,7 +1386,7 @@ void BCLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOper
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1394,7 +1397,7 @@ void BCLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* c
 	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1414,7 +1417,7 @@ void BCLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperatio
 		*floatReg = floatValue;
 	}
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -2122,44 +2125,20 @@ void BCLoweringProvider::LoweringContext::visitCast(ir::CastOperation* castOp, s
 	program.blocks[block].code.emplace_back(oc);
 }
 
-short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, RegisterFrame&) {
-	// auto optResultIdentifier = opt->getIdentifier();
-
-	// if the result value of opt is directly passed to an block argument, then we
-	// can directly write the value to the correct target register.
-
-	/*
-	if (opt->getUsages().size() == 1) {
-	    auto *usage = opt->getUsages()[0];
-	    if (usage->getOperationType() ==
-	ir::Operation::OperationType::BlockInvocation) { auto bi = dynamic_cast<const
-	ir::BasicBlockInvocation *>(usage); auto blockInputArguments =
-	bi->getArguments(); auto blockTargetArguments =
-	bi->getBlock()->getArguments();
-
-	        std::vector<uint64_t> matchingArguments;
-
-	        for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
-	            auto blockArgument = blockInputArguments[i]->getIdentifier();
-	            if (blockArgument == optResultIdentifier) {
-	                matchingArguments.emplace_back(i);
-	            }
-	        }
-
-	        if (matchingArguments.size() == 1) {
-	            auto blockTargetArgumentIdentifier =
-	blockTargetArguments[matchingArguments[0]]->getIdentifier(); if
-	(!frame.contains(blockTargetArgumentIdentifier)) { auto resultReg =
-	registerProvider.allocRegister();
-	                frame.setValue(blockTargetArgumentIdentifier, resultReg);
-	                return resultReg;
-	            } else {
-	                return frame.getValue(blockTargetArgumentIdentifier);
-	            }
-	        }
-	    }
+short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation* opt, RegisterFrame& frame) {
+	// When the identifier is already bound, this definition's SSA name doubles
+	// as a downstream merge-block parameter whose register was already chosen
+	// by an earlier-emitted predecessor edge (Nautilus SSA reuses an incoming
+	// value's name for the block parameter, and the diamond/loop CFG can emit
+	// that predecessor's invocation before this definition -- issue #321, the
+	// same collision AsmJitLoweringProvider::bindResult handles). The
+	// visitors' subsequent frame.setValue is emplace-only, so allocating a
+	// fresh register here would leave the merge parameter reading a register
+	// this definition never writes. Return the bound register so the op
+	// writes straight into it.
+	if (frame.contains(opt->getIdentifier())) {
+		return frame.getValue(opt->getIdentifier());
 	}
-	 */
 	return registerProvider.allocRegister();
 }
 
@@ -2299,15 +2278,26 @@ void BCLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selec
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short /*block*/,
+void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short block,
                                                       RegisterFrame& frame) {
 	// The slot register and its backing buffer were created in the
 	// function prologue from FunctionOperation::getAllocaSpecs().  Every
 	// per-use AllocaOperation just rebinds its identifier to the
-	// already-pinned register.
+	// already-pinned register -- unless the identifier is already bound as a
+	// downstream merge-block parameter (see getResultRegister), in which case
+	// the slot pointer must be copied into the parameter's register instead,
+	// since setValue's emplace would silently keep the old binding.
 	auto index = allocaOp->getIndex();
 	assert(index < functionAllocaSlots.size() && "AllocaOperation index out of range for function");
-	frame.setValue(allocaOp->getIdentifier(), functionAllocaSlots[index]);
+	auto slotRegister = functionAllocaSlots[index];
+	if (frame.contains(allocaOp->getIdentifier())) {
+		auto target = frame.getValue(allocaOp->getIdentifier());
+		if (target != slotRegister) {
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, slotRegister, -1, target});
+		}
+	} else {
+		frame.setValue(allocaOp->getIdentifier(), slotRegister);
+	}
 }
 
 void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,
@@ -2323,7 +2313,7 @@ void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAdd
 		defaultRegisterFile[defaultRegister] = (int64_t) funcAddrOp->getFunctionPtr();
 	}
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(funcAddrOp, frame);
 	frame.setValue(funcAddrOp->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);

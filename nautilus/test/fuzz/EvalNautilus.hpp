@@ -1,10 +1,13 @@
 #pragma once
 
 #include "Ast.hpp"
+#include "Callees.hpp"
 #include "Types.hpp"
 #include <array>
 #include <limits>
+#include <nautilus/function.hpp>
 #include <nautilus/select.hpp>
+#include <nautilus/static.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
 #include <type_traits>
@@ -223,10 +226,28 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		// Plain C++ loop control over a static_val counter: the tracer
+		// unrolls the body, one copy per trip, each seeing its index as a
+		// constant (the static_val makes every iteration's snapshot hash
+		// unique -- the same pattern as test/common/StaticLoopFunctions.hpp).
+		const int64_t trips = static_cast<int64_t>(n.imm);
+		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		for (static_val<int64_t> i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg:
 		return -evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 	case Kind::Not:
 		return ~evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+	case Kind::LNot: {
+		val<bool> b = evalNautilusInt<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
+		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -300,6 +321,23 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return l << (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
 	case Kind::Shr:
 		return l >> (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+	case Kind::LAnd: {
+		// Real val<bool> conjunction under test. l and r are both already
+		// evaluated (side-effect parity with the native oracle regardless of
+		// whether && lowers short-circuiting), only the bool combine varies.
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb && rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::LOr: {
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::Call:
+		// Real nautilus::invoke() of the same instantiation the native oracle
+		// calls directly -- the backend's ProxyCall lowering is under test.
+		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:
@@ -354,8 +392,23 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		}
 		return acc;
 	}
+	case Kind::StaticLoop: {
+		// See the Kind::StaticLoop comment in evalNautilusInt.
+		const int64_t trips = static_cast<int64_t>(n.imm);
+		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+		for (static_val<int64_t> i = 0; i < trips; ++i) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
+			acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
+			ctx.loopStack.pop_back();
+		}
+		return acc;
+	}
 	case Kind::Neg:
 		return -evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
+	case Kind::LNot: {
+		val<bool> b = evalNautilusFloat<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
+		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
 	case Kind::Cast:
 		return castThroughTraced<T>(evalNautilusFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
@@ -417,6 +470,20 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		return l * r;
 	case Kind::Div:
 		return l / r; // well-defined IEEE 754: produces +-inf / NaN for r == 0
+	case Kind::LAnd: {
+		// See the Kind::LAnd comment in evalNautilusInt.
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb && rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::LOr: {
+		val<bool> lb = l != TracedValue<T>(T(0));
+		val<bool> rb = r != TracedValue<T>(T(0));
+		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
+	}
+	case Kind::Call:
+		// See the Kind::Call comment in evalNautilusInt.
+		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:

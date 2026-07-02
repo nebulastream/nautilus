@@ -371,9 +371,31 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(5) == 5);
 		REQUIRE(f(0) == 0);
 	}
+	// Regression (differential fuzzer): wrapped u32 subtraction feeding an
+	// unsigned compare; see u32WrapSubThenCompare in ExpressionFunctions.hpp.
+	SECTION("u32WrapSubThenCompare") {
+		auto f = engine.registerFunction(u32WrapSubThenCompare);
+		// Wrapped: 159212978 - 4279714710 = 174465564 (mod 2^32) <= 882064733.
+		REQUIRE(f(159212978u, 882064733u) == 1u);
+		// Not wrapped: 4279714711 - 4279714710 = 1.
+		REQUIRE(f(4279714711u, 0u) == 0u);
+		REQUIRE(f(4279714711u, 1u) == 1u);
+		// Wrapped from zero: 0 - 4279714710 = 15252586 (mod 2^32).
+		REQUIRE(f(0u, 15252585u) == 0u);
+		REQUIRE(f(0u, 15252586u) == 1u);
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {
+
+	// Regression (differential fuzzer): see zeroTripLoopMergeThenAddConstant
+	// in ControlFlowFunctions.hpp.
+	SECTION("zeroTripLoopMergeThenAddConstant") {
+		auto f = engine.registerFunction(zeroTripLoopMergeThenAddConstant);
+		REQUIRE(f(uint64_t(0), uint64_t(0)) == 119);
+		REQUIRE(f(uint64_t(0), uint64_t(23)) == 142);
+		REQUIRE(f(uint64_t(1), uint64_t(23)) == 119); // then-arm: zero-trip loop leaves acc == 0
+	}
 
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
@@ -926,6 +948,31 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		} else {
 			REQUIRE(f(true) == 5);
 		}
+	}
+	// Regression (differential fuzzer): narrow i16 return value of a proxy
+	// call feeding a signed comparison; see i16NarrowCallReturnCompare in
+	// RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallReturnCompare") {
+		auto f = engine.registerFunction(i16NarrowCallReturnCompare);
+		// 25158 * 3 - 24951 = 50523 -> wraps to -15013 < 0.
+		REQUIRE(f(int16_t(25158), int16_t(-24951)) == 1);
+		// 100 * 3 + 5 = 305, no wrap, not negative.
+		REQUIRE(f(int16_t(100), int16_t(5)) == 0);
+		// -100 * 3 + 5 = -295, negative without wrapping.
+		REQUIRE(f(int16_t(-100), int16_t(5)) == 1);
+	}
+	// Regression (differential fuzzer): narrow i16 *argument* of a proxy call
+	// truncated from a wider value with live upper bits; see
+	// i16NarrowCallArgCompare in RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallArgCompare") {
+		auto f = engine.registerFunction(i16NarrowCallArgCompare);
+		// 65537 truncates to 1; a caller that skips the extension hands the
+		// callee 65537, which is no longer < 5.
+		REQUIRE(f(int64_t(65537), int16_t(5)) == 1);
+		// 0xFFFE0003 truncates to 3.
+		REQUIRE(f(int64_t(0xFFFE0003), int16_t(7)) == 3);
+		// Negative wide value truncating to a negative narrow one.
+		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
 	}
 }
 
