@@ -67,6 +67,9 @@ TEST_CASE("Execution Benchmark") {
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
 #endif
+#ifdef ENABLE_TBC_BACKEND
+	backends.emplace_back("tbc");
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif

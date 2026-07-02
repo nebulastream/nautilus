@@ -3,6 +3,7 @@ if (ENABLE_TRACING)
     add_subdirectory(bc)
     add_subdirectory(cpp)
     add_subdirectory(mlir)
+    add_subdirectory(tbc)
 endif ()
 
 if (ENABLE_ASMJIT_BACKEND)
