@@ -258,7 +258,8 @@ int64_t canonicalizeToStamp(int64_t value, Type stamp) {
 }
 } // anonymous namespace
 
-std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in) {
+std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in,
+                                                                                   RegisterFrame& frame) {
 	if (const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(in)) {
 		return canonicalizeToStamp(constInt->getValue(), constInt->getStamp());
 	}
@@ -277,9 +278,21 @@ std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstVal
 		const Type srcType = cast->getInput()->getStamp();
 		const Type dstType = cast->getStamp();
 		if (!isFloatType(srcType) && !isFloatType(dstType)) {
-			if (const auto inner = foldableConstValue(cast->getInput())) {
+			if (const auto inner = foldableConstValue(cast->getInput(), frame)) {
 				return canonicalizeToStamp(*inner, dstType);
 			}
+		}
+		return std::nullopt;
+	}
+	// Stale input pointer (see the header comment): the constant-folding IR
+	// pass rewires only binary/if/return/invocation consumers, so this input
+	// edge can still point at the operation a constant replaced. When the
+	// identifier is unbound and resolves to a deferred constant definition,
+	// that constant carries the identifier's value.
+	if (!frame.contains(in->getIdentifier())) {
+		const auto it = deferredConsts_.find(in->getIdentifier());
+		if (it != deferredConsts_.end() && it->second != in) {
+			return foldableConstValue(it->second, frame);
 		}
 	}
 	return std::nullopt;
@@ -292,7 +305,7 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 	// paths (issue #321), while an SSA input edge to a constant operation
 	// always means that constant.
 	if (enableConstFolding_) {
-		if (const auto value = foldableConstValue(in)) {
+		if (const auto value = foldableConstValue(in, frame)) {
 			auto reg = cc.newInt64();
 			cc.mov(reg, *value);
 			return reg;
@@ -303,18 +316,18 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::regOperand(const ir::Operation* in,
                                                                                    RegisterFrame& frame) {
-	if (enableConstFolding_ && foldableConstValue(in).has_value()) {
+	if (enableConstFolding_ && foldableConstValue(in, frame).has_value()) {
 		return AsmReg(gpOperand(in, frame));
 	}
 	return frame.getValue(in->getIdentifier());
 }
 
 std::optional<int32_t> AsmJitLoweringProvider::LoweringContext::imm32Operand(const ir::Operation* in,
-                                                                             RegisterFrame& /*frame*/) {
+                                                                             RegisterFrame& frame) {
 	if (!enableConstFolding_) {
 		return std::nullopt;
 	}
-	const auto value = foldableConstValue(in);
+	const auto value = foldableConstValue(in, frame);
 	if (!value.has_value() || *value < INT32_MIN || *value > INT32_MAX) {
 		return std::nullopt;
 	}
@@ -324,7 +337,7 @@ std::optional<int32_t> AsmJitLoweringProvider::LoweringContext::imm32Operand(con
 void AsmJitLoweringProvider::LoweringContext::emitMoveFromOperand(const AsmReg& dst, const ir::Operation* src,
                                                                   RegisterFrame& frame) {
 	if (enableConstFolding_) {
-		if (const auto value = foldableConstValue(src)) {
+		if (const auto value = foldableConstValue(src, frame)) {
 			cc.mov(toGp(dst), *value);
 			return;
 		}
@@ -372,6 +385,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
+		deferredConsts_.clear();
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -537,7 +551,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		SourceValue source;
 		// Constant sources are recovered from the operation itself (see
 		// gpOperand for why a frame binding must not shadow a constant).
-		const auto value = enableConstFolding_ ? foldableConstValue(srcArgs[i]) : std::optional<int64_t> {};
+		const auto value = enableConstFolding_ ? foldableConstValue(srcArgs[i], frame) : std::optional<int64_t> {};
 		if (value.has_value()) {
 			source.imm = *value;
 		} else {
@@ -608,6 +622,7 @@ void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBoolean
 	// A bound identifier doubles as a merge-block parameter register (issue
 	// #321) that must be written, so those keep the materialising path.
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
+		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(Type::b);
@@ -617,6 +632,7 @@ void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBoolean
 
 void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
+		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(op->getStamp());
@@ -641,6 +657,7 @@ void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOper
 
 void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
+		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(Type::ptr);
@@ -1450,7 +1467,8 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	// foldableConstValue); emit nothing and let consumers fold or
 	// rematerialise the pre-computed value. Bound identifiers double as
 	// merge-block parameters and must still be written (issue #321).
-	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op).has_value()) {
+	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op, frame).has_value()) {
+		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto src = regOperand(op->getInput(), frame);

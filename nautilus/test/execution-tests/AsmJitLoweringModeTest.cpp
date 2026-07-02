@@ -159,6 +159,16 @@ val<int32_t> constLeftCompare(val<int32_t> t) {
 	return r;
 }
 
+// Regression (differential fuzzer): a BAND of two constants folds to a
+// constant in the IR pass, but the cast consuming it keeps a stale pointer
+// to the replaced operation (the pass rewires only binary/if/return/
+// invocation inputs). The lowering must recover the constant by identifier
+// from the deferred-constant registry instead of throwing.
+val<int32_t> foldedConstShiftCount(val<int32_t> x) {
+	val<uint8_t> shift = val<uint8_t>((uint8_t) 202) & val<uint8_t>((uint8_t) 7);
+	return x >> shift;
+}
+
 // Narrow-width wrap-around with constant operands: the folded immediate must
 // produce the same canonically extended register pattern as the
 // materialise-then-operate path.
@@ -326,6 +336,14 @@ TEST_CASE("AsmJit const folding: differential correctness across inputs") {
 		INFO("constLeftCompare differential t=" << t);
 		REQUIRE(leftOn(t) == leftOff(t));
 		REQUIRE(leftOn(t) == ((6 > t ? 1 : 0) + (-3 <= t ? 2 : 0)));
+	}
+
+	auto staleOn = makeAsmJitEngine(true, true).registerFunction(foldedConstShiftCount);
+	auto staleOff = makeAsmJitEngine(true, false).registerFunction(foldedConstShiftCount);
+	for (int32_t x : {-1024, -1, 0, 1, 12345, INT32_MAX}) {
+		INFO("foldedConstShiftCount differential x=" << x);
+		REQUIRE(staleOn(x) == staleOff(x));
+		REQUIRE(staleOn(x) == (x >> 2));
 	}
 
 	// Both optimizations off vs both on -- the full-stack differential.

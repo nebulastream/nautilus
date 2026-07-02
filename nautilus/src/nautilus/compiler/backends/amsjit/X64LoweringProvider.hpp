@@ -100,6 +100,10 @@ private:
 		/// compare's own lowering (cmp+setcc+movzx) is skipped and visitIf
 		/// emits a fused cmp+jcc instead.
 		const ir::CompareOperation* pendingFusedCompare_ = nullptr;
+		/// Deferred constant definitions of the current function, keyed by
+		/// identifier. Used to recover a constant through a stale input
+		/// pointer (see foldableConstValue).
+		std::unordered_map<ir::OperationIdentifier, const ir::Operation*> deferredConsts_;
 		/// Gates the compare→branch fusion (option `asmjit.enableBranchFusion`).
 		bool enableBranchFusion_ = true;
 		/// Gates constant deferral + immediate folding (option
@@ -148,7 +152,13 @@ private:
 		// The canonical 64-bit register pattern of an integer-like constant
 		// operation (sign-extended for signed stamps, zero-extended for
 		// unsigned/bool/ptr), or nullopt when @p in is not such a constant.
-		static std::optional<int64_t> foldableConstValue(const ir::Operation* in);
+		// Falls back to the deferred-constant definition recorded for @p in's
+		// identifier: the constant-folding IR pass rewires only some consumer
+		// kinds (binary ops, if, return, invocations), so cast/select/call/
+		// memory operands can still hold a stale pointer to the operation the
+		// constant replaced. Identifier-keyed frame reads used to paper over
+		// that; with deferral the definition must be recovered explicitly.
+		std::optional<int64_t> foldableConstValue(const ir::Operation* in, RegisterFrame& frame);
 		// Fetch @p in's GP register from the frame, or rematerialise a
 		// deferred constant into a fresh register (per use — a shared lazy
 		// binding would not dominate uses in sibling branches).
