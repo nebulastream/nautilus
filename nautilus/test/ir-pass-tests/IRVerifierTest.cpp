@@ -50,4 +50,34 @@ TEST_CASE("IRVerifier: chain-of-empty fixture is well-formed") {
 	REQUIRE(result.ok());
 }
 
+TEST_CASE("IRVerifier: input pointing at an operation outside the function is flagged (#327)") {
+	auto ir = std::make_shared<compiler::ir::IRGraph>("stale-input-test");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<compiler::ir::BasicBlock>(arena, compiler::ir::BlockIdentifier {0},
+	                                                     std::vector<compiler::ir::BasicBlockArgument*> {});
+	// A constant that lives in the arena but in no block's operation list —
+	// the shape a pass leaves behind when it removes an operation without
+	// rewiring its consumers (a stale input edge).
+	auto* detached =
+	    arena.create<compiler::ir::ConstIntOperation>(arena, compiler::ir::OperationIdentifier {1}, 7, Type::i32);
+	entry->addOperation<compiler::ir::ReturnOperation>(detached);
+
+	auto* fn =
+	    arena.create<compiler::ir::FunctionOperation>("execute", std::vector<compiler::ir::BasicBlock*> {entry},
+	                                                  std::vector<Type> {}, std::vector<std::string> {}, Type::i32);
+	ir->addFunctionOperation(fn);
+
+	compiler::ir::rebuildPredecessorLists(*ir);
+	auto result = compiler::ir::IRVerifier::verify(*ir);
+	REQUIRE_FALSE(result.ok());
+	bool found = false;
+	for (const auto& err : result.errors) {
+		if (err.message.find("not defined in function") != std::string::npos) {
+			found = true;
+			break;
+		}
+	}
+	REQUIRE(found);
+}
+
 } // namespace nautilus::testing
