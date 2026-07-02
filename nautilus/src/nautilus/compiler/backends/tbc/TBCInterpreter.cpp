@@ -363,7 +363,22 @@ L_TRAP:
 // both the dispatch-table's function-pointer type and every handler stored
 // in it -- a mismatch between a function's actual calling convention and the
 // type used to call it through the table is undefined behavior.
-#if defined(__has_attribute) && __has_attribute(preserve_none)
+//
+// AddressSanitizer's stack instrumentation forces dynamic stack realignment,
+// which the backend cannot combine with preserve_none (LLVM issue #95928,
+// still open as of Clang 21: "Stack realignment in presence of dynamic
+// allocas is not supported with this calling convention"), so the attribute
+// must stay off under ASan builds.
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define TBC_ASAN_ENABLED 1
+#endif
+#endif
+#if !defined(TBC_ASAN_ENABLED) && defined(__SANITIZE_ADDRESS__)
+#define TBC_ASAN_ENABLED 1
+#endif
+
+#if defined(__has_attribute) && __has_attribute(preserve_none) && !defined(TBC_ASAN_ENABLED)
 #define TBC_PRESERVE_NONE __attribute__((preserve_none))
 #else
 #define TBC_PRESERVE_NONE
@@ -450,6 +465,7 @@ uint64_t runTailcall(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	return kDispatchTable[ip->op](ip, fp, ctx);
 }
 #undef TBC_PRESERVE_NONE
+#undef TBC_ASAN_ENABLED
 #endif // TBC_HAS_MUSTTAIL
 
 } // namespace
