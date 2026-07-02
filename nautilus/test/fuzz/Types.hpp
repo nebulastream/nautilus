@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 namespace nautilus::fuzz {
 
@@ -121,31 +122,15 @@ auto dispatchFloatType(TypeId target, Fn&& fn) {
 
 /// Top-level dispatch across all ten types, used once per fuzzer input to
 /// pick which monomorphic instantiation of the generator/evaluator to run.
+/// Delegates to dispatchIntType/dispatchFloatType rather than re-enumerating
+/// all ten types itself, so the type -> concrete-type mapping lives in
+/// exactly one place per domain.
 template <typename Fn>
 auto dispatchAnyType(TypeId target, Fn&& fn) {
-	switch (target) {
-	case TypeId::I8:
-		return fn.template operator()<int8_t>();
-	case TypeId::I16:
-		return fn.template operator()<int16_t>();
-	case TypeId::I32:
-		return fn.template operator()<int32_t>();
-	case TypeId::I64:
-		return fn.template operator()<int64_t>();
-	case TypeId::U8:
-		return fn.template operator()<uint8_t>();
-	case TypeId::U16:
-		return fn.template operator()<uint16_t>();
-	case TypeId::U32:
-		return fn.template operator()<uint32_t>();
-	case TypeId::U64:
-		return fn.template operator()<uint64_t>();
-	case TypeId::F32:
-		return fn.template operator()<float>();
-	case TypeId::F64:
-		return fn.template operator()<double>();
+	if (isFloatType(target)) {
+		return dispatchFloatType(target, std::forward<Fn>(fn));
 	}
-	__builtin_unreachable();
+	return dispatchIntType(target, std::forward<Fn>(fn));
 }
 
 /// Compile-time type -> short suffix, the mirror of typeName(TypeId) for use

@@ -149,22 +149,7 @@ struct TracedEvalContext {
 };
 
 template <typename T>
-TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
-template <typename T>
-TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
-
-/// Dispatches to whichever of evalNautilusInt/evalNautilusFloat matches T's
-/// domain -- the traced mirror of EvalNative.hpp's evalNativeValue, needed
-/// for the same reason (evalNautilusPtr and the Load/Store cases below are
-/// shared between both domains).
-template <typename T>
-TracedValue<T> evalNautilusValue(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
-	if constexpr (std::is_floating_point_v<T>) {
-		return evalNautilusFloat<T>(ast, idx, args, ctx);
-	} else {
-		return evalNautilusInt<T>(ast, idx, args, ctx);
-	}
-}
+TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
 
 /// Traced mirror of EvalNative.hpp's evalNativePtr: evaluates a
 /// pointer-domain node to a real val<T*>, using the exact same
@@ -174,11 +159,11 @@ val<T*> evalNautilusPtr(const Ast& ast, int idx, const TracedArgs<T>& args, Trac
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::PtrAdd: {
-		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusValue<T>(ast, n.kid[0], args, ctx));
+		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx));
 		return ctx.basePtr + off;
 	}
 	case Kind::PtrSub: {
-		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusValue<T>(ast, n.kid[0], args, ctx));
+		val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx));
 		return ctx.lastPtr - off;
 	}
 	case Kind::PtrBase:
@@ -187,8 +172,37 @@ val<T*> evalNautilusPtr(const Ast& ast, int idx, const TracedArgs<T>& args, Trac
 	}
 }
 
+/// Traced mirror of EvalNative.hpp's comparePtrIndices: the shared body of
+/// the six Ptr* comparison kinds, producing a real val<bool> from the two
+/// val<T*> operator overloads under test.
 template <typename T>
-TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
+val<bool> comparePtrTraced(Kind kind, val<T*> a, val<T*> b) {
+	switch (kind) {
+	case Kind::PtrEq:
+		return a == b;
+	case Kind::PtrNe:
+		return a != b;
+	case Kind::PtrLt:
+		return a < b;
+	case Kind::PtrLe:
+		return a <= b;
+	case Kind::PtrGt:
+		return a > b;
+	default: // Kind::PtrGe
+		return a >= b;
+	}
+}
+
+/// Single traced evaluator for both the integer and float domains -- the
+/// traced mirror of EvalNative.hpp's evalNativeGeneric, merged from the
+/// former evalNautilusInt/evalNautilusFloat pair for the same reason (see
+/// evalNativeGeneric's comment): every control-flow, memory, call and
+/// comparison case was duplicated verbatim between the two. Only a handful
+/// of operations are genuinely domain-specific (float has no bitwise/modulo
+/// ops; float division needs no non-zero-divisor guard), gated via
+/// `if constexpr`.
+template <typename T>
+TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
@@ -200,28 +214,28 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
 	case Kind::Select: {
-		TracedValue<T> c = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> t = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
-		TracedValue<T> f = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> t = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+		TracedValue<T> f = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
 		return select(c != TracedValue<T>(T(0)), t, f);
 	}
 	case Kind::If: {
-		TracedValue<T> c = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		// Else-branch first (unconditional), then conditionally overwrite with
 		// the then-branch inside a real traced branch -> produces a phi/merge.
-		TracedValue<T> result = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+		TracedValue<T> result = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
 		if (c != TracedValue<T>(T(0))) {
-			result = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+			result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		}
 		return result;
 	}
 	case Kind::Loop: {
-		TracedValue<T> rawCount = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> rawCount = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
-		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+		TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		for (val<int32_t> i = 0; i < trips; i = i + 1) {
 			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
-			acc = evalNautilusInt<T>(ast, n.kid[2], args, ctx);
+			acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
@@ -232,24 +246,30 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		// constant (the static_val makes every iteration's snapshot hash
 		// unique -- the same pattern as test/common/StaticLoopFunctions.hpp).
 		const int64_t trips = static_cast<int64_t>(n.imm);
-		TracedValue<T> acc = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		for (static_val<int64_t> i = 0; i < trips; ++i) {
 			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
-			acc = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+			acc = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
 	}
 	case Kind::Neg:
-		return -evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		return -evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 	case Kind::Not:
-		return ~evalNautilusInt<T>(ast, n.kid[0], args, ctx);
+		// Integer domain only (FLOAT_KINDS never generates Not); guarded so
+		// operator~ doesn't need to exist for val<float>/val<double>.
+		if constexpr (!std::is_floating_point_v<T>) {
+			return ~evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::LNot: {
-		val<bool> b = evalNautilusInt<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
+		val<bool> b = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
 		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
 	case Kind::Cast:
-		return castThroughTraced<T>(evalNautilusInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+		return castThroughTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
 		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> v = *p;
@@ -257,7 +277,7 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 	}
 	case Kind::Store: {
 		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> v = evalNautilusValue<T>(ast, n.kid[1], args, ctx);
+		TracedValue<T> v = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		*p = v;
 		return v;
 	}
@@ -271,35 +291,15 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 	case Kind::PtrGe: {
 		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
 		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx);
-		val<bool> cmp(false);
-		switch (n.kind) {
-		case Kind::PtrEq:
-			cmp = (a == b);
-			break;
-		case Kind::PtrNe:
-			cmp = (a != b);
-			break;
-		case Kind::PtrLt:
-			cmp = (a < b);
-			break;
-		case Kind::PtrLe:
-			cmp = (a <= b);
-			break;
-		case Kind::PtrGt:
-			cmp = (a > b);
-			break;
-		default:
-			cmp = (a >= b);
-			break;
-		}
+		val<bool> cmp = comparePtrTraced<T>(n.kind, a, b);
 		return select(cmp, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
 	default:
 		break;
 	}
 
-	TracedValue<T> l = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
-	TracedValue<T> r = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
+	TracedValue<T> l = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+	TracedValue<T> r = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 	switch (n.kind) {
 	case Kind::Add:
 		return l + r;
@@ -308,19 +308,47 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 	case Kind::Mul:
 		return l * r;
 	case Kind::Div:
-		return l / safeDivisorTraced<T>(r);
+		if constexpr (std::is_floating_point_v<T>) {
+			return l / r; // well-defined IEEE 754: produces +-inf / NaN for r == 0
+		} else {
+			return l / safeDivisorTraced<T>(r);
+		}
 	case Kind::Mod:
-		return l % safeDivisorTraced<T>(r);
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l % safeDivisorTraced<T>(r);
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::And:
-		return l & r;
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l & r;
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Or:
-		return l | r;
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l | r;
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Xor:
-		return l ^ r;
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l ^ r;
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Shl:
-		return l << (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l << (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Shr:
-		return l >> (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+		if constexpr (!std::is_floating_point_v<T>) {
+			return l >> (r & TracedValue<T>(T(sizeof(T) * 8 - 1)));
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::LAnd: {
 		// Real val<bool> conjunction under test. l and r are both already
 		// evaluated (side-effect parity with the native oracle regardless of
@@ -355,152 +383,6 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 	}
 }
 
-template <typename T>
-TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
-	const Node& n = ast.nodes[idx];
-	switch (n.kind) {
-	case Kind::Const:
-		return TracedValue<T>(unpackImm<T>(n.imm));
-	case Kind::Param:
-		return args[n.imm % NUM_PARAMS];
-	case Kind::LoopIndex:
-		return ctx.loopStack.back().index;
-	case Kind::LoopAcc:
-		return ctx.loopStack.back().acc;
-	case Kind::Select: {
-		TracedValue<T> c = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> t = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
-		TracedValue<T> f = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
-		return select(c != TracedValue<T>(T(0)), t, f);
-	}
-	case Kind::If: {
-		TracedValue<T> c = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> result = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
-		if (c != TracedValue<T>(T(0))) {
-			result = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
-		}
-		return result;
-	}
-	case Kind::Loop: {
-		TracedValue<T> rawCount = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
-		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
-		for (val<int32_t> i = 0; i < trips; i = i + 1) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
-			acc = evalNautilusFloat<T>(ast, n.kid[2], args, ctx);
-			ctx.loopStack.pop_back();
-		}
-		return acc;
-	}
-	case Kind::StaticLoop: {
-		// See the Kind::StaticLoop comment in evalNautilusInt.
-		const int64_t trips = static_cast<int64_t>(n.imm);
-		TracedValue<T> acc = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-		for (static_val<int64_t> i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(TracedLoopFrame<T> {TracedValue<T>(static_cast<T>(static_cast<int64_t>(i))), acc});
-			acc = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
-			ctx.loopStack.pop_back();
-		}
-		return acc;
-	}
-	case Kind::Neg:
-		return -evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-	case Kind::LNot: {
-		val<bool> b = evalNautilusFloat<T>(ast, n.kid[0], args, ctx) != TracedValue<T>(T(0));
-		return select(!b, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	}
-	case Kind::Cast:
-		return castThroughTraced<T>(evalNautilusFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
-	case Kind::Load: {
-		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> v = *p;
-		return v;
-	}
-	case Kind::Store: {
-		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
-		TracedValue<T> v = evalNautilusValue<T>(ast, n.kid[1], args, ctx);
-		*p = v;
-		return v;
-	}
-	case Kind::PtrToInt:
-		return static_cast<TracedValue<T>>(evalNautilusPtr<T>(ast, n.kid[0], args, ctx));
-	case Kind::PtrEq:
-	case Kind::PtrNe:
-	case Kind::PtrLt:
-	case Kind::PtrLe:
-	case Kind::PtrGt:
-	case Kind::PtrGe: {
-		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
-		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx);
-		val<bool> cmp(false);
-		switch (n.kind) {
-		case Kind::PtrEq:
-			cmp = (a == b);
-			break;
-		case Kind::PtrNe:
-			cmp = (a != b);
-			break;
-		case Kind::PtrLt:
-			cmp = (a < b);
-			break;
-		case Kind::PtrLe:
-			cmp = (a <= b);
-			break;
-		case Kind::PtrGt:
-			cmp = (a > b);
-			break;
-		default:
-			cmp = (a >= b);
-			break;
-		}
-		return select(cmp, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	}
-	default:
-		break;
-	}
-
-	TracedValue<T> l = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
-	TracedValue<T> r = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
-	switch (n.kind) {
-	case Kind::Add:
-		return l + r;
-	case Kind::Sub:
-		return l - r;
-	case Kind::Mul:
-		return l * r;
-	case Kind::Div:
-		return l / r; // well-defined IEEE 754: produces +-inf / NaN for r == 0
-	case Kind::LAnd: {
-		// See the Kind::LAnd comment in evalNautilusInt.
-		val<bool> lb = l != TracedValue<T>(T(0));
-		val<bool> rb = r != TracedValue<T>(T(0));
-		return select(lb && rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	}
-	case Kind::LOr: {
-		val<bool> lb = l != TracedValue<T>(T(0));
-		val<bool> rb = r != TracedValue<T>(T(0));
-		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	}
-	case Kind::Call:
-		// See the Kind::Call comment in evalNautilusInt.
-		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
-	case Kind::Eq:
-		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	case Kind::Ne:
-		return select(l != r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	case Kind::Lt:
-		return select(l < r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	case Kind::Le:
-		return select(l <= r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	case Kind::Gt:
-		return select(l > r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	case Kind::Ge:
-		return select(l >= r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
-	default:
-		return TracedValue<T>(T(0)); // unreachable
-	}
-}
-
 } // namespace detail
 
 template <typename T>
@@ -508,11 +390,7 @@ TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, const TracedArgs<T>
 	detail::TracedEvalContext<T> ctx;
 	ctx.basePtr = basePtr;
 	ctx.lastPtr = basePtr + static_cast<int32_t>(BUFFER_ELEMS - 1);
-	if constexpr (std::is_floating_point_v<T>) {
-		return detail::evalNautilusFloat<T>(ast, ast.root, args, ctx);
-	} else {
-		return detail::evalNautilusInt<T>(ast, ast.root, args, ctx);
-	}
+	return detail::evalNautilusGeneric<T>(ast, ast.root, args, ctx);
 }
 
 } // namespace nautilus::fuzz
