@@ -181,23 +181,7 @@ struct EvalContext {
 };
 
 template <typename T>
-T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
-template <typename T>
-T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
-
-/// Dispatches to whichever of evalNativeInt/evalNativeFloat matches T's
-/// domain. Used by the memory-domain helpers below (evalNativePtr, and the
-/// Load/Store cases inside evalNativeInt/evalNativeFloat) since they are
-/// shared between both domains and need to evaluate value-domain
-/// subexpressions (offsets, stored values) generated in that same domain.
-template <typename T>
-T evalNativeValue(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
-	if constexpr (std::is_floating_point_v<T>) {
-		return evalNativeFloat<T>(ast, idx, args, ctx);
-	} else {
-		return evalNativeInt<T>(ast, idx, args, ctx);
-	}
-}
+T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
 
 /// Evaluate a pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub, see Ast.hpp)
 /// to a buffer index. Always in [0, BUFFER_ELEMS) by construction --
@@ -208,17 +192,49 @@ int evalNativePtr(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::PtrAdd:
-		return clampBufferIndex<T>(evalNativeValue<T>(ast, n.kid[0], args, ctx));
+		return clampBufferIndex<T>(evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
 	case Kind::PtrSub:
-		return (BUFFER_ELEMS - 1) - clampBufferIndex<T>(evalNativeValue<T>(ast, n.kid[0], args, ctx));
+		return (BUFFER_ELEMS - 1) - clampBufferIndex<T>(evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
 	case Kind::PtrBase:
 	default:
 		return 0;
 	}
 }
 
+/// Shared body of the six Ptr* comparison kinds: both native evaluators
+/// (formerly evalNativeInt/evalNativeFloat, now a single evalNativeGeneric)
+/// reduced their pointer-domain kids to plain buffer indices and compared
+/// those, so the comparison itself never depended on T -- pulled out once
+/// here instead of appearing twice.
+inline bool comparePtrIndices(Kind kind, int a, int b) {
+	switch (kind) {
+	case Kind::PtrEq:
+		return a == b;
+	case Kind::PtrNe:
+		return a != b;
+	case Kind::PtrLt:
+		return a < b;
+	case Kind::PtrLe:
+		return a <= b;
+	case Kind::PtrGt:
+		return a > b;
+	default: // Kind::PtrGe
+		return a >= b;
+	}
+}
+
+/// Single evaluator for both the integer and float domains. The two used to
+/// be separate functions (evalNativeInt/evalNativeFloat) that duplicated
+/// every control-flow, memory, call and comparison case verbatim -- the
+/// exact kind of duplication that let the Select short-circuit bug (see
+/// README.md) need fixing in two places instead of one. The domain still
+/// matters for a handful of operations (float has no bitwise/modulo ops;
+/// signed integer arithmetic needs the wraparound helpers; float division
+/// needs no non-zero-divisor guard), so those cases branch internally via
+/// `if constexpr` -- the same pattern already used by safeDivisor/castThrough
+/// above -- rather than being split back into two functions.
 template <typename T>
-T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
+T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
@@ -238,60 +254,68 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		// side effect while the traced kernel still performs it, breaking
 		// oracle/traced parity for any program that stores inside a Select
 		// branch.
-		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
-		const T t = evalNativeInt<T>(ast, n.kid[1], args, ctx);
-		const T f = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+		const T c = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		const T t = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+		const T f = evalNativeGeneric<T>(ast, n.kid[2], args, ctx);
 		return c != T(0) ? t : f;
 	}
 	case Kind::If: {
-		const T c = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const T c = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
 		// Mirror the traced kernel: the else-branch is evaluated unconditionally,
 		// the then-branch only when the condition holds.
-		const T e = evalNativeInt<T>(ast, n.kid[2], args, ctx);
-		return c != T(0) ? evalNativeInt<T>(ast, n.kid[1], args, ctx) : e;
+		const T e = evalNativeGeneric<T>(ast, n.kid[2], args, ctx);
+		return c != T(0) ? evalNativeGeneric<T>(ast, n.kid[1], args, ctx) : e;
 	}
 	case Kind::Loop: {
-		const T rawCount = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		const T rawCount = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
 		const int trips = clampTripCount<T>(rawCount);
-		T acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+		T acc = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
 		for (int i = 0; i < trips; ++i) {
 			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
-			acc = evalNativeInt<T>(ast, n.kid[2], args, ctx);
+			acc = evalNativeGeneric<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
 	}
 	case Kind::StaticLoop: {
 		const int trips = static_cast<int>(n.imm);
-		T acc = evalNativeInt<T>(ast, n.kid[0], args, ctx);
+		T acc = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
 		for (int i = 0; i < trips; ++i) {
 			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
-			acc = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+			acc = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
 			ctx.loopStack.pop_back();
 		}
 		return acc;
 	}
 	case Kind::Neg: {
-		const T v = evalNativeInt<T>(ast, n.kid[0], args, ctx);
-		if constexpr (std::is_signed_v<T>) {
+		const T v = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		if constexpr (std::is_floating_point_v<T>) {
+			return static_cast<T>(-v);
+		} else if constexpr (std::is_signed_v<T>) {
 			return wrappingNeg<T>(v);
 		} else {
 			return static_cast<T>(-v);
 		}
 	}
 	case Kind::Not:
-		return static_cast<T>(~evalNativeInt<T>(ast, n.kid[0], args, ctx));
+		// Integer domain only (FLOAT_KINDS never generates Not); guarded so the
+		// bitwise-complement expression doesn't need to compile for float T.
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(~evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::LNot:
-		return evalNativeInt<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
+		return evalNativeGeneric<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
-		return castThrough<T>(evalNativeInt<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
+		return castThrough<T>(evalNativeGeneric<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 	case Kind::Load: {
 		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
 		return (*ctx.memory)[static_cast<size_t>(i)];
 	}
 	case Kind::Store: {
 		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
-		const T v = evalNativeValue<T>(ast, n.kid[1], args, ctx);
+		const T v = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
 		(*ctx.memory)[static_cast<size_t>(i)] = v;
 		return v;
 	}
@@ -307,207 +331,81 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 	case Kind::PtrGe: {
 		const int a = evalNativePtr<T>(ast, n.kid[0], args, ctx);
 		const int b = evalNativePtr<T>(ast, n.kid[1], args, ctx);
-		bool r = false;
-		switch (n.kind) {
-		case Kind::PtrEq:
-			r = (a == b);
-			break;
-		case Kind::PtrNe:
-			r = (a != b);
-			break;
-		case Kind::PtrLt:
-			r = (a < b);
-			break;
-		case Kind::PtrLe:
-			r = (a <= b);
-			break;
-		case Kind::PtrGt:
-			r = (a > b);
-			break;
-		default:
-			r = (a >= b);
-			break;
-		}
-		return r ? T(1) : T(0);
+		return comparePtrIndices(n.kind, a, b) ? T(1) : T(0);
 	}
 	default:
 		break;
 	}
 
-	const T l = evalNativeInt<T>(ast, n.kid[0], args, ctx);
-	const T r = evalNativeInt<T>(ast, n.kid[1], args, ctx);
+	const T l = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+	const T r = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
 	switch (n.kind) {
 	case Kind::Add:
-		if constexpr (std::is_signed_v<T>) {
+		if constexpr (std::is_floating_point_v<T>) {
+			return static_cast<T>(l + r);
+		} else if constexpr (std::is_signed_v<T>) {
 			return wrappingAdd<T>(l, r);
 		} else {
 			return static_cast<T>(l + r);
 		}
 	case Kind::Sub:
-		if constexpr (std::is_signed_v<T>) {
+		if constexpr (std::is_floating_point_v<T>) {
+			return static_cast<T>(l - r);
+		} else if constexpr (std::is_signed_v<T>) {
 			return wrappingSub<T>(l, r);
 		} else {
 			return static_cast<T>(l - r);
 		}
 	case Kind::Mul:
-		if constexpr (std::is_signed_v<T>) {
+		if constexpr (std::is_floating_point_v<T>) {
+			return static_cast<T>(l * r);
+		} else if constexpr (std::is_signed_v<T>) {
 			return wrappingMul<T>(l, r);
 		} else {
 			return static_cast<T>(l * r);
 		}
 	case Kind::Div:
-		return static_cast<T>(l / safeDivisor<T>(r));
+		if constexpr (std::is_floating_point_v<T>) {
+			return static_cast<T>(l / r); // well-defined IEEE 754: produces +-inf / NaN for r == 0
+		} else {
+			return static_cast<T>(l / safeDivisor<T>(r));
+		}
 	case Kind::Mod:
-		return static_cast<T>(l % safeDivisor<T>(r));
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l % safeDivisor<T>(r));
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::And:
-		return static_cast<T>(l & r);
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l & r);
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Or:
-		return static_cast<T>(l | r);
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l | r);
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Xor:
-		return static_cast<T>(l ^ r);
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l ^ r);
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Shl:
-		return static_cast<T>(l << (r & T(sizeof(T) * 8 - 1)));
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l << (r & T(sizeof(T) * 8 - 1)));
+		} else {
+			__builtin_unreachable();
+		}
 	case Kind::Shr:
-		return static_cast<T>(l >> (r & T(sizeof(T) * 8 - 1)));
-	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
-	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
-	case Kind::LAnd:
-		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
-	case Kind::LOr:
-		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
-	case Kind::Call:
-		// Direct call of the same instantiation the traced kernel invoke()s.
-		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
-	case Kind::Eq:
-		return l == r ? T(1) : T(0);
-	case Kind::Ne:
-		return l != r ? T(1) : T(0);
-	case Kind::Lt:
-		return l < r ? T(1) : T(0);
-	case Kind::Le:
-		return l <= r ? T(1) : T(0);
-	case Kind::Gt:
-		return l > r ? T(1) : T(0);
-	case Kind::Ge:
-		return l >= r ? T(1) : T(0);
-	default:
-		return T(0); // unreachable
-	}
-}
-
-template <typename T>
-T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
-	const Node& n = ast.nodes[idx];
-	switch (n.kind) {
-	case Kind::Const:
-		return unpackImm<T>(n.imm);
-	case Kind::Param:
-		return args[n.imm % NUM_PARAMS];
-	case Kind::LoopIndex:
-		return ctx.loopStack.back().index;
-	case Kind::LoopAcc:
-		return ctx.loopStack.back().acc;
-	case Kind::Select: {
-		// See the identical comment in evalNativeInt's Select case: both
-		// branches must be evaluated unconditionally to match the traced
-		// kernel's data-mux `select`, now that Store can live inside them.
-		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-		const T t = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
-		const T f = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
-		return c != T(0) ? t : f;
-	}
-	case Kind::If: {
-		const T c = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-		const T e = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
-		return c != T(0) ? evalNativeFloat<T>(ast, n.kid[1], args, ctx) : e;
-	}
-	case Kind::Loop: {
-		const T rawCount = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-		const int trips = clampTripCount<T>(rawCount);
-		T acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
-		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
-			acc = evalNativeFloat<T>(ast, n.kid[2], args, ctx);
-			ctx.loopStack.pop_back();
+		if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(l >> (r & T(sizeof(T) * 8 - 1)));
+		} else {
+			__builtin_unreachable();
 		}
-		return acc;
-	}
-	case Kind::StaticLoop: {
-		const int trips = static_cast<int>(n.imm);
-		T acc = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-		for (int i = 0; i < trips; ++i) {
-			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
-			acc = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
-			ctx.loopStack.pop_back();
-		}
-		return acc;
-	}
-	case Kind::Neg:
-		return static_cast<T>(-evalNativeFloat<T>(ast, n.kid[0], args, ctx));
-	case Kind::LNot:
-		return evalNativeFloat<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
-	case Kind::Cast:
-		return castThrough<T>(evalNativeFloat<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
-	case Kind::Load: {
-		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
-		return (*ctx.memory)[static_cast<size_t>(i)];
-	}
-	case Kind::Store: {
-		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
-		const T v = evalNativeValue<T>(ast, n.kid[1], args, ctx);
-		(*ctx.memory)[static_cast<size_t>(i)] = v;
-		return v;
-	}
-	case Kind::PtrToInt: {
-		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
-		return static_cast<T>(reinterpret_cast<uintptr_t>(&(*ctx.memory)[static_cast<size_t>(i)]));
-	}
-	case Kind::PtrEq:
-	case Kind::PtrNe:
-	case Kind::PtrLt:
-	case Kind::PtrLe:
-	case Kind::PtrGt:
-	case Kind::PtrGe: {
-		const int a = evalNativePtr<T>(ast, n.kid[0], args, ctx);
-		const int b = evalNativePtr<T>(ast, n.kid[1], args, ctx);
-		bool r = false;
-		switch (n.kind) {
-		case Kind::PtrEq:
-			r = (a == b);
-			break;
-		case Kind::PtrNe:
-			r = (a != b);
-			break;
-		case Kind::PtrLt:
-			r = (a < b);
-			break;
-		case Kind::PtrLe:
-			r = (a <= b);
-			break;
-		case Kind::PtrGt:
-			r = (a > b);
-			break;
-		default:
-			r = (a >= b);
-			break;
-		}
-		return r ? T(1) : T(0);
-	}
-	default:
-		break;
-	}
-
-	const T l = evalNativeFloat<T>(ast, n.kid[0], args, ctx);
-	const T r = evalNativeFloat<T>(ast, n.kid[1], args, ctx);
-	switch (n.kind) {
-	case Kind::Add:
-		return static_cast<T>(l + r);
-	case Kind::Sub:
-		return static_cast<T>(l - r);
-	case Kind::Mul:
-		return static_cast<T>(l * r);
-	case Kind::Div:
-		return static_cast<T>(l / r); // well-defined IEEE 754: produces +-inf / NaN for r == 0
 	// LAnd/LOr sit in this binary tail so l and r are both already evaluated
 	// unconditionally -- deliberate, see the Kind::LAnd comment in Ast.hpp.
 	case Kind::LAnd:
@@ -540,11 +438,7 @@ template <typename T>
 T evalNative(const Ast& ast, const std::array<T, NUM_PARAMS>& args, std::array<T, BUFFER_ELEMS>& memory) {
 	detail::EvalContext<T> ctx;
 	ctx.memory = &memory;
-	if constexpr (std::is_floating_point_v<T>) {
-		return detail::evalNativeFloat<T>(ast, ast.root, args, ctx);
-	} else {
-		return detail::evalNativeInt<T>(ast, ast.root, args, ctx);
-	}
+	return detail::evalNativeGeneric<T>(ast, ast.root, args, ctx);
 }
 
 } // namespace nautilus::fuzz
