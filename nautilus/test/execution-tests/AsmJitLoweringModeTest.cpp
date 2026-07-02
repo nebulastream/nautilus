@@ -2,6 +2,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/select.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 
@@ -171,15 +172,30 @@ val<int32_t> i8ConstWrap(val<int8_t> x) {
 	return r + static_cast<val<int32_t>>(z);
 }
 
-engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableConstFolding = true) {
-	return nautilus::testing::makeEngine("asmjit", [enableBranchFusion, enableConstFolding](engine::Options& opts) {
-		opts.setOption("asmjit.enableBranchFusion", enableBranchFusion);
-		opts.setOption("asmjit.enableConstFolding", enableConstFolding);
-		opts.setOption("engine.traceMode", "lazyTracing");
-		// Force the legacy (non-tiered) path so stats land on the same
-		// executable we query here (see PostRAPeepholeTest for details).
-		opts.setOption("engine.compilationStrategy", std::string("legacy"));
-	});
+// Integer and float selects: the integer ones take the cmov path, the float
+// one must stay on the branchy path.
+val<int64_t> selectMix(val<int64_t> x, val<int64_t> y) {
+	val<int64_t> lo = select(x < y, x, y);
+	val<int64_t> hi = select(x < y, y, x);
+	return hi - lo + select(x == y, val<int64_t>(100), val<int64_t>(0));
+}
+
+val<double> selectFloatKernel(val<bool> c, val<double> a, val<double> b) {
+	return select(c, a, b);
+}
+
+engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableConstFolding = true,
+                                        bool enableSelectCmov = true) {
+	return nautilus::testing::makeEngine(
+	    "asmjit", [enableBranchFusion, enableConstFolding, enableSelectCmov](engine::Options& opts) {
+		    opts.setOption("asmjit.enableBranchFusion", enableBranchFusion);
+		    opts.setOption("asmjit.enableConstFolding", enableConstFolding);
+		    opts.setOption("asmjit.enableSelectCmov", enableSelectCmov);
+		    opts.setOption("engine.traceMode", "lazyTracing");
+		    // Force the legacy (non-tiered) path so stats land on the same
+		    // executable we query here (see PostRAPeepholeTest for details).
+		    opts.setOption("engine.compilationStrategy", std::string("legacy"));
+	    });
 }
 
 int64_t getCounter(const std::shared_ptr<const compiler::CompilationStatistics>& stats, const std::string& key) {
@@ -339,6 +355,27 @@ TEST_CASE("AsmJit const folding: pinned fuzzer regressions stay correct") {
 			REQUIRE(mergeOn(c, p) == mergeOff(c, p));
 			REQUIRE(mergeOn(c, p) == (c != 0 ? uint64_t(119) : p + 119));
 		}
+	}
+}
+
+TEST_CASE("AsmJit select cmov: differential correctness across inputs") {
+	auto mixOn = makeAsmJitEngine(true, true, true).registerFunction(selectMix);
+	auto mixOff = makeAsmJitEngine(true, true, false).registerFunction(selectMix);
+	for (int64_t x : {int64_t(-100), int64_t(-1), int64_t(0), int64_t(1), int64_t(42), INT64_MAX / 2}) {
+		for (int64_t y : {int64_t(-100), int64_t(0), int64_t(42), int64_t(7000)}) {
+			INFO("selectMix differential x=" << x << " y=" << y);
+			REQUIRE(mixOn(x, y) == mixOff(x, y));
+			const int64_t expected = std::abs(x - y) + (x == y ? 100 : 0);
+			REQUIRE(mixOn(x, y) == expected);
+		}
+	}
+
+	auto fOn = makeAsmJitEngine(true, true, true).registerFunction(selectFloatKernel);
+	auto fOff = makeAsmJitEngine(true, true, false).registerFunction(selectFloatKernel);
+	for (bool c : {false, true}) {
+		INFO("selectFloatKernel differential c=" << c);
+		REQUIRE(fOn(c, 1.5, -2.5) == fOff(c, 1.5, -2.5));
+		REQUIRE(fOn(c, 1.5, -2.5) == (c ? 1.5 : -2.5));
 	}
 }
 

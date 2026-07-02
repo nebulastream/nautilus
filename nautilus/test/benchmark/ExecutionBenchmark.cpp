@@ -232,6 +232,27 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// AsmJit-only comparison of the lowering baseline against all lowering
+	// optimizations stacked (branch fusion + const folding + select cmov).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allOpts : {false, true}) {
+			std::string tag = allOpts ? "allOpts" : "baseline";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", allOpts);
+				    op.setOption("asmjit.enableConstFolding", allOpts);
+				    op.setOption("asmjit.enableSelectCmov", allOpts);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 

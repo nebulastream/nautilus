@@ -102,6 +102,7 @@ AsmJitLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRG
 	}
 	enableBranchFusion_ = options.getOptionOrDefault<bool>("asmjit.enableBranchFusion", true);
 	enableConstFolding_ = options.getOptionOrDefault<bool>("asmjit.enableConstFolding", true);
+	enableSelectCmov_ = options.getOptionOrDefault<bool>("asmjit.enableSelectCmov", true);
 }
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
@@ -555,25 +556,48 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		}
 	}
 
-	// Copy each source to a fresh temp register first (parallel-copy semantics
-	// avoids clobbering when src and dst registers overlap). Deferred
-	// constants materialise straight into the temp.
-	std::vector<AsmReg> temps;
-	temps.reserve(srcArgs.size());
-	for (size_t i = 0; i < srcArgs.size(); i++) {
-		auto temp = allocReg(dstArgs[i]->getStamp());
-		if (sources[i].reg.has_value()) {
-			emitMove(temp, *sources[i].reg);
-		} else {
-			cc.mov(toGp(temp), sources[i].imm);
-		}
-		temps.push_back(temp);
+	// Parallel-copy semantics: a destination write must not clobber a source
+	// that a later copy still reads. Only a register source that is itself
+	// one of the destination registers needs to detour through a temp; a
+	// self-move (src == dst) needs no code at all, and everything else can
+	// be written directly (immediates and temps can never alias a source).
+	const auto vregId = [](const AsmReg& r) {
+		return std::visit([](const auto& reg) { return reg.id(); }, r);
+	};
+	std::unordered_set<uint32_t> dstIds;
+	for (size_t i = 0; i < dstArgs.size(); i++) {
+		dstIds.insert(vregId(frame.getValue(dstArgs[i]->getIdentifier())));
 	}
 
-	// Then write temps into the destination registers.
+	// Phase 1: detour hazardous register sources through fresh temps.
+	std::vector<std::optional<AsmReg>> temps(srcArgs.size());
+	for (size_t i = 0; i < srcArgs.size(); i++) {
+		if (!sources[i].reg.has_value()) {
+			continue; // immediate -- written directly in phase 2
+		}
+		const auto srcId = vregId(*sources[i].reg);
+		if (srcId == vregId(frame.getValue(dstArgs[i]->getIdentifier()))) {
+			continue; // self-move -- no code needed
+		}
+		if (dstIds.count(srcId) != 0) {
+			auto temp = allocReg(dstArgs[i]->getStamp());
+			emitMove(temp, *sources[i].reg);
+			temps[i] = temp;
+		}
+	}
+
+	// Phase 2: write the destinations.
 	for (size_t i = 0; i < srcArgs.size(); i++) {
 		auto dst = frame.getValue(dstArgs[i]->getIdentifier());
-		emitMove(dst, temps[i]);
+		if (temps[i].has_value()) {
+			emitMove(dst, *temps[i]);
+		} else if (sources[i].reg.has_value()) {
+			if (vregId(*sources[i].reg) != vregId(dst)) {
+				emitMove(dst, *sources[i].reg);
+			}
+		} else {
+			cc.mov(toGp(dst), sources[i].imm);
+		}
 	}
 }
 
@@ -601,22 +625,16 @@ void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperatio
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
+	// One RIP-relative load from the local constant pool instead of a GP
+	// temp plus movd/movq round-trip through the integer register file.
 	auto reg = allocReg(op->getStamp());
 	auto xmmReg = toXmm(reg);
 	if (op->getStamp() == Type::f32) {
-		float val = static_cast<float>(op->getValue());
-		uint32_t bits = 0;
-		memcpy(&bits, &val, sizeof(bits));
-		auto tempGp = cc.newUInt32();
-		cc.mov(tempGp, bits);
-		cc.movd(xmmReg, tempGp);
+		auto mem = cc.newFloatConst(ConstPoolScope::kLocal, static_cast<float>(op->getValue()));
+		cc.movss(xmmReg, mem);
 	} else {
-		double val = op->getValue();
-		uint64_t bits = 0;
-		memcpy(&bits, &val, sizeof(bits));
-		auto tempGp = cc.newUInt64();
-		cc.mov(tempGp, bits);
-		cc.movq(xmmReg, tempGp);
+		auto mem = cc.newDoubleConst(ConstPoolScope::kLocal, op->getValue());
+		cc.movsd(xmmReg, mem);
 	}
 	bindResult(op->getIdentifier(), reg, frame);
 }
@@ -1183,16 +1201,28 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 	auto condGp = gpOperand(op->getCondition(), frame);
 	auto result = allocReg(op->getStamp());
 
-	auto falsePath = cc.newLabel();
-	auto donePath = cc.newLabel();
+	if (enableSelectCmov_ && !isFloatType(op->getStamp())) {
+		// Branch-free data mux: both values are already unconditionally
+		// computed (select is not lazy), so a cmov replaces the two-way
+		// branch and its misprediction risk. The operand movs do not touch
+		// EFLAGS, so the test's flags survive until the cmov. A64 lowers
+		// select the same way via csel.
+		auto falseGp = gpOperand(op->getFalseValue(), frame);
+		emitMoveFromOperand(result, op->getTrueValue(), frame);
+		cc.test(condGp, condGp);
+		cc.cmovz(toGp(result), falseGp);
+	} else {
+		auto falsePath = cc.newLabel();
+		auto donePath = cc.newLabel();
 
-	cc.test(condGp, condGp);
-	cc.jz(falsePath);
-	emitMoveFromOperand(result, op->getTrueValue(), frame);
-	cc.jmp(donePath);
-	cc.bind(falsePath);
-	emitMoveFromOperand(result, op->getFalseValue(), frame);
-	cc.bind(donePath);
+		cc.test(condGp, condGp);
+		cc.jz(falsePath);
+		emitMoveFromOperand(result, op->getTrueValue(), frame);
+		cc.jmp(donePath);
+		cc.bind(falsePath);
+		emitMoveFromOperand(result, op->getFalseValue(), frame);
+		cc.bind(donePath);
+	}
 
 	bindResult(op->getIdentifier(), result, frame);
 }

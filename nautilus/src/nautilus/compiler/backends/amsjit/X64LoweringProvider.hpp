@@ -107,6 +107,9 @@ private:
 		/// are not materialised at their definition; consumers either fold
 		/// them as immediate operands or rematerialise them per use.
 		bool enableConstFolding_ = true;
+		/// Gates the branch-free select lowering via cmov (option
+		/// `asmjit.enableSelectCmov`).
+		bool enableSelectCmov_ = true;
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
