@@ -1,0 +1,11 @@
+DEREFADD:
+B0($1:ptr,$2:i32)
+	LOAD	$6	$1	:i32
+	ADD	$7	$6	$2	:i32
+	RETURN	$0	$7	:i32
+
+EXECUTE:
+B0($1:ptr,$2:i32)
+	CALL	$3	func_*($1,$2)	:i32
+	RETURN	$0	$3	:i32
+

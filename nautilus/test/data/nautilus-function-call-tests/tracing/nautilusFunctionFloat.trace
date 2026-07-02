@@ -1,0 +1,10 @@
+ADDFLOAT:
+B0($1:f32,$2:f32)
+	ADD	$3	$1	$2	:f32
+	RETURN	$0	$3	:f32
+
+EXECUTE:
+B0($1:f32,$2:f32)
+	CALL	$3	func_*($1,$2)	:f32
+	RETURN	$0	$3	:f32
+

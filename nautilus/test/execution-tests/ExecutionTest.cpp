@@ -1015,6 +1015,77 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(0, 0) == 0);
 		REQUIRE(f(-5, 5) == 0);
 	}
+
+	SECTION("nautilusFunctionInt8") {
+		auto f = engine.registerFunction(nautilusFunctionInt8);
+		REQUIRE(f(int8_t(3), int8_t(4)) == int8_t(7));
+		REQUIRE(f(int8_t(-100), int8_t(-27)) == int8_t(-127));
+	}
+	SECTION("nautilusFunctionUInt8") {
+		auto f = engine.registerFunction(nautilusFunctionUInt8);
+		REQUIRE(f(uint8_t(3), uint8_t(4)) == uint8_t(12));
+		REQUIRE(f(uint8_t(0), uint8_t(200)) == uint8_t(0));
+	}
+	SECTION("nautilusFunctionInt16") {
+		auto f = engine.registerFunction(nautilusFunctionInt16);
+		REQUIRE(f(int16_t(10), int16_t(4)) == int16_t(6));
+		REQUIRE(f(int16_t(-1000), int16_t(500)) == int16_t(-1500));
+	}
+	SECTION("nautilusFunctionUInt16") {
+		auto f = engine.registerFunction(nautilusFunctionUInt16);
+		REQUIRE(f(uint16_t(3), uint16_t(4)) == uint16_t(7));
+		REQUIRE(f(uint16_t(60000), uint16_t(5000)) == uint16_t(65000));
+	}
+	SECTION("nautilusFunctionUInt32") {
+		auto f = engine.registerFunction(nautilusFunctionUInt32);
+		REQUIRE(f(uint32_t(6), uint32_t(7)) == uint32_t(42));
+		REQUIRE(f(uint32_t(0), uint32_t(123456)) == uint32_t(0));
+	}
+	SECTION("nautilusFunctionInt64") {
+		auto f = engine.registerFunction(nautilusFunctionInt64);
+		REQUIRE(f(int64_t(3), int64_t(4)) == int64_t(7));
+		REQUIRE(f(int64_t(-9000000000LL), int64_t(1000000000LL)) == int64_t(-8000000000LL));
+	}
+	SECTION("nautilusFunctionUInt64") {
+		auto f = engine.registerFunction(nautilusFunctionUInt64);
+		REQUIRE(f(uint64_t(6), uint64_t(7)) == uint64_t(42));
+		REQUIRE(f(uint64_t(0), uint64_t(123456789ULL)) == uint64_t(0));
+	}
+	SECTION("nautilusFunctionFloat") {
+		auto f = engine.registerFunction(nautilusFunctionFloat);
+		REQUIRE(f(3.5f, 4.25f) == 7.75f);
+		REQUIRE(f(0.0f, 0.0f) == 0.0f);
+	}
+	SECTION("nautilusFunctionDouble") {
+		auto f = engine.registerFunction(nautilusFunctionDouble);
+		REQUIRE(f(3.5, 2.0) == 7.0);
+		REQUIRE(f(0.0, 123.456) == 0.0);
+	}
+	SECTION("nautilusFunctionBool") {
+		auto f = engine.registerFunction(nautilusFunctionBool);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(true, false) == false);
+		REQUIRE(f(false, false) == false);
+	}
+	SECTION("nautilusFunctionPtr") {
+		auto f = engine.registerFunction(nautilusFunctionPtr);
+		int32_t value = 10;
+		REQUIRE(f(&value, 5) == 15);
+		value = -3;
+		REQUIRE(f(&value, 3) == 0);
+	}
+	SECTION("nautilusFunctionPtrWrite") {
+		auto f = engine.registerFunction(nautilusFunctionPtrWrite);
+		double value = 0.0;
+		REQUIRE(f(&value, 42.5) == 42.5);
+		REQUIRE(value == 42.5);
+	}
+	SECTION("nautilusFunctionEnum") {
+		auto f = engine.registerFunction(nautilusFunctionEnum);
+		REQUIRE(f(NautilusFunctionColor::RED) == 1);
+		REQUIRE(f(NautilusFunctionColor::GREEN) == 2);
+		REQUIRE(f(NautilusFunctionColor::BLUE) == 3);
+	}
 }
 
 void valueExecutionTest(engine::NautilusEngine& engine) {

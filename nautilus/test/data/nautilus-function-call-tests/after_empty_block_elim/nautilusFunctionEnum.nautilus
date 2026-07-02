@@ -1,0 +1,33 @@
+nautilus {
+colorToCode($1:i32) :i32 {
+Block_0($1:i32):
+	$2 = 0 :i32
+	$3 = $1 == $2 :bool
+	if $3 ? Block_1() : Block_2($1) :void
+
+Block_1():
+	$5 = 1 :i32
+	br Block_5($5) :void
+
+Block_5($5:i32):
+	return ($5) :i32
+
+Block_2($1:i32):
+	$7 = 1 :i32
+	$8 = $1 == $7 :bool
+	if $8 ? Block_3() : Block_4() :void
+
+Block_3():
+	$10 = 2 :i32
+	br Block_5($10) :void
+
+Block_4():
+	$12 = 3 :i32
+	br Block_5($12) :void
+}
+execute($1:i32) :i32 {
+Block_0($1:i32):
+	$2 = func_*($1) :i32
+	return ($2) :i32
+}
+} //nautilus
