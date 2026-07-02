@@ -53,8 +53,7 @@ DCCallVM* tlsDyncallVM() {
 /// the dispatch loop and yields the entry result slot.
 constexpr Instr kHalt {opIndex(Op::HALT), 0, 0, 0};
 
-uint64_t* pushFrame(VMContext* ctx, const TBCFunction& fn, uint64_t* callerFp, const Instr* returnIp,
-                    uint16_t dstReg) {
+uint64_t* pushFrame(VMContext* ctx, const TBCFunction& fn, uint64_t* callerFp, const Instr* returnIp, uint16_t dstReg) {
 	uint64_t* base = ctx->sp;
 	if (base + fn.frameSlots > ctx->stackEnd) {
 		throw RuntimeException("tbc: VM stack overflow (increase tbc.stackSizeKb)");
@@ -297,16 +296,16 @@ uint64_t runGoto(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	TBC_VALUE_OPCODE_LIST(TBC_LBL)
 #undef TBC_LBL
 
-L_SELECT : {
+L_SELECT: {
 	fp[ip->a] = readReg<bool>(fp, ip->b) ? fp[ip->c] : fp[ip[1].a];
 	ip += 2;
 	TBC_NEXT();
 }
-L_JMP : {
+L_JMP: {
 	ip += packedOffset(*ip);
 	TBC_NEXT();
 }
-L_CJMP : {
+L_CJMP: {
 	ip = readReg<bool>(fp, ip->a) ? ip + packedOffset(*ip) : ip + 1;
 	TBC_NEXT();
 }
@@ -317,25 +316,25 @@ L_CJMP : {
 	}
 	TBC_CJMP_FUSED_LIST(TBC_LBL_F)
 #undef TBC_LBL_F
-L_RET : {
+L_RET: {
 	const auto t = doReturn(*ip, fp, ctx);
 	ip = t.ip;
 	fp = t.fp;
 	TBC_NEXT();
 }
-L_CALL : {
+L_CALL: {
 	const auto t = doCall(*ip, ip, fp, ctx);
 	ip = t.ip;
 	fp = t.fp;
 	TBC_NEXT();
 }
-L_CALL_EXT : {
+L_CALL_EXT: {
 	const CallSite& site = ctx->prog->callsites[ip->b];
 	doExtCall(site, site.target, fp, ip->a);
 	++ip;
 	TBC_NEXT();
 }
-L_CALL_IND : {
+L_CALL_IND: {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
 	TBC_NEXT();
@@ -360,8 +359,7 @@ L_TRAP:
 using Handler = uint64_t (*)(const Instr*, uint64_t*, VMContext*);
 extern const Handler kDispatchTable[kOpCount];
 
-#define TBC_TAIL_NEXT()                                                                                                \
-	[[clang::musttail]] return kDispatchTable[ip->op](ip, fp, ctx)
+#define TBC_TAIL_NEXT() [[clang::musttail]] return kDispatchTable[ip->op](ip, fp, ctx)
 
 #define TBC_TH(name, fn)                                                                                               \
 	static uint64_t th_##name(const Instr* ip, uint64_t* fp, VMContext* ctx) {                                         \

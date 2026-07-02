@@ -108,6 +108,8 @@ std::string getAnyBackend() {
 	return "cpp";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
 	return "bc";
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
+	return "tbc";
 #else
 	return "";
 #endif

@@ -83,8 +83,7 @@ std::string TBCFunction::toString() const {
 			ss << " site" << inst.b << (inst.a != kNoReg ? " -> r" + std::to_string(inst.a) : "");
 			break;
 		case Op::CALL_IND:
-			ss << " [r" << inst.b << "] site" << inst.c
-			   << (inst.a != kNoReg ? " -> r" + std::to_string(inst.a) : "");
+			ss << " [r" << inst.b << "] site" << inst.c << (inst.a != kNoReg ? " -> r" + std::to_string(inst.a) : "");
 			break;
 		default:
 			if (isFusedBranch(op)) {

@@ -98,9 +98,9 @@ TEST_CASE("TBC dispatch modes produce identical results") {
 	// (i + 1, b + 7, x - 100, …) and compare-fed branches, so immediate
 	// folding and compare-and-branch fusion are actually exercised.
 	const std::vector<Variant> variants = {
-	    {"switch", true, true, true},  {"goto", false, false, false},   {"goto", true, true, true},
+	    {"switch", true, true, true},   {"goto", false, false, false},     {"goto", true, true, true},
 	    {"tailcall", true, true, true}, {"tailcall", false, false, false}, {"auto", true, true, true},
-	    {"auto", true, false, true},   {"auto", false, true, false},
+	    {"auto", true, false, true},    {"auto", false, true, false},
 	};
 	for (const auto& variant : variants) {
 		DYNAMIC_SECTION(variant.name()) {

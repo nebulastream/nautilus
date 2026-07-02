@@ -38,11 +38,11 @@ constexpr int32_t packedOffsetLoHi(const Instr& i) {
 /// interpreter-native), CALL_EXT (external via dyncall), and CALL_IND (register
 /// target, internal or external).
 struct CallSite {
-	void* target = nullptr;         // external function pointer (CALL_EXT)
-	uint32_t internalFnIdx = ~0u;   // callee index (CALL)
+	void* target = nullptr;       // external function pointer (CALL_EXT)
+	uint32_t internalFnIdx = ~0u; // callee index (CALL)
 	Type returnType = Type::v;
-	std::vector<Type> argTypes;     // callee signature, for dyncall marshaling
-	std::vector<uint16_t> argRegs;  // caller registers holding the arguments
+	std::vector<Type> argTypes;    // callee signature, for dyncall marshaling
+	std::vector<uint16_t> argRegs; // caller registers holding the arguments
 };
 
 /// One lowered function: a flat instruction stream plus its frame metadata.

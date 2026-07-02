@@ -28,6 +28,10 @@ std::pair<std::string, std::string> getTieredBackends() {
 	return {"bc", "mlir"};
 #elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND) && defined(ENABLE_C_BACKEND)
 	return {"bc", "cpp"};
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+	return {"tbc", "mlir"};
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND) && defined(ENABLE_C_BACKEND)
+	return {"tbc", "cpp"};
 #else
 	return {"", ""};
 #endif
@@ -154,6 +158,12 @@ TEST_CASE("Tiered Compilation - Custom Backend Per Tier") {
 #if defined(ENABLE_BC_BACKEND) && defined(ENABLE_C_BACKEND)
 	combos.emplace_back("bc", "cpp");
 #endif
+#if defined(ENABLE_TBC_BACKEND) && defined(ENABLE_MLIR_BACKEND)
+	combos.emplace_back("tbc", "mlir");
+#endif
+#if defined(ENABLE_TBC_BACKEND) && defined(ENABLE_C_BACKEND)
+	combos.emplace_back("tbc", "cpp");
+#endif
 #endif
 
 	if (combos.empty()) {
@@ -264,6 +274,9 @@ TEST_CASE("Tiered Compilation - Standard JITCompiler Still Works") {
 #endif
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
+#endif
+#ifdef ENABLE_TBC_BACKEND
+	backends.emplace_back("tbc");
 #endif
 #endif
 

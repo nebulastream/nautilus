@@ -21,26 +21,26 @@ namespace nautilus::compiler::tbc {
 // need the name (enum, name table) simply ignore it.
 
 #define TBC_NUM10(X, NAME, FN)                                                                                         \
-	X(NAME##_i8, (FN<int8_t>))                                                                                         \
-	X(NAME##_i16, (FN<int16_t>))                                                                                       \
-	X(NAME##_i32, (FN<int32_t>))                                                                                       \
-	X(NAME##_i64, (FN<int64_t>))                                                                                       \
-	X(NAME##_ui8, (FN<uint8_t>))                                                                                       \
-	X(NAME##_ui16, (FN<uint16_t>))                                                                                     \
-	X(NAME##_ui32, (FN<uint32_t>))                                                                                     \
-	X(NAME##_ui64, (FN<uint64_t>))                                                                                     \
-	X(NAME##_f32, (FN<float>))                                                                                         \
-	X(NAME##_f64, (FN<double>))
+	X(NAME##_i8, (FN<int8_t>) )                                                                                        \
+	X(NAME##_i16, (FN<int16_t>) )                                                                                      \
+	X(NAME##_i32, (FN<int32_t>) )                                                                                      \
+	X(NAME##_i64, (FN<int64_t>) )                                                                                      \
+	X(NAME##_ui8, (FN<uint8_t>) )                                                                                      \
+	X(NAME##_ui16, (FN<uint16_t>) )                                                                                    \
+	X(NAME##_ui32, (FN<uint32_t>) )                                                                                    \
+	X(NAME##_ui64, (FN<uint64_t>) )                                                                                    \
+	X(NAME##_f32, (FN<float>) )                                                                                        \
+	X(NAME##_f64, (FN<double>) )
 
 #define TBC_INT8(X, NAME, FN)                                                                                          \
-	X(NAME##_i8, (FN<int8_t>))                                                                                         \
-	X(NAME##_i16, (FN<int16_t>))                                                                                       \
-	X(NAME##_i32, (FN<int32_t>))                                                                                       \
-	X(NAME##_i64, (FN<int64_t>))                                                                                       \
-	X(NAME##_ui8, (FN<uint8_t>))                                                                                       \
-	X(NAME##_ui16, (FN<uint16_t>))                                                                                     \
-	X(NAME##_ui32, (FN<uint32_t>))                                                                                     \
-	X(NAME##_ui64, (FN<uint64_t>))
+	X(NAME##_i8, (FN<int8_t>) )                                                                                        \
+	X(NAME##_i16, (FN<int16_t>) )                                                                                      \
+	X(NAME##_i32, (FN<int32_t>) )                                                                                      \
+	X(NAME##_i64, (FN<int64_t>) )                                                                                      \
+	X(NAME##_ui8, (FN<uint8_t>) )                                                                                      \
+	X(NAME##_ui16, (FN<uint16_t>) )                                                                                    \
+	X(NAME##_ui32, (FN<uint32_t>) )                                                                                    \
+	X(NAME##_ui64, (FN<uint64_t>) )
 
 // One row of the cast grid: SRC -> each of the 10 numeric types. The full grid
 // is 10x10 in row-major (source-major) order so the lowering can compute
@@ -48,16 +48,16 @@ namespace nautilus::compiler::tbc {
 // keep the index math trivial; the lowering emits MOV for identity casts, so
 // they are never dispatched.
 #define TBC_CAST_ROW(X, S, SN)                                                                                         \
-	X(CAST_##SN##_i8, (opCast<S, int8_t>))                                                                             \
-	X(CAST_##SN##_i16, (opCast<S, int16_t>))                                                                           \
-	X(CAST_##SN##_i32, (opCast<S, int32_t>))                                                                           \
-	X(CAST_##SN##_i64, (opCast<S, int64_t>))                                                                           \
-	X(CAST_##SN##_ui8, (opCast<S, uint8_t>))                                                                           \
-	X(CAST_##SN##_ui16, (opCast<S, uint16_t>))                                                                         \
-	X(CAST_##SN##_ui32, (opCast<S, uint32_t>))                                                                         \
-	X(CAST_##SN##_ui64, (opCast<S, uint64_t>))                                                                         \
-	X(CAST_##SN##_f32, (opCast<S, float>))                                                                             \
-	X(CAST_##SN##_f64, (opCast<S, double>))
+	X(CAST_##SN##_i8, (opCast<S, int8_t>) )                                                                            \
+	X(CAST_##SN##_i16, (opCast<S, int16_t>) )                                                                          \
+	X(CAST_##SN##_i32, (opCast<S, int32_t>) )                                                                          \
+	X(CAST_##SN##_i64, (opCast<S, int64_t>) )                                                                          \
+	X(CAST_##SN##_ui8, (opCast<S, uint8_t>) )                                                                          \
+	X(CAST_##SN##_ui16, (opCast<S, uint16_t>) )                                                                        \
+	X(CAST_##SN##_ui32, (opCast<S, uint32_t>) )                                                                        \
+	X(CAST_##SN##_ui64, (opCast<S, uint64_t>) )                                                                        \
+	X(CAST_##SN##_f32, (opCast<S, float>) )                                                                            \
+	X(CAST_##SN##_f64, (opCast<S, double>) )
 
 #define TBC_CAST_GRID(X)                                                                                               \
 	TBC_CAST_ROW(X, int8_t, i8)                                                                                        \
@@ -75,25 +75,25 @@ namespace nautilus::compiler::tbc {
 // field `c` through the type's normal write semantics. Bool constants use the
 // ui8 form; float/ptr constants always go through the constant image.
 #define TBC_MOVIMM_LIST(X)                                                                                             \
-	X(MOV_imm_i8, (opMovImm<int8_t>))                                                                                  \
-	X(MOV_imm_i16, (opMovImm<int16_t>))                                                                                \
-	X(MOV_imm_i32, (opMovImm<int32_t>))                                                                                \
-	X(MOV_imm_i64, (opMovImm<int64_t>))                                                                                \
-	X(MOV_imm_ui8, (opMovImm<uint8_t>))                                                                                \
-	X(MOV_imm_ui16, (opMovImm<uint16_t>))                                                                              \
-	X(MOV_imm_ui32, (opMovImm<uint32_t>))                                                                              \
-	X(MOV_imm_ui64, (opMovImm<uint64_t>))
+	X(MOV_imm_i8, (opMovImm<int8_t>) )                                                                                 \
+	X(MOV_imm_i16, (opMovImm<int16_t>) )                                                                               \
+	X(MOV_imm_i32, (opMovImm<int32_t>) )                                                                               \
+	X(MOV_imm_i64, (opMovImm<int64_t>) )                                                                               \
+	X(MOV_imm_ui8, (opMovImm<uint8_t>) )                                                                               \
+	X(MOV_imm_ui16, (opMovImm<uint16_t>) )                                                                             \
+	X(MOV_imm_ui32, (opMovImm<uint32_t>) )                                                                             \
+	X(MOV_imm_ui64, (opMovImm<uint64_t>) )
 
 // Immediate-folded arithmetic (default on): right operand is a sign-extended
 // 16-bit immediate in field `c`, replacing one register read + the separate
 // constant materialization on the hot path (dominant loop-increment idiom).
 #define TBC_IMM_ARITH_LIST(X)                                                                                          \
-	X(ADD_imm_i32, (opAddImm<int32_t>))                                                                                \
-	X(ADD_imm_i64, (opAddImm<int64_t>))                                                                                \
-	X(SUB_imm_i32, (opSubImm<int32_t>))                                                                                \
-	X(SUB_imm_i64, (opSubImm<int64_t>))                                                                                \
-	X(MUL_imm_i32, (opMulImm<int32_t>))                                                                                \
-	X(MUL_imm_i64, (opMulImm<int64_t>))
+	X(ADD_imm_i32, (opAddImm<int32_t>) )                                                                               \
+	X(ADD_imm_i64, (opAddImm<int64_t>) )                                                                               \
+	X(SUB_imm_i32, (opSubImm<int32_t>) )                                                                               \
+	X(SUB_imm_i64, (opSubImm<int64_t>) )                                                                               \
+	X(MUL_imm_i32, (opMulImm<int32_t>) )                                                                               \
+	X(MUL_imm_i64, (opMulImm<int64_t>) )
 
 // Every 1-word value opcode: executes its body, then falls through to the next
 // instruction word. Comparison families are contiguous in EQ,NE,LT,LE,GT,GE
@@ -118,9 +118,9 @@ namespace nautilus::compiler::tbc {
 	X(OR_b, (opOr))                                                                                                    \
 	X(NOT_b, (opNot))                                                                                                  \
 	TBC_NUM10(X, LOAD, opLoad)                                                                                         \
-	X(LOAD_b, (opLoad<bool>))                                                                                          \
+	X(LOAD_b, (opLoad<bool>) )                                                                                         \
 	TBC_NUM10(X, STORE, opStore)                                                                                       \
-	X(STORE_b, (opStore<bool>))                                                                                        \
+	X(STORE_b, (opStore<bool>) )                                                                                       \
 	TBC_INT8(X, BAND, opBand)                                                                                          \
 	TBC_INT8(X, BOR, opBor)                                                                                            \
 	TBC_INT8(X, BXOR, opBxor)                                                                                          \
@@ -175,12 +175,12 @@ enum class Op : uint16_t {
 	TBC_VALUE_OPCODE_LIST(TBC_ENUM_V)
 #undef TBC_ENUM_V
 #define TBC_ENUM_C(name) name,
-	TBC_CONTROL_SIMPLE_LIST(TBC_ENUM_C)
+	    TBC_CONTROL_SIMPLE_LIST(TBC_ENUM_C)
 #undef TBC_ENUM_C
 #define TBC_ENUM_F(name, ctype, cmp) name,
-	    TBC_CJMP_FUSED_LIST(TBC_ENUM_F)
+	        TBC_CJMP_FUSED_LIST(TBC_ENUM_F)
 #undef TBC_ENUM_F
-	        COUNT,
+	            COUNT,
 };
 
 constexpr uint16_t opIndex(Op op) {

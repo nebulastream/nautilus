@@ -543,8 +543,7 @@ private:
 		const auto value = frame.getValue(opt->getValue()->getIdentifier());
 		useValue(opt->getAddress()->getIdentifier(), frame);
 		useValue(opt->getValue()->getIdentifier(), frame);
-		emit(block, typedOp(Op::STORE_i8, memTypeIndex(opt->getValue()->getStamp(), "store"), "store"), address,
-		     value);
+		emit(block, typedOp(Op::STORE_i8, memTypeIndex(opt->getValue()->getStamp(), "store"), "store"), address, value);
 	}
 
 	void visitAlloca(ir::AllocaOperation* opt, int block, RegisterFrame& frame) {
