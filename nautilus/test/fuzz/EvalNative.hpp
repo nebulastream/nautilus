@@ -261,6 +261,8 @@ T evalNativeInt(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, 
 		return ctx.loopStack.back().acc;
 	case Kind::LoopAcc2:
 		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		// Both branches are evaluated unconditionally, matching the traced
 		// kernel's `select(cond, t, f)` (a data mux, not real branching -- see
@@ -487,6 +489,8 @@ T evalNativeFloat(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args
 		return ctx.loopStack.back().acc;
 	case Kind::LoopAcc2:
 		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		// See the identical comment in evalNativeInt's Select case: both
 		// branches must be evaluated unconditionally to match the traced

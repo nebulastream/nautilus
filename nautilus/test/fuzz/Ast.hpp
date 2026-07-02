@@ -113,6 +113,11 @@ enum class Kind : uint8_t {
 	LoopIndex,
 	LoopAcc,
 	LoopAcc2,
+	// The *enclosing* (one-level-up) loop's iteration index; only legal when
+	// nested at least two loops deep. Values from an outer loop's frame must
+	// survive across the inner loop's back edge as extra block arguments --
+	// a longer live range than anything the innermost-frame leaves produce.
+	LoopIndexOuter,
 	// --- Memory / pointer domain -------------------------------------------
 	// A generated program owns one shared, fixed-size `T` buffer (BUFFER_ELEMS
 	// elements). kid[0] of Load/Store/PtrToInt and both kids of the Ptr*
@@ -216,6 +221,7 @@ inline int arity(Kind k) {
 	case Kind::LoopIndex:
 	case Kind::LoopAcc:
 	case Kind::LoopAcc2:
+	case Kind::LoopIndexOuter:
 	case Kind::PtrBase:
 		return 0;
 	case Kind::Neg:
@@ -298,6 +304,10 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 			// ~1/4 of in-loop leaves reference the innermost loop's
 			// index/accumulator(s); LoopAcc2 is acc for the single-acc kinds.
 			node.kind = (sel & 0x1) ? ((sel & 0x8) ? Kind::LoopAcc2 : Kind::LoopAcc) : Kind::LoopIndex;
+			if (loopDepth > 1 && (sel & 0x18) == 0x10) {
+				// Deeply nested only: read the enclosing loop's index instead.
+				node.kind = Kind::LoopIndexOuter;
+			}
 		} else if (sel & 0x4) {
 			node.kind = Kind::Param;
 			node.imm = reader.byte() % NUM_PARAMS;
@@ -447,6 +457,9 @@ void print(const Ast& ast, int idx, std::string& out) {
 		return;
 	case Kind::LoopAcc2:
 		out += "lb";
+		return;
+	case Kind::LoopIndexOuter:
+		out += "lio";
 		return;
 	case Kind::Neg:
 		out += "(-";

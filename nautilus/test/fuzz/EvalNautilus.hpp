@@ -222,6 +222,8 @@ TracedValue<T> evalNautilusInt(const Ast& ast, int idx, const TracedArgs<T>& arg
 		return ctx.loopStack.back().acc;
 	case Kind::LoopAcc2:
 		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		TracedValue<T> c = evalNautilusInt<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusInt<T>(ast, n.kid[1], args, ctx);
@@ -440,6 +442,8 @@ TracedValue<T> evalNautilusFloat(const Ast& ast, int idx, const TracedArgs<T>& a
 		return ctx.loopStack.back().acc;
 	case Kind::LoopAcc2:
 		return ctx.loopStack.back().acc2;
+	case Kind::LoopIndexOuter:
+		return ctx.loopStack[ctx.loopStack.size() - 2].index;
 	case Kind::Select: {
 		TracedValue<T> c = evalNautilusFloat<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusFloat<T>(ast, n.kid[1], args, ctx);
