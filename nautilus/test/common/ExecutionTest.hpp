@@ -21,6 +21,9 @@ inline std::vector<std::string> availableBackends(bool include_asmjit = true) {
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
 #endif
+#ifdef ENABLE_TBC_BACKEND
+	backends.emplace_back("tbc");
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	if (include_asmjit) {
 		backends.emplace_back("asmjit");

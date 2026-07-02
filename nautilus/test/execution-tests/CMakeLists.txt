@@ -5,6 +5,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         AsmJitLoweringModeTest.cpp
         BCDispatchModeTest.cpp
         BCRegisterCoalescingTest.cpp
+        TBCDispatchModeTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
         CompilationStatisticsTest.cpp
