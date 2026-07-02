@@ -356,13 +356,26 @@ L_TRAP:
 // instruction with a distinct, BTB-friendly branch site per opcode.
 
 #ifdef TBC_HAS_MUSTTAIL
-using Handler = uint64_t (*)(const Instr*, uint64_t*, VMContext*);
+// preserve_none (Clang 19+, x86-64/AArch64) makes every general register
+// caller-saved, which is exactly what a chain of mutually tail-calling
+// handlers wants (CPython's 3.14 tail-call interpreter measured additional
+// wins from it on top of musttail alone). It must be applied consistently to
+// both the dispatch-table's function-pointer type and every handler stored
+// in it -- a mismatch between a function's actual calling convention and the
+// type used to call it through the table is undefined behavior.
+#if defined(__has_attribute) && __has_attribute(preserve_none)
+#define TBC_PRESERVE_NONE __attribute__((preserve_none))
+#else
+#define TBC_PRESERVE_NONE
+#endif
+
+using Handler = uint64_t(TBC_PRESERVE_NONE*)(const Instr*, uint64_t*, VMContext*);
 extern const Handler kDispatchTable[kOpCount];
 
 #define TBC_TAIL_NEXT() [[clang::musttail]] return kDispatchTable[ip->op](ip, fp, ctx)
 
 #define TBC_TH(name, fn)                                                                                               \
-	static uint64_t th_##name(const Instr* ip, uint64_t* fp, VMContext* ctx) {                                         \
+	static uint64_t TBC_PRESERVE_NONE th_##name(const Instr* ip, uint64_t* fp, VMContext* ctx) {                       \
 		(fn)(*ip, fp);                                                                                                 \
 		++ip;                                                                                                          \
 		TBC_TAIL_NEXT();                                                                                               \
@@ -370,50 +383,50 @@ extern const Handler kDispatchTable[kOpCount];
 TBC_VALUE_OPCODE_LIST(TBC_TH)
 #undef TBC_TH
 
-static uint64_t th_SELECT(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_SELECT(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	fp[ip->a] = readReg<bool>(fp, ip->b) ? fp[ip->c] : fp[ip[1].a];
 	ip += 2;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_JMP(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_JMP(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	ip += packedOffset(*ip);
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_CJMP(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_CJMP(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	ip = readReg<bool>(fp, ip->a) ? ip + packedOffset(*ip) : ip + 1;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_RET(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_RET(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	const auto t = doReturn(*ip, fp, ctx);
 	ip = t.ip;
 	fp = t.fp;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_CALL(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_CALL(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	const auto t = doCall(*ip, ip, fp, ctx);
 	ip = t.ip;
 	fp = t.fp;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_CALL_EXT(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_CALL_EXT(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	const CallSite& site = ctx->prog->callsites[ip->b];
 	doExtCall(site, site.target, fp, ip->a);
 	++ip;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_CALL_IND(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+static uint64_t TBC_PRESERVE_NONE th_CALL_IND(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
 	TBC_TAIL_NEXT();
 }
-static uint64_t th_HALT(const Instr*, uint64_t* fp, VMContext*) {
+static uint64_t TBC_PRESERVE_NONE th_HALT(const Instr*, uint64_t* fp, VMContext*) {
 	return fp[0];
 }
-static uint64_t th_TRAP(const Instr*, uint64_t*, VMContext*) {
+static uint64_t TBC_PRESERVE_NONE th_TRAP(const Instr*, uint64_t*, VMContext*) {
 	throw RuntimeException("tbc: invalid opcode in instruction stream");
 }
 #define TBC_TH_F(name, ctype, cmp)                                                                                     \
-	static uint64_t th_##name(const Instr* ip, uint64_t* fp, VMContext* ctx) {                                         \
+	static uint64_t TBC_PRESERVE_NONE th_##name(const Instr* ip, uint64_t* fp, VMContext* ctx) {                       \
 		ip += (readReg<ctype>(fp, ip->a) cmp readReg<ctype>(fp, ip->b)) ? packedOffsetLoHi(ip[1]) : 2;                 \
 		TBC_TAIL_NEXT();                                                                                               \
 	}
@@ -436,6 +449,7 @@ const Handler kDispatchTable[kOpCount] = {
 uint64_t runTailcall(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	return kDispatchTable[ip->op](ip, fp, ctx);
 }
+#undef TBC_PRESERVE_NONE
 #endif // TBC_HAS_MUSTTAIL
 
 } // namespace
