@@ -41,6 +41,9 @@ inline std::vector<std::string> configs() {
 #ifdef ENABLE_BC_BACKEND
 	result.emplace_back("bc");
 #endif
+#ifdef ENABLE_TBC_BACKEND
+	result.emplace_back("tbc");
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	result.emplace_back("asmjit");
 #endif

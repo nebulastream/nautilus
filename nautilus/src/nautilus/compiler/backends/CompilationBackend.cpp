@@ -12,6 +12,9 @@
 #ifdef ENABLE_MLIR_BACKEND
 #include "nautilus/compiler/backends/mlir/MLIRCompilationBackend.hpp"
 #endif
+#ifdef ENABLE_TBC_BACKEND
+#include "nautilus/compiler/backends/tbc/TBCBackend.hpp"
+#endif
 #include "nautilus/exceptions/RuntimeException.hpp"
 
 namespace nautilus::compiler {
@@ -26,6 +29,9 @@ CompilationBackendRegistry::CompilationBackendRegistry() {
 #endif
 #ifdef ENABLE_BC_BACKEND
 	items["bc"] = std::make_unique<bc::BCInterpreterBackend>();
+#endif
+#ifdef ENABLE_TBC_BACKEND
+	items["tbc"] = std::make_unique<tbc::TBCBackend>();
 #endif
 #ifdef ENABLE_C_BACKEND
 	items["cpp"] = std::make_unique<cpp::CPPCompilationBackend>();
