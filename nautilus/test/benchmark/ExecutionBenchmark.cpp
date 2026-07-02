@@ -212,6 +212,26 @@ TEST_CASE("Execution Benchmark") {
 			    });
 		}
 	}
+
+	// AsmJit-only A/B benchmark for constant deferral + immediate folding
+	// (asmjit.enableConstFolding). Most visible where loop bodies contain
+	// constant operands (i = i + 1, cmp i, n).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fold : {false, true}) {
+			std::string tag = fold ? "constFold" : "noConstFold";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fold](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableConstFolding", fold);
+				    func(meter, op);
+			    });
+		}
+	}
 #endif
 }
 

@@ -11,6 +11,7 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/options.hpp"
 #include <asmjit/x86.h>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -101,9 +102,15 @@ private:
 		const ir::CompareOperation* pendingFusedCompare_ = nullptr;
 		/// Gates the compare→branch fusion (option `asmjit.enableBranchFusion`).
 		bool enableBranchFusion_ = true;
+		/// Gates constant deferral + immediate folding (option
+		/// `asmjit.enableConstFolding`). When on, integer/bool/ptr constants
+		/// are not materialised at their definition; consumers either fold
+		/// them as immediate operands or rematerialise them per use.
+		bool enableConstFolding_ = true;
 		/// Statistics sink shared with the rest of the pipeline; may be null.
 		CompilationStatistics* statistics_ = nullptr;
 		int64_t fusedBranches_ = 0;
+		int64_t foldedImmediates_ = 0;
 		/// Pointer registers for the current function's alloca slots, indexed
 		/// by AllocaOperation::getIndex(). Materialised once in the function
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
@@ -134,6 +141,24 @@ private:
 
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
+
+		// The canonical 64-bit register pattern of an integer-like constant
+		// operation (sign-extended for signed stamps, zero-extended for
+		// unsigned/bool/ptr), or nullopt when @p in is not such a constant.
+		static std::optional<int64_t> foldableConstValue(const ir::Operation* in);
+		// Fetch @p in's GP register from the frame, or rematerialise a
+		// deferred constant into a fresh register (per use — a shared lazy
+		// binding would not dominate uses in sibling branches).
+		::asmjit::x86::Gp gpOperand(const ir::Operation* in, RegisterFrame& frame);
+		// Like gpOperand but preserves the GP/XMM distinction. Floats are
+		// never deferred, so the rematerialisation path is GP-only.
+		AsmReg regOperand(const ir::Operation* in, RegisterFrame& frame);
+		// The constant's canonical pattern when @p in is a deferred constant
+		// that fits a sign-extended imm32 operand; nullopt otherwise.
+		std::optional<int32_t> imm32Operand(const ir::Operation* in, RegisterFrame& frame);
+		// Move @p src's value into @p dst: a register move when bound, a
+		// direct `mov dst, imm` when @p src is a deferred constant.
+		void emitMoveFromOperand(const AsmReg& dst, const ir::Operation* src, RegisterFrame& frame);
 
 		// Bind an operation's freshly computed result to its SSA identifier.
 		// For a normal (single) definition this just records the register.

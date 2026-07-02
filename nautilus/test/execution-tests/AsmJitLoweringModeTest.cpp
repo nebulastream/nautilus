@@ -122,9 +122,59 @@ val<int32_t> floatThreshold(val<double> x) {
 	return n;
 }
 
-engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion) {
-	return nautilus::testing::makeEngine("asmjit", [enableBranchFusion](engine::Options& opts) {
+// Constant-heavy arithmetic mixing every foldable immediate site (add, sub,
+// imul, shift, and/or/xor, compare) across signed and unsigned widths,
+// including a constant outside the sign-extended imm32 range that must be
+// rematerialised instead of folded.
+val<int64_t> constArithMix(val<int64_t> x, val<uint32_t> u) {
+	val<int64_t> a = x + 7;
+	val<int64_t> b = a - 100;
+	val<int64_t> c = b * 3;
+	val<int64_t> d = c ^ 0x55;
+	val<int64_t> e = d & 0x0F0F;
+	val<int64_t> f = e | 0x11;
+	val<int64_t> g = f << 3;
+	val<int64_t> h = g >> 2;
+	val<int64_t> big = x + 0x123456789LL; // does not fit imm32 -> rematerialised
+	val<uint32_t> uw = u * 5u + 4279714710u;
+	val<int64_t> r = h + big + static_cast<val<int64_t>>(uw);
+	if (r > -1000000) {
+		r = r + 1;
+	}
+	return r;
+}
+
+// A constant LEFT operand of a fused compare (the static-loop iteration
+// shape): the fused branch lowering must rematerialise the deferred constant
+// instead of reading it through the frame.
+val<int32_t> constLeftCompare(val<int32_t> t) {
+	val<int32_t> r = 0;
+	if (val<int32_t>(6) > t) {
+		r = r + 1;
+	}
+	if (val<int32_t>(-3) <= t) {
+		r = r + 2;
+	}
+	return r;
+}
+
+// Narrow-width wrap-around with constant operands: the folded immediate must
+// produce the same canonically extended register pattern as the
+// materialise-then-operate path.
+val<int32_t> i8ConstWrap(val<int8_t> x) {
+	val<int8_t> y = x + (int8_t) 100; // wraps for x > 27
+	val<int8_t> z = y - (int8_t) 5;
+	val<int32_t> r = 0;
+	if (z < (int8_t) 0) {
+		r = 1;
+	}
+	return r + static_cast<val<int32_t>>(z);
+}
+
+engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableConstFolding = true) {
+	return nautilus::testing::makeEngine("asmjit", [enableBranchFusion, enableConstFolding](engine::Options& opts) {
 		opts.setOption("asmjit.enableBranchFusion", enableBranchFusion);
+		opts.setOption("asmjit.enableConstFolding", enableConstFolding);
 		opts.setOption("engine.traceMode", "lazyTracing");
 		// Force the legacy (non-tiered) path so stats land on the same
 		// executable we query here (see PostRAPeepholeTest for details).
@@ -218,6 +268,77 @@ TEST_CASE("AsmJit branch fusion: float compares keep the unfused path") {
 	for (double x : {-2.0, 0.0, 1.5, 1.6, 100.0}) {
 		INFO("floatThreshold differential x=" << x);
 		REQUIRE(fnOn(x) == fnOff(x));
+	}
+}
+
+TEST_CASE("AsmJit const folding: publishes counters via CompilationStatistics") {
+	auto engine = makeAsmJitEngine(true, true);
+	auto fn = engine.registerFunction(constArithMix);
+	fn(1, 1u);
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(getCounter(stats, "asmjit.lowering.foldedImmediates") >= 5);
+
+	auto off = makeAsmJitEngine(true, false);
+	auto fnOff = off.registerFunction(constArithMix);
+	fnOff(1, 1u);
+	auto statsOff = fnOff.getStatistics();
+	REQUIRE(statsOff != nullptr);
+	REQUIRE(statsOff->find("asmjit.lowering.foldedImmediates") == nullptr);
+}
+
+TEST_CASE("AsmJit const folding: differential correctness across inputs") {
+	auto mixOn = makeAsmJitEngine(true, true).registerFunction(constArithMix);
+	auto mixOff = makeAsmJitEngine(true, false).registerFunction(constArithMix);
+	for (int64_t x : {int64_t(-1000000), int64_t(-1), int64_t(0), int64_t(1), int64_t(12345), INT64_MAX / 2}) {
+		for (uint32_t u : {0u, 1u, 858993459u, 0xFFFFFFFFu}) {
+			INFO("constArithMix differential x=" << x << " u=" << u);
+			REQUIRE(mixOn(x, u) == mixOff(x, u));
+		}
+	}
+
+	auto wrapOn = makeAsmJitEngine(true, true).registerFunction(i8ConstWrap);
+	auto wrapOff = makeAsmJitEngine(true, false).registerFunction(i8ConstWrap);
+	for (int32_t x = -128; x <= 127; x++) {
+		INFO("i8ConstWrap differential x=" << x);
+		REQUIRE(wrapOn(static_cast<int8_t>(x)) == wrapOff(static_cast<int8_t>(x)));
+	}
+
+	auto leftOn = makeAsmJitEngine(true, true).registerFunction(constLeftCompare);
+	auto leftOff = makeAsmJitEngine(true, false).registerFunction(constLeftCompare);
+	for (int32_t t : {-100, -3, -2, 0, 5, 6, 7, 100}) {
+		INFO("constLeftCompare differential t=" << t);
+		REQUIRE(leftOn(t) == leftOff(t));
+		REQUIRE(leftOn(t) == ((6 > t ? 1 : 0) + (-3 <= t ? 2 : 0)));
+	}
+
+	// Both optimizations off vs both on -- the full-stack differential.
+	auto allOn = makeAsmJitEngine(true, true).registerFunction(fibLike);
+	auto allOff = makeAsmJitEngine(false, false).registerFunction(fibLike);
+	for (int32_t n : {0, 1, 2, 10, 1000}) {
+		INFO("fibLike all-opts differential n=" << n);
+		REQUIRE(allOn(n) == allOff(n));
+	}
+}
+
+TEST_CASE("AsmJit const folding: pinned fuzzer regressions stay correct") {
+	auto wrapOn = makeAsmJitEngine(true, true).registerFunction(u32WrapSubCompare);
+	auto wrapOff = makeAsmJitEngine(true, false).registerFunction(u32WrapSubCompare);
+	for (uint32_t x : {0u, 1u, 4279714709u, 4279714710u, 4279714711u, 0xFFFFFFFFu}) {
+		for (uint32_t y : {0u, 15252586u, 0xFFFFFFFFu}) {
+			INFO("u32WrapSubCompare const-fold differential x=" << x << " y=" << y);
+			REQUIRE(wrapOn(x, y) == wrapOff(x, y));
+		}
+	}
+
+	auto mergeOn = makeAsmJitEngine(true, true).registerFunction(zeroTripMergeAddConstant);
+	auto mergeOff = makeAsmJitEngine(true, false).registerFunction(zeroTripMergeAddConstant);
+	for (uint64_t c : {uint64_t(0), uint64_t(1), uint64_t(42)}) {
+		for (uint64_t p : {uint64_t(0), uint64_t(7), uint64_t(1) << 60}) {
+			INFO("zeroTripMergeAddConstant const-fold differential c=" << c << " p=" << p);
+			REQUIRE(mergeOn(c, p) == mergeOff(c, p));
+			REQUIRE(mergeOn(c, p) == (c != 0 ? uint64_t(119) : p + 119));
+		}
 	}
 }
 
