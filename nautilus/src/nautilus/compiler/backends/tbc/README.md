@@ -159,9 +159,10 @@ Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
 
 - **`invokeRaw`-style typed entry for tiered compilation**: `tbc` is a
   natural `engine.tier0.backend`; measure and tune the tier-0 handoff.
-- **`[[clang::preserve_none]]`** on the tail-call handlers (guarded by
-  `__has_attribute`) — CPython measured additional wins from freeing
-  caller-saved registers across handlers.
+- ~~**`[[clang::preserve_none]]`** on the tail-call handlers~~ — done: applied
+  to the `Handler` type and every tailcall-skin handler in
+  `TBCInterpreter.cpp`, guarded by `__has_attribute(preserve_none)` (Clang
+  19+); silently a no-op on older Clang.
 - **Memory-offset superinstructions** (`LOAD_off` / `STORE_off`): fuse
   `add ptr, const` feeding a single-use load/store — the dominant
   query-compilation access pattern. Needs a small local dataflow check in the
