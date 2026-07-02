@@ -1,0 +1,22 @@
+ANDBOOL:
+B0($1:bool,$2:bool)
+	CMP	$3	$1	B1($2)	B2()	:void
+B1($2:bool)
+	CMP	$4	$2	B3()	B4()	:void
+B2()
+	CONST	$8	false	:bool
+	JMP	$0	B5($8)	:void
+B3()
+	CONST	$5	true	:bool
+	JMP	$0	B5($5)	:void
+B4()
+	CONST	$11	false	:bool
+	JMP	$0	B5($11)	:void
+B5($5:bool)
+	RETURN	$0	$5	:bool
+
+EXECUTE:
+B0($1:bool,$2:bool)
+	CALL	$3	func_*($1,$2)	:bool
+	RETURN	$0	$3	:bool
+
