@@ -46,6 +46,36 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 		ownedBlocks.insert(block);
 	}
 
+	// Every operation defined in this function: block operations plus block
+	// arguments. Input edges are checked against this set below — a pointer
+	// to anything else is stale, e.g. an operation a pass replaced and
+	// removed without rewiring its consumers (issue #327).
+	std::unordered_set<const Operation*> definedOps;
+	for (const auto* block : blocks) {
+		if (block == nullptr) {
+			continue;
+		}
+		for (const auto* op : block->getOperations()) {
+			definedOps.insert(op);
+		}
+		for (const auto* arg : block->getArguments()) {
+			definedOps.insert(arg);
+		}
+	}
+	const auto checkInputs = [&](const BasicBlock* block, const Operation* op, const char* what) {
+		for (const auto* input : op->getInputs()) {
+			if (input == nullptr) {
+				addError(r, &fn, block, fmt::format("{} {} has a null input", what, op->getIdentifier().toString()));
+				continue;
+			}
+			if (!definedOps.contains(input)) {
+				addError(r, &fn, block,
+				         fmt::format("{} {} input {} points at an operation not defined in function {}", what,
+				                     op->getIdentifier().toString(), input->getIdentifier().toString(), fn.getName()));
+			}
+		}
+	};
+
 	for (const auto* block : blocks) {
 		if (block == nullptr) {
 			continue;
@@ -65,6 +95,7 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 			if (isTerminatorOp(op->getOperationType())) {
 				addError(r, &fn, block, fmt::format("terminator op at index {} but block length is {}", i, ops.size()));
 			}
+			checkInputs(block, op, "operation");
 		}
 		auto* terminator = ops.back();
 		if (terminator == nullptr) {
@@ -75,10 +106,12 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 			addError(r, &fn, block, "block's last operation is not a terminator");
 			continue;
 		}
+		checkInputs(block, terminator, "terminator");
 
 		// Every outgoing invocation's target must be non-null and owned by
 		// this function. And the target must list this block as a predecessor.
 		for (auto* inv : getSuccessorInvocations(*terminator)) {
+			checkInputs(block, inv, "terminator invocation");
 			const auto* target = inv->getBlock();
 			if (target == nullptr) {
 				addError(r, &fn, block, "terminator invocation targets null block");

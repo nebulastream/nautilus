@@ -13,12 +13,10 @@
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <cstdint>
 #include <unordered_map>
@@ -351,16 +349,15 @@ Operation* tryFold(common::Arena& arena, Operation* op) {
 	}
 }
 
-/// Rewires one invocation's arguments so that every entry matching a key in
-/// @p replacements is swapped for the corresponding value. Takes a snapshot
-/// before mutating because `replaceArgument` walks the same arguments span.
-void propagateInInvocation(BasicBlockInvocation& inv, const std::unordered_map<Operation*, Operation*>& replacements) {
-	const auto args = inv.getArguments();
-	std::vector<Operation*> snapshot(args.begin(), args.end());
-	for (auto* arg : snapshot) {
-		auto it = replacements.find(arg);
-		if (it != replacements.end()) {
-			inv.replaceArgument(arg, it->second);
+/// Rewires every SSA input edge of @p op that matches a key in
+/// @p replacements. All operation kinds store their operands in the base
+/// Operation::inputs span (block-invocation arguments included), so this
+/// covers binary/cast/select/unary/load/store/call/if/return uniformly.
+void replaceInputs(Operation& op, const std::unordered_map<Operation*, Operation*>& replacements) {
+	const auto ins = op.getInputs();
+	for (size_t i = 0; i < ins.size(); ++i) {
+		if (auto it = replacements.find(ins[i]); it != replacements.end()) {
+			op.setInput(i, it->second);
 		}
 	}
 }
@@ -368,29 +365,12 @@ void propagateInInvocation(BasicBlockInvocation& inv, const std::unordered_map<O
 void propagateReplacements(FunctionOperation& fn, const std::unordered_map<Operation*, Operation*>& replacements) {
 	for (auto* block : fn.getBasicBlocks()) {
 		for (auto* op : block->getOperations()) {
-			if (auto* bin = dyn_cast<BinaryOperation>(op)) {
-				if (auto it = replacements.find(bin->getLeftInput()); it != replacements.end()) {
-					bin->setLeftInput(it->second);
-				}
-				if (auto it = replacements.find(bin->getRightInput()); it != replacements.end()) {
-					bin->setRightInput(it->second);
-				}
-			}
-			if (auto* ifOp = dyn_cast<IfOperation>(op)) {
-				if (auto it = replacements.find(ifOp->getBooleanValue()); it != replacements.end()) {
-					ifOp->setBooleanValue(it->second);
-				}
-			}
-			if (auto* retOp = dyn_cast<ReturnOperation>(op)) {
-				if (retOp->hasReturnValue()) {
-					if (auto it = replacements.find(retOp->getReturnValue()); it != replacements.end()) {
-						retOp->setReturnValue(it->second);
-					}
-				}
-			}
+			replaceInputs(*op, replacements);
+			// Invocation argument lists are embedded sub-objects of the
+			// terminator, not block operations, so they need their own walk.
 			for (auto* inv : getSuccessorInvocations(*op)) {
 				if (inv != nullptr) {
-					propagateInInvocation(*inv, replacements);
+					replaceInputs(*inv, replacements);
 				}
 			}
 		}

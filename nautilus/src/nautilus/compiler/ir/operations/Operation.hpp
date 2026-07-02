@@ -147,6 +147,12 @@ public:
 		return inputs;
 	}
 
+	/// Replaces the SSA input at @p index. Lets IR passes rewire value edges
+	/// generically across every operation kind instead of via per-kind setters.
+	void setInput(std::size_t index, Operation* newInput) noexcept {
+		inputs[index] = newInput;
+	}
+
 	void setSourceTag(const tracing::Tag* tag) const noexcept {
 		sourceTag = tag;
 	}

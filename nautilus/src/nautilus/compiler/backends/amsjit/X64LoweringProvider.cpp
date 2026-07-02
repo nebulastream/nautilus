@@ -258,8 +258,7 @@ int64_t canonicalizeToStamp(int64_t value, Type stamp) {
 }
 } // anonymous namespace
 
-std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in,
-                                                                                   RegisterFrame& frame) {
+std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstValue(const ir::Operation* in) {
 	if (const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(in)) {
 		return canonicalizeToStamp(constInt->getValue(), constInt->getStamp());
 	}
@@ -278,21 +277,9 @@ std::optional<int64_t> AsmJitLoweringProvider::LoweringContext::foldableConstVal
 		const Type srcType = cast->getInput()->getStamp();
 		const Type dstType = cast->getStamp();
 		if (!isFloatType(srcType) && !isFloatType(dstType)) {
-			if (const auto inner = foldableConstValue(cast->getInput(), frame)) {
+			if (const auto inner = foldableConstValue(cast->getInput())) {
 				return canonicalizeToStamp(*inner, dstType);
 			}
-		}
-		return std::nullopt;
-	}
-	// Stale input pointer (see the header comment): the constant-folding IR
-	// pass rewires only binary/if/return/invocation consumers, so this input
-	// edge can still point at the operation a constant replaced. When the
-	// identifier is unbound and resolves to a deferred constant definition,
-	// that constant carries the identifier's value.
-	if (!frame.contains(in->getIdentifier())) {
-		const auto it = deferredConsts_.find(in->getIdentifier());
-		if (it != deferredConsts_.end() && it->second != in) {
-			return foldableConstValue(it->second, frame);
 		}
 	}
 	return std::nullopt;
@@ -305,7 +292,7 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 	// paths (issue #321), while an SSA input edge to a constant operation
 	// always means that constant.
 	if (enableConstFolding_) {
-		if (const auto value = foldableConstValue(in, frame)) {
+		if (const auto value = foldableConstValue(in)) {
 			auto reg = cc.newInt64();
 			cc.mov(reg, *value);
 			return reg;
@@ -316,18 +303,17 @@ Gp AsmJitLoweringProvider::LoweringContext::gpOperand(const ir::Operation* in, R
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::regOperand(const ir::Operation* in,
                                                                                    RegisterFrame& frame) {
-	if (enableConstFolding_ && foldableConstValue(in, frame).has_value()) {
+	if (enableConstFolding_ && foldableConstValue(in).has_value()) {
 		return AsmReg(gpOperand(in, frame));
 	}
 	return frame.getValue(in->getIdentifier());
 }
 
-std::optional<int32_t> AsmJitLoweringProvider::LoweringContext::imm32Operand(const ir::Operation* in,
-                                                                             RegisterFrame& frame) {
+std::optional<int32_t> AsmJitLoweringProvider::LoweringContext::imm32Operand(const ir::Operation* in) {
 	if (!enableConstFolding_) {
 		return std::nullopt;
 	}
-	const auto value = foldableConstValue(in, frame);
+	const auto value = foldableConstValue(in);
 	if (!value.has_value() || *value < INT32_MIN || *value > INT32_MAX) {
 		return std::nullopt;
 	}
@@ -337,7 +323,7 @@ std::optional<int32_t> AsmJitLoweringProvider::LoweringContext::imm32Operand(con
 void AsmJitLoweringProvider::LoweringContext::emitMoveFromOperand(const AsmReg& dst, const ir::Operation* src,
                                                                   RegisterFrame& frame) {
 	if (enableConstFolding_) {
-		if (const auto value = foldableConstValue(src, frame)) {
+		if (const auto value = foldableConstValue(src)) {
 			cc.mov(toGp(dst), *value);
 			return;
 		}
@@ -385,7 +371,6 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
-		deferredConsts_.clear();
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -551,7 +536,7 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 		SourceValue source;
 		// Constant sources are recovered from the operation itself (see
 		// gpOperand for why a frame binding must not shadow a constant).
-		const auto value = enableConstFolding_ ? foldableConstValue(srcArgs[i], frame) : std::optional<int64_t> {};
+		const auto value = enableConstFolding_ ? foldableConstValue(srcArgs[i]) : std::optional<int64_t> {};
 		if (value.has_value()) {
 			source.imm = *value;
 		} else {
@@ -622,7 +607,6 @@ void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBoolean
 	// A bound identifier doubles as a merge-block parameter register (issue
 	// #321) that must be written, so those keep the materialising path.
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
-		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(Type::b);
@@ -632,7 +616,6 @@ void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBoolean
 
 void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
-		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(op->getStamp());
@@ -657,7 +640,6 @@ void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOper
 
 void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
 	if (enableConstFolding_ && !frame.contains(op->getIdentifier())) {
-		deferredConsts_[op->getIdentifier()] = op;
 		return;
 	}
 	auto reg = allocReg(Type::ptr);
@@ -682,10 +664,10 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		auto gDst = toGp(result);
 		// Fold a small-constant operand into the add's immediate form
 		// (add is commutative, so either side qualifies).
-		const auto rightImm = imm32Operand(op->getRightInput(), frame);
+		const auto rightImm = imm32Operand(op->getRightInput());
 		std::optional<int32_t> leftImm;
 		if (!rightImm.has_value()) {
-			leftImm = imm32Operand(op->getLeftInput(), frame);
+			leftImm = imm32Operand(op->getLeftInput());
 		}
 		if (rightImm.has_value()) {
 			cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
@@ -722,7 +704,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 	} else {
 		auto gDst = toGp(result);
 		cc.mov(gDst, gpOperand(op->getLeftInput(), frame));
-		if (const auto rightImm = imm32Operand(op->getRightInput(), frame)) {
+		if (const auto rightImm = imm32Operand(op->getRightInput())) {
 			cc.sub(gDst, *rightImm);
 			foldedImmediates_++;
 		} else {
@@ -748,10 +730,10 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		auto gDst = toGp(result);
 		// Fold a small-constant operand via the three-operand imul form
 		// (commutative, so either side qualifies).
-		const auto rightImm = imm32Operand(op->getRightInput(), frame);
+		const auto rightImm = imm32Operand(op->getRightInput());
 		std::optional<int32_t> leftImm;
 		if (!rightImm.has_value()) {
-			leftImm = imm32Operand(op->getLeftInput(), frame);
+			leftImm = imm32Operand(op->getLeftInput());
 		}
 		if (rightImm.has_value()) {
 			cc.imul(gDst, gpOperand(op->getLeftInput(), frame), *rightImm);
@@ -889,7 +871,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(op->getRightInput());
 		if (rightConst != nullptr && rightConst->getValue() == 0) {
 			cc.test(left, left);
-		} else if (const auto rightImm = imm32Operand(op->getRightInput(), frame)) {
+		} else if (const auto rightImm = imm32Operand(op->getRightInput())) {
 			cc.cmp(left, *rightImm);
 			foldedImmediates_++;
 		} else {
@@ -947,7 +929,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, RegisterFrame& frame) {
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), gpOperand(op->getLeftInput(), frame));
-	if (const auto rightImm = imm32Operand(op->getRightInput(), frame)) {
+	if (const auto rightImm = imm32Operand(op->getRightInput())) {
 		cc.and_(toGp(result), *rightImm);
 		foldedImmediates_++;
 	} else {
@@ -959,7 +941,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, Reg
 void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, RegisterFrame& frame) {
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), gpOperand(op->getLeftInput(), frame));
-	if (const auto rightImm = imm32Operand(op->getRightInput(), frame)) {
+	if (const auto rightImm = imm32Operand(op->getRightInput())) {
 		cc.or_(toGp(result), *rightImm);
 		foldedImmediates_++;
 	} else {
@@ -1000,7 +982,7 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	// A constant count uses the immediate shift form. The hardware masks the
 	// count mod 64 for 64-bit shifts, exactly like the CL-register form, so
 	// masking here preserves the register-form semantics.
-	if (const auto countImm = imm32Operand(op->getRightInput(), frame)) {
+	if (const auto countImm = imm32Operand(op->getRightInput())) {
 		const uint32_t count = static_cast<uint32_t>(*countImm) & 63u;
 		if (op->getType() == ir::ShiftOperation::LS) {
 			cc.shl(gDst, count);
@@ -1037,7 +1019,7 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
 	auto result = allocReg(op->getStamp());
 	cc.mov(toGp(result), gpOperand(op->getLeftInput(), frame));
-	if (const auto rightImm = imm32Operand(op->getRightInput(), frame)) {
+	if (const auto rightImm = imm32Operand(op->getRightInput())) {
 		switch (op->getType()) {
 		case ir::BinaryCompOperation::BAND:
 			cc.and_(toGp(result), *rightImm);
@@ -1138,7 +1120,7 @@ void AsmJitLoweringProvider::LoweringContext::emitFusedCompareBranch(const ir::C
 	const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(cmp->getRightInput());
 	if (rightConst != nullptr && rightConst->getValue() == 0) {
 		cc.test(left, left);
-	} else if (const auto rightImm = imm32Operand(cmp->getRightInput(), frame)) {
+	} else if (const auto rightImm = imm32Operand(cmp->getRightInput())) {
 		cc.cmp(left, *rightImm);
 		foldedImmediates_++;
 	} else {
@@ -1467,8 +1449,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 	// foldableConstValue); emit nothing and let consumers fold or
 	// rematerialise the pre-computed value. Bound identifiers double as
 	// merge-block parameters and must still be written (issue #321).
-	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op, frame).has_value()) {
-		deferredConsts_[op->getIdentifier()] = op;
+	if (enableConstFolding_ && !frame.contains(op->getIdentifier()) && foldableConstValue(op).has_value()) {
 		return;
 	}
 	auto src = regOperand(op->getInput(), frame);

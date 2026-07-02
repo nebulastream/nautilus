@@ -159,11 +159,11 @@ val<int32_t> constLeftCompare(val<int32_t> t) {
 	return r;
 }
 
-// Regression (differential fuzzer): a BAND of two constants folds to a
-// constant in the IR pass, but the cast consuming it keeps a stale pointer
-// to the replaced operation (the pass rewires only binary/if/return/
-// invocation inputs). The lowering must recover the constant by identifier
-// from the deferred-constant registry instead of throwing.
+// Regression (differential fuzzer, issue #327): a BAND of two constants
+// folds to a constant in the IR pass, and the cast consuming it must be
+// rewired to the replacement — a stale pointer to the dead BAND used to
+// make the lowering throw. Pins the pass-level fix end-to-end through the
+// backend's pointer-based constant recovery.
 val<int32_t> foldedConstShiftCount(val<int32_t> x) {
 	val<uint8_t> shift = val<uint8_t>((uint8_t) 202) & val<uint8_t>((uint8_t) 7);
 	return x >> shift;
