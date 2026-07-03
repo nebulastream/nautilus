@@ -19,6 +19,7 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
+#include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
@@ -175,6 +176,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		// an ALU-bound backend.
 		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
 			group.push_back(std::make_unique<ir::StrengthReductionPass>());
+		}
+		// Sweeps constant-folding and strength-reduction residue (dead
+		// feeding constants, the neutralized multiply) every round; see
+		// design §4.3-A. Runs last in the group so it cleans up whatever the
+		// passes above it produced that round.
+		if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
+			group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
 		}
 		// Re-run the whole group until a full round changes nothing (e.g.
 		// empty-block elimination exposing a new copy-propagation

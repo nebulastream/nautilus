@@ -8,4 +8,5 @@ add_source_files(nautilus
         EmptyBlockEliminationPass.cpp
         ConstantFoldingAndCopyPropagationPass.cpp
         StrengthReductionPass.cpp
+        DeadCodeEliminationPass.cpp
 )
