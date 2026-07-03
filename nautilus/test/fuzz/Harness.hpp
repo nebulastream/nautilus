@@ -64,6 +64,14 @@ inline engine::NautilusEngine makeEngine(const std::string& backend) {
 		options.setOption("dump.all", true);
 		options.setOption("dump.console", true);
 	}
+	// V7 corpus gate: NAUTILUS_IR_VERIFY=1 makes the fuzz-replay smoke corpus
+	// double as an IR-verifier sweep (mirrors testing::applyIrVerifyEnvHook
+	// in test/common/ExecutionTest.hpp, which the fuzz harness doesn't use).
+	const char* verify = std::getenv("NAUTILUS_IR_VERIFY");
+	if (verify != nullptr && std::string(verify) == "1") {
+		options.setOption("ir.verifyAfterEachPass", true);
+		options.setOption("ir.failOnVerifyError", true);
+	}
 	return engine::NautilusEngine(options);
 }
 

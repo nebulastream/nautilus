@@ -113,6 +113,16 @@ void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
 				pred->replaceSuccessor(block, succ);
 			}
 
+			// `block`'s own outgoing edge to `succ` predates all of the above
+			// rewiring and is never touched by it (rewiring only retargets
+			// *predecessors'* invocations); `succ` would otherwise keep a
+			// stale predecessor entry for a block that no longer exists in
+			// the function (V4: predecessor multiset would list `block` once
+			// with zero actual incoming edges).
+			if (succ != nullptr) {
+				succ->removePredecessor(block);
+			}
+
 			// All predecessor edges redirected; detach the empty block.
 			fn.detachBasicBlock(block);
 			changed = true;

@@ -41,9 +41,10 @@ using compiler::ir::OperationIdentifier;
 /// owns @p entry. The entry block is wrapped in the graph's arena so the
 /// returned `shared_ptr` keeps everything alive for the duration of the
 /// test.
-std::shared_ptr<IRGraph> wrapInGraph(std::shared_ptr<IRGraph> ir, BasicBlock* entry, Type returnStamp = Type::i32) {
+std::shared_ptr<IRGraph> wrapInGraph(std::shared_ptr<IRGraph> ir, BasicBlock* entry, Type returnStamp = Type::i32,
+                                     std::vector<Type> inputArgs = {}) {
 	auto& arena = ir->getArena();
-	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry}, std::vector<Type> {},
+	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry}, std::move(inputArgs),
 	                                           std::vector<std::string> {}, returnStamp);
 	ir->addFunctionOperation(fn);
 	return ir;
@@ -156,7 +157,7 @@ TEST_CASE("ConstantFolding: non-foldable arg + 7 stays in place") {
 	auto* c7 = entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {1}, int64_t {7}, Type::i32);
 	auto* add = entry->addOperation<compiler::ir::AddOperation>(OperationIdentifier {2}, blockArg, c7);
 	entry->addOperation<compiler::ir::ReturnOperation>(add);
-	wrapInGraph(ir, entry);
+	wrapInGraph(ir, entry, Type::i32, std::vector<Type> {Type::i32});
 
 	runPass(*ir);
 
@@ -506,7 +507,7 @@ TEST_CASE("ConstantFolding: store value consumer is rewired (#327)") {
 	auto* add = entry->addOperation<compiler::ir::AddOperation>(OperationIdentifier {3}, c5, c3);
 	auto* store = entry->addOperation<compiler::ir::StoreOperation>(add, ptrArg);
 	entry->addOperation<compiler::ir::ReturnOperation>();
-	wrapInGraph(ir, entry, Type::v);
+	wrapInGraph(ir, entry, Type::v, std::vector<Type> {Type::ptr});
 
 	runPass(*ir);
 

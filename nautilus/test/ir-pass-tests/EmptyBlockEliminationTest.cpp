@@ -2,6 +2,8 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
+#include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include "nautilus/options.hpp"
 #include <catch2/catch_all.hpp>
 
@@ -92,6 +94,27 @@ TEST_CASE("EmptyBlockElimination: self-loop empty block is not removed") {
 	// Self-loop stays. The empty block is its own successor, which is
 	// explicitly blocked by `isRemovableEmptyBlock`.
 	REQUIRE(blockCount(*ir) == 2);
+}
+
+TEST_CASE("EmptyBlockElimination: eliminated block leaves no stale predecessor entry on its successor") {
+	// A chain of empty blocks collapses one victim at a time; each victim's
+	// own outgoing edge into its successor must be un-registered from that
+	// successor's predecessor list, not just the *incoming* edges rewired
+	// from the victim's real predecessors. Verified via V4 (predecessor
+	// multiset) rather than a manual predecessor-list inspection, so this
+	// doubles as the regression test discovered by the V7 corpus gate.
+	auto ir = IRGraphFixtures::makeChainOfEmptyBlocks(3);
+
+	engine::Options opts;
+	opts.setOption("ir.verifyAfterEachPass", true);
+	opts.setOption("ir.failOnVerifyError", true);
+	compiler::ir::IRPassManager mgr(opts);
+	mgr.addPass(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
+	REQUIRE_NOTHROW(mgr.run(*ir));
+
+	REQUIRE(blockCount(*ir) == 2);
+	auto result = compiler::ir::IRVerifier::verify(*ir);
+	REQUIRE(result.ok());
 }
 
 } // namespace nautilus::testing
