@@ -141,6 +141,25 @@ inline void opStore(const Instr& i, uint64_t* fp) {
 	std::memcpy(reinterpret_cast<void*>(fp[i.a]), &value, sizeof(T));
 }
 
+/// Memory-offset superinstructions: fold a single-use `ptr + const` feeding a
+/// load/store into the base register plus a sign-extended 16-bit immediate,
+/// avoiding the separate ADD and its result register (LOAD_off: a=dst,
+/// b=base, c=offset; STORE_off: a=base, b=value, c=offset).
+template <class T>
+inline void opLoadOff(const Instr& i, uint64_t* fp) {
+	T value;
+	const uint64_t addr = fp[i.b] + static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(i.c)));
+	std::memcpy(&value, reinterpret_cast<const void*>(addr), sizeof(T));
+	writeReg<T>(fp, i.a, value);
+}
+
+template <class T>
+inline void opStoreOff(const Instr& i, uint64_t* fp) {
+	T value = readReg<T>(fp, i.b);
+	const uint64_t addr = fp[i.a] + static_cast<uint64_t>(static_cast<int64_t>(static_cast<int16_t>(i.c)));
+	std::memcpy(reinterpret_cast<void*>(addr), &value, sizeof(T));
+}
+
 template <class T>
 inline void opBand(const Instr& i, uint64_t* fp) {
 	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) & readReg<T>(fp, i.c)));
