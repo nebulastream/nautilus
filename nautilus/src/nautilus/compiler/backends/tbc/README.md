@@ -159,10 +159,25 @@ Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
 
 - **`invokeRaw`-style typed entry for tiered compilation**: `tbc` is a
   natural `engine.tier0.backend`; measure and tune the tier-0 handoff.
-- ~~**`[[clang::preserve_none]]`** on the tail-call handlers~~ — done: applied
-  to the `Handler` type and every tailcall-skin handler in
+- ~~**`[[clang::preserve_none]]`** on the tail-call handlers~~ — done:
+  applied to the `Handler` type and every tailcall-skin handler in
   `TBCInterpreter.cpp`, guarded by `__has_attribute(preserve_none)` (Clang
-  19+); silently a no-op on older Clang.
+  19+; silently a no-op on older Clang) and disabled under ASan, which
+  cannot combine dynamic stack realignment with this calling convention
+  (`llvm/llvm-project#95928`). Measured impact is narrower than hoped: most
+  opcode handlers (arithmetic/compare/cast/branch — the bulk of the
+  dispatch table) already fit within the default caller-saved register
+  budget, so their generated code is byte-identical either way — only the
+  physical registers holding `ip`/`fp` differ. The benefit is real but
+  confined to handlers that call a plain-ABI helper across the tail-call
+  boundary: `CALL` (internal Nautilus-to-Nautilus calls, via `pushFrame`)
+  measurably drops from 7 to 1 register spill/reload pair and runs
+  ~4% faster in isolation; `CALL_EXT`/`CALL_IND` see the same codegen
+  improvement but no measurable wall-clock gain, since outgoing dyncall's
+  own FFI marshalling overhead dominates. `exec_tbc_add/fibonacci/sum` in
+  `ExecutionBenchmark.cpp` are pure arithmetic/loop kernels with no internal
+  or external calls, so they can't exercise the one path that benefits —
+  don't read "flat" there as the change being ineffective.
 - **Memory-offset superinstructions** (`LOAD_off` / `STORE_off`): fuse
   `add ptr, const` feeding a single-use load/store — the dominant
   query-compilation access pattern. Needs a small local dataflow check in the
