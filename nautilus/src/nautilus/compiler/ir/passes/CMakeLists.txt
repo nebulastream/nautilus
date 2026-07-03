@@ -4,6 +4,7 @@ add_source_files(nautilus
         IRVerifier.cpp
         IRPassManager.cpp
         Dominators.cpp
+        FunctionRewriter.cpp
         EmptyBlockEliminationPass.cpp
         ConstantFoldingAndCopyPropagationPass.cpp
         StrengthReductionPass.cpp
