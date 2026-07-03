@@ -1,4 +1,5 @@
 #include "IRGraphFixtures.hpp"
+#include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
@@ -16,8 +17,13 @@ public:
 	RecordingPass(std::string name, std::vector<std::string>& log) : name_(std::move(name)), log_(log) {
 	}
 
-	void apply(compiler::ir::IRGraph& /*ir*/) override {
+	bool apply(compiler::ir::IRGraph& /*ir*/) override {
 		log_.push_back(name_);
+		return changesOnApply_;
+	}
+
+	void setChangesOnApply(bool value) {
+		changesOnApply_ = value;
 	}
 
 	std::string getName() const override {
@@ -27,6 +33,35 @@ public:
 private:
 	std::string name_;
 	std::vector<std::string>& log_;
+	bool changesOnApply_ = true;
+};
+
+/// Test-only pass that reports a change for exactly its first N applications,
+/// then reports no further change -- used to exercise fixed-point
+/// convergence without depending on a real pass's semantics.
+class ChangesForNApplications : public compiler::ir::IRPass {
+public:
+	ChangesForNApplications(std::string name, size_t n, size_t& callCount)
+	    : name_(std::move(name)), remaining_(n), callCount_(callCount) {
+	}
+
+	bool apply(compiler::ir::IRGraph& /*ir*/) override {
+		++callCount_;
+		if (remaining_ == 0) {
+			return false;
+		}
+		--remaining_;
+		return true;
+	}
+
+	std::string getName() const override {
+		return name_;
+	}
+
+private:
+	std::string name_;
+	size_t remaining_;
+	size_t& callCount_;
 };
 
 } // namespace
@@ -84,6 +119,65 @@ TEST_CASE("IRPassManager: verifyBeforePipeline logs (no throw) by default") {
 	// but no exception.
 	compiler::ir::IRPassManager mgr(opts);
 	REQUIRE_NOTHROW(mgr.run(*ir));
+}
+
+TEST_CASE("IRPassManager: fixed-point group converges before maxIterations") {
+	auto ir = IRGraphFixtures::makeSingleBlockGraph();
+	size_t callCount = 0;
+
+	engine::Options opts;
+	compiler::ir::IRPassManager mgr(opts);
+	std::vector<std::unique_ptr<compiler::ir::IRPass>> group;
+	group.push_back(std::make_unique<ChangesForNApplications>("convergent", 2, callCount));
+	mgr.addFixedPointGroup(std::move(group), 10);
+	REQUIRE(mgr.size() == 1);
+
+	mgr.run(*ir);
+
+	// Two rounds report a change, a third round reports none and stops the
+	// group early -- three calls total, far short of maxIterations (10).
+	REQUIRE(callCount == 3);
+}
+
+TEST_CASE("IRPassManager: fixed-point group respects the maxIterations bound") {
+	auto ir = IRGraphFixtures::makeSingleBlockGraph();
+	size_t callCount = 0;
+
+	engine::Options opts;
+	compiler::ir::IRPassManager mgr(opts);
+	std::vector<std::unique_ptr<compiler::ir::IRPass>> group;
+	// Never converges (always reports a change): maxIterations must be the
+	// only thing that stops it.
+	group.push_back(std::make_unique<ChangesForNApplications>("never-converges", 1000, callCount));
+	mgr.addFixedPointGroup(std::move(group), 4);
+
+	mgr.run(*ir);
+
+	REQUIRE(callCount == 4);
+}
+
+TEST_CASE("IRPassManager: a pass reporting no change is not dumped") {
+	auto ir = IRGraphFixtures::makeSingleBlockGraph();
+	std::vector<std::string> log;
+
+	engine::Options opts;
+	opts.setOption("ir.dumpAfterEachPass", true);
+	opts.setOption("dump.all", true);
+	opts.setOption("dump.console", false);
+	compiler::DumpHandler dumpHandler(opts, "irpassmanager-dump-test");
+
+	auto changedPass = std::make_unique<RecordingPass>("changed-pass", log);
+	auto unchangedPass = std::make_unique<RecordingPass>("unchanged-pass", log);
+	unchangedPass->setChangesOnApply(false);
+
+	compiler::ir::IRPassManager mgr(opts, &dumpHandler);
+	mgr.addPass(std::move(changedPass));
+	mgr.addPass(std::move(unchangedPass));
+	mgr.run(*ir);
+
+	const auto& generated = dumpHandler.getGeneratedFiles();
+	REQUIRE(generated.contains("after_changed-pass"));
+	REQUIRE_FALSE(generated.contains("after_unchanged-pass"));
 }
 
 } // namespace nautilus::testing

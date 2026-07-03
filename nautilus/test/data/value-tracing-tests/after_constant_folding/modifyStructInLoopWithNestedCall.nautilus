@@ -2,8 +2,6 @@ nautilus {
 execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$4 = 0 :ui64
-	$6 = 1 :ui64
 	$7 = 0 :ui64
 	$8 = $2 + $7 :ptr
 	$11 = 0 :i32
@@ -28,14 +26,10 @@ Block_2($2:ptr):
 }
 incrementFieldA($1:ptr, $2:i32) :void {
 Block_0($1:ptr, $2:i32):
-	$4 = 0 :ui64
-	$6 = 1 :ui64
 	$7 = 0 :ui64
 	$8 = $1 + $7 :ptr
 	$12 = load($8) :i32
 	$13 = $12 + $2 :i32
-	$15 = 0 :ui64
-	$17 = 1 :ui64
 	$18 = 0 :ui64
 	$19 = $1 + $18 :ptr
 	store($13, $19) :void
@@ -43,8 +37,6 @@ Block_0($1:ptr, $2:i32):
 }
 readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
 	$6 = 0 :ui64
 	$7 = $1 + $6 :ptr
 	$10 = load($7) :i32

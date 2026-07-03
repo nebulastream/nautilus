@@ -1,8 +1,6 @@
 nautilus {
 execute($1:ptr) :void {
 Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
 	$6 = 0 :ui64
 	$7 = $1 + $6 :ptr
 	$10 = 42 :i32

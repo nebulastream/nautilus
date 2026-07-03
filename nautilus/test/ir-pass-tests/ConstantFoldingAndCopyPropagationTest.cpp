@@ -111,17 +111,19 @@ TEST_CASE("ConstantFolding: 5 + 3 folds to 8") {
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::AddOp) == 0);
-	// The add's slot is replaced in place, so the third op is now a ConstInt.
+	// The add's slot is replaced in place, and `eraseIfDead` cascades away
+	// the 5 and 3 constants once they become unused -- only the folded
+	// constant and the return remain.
 	const auto& ops = entryBlock(*ir)->getOperations();
-	REQUIRE(ops.size() == 4);
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(ops[2]);
+	REQUIRE(ops.size() == 2);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(ops[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(folded->getValue() == 8);
 	REQUIRE(folded->getStamp() == Type::i32);
 
 	// Copy propagation: return's input is now the folded constant, not the
 	// stale AddOp pointer.
-	auto* ret = compiler::ir::as<compiler::ir::ReturnOperation>(ops[3]);
+	auto* ret = compiler::ir::as<compiler::ir::ReturnOperation>(ops[1]);
 	REQUIRE(ret->getReturnValue() == folded);
 }
 
@@ -218,8 +220,11 @@ TEST_CASE("ConstantFolding: compare folds to ConstBoolean") {
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CompareOp) == 0);
+	// 7 and 9 are cascaded away once the compare that consumed them is
+	// folded and erased.
 	const auto& ops = entryBlock(*ir)->getOperations();
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(ops[2]);
+	REQUIRE(ops.size() == 2);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(ops[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(folded->getValue() == true);
 	REQUIRE(folded->getStamp() == Type::b);
@@ -306,7 +311,7 @@ TEST_CASE("ConstantFolding: ui64 less-than folds with unsigned semantics (#312)"
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CompareOp) == 0);
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[2]);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(folded->getValue() == false);
 }
@@ -327,7 +332,7 @@ TEST_CASE("ConstantFolding: ui64 division folds with unsigned semantics (#312)")
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::DivOp) == 0);
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 4611686018427387904ULL);
 	REQUIRE(folded->getStamp() == Type::ui64);
@@ -349,7 +354,7 @@ TEST_CASE("ConstantFolding: ui64 modulo folds with unsigned semantics (#312)") {
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ModOp) == 0);
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 5ULL);
 }
@@ -371,7 +376,7 @@ TEST_CASE("ConstantFolding: ui64 right shift is logical, not arithmetic (#312)")
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ShiftOp) == 0);
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[2]);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(entryBlock(*ir)->getOperations()[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(static_cast<uint64_t>(folded->getValue()) == 0x6000000000000000ULL);
 }
@@ -391,7 +396,7 @@ TEST_CASE("ConstantFolding: signed i64 less-than still folds with signed semanti
 
 	runPass(*ir);
 
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[2]);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(entryBlock(*ir)->getOperations()[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(folded->getValue() == true);
 }
@@ -409,8 +414,11 @@ TEST_CASE("ConstantFolding: boolean And folds") {
 	runPass(*ir);
 
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::AndOp) == 0);
+	// true and false are cascaded away once the And that consumed them is
+	// folded and erased.
 	const auto& ops = entryBlock(*ir)->getOperations();
-	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(ops[2]);
+	REQUIRE(ops.size() == 2);
+	auto* folded = compiler::ir::dyn_cast<compiler::ir::ConstBooleanOperation>(ops[0]);
 	REQUIRE(folded != nullptr);
 	REQUIRE(folded->getValue() == false);
 }

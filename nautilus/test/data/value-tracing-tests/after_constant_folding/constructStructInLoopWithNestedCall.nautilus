@@ -11,8 +11,6 @@ Block_3($2:i32, $3:i32, $1:i32):
 
 Block_1($1:i32, $3:i32, $2:i32):
 	$6 = alloca[0] :ptr
-	$10 = 0 :ui64
-	$12 = 1 :ui64
 	$13 = 0 :ui64
 	$14 = $6 + $13 :ptr
 	store($3, $14) :void
@@ -27,8 +25,6 @@ Block_2($2:i32):
 }
 readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
 	$6 = 0 :ui64
 	$7 = $1 + $6 :ptr
 	$10 = load($7) :i32

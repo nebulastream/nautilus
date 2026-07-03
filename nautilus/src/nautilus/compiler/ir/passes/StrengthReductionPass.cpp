@@ -9,6 +9,7 @@
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -19,31 +20,6 @@
 namespace nautilus::compiler::ir {
 
 namespace {
-
-/// Inserts @p newOps (in order) immediately before @p block's terminator,
-/// using only the existing public BasicBlock mutators: the terminator slot is
-/// briefly reused for `newOps[0]` (which tears down the terminator's outgoing
-/// predecessor edges via `replaceOperation`'s last-index path), the rest are
-/// appended, the real terminator is appended back last, and the predecessor
-/// edges that were torn down are restored. Net effect on the CFG is zero;
-/// only the block's straight-line operation list grows.
-void insertBeforeTerminator(BasicBlock* block, const std::vector<Operation*>& newOps) {
-	if (newOps.empty()) {
-		return;
-	}
-	Operation* term = block->getTerminatorOp();
-	const size_t lastIdx = block->getOperations().size() - 1;
-	block->replaceOperation(lastIdx, newOps[0]);
-	for (size_t i = 1; i < newOps.size(); i++) {
-		block->addOperation(newOps[i]);
-	}
-	block->addOperation(term);
-	for (auto* inv : getSuccessorInvocations(*term)) {
-		if (auto* target = const_cast<BasicBlock*>(inv->getBlock())) {
-			target->addPredecessor(block);
-		}
-	}
-}
 
 /// Counts how many times @p target appears as an operand anywhere in @p fn:
 /// either as a plain operation input (covers every fixed-arity op kind
@@ -288,7 +264,7 @@ std::unordered_set<Operation*> computeIvAliases(BasicBlock* header, BasicBlockAr
 /// variable) are omitted, so callers should treat "not present" as unknown
 /// rather than "not invariant".
 std::unordered_map<Operation*, bool> computeHeaderPassThroughMap(BasicBlock* header, BasicBlockInvocation* latchInv,
-                                                                  const std::unordered_set<BasicBlock*>& loopBody) {
+                                                                 const std::unordered_set<BasicBlock*>& loopBody) {
 	std::unordered_map<Operation*, bool> result;
 	const auto& headerArgs = header->getArguments();
 	const auto latchArgs = latchInv->getArguments();
@@ -438,9 +414,12 @@ int64_t wrappingMul(int64_t a, int64_t b) {
 	return static_cast<int64_t>(static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
 }
 
-void applyCandidate(common::Arena& arena, uint32_t& nextId, const Candidate& c) {
-	// New loop-carried pointer argument on the header.
-	auto* ptrArg = arena.create<BasicBlockArgument>(OperationIdentifier {nextId++}, Type::ptr);
+void applyCandidate(FunctionRewriter& rewriter, common::Arena& arena, const Candidate& c) {
+	// New loop-carried pointer argument on the header. Built directly
+	// (rather than through `FunctionRewriter::addBlockArgument`) because
+	// `latchAdd` below must reference `ptrArg` itself, so `ptrArg` has to
+	// exist before the per-edge invocation values are computed.
+	auto* ptrArg = arena.create<BasicBlockArgument>(rewriter.freshId(), Type::ptr);
 	c.header->addArgument(ptrArg);
 
 	// Preheader: initPtr = basePtr + maybeCast(preheaderIVValue) * elemSize.
@@ -450,31 +429,24 @@ void applyCandidate(common::Arena& arena, uint32_t& nextId, const Candidate& c) 
 	// preheader, so a fresh copy of the same value is minted here rather
 	// than reusing that operation across blocks.
 	Operation* preheaderIvValue = c.preheaderInv->getArguments()[c.ivSlot];
-	std::vector<Operation*> preheaderNewOps;
 	Operation* preheaderIndexOperand = preheaderIvValue;
 	if (c.castOp != nullptr) {
-		auto* cast = arena.create<CastOperation>(arena, OperationIdentifier {nextId++}, preheaderIvValue,
-		                                         c.castOp->getStamp());
-		preheaderNewOps.push_back(cast);
-		preheaderIndexOperand = cast;
+		preheaderIndexOperand = rewriter.createBeforeTerminator<CastOperation>(c.preheader, rewriter.freshId(),
+		                                                                       preheaderIvValue, c.castOp->getStamp());
 	}
-	auto* preheaderElemSizeConst = arena.create<ConstIntOperation>(
-	    arena, OperationIdentifier {nextId++}, c.elemSizeConst->getValue(), c.elemSizeConst->getStamp());
-	preheaderNewOps.push_back(preheaderElemSizeConst);
-	auto* preheaderMul =
-	    arena.create<MulOperation>(arena, OperationIdentifier {nextId++}, preheaderIndexOperand, preheaderElemSizeConst);
-	preheaderNewOps.push_back(preheaderMul);
-	auto* preheaderAdd = arena.create<AddOperation>(arena, OperationIdentifier {nextId++}, c.basePtr, preheaderMul);
-	preheaderNewOps.push_back(preheaderAdd);
-	insertBeforeTerminator(c.preheader, preheaderNewOps);
+	auto* preheaderElemSizeConst = rewriter.createBeforeTerminator<ConstIntOperation>(
+	    c.preheader, rewriter.freshId(), c.elemSizeConst->getValue(), c.elemSizeConst->getStamp());
+	auto* preheaderMul = rewriter.createBeforeTerminator<MulOperation>(c.preheader, rewriter.freshId(),
+	                                                                   preheaderIndexOperand, preheaderElemSizeConst);
+	auto* preheaderAdd =
+	    rewriter.createBeforeTerminator<AddOperation>(c.preheader, rewriter.freshId(), c.basePtr, preheaderMul);
 	c.preheaderInv->addArgument(arena, preheaderAdd);
 
 	// Latch: nextPtr = ptrArg + (step * elemSize).
 	const int64_t stride = wrappingMul(c.step, c.elemSizeConst->getValue());
-	auto* strideConst =
-	    arena.create<ConstIntOperation>(arena, OperationIdentifier {nextId++}, stride, c.elemSizeConst->getStamp());
-	auto* latchAdd = arena.create<AddOperation>(arena, OperationIdentifier {nextId++}, ptrArg, strideConst);
-	insertBeforeTerminator(c.latch, {strideConst, latchAdd});
+	auto* strideConst = rewriter.createBeforeTerminator<ConstIntOperation>(c.latch, rewriter.freshId(), stride,
+	                                                                       c.elemSizeConst->getStamp());
+	auto* latchAdd = rewriter.createBeforeTerminator<AddOperation>(c.latch, rewriter.freshId(), ptrArg, strideConst);
 	c.latchInv->addArgument(arena, latchAdd);
 
 	// Mutate the original base+index*stride add in place so every existing
@@ -493,29 +465,11 @@ void applyCandidate(common::Arena& arena, uint32_t& nextId, const Candidate& c) 
 	c.mulBlock->replaceOperation(findOperationIndex(c.mulBlock, c.mul), zeroConst);
 }
 
-uint32_t computeNextId(IRGraph& ir) {
-	uint32_t maxId = 0;
-	for (auto* fn : ir.getFunctionOperations()) {
-		if (fn == nullptr) {
-			continue;
-		}
-		for (auto* block : fn->getBasicBlocks()) {
-			for (auto* op : block->getOperations()) {
-				maxId = std::max(maxId, op->getIdentifier().getId());
-			}
-			for (auto* arg : block->getArguments()) {
-				maxId = std::max(maxId, arg->getIdentifier().getId());
-			}
-		}
-	}
-	return maxId + 1;
-}
-
 } // namespace
 
-void StrengthReductionPass::apply(IRGraph& ir) {
+bool StrengthReductionPass::apply(IRGraph& ir) {
 	common::Arena& arena = ir.getArena();
-	uint32_t nextId = computeNextId(ir);
+	bool changed = false;
 
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn == nullptr) {
@@ -533,10 +487,20 @@ void StrengthReductionPass::apply(IRGraph& ir) {
 
 		std::vector<Candidate> candidates;
 		findCandidatesInFunction(*fn, definingBlock, candidates);
+		if (candidates.empty()) {
+			continue;
+		}
+		changed = true;
+		// Identifiers minted for one function's candidates must never
+		// collide with anything already in that function; a fresh session
+		// per function (rather than one global counter reused across
+		// functions) gives that guarantee via `freshId()`.
+		FunctionRewriter rewriter(*fn, arena);
 		for (const auto& c : candidates) {
-			applyCandidate(arena, nextId, c);
+			applyCandidate(rewriter, arena, c);
 		}
 	}
+	return changed;
 }
 
 } // namespace nautilus::compiler::ir

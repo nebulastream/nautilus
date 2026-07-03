@@ -7,7 +7,6 @@ Block_0($1:i32):
 
 Block_1():
 	$6 = 1 :i32
-	$7 = 42 :i32
 	$8 = false :bool
 	if $8 ? Block_3($6) : Block_4($6) :void
 
@@ -29,7 +28,6 @@ Block_2($2:i32):
 
 Block_5():
 	$16 = 42 :i32
-	$17 = 42 :i32
 	$18 = true :bool
 	if $18 ? Block_7($16) : Block_8($16) :void
 

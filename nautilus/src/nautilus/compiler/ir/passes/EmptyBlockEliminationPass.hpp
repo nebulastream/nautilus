@@ -26,7 +26,7 @@ namespace nautilus::compiler::ir {
  */
 class EmptyBlockEliminationPass : public IRPass {
 public:
-	void apply(IRGraph& ir) override;
+	bool apply(IRGraph& ir) override;
 	std::string getName() const override {
 		return "EmptyBlockElimination";
 	}
