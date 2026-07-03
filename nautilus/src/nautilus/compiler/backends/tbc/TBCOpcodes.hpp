@@ -121,6 +121,10 @@ namespace nautilus::compiler::tbc {
 	X(LOAD_b, (opLoad<bool>) )                                                                                         \
 	TBC_NUM10(X, STORE, opStore)                                                                                       \
 	X(STORE_b, (opStore<bool>) )                                                                                       \
+	TBC_NUM10(X, LOAD_off, opLoadOff)                                                                                  \
+	X(LOAD_off_b, (opLoadOff<bool>) )                                                                                  \
+	TBC_NUM10(X, STORE_off, opStoreOff)                                                                                \
+	X(STORE_off_b, (opStoreOff<bool>) )                                                                                \
 	TBC_INT8(X, BAND, opBand)                                                                                          \
 	TBC_INT8(X, BOR, opBor)                                                                                            \
 	TBC_INT8(X, BXOR, opBxor)                                                                                          \
@@ -201,6 +205,8 @@ static_assert(opIndex(Op::NE_i8) == opIndex(Op::EQ_i8) + 10);
 static_assert(opIndex(Op::GE_f64) == opIndex(Op::EQ_i8) + 59);
 static_assert(opIndex(Op::LOAD_b) == opIndex(Op::LOAD_i8) + 10);
 static_assert(opIndex(Op::STORE_b) == opIndex(Op::STORE_i8) + 10);
+static_assert(opIndex(Op::LOAD_off_b) == opIndex(Op::LOAD_off_i8) + 10);
+static_assert(opIndex(Op::STORE_off_b) == opIndex(Op::STORE_off_i8) + 10);
 static_assert(opIndex(Op::CAST_f64_f64) == opIndex(Op::CAST_i8_i8) + 99);
 static_assert(opIndex(Op::MOV_imm_ui64) == opIndex(Op::MOV_imm_i8) + 7);
 static_assert(opIndex(Op::CJMP_GE_i64) == opIndex(Op::CJMP_EQ_i32) + 11);

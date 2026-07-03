@@ -178,13 +178,28 @@ Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
   `ExecutionBenchmark.cpp` are pure arithmetic/loop kernels with no internal
   or external calls, so they can't exercise the one path that benefits —
   don't read "flat" there as the change being ineffective.
-- **Memory-offset superinstructions** (`LOAD_off` / `STORE_off`): fuse
-  `add ptr, const` feeding a single-use load/store — the dominant
-  query-compilation access pattern. Needs a small local dataflow check in the
-  flattener.
-- **Dead-MOV elimination after immediate folding**: folding leaves the
-  constant's `MOV_imm` behind when it has no other uses; a cheap liveness
-  pass over the flat stream could drop it.
+- ~~**Memory-offset superinstructions** (`LOAD_off` / `STORE_off`)~~ — done:
+  the flattener now fuses a single-use `ptr + const` immediately preceding a
+  `LOAD`/`STORE` into one instruction, once the add's own constant has been
+  immediate-folded (pointer arithmetic previously fell outside immediate
+  folding's `i32`/`i64` type check even though it emits the identical
+  `ADD_i64`; that check now also accepts `Type::ptr`). Detection matches the
+  existing compare-and-branch fusion's pattern: single-use (via the
+  lowering's existing use-count map) and adjacency in the emitted stream (so
+  nothing could have reused the base pointer's register in between) are both
+  required before fusing. Only `ptr + const` is handled, matching the exact
+  gap described above — `ptr - const` is not (would need `SUB_imm_i64`
+  matched the same way). Offsets beyond `int16_t` (`±32768`) fall back to a
+  plain `LOAD`/`STORE` fed by an unfused `ADD`, same as any other constant
+  too large to fold.
+- ~~**Dead-MOV elimination after immediate folding**~~ — done, and it now
+  generalizes to more than `MOV_imm`: the flattener tracks, per block, a set
+  of "drop this instruction" indices (originally just the trailing compare
+  in a fused branch) and any immediate-folded constant that was materialized
+  by a now-single-use `MOV_imm` adds its site to that set. Memory-offset
+  fusion above reuses the same set to drop the fused-away `ADD_imm_i64`, so
+  a `ptr + const` feeding a `LOAD`/`STORE` collapses from three instructions
+  (`MOV_imm`, `ADD`, `LOAD`/`STORE`) to one.
 - **Zero-dependency typed call thunks**: replace outgoing dyncall with
   template-instantiated callers selected at lowering time (signatures are
   statically known). Requires a register-only argument cap and care with the

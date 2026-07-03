@@ -79,6 +79,19 @@ Op immFormOf(Op op) {
 	}
 }
 
+/// Map a LOAD/STORE opcode to its memory-offset form (LOAD_off/STORE_off),
+/// which encodes `base + imm16` instead of reading the offset from a separate
+/// register (Op::COUNT = not a LOAD/STORE opcode).
+Op memOffsetFormOf(Op op) {
+	if (opIndex(op) >= opIndex(Op::LOAD_i8) && opIndex(op) <= opIndex(Op::LOAD_b)) {
+		return static_cast<Op>(opIndex(Op::LOAD_off_i8) + (opIndex(op) - opIndex(Op::LOAD_i8)));
+	}
+	if (opIndex(op) >= opIndex(Op::STORE_i8) && opIndex(op) <= opIndex(Op::STORE_b)) {
+		return static_cast<Op>(opIndex(Op::STORE_off_i8) + (opIndex(op) - opIndex(Op::STORE_i8)));
+	}
+	return Op::COUNT;
+}
+
 /// Map an i32/i64 comparison opcode to the fused compare-and-branch form
 /// (Op::COUNT = not fusable).
 Op fusedFormOf(Op op) {
@@ -123,6 +136,17 @@ struct Terminator {
 	uint16_t retReg = kNoReg;
 };
 
+/// A foldable arithmetic op (index into `code`, immediate), plus — when the
+/// folded constant was materialized by a standalone MOV_imm with no other
+/// use — where that MOV_imm lives, so the flattener can drop it too.
+struct FoldableImmediate {
+	uint32_t codeIndex;
+	int16_t immediate;
+	bool hasDeadMovSite = false;
+	uint32_t deadMovBlock = 0;
+	uint32_t deadMovIndex = 0;
+};
+
 struct BlockCode {
 	std::vector<Instr> code;
 	Terminator term;
@@ -130,10 +154,17 @@ struct BlockCode {
 	// single-use comparison; the flattener may fuse the trailing compare into
 	// the branch (mirrors bc's fuseCompareIntoBranch).
 	bool fuseCompareIntoBranch = false;
-	// (index into `code`, immediate) pairs recorded for arithmetic ops whose
-	// right operand is a small integer constant (mirrors bc's
-	// foldableImmediates).
-	std::vector<std::pair<uint32_t, int16_t>> foldableImmediates;
+	// Arithmetic ops whose right operand is a small integer constant.
+	std::vector<FoldableImmediate> foldableImmediates;
+	// (LOAD/STORE codeIndex, ptr-add codeIndex) pairs where the add is this
+	// block's immediate predecessor instruction and computes this op's
+	// address; eligible for LOAD_off/STORE_off fusion once the add's
+	// immediate has been folded.
+	std::vector<std::pair<uint32_t, uint32_t>> fusableMemOps;
+	// Instruction indices the flattener must drop: dead MOV_imms (immediate
+	// folding absorbed their only use) and ptr-adds absorbed into a
+	// LOAD_off/STORE_off.
+	std::unordered_set<uint32_t> deadIndices;
 };
 
 using RegisterFrame = Frame<ir::OperationIdentifier, uint16_t>;
@@ -247,6 +278,14 @@ private:
 	std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 	std::unordered_set<ir::OperationIdentifier> functionArgs;
 	std::vector<uint16_t> functionAllocaSlots;
+	// Where a small-constant's standalone MOV_imm landed (block, codeIndex);
+	// consulted when the constant is later folded into an immediate to see if
+	// the MOV_imm became dead.
+	std::unordered_map<ir::OperationIdentifier, std::pair<uint32_t, uint32_t>> movImmSites;
+	// Where a pointer-typed ADD's own instruction landed (block, codeIndex);
+	// consulted by a directly-following LOAD/STORE to detect a fusable
+	// `ptr + const` address computation.
+	std::unordered_map<ir::OperationIdentifier, std::pair<uint32_t, uint32_t>> ptrAddSites;
 
 	void emit(int block, Op op, uint16_t a, uint16_t b = 0, uint16_t c = 0) {
 		blocks[block].code.push_back(Instr {opIndex(op), a, b, c});
@@ -355,6 +394,8 @@ private:
 		frame.setValue(opt->getIdentifier(), target);
 		const int idx = intTypeIndex(type == Type::b ? Type::ui8 : type);
 		if (idx >= 0 && value >= -32768 && value <= 32767) {
+			movImmSites[opt->getIdentifier()] = {static_cast<uint32_t>(block),
+			                                     static_cast<uint32_t>(blocks[block].code.size())};
 			emit(block, typedOp(Op::MOV_imm_i8, idx, "const"), target, 0, static_cast<uint16_t>(value));
 			return;
 		}
@@ -393,9 +434,15 @@ private:
 
 	/// Record the arithmetic op about to be emitted as immediate-foldable when
 	/// its right operand is an i32/i64 constant fitting 16 bits (port of bc's
-	/// recordFoldableImmediate).
+	/// recordFoldableImmediate). Pointer arithmetic runs as i64 (see
+	/// arithTypeIndex) and emits the identical ADD_i64/SUB_i64 opcodes, so
+	/// `ptr + const`/`ptr - const` fold the same way — this is what lets
+	/// LOAD_off/STORE_off fusion below find an already-folded ADD_imm_i64. If
+	/// the folded constant was materialized by a standalone MOV_imm and this
+	/// is its only use, folding will leave the MOV_imm dead — record where it
+	/// is so the flattener can drop it once the fold actually happens.
 	void recordFoldableImmediate(int block, ir::Operation* rightInput, Type type) {
-		if (type != Type::i32 && type != Type::i64) {
+		if (type != Type::i32 && type != Type::i64 && type != Type::ptr) {
 			return;
 		}
 		const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(rightInput);
@@ -406,8 +453,17 @@ private:
 		if (value < -32768 || value > 32767) {
 			return;
 		}
-		blocks[block].foldableImmediates.emplace_back(static_cast<uint32_t>(blocks[block].code.size()),
-		                                              static_cast<int16_t>(value));
+		FoldableImmediate entry;
+		entry.codeIndex = static_cast<uint32_t>(blocks[block].code.size());
+		entry.immediate = static_cast<int16_t>(value);
+		const auto siteIt = movImmSites.find(constInt->getIdentifier());
+		const auto usageIt = usageCounts.find(constInt->getIdentifier());
+		if (siteIt != movImmSites.end() && usageIt != usageCounts.end() && usageIt->second == 1) {
+			entry.hasDeadMovSite = true;
+			entry.deadMovBlock = siteIt->second.first;
+			entry.deadMovIndex = siteIt->second.second;
+		}
+		blocks[block].foldableImmediates.push_back(entry);
 	}
 
 	template <class OperationType>
@@ -428,7 +484,11 @@ private:
 
 	void visitAdd(ir::AddOperation* opt, int block, RegisterFrame& frame) {
 		recordFoldableImmediate(block, opt->getRightInput(), opt->getStamp());
+		const auto codeIndex = static_cast<uint32_t>(blocks[block].code.size());
 		lowerBinary(opt, block, frame, Op::ADD_i8, arithTypeIndex(opt->getStamp()), "add");
+		if (opt->getStamp() == Type::ptr) {
+			ptrAddSites[opt->getIdentifier()] = {static_cast<uint32_t>(block), codeIndex};
+		}
 	}
 
 	void visitSub(ir::SubOperation* opt, int block, RegisterFrame& frame) {
@@ -536,8 +596,45 @@ private:
 		return idx;
 	}
 
+	/// Record the LOAD/STORE about to be emitted at `memIndex` as eligible for
+	/// memory-offset fusion when its address is a single-use `ptr + const`
+	/// that is this block's immediate predecessor instruction — adjacency
+	/// guarantees nothing could have reused the base pointer's register in
+	/// between, and the single-use check (via usageCounts, checked before
+	/// useValue() below decrements it) guarantees no other consumer still
+	/// needs the add's result register once it is fused away.
+	void recordFusableMemOp(int block, uint32_t memIndex, const ir::Operation* address) {
+		if (!options.enableSuperinstructions || !options.enableImmediates || memIndex == 0) {
+			return;
+		}
+		const auto* addOp = ir::dyn_cast<ir::AddOperation>(address);
+		if (addOp == nullptr || addOp->getStamp() != Type::ptr) {
+			return;
+		}
+		const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(addOp->getRightInput());
+		if (constInt == nullptr) {
+			return;
+		}
+		const int64_t value = constInt->getValue();
+		if (value < -32768 || value > 32767) {
+			return;
+		}
+		const auto siteIt = ptrAddSites.find(addOp->getIdentifier());
+		if (siteIt == ptrAddSites.end() || siteIt->second.first != static_cast<uint32_t>(block) ||
+		    siteIt->second.second != memIndex - 1) {
+			return;
+		}
+		const auto usageIt = usageCounts.find(addOp->getIdentifier());
+		if (usageIt == usageCounts.end() || usageIt->second != 1) {
+			return;
+		}
+		blocks[block].fusableMemOps.emplace_back(memIndex, memIndex - 1);
+	}
+
 	void visitLoad(ir::LoadOperation* opt, int block, RegisterFrame& frame) {
 		const auto address = frame.getValue(opt->getAddress()->getIdentifier());
+		const auto codeIndex = static_cast<uint32_t>(blocks[block].code.size());
+		recordFusableMemOp(block, codeIndex, opt->getAddress());
 		useValue(opt->getAddress()->getIdentifier(), frame);
 		const auto result = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), result);
@@ -547,6 +644,8 @@ private:
 	void visitStore(ir::StoreOperation* opt, int block, RegisterFrame& frame) {
 		const auto address = frame.getValue(opt->getAddress()->getIdentifier());
 		const auto value = frame.getValue(opt->getValue()->getIdentifier());
+		const auto codeIndex = static_cast<uint32_t>(blocks[block].code.size());
+		recordFusableMemOp(block, codeIndex, opt->getAddress());
 		useValue(opt->getAddress()->getIdentifier(), frame);
 		useValue(opt->getValue()->getIdentifier(), frame);
 		emit(block, typedOp(Op::STORE_i8, memTypeIndex(opt->getValue()->getStamp(), "store"), "store"), address, value);
@@ -876,16 +975,49 @@ private:
 		const uint32_t allocaSlots = out.allocaBytes > 0 ? (out.allocaBytes + 7) / 8 + 2 : 0;
 		out.frameSlots = 3 + regCount + allocaSlots;
 
-		// Fold recorded immediates into the arithmetic ops.
+		// Fold recorded immediates into the arithmetic ops. A folded constant
+		// that was materialized by its own now-unused MOV_imm drops that
+		// instruction too.
 		if (options.enableImmediates) {
 			for (auto& blk : blocks) {
-				for (const auto& [index, immediate] : blk.foldableImmediates) {
-					Instr& inst = blk.code[index];
+				for (const auto& imm : blk.foldableImmediates) {
+					Instr& inst = blk.code[imm.codeIndex];
 					const Op immOp = immFormOf(static_cast<Op>(inst.op));
 					if (immOp != Op::COUNT) {
 						inst.op = opIndex(immOp);
-						inst.c = static_cast<uint16_t>(immediate);
+						inst.c = static_cast<uint16_t>(imm.immediate);
+						if (imm.hasDeadMovSite) {
+							blocks[imm.deadMovBlock].deadIndices.insert(imm.deadMovIndex);
+						}
 					}
+				}
+			}
+		}
+
+		// Fuse a single-use `ptr + const` immediately preceding a LOAD/STORE
+		// into LOAD_off/STORE_off, once the add's own immediate has been
+		// folded above (memory-offset superinstructions).
+		if (options.enableSuperinstructions && options.enableImmediates) {
+			for (auto& blk : blocks) {
+				for (const auto& [memIndex, addIndex] : blk.fusableMemOps) {
+					const Instr& addInst = blk.code[addIndex];
+					if (static_cast<Op>(addInst.op) != Op::ADD_imm_i64) {
+						continue; // the add's constant didn't end up folded; leave both instructions intact
+					}
+					Instr& memInst = blk.code[memIndex];
+					const Op offOp = memOffsetFormOf(static_cast<Op>(memInst.op));
+					if (offOp == Op::COUNT) {
+						continue;
+					}
+					const bool isLoad = opIndex(static_cast<Op>(memInst.op)) <= opIndex(Op::LOAD_b);
+					if (isLoad) {
+						memInst.b = addInst.b;
+					} else {
+						memInst.a = addInst.b;
+					}
+					memInst.c = addInst.c;
+					memInst.op = opIndex(offOp);
+					blk.deadIndices.insert(addIndex);
 				}
 			}
 		}
@@ -910,7 +1042,12 @@ private:
 			auto& blk = blocks[b];
 			const bool fuse = shouldFuse(blk);
 			const std::size_t bodyCount = blk.code.size() - (fuse ? 1 : 0);
-			codeOut.insert(codeOut.end(), blk.code.begin(), blk.code.begin() + static_cast<long>(bodyCount));
+			for (std::size_t i = 0; i < bodyCount; ++i) {
+				if (blk.deadIndices.count(static_cast<uint32_t>(i)) > 0) {
+					continue;
+				}
+				codeOut.push_back(blk.code[i]);
+			}
 
 			const int next = static_cast<int>(b) + 1;
 			switch (blk.term.kind) {
