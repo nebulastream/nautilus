@@ -164,7 +164,11 @@ TEST_CASE("IRPassManager: a pass reporting no change is not dumped") {
 	opts.setOption("ir.dumpAfterEachPass", true);
 	opts.setOption("dump.all", true);
 	opts.setOption("dump.console", false);
-	compiler::DumpHandler dumpHandler(opts, "irpassmanager-dump-test");
+	// DumpHandler stores its CompilationUnitID by reference, so the id must
+	// outlive dumpHandler -- a string-literal temporary here would leave a
+	// dangling reference (caught by ASan as stack-use-after-scope).
+	const compiler::CompilationUnitID unitId = "irpassmanager-dump-test";
+	compiler::DumpHandler dumpHandler(opts, unitId);
 
 	auto changedPass = std::make_unique<RecordingPass>("changed-pass", log);
 	auto unchangedPass = std::make_unique<RecordingPass>("unchanged-pass", log);
