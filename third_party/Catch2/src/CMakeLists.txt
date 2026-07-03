@@ -87,7 +87,7 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/internal/catch_decomposer.hpp
   ${SOURCES_DIR}/internal/catch_deprecation_macro.hpp
   ${SOURCES_DIR}/internal/catch_enforce.hpp
-  ${SOURCES_DIR}/internal/catch_enum_values_registry.hpp
+  ${SOURCES_DIR}/internal/catch_enum_info.hpp
   ${SOURCES_DIR}/internal/catch_errno_guard.hpp
   ${SOURCES_DIR}/internal/catch_exception_translator_registry.hpp
   ${SOURCES_DIR}/internal/catch_fatal_condition_handler.hpp
@@ -98,6 +98,7 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/internal/catch_jsonwriter.hpp
   ${SOURCES_DIR}/internal/catch_lazy_expr.hpp
   ${SOURCES_DIR}/internal/catch_leak_detector.hpp
+  ${SOURCES_DIR}/internal/catch_lifetimebound.hpp
   ${SOURCES_DIR}/internal/catch_list.hpp
   ${SOURCES_DIR}/internal/catch_logical_traits.hpp
   ${SOURCES_DIR}/internal/catch_message_info.hpp
@@ -107,6 +108,7 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/internal/catch_optional.hpp
   ${SOURCES_DIR}/internal/catch_output_redirect.hpp
   ${SOURCES_DIR}/internal/catch_parse_numbers.hpp
+  ${SOURCES_DIR}/internal/catch_path_filter.hpp
   ${SOURCES_DIR}/internal/catch_platform.hpp
   ${SOURCES_DIR}/internal/catch_polyfills.hpp
   ${SOURCES_DIR}/internal/catch_preprocessor.hpp
@@ -139,6 +141,7 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/internal/catch_test_registry.hpp
   ${SOURCES_DIR}/internal/catch_test_spec_parser.hpp
   ${SOURCES_DIR}/internal/catch_textflow.hpp
+  ${SOURCES_DIR}/internal/catch_thread_local.hpp
   ${SOURCES_DIR}/internal/catch_thread_support.hpp
   ${SOURCES_DIR}/internal/catch_to_string.hpp
   ${SOURCES_DIR}/internal/catch_uncaught_exceptions.hpp
@@ -178,7 +181,7 @@ set(IMPL_SOURCES
   ${SOURCES_DIR}/internal/catch_debugger.cpp
   ${SOURCES_DIR}/internal/catch_decomposer.cpp
   ${SOURCES_DIR}/internal/catch_enforce.cpp
-  ${SOURCES_DIR}/internal/catch_enum_values_registry.cpp
+  ${SOURCES_DIR}/internal/catch_enum_info.cpp
   ${SOURCES_DIR}/internal/catch_errno_guard.cpp
   ${SOURCES_DIR}/internal/catch_exception_translator_registry.cpp
   ${SOURCES_DIR}/internal/catch_fatal_condition_handler.cpp
@@ -224,7 +227,6 @@ set(INTERFACE_HEADERS
   ${SOURCES_DIR}/interfaces/catch_interfaces_all.hpp
   ${SOURCES_DIR}/interfaces/catch_interfaces_capture.hpp
   ${SOURCES_DIR}/interfaces/catch_interfaces_config.hpp
-  ${SOURCES_DIR}/interfaces/catch_interfaces_enum_values_registry.hpp
   ${SOURCES_DIR}/interfaces/catch_interfaces_exception.hpp
   ${SOURCES_DIR}/interfaces/catch_interfaces_generatortracker.hpp
   ${SOURCES_DIR}/interfaces/catch_interfaces_registry_hub.hpp
@@ -253,11 +255,13 @@ set(GENERATOR_HEADERS
   ${SOURCES_DIR}/generators/catch_generators_all.hpp
   ${SOURCES_DIR}/generators/catch_generators_random.hpp
   ${SOURCES_DIR}/generators/catch_generators_range.hpp
+  ${SOURCES_DIR}/generators/catch_generators_throw.hpp
 )
 set(GENERATOR_SOURCES
   ${SOURCES_DIR}/generators/catch_generator_exception.cpp
   ${SOURCES_DIR}/generators/catch_generators.cpp
   ${SOURCES_DIR}/generators/catch_generators_random.cpp
+  ${SOURCES_DIR}/generators/catch_generators_throw.cpp
 )
 set(GENERATOR_FILES ${GENERATOR_HEADERS} ${GENERATOR_SOURCES})
 

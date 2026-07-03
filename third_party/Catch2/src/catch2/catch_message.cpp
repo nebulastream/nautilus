@@ -5,8 +5,8 @@
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
+
 #include <catch2/catch_message.hpp>
-#include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <catch2/internal/catch_enforce.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
 
@@ -22,7 +22,7 @@ namespace Catch {
         m_messageId( builder.m_info.sequence ) {
         MessageInfo info( CATCH_MOVE( builder.m_info ) );
         info.message = builder.m_stream.str();
-        IResultCapture::pushScopedMessage( CATCH_MOVE( info ) );
+        Detail::pushScopedMessage( CATCH_MOVE( info ) );
     }
 
     ScopedMessage::ScopedMessage( ScopedMessage&& old ) noexcept:
@@ -31,14 +31,16 @@ namespace Catch {
     }
 
     ScopedMessage::~ScopedMessage() {
-        if ( !m_moved ) { IResultCapture::popScopedMessage( m_messageId ); }
+        if ( !m_moved ) { Detail::popScopedMessage( m_messageId ); }
     }
 
 
     Capturer::Capturer( StringRef macroName,
                         SourceLineInfo const& lineInfo,
                         ResultWas::OfType resultType,
-                        StringRef names ) {
+                        StringRef names,
+                        bool isScoped):
+        m_isScoped(isScoped) {
         auto trimmed = [&] (size_t start, size_t end) {
             while (names[start] == ',' || isspace(static_cast<unsigned char>(names[start]))) {
                 ++start;
@@ -99,15 +101,21 @@ namespace Catch {
     }
     Capturer::~Capturer() {
         assert( m_captured == m_messages.size() );
-        for (auto const& message : m_messages) {
-            IResultCapture::popScopedMessage( message.sequence );
+        if ( m_isScoped ) {
+            for ( auto const& message : m_messages ) {
+                Detail::popScopedMessage( message.sequence );
+            }
         }
     }
 
     void Capturer::captureValue( size_t index, std::string const& value ) {
         assert( index < m_messages.size() );
         m_messages[index].message += value;
-        IResultCapture::pushScopedMessage( CATCH_MOVE( m_messages[index] ) );
+        if ( m_isScoped ) {
+            Detail::pushScopedMessage( CATCH_MOVE( m_messages[index] ) );
+        } else {
+            Detail::addUnscopedMessage( CATCH_MOVE( m_messages[index] ) );
+        }
         m_captured++;
     }
 
