@@ -18,6 +18,7 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
@@ -166,6 +167,12 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		std::vector<std::unique_ptr<ir::IRPass>> group;
 		if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
 			group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+		}
+		// Canonicalizes and folds local algebraic identities; see design
+		// §4.3-B. Runs right after constant folding so the constants it
+		// produces are canonicalized to the right operand immediately.
+		if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
+			group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
 		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());

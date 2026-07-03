@@ -9,4 +9,5 @@ add_source_files(nautilus
         ConstantFoldingAndCopyPropagationPass.cpp
         StrengthReductionPass.cpp
         DeadCodeEliminationPass.cpp
+        AlgebraicSimplificationPass.cpp
 )
