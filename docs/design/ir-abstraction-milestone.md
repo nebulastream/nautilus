@@ -310,7 +310,7 @@ rewiring again.
 
 ## 5. Sequencing within the milestone
 
-Three PRs, each independently green:
+Three PRs, each independently green (tracking issues: #338, #339, #340):
 
 1. **IR-0a — Analysis & verification:** `Dominators` (D1–D3), fixtures
    (§3.4 + self-tests), verifier checks V1–V6 with tests, V6 calibration,
