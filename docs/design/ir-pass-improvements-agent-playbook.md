@@ -17,10 +17,10 @@ approved in-branch.
   rewiring, and fixed-point loops.
 - **Never hand-roll purity or rewiring.** Side-effect queries go through
   `OperationProperties.hpp` (`isPureOp`, `mayReadMemory`, `mayWriteMemory`).
-  Use-rewiring goes through `RewriteUtil::replaceAllUses` (created in M0).
-  CFG edits go through `BasicBlock::replaceSuccessor`,
-  `replaceTerminatorOperation`, `BasicBlockInvocation::setBlock`, and the
-  predecessor helpers — never mutate `predecessors` semantics by hand.
+  From M0 onward, all mutation inside passes goes through `FunctionRewriter`
+  (use rewiring, erase, creation, block arguments, CFG edits, fresh
+  identifiers) — see [ir-abstraction-milestone.md](ir-abstraction-milestone.md).
+  Never mutate `predecessors` semantics or invocation argument lists by hand.
 - **Style**: tabs, 120 cols, `CamelCase` classes, `lower_case` locals,
   member `trailing_underscore_` only where the file you're editing already
   does so — match the surrounding file. Doxygen-style class comment on every
@@ -71,12 +71,37 @@ opts.setOption("ir.failOnVerifyError", true);
 
 ## 2. Milestones
 
-### M0 — Infrastructure (PR-0)
+### M0 — IR abstraction milestone (PR-0a, PR-0b, PR-0c)
 
-Files: `ir/passes/IRPass.hpp`, `IRPassManager.{hpp,cpp}`, new
-`RewriteUtil.{hpp,cpp}`, new `Dominators.{hpp,cpp}`, `IRVerifier.cpp`,
-`ir/passes/CMakeLists.txt`, plus the three existing passes and
-`LegacyCompiler.cpp`.
+This milestone is fully specified — requirement by requirement, test by
+test — in [ir-abstraction-milestone.md](ir-abstraction-milestone.md). That
+document is the contract; implement against its requirement IDs and check
+each one off in the PR description. Summary of the three PRs:
+
+- **M0.1 / PR-0a — Analysis & verification.** `Dominators` (requirements
+  D1–D3), the shared `IRGraphFixtures` builders (§3.4 there, with
+  self-tests), and verifier checks V1–V6 with their negative/positive test
+  pairs, plus the V7 corpus hook (`NAUTILUS_IR_VERIFY=1` wired into the
+  shared test engine options). Run the V6 calibration step before enabling
+  it as an error. If an existing pass violates a new check, fixing that
+  latent bug is in scope and gets a regression test.
+- **M0.2 / PR-0b — `FunctionRewriter`.** The mutation facade per §3.2 of the
+  milestone doc, satisfying requirements M1–M10 with
+  `FunctionRewriterTest.cpp`. No pass changes in this PR.
+- **M0.3 / PR-0c — Retrofit.** Requirements F1–F4: port
+  `ConstantFoldingAndCopyPropagation` and `EmptyBlockElimination` onto the
+  rewriter, replace `StrengthReduction`'s hand-rolled `computeNextId`/
+  `nextId` threading with `freshId()`. Strictly behavior-preserving: all
+  existing tests and `test/data/**` dumps unchanged, full suite + fuzz
+  smoke + V7 run green.
+
+If the rewriter API cannot express something a retrofit needs, extend the
+rewriter (and its tests) in M0.3 — do not let a pass bypass it.
+
+### M0.4 — Pass-manager mechanics (PR-0d)
+
+Files: `ir/passes/IRPass.hpp`, `IRPassManager.{hpp,cpp}`, the three existing
+passes, `LegacyCompiler.cpp`.
 
 1. Change `IRPass::apply` to return `bool` (true iff the graph changed).
    Update the three existing passes — each already tracks a `changed` flag
@@ -90,24 +115,10 @@ Files: `ir/passes/IRPass.hpp`, `IRPassManager.{hpp,cpp}`, new
    constructing the group. Record `irPasses.pipelineIterations` in
    statistics. Per-pass timing/delta statistics must aggregate across
    iterations (sum the ms, sum the deltas).
-3. Extract `replaceAllUses(FunctionOperation&, Operation* from, Operation* to)`
-   into `RewriteUtil` from the copy-propagation logic in
-   `ConstantFoldingAndCopyPropagationPass.cpp`; make that pass call it. It
-   must cover: every operation's `getInputs()` span (rewire via `setInput`)
-   and every terminator's `BasicBlockInvocation` arguments, in every block of
-   the function.
-4. Add `Dominators` (iterative Cooper–Harvey–Kennedy over RPO from the entry
-   block). API: constructed from a `FunctionOperation&` (after predecessor
-   lists are valid), `bool dominates(const BasicBlock*, const BasicBlock*)`.
-5. Verifier: add the invocation-arity check — for every terminator
-   invocation, `invocation.getArguments().size() == target->getArguments().size()`
-   (use the real accessor names from `BasicBlockInvocation.hpp`).
-6. Tests: `IRPassManagerTest.cpp` gains fixed-point-group cases (group
+3. Tests: `IRPassManagerTest.cpp` gains fixed-point-group cases (group
    converges; maxIterations bound respected; no-change passes skipped in
-   dumps). `IRVerifierTest.cpp` gains arity-violation cases (construct a
-   deliberately broken graph). Add `DominatorsTest.cpp` (diamond, loop,
-   chain).
-7. **Behavioral gate**: with the pipeline in `LegacyCompiler.cpp` expressed
+   dumps).
+4. **Behavioral gate**: with the pipeline in `LegacyCompiler.cpp` expressed
    as a maxIterations=1 group of the existing passes, all test-data dumps and
    the whole suite must be unchanged. Run the full suite + fuzz smoke.
 
@@ -116,10 +127,12 @@ Files: `ir/passes/IRPass.hpp`, `IRPassManager.{hpp,cpp}`, new
 Files: new `ir/passes/DeadCodeEliminationPass.{hpp,cpp}`, `LegacyCompiler.cpp`,
 new `test/ir-pass-tests/DeadCodeEliminationTest.cpp`, `docs/options.md`.
 
-1. Implement per design §4.3-A. Reuse `Usages::countUsages` for the initial
-   counts; maintain counts incrementally while erasing (`removeOperation`),
-   loop to fixed point within the function. Only ops with
-   `isPureOp(op->getOperationType())`, not terminators, not block arguments.
+1. Implement per design §4.3-A as a thin driver over
+   `FunctionRewriter::eraseIfDead` (the cascade, purity oracle, and use
+   tracking already live there — see milestone requirement M4): open a
+   rewriter session per function, seed `eraseIfDead` from every operation,
+   done. Only pure non-terminator ops are ever erased; block arguments are
+   untouched (Pass E owns arity).
 2. Register default-on behind `ir.disableDeadCodeElimination`, positioned per
    design §4.4 (for now: after EmptyBlockElimination inside the group).
 3. Tests: dead const chain removed; dead cast removed; op used only by a

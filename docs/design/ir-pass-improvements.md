@@ -153,6 +153,16 @@ Infrastructure that already exists and that new passes must build on:
 
 ### 4.2 Infrastructure changes (Phase 0)
 
+> **Expanded into its own milestone.** Items (c)–(e) below, plus safe
+> mutation primitives the pass catalog assumes (use tracking, safe erase,
+> fresh-identifier minting, atomic block-argument mutation, CFG rewiring)
+> and a fuller set of verifier invariants, are specified with concrete
+> requirements and acceptance tests in
+> [ir-abstraction-milestone.md](ir-abstraction-milestone.md) (Milestone
+> IR-0). That milestone lands **first**; items (a)–(b) below follow it as a
+> separate small PR. Where this section and the milestone doc overlap, the
+> milestone doc is authoritative.
+
 **(a) `IRPass::apply` returns `bool` (changed).**
 All three existing passes already track an internal `changed` flag for their
 fixed-point loops; surface it. The manager uses it to skip per-pass dumps and
@@ -168,11 +178,12 @@ unreachable blocks; block merging exposes dead args; DCE exposes empty
 blocks). Statistics keep per-pass attribution; add a
 `irPasses.pipelineIterations` counter.
 
-**(c) Shared rewrite utility** — `passes/RewriteUtil.{hpp,cpp}`:
-`replaceAllUses(FunctionOperation& fn, Operation* from, Operation* to)`
-walking every block's operations' input spans **and** every terminator's
-`BasicBlockInvocation` arguments. Extracted from
-`ConstantFoldingAndCopyPropagationPass` (which then calls it).
+**(c) Shared mutation facade** — `passes/FunctionRewriter.{hpp,cpp}`: a
+per-function mutation session owning use tracking, `replaceAllUses`
+(covering operand spans **and** `BasicBlockInvocation` arguments), safe
+erase with a dead-chain cascade, fresh-identifier minting, atomic
+block-argument mutation, and CFG rewiring. Fully specified in the milestone
+doc (§3.2 there); the pass catalog below refers to its primitives by name.
 
 **(d) Dominance helper** — `passes/Dominators.{hpp,cpp}`: iterative
 dominator-tree computation (Cooper–Harvey–Kennedy over reverse post order).
@@ -198,11 +209,11 @@ Remove operations that are pure (`isPureOp`, includes `Constant` ops) and have
 zero uses. Iterate to a fixed point within the pass (removing a consumer can
 kill its producers).
 
-Algorithm (per function): compute use counts (reuse `Usages::countUsages`,
-counting operation inputs + invocation arguments); walk blocks in reverse,
-erase zero-use pure non-terminator ops via `BasicBlock::removeOperation`,
-decrement the counts of their inputs, repeat until no change. Block arguments
-are **not** removed here (Pass E owns the arity invariant).
+Algorithm (per function): a thin driver over
+`FunctionRewriter::eraseIfDead` (milestone requirement M4 — the cascade,
+purity oracle, and incremental use tracking live in the rewriter): open a
+session, seed the cascade from every operation. Block arguments are **not**
+removed here (Pass E owns the arity invariant).
 
 Benefits: sweeps constant-folding residue (dead feeding constants → smaller
 `tbc` constant image → faster every call), strength-reduction residue (the
@@ -459,19 +470,23 @@ Layered, matching what the repo already has:
 Land in small PRs, in dependency order; every PR leaves `main` green with
 defaults unchanged until the measurement gate passes:
 
-1. **PR-0** Infrastructure: `apply()`→`bool`, fixed-point groups,
-   `RewriteUtil`, verifier arity check, `Dominators`. Pure refactor +
-   additive; no behavior change (group of existing passes with maxIter 1
-   reproduces today's pipeline bit-for-bit).
-2. **PR-1** DCE (A) — default on immediately (risk is minimal, effect is
+1. **PR-0a/0b/0c** Milestone IR-0 (see
+   [ir-abstraction-milestone.md](ir-abstraction-milestone.md)):
+   `Dominators` + verifier completion (V1–V7), `FunctionRewriter` mutation
+   facade, retrofit of the three existing passes onto it. Behavior-
+   preserving throughout.
+2. **PR-0d** Pass-manager mechanics: `apply()`→`bool`, fixed-point groups.
+   No behavior change (group of existing passes with maxIter 1 reproduces
+   today's pipeline bit-for-bit).
+3. **PR-1** DCE (A) — default on immediately (risk is minimal, effect is
    large and strictly shrinking).
-3. **PR-2** AlgebraicSimplification (B) — default on after fuzz soak.
-4. **PR-3** ConstantBranchFolding + unreachable removal (C).
-5. **PR-4** BlockMerging (D).
-6. **PR-5** BlockArgumentPruning (E).
-7. **PR-6** StrengthReduction default flip (measurement PR; may be a no-op).
-8. **PR-7** LocalCSE (F).
-9. **PR-8** LICM (G) — opt-in; separate default-flip PR after soak.
+4. **PR-2** AlgebraicSimplification (B) — default on after fuzz soak.
+5. **PR-3** ConstantBranchFolding + unreachable removal (C).
+6. **PR-4** BlockMerging (D).
+7. **PR-5** BlockArgumentPruning (E).
+8. **PR-6** StrengthReduction default flip (measurement PR; may be a no-op).
+9. **PR-7** LocalCSE (F).
+10. **PR-8** LICM (G) — opt-in; separate default-flip PR after soak.
 
 Each pass PR: pass + unit tests + options.md entry + benchmark numbers in the
 description. The companion playbook encodes this as agent milestones.
