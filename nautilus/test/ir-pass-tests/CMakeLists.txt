@@ -11,6 +11,7 @@ add_executable(nautilus-ir-pass-tests
         FunctionRewriterTest.cpp
         DeadCodeEliminationTest.cpp
         AlgebraicSimplificationTest.cpp
+        ConstantBranchFoldingTest.cpp
 )
 
 target_link_libraries(nautilus-ir-pass-tests PRIVATE nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)

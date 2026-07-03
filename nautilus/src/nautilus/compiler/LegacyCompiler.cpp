@@ -19,6 +19,7 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
+#include "nautilus/compiler/ir/passes/ConstantBranchFoldingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
@@ -173,6 +174,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		// produces are canonicalized to the right operand immediately.
 		if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
 			group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
+		}
+		// Closes the loop constant folding/simplification opens: a compare
+		// that folded to a constant bool still drives a conditional branch
+		// until this pass turns it into an unconditional one and sweeps the
+		// dead arm; see design §4.3-C.
+		if (!moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
+			group.push_back(std::make_unique<ir::ConstantBranchFoldingPass>());
 		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
