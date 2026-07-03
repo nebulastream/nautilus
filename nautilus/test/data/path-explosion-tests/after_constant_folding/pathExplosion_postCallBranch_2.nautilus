@@ -7,7 +7,6 @@ Block_0($1:i32):
 
 Block_1():
 	$6 = 1 :i32
-	$7 = 42 :i32
 	$8 = false :bool
 	if $8 ? Block_3($6) : Block_4($6) :void
 
@@ -23,7 +22,6 @@ Block_17($6:i32):
 
 Block_5():
 	$16 = 1 :i32
-	$17 = 42 :i32
 	$18 = false :bool
 	if $18 ? Block_7($16) : Block_8($16) :void
 
@@ -45,7 +43,6 @@ Block_6($12:i32):
 
 Block_18():
 	$47 = 42 :i32
-	$48 = 42 :i32
 	$49 = true :bool
 	if $49 ? Block_20($47) : Block_21($47) :void
 
@@ -83,7 +80,6 @@ Block_2($2:i32):
 
 Block_9():
 	$26 = 42 :i32
-	$27 = 42 :i32
 	$28 = true :bool
 	if $28 ? Block_11($26) : Block_12($26) :void
 
@@ -99,7 +95,6 @@ Block_28($26:i32):
 
 Block_13():
 	$36 = 1 :i32
-	$37 = 42 :i32
 	$38 = false :bool
 	if $38 ? Block_15($36) : Block_16($36) :void
 
@@ -118,7 +113,6 @@ Block_14($32:i32):
 
 Block_29():
 	$78 = 42 :i32
-	$79 = 42 :i32
 	$80 = true :bool
 	if $80 ? Block_31($78) : Block_32($78) :void
 
@@ -169,7 +163,6 @@ Block_35($57:i32):
 
 Block_24():
 	$67 = 1 :i32
-	$68 = 42 :i32
 	$69 = false :bool
 	if $69 ? Block_26($67) : Block_27($67) :void
 
@@ -188,7 +181,6 @@ Block_25($63:i32):
 
 Block_36():
 	$100 = 42 :i32
-	$101 = 42 :i32
 	$102 = true :bool
 	if $102 ? Block_38($100) : Block_39($100) :void
 

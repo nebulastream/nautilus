@@ -121,8 +121,19 @@ public:
 
 	void replaceOperation(size_t operationIndex, Operation* operation);
 
+	/// Detaches @p operation from this block's operation list (first match).
+	/// Purely a vector erase: it does not check remaining uses and does not
+	/// touch CFG bookkeeping, so callers must not pass a terminator (use
+	/// `replaceTerminatorOperation` for that) and must ensure no remaining
+	/// consumer still points at @p operation. `FunctionRewriter::erase`
+	/// enforces both of those as safety rails before calling this.
 	void removeOperation(Operation* operation);
 
+	/// Inserts @p operation immediately before @p before in the operation
+	/// list (or appends it if @p before is not found). A plain positional
+	/// insert: since it only ever moves non-terminator operations earlier in
+	/// the list, it never disturbs the terminator's identity or position
+	/// relative to CFG bookkeeping.
 	void addOperationBefore(Operation* before, Operation* operation);
 
 	uint64_t getIndexOfArgument(Operation* arg);
@@ -134,6 +145,12 @@ public:
 	/// are responsible for the invocation side (`BasicBlockInvocation::
 	/// addArgument`).
 	void addArgument(BasicBlockArgument* argument);
+
+	/// Removes the argument slot at @p index. Mirrors @ref addArgument:
+	/// this method only owns the block-argument side of the arity invariant;
+	/// callers are responsible for shrinking every targeting invocation's
+	/// argument list in the same slot (`BasicBlockInvocation::removeArgument`).
+	void removeArgument(size_t index);
 
 	void replaceTerminatorOperation(Operation* newTerminatorOperation);
 

@@ -162,19 +162,25 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 
 	if (moduleOptions.getOptionOrDefault("ir.runPasses", true)) {
 		ir::IRPassManager passManager(moduleOptions, &dumpHandler, statistics, &irPrintOptions);
+		std::vector<std::unique_ptr<ir::IRPass>> group;
 		if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
-			passManager.addPass(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
+			group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
 		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
-			passManager.addPass(std::make_unique<ir::EmptyBlockEliminationPass>());
+			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
 		// Opt-in (default off), unlike the two passes above: correct, but
 		// measured to regress the BC interpreter's dispatch-bound cost model
 		// (see StrengthReductionPass.hpp) -- may still be worth enabling for
 		// an ALU-bound backend.
 		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
-			passManager.addPass(std::make_unique<ir::StrengthReductionPass>());
+			group.push_back(std::make_unique<ir::StrengthReductionPass>());
 		}
+		// Re-run the whole group until a full round changes nothing (e.g.
+		// empty-block elimination exposing a new copy-propagation
+		// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
+		const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
+		passManager.addFixedPointGroup(std::move(group), maxIterations);
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}

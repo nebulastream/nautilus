@@ -2,7 +2,6 @@ nautilus {
 execute() :i32 {
 Block_0():
 	$1 = 5 :i32
-	$2 = 8 :i32
 	$3 = true :bool
 	if $3 ? Block_1($1) : Block_2($1) :void
 

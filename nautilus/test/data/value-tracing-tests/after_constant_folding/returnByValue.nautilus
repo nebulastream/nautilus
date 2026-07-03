@@ -2,19 +2,13 @@ nautilus {
 execute($1:i32) :i32 {
 Block_0($1:i32):
 	$3 = alloca[0] :ptr
-	$7 = 0 :ui64
-	$9 = 1 :ui64
 	$10 = 0 :ui64
 	$11 = $3 + $10 :ptr
 	store($1, $11) :void
-	$18 = 4 :ui64
-	$20 = 1 :ui64
 	$21 = 4 :ui64
 	$22 = $3 + $21 :ptr
 	$25 = 0 :i32
 	store($25, $22) :void
-	$30 = 0 :ui64
-	$32 = 1 :ui64
 	$33 = 0 :ui64
 	$34 = $3 + $33 :ptr
 	$37 = load($34) :i32

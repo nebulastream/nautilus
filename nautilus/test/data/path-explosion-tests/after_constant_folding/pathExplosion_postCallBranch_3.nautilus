@@ -7,7 +7,6 @@ Block_0($1:i32):
 
 Block_1():
 	$6 = 1 :i32
-	$7 = 42 :i32
 	$8 = false :bool
 	if $8 ? Block_3($6) : Block_4($6) :void
 
@@ -23,7 +22,6 @@ Block_25($6:i32):
 
 Block_5():
 	$16 = 1 :i32
-	$17 = 42 :i32
 	$18 = false :bool
 	if $18 ? Block_7($16) : Block_8($16) :void
 
@@ -39,7 +37,6 @@ Block_34($16:i32):
 
 Block_9():
 	$26 = 1 :i32
-	$27 = 42 :i32
 	$28 = false :bool
 	if $28 ? Block_11($26) : Block_12($26) :void
 
@@ -61,7 +58,6 @@ Block_10($22:i32):
 
 Block_35():
 	$88 = 42 :i32
-	$89 = 42 :i32
 	$90 = true :bool
 	if $90 ? Block_37($88) : Block_38($88) :void
 
@@ -99,7 +95,6 @@ Block_6($12:i32):
 
 Block_26():
 	$67 = 42 :i32
-	$68 = 42 :i32
 	$69 = true :bool
 	if $69 ? Block_28($67) : Block_29($67) :void
 
@@ -115,7 +110,6 @@ Block_69($67:i32):
 
 Block_30():
 	$77 = 1 :i32
-	$78 = 42 :i32
 	$79 = false :bool
 	if $79 ? Block_32($77) : Block_33($77) :void
 
@@ -134,7 +128,6 @@ Block_31($73:i32):
 
 Block_70():
 	$181 = 42 :i32
-	$182 = 42 :i32
 	$183 = true :bool
 	if $183 ? Block_72($181) : Block_73($181) :void
 
@@ -185,7 +178,6 @@ Block_103($160:i32):
 
 Block_65():
 	$170 = 1 :i32
-	$171 = 42 :i32
 	$172 = false :bool
 	if $172 ? Block_67($170) : Block_68($170) :void
 
@@ -204,7 +196,6 @@ Block_66($166:i32):
 
 Block_104():
 	$277 = 42 :i32
-	$278 = 42 :i32
 	$279 = true :bool
 	if $279 ? Block_106($277) : Block_107($277) :void
 
@@ -245,7 +236,6 @@ Block_2($2:i32):
 
 Block_13():
 	$36 = 42 :i32
-	$37 = 42 :i32
 	$38 = true :bool
 	if $38 ? Block_15($36) : Block_16($36) :void
 
@@ -261,7 +251,6 @@ Block_49($36:i32):
 
 Block_17():
 	$46 = 1 :i32
-	$47 = 42 :i32
 	$48 = false :bool
 	if $48 ? Block_19($46) : Block_20($46) :void
 
@@ -277,7 +266,6 @@ Block_58($46:i32):
 
 Block_21():
 	$56 = 1 :i32
-	$57 = 42 :i32
 	$58 = false :bool
 	if $58 ? Block_23($56) : Block_24($56) :void
 
@@ -296,7 +284,6 @@ Block_22($52:i32):
 
 Block_59():
 	$150 = 42 :i32
-	$151 = 42 :i32
 	$152 = true :bool
 	if $152 ? Block_61($150) : Block_62($150) :void
 
@@ -334,7 +321,6 @@ Block_18($42:i32):
 
 Block_50():
 	$129 = 42 :i32
-	$130 = 42 :i32
 	$131 = true :bool
 	if $131 ? Block_52($129) : Block_53($129) :void
 
@@ -350,7 +336,6 @@ Block_96($129:i32):
 
 Block_54():
 	$139 = 1 :i32
-	$140 = 42 :i32
 	$141 = false :bool
 	if $141 ? Block_56($139) : Block_57($139) :void
 
@@ -369,7 +354,6 @@ Block_55($135:i32):
 
 Block_97():
 	$255 = 42 :i32
-	$256 = 42 :i32
 	$257 = true :bool
 	if $257 ? Block_99($255) : Block_100($255) :void
 
@@ -420,7 +404,6 @@ Block_123($234:i32):
 
 Block_92():
 	$244 = 1 :i32
-	$245 = 42 :i32
 	$246 = false :bool
 	if $246 ? Block_94($244) : Block_95($244) :void
 
@@ -439,7 +422,6 @@ Block_93($240:i32):
 
 Block_124():
 	$341 = 42 :i32
-	$342 = 42 :i32
 	$343 = true :bool
 	if $343 ? Block_126($341) : Block_127($341) :void
 
@@ -493,7 +475,6 @@ Block_76($98:i32):
 
 Block_41():
 	$108 = 1 :i32
-	$109 = 42 :i32
 	$110 = false :bool
 	if $110 ? Block_43($108) : Block_44($108) :void
 
@@ -509,7 +490,6 @@ Block_85($108:i32):
 
 Block_45():
 	$118 = 1 :i32
-	$119 = 42 :i32
 	$120 = false :bool
 	if $120 ? Block_47($118) : Block_48($118) :void
 
@@ -528,7 +508,6 @@ Block_46($114:i32):
 
 Block_86():
 	$224 = 42 :i32
-	$225 = 42 :i32
 	$226 = true :bool
 	if $226 ? Block_88($224) : Block_89($224) :void
 
@@ -566,7 +545,6 @@ Block_42($104:i32):
 
 Block_77():
 	$203 = 42 :i32
-	$204 = 42 :i32
 	$205 = true :bool
 	if $205 ? Block_79($203) : Block_80($203) :void
 
@@ -582,7 +560,6 @@ Block_116($203:i32):
 
 Block_81():
 	$213 = 1 :i32
-	$214 = 42 :i32
 	$215 = false :bool
 	if $215 ? Block_83($213) : Block_84($213) :void
 
@@ -601,7 +578,6 @@ Block_82($209:i32):
 
 Block_117():
 	$319 = 42 :i32
-	$320 = 42 :i32
 	$321 = true :bool
 	if $321 ? Block_119($319) : Block_120($319) :void
 
@@ -652,7 +628,6 @@ Block_132($298:i32):
 
 Block_112():
 	$308 = 1 :i32
-	$309 = 42 :i32
 	$310 = false :bool
 	if $310 ? Block_114($308) : Block_115($308) :void
 
@@ -671,7 +646,6 @@ Block_113($304:i32):
 
 Block_133():
 	$375 = 42 :i32
-	$376 = 42 :i32
 	$377 = true :bool
 	if $377 ? Block_135($375) : Block_136($375) :void
 

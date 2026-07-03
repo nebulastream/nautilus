@@ -60,6 +60,19 @@ void BasicBlockInvocation::replaceArgument(const Operation* toReplace, Operation
 	std::replace(inputs.begin(), inputs.end(), const_cast<Operation*>(toReplace), replaceWith);
 }
 
+void BasicBlockInvocation::removeArgument(size_t index) {
+	if (index >= inputs.size()) {
+		return;
+	}
+	// Shift every later argument down by one slot, then narrow the span.
+	// `capacity_` is untouched: the arena buffer is unchanged, only fewer of
+	// its slots are currently visible.
+	for (std::size_t i = index; i + 1 < inputs.size(); ++i) {
+		inputs[i] = inputs[i + 1];
+	}
+	inputs = std::span<Operation*>(inputs.data(), inputs.size() - 1);
+}
+
 int BasicBlockInvocation::getOperationArgIndex(Operation* arg) {
 	for (std::size_t i = 0; i < inputs.size(); i++) {
 		if (inputs[i] == arg) {
