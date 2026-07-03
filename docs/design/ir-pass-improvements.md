@@ -470,24 +470,27 @@ Layered, matching what the repo already has:
 Land in small PRs, in dependency order; every PR leaves `main` green with
 defaults unchanged until the measurement gate passes:
 
+Tracking issues group the PRs into four milestones: #338 (IR-0 +
+pass-manager infrastructure), #342 (P0), #345 (P1), #347 (P2).
+
 1. **PR-0a/0b/0c** Milestone IR-0 (see
    [ir-abstraction-milestone.md](ir-abstraction-milestone.md)):
-   `Dominators` + verifier completion (V1–V7, #338), `FunctionRewriter`
-   mutation facade (#339), retrofit of the three existing passes onto it
-   (#340). Behavior-preserving throughout.
-2. **PR-0d** Pass-manager mechanics: `apply()`→`bool`, fixed-point groups
-   (#341). No behavior change (group of existing passes with maxIter 1
-   reproduces today's pipeline bit-for-bit).
+   `Dominators` + verifier completion (V1–V7), `FunctionRewriter` mutation
+   facade, retrofit of the three existing passes onto it. Behavior-
+   preserving throughout. (#338)
+2. **PR-0d** Pass-manager mechanics: `apply()`→`bool`, fixed-point groups.
+   No behavior change (group of existing passes with maxIter 1 reproduces
+   today's pipeline bit-for-bit). (#338)
 3. **PR-1** DCE (A) — default on immediately (risk is minimal, effect is
-   large and strictly shrinking) (#342).
-4. **PR-2** AlgebraicSimplification (B) — default on after fuzz soak (#343).
-5. **PR-3** ConstantBranchFolding + unreachable removal (C) (#344).
-6. **PR-4** BlockMerging (D) (#345).
-7. **PR-5** BlockArgumentPruning (E) (#346).
-8. **PR-6** StrengthReduction default flip (measurement PR; may be a no-op)
-   (#347).
-9. **PR-7** LocalCSE (F) (#348).
-10. **PR-8** LICM (G) — opt-in; separate default-flip PR after soak (#349).
+   large and strictly shrinking). (#342)
+4. **PR-2** AlgebraicSimplification (B) — default on after fuzz soak. (#342)
+5. **PR-3** ConstantBranchFolding + unreachable removal (C). (#342)
+6. **PR-4** BlockMerging (D). (#345)
+7. **PR-5** BlockArgumentPruning (E). (#345)
+8. **PR-6** StrengthReduction default flip (measurement PR; may be a no-op).
+   (#347)
+9. **PR-7** LocalCSE (F). (#347)
+10. **PR-8** LICM (G) — opt-in; separate default-flip PR after soak. (#347)
 
 Each pass PR: pass + unit tests + options.md entry + benchmark numbers in the
 description. The companion playbook encodes this as agent milestones.
