@@ -124,7 +124,7 @@ std::pair<std::string, std::string> tieredBackends() {
 
 // One shared engine, many threads, each compiling many multi-function modules.
 // Exercises the per-compile trace-arena pool on the explicit-backend
-// (LegacyCompiler) path: before the fix, concurrent compiles raced on the
+// (single-tier) path: before the fix, concurrent compiles raced on the
 // engine's single trace arena and crashed.
 TEST_CASE("Concurrent Compilation - Shared Engine, Explicit Backend") {
 	const auto backend = threadSafeBackend();

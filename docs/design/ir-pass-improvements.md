@@ -4,7 +4,7 @@
 **Audience:** Nautilus contributors; implementation agents (see the companion
 [agent playbook](ir-pass-improvements-agent-playbook.md))
 **Scope:** `nautilus/src/nautilus/compiler/ir/passes/` and the pass pipeline in
-`LegacyCompiler::compileToIR`
+`CompilationPipeline::compileToIR`
 
 ---
 
@@ -49,7 +49,7 @@ backend.**
 - `StrengthReductionPass` is *correct* but ships **default-off** because it
   leaves behind an unfolded `ptr + 0` and a dead cast, which regress the
   dispatch-bound interpreters (`StrengthReductionPass.hpp`,
-  `LegacyCompiler.cpp:171-177`). The pass is blocked on cleanup passes that
+  `CompilationPipeline.cpp:171-177`). The pass is blocked on cleanup passes that
   don't exist yet.
 - `ConstantFoldingAndCopyPropagationPass` replaces the folded op in place, but
   the *feeding* constants frequently become dead and are still lowered (and,
@@ -430,7 +430,7 @@ use a strict order test so it cannot ping-pong).
 
 All new default-on passes follow the existing option convention
 (`ir.disableX`), opt-in passes use `ir.enableX` (see
-`LegacyCompiler.cpp:163-180`). Document all new options in `docs/options.md`.
+`CompilationPipeline.cpp:163-180`). Document all new options in `docs/options.md`.
 
 ## 5. Testing & validation strategy
 

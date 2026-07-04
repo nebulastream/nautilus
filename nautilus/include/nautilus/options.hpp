@@ -29,7 +29,7 @@ class ModuleOptions;
  * `mlir.optimizationLevel`, ...) can be overridden for an individual compiled
  * module via @ref ModuleOptions, which a module inherits from the engine and
  * may override. The remaining options (`engine.backend`,
- * `engine.compilationStrategy`, `engine.tier0/tier1.backend`,
+ * `engine.tier0/tier1.backend`, `engine.tiered.backgroundPromotion`,
  * `engine.compilation`, and the JIT event listeners) configure the
  * engine-owned, built-once compiler and are therefore not overridable per
  * module.

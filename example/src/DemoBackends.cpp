@@ -34,10 +34,10 @@ val<int64_t> sumOfSquares(val<int32_t> n) {
 
 static void runWith(const std::string& backendName, int32_t n) {
 	engine::Options options;
+	// Pinning a backend forces single-tier compilation, so each run uses
+	// exactly the requested backend instead of the tiered default switching
+	// between them.
 	options.setOption("engine.backend", backendName);
-	// Force single-tier compilation so each run uses exactly the requested
-	// backend, instead of the tiered strategy switching between them.
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
 	// Enable the per-compile statistics report.
 	options.setOption("engine.logStatistics", true);
 	auto engine = engine::NautilusEngine(options);

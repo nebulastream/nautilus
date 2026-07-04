@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LegacyCompiler.hpp"
+#include "CompilationPipeline.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include <atomic>
@@ -51,6 +51,12 @@ namespace nautilus::compiler {
  *
  * Compiles functions first with a fast backend (tier 0) for immediate execution,
  * then promotes to a high-performance backend (tier 1) in the background.
+ *
+ * This is the only JITCompiler strategy. Single-tier compilation is a
+ * configuration of it: setting `engine.backend=<x>` compiles synchronously
+ * with exactly that backend (tier1=<x>, no tier-0 compile, no promotion),
+ * and `engine.tiered.backgroundPromotion=false` compiles single-tier with
+ * the configured tier-1 backend.
  *
  * The compiler keeps a reference to the module state and directly swaps the
  * executable and increments the version counter when tier-1 compilation completes.
@@ -118,7 +124,7 @@ private:
 	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
 	                  engine::ModuleOptions options) const;
 
-	LegacyCompiler baseCompiler_;
+	CompilationPipeline pipeline_;
 	engine::TieredCompilationConfig config_;
 
 	mutable std::vector<std::thread> promotionThreads_;

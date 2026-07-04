@@ -1,4 +1,5 @@
 #include "catch2/catch_test_macros.hpp"
+#include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
@@ -329,8 +330,10 @@ TEST_CASE("Tiered Compilation - Single Tier Mode Via Option") {
 	REQUIRE(fn(-1) == 0);
 }
 
-TEST_CASE("Tiered Compilation - Standard JITCompiler Still Works") {
-	// Verify the original JITCompiler path is unchanged
+TEST_CASE("Tiered Compilation - Explicit Backend Runs Single-Tier") {
+	// `engine.backend` pins a single backend: the tiered compiler runs in
+	// single-tier mode with tier1 = that backend, compiles synchronously and
+	// never promotes.
 	std::vector<std::string> backends;
 #ifdef ENABLE_TRACING
 #ifdef ENABLE_MLIR_BACKEND
@@ -345,18 +348,30 @@ TEST_CASE("Tiered Compilation - Standard JITCompiler Still Works") {
 #endif
 
 	for (auto& backend : backends) {
-		DYNAMIC_SECTION("standard " + backend) {
+		DYNAMIC_SECTION("explicit " + backend) {
 			Options options;
 			options.setOption("engine.backend", backend);
 			auto engine = NautilusEngine(options);
+
+			// Single-tier mode reports the bare backend name.
+			REQUIRE(engine.getNameOfBackend() == backend);
 
 			auto module = engine.createModule();
 			module.registerFunction("add_one", tieredAddOne);
 			auto compiled = module.compile();
 			auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
 
+			// Correct results immediately: the compile is synchronous and the
+			// executable was produced by the pinned backend.
 			REQUIRE(fn(5) == 6);
 			REQUIRE(fn(0) == 1);
+
+			// The pinned backend ran as the single (tier-1) tier.
+			auto stats = compiled.getStatistics();
+			REQUIRE(stats != nullptr);
+			REQUIRE(stats->contains("tier"));
+			REQUIRE(std::get<std::string>(*stats->find("tier")) == "tier1");
+			REQUIRE(std::get<std::string>(*stats->find("backend.name")) == backend);
 		}
 	}
 }

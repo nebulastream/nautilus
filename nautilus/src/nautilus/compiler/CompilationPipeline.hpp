@@ -1,46 +1,44 @@
 #pragma once
 
-#include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
-#include <functional>
+#include "nautilus/options.hpp"
 #include <list>
 #include <memory>
+#include <string>
 
 namespace nautilus::compiler {
 
 class CompilationStatistics;
+class Executable;
+class CompilationBackendRegistry;
+class CompilableFunction;
+
+namespace ir {
+class IRGraph;
+}
 
 /**
- * @brief Standard single-tier JIT compiler implementation.
+ * @brief Frontend + backend compilation pipeline shared by all tiers.
  *
- * Compiles functions using a single backend (selected via options).
- * This is the original Nautilus compilation strategy.
+ * Provides the tracing → SSA → IR-generation → backend machinery that the
+ * TieredJITCompiler runs for every tier compile. It is an internal helper,
+ * not a JITCompiler strategy of its own.
  *
- * The compiler never owns an Arena.  It draws a fresh trace arena from the
- * supplied trace ArenaPool for the duration of each compile() and returns it
- * (softReset and recycled) when done.  Because the pool is internally
- * synchronized and hands every concurrent compile() a distinct arena,
- * compile() is safe to call from multiple threads on a single shared
- * compiler.  Both the trace pool and the IR-arena pool must outlive the
- * compiler.
+ * The pipeline never owns an Arena.  It draws a fresh trace arena from the
+ * supplied trace ArenaPool for the duration of each compileToIR() and
+ * returns it (softReset and recycled) when done.  Because the pool is
+ * internally synchronized and hands every concurrent compile a distinct
+ * arena, the pipeline is safe to use from multiple threads.  Both the
+ * trace pool and the IR-arena pool must outlive the pipeline.
  */
-class LegacyCompiler : public JITCompiler {
+class CompilationPipeline {
 public:
-	/// Construct a compiler that draws trace arenas from @p traceArenaPool and
-	/// IR-graph arenas from @p irArenaPool.  Both must outlive the compiler.
-	LegacyCompiler(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
-	~LegacyCompiler() override;
+	/// Construct a pipeline that draws trace arenas from @p traceArenaPool and
+	/// IR-graph arenas from @p irArenaPool.  Both must outlive the pipeline.
+	CompilationPipeline(engine::Options options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool);
+	~CompilationPipeline();
 
-	[[nodiscard]] std::unique_ptr<Executable> compile(wrapper_function function,
-	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
-	[[nodiscard]] std::unique_ptr<Executable> compile(std::list<CompilableFunction>& functions,
-	                                                  const engine::ModuleOptions& moduleOptions = {}) const override;
-
-	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
-	                   std::shared_ptr<engine::details::ModuleState> state) const override;
-
-	std::string getName() const override;
-	const engine::Options& getOptions() const override {
+	const engine::Options& getOptions() const {
 		return options;
 	}
 
@@ -49,8 +47,7 @@ public:
 	 *
 	 * When @p statistics is non-null, tracing/SSA/IR-generation/IR-pass
 	 * timings and entity counts are recorded into it. Logging of the
-	 * final report is the caller's responsibility; @ref compile wires it
-	 * up for the common case.
+	 * final report is the caller's responsibility.
 	 *
 	 * @return Shared IR graph that can be compiled by any backend
 	 */
@@ -79,9 +76,9 @@ private:
 	const CompilationBackendRegistry* backends;
 
 	/// Non-owning pointer to the externally supplied trace-arena pool.  Each
-	/// compile() acquires a fresh arena from it for the duration of tracing
-	/// and IR generation, then returns it.  Marked mutable because compile()
-	/// is const but acquire() mutates the pool.
+	/// compileToIR() acquires a fresh arena from it for the duration of
+	/// tracing and IR generation, then returns it.  Marked mutable because
+	/// compileToIR() is const but acquire() mutates the pool.
 	mutable common::ArenaPool* traceArenaPool_;
 	/// Non-owning pointer to the externally supplied IR-arena pool.  Each
 	/// IRGraph created during compileToIR acquires its arena from here, so
