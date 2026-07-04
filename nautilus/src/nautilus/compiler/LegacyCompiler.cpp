@@ -18,7 +18,10 @@
 #ifdef ENABLE_COMPILER
 
 #include "nautilus/CompilableFunction.hpp"
+#include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
+#include "nautilus/compiler/ir/passes/ConstantBranchFoldingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
+#include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
@@ -166,6 +169,19 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		if (!moduleOptions.getOptionOrDefault("ir.disableConstantFolding", false)) {
 			group.push_back(std::make_unique<ir::ConstantFoldingAndCopyPropagationPass>());
 		}
+		// Canonicalizes and folds local algebraic identities; see design
+		// §4.3-B. Runs right after constant folding so the constants it
+		// produces are canonicalized to the right operand immediately.
+		if (!moduleOptions.getOptionOrDefault("ir.disableAlgebraicSimplification", false)) {
+			group.push_back(std::make_unique<ir::AlgebraicSimplificationPass>());
+		}
+		// Closes the loop constant folding/simplification opens: a compare
+		// that folded to a constant bool still drives a conditional branch
+		// until this pass turns it into an unconditional one and sweeps the
+		// dead arm; see design §4.3-C.
+		if (!moduleOptions.getOptionOrDefault("ir.disableConstantBranchFolding", false)) {
+			group.push_back(std::make_unique<ir::ConstantBranchFoldingPass>());
+		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
 		}
@@ -175,6 +191,13 @@ std::shared_ptr<ir::IRGraph> LegacyCompiler::compileToIR(std::list<CompilableFun
 		// an ALU-bound backend.
 		if (moduleOptions.getOptionOrDefault("ir.enableStrengthReduction", false)) {
 			group.push_back(std::make_unique<ir::StrengthReductionPass>());
+		}
+		// Sweeps constant-folding and strength-reduction residue (dead
+		// feeding constants, the neutralized multiply) every round; see
+		// design §4.3-A. Runs last in the group so it cleans up whatever the
+		// passes above it produced that round.
+		if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
+			group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
 		}
 		// Re-run the whole group until a full round changes nothing (e.g.
 		// empty-block elimination exposing a new copy-propagation
