@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LegacyCompiler.hpp"
+#include "CompilationPipeline.hpp"
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include <atomic>
@@ -17,11 +17,17 @@ struct ModuleState;
 
 namespace nautilus::engine {
 
+/// Sentinel tier-0 backend name: skip the synchronous tier-0 compile and run
+/// the module interpreted (direct invocation of the original callable) until
+/// the background tier-1 compilation swaps in its executable.
+inline constexpr auto INTERPRETER_BACKEND = "interpreter";
+
 /**
  * @brief Configuration for a single compilation tier.
  */
 struct TierConfig {
-	std::string backend; // backend name ("bc", "mlir", "cpp", "asmjit")
+	std::string backend; // backend name ("bc", "mlir", "cpp", "asmjit"), or
+	                     // INTERPRETER_BACKEND for tier 0
 };
 
 /**
@@ -29,6 +35,10 @@ struct TierConfig {
  *
  * Tier 0 is the fast compilation tier used immediately.
  * Tier 1 is the high-performance tier compiled in the background.
+ *
+ * When constructed from options without explicit tier settings, tier 0 is
+ * selected by availability in the order: asmjit, bc, interpreter. The
+ * interpreter tier runs the module uncompiled until tier 1 is promoted.
  */
 struct TieredCompilationConfig {
 	TierConfig tier0 {"bc"};   // low-latency tier (compiled synchronously)
@@ -51,6 +61,12 @@ namespace nautilus::compiler {
  *
  * Compiles functions first with a fast backend (tier 0) for immediate execution,
  * then promotes to a high-performance backend (tier 1) in the background.
+ *
+ * This is the only JITCompiler strategy. Single-tier compilation is a
+ * configuration of it: setting `engine.backend=<x>` compiles synchronously
+ * with exactly that backend (tier1=<x>, no tier-0 compile, no promotion),
+ * and `engine.tiered.backgroundPromotion=false` compiles single-tier with
+ * the configured tier-1 backend.
  *
  * The compiler keeps a reference to the module state and directly swaps the
  * executable and increments the version counter when tier-1 compilation completes.
@@ -118,7 +134,7 @@ private:
 	void promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
 	                  engine::ModuleOptions options) const;
 
-	LegacyCompiler baseCompiler_;
+	CompilationPipeline pipeline_;
 	engine::TieredCompilationConfig config_;
 
 	mutable std::vector<std::thread> promotionThreads_;

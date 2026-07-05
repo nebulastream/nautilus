@@ -30,7 +30,16 @@ static std::string createPromotionUnitID() {
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool& traceArenaPool,
                                      common::ArenaPool& irArenaPool)
-    : baseCompiler_(options, traceArenaPool, irArenaPool) {
+    : pipeline_(options, traceArenaPool, irArenaPool) {
+	// An explicitly selected backend pins single-tier compilation: the engine
+	// compiles synchronously with exactly this backend and never promotes.
+	// It takes precedence over the tier options.
+	auto explicitBackend = options.getOptionOrDefault<std::string>("engine.backend", "");
+	if (!explicitBackend.empty()) {
+		config_.tier1.backend = explicitBackend;
+		config_.backgroundPromotion = false;
+		return;
+	}
 	auto tier0 = options.getOptionOrDefault<std::string>("engine.tier0.backend", "");
 	auto tier1 = options.getOptionOrDefault<std::string>("engine.tier1.backend", "");
 	if (!tier0.empty() && !tier1.empty()) {
@@ -38,11 +47,38 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
 		config_.tier1.backend = tier1;
 	}
 	config_.backgroundPromotion = options.getOptionOrDefault("engine.tiered.backgroundPromotion", true);
+	if (tier0.empty() || tier1.empty()) {
+		// Default tiers: pick from what this build actually registered, so
+		// default options keep working in reduced builds; explicit user
+		// choices above stay strict and fail at compile time.
+		auto* registry = CompilationBackendRegistry::getInstance();
+		if (!registry->hasBackend(config_.tier1.backend)) {
+			auto fallback = registry->getDefaultBackendName();
+			if (!fallback.empty()) {
+				config_.tier1.backend = fallback;
+			}
+		}
+		// Tier-0 preference order: asmjit, bc, interpreter. The interpreter
+		// tier is always available — the module runs uncompiled until the
+		// background tier-1 promotion swaps in its executable.
+		if (registry->hasBackend("asmjit")) {
+			config_.tier0.backend = "asmjit";
+		} else if (registry->hasBackend("bc")) {
+			config_.tier0.backend = "bc";
+		} else {
+			config_.tier0.backend = engine::INTERPRETER_BACKEND;
+		}
+		if (config_.tier0.backend == config_.tier1.backend) {
+			// Promoting to the tier-0 backend would be a no-op; compile
+			// single-tier instead.
+			config_.backgroundPromotion = false;
+		}
+	}
 }
 
 TieredJITCompiler::TieredJITCompiler(engine::Options options, engine::TieredCompilationConfig config,
                                      common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : baseCompiler_(options, traceArenaPool, irArenaPool), config_(std::move(config)) {
+    : pipeline_(options, traceArenaPool, irArenaPool), config_(std::move(config)) {
 }
 
 TieredJITCompiler::~TieredJITCompiler() {
@@ -68,8 +104,8 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 	auto statistics = std::make_shared<CompilationStatistics>();
 	const auto compilationStart = std::chrono::steady_clock::now();
 
-	auto ir = baseCompiler_.compileToIR(functions, moduleOptions, statistics.get());
-	auto executable = baseCompiler_.compileIR(ir, backend, moduleOptions, statistics.get());
+	auto ir = pipeline_.compileToIR(functions, moduleOptions, statistics.get());
+	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
 
 	statistics->recordTimingMs("compilation.totalMs", compilationStart);
 	statistics->set("tier", tierLabel);
@@ -91,8 +127,10 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions,
                                                        const engine::ModuleOptions& moduleOptions) const {
 	std::shared_ptr<ir::IRGraph> ir;
-	if (!config_.backgroundPromotion) {
+	if (!config_.backgroundPromotion || config_.tier0.backend == engine::INTERPRETER_BACKEND) {
 		// Single-tier: compile directly with the high-performance backend.
+		// The interpreter tier-0 also lands here: without a module state
+		// there is nothing to run interpreted, so compile tier-1 up front.
 		return compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
 	}
 	// Two-tier: return the fast tier-0 executable (no module state to promote into).
@@ -106,6 +144,15 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 	if (!config_.backgroundPromotion) {
 		// Single-tier: compile directly with the high-performance backend, no promotion.
 		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+		return;
+	}
+	if (config_.tier0.backend == engine::INTERPRETER_BACKEND) {
+		// Interpreter tier-0: leave the executable null so ModuleFunction
+		// invokes the original callables directly, and only trace to IR for
+		// the background tier-1 promotion. When the promotion completes, the
+		// executable swap and version bump re-resolve all function handles.
+		auto tracedIR = pipeline_.compileToIR(functions, moduleOptions);
+		promoteAsync(state, std::move(tracedIR), moduleOptions);
 		return;
 	}
 	// Two-tier: fast tier-0 now, then promote to tier-1 in the background using
@@ -180,13 +227,15 @@ bool TieredJITCompiler::allPromotionsComplete() const {
 
 std::string TieredJITCompiler::getName() const {
 	if (!config_.backgroundPromotion) {
-		return "tiered-single(" + config_.tier1.backend + ")";
+		// Single-tier mode reports the bare backend name so callers of
+		// NautilusEngine::getNameOfBackend() can gate on it directly.
+		return config_.tier1.backend;
 	}
 	return "tiered(" + config_.tier0.backend + "," + config_.tier1.backend + ")";
 }
 
 const engine::Options& TieredJITCompiler::getOptions() const {
-	return baseCompiler_.getOptions();
+	return pipeline_.getOptions();
 }
 
 } // namespace nautilus::compiler
@@ -198,11 +247,11 @@ const engine::Options& TieredJITCompiler::getOptions() const {
 namespace nautilus::compiler {
 
 TieredJITCompiler::TieredJITCompiler(engine::Options, common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : baseCompiler_(engine::Options(), traceArenaPool, irArenaPool) {
+    : pipeline_(engine::Options(), traceArenaPool, irArenaPool) {
 }
 TieredJITCompiler::TieredJITCompiler(engine::Options, engine::TieredCompilationConfig,
                                      common::ArenaPool& traceArenaPool, common::ArenaPool& irArenaPool)
-    : baseCompiler_(engine::Options(), traceArenaPool, irArenaPool) {
+    : pipeline_(engine::Options(), traceArenaPool, irArenaPool) {
 }
 TieredJITCompiler::~TieredJITCompiler() = default;
 std::unique_ptr<Executable> TieredJITCompiler::compile(wrapper_function, const engine::ModuleOptions&) const {
@@ -233,7 +282,7 @@ std::string TieredJITCompiler::getName() const {
 	return "";
 }
 const engine::Options& TieredJITCompiler::getOptions() const {
-	return baseCompiler_.getOptions();
+	return pipeline_.getOptions();
 }
 
 } // namespace nautilus::compiler

@@ -143,7 +143,7 @@ for (...) {
 ### Per-Module Options
 
 Options have two scopes (see [options.md](options.md)): engine-wide options configure the built-once compiler
-(backend, compilation strategy, tiers — these cannot change per module), while the per-compile *module* options
+(backend, tiers, promotion mode — these cannot change per module), while the per-compile *module* options
 (`dump.*`, `ir.*`, `mlir.optimizationLevel`, debug info, tracing flags, ...) can be overridden for an individual
 module. A module inherits all engine-wide values and overrides only what it sets.
 

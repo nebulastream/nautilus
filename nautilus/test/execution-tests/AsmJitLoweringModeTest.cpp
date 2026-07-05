@@ -202,9 +202,9 @@ engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableCons
 		    opts.setOption("asmjit.enableConstFolding", enableConstFolding);
 		    opts.setOption("asmjit.enableSelectCmov", enableSelectCmov);
 		    opts.setOption("engine.traceMode", "lazyTracing");
-		    // Force the legacy (non-tiered) path so stats land on the same
-		    // executable we query here (see PostRAPeepholeTest for details).
-		    opts.setOption("engine.compilationStrategy", std::string("legacy"));
+		    // The explicit backend set by makeEngine forces single-tier
+		    // compilation, so stats land on the same executable we query
+		    // here (see PostRAPeepholeTest for details).
 	    });
 }
 

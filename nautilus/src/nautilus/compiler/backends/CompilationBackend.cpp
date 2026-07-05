@@ -58,6 +58,10 @@ const CompilationBackend* CompilationBackendRegistry::getBackend(const std::stri
 	return items.at(name).get();
 }
 
+bool CompilationBackendRegistry::hasBackend(const std::string& name) const {
+	return items.contains(name);
+}
+
 std::string CompilationBackendRegistry::getDefaultBackendName() const {
 	// Prefer mlir if available, otherwise return the first registered backend.
 	if (items.contains("mlir")) {

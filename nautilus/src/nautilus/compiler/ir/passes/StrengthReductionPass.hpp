@@ -30,7 +30,7 @@ namespace nautilus::compiler::ir {
  * already holds, without needing a generic "rewrite every consumer type"
  * mechanism.
  *
- * Opt-in only (see "ir.enableStrengthReduction" in LegacyCompiler.cpp):
+ * Opt-in only (see "ir.enableStrengthReduction" in CompilationPipeline.cpp):
  * measured on the BC interpreter, this transform is *correct* but regresses
  * performance, because BC's per-op cost is dispatch-dominated rather than
  * ALU-dominated -- trading one multiply for a new stride-add plus a leftover

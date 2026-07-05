@@ -92,12 +92,9 @@ engine::NautilusEngine makeAsmJitEngine(bool enablePeephole) {
 	return nautilus::testing::makeEngine("asmjit", [enablePeephole](engine::Options& opts) {
 		opts.setOption("asmjit.enablePostRAPeephole", enablePeephole);
 		opts.setOption("engine.traceMode", "lazyTracing");
-		// Force the legacy (non-tiered) path so stats land on the same
-		// executable we query here. The default tiered pipeline starts
-		// with the bytecode backend at tier-0 and promotes to the
-		// default tier-1 backend asynchronously; by then the asmjit
-		// peephole stats would not be on the currently-active executable.
-		opts.setOption("engine.compilationStrategy", std::string("legacy"));
+		// The explicit backend set by makeEngine forces single-tier
+		// compilation, so the asmjit peephole stats land on the same
+		// executable we query here (no background tier-1 promotion).
 	});
 }
 

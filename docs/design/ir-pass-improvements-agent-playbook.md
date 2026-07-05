@@ -101,7 +101,7 @@ rewriter (and its tests) in M0.3 — do not let a pass bypass it.
 ### M0.4 — Pass-manager mechanics (PR-0d)
 
 Files: `ir/passes/IRPass.hpp`, `IRPassManager.{hpp,cpp}`, the three existing
-passes, `LegacyCompiler.cpp`.
+passes, `CompilationPipeline.cpp`.
 
 1. Change `IRPass::apply` to return `bool` (true iff the graph changed).
    Update the three existing passes — each already tracks a `changed` flag
@@ -111,20 +111,20 @@ passes, `LegacyCompiler.cpp`.
 2. Add fixed-point groups to `IRPassManager`. Simplest workable API:
    `void addFixedPointGroup(std::vector<std::unique_ptr<IRPass>> passes, size_t maxIterations)`
    where a plain `addPass` is a group of one with one iteration. Read
-   `ir.maxPipelineIterations` (default 4) in `LegacyCompiler.cpp` when
+   `ir.maxPipelineIterations` (default 4) in `CompilationPipeline.cpp` when
    constructing the group. Record `irPasses.pipelineIterations` in
    statistics. Per-pass timing/delta statistics must aggregate across
    iterations (sum the ms, sum the deltas).
 3. Tests: `IRPassManagerTest.cpp` gains fixed-point-group cases (group
    converges; maxIterations bound respected; no-change passes skipped in
    dumps).
-4. **Behavioral gate**: with the pipeline in `LegacyCompiler.cpp` expressed
+4. **Behavioral gate**: with the pipeline in `CompilationPipeline.cpp` expressed
    as a maxIterations=1 group of the existing passes, all test-data dumps and
    the whole suite must be unchanged. Run the full suite + fuzz smoke.
 
 ### M1 — DeadCodeEliminationPass (PR-1)
 
-Files: new `ir/passes/DeadCodeEliminationPass.{hpp,cpp}`, `LegacyCompiler.cpp`,
+Files: new `ir/passes/DeadCodeEliminationPass.{hpp,cpp}`, `CompilationPipeline.cpp`,
 new `test/ir-pass-tests/DeadCodeEliminationTest.cpp`, `docs/options.md`.
 
 1. Implement per design §4.3-A as a thin driver over
@@ -144,7 +144,7 @@ new `test/ir-pass-tests/DeadCodeEliminationTest.cpp`, `docs/options.md`.
 
 ### M2 — AlgebraicSimplificationPass (PR-2)
 
-Files: new pass + test, `LegacyCompiler.cpp`, `docs/options.md`.
+Files: new pass + test, `CompilationPipeline.cpp`, `docs/options.md`.
 
 1. Implement the rule set of design §4.3-B **exactly** — the float and
    signedness carve-outs are the specification, not suggestions. Structure:
