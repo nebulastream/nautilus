@@ -134,6 +134,31 @@ private:
 	// return the wrong caller/callee line.
 	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
 
+	/// Every SSA value produced so far for a Nautilus IR operation or block
+	/// argument, keyed by the operation's identity -- not its identifier: an
+	/// identifier is deliberately shared between a merge-block argument and
+	/// the incoming definition it was named after, and those are distinct
+	/// MLIR values. The block-scoped `ValueFrame`s only carry a block's own
+	/// arguments and local definitions; a cross-block operand (introduced by
+	/// IR passes such as block-argument pruning, which replaces an argument
+	/// with a dominating value from another block) is resolved through this
+	/// table instead -- see `resolveOperand`.
+	std::unordered_map<const ir::Operation*, ::mlir::Value> definedValues;
+
+	/// Binds @p op's resulting MLIR @p value in @p frame (block-scoped, by
+	/// identifier) and records it in `definedValues` (function-scoped, by
+	/// identity) so later blocks can resolve cross-block uses of @p op.
+	void bind(ValueFrame& frame, const ir::Operation* op, ::mlir::Value value);
+
+	/// The MLIR value for operand @p value: the block-scoped binding when
+	/// one exists (inside the owning block, an argument shadows the
+	/// same-named incoming definition), otherwise the defining operation's
+	/// own value from `definedValues`. MLIR permits direct use of any
+	/// dominating SSA value, and the DFS lowering order guarantees a
+	/// definition is recorded before any of its uses (a definition's block
+	/// dominates every use's block).
+	::mlir::Value resolveOperand(const ir::Operation* value, ValueFrame& frame);
+
 	/**
 	 * @brief Generates MLIR from a  basic block. Iterates over basic block operations and calls generate.
 	 *
