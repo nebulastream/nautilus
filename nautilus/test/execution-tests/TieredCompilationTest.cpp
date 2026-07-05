@@ -330,6 +330,101 @@ TEST_CASE("Tiered Compilation - Single Tier Mode Via Option") {
 	REQUIRE(fn(-1) == 0);
 }
 
+TEST_CASE("Tiered Compilation - Interpreter Tier 0") {
+	auto [tier0Backend, tier1Backend] = getTieredBackends();
+	if (tier1Backend.empty()) {
+		SKIP("Need a tier-1 compilation backend");
+	}
+
+	// Interpreter tier-0: the module executes uncompiled (direct invocation
+	// of the original callables) until the background tier-1 promotion swaps
+	// in its executable.
+	TieredCompilationConfig config;
+	config.tier0.backend = INTERPRETER_BACKEND;
+	config.tier1.backend = tier1Backend;
+
+	common::ArenaPool traceArenaPool;
+	common::ArenaPool irArenaPool;
+	auto tieredJit = std::make_unique<compiler::TieredJITCompiler>(Options(), config, traceArenaPool, irArenaPool);
+	auto* jit = tieredJit.get();
+	auto engine = NautilusEngine(std::move(tieredJit));
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+	module.registerFunction("sum", tieredSum);
+
+	auto compiled = module.compile();
+	auto addOneFn = compiled.getFunction<int32_t(int32_t)>("add_one");
+	auto sumFn = compiled.getFunction<int64_t(int64_t, int64_t)>("sum");
+
+	// Correct results immediately, served by the interpreted path.
+	REQUIRE(addOneFn(5) == 6);
+	REQUIRE(sumFn(3, 4) == 7);
+
+	// Wait for the tier-1 promotion to swap in the compiled executable.
+	jit->waitForPendingPromotions();
+	REQUIRE(jit->allPromotionsComplete());
+
+	// Still correct after promotion, and the executable's stats carry the
+	// tier-1 report.
+	REQUIRE(addOneFn(0) == 1);
+	REQUIRE(sumFn(-5, 10) == 5);
+	auto stats = compiled.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(std::get<std::string>(*stats->find("tier")) == "tier1");
+	REQUIRE(std::get<std::string>(*stats->find("backend.name")) == tier1Backend);
+}
+
+TEST_CASE("Tiered Compilation - Interpreter Tier 0 Via Option") {
+	auto [tier0Backend, tier1Backend] = getTieredBackends();
+	if (tier1Backend.empty()) {
+		SKIP("Need a tier-1 compilation backend");
+	}
+
+	Options options;
+	options.setOption("engine.tier0.backend", std::string(INTERPRETER_BACKEND));
+	options.setOption("engine.tier1.backend", tier1Backend);
+
+	auto engine = NautilusEngine(options);
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+
+	auto compiled = module.compile();
+	auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
+
+	// Served interpreted until promotion completes; correct either way.
+	REQUIRE(fn(100) == 101);
+	REQUIRE(fn(-1) == 0);
+}
+
+TEST_CASE("Tiered Compilation - Default Tier 0 Selection Order") {
+	// With no backend or tier options set, tier 0 is selected by
+	// availability: asmjit, then bc, then the interpreter.
+	auto engine = NautilusEngine(Options());
+	auto module = engine.createModule();
+	module.registerFunction("add_one", tieredAddOne);
+
+	auto compiled = module.compile();
+	auto fn = compiled.getFunction<int32_t(int32_t)>("add_one");
+	REQUIRE(fn(41) == 42);
+
+	auto stats = compiled.getStatistics();
+#if defined(ENABLE_TRACING) && defined(ENABLE_ASMJIT_BACKEND)
+	REQUIRE(stats != nullptr);
+	if (std::get<std::string>(*stats->find("tier")) == "tier0") {
+		REQUIRE(std::get<std::string>(*stats->find("backend.name")) == "asmjit");
+	}
+#elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
+	REQUIRE(stats != nullptr);
+	if (std::get<std::string>(*stats->find("tier")) == "tier0") {
+		REQUIRE(std::get<std::string>(*stats->find("backend.name")) == "bc");
+	}
+#else
+	// Neither asmjit nor bc: the module runs interpreted (no stats) until
+	// the background promotion completes.
+	(void) stats;
+#endif
+}
+
 TEST_CASE("Tiered Compilation - Explicit Backend Runs Single-Tier") {
 	// `engine.backend` pins a single backend: the tiered compiler runs in
 	// single-tier mode with tier1 = that backend, compiles synchronously and

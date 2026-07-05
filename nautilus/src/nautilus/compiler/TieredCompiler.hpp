@@ -17,11 +17,17 @@ struct ModuleState;
 
 namespace nautilus::engine {
 
+/// Sentinel tier-0 backend name: skip the synchronous tier-0 compile and run
+/// the module interpreted (direct invocation of the original callable) until
+/// the background tier-1 compilation swaps in its executable.
+inline constexpr auto INTERPRETER_BACKEND = "interpreter";
+
 /**
  * @brief Configuration for a single compilation tier.
  */
 struct TierConfig {
-	std::string backend; // backend name ("bc", "mlir", "cpp", "asmjit")
+	std::string backend; // backend name ("bc", "mlir", "cpp", "asmjit"), or
+	                     // INTERPRETER_BACKEND for tier 0
 };
 
 /**
@@ -29,6 +35,10 @@ struct TierConfig {
  *
  * Tier 0 is the fast compilation tier used immediately.
  * Tier 1 is the high-performance tier compiled in the background.
+ *
+ * When constructed from options without explicit tier settings, tier 0 is
+ * selected by availability in the order: asmjit, bc, interpreter. The
+ * interpreter tier runs the module uncompiled until tier 1 is promoted.
  */
 struct TieredCompilationConfig {
 	TierConfig tier0 {"bc"};   // low-latency tier (compiled synchronously)

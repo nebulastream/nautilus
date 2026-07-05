@@ -48,9 +48,9 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
 	}
 	config_.backgroundPromotion = options.getOptionOrDefault("engine.tiered.backgroundPromotion", true);
 	if (tier0.empty() || tier1.empty()) {
-		// The hardcoded default tiers (bc/mlir) may be disabled in this build.
-		// Fall back to a registered backend so default options keep working;
-		// explicit user choices above stay strict and fail at compile time.
+		// Default tiers: pick from what this build actually registered, so
+		// default options keep working in reduced builds; explicit user
+		// choices above stay strict and fail at compile time.
 		auto* registry = CompilationBackendRegistry::getInstance();
 		if (!registry->hasBackend(config_.tier1.backend)) {
 			auto fallback = registry->getDefaultBackendName();
@@ -58,7 +58,19 @@ TieredJITCompiler::TieredJITCompiler(engine::Options options, common::ArenaPool&
 				config_.tier1.backend = fallback;
 			}
 		}
-		if (config_.backgroundPromotion && !registry->hasBackend(config_.tier0.backend)) {
+		// Tier-0 preference order: asmjit, bc, interpreter. The interpreter
+		// tier is always available — the module runs uncompiled until the
+		// background tier-1 promotion swaps in its executable.
+		if (registry->hasBackend("asmjit")) {
+			config_.tier0.backend = "asmjit";
+		} else if (registry->hasBackend("bc")) {
+			config_.tier0.backend = "bc";
+		} else {
+			config_.tier0.backend = engine::INTERPRETER_BACKEND;
+		}
+		if (config_.tier0.backend == config_.tier1.backend) {
+			// Promoting to the tier-0 backend would be a no-op; compile
+			// single-tier instead.
 			config_.backgroundPromotion = false;
 		}
 	}
@@ -115,8 +127,10 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 std::unique_ptr<Executable> TieredJITCompiler::compile(std::list<CompilableFunction>& functions,
                                                        const engine::ModuleOptions& moduleOptions) const {
 	std::shared_ptr<ir::IRGraph> ir;
-	if (!config_.backgroundPromotion) {
+	if (!config_.backgroundPromotion || config_.tier0.backend == engine::INTERPRETER_BACKEND) {
 		// Single-tier: compile directly with the high-performance backend.
+		// The interpreter tier-0 also lands here: without a module state
+		// there is nothing to run interpreted, so compile tier-1 up front.
 		return compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
 	}
 	// Two-tier: return the fast tier-0 executable (no module state to promote into).
@@ -130,6 +144,15 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 	if (!config_.backgroundPromotion) {
 		// Single-tier: compile directly with the high-performance backend, no promotion.
 		state->executable = compileTier(functions, moduleOptions, config_.tier1.backend, "tier1", ir);
+		return;
+	}
+	if (config_.tier0.backend == engine::INTERPRETER_BACKEND) {
+		// Interpreter tier-0: leave the executable null so ModuleFunction
+		// invokes the original callables directly, and only trace to IR for
+		// the background tier-1 promotion. When the promotion completes, the
+		// executable swap and version bump re-resolve all function handles.
+		auto tracedIR = pipeline_.compileToIR(functions, moduleOptions);
+		promoteAsync(state, std::move(tracedIR), moduleOptions);
 		return;
 	}
 	// Two-tier: fast tier-0 now, then promote to tier-1 in the background using
