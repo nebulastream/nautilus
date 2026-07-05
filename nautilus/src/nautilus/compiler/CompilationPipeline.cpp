@@ -19,6 +19,7 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
+#include "nautilus/compiler/ir/passes/BlockMergingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantBranchFoldingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
@@ -157,6 +158,13 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		}
 		if (!moduleOptions.getOptionOrDefault("ir.disableEmptyBlockElimination", false)) {
 			group.push_back(std::make_unique<ir::EmptyBlockEliminationPass>());
+		}
+		// Collapses the single-predecessor seams trace-generated IR is full
+		// of (and that branch folding just created more of) into straight-line
+		// blocks; see design §4.3-D. Runs after the empty-block pass so
+		// trivial hops are gone before whole blocks are spliced.
+		if (!moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
+			group.push_back(std::make_unique<ir::BlockMergingPass>());
 		}
 		// Opt-in (default off), unlike the two passes above: correct, but
 		// measured to regress the BC interpreter's dispatch-bound cost model

@@ -11,4 +11,5 @@ add_source_files(nautilus
         DeadCodeEliminationPass.cpp
         AlgebraicSimplificationPass.cpp
         ConstantBranchFoldingPass.cpp
+        BlockMergingPass.cpp
 )
