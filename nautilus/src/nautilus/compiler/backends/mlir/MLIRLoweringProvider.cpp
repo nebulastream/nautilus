@@ -890,6 +890,15 @@ void MLIRLoweringProvider::visitReturn(ir::ReturnOperation* returnOp, ValueFrame
 void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame) {
 	// First check if this is handled by an intrinsic
 	if (auto intrinsic = intrinsicManager.getIntrinsic(proxyCallOp->getFunctionPtr())) {
+		// Intrinsic handlers (plugins) read the call's arguments straight
+		// from the block-scoped frame, so seed any cross-block operand into
+		// it first -- the frame-side equivalent of resolveOperand's
+		// `definedValues` fallback.
+		for (auto* input : proxyCallOp->getInputs()) {
+			if (input != nullptr && !frame.contains(input->getIdentifier())) {
+				frame.setValue(input->getIdentifier(), resolveOperand(input, frame));
+			}
+		}
 		const auto& intrinsicFunction = *intrinsic;
 		if (intrinsicFunction(builder, proxyCallOp, frame)) {
 			return;
