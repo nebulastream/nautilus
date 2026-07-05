@@ -554,4 +554,152 @@ TEST_CASE("FunctionRewriter M10: large straight-line graph smoke test") {
 	requireVerifierClean(*irGraph);
 }
 
+// ── mergeIntoPredecessor: CFG splice primitive ──────────────────────────
+
+namespace {
+
+/// entry -> mid(x) -> exit(y): entry defines a constant and branches to mid
+/// passing it; mid computes `x + x` and branches to exit passing the sum;
+/// exit returns its argument.
+std::shared_ptr<IRGraph> makeTwoBlockChainGraph() {
+	auto irGraph = std::make_shared<IRGraph>("merge-chain-test");
+	auto& arena = irGraph->getArena();
+
+	auto* exitArg = arena.create<BasicBlockArgument>(OperationIdentifier {30}, Type::i32);
+	auto* exitBlock = arena.create<BasicBlock>(arena, BlockIdentifier {2}, std::vector<BasicBlockArgument*> {exitArg});
+	exitBlock->addOperation<ReturnOperation>(exitArg);
+
+	auto* midArg = arena.create<BasicBlockArgument>(OperationIdentifier {20}, Type::i32);
+	auto* mid = arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {midArg});
+	auto* sum = mid->addOperation<AddOperation>(OperationIdentifier {21}, midArg, midArg);
+	mid->addNextBlock(exitBlock, std::vector<Operation*> {sum});
+
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	auto* c = entry->addOperation<ConstIntOperation>(OperationIdentifier {10}, 5, Type::i32);
+	entry->addNextBlock(mid, std::vector<Operation*> {c});
+
+	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, mid, exitBlock},
+	                                           std::vector<Type> {}, std::vector<std::string> {}, Type::i32);
+	irGraph->addFunctionOperation(fn);
+	return irGraph;
+}
+
+} // namespace
+
+TEST_CASE("FunctionRewriter merge: single-predecessor successor splices into its predecessor") {
+	auto ir = makeTwoBlockChainGraph();
+	rebuildPredecessorLists(*ir);
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	auto* mid = findBlock(*fn, 1);
+	auto* exitBlock = findBlock(*fn, 2);
+	auto* c = findOp(*fn, 10);
+	auto* sum = findOp(*fn, 21);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	rewriter.mergeIntoPredecessor(entry, mid);
+
+	// mid is gone; entry adopted its add and its branch, in order.
+	REQUIRE(fn->getBasicBlocks().size() == 2);
+	REQUIRE(findBlock(*fn, 1) == nullptr);
+	const auto& ops = entry->getOperations();
+	REQUIRE(ops.size() == 3); // const, add, branch
+	REQUIRE(ops[1] == sum);
+	// The add's operands were rewired from mid's argument to the value the
+	// branch passed on the edge.
+	REQUIRE(sum->getInputs()[0] == c);
+	REQUIRE(sum->getInputs()[1] == c);
+	REQUIRE(rewriter.definingBlock(sum) == entry);
+	// exit's predecessor edge now belongs to entry.
+	REQUIRE(exitBlock->getPredecessors() == std::vector<BasicBlock*> {entry});
+
+	requireVerifierClean(*ir);
+}
+
+TEST_CASE("FunctionRewriter merge: precondition violations throw and mutate nothing") {
+	SECTION("target with two predecessor edges") {
+		auto ir = IRGraphFixtures::makeDiamondGraph();
+		rebuildPredecessorLists(*ir);
+		auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+		FunctionRewriter rewriter(*fn, ir->getArena());
+		const auto before = ir->toString();
+		// then(1) ends in a branch to merge(3), but merge has two
+		// predecessor edges.
+		REQUIRE_THROWS_AS(rewriter.mergeIntoPredecessor(findBlock(*fn, 1), findBlock(*fn, 3)), RuntimeException);
+		REQUIRE(ir->toString() == before);
+	}
+
+	SECTION("predecessor ends in a conditional terminator") {
+		auto ir = IRGraphFixtures::makeDiamondGraph();
+		rebuildPredecessorLists(*ir);
+		auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+		FunctionRewriter rewriter(*fn, ir->getArena());
+		// entry(0) ends in an if, and then(1) has a single predecessor edge
+		// -- still not mergeable.
+		REQUIRE_THROWS_AS(rewriter.mergeIntoPredecessor(findBlock(*fn, 0), findBlock(*fn, 1)), RuntimeException);
+	}
+
+	SECTION("entry block as merge target") {
+		auto ir = makeTwoBlockChainGraph();
+		rebuildPredecessorLists(*ir);
+		auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+		FunctionRewriter rewriter(*fn, ir->getArena());
+		REQUIRE_THROWS_AS(rewriter.mergeIntoPredecessor(findBlock(*fn, 1), findBlock(*fn, 0)), RuntimeException);
+	}
+
+	SECTION("self-loop") {
+		auto irGraph = std::make_shared<IRGraph>("merge-self-loop-test");
+		auto& arena = irGraph->getArena();
+		auto* loop = arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {});
+		loop->addNextBlock(loop, std::span<Operation* const> {});
+		auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+		entry->addNextBlock(loop, std::span<Operation* const> {});
+		auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, loop},
+		                                           std::vector<Type> {}, std::vector<std::string> {}, Type::v);
+		irGraph->addFunctionOperation(fn);
+		rebuildPredecessorLists(*irGraph);
+
+		FunctionRewriter rewriter(*fn, arena);
+		REQUIRE_THROWS_AS(rewriter.mergeIntoPredecessor(loop, loop), RuntimeException);
+	}
+}
+
+TEST_CASE("FunctionRewriter merge: adopted conditional terminator moves both predecessor edges") {
+	// entry -> pre -> (if) then / else: merging pre into entry must leave
+	// then and else each listing entry (not pre) as their predecessor.
+	auto irGraph = std::make_shared<IRGraph>("merge-if-terminator-test");
+	auto& arena = irGraph->getArena();
+
+	auto* thenBlock = arena.create<BasicBlock>(arena, BlockIdentifier {2}, std::vector<BasicBlockArgument*> {});
+	thenBlock->addOperation<ReturnOperation>();
+	auto* elseBlock = arena.create<BasicBlock>(arena, BlockIdentifier {3}, std::vector<BasicBlockArgument*> {});
+	elseBlock->addOperation<ReturnOperation>();
+
+	auto* condArg = arena.create<BasicBlockArgument>(OperationIdentifier {20}, Type::b);
+	auto* pre = arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {condArg});
+	auto* ifOp = arena.create<IfOperation>(arena, condArg, 0.5);
+	ifOp->setTrueBlockInvocation(thenBlock);
+	ifOp->setFalseBlockInvocation(elseBlock);
+	pre->addOperation(ifOp);
+
+	auto* entryCondArg = arena.create<BasicBlockArgument>(OperationIdentifier {1}, Type::b);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {entryCondArg});
+	entry->addNextBlock(pre, std::vector<Operation*> {entryCondArg});
+
+	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, pre, thenBlock, elseBlock},
+	                                           std::vector<Type> {Type::b}, std::vector<std::string> {"cond"}, Type::v);
+	irGraph->addFunctionOperation(fn);
+	rebuildPredecessorLists(*irGraph);
+
+	FunctionRewriter rewriter(*fn, arena);
+	rewriter.mergeIntoPredecessor(entry, pre);
+
+	REQUIRE(fn->getBasicBlocks().size() == 3);
+	REQUIRE(entry->getTerminatorOp() == ifOp);
+	REQUIRE(ifOp->getBooleanValue() == entryCondArg); // condArg's use rewired to the passed value
+	REQUIRE(thenBlock->getPredecessors() == std::vector<BasicBlock*> {entry});
+	REQUIRE(elseBlock->getPredecessors() == std::vector<BasicBlock*> {entry});
+	requireVerifierClean(*irGraph);
+}
+
 } // namespace nautilus::testing

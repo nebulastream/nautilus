@@ -277,6 +277,18 @@ private:
 	std::unordered_map<ir::BlockIdentifier, int> activeBlocks;
 	std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 	std::unordered_set<ir::OperationIdentifier> functionArgs;
+	/// Identifiers with at least one use outside their defining block (IR
+	/// passes such as block-argument pruning may replace a block argument
+	/// with a dominating value from another block). Such values stay live
+	/// across block boundaries -- possibly across a backward branch into an
+	/// earlier-emitted block -- so emission-order use-count freeing is
+	/// unsound for them: their registers are allocated pinned (never
+	/// recycled). Registers in the free-list pool therefore only ever back
+	/// block-locally-used values, whose def and uses execute contiguously
+	/// within one atomic block execution, which is what keeps reuse (and
+	/// re-executed stale defs of a reused slot) unobservable. Empty whenever
+	/// the IR keeps the strict block-argument threading discipline.
+	std::unordered_set<ir::OperationIdentifier> crossBlockIds;
 	std::vector<uint16_t> functionAllocaSlots;
 	// Where a small-constant's standalone MOV_imm landed (block, codeIndex);
 	// consulted when the constant is later folded into an immediate to see if
@@ -314,24 +326,50 @@ private:
 		if (frame.contains(opt->getIdentifier())) {
 			return frame.getValue(opt->getIdentifier());
 		}
+		// Values read outside their defining block must never enter the
+		// reuse pool (see the `crossBlockIds` policy).
+		if (crossBlockIds.contains(opt->getIdentifier())) {
+			return registerProvider.allocPinnedRegister();
+		}
 		return registerProvider.allocRegister();
 	}
 
+	/// Same walk as bc's countAllUsages, additionally classifying
+	/// cross-block reads for the pinning policy documented at
+	/// `crossBlockIds`: a block's arguments and definitions are recorded
+	/// before its uses are scanned, and SSA dominance guarantees a use's
+	/// defining block is walked no later than the use itself.
 	void countAllUsages(const ir::BasicBlock* entryBlock) {
 		std::unordered_set<ir::BlockIdentifier> visited;
 		std::vector<const ir::BasicBlock*> worklist;
 		worklist.push_back(entryBlock);
 		visited.insert(entryBlock->getIdentifier());
 
-		auto countInput = [this](const ir::Operation* input) {
+		std::unordered_map<const ir::Operation*, const ir::BasicBlock*> definingBlock;
+		const ir::BasicBlock* currentBlock = nullptr;
+
+		auto countInput = [this, &definingBlock, &currentBlock](const ir::Operation* input) {
 			if (input != nullptr) {
 				usageCounts[input->getIdentifier()]++;
+				auto it = definingBlock.find(input);
+				// An unknown defining block cannot be proven block-local, so
+				// it is conservatively treated as a cross-block read.
+				if (it == definingBlock.end() || it->second != currentBlock) {
+					crossBlockIds.insert(input->getIdentifier());
+				}
 			}
 		};
 
 		while (!worklist.empty()) {
 			const auto* block = worklist.back();
 			worklist.pop_back();
+			currentBlock = block;
+			for (auto* argument : block->getArguments()) {
+				definingBlock[argument] = block;
+			}
+			for (auto* opt : block->getOperations()) {
+				definingBlock[opt] = block;
+			}
 			for (auto* opt : block->getOperations()) {
 				for (auto* input : opt->getInputs()) {
 					countInput(input);
@@ -726,9 +764,17 @@ private:
 		if (!options.enableRegisterAllocator || !options.enableRegisterCoalescing) {
 			std::vector<uint16_t> tempArgs;
 			tempArgs.reserve(blockInputArguments.size());
-			for (auto* input : blockInputArguments) {
+			for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+				auto* input = blockInputArguments[i];
 				const auto sourceReg = parentFrame.getValue(input->getIdentifier());
-				const auto tempReg = registerProvider.allocFreshRegister();
+				// A temp that will become the binding of a cross-block target
+				// argument must be pinned (see `crossBlockIds`); a temp that
+				// only stages into an already-bound target stays recyclable.
+				const auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+				const bool becomesCrossBlockBinding =
+				    !parentFrame.contains(blockTargetArgument) && crossBlockIds.contains(blockTargetArgument);
+				const auto tempReg = becomesCrossBlockBinding ? registerProvider.allocPinnedRegister()
+				                                              : registerProvider.allocFreshRegister();
 				tempArgs.push_back(tempReg);
 				emit(block, Op::MOV, tempReg, sourceReg);
 				useValue(input->getIdentifier(), parentFrame);
@@ -757,7 +803,11 @@ private:
 			const auto sourceReg = parentFrame.getValue(input->getIdentifier());
 			const auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
 			if (!parentFrame.contains(blockTargetArgument)) {
-				const auto freshReg = registerProvider.allocFreshRegister();
+				// Cross-block target arguments get a pinned register (see
+				// `crossBlockIds`); both alloc kinds bypass the free list.
+				const auto freshReg = crossBlockIds.contains(blockTargetArgument)
+				                          ? registerProvider.allocPinnedRegister()
+				                          : registerProvider.allocFreshRegister();
 				emit(block, Op::MOV, freshReg, sourceReg);
 				freshBindings.emplace_back(blockTargetArgument, freshReg);
 			} else {

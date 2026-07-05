@@ -129,6 +129,20 @@ private:
 		std::unordered_map<ir::BlockIdentifier, short> activeBlocks;
 		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 		std::unordered_set<ir::OperationIdentifier> functionArgs;
+		/// Identifiers with at least one use outside their defining block
+		/// (IR passes such as block-argument pruning may replace a block
+		/// argument with a dominating value from another block). Such values
+		/// stay live across block boundaries -- possibly across a backward
+		/// branch into an earlier-emitted block -- so the emission-order
+		/// use-count freeing below is unsound for them: their registers are
+		/// allocated pinned (never recycled). Registers in the free-list pool
+		/// therefore only ever back block-locally-used values, whose def and
+		/// uses execute contiguously within one atomic block execution, which
+		/// is what keeps reuse (and re-executed stale defs of a reused slot)
+		/// unobservable. Empty whenever the IR keeps the strict
+		/// block-argument threading discipline, making this a no-op for such
+		/// functions.
+		std::unordered_set<ir::OperationIdentifier> crossBlockIds;
 		/// Pinned registers backing each entry in the current function's
 		/// alloca table.  Each register holds a stable pointer to its
 		/// corresponding allocaBuffers slot; visitAlloca resolves an index

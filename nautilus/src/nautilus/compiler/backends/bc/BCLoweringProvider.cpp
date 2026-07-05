@@ -1167,9 +1167,17 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 		// argument still round-trips through a fresh temp register.
 		std::vector<short> tempArgs;
 		tempArgs.reserve(blockInputArguments.size());
-		for (auto* input : blockInputArguments) {
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto* input = blockInputArguments[i];
 			auto sourceReg = parentFrame.getValue(input->getIdentifier());
-			auto tempReg = registerProvider.allocFreshRegister();
+			// A temp that will become the binding of a cross-block target
+			// argument must be pinned (see `crossBlockIds`); a temp that is
+			// only staging into an already-bound target stays recyclable.
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			const bool becomesCrossBlockBinding =
+			    !parentFrame.contains(blockTargetArgument) && crossBlockIds.contains(blockTargetArgument);
+			auto tempReg = becomesCrossBlockBinding ? registerProvider.allocPinnedRegister()
+			                                        : registerProvider.allocFreshRegister();
 			tempArgs.push_back(tempReg);
 			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
 			useValue(input->getIdentifier(), parentFrame);
@@ -1206,7 +1214,12 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
 		auto sourceReg = parentFrame.getValue(input->getIdentifier());
 		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
 		if (!parentFrame.contains(blockTargetArgument)) {
-			auto freshReg = registerProvider.allocFreshRegister();
+			// Cross-block target arguments get a pinned register (see
+			// `crossBlockIds`); allocFreshRegister still bypasses the free
+			// list either way, so nothing here can alias a sibling
+			// argument's just-freed slot.
+			auto freshReg = crossBlockIds.contains(blockTargetArgument) ? registerProvider.allocPinnedRegister()
+			                                                            : registerProvider.allocFreshRegister();
 			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, freshReg});
 			freshBindings.emplace_back(blockTargetArgument, freshReg);
 		} else {
@@ -2150,6 +2163,11 @@ short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation* opt,
 	if (frame.contains(opt->getIdentifier())) {
 		return frame.getValue(opt->getIdentifier());
 	}
+	// Values read outside their defining block must never enter the reuse
+	// pool (see the `crossBlockIds` policy in the header).
+	if (crossBlockIds.contains(opt->getIdentifier())) {
+		return registerProvider.allocPinnedRegister();
+	}
 	return registerProvider.allocRegister();
 }
 
@@ -2159,21 +2177,41 @@ void BCLoweringProvider::LoweringContext::countAllUsages(const ir::BasicBlock* e
 	// operand span uniformly — the only values that live outside that
 	// span are the arguments attached to the BasicBlockInvocations
 	// embedded in IfOp and BranchOp terminators, so we visit those
-	// explicitly.
+	// explicitly. The same walk classifies cross-block reads for the
+	// pinning policy documented at `crossBlockIds`: a block's arguments
+	// and definitions are recorded before its uses are scanned, and SSA
+	// dominance guarantees a use's defining block is walked no later
+	// than the use itself, so the map is always complete when consulted.
 	std::unordered_set<ir::BlockIdentifier> visited;
 	std::vector<const ir::BasicBlock*> worklist;
 	worklist.push_back(entryBlock);
 	visited.insert(entryBlock->getIdentifier());
 
-	auto countInput = [this](const ir::Operation* input) {
+	std::unordered_map<const ir::Operation*, const ir::BasicBlock*> definingBlock;
+	const ir::BasicBlock* currentBlock = nullptr;
+
+	auto countInput = [this, &definingBlock, &currentBlock](const ir::Operation* input) {
 		if (input != nullptr) {
 			usageCounts[input->getIdentifier()]++;
+			auto it = definingBlock.find(input);
+			// An unknown defining block cannot be proven block-local, so it
+			// is conservatively treated as a cross-block read.
+			if (it == definingBlock.end() || it->second != currentBlock) {
+				crossBlockIds.insert(input->getIdentifier());
+			}
 		}
 	};
 
 	while (!worklist.empty()) {
 		const auto* block = worklist.back();
 		worklist.pop_back();
+		currentBlock = block;
+		for (auto* argument : block->getArguments()) {
+			definingBlock[argument] = block;
+		}
+		for (auto* opt : block->getOperations()) {
+			definingBlock[opt] = block;
+		}
 		for (auto* opt : block->getOperations()) {
 			for (auto* input : opt->getInputs()) {
 				countInput(input);
