@@ -62,7 +62,7 @@ Operation* agreedPassThroughValue(const BasicBlockArgument* arg, size_t index,
 	return agreed;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena, bool enablePassThroughPruning) {
+bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	FunctionRewriter rewriter(fn, arena);
 	// This pass never adds or removes CFG edges, so dominators stay valid
 	// across every mutation it makes.
@@ -96,9 +96,6 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena, bool enablePas
 					anyChanged = true;
 					continue;
 				}
-				if (!enablePassThroughPruning) {
-					continue;
-				}
 				Operation* agreed = agreedPassThroughValue(arg, i, invocations);
 				if (agreed == nullptr) {
 					continue;
@@ -126,7 +123,7 @@ bool BlockArgumentPruningPass::apply(IRGraph& ir) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena, enablePassThroughPruning);
+			changed |= applyToFunction(*fn, arena);
 		}
 	}
 	return changed;

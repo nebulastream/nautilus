@@ -26,10 +26,10 @@ using compiler::ir::BasicBlock;
 using compiler::ir::BasicBlockArgument;
 using compiler::ir::BlockIdentifier;
 using compiler::ir::FunctionOperation;
+using compiler::ir::getSuccessorInvocations;
 using compiler::ir::IRGraph;
 using compiler::ir::Operation;
 using compiler::ir::OperationIdentifier;
-using compiler::ir::getSuccessorInvocations;
 
 BasicBlock* findBlock(const IRGraph& ir, uint32_t id) {
 	for (auto* fn : ir.getFunctionOperations()) {
@@ -60,12 +60,12 @@ Operation* findOp(const IRGraph& ir, uint32_t id) {
 	return nullptr;
 }
 
-void runPass(IRGraph& ir, bool enablePassThroughPruning = false) {
+void runPass(IRGraph& ir) {
 	engine::Options opts;
 	opts.setOption("ir.verifyAfterEachPass", true);
 	opts.setOption("ir.failOnVerifyError", true);
 	compiler::ir::IRPassManager mgr(opts);
-	mgr.addPass(std::make_unique<compiler::ir::BlockArgumentPruningPass>(enablePassThroughPruning));
+	mgr.addPass(std::make_unique<compiler::ir::BlockArgumentPruningPass>());
 	mgr.run(ir);
 }
 
@@ -82,7 +82,7 @@ TEST_CASE("BlockArgumentPruning: unused argument removed from the block and ever
 	auto* mergeBlock = findBlock(*ir, 3);
 	REQUIRE(mergeBlock->getArguments().size() == 2);
 
-	runPass(*ir, /*enablePassThroughPruning=*/true);
+	runPass(*ir);
 
 	// The unused second argument is gone; the used-but-disagreeing first
 	// argument (then passes 10, else passes 20) must survive.
@@ -125,12 +125,12 @@ TEST_CASE("BlockArgumentPruning: shared-target if -- both invocations of the one
 	ifOp->getFalseBlockInvocation().addArgument(arena, c1);
 	entry->addOperation(ifOp);
 
-	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, mergeBlock},
-	                                           std::vector<Type> {Type::b}, std::vector<std::string> {"cond"},
-	                                           Type::i32);
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, mergeBlock},
+	                                    std::vector<Type> {Type::b}, std::vector<std::string> {"cond"}, Type::i32);
 	irGraph->addFunctionOperation(fn);
 
-	runPass(*irGraph, /*enablePassThroughPruning=*/true);
+	runPass(*irGraph);
 
 	REQUIRE(mergeBlock->getArguments().size() == 1);
 	REQUIRE(mergeBlock->getArguments()[0] == usedArg);
@@ -146,21 +146,6 @@ TEST_CASE("BlockArgumentPruning: shared-target if -- both invocations of the one
 	requireVerifierClean(*irGraph);
 }
 
-TEST_CASE("BlockArgumentPruning: pass-throughs stay put unless explicitly enabled") {
-	// The loop-invariant `limit` argument is a prunable pass-through, but
-	// pass-through pruning is opt-in (the direct-lowering backends cannot
-	// digest the cross-block reads it introduces yet); the default
-	// configuration must leave it alone.
-	auto ir = IRGraphFixtures::makeNaturalLoopGraph();
-	auto* header = findBlock(*ir, 1);
-	REQUIRE(header->getArguments().size() == 3);
-
-	runPass(*ir);
-
-	REQUIRE(header->getArguments().size() == 3);
-	requireVerifierClean(*ir);
-}
-
 TEST_CASE("BlockArgumentPruning: loop-invariant carried argument replaced by the preheader value") {
 	auto ir = IRGraphFixtures::makeNaturalLoopGraph();
 	auto* header = findBlock(*ir, 1);
@@ -168,7 +153,7 @@ TEST_CASE("BlockArgumentPruning: loop-invariant carried argument replaced by the
 	auto* cmp = findOp(*ir, 23);       // header's iv < limit compare
 	REQUIRE(header->getArguments().size() == 3);
 
-	runPass(*ir, /*enablePassThroughPruning=*/true);
+	runPass(*ir);
 
 	// The latch threads `limit` back to the header unchanged (a
 	// self-referential edge, ignored for agreement), the preheader passes
@@ -216,12 +201,12 @@ TEST_CASE("BlockArgumentPruning: agreeing predecessors with a dominating value a
 	ifOp->setFalseBlockInvocation(elseBlock);
 	entry->addOperation(ifOp);
 
-	auto* fn = arena.create<FunctionOperation>(
-	    "execute", std::vector<BasicBlock*> {entry, thenBlock, elseBlock, mergeBlock}, std::vector<Type> {Type::b},
-	    std::vector<std::string> {"cond"}, Type::i32);
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, thenBlock, elseBlock, mergeBlock},
+	                                    std::vector<Type> {Type::b}, std::vector<std::string> {"cond"}, Type::i32);
 	irGraph->addFunctionOperation(fn);
 
-	runPass(*irGraph, /*enablePassThroughPruning=*/true);
+	runPass(*irGraph);
 
 	// Both arms pass the same entry-defined constant, and entry dominates
 	// the merge block: the argument disappears and the return reads the
@@ -254,7 +239,7 @@ TEST_CASE("BlockArgumentPruning: dominance failure -- unreachable region left un
 	                                           std::vector<Type> {}, std::vector<std::string> {}, Type::v);
 	irGraph->addFunctionOperation(fn);
 
-	runPass(*irGraph, /*enablePassThroughPruning=*/true);
+	runPass(*irGraph);
 
 	REQUIRE(cycleA->getArguments().size() == 1);
 	REQUIRE(getSuccessorInvocations(*cycleB->getTerminatorOp()).front()->getArguments().size() == 1);
@@ -271,11 +256,12 @@ TEST_CASE("BlockArgumentPruning: entry-block arguments are never touched") {
 	auto* c = entry->addOperation<ir::ConstIntOperation>(OperationIdentifier {2}, 3, Type::i32);
 	entry->addOperation<ir::ReturnOperation>(c);
 
-	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry}, std::vector<Type> {Type::i32},
-	                                           std::vector<std::string> {"x"}, Type::i32);
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry}, std::vector<Type> {Type::i32},
+	                                    std::vector<std::string> {"x"}, Type::i32);
 	irGraph->addFunctionOperation(fn);
 
-	runPass(*irGraph, /*enablePassThroughPruning=*/true);
+	runPass(*irGraph);
 
 	REQUIRE(entry->getArguments().size() == 1);
 	requireVerifierClean(*irGraph);
@@ -309,9 +295,9 @@ TEST_CASE("BlockArgumentPruning: argument used only by dead code dies with it in
 	ifOp->setFalseBlockInvocation(elseBlock);
 	entry->addOperation(ifOp);
 
-	auto* fn = arena.create<FunctionOperation>(
-	    "execute", std::vector<BasicBlock*> {entry, thenBlock, elseBlock, mergeBlock}, std::vector<Type> {Type::b},
-	    std::vector<std::string> {"cond"}, Type::i32);
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, thenBlock, elseBlock, mergeBlock},
+	                                    std::vector<Type> {Type::b}, std::vector<std::string> {"cond"}, Type::i32);
 	irGraph->addFunctionOperation(fn);
 
 	// One fixed-point group: DCE removes the dead cast, which strands the
@@ -339,10 +325,10 @@ TEST_CASE("BlockArgumentPruning: idempotent on an already-pruned graph") {
 	auto ir = IRGraphFixtures::makeNaturalLoopGraph();
 	auto* header = findBlock(*ir, 1);
 
-	runPass(*ir, /*enablePassThroughPruning=*/true);
+	runPass(*ir);
 	REQUIRE(header->getArguments().size() == 2);
 
-	runPass(*ir, /*enablePassThroughPruning=*/true);
+	runPass(*ir);
 	REQUIRE(header->getArguments().size() == 2);
 	requireVerifierClean(*ir);
 }
