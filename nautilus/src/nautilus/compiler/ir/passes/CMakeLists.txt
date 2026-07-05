@@ -12,4 +12,5 @@ add_source_files(nautilus
         AlgebraicSimplificationPass.cpp
         ConstantBranchFoldingPass.cpp
         BlockMergingPass.cpp
+        BlockArgumentPruningPass.cpp
 )

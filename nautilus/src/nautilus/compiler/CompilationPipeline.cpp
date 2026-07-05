@@ -19,6 +19,7 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
+#include "nautilus/compiler/ir/passes/BlockArgumentPruningPass.hpp"
 #include "nautilus/compiler/ir/passes/BlockMergingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantBranchFoldingPass.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
@@ -179,6 +180,17 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// passes above it produced that round.
 		if (!moduleOptions.getOptionOrDefault("ir.disableDeadCodeElimination", false)) {
 			group.push_back(std::make_unique<ir::DeadCodeEliminationPass>());
+		}
+		// The only pass that changes block-argument arity: prunes unused
+		// arguments (and, opt-in, same-value pass-throughs -- see the pass
+		// header for why that half is off by default); design §4.3-E. Runs
+		// last in the group because every CFG change above can strand
+		// arguments, and DCE's sweep is what turns "used only by dead code"
+		// into "unused".
+		if (!moduleOptions.getOptionOrDefault("ir.disableBlockArgumentPruning", false)) {
+			const bool passThrough =
+			    moduleOptions.getOptionOrDefault("ir.enableBlockArgumentPassThroughPruning", false);
+			group.push_back(std::make_unique<ir::BlockArgumentPruningPass>(passThrough));
 		}
 		// Re-run the whole group until a full round changes nothing (e.g.
 		// empty-block elimination exposing a new copy-propagation
