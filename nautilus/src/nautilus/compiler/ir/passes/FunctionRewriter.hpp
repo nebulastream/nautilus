@@ -187,6 +187,21 @@ public:
 	/// targets. Throws `RuntimeException` (mutating nothing) otherwise.
 	void eraseBlock(BasicBlock* block);
 
+	/// Merges @p succ into @p pred: every use of each of @p succ's block
+	/// arguments is rewired to the corresponding invocation argument of
+	/// @p pred's branch (via @ref replaceAllUses), @p succ's operations are
+	/// spliced onto the end of @p pred in place of the branch, @p succ's
+	/// terminator becomes @p pred's terminator (its successors' predecessor
+	/// lists are updated, once per invocation edge), and @p succ is detached.
+	/// Operation identity is preserved: nothing is cloned, no identifier is
+	/// reused or renumbered.
+	///
+	/// Preconditions (throws `RuntimeException`, mutating nothing):
+	/// @p pred's terminator is an unconditional branch targeting @p succ,
+	/// @p succ's only predecessor edge is that branch, `succ != pred`, and
+	/// @p succ is not the function's entry block.
+	void mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ);
+
 private:
 	/// Registers `Use{user, i}` for every non-null operand of @p user.
 	void registerUses(Operation* user);

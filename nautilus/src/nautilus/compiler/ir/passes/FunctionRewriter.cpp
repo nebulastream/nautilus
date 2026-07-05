@@ -1,4 +1,5 @@
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
@@ -309,6 +310,91 @@ void FunctionRewriter::eraseBlock(BasicBlock* block) {
 		uses_.erase(op);
 	}
 	fn_.detachBasicBlock(block);
+}
+
+void FunctionRewriter::mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ) {
+	if (succ == pred) {
+		throw RuntimeException("FunctionRewriter::mergeIntoPredecessor: cannot merge block " +
+		                       std::to_string(succ->getIdentifier().getId()) + " into itself");
+	}
+	if (succ == fn_.getEntryBlock()) {
+		throw RuntimeException("FunctionRewriter::mergeIntoPredecessor: cannot merge the function's entry block");
+	}
+	Operation* predTerminator = pred->getTerminatorOp();
+	auto* branch = predTerminator != nullptr ? dyn_cast<BranchOperation>(predTerminator) : nullptr;
+	if (branch == nullptr || branch->getNextBlockInvocation().getBlock() != succ) {
+		throw RuntimeException(
+		    "FunctionRewriter::mergeIntoPredecessor: block " + std::to_string(pred->getIdentifier().getId()) +
+		    " does not end in an unconditional branch to block " + std::to_string(succ->getIdentifier().getId()));
+	}
+	const auto& preds = succ->getPredecessors();
+	if (preds.size() != 1 || preds[0] != pred) {
+		throw RuntimeException("FunctionRewriter::mergeIntoPredecessor: block " +
+		                       std::to_string(succ->getIdentifier().getId()) + " has " + std::to_string(preds.size()) +
+		                       " predecessor edge(s), expected exactly one");
+	}
+	auto& inv = branch->getNextBlockInvocation();
+	const auto& args = succ->getArguments();
+	if (inv.getArguments().size() != args.size()) {
+		throw RuntimeException("FunctionRewriter::mergeIntoPredecessor: invocation passes " +
+		                       std::to_string(inv.getArguments().size()) + " argument(s) but block " +
+		                       std::to_string(succ->getIdentifier().getId()) + " declares " +
+		                       std::to_string(args.size()));
+	}
+	// A value defined in `succ` can only reach the branch's argument list when
+	// `pred` and `succ` sit on an unreachable cycle (a reachable use would
+	// violate SSA dominance); splicing would leave the substituted uses
+	// dangling, so such a merge is rejected outright.
+	for (auto* value : inv.getArguments()) {
+		if (value != nullptr && definingBlock(value) == succ) {
+			throw RuntimeException("FunctionRewriter::mergeIntoPredecessor: invocation argument " +
+			                       value->getIdentifier().toString() + " is defined in the block being merged");
+		}
+	}
+
+	// Rewire every use of succ's block arguments to the value the branch
+	// passes on the (single) incoming edge; the arguments die with the block.
+	std::vector<Operation*> invocationArgs(inv.getArguments().begin(), inv.getArguments().end());
+	for (size_t i = 0; i < args.size(); ++i) {
+		BasicBlockArgument* arg = args[i];
+		replaceAllUses(arg, invocationArgs[i]);
+		defBlock_.erase(arg);
+		uses_.erase(arg);
+	}
+
+	// Detach pred's branch. `removeOperation` does no CFG bookkeeping, so the
+	// pred -> succ edge is unlisted explicitly.
+	unregisterUser(branch);
+	unregisterUser(&inv);
+	defBlock_.erase(branch);
+	uses_.erase(branch);
+	pred->removeOperation(branch);
+	succ->removePredecessor(pred);
+
+	// Splice succ's operations (terminator included) onto the end of pred.
+	// Operation identity is preserved, so the use table only needs new
+	// defining-block entries.
+	const auto ops = succ->getOperations();
+	for (auto* op : ops) {
+		succ->removeOperation(op);
+		pred->addOperation(op);
+		defBlock_[op] = pred;
+	}
+
+	// The adopted terminator's targets list succ as a predecessor, once per
+	// invocation edge (a shared-target if contributes two entries); each
+	// entry now belongs to pred.
+	Operation* newTerminator = pred->getTerminatorOp();
+	if (newTerminator != nullptr) {
+		for (auto* outgoing : getSuccessorInvocations(*newTerminator)) {
+			if (auto* target = const_cast<BasicBlock*>(outgoing->getBlock())) {
+				target->removePredecessor(succ);
+				target->addPredecessor(pred);
+			}
+		}
+	}
+
+	fn_.detachBasicBlock(succ);
 }
 
 } // namespace nautilus::compiler::ir
