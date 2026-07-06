@@ -80,12 +80,41 @@ enum class Kind : uint8_t {
 	// index as a *constant*) -- exercising static_val's snapshot-hash
 	// machinery and trace-time unrolling instead of loop lowering.
 	StaticLoop,
-	// Leaves, only legal while generating inside a Loop/StaticLoop body:
-	// current iteration index / accumulator of the innermost enclosing
-	// loop. No imm payload -- nesting uses simple shadowing (innermost
-	// wins).
+	// Runtime-computed, unclamped-condition fold: kid[0]=init, kid[1]=cond,
+	// kid[2]=body. acc = eval(init); then, up to LOOP_MAX_TRIPS times: if
+	// eval(cond) == 0, stop; otherwise acc = eval(body) and repeat, with
+	// LoopIndex/LoopAcc bound to the current iteration inside both cond and
+	// body. Unlike Loop (whose trip count is a single clamped upfront
+	// expression), the number of iterations here is discovered
+	// incrementally from a loop-carried predicate that can depend on
+	// values computed inside the loop -- a different loop CFG (guard +
+	// latch) than Loop's counted `for`. Still provably terminating: the
+	// hard trip cap is enforced identically on both sides regardless of
+	// what the condition evaluates to. Lowered to a real traced loop
+	// (bounded `for` with an internal data-dependent exit), never
+	// unrolled.
+	While,
+	// Leaves, only legal while generating inside a Loop/StaticLoop/While
+	// body: current iteration index / accumulator of the innermost
+	// enclosing loop. No imm payload -- nesting uses simple shadowing
+	// (innermost wins).
 	LoopIndex,
 	LoopAcc,
+	// Conditional early exit / skip, only legal while generating inside a
+	// Loop/While body (never StaticLoop -- see breakDepth in generateNode):
+	// kid[0] = cond, kid[1] = value. `value` is always evaluated (side-effect
+	// parity, same convention as Select/If's unconditionally-evaluated arm)
+	// and becomes this node's own contribution to the surrounding
+	// expression; if eval(cond) != 0, the innermost enclosing breakable
+	// loop is additionally signalled to stop (LoopBreak) or move on to its
+	// next iteration (LoopContinue) once the current body evaluation
+	// finishes, via a real traced conditional break/continue -- exercising
+	// the exit-edge / loop-live-out merge (LoopBreak) and the
+	// back-edge-from-mid-body merge (LoopContinue) that a run-to-completion
+	// loop never forms. If both a LoopBreak and a LoopContinue signal the
+	// same iteration, break takes priority, identically on both sides.
+	LoopBreak,
+	LoopContinue,
 	// --- Memory / pointer domain -------------------------------------------
 	// A generated program owns one shared, fixed-size `T` buffer (BUFFER_ELEMS
 	// elements). kid[0] of Load/Store/PtrToInt and both kids of the Ptr*
@@ -168,17 +197,17 @@ namespace detail {
 // equally safe, given generatePtrNode's bounded construction) regardless of
 // T's domain.
 inline constexpr Kind INT_KINDS[] = {
-    Kind::Add,    Kind::Sub,   Kind::Mul,        Kind::Div,  Kind::Mod,   Kind::And,      Kind::Or,    Kind::Xor,
-    Kind::Shl,    Kind::Shr,   Kind::Eq,         Kind::Ne,   Kind::Lt,    Kind::Le,       Kind::Gt,    Kind::Ge,
-    Kind::Select, Kind::If,    Kind::Neg,        Kind::Not,  Kind::LAnd,  Kind::LOr,      Kind::LNot,  Kind::Call,
-    Kind::Cast,   Kind::Loop,  Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq, Kind::PtrNe,
-    Kind::PtrLt,  Kind::PtrLe, Kind::PtrGt,      Kind::PtrGe};
+    Kind::Add,    Kind::Sub,   Kind::Mul,        Kind::Div,   Kind::Mod,  Kind::And,   Kind::Or,       Kind::Xor,
+    Kind::Shl,    Kind::Shr,   Kind::Eq,         Kind::Ne,    Kind::Lt,   Kind::Le,    Kind::Gt,       Kind::Ge,
+    Kind::Select, Kind::If,    Kind::Neg,        Kind::Not,   Kind::LAnd, Kind::LOr,   Kind::LNot,     Kind::Call,
+    Kind::Cast,   Kind::Loop,  Kind::StaticLoop, Kind::While, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq,
+    Kind::PtrNe,  Kind::PtrLt, Kind::PtrLe,      Kind::PtrGt, Kind::PtrGe};
 
 inline constexpr Kind FLOAT_KINDS[] = {
-    Kind::Add,   Kind::Sub,   Kind::Mul,    Kind::Div,        Kind::Eq,   Kind::Ne,    Kind::Lt,       Kind::Le,
-    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,         Kind::Neg,  Kind::LAnd,  Kind::LOr,      Kind::LNot,
-    Kind::Call,  Kind::Cast,  Kind::Loop,   Kind::StaticLoop, Kind::Load, Kind::Store, Kind::PtrToInt, Kind::PtrEq,
-    Kind::PtrNe, Kind::PtrLt, Kind::PtrLe,  Kind::PtrGt,      Kind::PtrGe};
+    Kind::Add,   Kind::Sub,   Kind::Mul,    Kind::Div,        Kind::Eq,    Kind::Ne,   Kind::Lt,    Kind::Le,
+    Kind::Gt,    Kind::Ge,    Kind::Select, Kind::If,         Kind::Neg,   Kind::LAnd, Kind::LOr,   Kind::LNot,
+    Kind::Call,  Kind::Cast,  Kind::Loop,   Kind::StaticLoop, Kind::While, Kind::Load, Kind::Store, Kind::PtrToInt,
+    Kind::PtrEq, Kind::PtrNe, Kind::PtrLt,  Kind::PtrLe,      Kind::PtrGt, Kind::PtrGe};
 
 inline int arity(Kind k) {
 	switch (k) {
@@ -200,8 +229,10 @@ inline int arity(Kind k) {
 	case Kind::Select:
 	case Kind::If:
 	case Kind::Loop:
+	case Kind::While:
 		return 3;
 	default:
+		// Includes LoopBreak/LoopContinue (kid[0] = cond, kid[1] = value).
 		return 2;
 	}
 }
@@ -213,7 +244,7 @@ inline bool isPtrCompare(Kind k) {
 }
 
 template <typename T>
-int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth);
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth);
 
 /// Build a bounded pointer-domain expression: either the raw base pointer, or
 /// a single-hop offset from it (`Kind::PtrAdd`/`Kind::PtrSub`) computed from a
@@ -222,10 +253,11 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 /// so every pointer this can produce is directly `base + clampBufferIndex(x)`
 /// or `end - clampBufferIndex(x)` -- always an in-bounds index into the
 /// shared buffer, with no need to reason about compounding offsets across
-/// hops. `depth`/`budget`/`loopDepth` are threaded through exactly like
-/// generateNode's, so the shared node budget still bounds total tree size.
+/// hops. `depth`/`budget`/`loopDepth`/`breakDepth` are threaded through
+/// exactly like generateNode's, so the shared node budget still bounds total
+/// tree size.
 template <typename T>
-int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth) {
+int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth) {
 	const uint8_t sel = reader.byte();
 	const bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
 
@@ -239,18 +271,23 @@ int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int lo
 
 	node.kind = (sel & 0x2) ? Kind::PtrAdd : Kind::PtrSub;
 	--budget;
-	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
 	const int idx = static_cast<int>(ast.nodes.size());
 	ast.nodes.push_back(node);
 	return idx;
 }
 
-/// `loopDepth` counts how many Loop bodies the recursion is currently
-/// nested inside; LoopIndex/LoopAcc are only legal leaves while it's > 0.
-/// Passed by value: it naturally "pops" back down via the call stack on
-/// return, no explicit restore needed.
+/// `loopDepth` counts how many Loop/StaticLoop/While bodies the recursion is
+/// currently nested inside; LoopIndex/LoopAcc are only legal leaves while
+/// it's > 0. `breakDepth` counts how many Loop/While bodies specifically
+/// (never StaticLoop) the recursion is nested inside; LoopBreak/LoopContinue
+/// are only legal while it's > 0, since a trace-time-unrolled StaticLoop has
+/// no real per-iteration branch to hook a data-dependent early exit/skip
+/// into -- unrolling always runs every iteration regardless of runtime data.
+/// Both are passed by value: they naturally "pop" back down via the call
+/// stack on return, no explicit restore needed.
 template <typename T>
-int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth) {
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth) {
 	const uint8_t sel = reader.byte();
 	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted();
 	if (!leaf) {
@@ -275,7 +312,12 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		return idx;
 	}
 
-	if constexpr (std::is_floating_point_v<T>) {
+	if (breakDepth > 0 && (sel & 0x18) == 0x18) {
+		// ~1/16 chance inside a real (non-unrolled) loop body: emit a
+		// conditional break/continue instead of consulting the normal kind
+		// table below.
+		node.kind = (sel & 0x1) ? Kind::LoopContinue : Kind::LoopBreak;
+	} else if constexpr (std::is_floating_point_v<T>) {
 		constexpr uint32_t kindCount = sizeof(FLOAT_KINDS) / sizeof(FLOAT_KINDS[0]);
 		node.kind = FLOAT_KINDS[reader.byte() % kindCount];
 	} else {
@@ -300,27 +342,37 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 	if (node.kind == Kind::Loop) {
 		// count (kid[0]) and init (kid[1]) live in the *outer* scope -- they
 		// must not see this loop's own LoopIndex/LoopAcc. Only the body
-		// (kid[2]) is generated one loop deeper.
-		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
-		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+		// (kid[2]) is generated one loop (and one break scope) deeper.
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
+	} else if (node.kind == Kind::While) {
+		// init (kid[0]) lives in the *outer* scope. cond (kid[1]) and body
+		// (kid[2]) both see this loop's LoopIndex/LoopAcc and are legal
+		// LoopBreak/LoopContinue sites.
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
+		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
 	} else if (node.kind == Kind::StaticLoop) {
 		// Trip count is a generation-time constant (imm), not an expression:
-		// a trace-time loop cannot depend on runtime data by definition.
+		// a trace-time loop cannot depend on runtime data by definition. The
+		// body is one loop deeper (LoopIndex/LoopAcc legal) but *not* one
+		// break scope deeper (LoopBreak/LoopContinue stay illegal -- see
+		// generateNode's breakDepth comment).
 		node.imm = reader.byte() % (LOOP_MAX_TRIPS + 1);
-		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1);
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth);
 	} else if (node.kind == Kind::Load || node.kind == Kind::PtrToInt) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
 	} else if (node.kind == Kind::Store) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
 	} else if (isPtrCompare(node.kind)) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
-		kids[1] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[1] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
 	} else {
 		for (int i = 0; i < childCount; ++i) {
-			kids[i] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth);
+			kids[i] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
 		}
 	}
 	node.kid[0] = kids[0];
@@ -340,7 +392,7 @@ Ast generate(ByteReader& reader) {
 	Ast ast;
 	ast.nodes.reserve(MAX_NODES + 1);
 	int budget = MAX_NODES;
-	ast.root = detail::generateNode<T>(ast, reader, MAX_DEPTH, budget, /*loopDepth=*/0);
+	ast.root = detail::generateNode<T>(ast, reader, MAX_DEPTH, budget, /*loopDepth=*/0, /*breakDepth=*/0);
 	return ast;
 }
 
@@ -477,6 +529,29 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += "sloop(trips=" + std::to_string(n.imm) + ", init=";
 		print<T>(ast, n.kid[0], out);
 		out += ", body=";
+		print<T>(ast, n.kid[1], out);
+		out += ")";
+		return;
+	case Kind::While:
+		out += "while(init=";
+		print<T>(ast, n.kid[0], out);
+		out += ", cond=";
+		print<T>(ast, n.kid[1], out);
+		out += ", body=";
+		print<T>(ast, n.kid[2], out);
+		out += ")";
+		return;
+	case Kind::LoopBreak:
+		out += "brk(cond=";
+		print<T>(ast, n.kid[0], out);
+		out += ", value=";
+		print<T>(ast, n.kid[1], out);
+		out += ")";
+		return;
+	case Kind::LoopContinue:
+		out += "cont(cond=";
+		print<T>(ast, n.kid[0], out);
+		out += ", value=";
 		print<T>(ast, n.kid[1], out);
 		out += ")";
 		return;

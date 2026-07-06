@@ -169,6 +169,18 @@ struct LoopFrame {
 	T acc;
 };
 
+/// One signal frame per enclosing *breakable* (Loop/While, never StaticLoop --
+/// see generateNode's breakDepth comment in Ast.hpp) loop, innermost last.
+/// Kind::LoopBreak/LoopContinue set a flag on `signalStack.back()`; the
+/// enclosing Loop/While case checks and clears it right after each iteration's
+/// body finishes. A dedicated stack (rather than one flat pair of flags) is
+/// what keeps a signal generated inside a nested breakable loop from leaking
+/// into an outer loop's own check -- each loop only ever sees its own frame.
+struct LoopSignal {
+	bool breakRequested = false;
+	bool continueRequested = false;
+};
+
 /// The shared buffer every generated program's pointer-domain nodes index
 /// into (see Kind::PtrBase in Ast.hpp). A raw, non-owning pointer: the
 /// harness owns the storage and resets its contents between the native-oracle
@@ -177,6 +189,7 @@ struct LoopFrame {
 template <typename T>
 struct EvalContext {
 	std::vector<LoopFrame<T>> loopStack;
+	std::vector<LoopSignal> signalStack;
 	std::array<T, BUFFER_ELEMS>* memory = nullptr;
 };
 
@@ -270,12 +283,78 @@ T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& ar
 		const T rawCount = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
 		const int trips = clampTripCount<T>(rawCount);
 		T acc = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+		ctx.signalStack.push_back(LoopSignal {});
 		for (int i = 0; i < trips; ++i) {
 			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(i), acc});
 			acc = evalNativeGeneric<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
+			LoopSignal& sig = ctx.signalStack.back();
+			const bool doBreak = sig.breakRequested;
+			const bool doContinue = sig.continueRequested;
+			sig.breakRequested = false;
+			sig.continueRequested = false;
+			if (doBreak) {
+				break;
+			}
+			if (doContinue) {
+				continue;
+			}
 		}
+		ctx.signalStack.pop_back();
 		return acc;
+	}
+	// Runtime-computed, unclamped-condition fold (see Kind::While in
+	// Ast.hpp): the trip cap bounds the *for* below regardless of what cond
+	// evaluates to, so termination never depends on the data-dependent
+	// condition -- only how many of the (up to) LOOP_MAX_TRIPS iterations
+	// actually run does.
+	case Kind::While: {
+		T acc = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		ctx.signalStack.push_back(LoopSignal {});
+		for (int trips = 0; trips < LOOP_MAX_TRIPS; ++trips) {
+			ctx.loopStack.push_back(LoopFrame<T> {static_cast<T>(trips), acc});
+			const T condVal = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+			if (condVal == T(0)) {
+				ctx.loopStack.pop_back();
+				break;
+			}
+			acc = evalNativeGeneric<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			LoopSignal& sig = ctx.signalStack.back();
+			const bool doBreak = sig.breakRequested;
+			const bool doContinue = sig.continueRequested;
+			sig.breakRequested = false;
+			sig.continueRequested = false;
+			if (doBreak) {
+				break;
+			}
+			if (doContinue) {
+				continue;
+			}
+		}
+		ctx.signalStack.pop_back();
+		return acc;
+	}
+	// Conditional early exit: `value` is always evaluated (side-effect
+	// parity, same convention as Select), and if `cond` fires, the innermost
+	// breakable loop's signal is set instead of returning `value`.
+	case Kind::LoopBreak: {
+		const T c = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		if (c != T(0)) {
+			ctx.signalStack.back().breakRequested = true;
+			return ctx.loopStack.back().acc;
+		}
+		return evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+	}
+	// Conditional skip-to-next-iteration: same shape as LoopBreak, but
+	// signals continue instead of break.
+	case Kind::LoopContinue: {
+		const T c = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		if (c != T(0)) {
+			ctx.signalStack.back().continueRequested = true;
+			return ctx.loopStack.back().acc;
+		}
+		return evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
 	}
 	case Kind::StaticLoop: {
 		const int trips = static_cast<int>(n.imm);

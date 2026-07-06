@@ -141,9 +141,22 @@ struct TracedLoopFrame {
 	TracedValue<T> acc;
 };
 
+/// Traced mirror of EvalNative.hpp's LoopSignal: one frame per enclosing
+/// breakable (Loop/While) loop, innermost last, holding real val<bool>
+/// signals so the enclosing loop's post-body check (`if (sig.breakRequested)
+/// break;` / `if (sig.continueRequested) continue;`) is itself a real traced
+/// conditional break/continue -- exercising the exit-edge / back-edge merge
+/// the fuzzer extension targets.
+template <typename T>
+struct TracedLoopSignal {
+	val<bool> breakRequested;
+	val<bool> continueRequested;
+};
+
 template <typename T>
 struct TracedEvalContext {
 	std::vector<TracedLoopFrame<T>> loopStack;
+	std::vector<TracedLoopSignal<T>> signalStack;
 	val<T*> basePtr;
 	val<T*> lastPtr; // basePtr + (BUFFER_ELEMS - 1), precomputed once
 };
@@ -233,12 +246,78 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>&
 		TracedValue<T> rawCount = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		val<int32_t> trips = clampTripCountTraced<T>(rawCount);
 		TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+		ctx.signalStack.push_back(TracedLoopSignal<T> {});
 		for (val<int32_t> i = 0; i < trips; i = i + 1) {
 			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(i), acc});
 			acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
 			ctx.loopStack.pop_back();
+			TracedLoopSignal<T>& sig = ctx.signalStack.back();
+			val<bool> doBreak = sig.breakRequested;
+			val<bool> doContinue = sig.continueRequested;
+			sig.breakRequested = val<bool>(false);
+			sig.continueRequested = val<bool>(false);
+			if (doBreak) {
+				break;
+			}
+			if (doContinue) {
+				continue;
+			}
 		}
+		ctx.signalStack.pop_back();
 		return acc;
+	}
+	// Traced mirror of EvalNative.hpp's Kind::While: a real traced `for`
+	// bounded by the same LOOP_MAX_TRIPS cap (never unrolled), with a real
+	// traced conditional exit driven by `cond` -- exercising loop lowering
+	// with a data-dependent, hard-capped exit rather than a fixed count.
+	case Kind::While: {
+		TracedValue<T> acc = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+		ctx.signalStack.push_back(TracedLoopSignal<T> {});
+		for (val<int32_t> trips = 0; trips < val<int32_t>(LOOP_MAX_TRIPS); trips = trips + 1) {
+			ctx.loopStack.push_back(TracedLoopFrame<T> {static_cast<TracedValue<T>>(trips), acc});
+			TracedValue<T> condVal = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+			if (condVal == TracedValue<T>(T(0))) {
+				ctx.loopStack.pop_back();
+				break;
+			}
+			acc = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
+			ctx.loopStack.pop_back();
+			TracedLoopSignal<T>& sig = ctx.signalStack.back();
+			val<bool> doBreak = sig.breakRequested;
+			val<bool> doContinue = sig.continueRequested;
+			sig.breakRequested = val<bool>(false);
+			sig.continueRequested = val<bool>(false);
+			if (doBreak) {
+				break;
+			}
+			if (doContinue) {
+				continue;
+			}
+		}
+		ctx.signalStack.pop_back();
+		return acc;
+	}
+	// Conditional early exit: `value` is always evaluated (side-effect
+	// parity, same convention as Select), and if `cond` fires (inside a real
+	// traced if, see the Kind::LoopBreak comment in Ast.hpp), the innermost
+	// breakable loop's real val<bool> signal is set instead.
+	case Kind::LoopBreak: {
+		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+		if (c != TracedValue<T>(T(0))) {
+			ctx.signalStack.back().breakRequested = val<bool>(true);
+			return ctx.loopStack.back().acc;
+		}
+		return evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+	}
+	// Conditional skip-to-next-iteration: same shape as LoopBreak, but sets
+	// the continue signal instead.
+	case Kind::LoopContinue: {
+		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
+		if (c != TracedValue<T>(T(0))) {
+			ctx.signalStack.back().continueRequested = val<bool>(true);
+			return ctx.loopStack.back().acc;
+		}
+		return evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 	}
 	case Kind::StaticLoop: {
 		// Plain C++ loop control over a static_val counter: the tracer
