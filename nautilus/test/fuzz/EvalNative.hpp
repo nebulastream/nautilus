@@ -188,6 +188,9 @@ struct EvalContext {
 template <typename T>
 T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContext<T>& ctx);
 
+template <typename T>
+T evalNativeCall(const Ast& ast, const Node& n, std::span<const T> args, EvalContext<T>& ctx);
+
 /// Evaluate a pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub, see Ast.hpp)
 /// to a buffer index. Always in [0, BUFFER_ELEMS) by construction --
 /// generatePtrNode never nests, so there is no "current pointer" state to
@@ -250,6 +253,8 @@ T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContex
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::Call:
+		return evalNativeCall<T>(ast, n, args, ctx);
 	case Kind::Select: {
 		// Both branches are evaluated unconditionally, matching the traced
 		// kernel's `select(cond, t, f)` (a data mux, not real branching -- see
@@ -483,9 +488,6 @@ T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContex
 		return (l != T(0)) && (r != T(0)) ? T(1) : T(0);
 	case Kind::LOr:
 		return (l != T(0)) || (r != T(0)) ? T(1) : T(0);
-	case Kind::Call:
-		// Direct call of the same instantiation the traced kernel invoke()s.
-		return n.imm % NUM_CALLEES == 0 ? calleeMix<T>(l, r) : calleeMin<T>(l, r);
 	case Kind::Eq:
 		return l == r ? T(1) : T(0);
 	case Kind::Ne:
@@ -500,6 +502,48 @@ T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContex
 		return l >= r ? T(1) : T(0);
 	default:
 		return T(0); // unreachable
+	}
+}
+
+/// Evaluate a Kind::Call node: fetch its kids according to the selected
+/// callee's CallDescriptor (Callees.hpp) -- identical layout logic to the
+/// generator (Ast.hpp) and evalNautilusCall (EvalNautilus.hpp) -- then invoke
+/// the same native instantiation the traced kernel calls through
+/// nautilus::invoke(). Pulled out of evalNativeGeneric's shared binary tail
+/// because arity/kid layout now varies per callee instead of always being a
+/// fixed two value-domain kids.
+template <typename T>
+T evalNativeCall(const Ast& ast, const Node& n, std::span<const T> args, EvalContext<T>& ctx) {
+	const CallDescriptor callDesc = calleeDescriptor(n.imm);
+	const int vStart = callValueKidStart(callDesc);
+	T v[3] = {};
+	for (int i = 0; i < callDesc.arity; ++i) {
+		v[i] = evalNativeGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+	}
+	switch (n.imm % NUM_CALLEES) {
+	case 0:
+		return calleeMix<T>(v[0], v[1]);
+	case 1:
+		return calleeMin<T>(v[0], v[1]);
+	case 2:
+		return calleeConstSeven<T>();
+	case 3:
+		return calleeUnary<T>(v[0]);
+	case 4:
+		return calleeSum3<T>(v[0], v[1], v[2]);
+	case 5:
+		return calleeMixedTypes<T>(v[0], toCrossNative<T>(v[1]));
+	case 6:
+		return static_cast<T>(calleeNarrowReturn<T>(v[0], v[1]));
+	case 7:
+		// void return: the node's value is its first value-domain kid,
+		// mirroring how Kind::Store evaluates to the value it wrote.
+		calleeVoidNoop<T>(v[0], v[1]);
+		return v[0];
+	default: { // ptrSwap: kid[0] is the pointer-domain kid, v[0] is the value written.
+		const int i = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		return calleePtrSwap<T>(&(*ctx.memory)[static_cast<size_t>(i)], v[0]);
+	}
 	}
 }
 

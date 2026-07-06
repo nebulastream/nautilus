@@ -244,10 +244,12 @@ constexpr From loLimitInclusive() {
 /// Every direction except float->int is a plain (always-safe) static_cast;
 /// float->int is the only UB-prone leg, so it alone is range-clamped via the
 /// hiLimitExclusive/loLimitInclusive boundary above (NaN -> 0, out-of-range
-/// -> To's min/max) -- the exact same recipe EvalNative.hpp's
-/// castThrough/clampFloatToInt use for a same-domain round-trip Cast, reused
-/// here for a one-way conversion at a kernel signature boundary (parameter
-/// marshalling from a "mixed" secondary type, or a narrow/void return).
+/// -> To's min/max) -- the exact same recipe EvalNative.hpp's castThrough
+/// uses for a same-domain round-trip Cast, reused here for one-way
+/// conversions at a kernel signature boundary (parameter marshalling from a
+/// "mixed" secondary type, or a narrow/void return) and for Kind::Call's
+/// cross-type argument/return marshalling (Callees.hpp) -- this boundary
+/// math must never be re-derived independently in more than one place.
 template <typename From, typename To>
 To convertClamped(From v) {
 	if constexpr (std::is_floating_point_v<From> && !std::is_floating_point_v<To>) {

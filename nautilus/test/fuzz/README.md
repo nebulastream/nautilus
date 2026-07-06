@@ -65,11 +65,29 @@ selection.
   *before* the bool op on both sides, so even a short-circuiting `&&`
   lowering (`ENABLE_SHORT_CIRCUIT_BOOL`) cannot skip a `Store` side effect.
 * **Runtime calls** (`Call`, both domains): a real `nautilus::invoke()` of a
-  pure native helper (`Callees.hpp`, selected by the node's imm). The native
-  oracle calls the *identical instantiation* directly, so the two legs
-  execute the same native code and the differential surface is exclusively
-  the backend's call lowering: argument/return marshalling, narrow-integer
-  ABI extension, float register passing.
+  pure native helper, selected by the node's imm from a small typed registry
+  of nine callees (`Callees.hpp`). The native oracle calls the *identical
+  instantiation* directly, so the two legs execute the same native code and
+  the differential surface is exclusively the backend's call lowering:
+  argument/return marshalling, narrow-integer ABI extension, float register
+  passing. Each callee has its own `CallDescriptor` (arity, and whether it
+  also takes a pointer-domain kid) consulted identically by the generator
+  (`Ast.hpp`) and both evaluators (`EvalNative.hpp`/`EvalNautilus.hpp`) so the
+  three can never disagree about a callee's kid layout. The registry spans:
+  arity 0 (`calleeConstSeven`, pure return-value plumbing through the ABI, no
+  argument registers at all), arity 1 (`calleeUnary`), arity 2 same-type
+  (`calleeMix`/`calleeMin`, the original pair), arity 3 (`calleeSum3`,
+  argument-register exhaustion on some ABIs), a mixed-fundamental-type
+  signature (`calleeMixedTypes`: `T` plus a fixed cross-domain type -- `double`
+  for integer `T`, `int32_t` for floating-point `T` -- exercising
+  integer/floating-point register-class interleaving), a narrower-than-`T`
+  return (`calleeNarrowReturn`, the return-extension-direction ABI bug class),
+  a void return (`calleeVoidNoop`, invoked purely for the call itself -- the
+  node's value falls back to its first argument, mirroring how `Kind::Store`
+  evaluates to the value it wrote), and a pointer argument with an observable
+  side effect (`calleePtrSwap`, reads/writes through the shared buffer pointer
+  already threaded through every kernel, so call *ordering* relative to
+  surrounding `Load`/`Store` is under test, not just the return value).
 * **`StaticLoop`** (both domains): the trace-time counterpart of `Loop`. The
   trip count is a generation-time constant (imm, in `[0, LOOP_MAX_TRIPS]`),
   and the loop control is a plain C++ `for` over a `static_val<int64_t>`
