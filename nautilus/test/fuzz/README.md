@@ -47,12 +47,14 @@ mirroring how the original `uint64_t`-only fuzzer worked.
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
   (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
-  `Loop`, and `Cast` (round-trips the value through another type, e.g.
-  `(T)(To)v`, exercising sign/zero-extension/truncation codegen *and*
-  int<->float boundary conversion).
+  `Loop`/`While` (with conditional `LoopBreak`/`LoopContinue`), and `Cast`
+  (round-trips the value through another type, e.g. `(T)(To)v`, exercising
+  sign/zero-extension/truncation codegen *and* int<->float boundary
+  conversion).
 * **Float domain** (`float`, `double`): arithmetic (`+ - * /`), unary
-  negate, comparisons, logical ops, `Select`/`If`, `Loop`, and `Cast`
-  (round-trips through another integer *or* float type).
+  negate, comparisons, logical ops, `Select`/`If`, `Loop`/`While` (with
+  conditional `LoopBreak`/`LoopContinue`), and `Cast` (round-trips through
+  another integer *or* float type).
 * **Logical ops** (`LAnd`/`LOr`/`LNot`, both domains): each operand becomes a
   `val<bool>` via `!= 0`, the bools are combined with the real
   `val<bool>` `&&`/`||`/`!` operator under test, and the result is selected
@@ -97,6 +99,41 @@ mirroring how the original `uint64_t`-only fuzzer worked.
   the loop body is traced exactly once regardless of how many times the
   compiled loop executes it at runtime, so this doesn't blow up compile
   time.
+* **`While`**: the runtime-computed, unclamped-condition counterpart of
+  `Loop` -- `kid[0]` = init, `kid[1]` = a loop-carried exit condition
+  re-evaluated every iteration (`LoopIndex`/`LoopAcc` bound, same as
+  `Loop`'s body), `kid[2]` = body. Unlike `Loop`, whose trip count is a
+  single expression clamped *once* up front, the number of iterations here
+  is discovered incrementally from `cond`, which can itself depend on values
+  computed inside the loop -- a guard-plus-latch loop CFG rather than
+  `Loop`'s counted `for`. Still provably terminating: both sides bound the
+  loop to `LOOP_MAX_TRIPS` iterations regardless of what `cond` evaluates to,
+  so the hard cap -- not the data-dependent condition -- is what guarantees
+  termination. Lowered to a real traced, capped `for` with an internal
+  data-dependent conditional exit; never unrolled.
+* **`LoopBreak`/`LoopContinue`**: conditional early-exit/skip constructs,
+  legal only while generating inside a `Loop`/`While` body (never a
+  `StaticLoop` body -- its trip count is fixed at generation time and fully
+  unrolled at trace time regardless of runtime data, so there is no
+  per-iteration branch to hook a data-dependent break/continue into).
+  `kid[0]` = cond, `kid[1]` = value: `value` is always evaluated (the same
+  unconditional-both-operands convention `Select` uses, so a `Store` inside
+  either arm is never silently skipped) and becomes this node's own
+  contribution to the surrounding expression; additionally, if `cond` is
+  nonzero, the innermost enclosing `Loop`/`While` is signalled to stop
+  (`LoopBreak`) or move on to its next iteration (`LoopContinue`) once the
+  current iteration's body finishes evaluating. The signal is carried by a
+  real `val<bool>` per enclosing breakable loop (a small signal stack,
+  mirroring the existing `LoopIndex`/`LoopAcc` stack, so a signal generated
+  inside a nested loop can never leak into an outer loop's own check), and
+  the enclosing loop reacts to it with a real traced `if (signal) { break;
+  }` / `if (signal) { continue; }` immediately after the body -- the same
+  proven pattern as `test/common/LoopFunctions.hpp`'s `whileBreak`/
+  `whileContinue`. This exercises the exit-edge / loop-live-out merge
+  (`LoopBreak`) and the back-edge-from-mid-body merge (`LoopContinue`) that
+  a run-to-completion loop never forms. If both signals end up set for the
+  same iteration (e.g. two independent conditions both fire), break takes
+  priority over continue, identically on both sides.
 
 ## Memory and pointer domain
 
