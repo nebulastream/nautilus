@@ -19,7 +19,7 @@ bug because every generated program is fully defined by construction.
 | `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type), and a pretty printer. |
 | `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type. |
 | `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation. |
-| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T`. |
+| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T` and kernel signature shape (see "Kernel signature space"). |
 | `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
 | `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
 
@@ -43,7 +43,10 @@ Each generated program is monomorphic in one of ten types, picked from the
 first byte of the fuzzer input: `int8_t/16/32/64_t`, `uint8/16/32/64_t`,
 `float`, `double` (`TypeId` in `Types.hpp`). The rest of the input (AST shape,
 constants, parameters) is generated and evaluated entirely in that one type,
-mirroring how the original `uint64_t`-only fuzzer worked.
+mirroring how the original `uint64_t`-only fuzzer worked. The second byte of
+the input separately picks the kernel *signature* shape the AST is compiled
+into -- see "Kernel signature space" below -- independent of this type
+selection.
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
   (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
@@ -184,6 +187,57 @@ principle as everything else here.
   kernel exactly; `If` needed no change since its native/traced forms
   already evaluate the else-branch unconditionally and the then-branch only
   when taken (see the `Kind::If` comment in `EvalNative.hpp`).
+
+## Kernel signature space
+
+Every generated program's internal AST evaluation is monomorphic in one type
+`T`, as above -- what additionally varies, per input, is the shape of the
+`registerFunction` signature the AST is compiled into. The original harness
+wired every kernel to exactly three `T`-typed parameters and a `T`-typed
+return; `Harness.hpp` now draws a second byte from the input (right after the
+type-select byte) and reduces it modulo `NUM_SIGNATURE_SHAPES` to pick one of
+a small, bounded menu of concrete shapes, each a distinct `registerFunction`
+instantiation:
+
+* **`arity{1,2,3,4}`**: `N` `T`-typed parameters, `T`-typed return, for `N` in
+  `{1, 2, 3, 4}` -- `arity3` is the original fixed shape. Covers parameter-count
+  variation: empty/near-empty prologues, argument-register exhaustion, and
+  (on `arity4`) stack-passed arguments, exercising `registerFunction`'s
+  prologue/epilogue and argument marshalling independent of the AST itself.
+* **`mixed`**: 3 logical `T` parameters, but the kernel's first *declared*
+  parameter is a secondary type cross-domain from `T` (a 32-bit int when `T`
+  is a float type, a `double` when `T` is an integer type -- see
+  `MixedSecondaryType` in `Harness.hpp`), converted to `T` immediately at the
+  boundary (both natively and traced) before joining the AST's `T`-only
+  argument domain. Exercises the register-class interleaving between integer
+  and floating-point kernel parameters (SysV/AAPCS64 classification), never
+  reached when every declared parameter is uniformly `T`.
+* **`narrowReturn`**: 3 `T`-typed parameters, but the kernel returns a fixed
+  narrow integer type (`int8_t`) instead of `T`. The AST still evaluates in
+  `T`; only the final result is cast down at the return boundary, on both the
+  native and traced side. Exercises the same narrow-integer-return
+  extension/truncation direction that previously produced real
+  `ProxyCall`/`IndirectCall` ABI bugs for `Call` (see "Known findings"), this
+  time at the kernel's own return rather than an internal helper call.
+* **`voidReturn`**: 3 `T`-typed parameters, `void` return -- a Store-only
+  kernel. A `void`-returning kernel has no return-value ABI to compare, so
+  the AST's computed root value is instead explicitly written to the shared
+  buffer's first slot on both the native and traced side (in addition to
+  whatever `Store` side effects the AST itself performs), and the whole
+  buffer is diffed elementwise afterward instead of a scalar return.
+
+All conversions across a type boundary (`mixed`'s incoming parameter,
+`narrowReturn`'s outgoing return) go through the same NaN/out-of-range-safe
+recipe already used for `Kind::Cast` (`Types.hpp::convertClamped` /
+`EvalNautilus.hpp::convertClampedTraced`), applied once more at the ABI
+boundary instead of inside the AST, so every boundary conversion stays
+well-defined for all input bytes and native/traced parity is guaranteed by
+construction.
+
+This is the kernel-boundary twin of the `invoke()`-callee coverage fuzzed by
+`Kind::Call` (`Callees.hpp`): both marshal arguments/returns, but through
+different code paths (`registerFunction` entry vs. `ProxyCall`), so both are
+worth fuzzing independently.
 
 ## Soundness model
 

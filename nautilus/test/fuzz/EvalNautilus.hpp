@@ -10,6 +10,7 @@
 #include <nautilus/static.hpp>
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
+#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -18,8 +19,13 @@ namespace nautilus::fuzz {
 template <typename T>
 using TracedValue = val<T>;
 
-template <typename T>
-using TracedArgs = std::array<TracedValue<T>, NUM_PARAMS>;
+/// A kernel's logical value-domain arguments (the AST's Kind::Param domain),
+/// sized to whatever arity the current signature shape uses -- independent of
+/// the concrete kernel signature the harness compiles the AST into (which may
+/// carry extra/differently-typed parameters converted into this domain at
+/// the boundary, see convertClampedTraced below).
+template <typename T, std::size_t N>
+using TracedArgs = std::array<TracedValue<T>, N>;
 
 /**
  * @brief Realize an AST as traced Nautilus operations.
@@ -162,13 +168,14 @@ struct TracedEvalContext {
 };
 
 template <typename T>
-TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx);
+TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const TracedValue<T>> args,
+                                   TracedEvalContext<T>& ctx);
 
 /// Traced mirror of EvalNative.hpp's evalNativePtr: evaluates a
 /// pointer-domain node to a real val<T*>, using the exact same
 /// operator+/operator- val<T*> arithmetic under test.
 template <typename T>
-val<T*> evalNautilusPtr(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
+val<T*> evalNautilusPtr(const Ast& ast, int idx, std::span<const TracedValue<T>> args, TracedEvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::PtrAdd: {
@@ -215,13 +222,14 @@ val<bool> comparePtrTraced(Kind kind, val<T*> a, val<T*> b) {
 /// ops; float division needs no non-zero-divisor guard), gated via
 /// `if constexpr`.
 template <typename T>
-TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>& args, TracedEvalContext<T>& ctx) {
+TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const TracedValue<T>> args,
+                                   TracedEvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
 		return TracedValue<T>(unpackImm<T>(n.imm));
 	case Kind::Param:
-		return args[n.imm % NUM_PARAMS];
+		return args[n.imm % args.size()];
 	case Kind::LoopIndex:
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
@@ -465,11 +473,28 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, const TracedArgs<T>&
 } // namespace detail
 
 template <typename T>
-TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, const TracedArgs<T>& args) {
+TracedValue<T> evalNautilus(const Ast& ast, val<T*> basePtr, std::span<const TracedValue<T>> args) {
 	detail::TracedEvalContext<T> ctx;
 	ctx.basePtr = basePtr;
 	ctx.lastPtr = basePtr + static_cast<int32_t>(BUFFER_ELEMS - 1);
 	return detail::evalNautilusGeneric<T>(ast, ast.root, args, ctx);
+}
+
+/// Traced counterpart of Types.hpp's convertClamped: converts a val<From>
+/// kernel-boundary value (an extra "mixed" parameter, or the final result on
+/// its way to a narrow/differently-typed return) into a val<To>, well-defined
+/// for every input. Reuses detail::clampFloatToIntTraced for the one
+/// UB-prone leg (float->int) exactly like castThroughTraced does for a
+/// same-domain round-trip Cast; every other direction is a plain
+/// static_cast, mirroring Types.hpp::convertClamped so the native oracle and
+/// the traced kernel agree on every boundary conversion by construction.
+template <typename From, typename To>
+TracedValue<To> convertClampedTraced(TracedValue<From> v) {
+	if constexpr (std::is_floating_point_v<From> && !std::is_floating_point_v<To>) {
+		return detail::clampFloatToIntTraced<From, To>(v);
+	} else {
+		return static_cast<TracedValue<To>>(v);
+	}
 }
 
 } // namespace nautilus::fuzz

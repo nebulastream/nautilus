@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -80,22 +81,13 @@ T safeDivisor(T r) {
 }
 
 /// The only UB-prone leg of any cast crossing the int/float domain: clamp a
-/// float into To's representable range before truncating, using the
-/// power-of-two boundary helpers from Types.hpp (shared verbatim with
-/// EvalNautilus.hpp so the boundary math can't drift between the two).
-/// NaN maps to 0; out-of-range maps to To's min/max.
+/// float into To's representable range before truncating. Thin wrapper
+/// around Types.hpp's convertClamped (shared with EvalNautilus.hpp and the
+/// harness's kernel-boundary conversions so the boundary math can't drift
+/// between them). NaN maps to 0; out-of-range maps to To's min/max.
 template <typename From, typename To>
 To clampFloatToInt(From v) {
-	if (std::isnan(v)) {
-		return To(0);
-	}
-	if (v < loLimitInclusive<From, To>()) {
-		return std::numeric_limits<To>::min();
-	}
-	if (v >= hiLimitExclusive<From, To>()) {
-		return std::numeric_limits<To>::max();
-	}
-	return static_cast<To>(v);
+	return convertClamped<From, To>(v);
 }
 
 /// Unified "cast through" dispatch: (From)(To)v for any target TypeId,
@@ -194,14 +186,14 @@ struct EvalContext {
 };
 
 template <typename T>
-T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx);
+T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContext<T>& ctx);
 
 /// Evaluate a pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub, see Ast.hpp)
 /// to a buffer index. Always in [0, BUFFER_ELEMS) by construction --
 /// generatePtrNode never nests, so there is no "current pointer" state to
 /// track, just a single offset off of index 0 or BUFFER_ELEMS - 1.
 template <typename T>
-int evalNativePtr(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
+int evalNativePtr(const Ast& ast, int idx, std::span<const T> args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::PtrAdd:
@@ -247,13 +239,13 @@ inline bool comparePtrIndices(Kind kind, int a, int b) {
 /// `if constexpr` -- the same pattern already used by safeDivisor/castThrough
 /// above -- rather than being split back into two functions.
 template <typename T>
-T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& args, EvalContext<T>& ctx) {
+T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::Const:
 		return unpackImm<T>(n.imm);
 	case Kind::Param:
-		return args[n.imm % NUM_PARAMS];
+		return args[n.imm % args.size()];
 	case Kind::LoopIndex:
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
@@ -514,7 +506,7 @@ T evalNativeGeneric(const Ast& ast, int idx, const std::array<T, NUM_PARAMS>& ar
 } // namespace detail
 
 template <typename T>
-T evalNative(const Ast& ast, const std::array<T, NUM_PARAMS>& args, std::array<T, BUFFER_ELEMS>& memory) {
+T evalNative(const Ast& ast, std::span<const T> args, std::array<T, BUFFER_ELEMS>& memory) {
 	detail::EvalContext<T> ctx;
 	ctx.memory = &memory;
 	return detail::evalNativeGeneric<T>(ast, ast.root, args, ctx);

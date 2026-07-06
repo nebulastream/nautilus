@@ -10,13 +10,10 @@
 
 namespace nautilus::fuzz {
 
-/// Number of parameters every generated kernel takes.
-inline constexpr uint32_t NUM_PARAMS = 3;
-
 enum class Kind : uint8_t {
 	// Leaves
 	Const, // imm holds the literal value, packed via packImm<T>
-	Param, // imm holds the parameter index in [0, NUM_PARAMS)
+	Param, // imm holds the parameter index in [0, numParams)
 	// Binary arithmetic / bitwise (integer domain only, except Add/Sub/Mul/Div which also apply to floats)
 	Add,
 	Sub,
@@ -244,7 +241,8 @@ inline bool isPtrCompare(Kind k) {
 }
 
 template <typename T>
-int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth);
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
+                 uint32_t numParams);
 
 /// Build a bounded pointer-domain expression: either the raw base pointer, or
 /// a single-hop offset from it (`Kind::PtrAdd`/`Kind::PtrSub`) computed from a
@@ -253,11 +251,12 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 /// so every pointer this can produce is directly `base + clampBufferIndex(x)`
 /// or `end - clampBufferIndex(x)` -- always an in-bounds index into the
 /// shared buffer, with no need to reason about compounding offsets across
-/// hops. `depth`/`budget`/`loopDepth`/`breakDepth` are threaded through
-/// exactly like generateNode's, so the shared node budget still bounds total
-/// tree size.
+/// hops. `depth`/`budget`/`loopDepth`/`breakDepth`/`numParams` are threaded
+/// through exactly like generateNode's, so the shared node budget still
+/// bounds total tree size.
 template <typename T>
-int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth) {
+int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
+                    uint32_t numParams) {
 	const uint8_t sel = reader.byte();
 	const bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
 
@@ -271,7 +270,7 @@ int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int lo
 
 	node.kind = (sel & 0x2) ? Kind::PtrAdd : Kind::PtrSub;
 	--budget;
-	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 	const int idx = static_cast<int>(ast.nodes.size());
 	ast.nodes.push_back(node);
 	return idx;
@@ -285,9 +284,13 @@ int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int lo
 /// no real per-iteration branch to hook a data-dependent early exit/skip
 /// into -- unrolling always runs every iteration regardless of runtime data.
 /// Both are passed by value: they naturally "pop" back down via the call
-/// stack on return, no explicit restore needed.
+/// stack on return, no explicit restore needed. `numParams` is the number of
+/// value-domain kernel parameters Kind::Param may reference (the AST's
+/// logical arity, independent of the concrete kernel signature the harness
+/// eventually compiles it into).
 template <typename T>
-int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth) {
+int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
+                 uint32_t numParams) {
 	const uint8_t sel = reader.byte();
 	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted();
 	if (!leaf) {
@@ -302,7 +305,7 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 			node.kind = (sel & 0x1) ? Kind::LoopAcc : Kind::LoopIndex;
 		} else if (sel & 0x4) {
 			node.kind = Kind::Param;
-			node.imm = reader.byte() % NUM_PARAMS;
+			node.imm = reader.byte() % numParams;
 		} else {
 			node.kind = Kind::Const;
 			node.imm = packImm<T>(reader.consume<T>());
@@ -343,16 +346,16 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		// count (kid[0]) and init (kid[1]) live in the *outer* scope -- they
 		// must not see this loop's own LoopIndex/LoopAcc. Only the body
 		// (kid[2]) is generated one loop (and one break scope) deeper.
-		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1, numParams);
 	} else if (node.kind == Kind::While) {
 		// init (kid[0]) lives in the *outer* scope. cond (kid[1]) and body
 		// (kid[2]) both see this loop's LoopIndex/LoopAcc and are legal
 		// LoopBreak/LoopContinue sites.
-		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
-		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1);
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1, numParams);
+		kids[2] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth + 1, numParams);
 	} else if (node.kind == Kind::StaticLoop) {
 		// Trip count is a generation-time constant (imm), not an expression:
 		// a trace-time loop cannot depend on runtime data by definition. The
@@ -360,19 +363,19 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		// break scope deeper (LoopBreak/LoopContinue stay illegal -- see
 		// generateNode's breakDepth comment).
 		node.imm = reader.byte() % (LOOP_MAX_TRIPS + 1);
-		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth);
+		kids[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth + 1, breakDepth, numParams);
 	} else if (node.kind == Kind::Load || node.kind == Kind::PtrToInt) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 	} else if (node.kind == Kind::Store) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 	} else if (isPtrCompare(node.kind)) {
-		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
-		kids[1] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+		kids[0] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+		kids[1] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 	} else {
 		for (int i = 0; i < childCount; ++i) {
-			kids[i] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth);
+			kids[i] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 		}
 	}
 	node.kid[0] = kids[0];
@@ -386,13 +389,16 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 } // namespace detail
 
 /// Build a random, always-valid AST of type T from the reader. Never returns
-/// an empty tree: an empty buffer yields a single Const(0) leaf.
+/// an empty tree: an empty buffer yields a single Const(0) leaf. `numParams`
+/// bounds which parameter indices Kind::Param leaves may reference (must be
+/// >= 1); it is independent of the concrete kernel signature the harness
+/// eventually compiles the AST into.
 template <typename T>
-Ast generate(ByteReader& reader) {
+Ast generate(ByteReader& reader, uint32_t numParams) {
 	Ast ast;
 	ast.nodes.reserve(MAX_NODES + 1);
 	int budget = MAX_NODES;
-	ast.root = detail::generateNode<T>(ast, reader, MAX_DEPTH, budget, /*loopDepth=*/0, /*breakDepth=*/0);
+	ast.root = detail::generateNode<T>(ast, reader, MAX_DEPTH, budget, /*loopDepth=*/0, /*breakDepth=*/0, numParams);
 	return ast;
 }
 
