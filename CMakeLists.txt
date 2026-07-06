@@ -13,6 +13,11 @@ option(USE_EXTERNAL_SPDLOG "Use a externally provided version of spdlog" OFF)
 option(USE_EXTERNAL_MLIR "Use a externally provided version of MLIR" OFF)
 option(USE_CCACHE_IF_AVAILABLE "Use ccache to speed up rebuilds" ON)
 cmake_dependent_option(ENABLE_TRACING "Enable the tracing" ON "ENABLE_COMPILER" OFF)
+if (ENABLE_TRACING)
+    # The stack-copy tracer's context switch is implemented in assembly
+    # (src/nautilus/tracing/fiber/); enable_language must run at top-level scope.
+    enable_language(ASM)
+endif ()
 cmake_dependent_option(ENABLE_MLIR_BACKEND "Enable the MLIR compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries" ON "ENABLE_MLIR_BACKEND;NOT USE_EXTERNAL_MLIR" OFF)
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)

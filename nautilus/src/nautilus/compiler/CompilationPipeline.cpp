@@ -30,7 +30,9 @@
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
+#include "nautilus/tracing/ForkTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/StackCopyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
@@ -76,6 +78,8 @@ std::string createCompilationUnitID() {
 
 static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
 static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
+static constexpr auto TRACE_MODE_STACK_COPY = "stackCopyTracing";
+static constexpr auto TRACE_MODE_FORK = "forkTracing";
 
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
                                                               const engine::ModuleOptions& moduleOptions,
@@ -107,9 +111,18 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	// finished, so this is safe (the IRGraph owns a separate IR arena).
 	auto traceArenaHandle = traceArenaPool_->acquire();
 	common::Arena& arena = *traceArenaHandle;
-	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, moduleOptions, arena)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, moduleOptions, arena);
+	std::shared_ptr<tracing::TraceModule> traceModule = [&]() -> std::shared_ptr<tracing::TraceModule> {
+		if (traceMode == TRACE_MODE_STACK_COPY) {
+			return tracing::StackCopyTraceContext::Trace(functions, moduleOptions, arena);
+		}
+		if (traceMode == TRACE_MODE_FORK) {
+			return tracing::ForkTraceContext::Trace(functions, moduleOptions, arena);
+		}
+		if (traceMode == TRACE_MODE_LAZY) {
+			return tracing::LazyTraceContext::Trace(functions, moduleOptions, arena);
+		}
+		return tracing::ExceptionBasedTraceContext::Trace(functions, moduleOptions, arena);
+	}();
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}

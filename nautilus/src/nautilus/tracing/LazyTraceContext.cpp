@@ -36,6 +36,8 @@ void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
 	paused_ = false;
+	// Constant tracking is re-derived during the FOLLOW replay of each iteration.
+	resetPruningState();
 }
 
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -63,7 +65,9 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	log::debug("Trace Constant");
 	auto op = Op::CONST;
 	if (isFollowing()) {
-		return follow(op);
+		auto& resultRef = follow(op);
+		trackConstant(resultRef, type, constValue);
+		return resultRef;
 	}
 	auto tag = recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
@@ -72,9 +76,12 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
 		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
+		trackConstant(originalRef->resultRef, type, constValue);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto& resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		trackConstant(resultRef, type, constValue);
+		return resultRef;
 	}
 }
 
@@ -111,10 +118,14 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 		return dummyRef_;
 	}
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = state->executionTrace.getNextValueRef();
-		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+	auto& resultRef = traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
+		auto newRef = state->executionTrace.getNextValueRef();
+		return state->executionTrace.addAssignmentOperation(tag, {newRef, ref.type}, ref, ref.type);
 	});
+	if (!paused_) {
+		trackAssignment(resultRef, ref, ref.type);
+	}
+	return resultRef;
 }
 
 TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
@@ -206,6 +217,7 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 	if (paused_) {
 		return;
 	}
+	trackAssignment(target, source, resultType);
 	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
 		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
 	});
@@ -256,6 +268,17 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	if (paused_) {
 		// In passive mode, return false to guarantee loop termination.
 		return false;
+	}
+
+	if (bool constantResult; findConstantBranch(value, &constantResult)) {
+		// Constant-condition branch: record nothing and take the only feasible side,
+		// exactly like an untraced plain bool. The path decisions of the symbolic
+		// execution are not consumed, so FOLLOW replays stay aligned.
+		if (state->symbolicExecutionContext.getCurrentMode() != SymbolicExecutionContext::MODE::FOLLOW) {
+			auto tag = recordSnapshot();
+			guardPrunedTag(tag);
+		}
+		return constantResult;
 	}
 
 	bool result;

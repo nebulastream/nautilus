@@ -104,6 +104,15 @@ Tag* TagRecorder::createReferenceTag() {
 	return createReferenceTagBacktrace();
 }
 
+Tag* TagRecorder::internTagPath(const TagAddress* addresses, size_t count) {
+	auto* currentTagNode = &rootTagThreeNode;
+	for (size_t i = 0; i < count; i++) {
+		auto address = addresses[i];
+		currentTagNode = currentTagNode->append(address);
+	}
+	return currentTagNode;
+}
+
 template <size_t StackSize>
 __attribute__((noinline)) void* get_addr(size_t index) {
 	return [&]<std::size_t... ints>(std::index_sequence<ints...>) __attribute__((noinline)) {

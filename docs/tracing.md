@@ -201,6 +201,75 @@ When `dump.graph.full` is false, only the control-flow graph is shown (block-to-
 
 See [graphs.md](graphs.md) for visualization examples.
 
+## Tracer Implementations (engine.traceMode)
+
+Nautilus ships four tracer implementations selected via `engine.traceMode`. They all
+produce byte-identical execution traces and differ in how they explore the paths
+through a function.
+
+### Re-executing tracers: lazyTracing (default) and exceptionBasedTracing
+
+The classic tracers explore one control-flow path per execution of the traced
+function. When a path terminates, the function is re-executed from the beginning and
+the shared decision prefix is replayed (FOLLOW mode) until the next unexplored branch
+is reached. Total tracing work is therefore O(paths x path length): for a function
+with a chain of N independent branches, the prefix replay alone costs O(N^2)
+operations. The two variants differ only in how a finished path stops the traced
+function: `exceptionBasedTracing` throws a `TraceTerminationException`,
+`lazyTracing` enters a passive mode and lets the function run to its natural return.
+
+### Once-per-path tracers: stackCopyTracing and forkTracing
+
+The snapshot tracers eliminate the prefix replay entirely: at every freshly recorded
+branch, the current execution state is snapshotted; when a path terminates, the
+oldest pending snapshot is restored and execution resumes directly inside the branch,
+taking the false side. Every branch suffix executes exactly once, so total tracing
+work is O(size of the execution tree) - asymptotically optimal for trace-all-paths
+exploration. Pending branches are resumed in the same FIFO order the re-executing
+tracers use, which keeps the produced traces byte-identical across all four modes.
+
+**stackCopyTracing** runs the traced function on a dedicated side stack
+(`engine.traceStackSize`). A snapshot is a memcpy of the live stack region plus the
+small mutable tracer state (static-variable stack, alive-variable hash, trace
+position) - roughly a microsecond per branch. This is the fastest tracer and the
+recommended mode for tracing throughput. Constraint: restoring stack bytes
+resurrects frames whose destructors already ran on a previously completed path. That
+is safe for `val<T>` / `static_val` objects (their destructors only touch tracer
+state that the snapshot restores), but plain C++ locals that own heap memory (e.g. a
+`std::vector`) must not live across a traced branch, or their destructors run once
+per explored path. Under AddressSanitizer, stack restores are incompatible with
+use-after-return detection; set `ASAN_OPTIONS=detect_stack_use_after_return=0`.
+
+**forkTracing** snapshots the whole process with `fork()` instead: the forked child
+*is* the suspended false-branch continuation - its copied address space already
+holds the correct stack, heap and tracer state. Only the grow-only trace state
+(blocks, operations, tag maps) accumulated by other processes is serialized and
+handed to a continuation when it is resumed; descriptors of pending continuations
+travel along via `SCM_RIGHTS`. This is considerably slower per branch (fork +
+serialization, tens to hundreds of microseconds) but fully isolates the traced
+code: destructors run exactly once per process, so code that is unsafe under
+stackCopyTracing works here. Constraints: POSIX only; tracing must run
+single-threaded (forking with concurrently allocating threads risks deadlocking the
+children); nested `NautilusFunction` objects must outlive tracing (declare them
+static - objects constructed inside the traced function only exist in one tracing
+process and are rejected with a descriptive error).
+
+Rule of thumb: use `stackCopyTracing` for maximum tracing performance with ordinary
+`val<T>`-based code, `forkTracing` when traced code keeps heap-owning C++ objects
+alive across branches, and the re-executing tracers as the conservative default.
+
+### Constant-branch pruning (engine.tracePruning)
+
+Independently of the trace mode, `engine.tracePruning` skips branches that are
+statically dead: when the condition of an `if` is a trace-time-constant boolean
+(a `val<bool>` literal or a copy/assignment chain of one), the tracer takes the only
+feasible side without recording a CMP and never explores the other side - exactly as
+if the condition had been a plain C++ `bool`. This saves one full path exploration
+per constant branch. Branch probability hints are never used for pruning; they are
+hints for backend code layout, not guarantees. Constant-true loops whose body
+contains traced operations still form proper loops through the regular control-flow
+merge; constant loops without any traced exit are detected and reported as errors.
+
 ## Limitations and Considerations
 
 **Functions must be deterministic with respect to control flow.** The tracer executes the function exactly once with symbolic arguments. All branches must be reachable through this symbolic execution. If a branch depends on external state (e.g., the current time), the tracer will only see the path taken during the tracing run.

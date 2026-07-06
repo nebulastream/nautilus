@@ -17,7 +17,9 @@
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
+#include "nautilus/tracing/ForkTraceContext.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/StackCopyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
@@ -47,6 +49,8 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"trace", tracing::ExceptionBasedTraceContext::trace},
     {"completing_trace", tracing::LazyTraceContext::trace},
+    {"stack_copy_trace", tracing::StackCopyTraceContext::trace},
+    {"fork_trace", tracing::ForkTraceContext::trace},
 };
 
 TEST_CASE("Tracing Benchmark") {

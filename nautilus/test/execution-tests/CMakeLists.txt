@@ -22,6 +22,12 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         SelectExecutionTest.cpp
 )
 
+if (ENABLE_TRACING)
+    # Exercises the stack-copy tracer's context-switch primitives, which are only
+    # compiled when tracing is enabled.
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES FiberContextTest.cpp)
+endif ()
+
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             MLIRJitEventListenerTest.cpp
