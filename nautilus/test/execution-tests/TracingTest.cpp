@@ -747,6 +747,7 @@ TEST_CASE("Constant Branch Pruning Trace Test") {
 	    {"pruneAssignedConstantBranch", details::createFunctionWrapper(pruneAssignedConstantBranch)},
 	    {"pruneMixedConstantAndDynamic", details::createFunctionWrapper(pruneMixedConstantAndDynamic)},
 	    {"pruneOverwrittenConstant", details::createFunctionWrapper(pruneOverwrittenConstant)},
+	    {"pruneConstantSetInBranch", details::createFunctionWrapper(pruneConstantSetInBranch)},
 	    {"pruneConstantTrueLoopWithExit", details::createFunctionWrapper(pruneConstantTrueLoopWithExit)},
 	};
 	runTraceTests("pruning-tests", tests, pruningOptions);

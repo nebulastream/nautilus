@@ -259,6 +259,7 @@ bool StackCopyTraceContext::traceBool(const TypedValueRef& valueRef, const doubl
 	snap.cmpTag = tag;
 	snap.staticVarsCopy = staticVars;
 	snap.aliveVarsCopy = aliveVars;
+	snap.constantBoolsCopy = constantBools;
 	if (detail::nautilus_captureContext(&snap.context) == 0) {
 		// First pass: persist the false-branch continuation and explore true.
 		captureStackInto(pendingSnapshots_.back());
@@ -373,6 +374,7 @@ void StackCopyTraceContext::traceFunction(std::function<void()>& wrapper) {
 
 		staticVars = std::move(snap.staticVarsCopy);
 		aliveVars = std::move(snap.aliveVarsCopy);
+		constantBools = std::move(snap.constantBoolsCopy);
 		paused_ = false;
 		prunedTags.clear();
 

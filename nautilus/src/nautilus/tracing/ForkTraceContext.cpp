@@ -621,9 +621,15 @@ void ForkTraceContext::traceFunctionInWorkerTree(std::function<void()>& wrapper)
 		failure = std::current_exception();
 	}
 	::close(resultPair[0]);
-	// Normally every process has exited; on errors this reaps blocked continuations.
+	// Normally every process has exited; on errors this kills blocked continuations.
 	kill(-workerPid, SIGKILL);
-	waitpid(workerPid, nullptr, 0);
+	// Reap the whole worker process group, not just the direct child: descendants
+	// orphaned by their exiting parents reparent to init in most setups, but when the
+	// embedding process is a subreaper or PID 1 (typical in containers) they reparent
+	// to us and would accumulate as zombies in a long-lived engine. When we are not
+	// their parent, waitpid(-pgid) stops with ECHILD right after the direct child.
+	while (waitpid(-workerPid, nullptr, 0) > 0 || errno == EINTR) {
+	}
 	if (failure != nullptr) {
 		std::rethrow_exception(failure);
 	}

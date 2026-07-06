@@ -58,6 +58,21 @@ val<int32_t> pruneOverwrittenConstant(val<int32_t> x, val<bool> cond) {
 	return x + 2;
 }
 
+// A constant assigned inside one arm of a dynamic branch must not leak into the
+// other arm: on the path that skips the assignment, the branch on @p flag is
+// dynamic and must record a CMP. Regression fixture for the snapshotting tracers,
+// whose per-branch state copies must include the constant-tracking map.
+val<int32_t> pruneConstantSetInBranch(val<int32_t> x, val<bool> cond) {
+	val<bool> flag = cond;
+	if (cond) {
+		flag = true;
+	}
+	if (flag) {
+		return x + 1;
+	}
+	return x + 2;
+}
+
 // A constant-true loop with a traced exit still forms a proper loop: the loop
 // head CMP is pruned, but the body's first repeated operation closes the loop
 // via the regular control-flow merge.

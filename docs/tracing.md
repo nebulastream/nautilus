@@ -252,7 +252,12 @@ stackCopyTracing works here. Constraints: POSIX only; tracing must run
 single-threaded (forking with concurrently allocating threads risks deadlocking the
 children); nested `NautilusFunction` objects must outlive tracing (declare them
 static - objects constructed inside the traced function only exist in one tracing
-process and are rejected with a descriptive error).
+process and are rejected with a descriptive error). Note that the default tiered
+engine promotes modules to the optimized backend on a background thread, so a
+promotion of a previously compiled module may still be running when a later module
+is traced. The `engine.forkTraceTimeoutMs` watchdog catches a wedged worker tree,
+but for strictly single-threaded tracing combine forkTracing with
+`engine.tiered.backgroundPromotion=false` or a pinned `engine.backend`.
 
 Rule of thumb: use `stackCopyTracing` for maximum tracing performance with ordinary
 `val<T>`-based code, `forkTracing` when traced code keeps heap-owning C++ objects

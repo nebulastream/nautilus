@@ -126,6 +126,13 @@ private:
 		Snapshot cmpTag;
 		std::vector<StaticVarHolder> staticVarsCopy;
 		AliveVariableHash aliveVarsCopy;
+		// Constant-branch pruning state as of the CMP. Must travel with the snapshot:
+		// the completed path's suffix may have added or erased entries for refs that
+		// are live at the branch point, and a stale entry would mis-prune (or fail to
+		// prune) a branch on the resumed path. The re-executing tracers re-derive this
+		// map during the FOLLOW replay of each path's prefix; restoring the captured
+		// map is the replay-free equivalent.
+		std::unordered_map<ValueRef, bool> constantBoolsCopy;
 	};
 
 	template <typename OnCreation>
