@@ -47,6 +47,15 @@ SSACreationPhase::SSACreationPhaseContext::SSACreationPhaseContext(std::shared_p
 
 Block& SSACreationPhase::SSACreationPhaseContext::getReturnBlock() {
 	auto returns = trace->getReturn();
+	if (returns.empty()) {
+		// A well-formed trace always records at least one Return operation;
+		// an empty list means every control-flow path through the traced
+		// function's execution somehow missed recording one (e.g. a
+		// bookkeeping bug elsewhere in the tracer for a rare control-flow
+		// shape). Surface this as a catchable error instead of the
+		// undefined behavior of calling front() on an empty vector.
+		throw RuntimeException("Invalid trace: no Return operation was recorded.");
+	}
 	auto firstReturnOp = returns.front();
 	if (returns.size() <= 1) {
 		return trace->getBlock(firstReturnOp.blockIndex);

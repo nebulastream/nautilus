@@ -50,18 +50,22 @@ enum class Kind : uint8_t {
 	// Call: a real nautilus::invoke() of a pure native helper (Callees.hpp),
 	// imm selects which one (modulo NUM_CALLEES). Each callee has its own
 	// CallDescriptor (Callees.hpp) describing its kid layout: `arity`
-	// value-domain kids (of type T), optionally preceded by one
-	// pointer-domain kid (built exactly like Load/Store's, see
-	// callValueKidStart) for the one callee that reads/writes through the
-	// shared buffer pointer. Covers arities 0-3, a mixed-fundamental-type
-	// signature (T plus a fixed cross-domain type), a narrower-than-T return,
-	// a void return (the node's value falls back to its first value-domain
-	// kid, mirroring how Kind::Store evaluates to the value it wrote), and a
-	// pointer argument with an observable side effect. The native oracle
-	// calls the identical instantiation directly, so the differential
-	// surface is exactly the backend's ProxyCall lowering: argument
-	// count/type marshalling, narrow-integer ABI extension, float register
-	// passing, void-return handling, and pointer argument marshalling.
+	// value-domain kids (of type T), optionally preceded by one pointer-
+	// domain kid (a bare Kind::PtrBase leaf, see pushPtrBase -- unlike
+	// Load/Store, it's never a recursive PtrAdd/PtrSub offset expression,
+	// since val<T*> arithmetic is already fuzzed there and this keeps the
+	// callee's own already call-depth-heavy invoke() from also sitting atop
+	// an independently recursive subtree) for the one callee that
+	// reads/writes through the shared buffer pointer. Covers arities 0-3, a
+	// mixed-fundamental-type signature (T plus a fixed cross-domain type), a
+	// narrower-than-T return, a void return (the node's value falls back to
+	// its first value-domain kid, mirroring how Kind::Store evaluates to the
+	// value it wrote), and a pointer argument with an observable side
+	// effect. The native oracle calls the identical instantiation directly,
+	// so the differential surface is exactly the backend's ProxyCall
+	// lowering: argument count/type marshalling, narrow-integer ABI
+	// extension, float register passing, void-return handling, and pointer
+	// argument marshalling.
 	Call,
 	// Cast: round-trips the single child through another type, i.e. (T)(To)x.
 	// imm holds the target TypeId, drawn from any of the ten types -- this
@@ -253,6 +257,21 @@ template <typename T>
 int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
                  uint32_t numParams);
 
+/// Push a bare `Kind::PtrBase` leaf (the raw buffer pointer, no offset) --
+/// used for calleePtrSwap's pointer argument instead of the general
+/// generatePtrNode below. Pointer arithmetic through `invoke()` isn't this
+/// fuzzer's soundness concern (`val<T*>::operator+/-` is already fuzzed via
+/// Load/Store/PtrToInt/Ptr-comparisons); keeping calleePtrSwap's own operand
+/// shallow avoids stacking its already call-depth-heavy `invoke()` case atop
+/// an independently recursive offset subtree.
+inline int pushPtrBase(Ast& ast) {
+	Node node;
+	node.kind = Kind::PtrBase;
+	const int idx = static_cast<int>(ast.nodes.size());
+	ast.nodes.push_back(node);
+	return idx;
+}
+
 /// Build a bounded pointer-domain expression: either the raw base pointer, or
 /// a single-hop offset from it (`Kind::PtrAdd`/`Kind::PtrSub`) computed from a
 /// value-domain offset expression. Deliberately never nests (a PtrAdd's own
@@ -386,7 +405,7 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		const CallDescriptor callDesc = calleeDescriptor(node.imm);
 		int slot = 0;
 		if (callDesc.usesPointer) {
-			kids[slot++] = generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+			kids[slot++] = pushPtrBase(ast);
 		}
 		for (int i = 0; i < callDesc.arity; ++i) {
 			kids[slot++] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);

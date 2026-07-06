@@ -189,8 +189,8 @@ NarrowType<T> calleeNarrowReturn(T a, T b) {
 /// underlying write "returns".
 template <typename T>
 void calleeVoidNoop(T a, T b) {
-	(void)a;
-	(void)b;
+	(void) a;
+	(void) b;
 }
 
 /// Pointer-argument callee with an observable side effect: reads the old
@@ -211,8 +211,10 @@ T calleePtrSwap(T* p, T v) {
 /// evaluators (EvalNative.hpp / EvalNautilus.hpp) so the three can never
 /// disagree about how many kids a Call node has or what kind they are.
 /// `arity` counts value-domain kid arguments only; `usesPointer` says an
-/// additional pointer-domain kid (built by generatePtrNode, exactly like
-/// Load/Store) is prepended. Kid layout convention, mirroring Kind::Store:
+/// additional pointer-domain kid (a bare Kind::PtrBase leaf, via
+/// Ast.hpp's pushPtrBase -- deliberately not a recursive PtrAdd/PtrSub
+/// offset expression the way Load/Store's is) is prepended. Kid layout
+/// convention, mirroring Kind::Store:
 /// when usesPointer is set, kid[0] is the pointer-domain node and the
 /// `arity` value-domain kids start at kid[1]; otherwise they start at
 /// kid[0].

@@ -435,3 +435,72 @@ PR -- a trivial `a + b` kernel crashes the same way through that harness, and
 runs. Worth a maintainer's attention separately, since `__builtin_return_address(N)`
 for `N > 0` is documented as unreliable beyond very small `N` by both GCC and
 Clang, but out of scope here.)
+
+Expanding `Callees.hpp` from two arity-2 same-type callees into the nine-entry
+registry described above (arity 0-3, mixed argument types, a narrower-than-`T`
+return, a void return, a pointer argument with a side effect) reshuffles the
+byte-stream enough that the fixed-seed smoke corpus (`nautilus-fuzz-replay`,
+no arguments) now reaches the *exact* call-stack-depth artifact predicted
+above -- this time through the **real** fuzz harness, not an ad hoc one --
+plus two further pre-existing defects, on a combined ~6.5% of the 2000-input
+corpus (129 findings via `--survey 2000`). All three are in shared
+tracer/IR infrastructure well outside `Kind::Call`'s own lowering (the actual
+subject of this expansion), so the smoke corpus tolerates exactly these three
+diagnosed exception strings (see `isKnownPreExistingFinding` in
+`ReplayMain.cpp`) without treating them as pass/fail signal; any other
+exception, or any value mismatch, still aborts the smoke corpus immediately,
+and `--survey` keeps every occurrence of all three individually visible
+(bucketed by backend/type/exact exception text, not merged into one
+backend/type bucket) for future investigation.
+
+1. **Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
+   constant loop."`, ~126 of the 129 findings): the exact fragility the
+   paragraph above already predicted, now confirmed reachable through the
+   real fuzz harness rather than merely a standalone reproduction script.
+   `ExecutionTrace::processControlFlowMerge` treats a Tag/Snapshot match
+   against the block currently being built as an unconditional fatal error
+   (`ExecutionTrace.cpp`), but Tag identity is a raw
+   `__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
+   `TagRecorder.cpp`) that depends only on the *sequence of recursive call
+   sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
+   takes to reach an `if` -- not on which logical AST node it is. Two
+   unrelated `Kind::If` nodes reached via the same shape of recursive descent
+   through the evaluator can therefore collide onto the same Tag and falsely
+   read as "this exact operation was already traced in the current block."
+   Confirmed empirically: forcing every `Kind::Call` selection back to the
+   original arity-2 same-type shape (i.e. `imm % NUM_CALLEES` always landing
+   on `calleeMix`/`calleeMin`, with the rest of the new registry unreachable)
+   keeps the 2000-input smoke corpus perfectly clean, while any of the wider
+   shapes being reachable reintroduces the collision on unrelated trees
+   elsewhere in the corpus -- i.e. the byte-stream *shift* from having more
+   `Kind::Call` diversity is what surfaces it, not anything specific to a
+   given new callee's own marshalling.
+2. **Empty return list** (`"Invalid trace: no Return operation was
+   recorded."`, hardened from a crash): a kernel combining `Kind::If` with a
+   pointer `Store` and two nested `nautilus::invoke()` calls (concretely:
+   `narrowReturn(A, mix(p0 - (Store(...) + ptrSwap(mem, if(...))), B))`)
+   completed tracing without ever recording a `Return` operation.
+   `SSACreationPhase::getReturnBlock` (`SSACreationPhase.cpp`) called
+   `.front()` on that empty list -- undefined behavior, a real segfault on
+   every compiled backend, reproduced deterministically via
+   `nautilus-fuzz-replay` and isolated with `gdb`. Hardened here: an empty
+   return list now throws a catchable `RuntimeException` instead of reading
+   past the end of the vector. The underlying "why does this trace shape
+   never record a Return" defect is still open -- a standalone minimization
+   attempt (a small hand-written kernel with the same `if`/`Store`/nested-
+   `invoke()` shape) reproduced the unrelated `TagRecorder` call-stack-depth
+   artifact from finding 1 instead of this bug, confirming that artifact's
+   own "a trivial kernel crashes the same way through an ad hoc harness"
+   caveat and making this specific defect resistant to standalone
+   minimization; it is only reliably reproduced through the real fuzz/replay
+   harness's deeper call stack.
+3. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
+   a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
+   providers) lookup miss for an SSA value merged across two `Kind::If` arms,
+   reachable with a `Kind::If` nested inside a `Kind::Call` argument (e.g.
+   `if(p0 != 0, sum3(p1, if(...) ^ (...), p0), p2)`). This looks like the same
+   *class* of merged-value bookkeeping bug as the `zeroTripLoopMergeThenAddConstant`
+   BC/AsmJit fix above, just a control-flow shape neither `getResultRegister`
+   nor `bindResult` covers -- worth a maintainer's attention alongside it, but
+   root-causing and fixing the shared `Frame<K,V>` lookup path is out of
+   scope for this Call-coverage expansion.
