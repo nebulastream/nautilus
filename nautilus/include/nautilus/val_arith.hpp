@@ -337,9 +337,26 @@ DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, bool)
 
 DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, bool)
 
+// bAnd/bOr's OP is applied directly to two raw commonType values pulled out
+// of RawValueResolver; when commonType is bool (val<bool> & val<bool> etc. --
+// unexercised before val<bool> gained integral-category operators) that's
+// `bool & bool`/`bool | bool`, which Clang's -Wall flags as likely-meant-
+// logical. It's the deliberate, well-defined bitwise-as-logical behavior for
+// a 0/1 domain (see val_bool.hpp), so silence the warning at the template
+// definition rather than disabling it project-wide; ^ has no logical
+// counterpart and isn't covered by the warning.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#endif
+
 DEFINE_BINARY_OPERATOR_HELPER(&, bAnd, BAND, COMMON_RETURN_TYPE)
 
 DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 

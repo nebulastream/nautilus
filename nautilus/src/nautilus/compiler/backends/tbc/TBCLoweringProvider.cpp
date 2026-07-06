@@ -589,7 +589,12 @@ private:
 		default:
 			throw NotImplementedException("tbc: unsupported binary op");
 		}
-		lowerBinary(opt, block, frame, base, intTypeIndex(opt->getStamp()), "bitwise");
+		// Type::b (val<bool>'s &/|/^, a well-defined bitwise-as-logical
+		// combine over a 0/1 domain -- see val_bool.hpp) sits in its own
+		// dedicated slot 8 past the BAND_i8/BOR_i8/BXOR_i8 8-wide int family,
+		// mirroring memTypeIndex's Type::b handling for LOAD/STORE below.
+		const int typeIndex = opt->getStamp() == Type::b ? 8 : intTypeIndex(opt->getStamp());
+		lowerBinary(opt, block, frame, base, typeIndex, "bitwise");
 	}
 
 	void visitShift(ir::ShiftOperation* opt, int block, RegisterFrame& frame) {

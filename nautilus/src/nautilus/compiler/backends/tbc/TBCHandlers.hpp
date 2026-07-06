@@ -160,6 +160,15 @@ inline void opStoreOff(const Instr& i, uint64_t* fp) {
 	std::memcpy(reinterpret_cast<void*>(addr), &value, sizeof(T));
 }
 
+// opBand<bool>/opBor<bool> (Type::b's &/| -- a well-defined bitwise-as-
+// logical combine over a 0/1 domain, see val_bool.hpp) apply & / | to two
+// raw bools, which Clang's -Wall flags as likely-meant-logical; silence at
+// the template definition rather than disabling it project-wide.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#endif
+
 template <class T>
 inline void opBand(const Instr& i, uint64_t* fp) {
 	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) & readReg<T>(fp, i.c)));
@@ -169,6 +178,10 @@ template <class T>
 inline void opBor(const Instr& i, uint64_t* fp) {
 	writeReg<T>(fp, i.a, static_cast<T>(readReg<T>(fp, i.b) | readReg<T>(fp, i.c)));
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 template <class T>
 inline void opBxor(const Instr& i, uint64_t* fp) {

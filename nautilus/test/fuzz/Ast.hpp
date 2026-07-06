@@ -219,6 +219,22 @@ inline constexpr Kind FLOAT_KINDS[] = {
     Kind::Call,  Kind::Cast,  Kind::Loop,   Kind::StaticLoop, Kind::While, Kind::Load, Kind::Store, Kind::PtrToInt,
     Kind::PtrEq, Kind::PtrNe, Kind::PtrLt,  Kind::PtrLe,      Kind::PtrGt, Kind::PtrGe};
 
+/// val<bool> (val_bool.hpp) is a much smaller specialization than the
+/// arithmetic/float types: no arithmetic (+-*/%), no shifts, no real bitwise
+/// complement -- only &,|,^ (bitwise, but equivalent to logical for a 0/1
+/// domain), &&,||,! (real short-circuit-aware logical ops), ==/!=, and the
+/// probability-hint API. `Cast`/`Loop`/`StaticLoop`/`Neg`/`PtrToInt`/the six
+/// `Ptr*` comparisons are deliberately excluded -- some because val<bool> (or
+/// val<bool*>) has no such operator at all, some (PtrToInt) because
+/// val<bool*> has no pointer->integer conversion (val_ptr.hpp's cast operator
+/// explicitly excludes bool). `Kind::Not` is generated but is special-cased
+/// by both evaluators to mean logical negation (`!`), not the bitwise `~`
+/// used for the integer domain -- see the Kind::Not handling in
+/// EvalNative.hpp/EvalNautilus.hpp.
+inline constexpr Kind BOOL_KINDS[] = {Kind::And,  Kind::Or,     Kind::Xor,  Kind::Not,  Kind::Eq,
+                                      Kind::Ne,   Kind::Select, Kind::If,   Kind::LAnd, Kind::LOr,
+                                      Kind::LNot, Kind::Call,   Kind::Load, Kind::Store};
+
 inline int arity(Kind k) {
 	switch (k) {
 	case Kind::Const:
@@ -286,7 +302,13 @@ template <typename T>
 int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
                     uint32_t numParams) {
 	const uint8_t sel = reader.byte();
-	const bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
+	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
+	if constexpr (std::is_same_v<T, bool>) {
+		// val<bool> has no arithmetic to build a PtrAdd/PtrSub offset from (see
+		// BOOL_KINDS); every bool-domain pointer node stays at the buffer's
+		// base slot instead.
+		leaf = true;
+	}
 
 	Node node;
 	if (leaf) {
@@ -351,6 +373,9 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 	} else if constexpr (std::is_floating_point_v<T>) {
 		constexpr uint32_t kindCount = sizeof(FLOAT_KINDS) / sizeof(FLOAT_KINDS[0]);
 		node.kind = FLOAT_KINDS[reader.byte() % kindCount];
+	} else if constexpr (std::is_same_v<T, bool>) {
+		constexpr uint32_t kindCount = sizeof(BOOL_KINDS) / sizeof(BOOL_KINDS[0]);
+		node.kind = BOOL_KINDS[reader.byte() % kindCount];
 	} else {
 		constexpr uint32_t kindCount = sizeof(INT_KINDS) / sizeof(INT_KINDS[0]);
 		node.kind = INT_KINDS[reader.byte() % kindCount];
@@ -364,6 +389,23 @@ int generateNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopD
 		node.imm = static_cast<uint64_t>(ALL_TYPES[reader.byte() % typeCount]);
 	} else if (node.kind == Kind::Call) {
 		node.imm = reader.byte() % NUM_CALLEES;
+	}
+
+	if constexpr (std::is_same_v<T, bool>) {
+		// Exercise val<bool>::setIsTrueProbability(): on some If/Select nodes,
+		// pack a "has hint" flag (bit 0) plus a probability byte (bits 8-15)
+		// into imm, otherwise unused for these kinds. This is decoded and
+		// applied only by the traced evaluator (EvalNautilus.hpp) -- the
+		// native oracle never reads it, matching that this is a codegen hint
+		// only and must never change the computed result (the differential
+		// check against the oracle is exactly what verifies that).
+		if (node.kind == Kind::Select || node.kind == Kind::If) {
+			const uint8_t hintSel = reader.byte();
+			if (hintSel & 0x1) {
+				const uint8_t probByte = reader.byte();
+				node.imm = uint64_t(1) | (uint64_t(probByte) << 8);
+			}
+		}
 	}
 
 	const int childCount = arity(node.kind);
@@ -444,6 +486,74 @@ Ast generate(ByteReader& reader, uint32_t numParams) {
 
 namespace detail {
 
+/// val<enum> (val_enum.hpp) supports only construction/copy, ==/!=, and (via
+/// the underlying-integer buffer the harness hands it -- see
+/// evalNautilusFuzzEnum and checkOneEnum in Harness.hpp) Load/Store: no
+/// arithmetic, bitwise, or pointer-offset operator exists for it at all.
+/// Generation is therefore a small, bespoke function rather than another
+/// generateNode<T> instantiation. Load/Store always target the buffer's base
+/// slot -- there is no offset-producing operator to build a PtrAdd/PtrSub
+/// from -- represented by a Kind::PtrBase leaf so the shared pretty-printer
+/// (print<T> below) renders it unchanged.
+inline constexpr Kind ENUM_KINDS[] = {Kind::Eq, Kind::Ne, Kind::Load, Kind::Store};
+
+inline int generateEnumNode(Ast& ast, ByteReader& reader, int depth, int& budget) {
+	const uint8_t sel = reader.byte();
+	const bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x3) == 0;
+
+	Node node;
+	if (leaf) {
+		if (sel & 0x4) {
+			node.kind = Kind::Param;
+			node.imm = reader.byte() % ENUM_NUM_PARAMS;
+		} else {
+			node.kind = Kind::Const;
+			node.imm = packImm<FuzzEnum>(reader.consume<FuzzEnum>());
+		}
+		const int idx = static_cast<int>(ast.nodes.size());
+		ast.nodes.push_back(node);
+		return idx;
+	}
+
+	constexpr uint32_t kindCount = sizeof(ENUM_KINDS) / sizeof(ENUM_KINDS[0]);
+	node.kind = ENUM_KINDS[reader.byte() % kindCount];
+	--budget;
+
+	if (node.kind == Kind::Load || node.kind == Kind::Store) {
+		Node ptrBase;
+		ptrBase.kind = Kind::PtrBase;
+		node.kid[0] = static_cast<int>(ast.nodes.size());
+		ast.nodes.push_back(ptrBase);
+		if (node.kind == Kind::Store) {
+			node.kid[1] = generateEnumNode(ast, reader, depth - 1, budget);
+		}
+	} else { // Kind::Eq / Kind::Ne
+		node.kid[0] = generateEnumNode(ast, reader, depth - 1, budget);
+		node.kid[1] = generateEnumNode(ast, reader, depth - 1, budget);
+	}
+	const int idx = static_cast<int>(ast.nodes.size());
+	ast.nodes.push_back(node);
+	return idx;
+}
+
+} // namespace detail
+
+/// Build a random enum-domain AST (see detail::generateEnumNode). Mirrors
+/// generate<T> for the other domains but is not an instantiation of it --
+/// val<enum>'s much smaller operator set doesn't fit generateNode<T>'s shared
+/// machinery (see the Kind::Not/Cast/PtrToInt gating in
+/// EvalNative.hpp/EvalNautilus.hpp for how much extra care even val<bool>,
+/// which fits far more of that machinery, already needs).
+inline Ast generateFuzzEnumAst(ByteReader& reader) {
+	Ast ast;
+	ast.nodes.reserve(MAX_NODES + 1);
+	int budget = MAX_NODES;
+	ast.root = detail::generateEnumNode(ast, reader, MAX_DEPTH, budget);
+	return ast;
+}
+
+namespace detail {
+
 inline const char* opSymbol(Kind k) {
 	switch (k) {
 	case Kind::Add:
@@ -508,7 +618,9 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += ")";
 		return;
 	case Kind::Not:
-		out += "(~";
+		// Bool domain: Not means logical negation, not bitwise complement --
+		// see the Kind::Not handling in EvalNative.hpp/EvalNautilus.hpp.
+		out += std::is_same_v<T, bool> ? "(!" : "(~";
 		print<T>(ast, n.kid[0], out);
 		out += ")";
 		return;

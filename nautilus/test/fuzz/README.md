@@ -14,12 +14,19 @@ bug because every generated program is fully defined by construction.
 
 | File | Role |
 |------|------|
-| `Types.hpp`        | The `TypeId` domain (10 types), imm pack/unpack, type dispatch helpers, value formatting/equality. |
+| `Types.hpp`        | The `TypeId` domain (twelve root types), imm pack/unpack, type dispatch helpers, value formatting/equality. |
 | `ByteReader.hpp`   | Deterministic `FuzzedDataProvider`-style view over the fuzzer buffer. |
+<<<<<<< HEAD
 | `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type), and a pretty printer. |
 | `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type. |
 | `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation. |
 | `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T` and kernel signature shape (see "Kernel signature space"). |
+=======
+| `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type, plus a bespoke enum-domain generator), and a pretty printer. |
+| `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type, plus a bespoke enum-domain oracle. |
+| `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation; plus a bespoke enum-domain evaluator. |
+| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T`. |
+>>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)
 | `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
 | `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
 
@@ -37,16 +44,23 @@ bug because every generated program is fully defined by construction.
     distinct bug classes exist (e.g. an `i8`-only bug breaks out from an
     `f64`-only one instead of merging into one bucket).
 
-## Scope: ten value domains
+## Scope: twelve value domains
 
-Each generated program is monomorphic in one of ten types, picked from the
+Each generated program is monomorphic in one of twelve types, picked from the
 first byte of the fuzzer input: `int8_t/16/32/64_t`, `uint8/16/32/64_t`,
+<<<<<<< HEAD
 `float`, `double` (`TypeId` in `Types.hpp`). The rest of the input (AST shape,
 constants, parameters) is generated and evaluated entirely in that one type,
 mirroring how the original `uint64_t`-only fuzzer worked. The second byte of
 the input separately picks the kernel *signature* shape the AST is compiled
 into -- see "Kernel signature space" below -- independent of this type
 selection.
+=======
+`float`, `double`, `bool`, and a small fixed `enum class FuzzEnum` (`TypeId` in
+`Types.hpp`, via `ROOT_TYPES`). The rest of the input (AST shape, constants,
+parameters) is generated and evaluated entirely in that one type, mirroring
+how the original `uint64_t`-only fuzzer worked.
+>>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
   (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
@@ -155,6 +169,88 @@ selection.
   a run-to-completion loop never forms. If both signals end up set for the
   same iteration (e.g. two independent conditions both fire), break takes
   priority over continue, identically on both sides.
+
+### Bool domain
+
+`val<bool>` (`val_bool.hpp`) is a much smaller specialization than the
+integer/float domains -- no arithmetic, no shifts, no real bitwise
+complement -- so it reuses `generateNode<T>`'s shared machinery with its own
+restricted `BOOL_KINDS` array (`Ast.hpp`) instead of `INT_KINDS`/`FLOAT_KINDS`:
+`And`/`Or`/`Xor` (`&`/`|`/`^`, well-defined bitwise-as-logical over a 0/1
+domain), `Not` (special-cased to mean logical negation `!`, not the integer
+domain's bitwise `~` -- see the `Kind::Not` handling in
+`EvalNative.hpp`/`EvalNautilus.hpp`), `Eq`/`Ne`, `Select`/`If`, `LAnd`/`LOr`/
+`LNot`, `Call`, and `Load`/`Store` through a `val<bool*>` buffer. `Cast`,
+`Loop`/`StaticLoop`, `Neg`, `PtrToInt`, and the six `Ptr*` comparisons are
+excluded -- some because `val<bool>`/`val<bool*>` has no such operator at all
+(confirmed by attempting to compile them: several are outright missing, and a
+few more are latent ambiguity/compile bugs this work fixed, see below), some
+(`PtrToInt`) because `val_ptr.hpp`'s pointer -> integer cast operator
+explicitly excludes bool. Every `bool`-domain pointer node is forced to the
+buffer's base slot (`generatePtrNode`'s `if constexpr (std::is_same_v<T,
+bool>)` branch) since there is no arithmetic to build a `PtrAdd`/`PtrSub`
+offset from.
+
+On some generated `If`/`Select` nodes, `EvalNautilus.hpp`'s
+`applyProbabilityHint` calls `val<bool>::setIsTrueProbability()` with a value
+packed into the (otherwise-unused, for these kinds) `Node::imm` field. This is
+a codegen hint only -- the native oracle never reads it -- so the existing
+differential check against the oracle is exactly what verifies a hint never
+changes the computed result.
+
+Implementing this domain surfaced several genuine, previously-latent bugs in
+`val<bool>`'s supporting machinery (unexercised because bool was never
+generated as a top-level, "any operator might get used" domain before):
+`convertible_to_integral` (`val_concepts.hpp`) didn't exclude already-wrapped
+`val<>` types, so `val<bool> & val<bool>` (satisfying both `is_integral_val`
+and, via `operator bool()`'s implicit int promotion, `convertible_to_integral`)
+resolved to an ambiguous overload; and the bc/tbc backends' bitwise
+AND/OR/XOR lowering (`BCLoweringProvider.cpp`/`TBCLoweringProvider.cpp`) had
+no `Type::b` case at all, since no domain had ever generated a bitwise op
+stamped bool before. All three are fixed (see git history for this change).
+
+### Enum domain
+
+A small, fixed `enum class FuzzEnum : int32_t` (`Types.hpp`) with a *fixed*
+underlying type, so every bit pattern of that underlying type is already a
+valid `FuzzEnum` value ([dcl.enum]) -- Const/Param leaves can draw raw bytes
+exactly like every other domain, with no need to clamp to the named
+enumerators. `val<enum>` (`val_enum.hpp`) supports only construction/copy and
+`==`/`!=` -- no arithmetic, bitwise, or pointer-offset operator exists for it
+at all, and critically `val<enum*>` has no dereference operator whatsoever
+(`val_ptr.hpp`'s `operator*` requires `is_arithmetic<ValType> ||
+is_ptr<ValType>`, which no enum satisfies). This is different enough from
+every other domain (including bool) that it is **not** an instantiation of
+`generateNode<T>`/`evalNativeGeneric<T>`/`evalNautilusGeneric<T>`: it has its
+own bespoke, much smaller generator (`generateFuzzEnumAst`/
+`detail::generateEnumNode` in `Ast.hpp`) and evaluators
+(`evalNativeFuzzEnum`/`evalNautilusFuzzEnum`), covering exactly `Const`,
+`Param`, `Eq`, `Ne`, `Load`, and `Store`.
+
+Because `val<enum*>` cannot be dereferenced, `Load`/`Store` instead run
+against a shared buffer of `FuzzEnum`'s *underlying* integer type: `Load`
+loads a `val<underlying_type_t>` and constructs a `val<enum>` from it, and
+`Store` converts a `val<enum>` to `val<underlying_type_t>` before writing --
+exactly the two conversions `val<enum>` actually provides. `Eq`/`Ne` similarly
+can't use `select()` to materialize their 0/1 result (`select.hpp` only
+supports `is_arithmetic`/pointer `T`, and enums are neither), so they
+materialize it via a real branch instead, the same real-control-flow
+mechanism `Kind::If` already uses elsewhere. `checkOneEnum` (`Harness.hpp`) is
+consequently a bespoke differential check rather than a `checkOneTyped<T>`
+instantiation, with its own enum-domain kernel signature
+(`val<enum>(val<underlying_type_t*>, val<enum>, val<enum>, val<enum>)`).
+
+Implementing this domain surfaced two genuine, previously-latent bugs in
+`val<enum>` (unexercised because nothing had ever round-tripped a traced
+`val<enum>` through Load/Store or an assignment before): the `val<enum> ->
+val<underlying_type_t>` conversion operator tried to construct the target
+`val<underlying_type_t>` directly from the source's `TypedValueRefHolder`
+`state`, which doesn't compile against `val<underlying_type_t>`'s
+trace-state constructor (it wants a non-const `TypedValueRef&`) -- fixed by
+routing through a real `traceUnaryOp(CAST, ...)` the way `val_arith.hpp`'s
+analogous cast operator already does; and `operator=` assigned through a
+`const T value` member, which cannot compile for any assignment at all --
+fixed by dropping the `const`.
 
 ## Memory and pointer domain
 
@@ -436,6 +532,7 @@ runs. Worth a maintainer's attention separately, since `__builtin_return_address
 for `N > 0` is documented as unreliable beyond very small `N` by both GCC and
 Clang, but out of scope here.)
 
+<<<<<<< HEAD
 Expanding `Callees.hpp` from two arity-2 same-type callees into the nine-entry
 registry described above (arity 0-3, mixed argument types, a narrower-than-`T`
 return, a void return, a pointer argument with a side effect) reshuffles the
@@ -504,3 +601,29 @@ backend/type bucket) for future investigation.
    nor `bindResult` covers -- worth a maintainer's attention alongside it, but
    root-causing and fixing the shared `Frame<K,V>` lookup path is out of
    scope for this Call-coverage expansion.
+=======
+Adding `val<bool>`/`val<enum>` as generated domains (see "Bool domain"/"Enum
+domain" above) immediately surfaced four more latent bugs, all fixed by this
+change, none specific to a particular generated program (every bool/enum
+kernel using the affected path failed deterministically, so these were
+`--survey`'s very first findings, not rare edge cases):
+
+* `convertible_to_integral` (`val_concepts.hpp`) didn't exclude
+  already-`val<>`-wrapped types the way its sibling `convertible_to_fundamental`
+  does, so `val<bool> & val<bool>` matched two overloads of
+  `DEFINE_ARITHMETIC_OPERATOR`'s "integral" category simultaneously (ambiguous
+  call) purely because `val<bool>::operator bool()` makes `val<bool>`
+  convertible to `int` too.
+* The bc and tbc backends' bitwise AND/OR/XOR lowering had no `Type::b` case
+  (`BCLoweringProvider.cpp`'s `visitBinaryComp`, `TBCLoweringProvider.cpp`'s
+  `visitBinaryComp`) -- both throw `NotImplementedException` for any bool-typed
+  `&`/`|`/`^`, since no domain had ever generated one before.
+* `val<enum>`'s `operator val<underlying_type_t>()` (`val_enum.hpp`) tried to
+  construct the target directly from the source's `TypedValueRefHolder`
+  `state`, which doesn't compile (the target's trace-state constructor wants a
+  non-const `TypedValueRef&`) -- unexercised because nothing had ever converted
+  a *traced* `val<enum>` back to its underlying integer before.
+* `val<enum>::operator=` (`val_enum.hpp`) assigned through a `const T value`
+  member, which cannot compile for any assignment at all -- unexercised
+  because nothing had ever assigned to a `val<enum>` before.
+>>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)

@@ -128,6 +128,13 @@ int clampTripCount(T raw) {
 	uint64_t u;
 	if constexpr (std::is_floating_point_v<T>) {
 		u = clampFloatToInt<T, uint64_t>(raw);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// std::make_unsigned_t<bool> is ill-formed; bool is already a
+		// non-negative 0/1 value, so a plain widening cast is exact. (Loop
+		// isn't in BOOL_KINDS, so this never actually runs for T=bool, but the
+		// call must still compile -- evalNativeGeneric<bool> is instantiated
+		// for the memory-domain kinds BOOL_KINDS does use.)
+		u = static_cast<uint64_t>(raw);
 	} else {
 		u = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(raw));
 	}
@@ -145,6 +152,10 @@ int clampBufferIndex(T raw) {
 	uint64_t u;
 	if constexpr (std::is_floating_point_v<T>) {
 		u = clampFloatToInt<T, uint64_t>(raw);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// See clampTripCount's bool branch: make_unsigned_t<bool> is
+		// ill-formed, and bool is already a non-negative 0/1 value.
+		u = static_cast<uint64_t>(raw);
 	} else {
 		u = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(raw));
 	}
@@ -373,14 +384,21 @@ T evalNativeGeneric(const Ast& ast, int idx, std::span<const T> args, EvalContex
 			return static_cast<T>(-v);
 		}
 	}
-	case Kind::Not:
-		// Integer domain only (FLOAT_KINDS never generates Not); guarded so the
+	case Kind::Not: {
+		const T v = evalNativeGeneric<T>(ast, n.kid[0], args, ctx);
+		// Bool domain: Not means logical negation (see BOOL_KINDS in
+		// Ast.hpp) -- `~` on a promoted 0/1 int is never zero either way, so
+		// it wouldn't compute a meaningful complement. Integer domain only
+		// otherwise (FLOAT_KINDS never generates Not); guarded so the
 		// bitwise-complement expression doesn't need to compile for float T.
-		if constexpr (!std::is_floating_point_v<T>) {
-			return static_cast<T>(~evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
+		if constexpr (std::is_same_v<T, bool>) {
+			return static_cast<T>(!v);
+		} else if constexpr (!std::is_floating_point_v<T>) {
+			return static_cast<T>(~v);
 		} else {
 			__builtin_unreachable();
 		}
+	}
 	case Kind::LNot:
 		return evalNativeGeneric<T>(ast, n.kid[0], args, ctx) == T(0) ? T(1) : T(0);
 	case Kind::Cast:
@@ -554,6 +572,52 @@ T evalNative(const Ast& ast, std::span<const T> args, std::array<T, BUFFER_ELEMS
 	detail::EvalContext<T> ctx;
 	ctx.memory = &memory;
 	return detail::evalNativeGeneric<T>(ast, ast.root, args, ctx);
+}
+
+namespace detail {
+
+/// Native oracle for the enum domain (see generateFuzzEnumAst): the AST only
+/// ever contains Const/Param/Eq/Ne/Load/Store, so this is a small, bespoke
+/// evaluator rather than another evalNativeGeneric<T> instantiation. Load/
+/// Store always target the buffer's base slot -- generateEnumNode never
+/// builds a PtrAdd/PtrSub offset -- and the buffer is of FuzzEnum's
+/// underlying integer type, mirroring evalNautilusFuzzEnum's traced buffer
+/// (see EvalNautilus.hpp for why: val<enum*> can't be dereferenced at all).
+inline FuzzEnum evalNativeFuzzEnumGeneric(const Ast& ast, int idx, const std::array<FuzzEnum, ENUM_NUM_PARAMS>& args,
+                                          std::array<std::underlying_type_t<FuzzEnum>, BUFFER_ELEMS>& memory) {
+	const Node& n = ast.nodes[idx];
+	switch (n.kind) {
+	case Kind::Const:
+		return unpackImm<FuzzEnum>(n.imm);
+	case Kind::Param:
+		return args[n.imm % ENUM_NUM_PARAMS];
+	case Kind::Load:
+		return static_cast<FuzzEnum>(memory[0]);
+	case Kind::Store: {
+		const FuzzEnum v = evalNativeFuzzEnumGeneric(ast, n.kid[1], args, memory);
+		memory[0] = static_cast<std::underlying_type_t<FuzzEnum>>(v);
+		return v;
+	}
+	case Kind::Eq: {
+		const FuzzEnum l = evalNativeFuzzEnumGeneric(ast, n.kid[0], args, memory);
+		const FuzzEnum r = evalNativeFuzzEnumGeneric(ast, n.kid[1], args, memory);
+		return l == r ? FuzzEnum(1) : FuzzEnum(0);
+	}
+	case Kind::Ne: {
+		const FuzzEnum l = evalNativeFuzzEnumGeneric(ast, n.kid[0], args, memory);
+		const FuzzEnum r = evalNativeFuzzEnumGeneric(ast, n.kid[1], args, memory);
+		return l != r ? FuzzEnum(1) : FuzzEnum(0);
+	}
+	default:
+		return FuzzEnum(0); // unreachable
+	}
+}
+
+} // namespace detail
+
+inline FuzzEnum evalNativeFuzzEnum(const Ast& ast, const std::array<FuzzEnum, ENUM_NUM_PARAMS>& args,
+                                   std::array<std::underlying_type_t<FuzzEnum>, BUFFER_ELEMS>& memory) {
+	return detail::evalNativeFuzzEnumGeneric(ast, ast.root, args, memory);
 }
 
 } // namespace nautilus::fuzz

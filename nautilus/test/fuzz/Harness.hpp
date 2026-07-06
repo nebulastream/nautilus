@@ -490,15 +490,92 @@ std::vector<Finding> checkOneTyped(ByteReader& reader, uint32_t shape) {
 	}
 }
 
-/// Pick one of the ten generated types and one of the signature shapes from
-/// the first two bytes of the buffer, then dispatch into the matching
-/// checkOneTyped<T> instantiation, passing the same reader along so
-/// determinism/replay is preserved end to end.
+/// Enum-domain differential check, mirroring checkOneTyped<T> but not an
+/// instantiation of it: val<enum> has no arithmetic/bitwise/pointer-offset
+/// operators (val_enum.hpp), so its shared buffer is of FuzzEnum's
+/// *underlying* integer type rather than `val<FuzzEnum*>` -- see
+/// evalNautilusFuzzEnum (EvalNautilus.hpp) for why a real `val<enum*>`
+/// wouldn't even be dereferenceable. The kernel closure below spells out the
+/// enum-domain signature directly rather than reusing one of the
+/// ArityTraits/Mixed/NarrowReturn/VoidReturn signature aliases above.
+inline std::vector<Finding> checkOneEnum(ByteReader& reader) {
+	using Underlying = std::underlying_type_t<FuzzEnum>;
+	const Ast ast = generateFuzzEnumAst(reader);
+	const bool hasParam = astHasParam(ast);
+
+	std::array<FuzzEnum, ENUM_NUM_PARAMS> args {};
+	for (uint32_t i = 0; i < ENUM_NUM_PARAMS; ++i) {
+		args[i] = reader.consume<FuzzEnum>();
+	}
+
+	std::array<Underlying, BUFFER_ELEMS> initialMemory {};
+	for (int i = 0; i < BUFFER_ELEMS; ++i) {
+		initialMemory[i] = reader.consume<Underlying>();
+	}
+	std::array<Underlying, BUFFER_ELEMS> memory = initialMemory;
+
+	const FuzzEnum expected = evalNativeFuzzEnum(ast, args, memory);
+	const std::string program = toString<FuzzEnum>(ast);
+	std::vector<std::string> argStrs;
+	argStrs.reserve(ENUM_NUM_PARAMS);
+	for (FuzzEnum a : args) {
+		argStrs.push_back(formatValue<FuzzEnum>(a));
+	}
+	std::vector<std::string> memoryStrs;
+	memoryStrs.reserve(BUFFER_ELEMS);
+	for (Underlying v : initialMemory) {
+		memoryStrs.push_back(formatValue<Underlying>(v));
+	}
+
+	std::vector<Finding> findings;
+	for (const auto& backend : configs()) {
+		try {
+			auto engine = makeEngine(backend);
+			// The kernel returns val<Underlying>, not val<FuzzEnum>: unlike
+			// every other domain here, val<FuzzEnum>::raw_type (Underlying) is
+			// NOT val<FuzzEnum> itself (val_enum.hpp), so registerFunction's
+			// interpreter path -- which any_casts the stored std::function to
+			// a type built from val<raw_type> -- can't recover a function
+			// that literally returns val<FuzzEnum>. Converting at the kernel's
+			// outer boundary (the same val<enum> -> val<underlying> conversion
+			// Store already uses) keeps that any_cast's type consistent.
+			std::function<val<Underlying>(val<Underlying*>, val<FuzzEnum>, val<FuzzEnum>, val<FuzzEnum>)> kernel =
+			    [&ast](val<Underlying*> mem, val<FuzzEnum> a, val<FuzzEnum> b, val<FuzzEnum> c) {
+				    TracedArgs<FuzzEnum, ENUM_NUM_PARAMS> traced {a, b, c};
+				    val<FuzzEnum> result = evalNautilusFuzzEnum(ast, mem, traced);
+				    return static_cast<val<Underlying>>(result);
+			    };
+			auto compiled = engine.registerFunction(kernel);
+			memory = initialMemory;
+			const FuzzEnum got = static_cast<FuzzEnum>(compiled(memory.data(), args[0], args[1], args[2]));
+			if (!valuesEqual<FuzzEnum>(got, expected)) {
+				findings.push_back({backend, typeSuffix<FuzzEnum>(), "arity3", program, argStrs, memoryStrs,
+				                    formatValue<FuzzEnum>(expected), formatValue<FuzzEnum>(got), false, "", hasParam});
+			}
+		} catch (const std::exception& e) {
+			findings.push_back({backend, typeSuffix<FuzzEnum>(), "arity3", program, argStrs, memoryStrs, "", "", true,
+			                    e.what(), hasParam});
+		}
+	}
+	return findings;
+}
+
+/// Pick one of the twelve root domains and (for every domain except enum,
+/// which keeps its own fixed shape -- see checkOneEnum) one of the signature
+/// shapes from the first two bytes of the buffer, then dispatch into the
+/// matching check, passing the same reader along so determinism/replay is
+/// preserved end to end. TypeId::Enum is handled directly (checkOneEnum, not
+/// checkOneTyped<T> -- see dispatchRootType in Types.hpp for why); every
+/// other domain, including bool, goes through dispatchRootType into
+/// checkOneTyped<T>.
 inline std::vector<Finding> checkOne(const uint8_t* data, size_t size) {
 	ByteReader reader(data, size);
-	const TypeId ty = ALL_TYPES[reader.byte() % (sizeof(ALL_TYPES) / sizeof(ALL_TYPES[0]))];
+	const TypeId ty = ROOT_TYPES[reader.byte() % (sizeof(ROOT_TYPES) / sizeof(ROOT_TYPES[0]))];
+	if (ty == TypeId::Enum) {
+		return checkOneEnum(reader);
+	}
 	const uint32_t shape = reader.byte();
-	return dispatchAnyType(ty, [&]<typename T>() { return checkOneTyped<T>(reader, shape); });
+	return dispatchRootType(ty, [&]<typename T>() { return checkOneTyped<T>(reader, shape); });
 }
 
 /// libFuzzer behavior: abort (so the input is captured as a reproducer) on the

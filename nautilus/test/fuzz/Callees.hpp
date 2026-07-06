@@ -88,6 +88,11 @@ template <typename T>
 T calleeMix(T a, T b) {
 	if constexpr (std::is_floating_point_v<T>) {
 		return a * T(0.5) + b;
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// std::make_unsigned_t<bool> is ill-formed, so the general integer
+		// path below doesn't apply; logical xor is a well-defined, equally
+		// exercising stand-in for the bool domain (see BOOL_KINDS).
+		return a != b;
 	} else {
 		using U = std::make_unsigned_t<T>;
 		return static_cast<T>(static_cast<U>(static_cast<U>(a) * U(3)) + static_cast<U>(b));

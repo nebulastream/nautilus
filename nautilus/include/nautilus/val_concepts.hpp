@@ -14,7 +14,23 @@ template <typename T>
 class val;
 
 template <typename T>
+concept is_integral_val = requires {
+	typename std::remove_reference_t<T>::basic_type; // Ensure T has a member type 'basic_type'
+	requires std::is_integral_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is integral
+};
+
+/// Excludes is_integral_val<T> (mirroring convertible_to_fundamental's
+/// exclusion of is_fundamental_val<T> below) so an already-wrapped
+/// `val<bool>`/`val<IntType>` doesn't ALSO satisfy this concept just because
+/// it happens to convert to a raw integral (val<bool>::operator bool() makes
+/// val<bool> convertible to int via bool's integral promotion). Without this
+/// exclusion, `DEFINE_ARITHMETIC_OPERATOR`'s "integral"-category overloads
+/// (val_arith.hpp) become ambiguous for val<bool> & val<bool>: both the
+/// is_integral_val<LHS> && is_integral_val<RHS> overload and the
+/// is_integral_val<LHS> && convertible_to_integral<RHS> overload match.
+template <typename T>
 concept convertible_to_integral =
+    !is_integral_val<T> &&
     (std::is_convertible_v<T, int> || std::is_convertible_v<T, char> || std::is_convertible_v<T, long> ||
      std::is_convertible_v<T, short> || std::is_convertible_v<T, unsigned long> ||
      std::is_convertible_v<T, unsigned int> || std::is_convertible_v<T, unsigned short> ||
@@ -43,12 +59,6 @@ concept is_arithmetic = std::is_arithmetic_v<T>;
 
 template <typename T>
 concept is_fundamental_convertable = std::is_fundamental_v<std::remove_cvref_t<T>> && !std::is_pointer_v<T>;
-
-template <typename T>
-concept is_integral_val = requires {
-	typename std::remove_reference_t<T>::basic_type; // Ensure T has a member type 'basic_type'
-	requires std::is_integral_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is integral
-};
 
 template <typename T, typename ValT>
 concept convertible_to_integral_val = is_integral_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;

@@ -392,6 +392,7 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	X(BAND_ui16, bitwiseAnd<uint16_t>)                                                                                 \
 	X(BAND_ui32, bitwiseAnd<uint32_t>)                                                                                 \
 	X(BAND_ui64, bitwiseAnd<uint64_t>)                                                                                 \
+	X(BAND_b, bitwiseAnd<bool>)                                                                                        \
 	/* bitwise: bor */                                                                                                 \
 	X(BOR_i8, bitwiseOr<int8_t>)                                                                                       \
 	X(BOR_i16, bitwiseOr<int16_t>)                                                                                     \
@@ -401,6 +402,7 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	X(BOR_ui16, bitwiseOr<uint16_t>)                                                                                   \
 	X(BOR_ui32, bitwiseOr<uint32_t>)                                                                                   \
 	X(BOR_ui64, bitwiseOr<uint64_t>)                                                                                   \
+	X(BOR_b, bitwiseOr<bool>)                                                                                          \
 	/* bitwise: bxor */                                                                                                \
 	X(BXOR_i8, bitwiseXOr<int8_t>)                                                                                     \
 	X(BXOR_i16, bitwiseXOr<int16_t>)                                                                                   \
@@ -410,6 +412,7 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	X(BXOR_ui16, bitwiseXOr<uint16_t>)                                                                                 \
 	X(BXOR_ui32, bitwiseXOr<uint32_t>)                                                                                 \
 	X(BXOR_ui64, bitwiseXOr<uint64_t>)                                                                                 \
+	X(BXOR_b, bitwiseXOr<bool>)                                                                                        \
 	/* bitwise: blsh */                                                                                                \
 	X(BLSH_i8, bitwiseLSH<int8_t>)                                                                                     \
 	X(BLSH_i16, bitwiseLSH<int16_t>)                                                                                   \

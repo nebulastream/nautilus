@@ -1008,6 +1008,19 @@ void BCLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperatio
 			break;
 		}
 		break;
+	case Type::b:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_b;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_b;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_b;
+			break;
+		}
+		break;
 	default: {
 		throw NotImplementedException("This type is not supported.");
 	}
