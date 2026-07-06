@@ -39,14 +39,17 @@ std::vector<uint8_t> readFile(const char* path) {
 
 std::vector<uint8_t> randomBuffer() {
 	// 256, not the original 96/128/160: on top of the type-select byte, the
-	// Cast target-type byte, and Loop/LoopIndex/LoopAcc kind-selection, the
-	// memory domain (Load/Store/PtrToInt/Ptr-comparisons, each drawing a
+	// signature-shape-select byte (Harness.hpp's NUM_SIGNATURE_SHAPES menu --
+	// param count, mixed-type params, narrow/void returns), the Cast
+	// target-type byte, and Loop/LoopIndex/LoopAcc kind-selection, the memory
+	// domain (Load/Store/PtrToInt/Ptr-comparisons, each drawing a
 	// pointer-domain subexpression) now consumes its own kind-selection
 	// bytes, and after AST generation every input additionally pays for
 	// BUFFER_ELEMS*sizeof(T) bytes of initial buffer contents (up to 8*8=64
-	// bytes for i64/f64) on top of the three existing NUM_PARAMS args. A
-	// larger buffer keeps tree richness -- and the odds of generating a
-	// nontrivial Load/Store/pointer comparison -- comparable to before.
+	// bytes for i64/f64) on top of the shape's own arg count (1-3 T-typed
+	// args, depending on shape). A larger buffer keeps tree richness -- and
+	// the odds of generating a nontrivial Load/Store/pointer comparison --
+	// comparable to before.
 	const size_t len = nextRand() % 256;
 	std::vector<uint8_t> buf(len);
 	for (size_t i = 0; i < len; ++i) {
@@ -88,7 +91,7 @@ int survey(int iterations) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& f : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			++totalFindings;
-			const std::string key = f.backend + "|" + f.typeName +
+			const std::string key = f.backend + "|" + f.typeName + "|" + f.shape +
 			                        (f.exception ? "|exception" : (f.hasParam ? "|has-param" : "|all-const"));
 			counts[key]++;
 			if (!buckets.count(key)) {
@@ -110,9 +113,11 @@ int survey(int iterations) {
 	for (const auto& [key, example] : buckets) {
 		std::printf("\n[%s]  x%d\n  example: %s\n", key.c_str(), counts[key], example.program.c_str());
 		if (!example.exception) {
-			std::printf("  args p0=%s p1=%s p2=%s  expected=%s got=%s\n", example.args[0].c_str(),
-			            example.args[1].c_str(), example.args[2].c_str(), example.expected.c_str(),
-			            example.got.c_str());
+			std::printf("  args ");
+			for (size_t i = 0; i < example.args.size(); ++i) {
+				std::printf("%sp%zu=%s", i == 0 ? "" : " ", i, example.args[i].c_str());
+			}
+			std::printf("  expected=%s got=%s\n", example.expected.c_str(), example.got.c_str());
 		} else {
 			std::printf("  exception: %s\n", example.what.c_str());
 		}

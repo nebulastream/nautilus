@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -196,6 +197,19 @@ bool valuesEqual(T a, T b) {
 	}
 }
 
+/// Elementwise valuesEqual over a whole buffer -- used to diff a void-return
+/// (Store-only) kernel's final buffer contents against the native oracle's,
+/// since std::array::operator== would report two agreeing NaNs as a mismatch.
+template <typename T, size_t M>
+bool arraysEqual(const std::array<T, M>& a, const std::array<T, M>& b) {
+	for (size_t i = 0; i < M; ++i) {
+		if (!valuesEqual<T>(a[i], b[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
 /// Smallest `From` value that is already out of range for `To` (i.e. the
 /// first representative for which a float->int cast is UB). Deliberately
 /// compared against a power-of-two boundary rather than
@@ -224,6 +238,48 @@ constexpr From loLimitInclusive() {
 	} else {
 		return From(0);
 	}
+}
+
+/// Convert a native `From` value to `To`, well-defined for every input.
+/// Every direction except float->int is a plain (always-safe) static_cast;
+/// float->int is the only UB-prone leg, so it alone is range-clamped via the
+/// hiLimitExclusive/loLimitInclusive boundary above (NaN -> 0, out-of-range
+/// -> To's min/max) -- the exact same recipe EvalNative.hpp's
+/// castThrough/clampFloatToInt use for a same-domain round-trip Cast, reused
+/// here for a one-way conversion at a kernel signature boundary (parameter
+/// marshalling from a "mixed" secondary type, or a narrow/void return).
+template <typename From, typename To>
+To convertClamped(From v) {
+	if constexpr (std::is_floating_point_v<From> && !std::is_floating_point_v<To>) {
+		if (std::isnan(v)) {
+			return To(0);
+		}
+		if (v < loLimitInclusive<From, To>()) {
+			return std::numeric_limits<To>::min();
+		}
+		if (v >= hiLimitExclusive<From, To>()) {
+			return std::numeric_limits<To>::max();
+		}
+		return static_cast<To>(v);
+	} else {
+		return static_cast<To>(v);
+	}
+}
+
+/// Diagnostic-only formatting of a fixed-size array (the shared pointer
+/// buffer) for failure reports -- shared by the scalar-return and
+/// void/buffer-diffing signature shapes alike.
+template <typename T, size_t M>
+std::string formatArray(const std::array<T, M>& arr) {
+	std::string out = "[";
+	for (size_t i = 0; i < M; ++i) {
+		if (i != 0) {
+			out += ", ";
+		}
+		out += formatValue<T>(arr[i]);
+	}
+	out += "]";
+	return out;
 }
 
 } // namespace nautilus::fuzz
