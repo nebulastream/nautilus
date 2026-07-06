@@ -31,12 +31,23 @@ namespace nautilus::compiler::ir {
  * mechanism.
  *
  * Opt-in only (see "ir.enableStrengthReduction" in CompilationPipeline.cpp):
- * measured on the BC interpreter, this transform is *correct* but regresses
+ * measured on the BC interpreter, this transform is *correct* but regressed
  * performance, because BC's per-op cost is dispatch-dominated rather than
  * ALU-dominated -- trading one multiply for a new stride-add plus a leftover
- * dead cast and an unfolded "ptr+0" is a net loss there. It may still be
+ * dead cast and an unfolded "ptr+0" was a net loss there. It may still be
  * worth enabling for an ALU-bound backend (e.g. MLIR's generated code),
  * which is why the pass stays available rather than being deleted.
+ *
+ * Default-flip status (design §4.3 "Enablement" / issue #347): the two P0
+ * passes that remove exactly the documented residue now exist and run before
+ * this pass -- `AlgebraicSimplificationPass` folds the `ptr + 0` back to the
+ * base pointer, and `DeadCodeEliminationPass` sweeps the neutralized multiply
+ * and the dead cast. The original blocker is therefore gone, but flipping the
+ * default (renaming the option to `ir.disableStrengthReduction`) is still
+ * gated on a fresh Release (Clang 21) `ExecutionBenchmark` sweep on `tbc`,
+ * `bc`, and `asmjit` (off vs on, >= 5 runs, medians), which has not yet been
+ * run. Record the medians here and flip only if no interpreter kernel
+ * regresses > 2%.
  */
 class StrengthReductionPass : public IRPass {
 public:
