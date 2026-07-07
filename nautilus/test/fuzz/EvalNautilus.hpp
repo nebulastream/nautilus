@@ -63,11 +63,11 @@ TracedValue<T> safeDivisorTraced(TracedValue<T> r) {
 	return d;
 }
 
-/// Traced mirror of EvalNative.hpp's clampFloatToInt, using a real branch
-/// (not select) so the truncating cast is only ever lowered/executed for
-/// in-range v. Reuses the exact same hiLimitExclusive/loLimitInclusive
-/// boundary constants as the native oracle (Types.hpp) -- this boundary
-/// math must never be re-derived independently.
+/// Traced mirror of Types.hpp's clampFloatToInt, using a real branch (not
+/// select) so the truncating cast is only ever lowered/executed for in-range
+/// v. Reuses the exact same hiLimitExclusive/loLimitInclusive boundary
+/// constants as the native oracle (Types.hpp) -- this boundary math must
+/// never be re-derived independently.
 template <typename From, typename To>
 TracedValue<To> clampFloatToIntTraced(TracedValue<From> v) {
 	TracedValue<To> r(To(0));
@@ -81,6 +81,20 @@ TracedValue<To> clampFloatToIntTraced(TracedValue<From> v) {
 		r = static_cast<TracedValue<To>>(v);
 	}
 	return r;
+}
+
+/// Traced mirror of Callees.hpp's toCrossNative: marshal a T-typed kid value
+/// into TracedValue<CrossType<T>> before invoke()ing calleeMixedTypes. Same
+/// direction split as the native side -- int->double is always a safe widen,
+/// float->int32_t is the only UB-prone leg and goes through the real-branch
+/// clampFloatToIntTraced above instead of a raw cast.
+template <typename T>
+TracedValue<CrossType<T>> toCrossTraced(TracedValue<T> v) {
+	if constexpr (std::is_floating_point_v<T>) {
+		return clampFloatToIntTraced<T, CrossType<T>>(v);
+	} else {
+		return static_cast<TracedValue<CrossType<T>>>(v);
+	}
 }
 
 template <typename From>
@@ -171,6 +185,10 @@ template <typename T>
 TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const TracedValue<T>> args,
                                    TracedEvalContext<T>& ctx);
 
+template <typename T>
+TracedValue<T> evalNautilusCall(const Ast& ast, const Node& n, std::span<const TracedValue<T>> args,
+                                TracedEvalContext<T>& ctx);
+
 /// Traced mirror of EvalNative.hpp's evalNativePtr: evaluates a
 /// pointer-domain node to a real val<T*>, using the exact same
 /// operator+/operator- val<T*> arithmetic under test.
@@ -234,6 +252,8 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 		return ctx.loopStack.back().index;
 	case Kind::LoopAcc:
 		return ctx.loopStack.back().acc;
+	case Kind::Call:
+		return evalNautilusCall<T>(ast, n, args, ctx);
 	case Kind::Select: {
 		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
@@ -449,10 +469,6 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 		val<bool> rb = r != TracedValue<T>(T(0));
 		return select(lb || rb, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
-	case Kind::Call:
-		// Real nautilus::invoke() of the same instantiation the native oracle
-		// calls directly -- the backend's ProxyCall lowering is under test.
-		return n.imm % NUM_CALLEES == 0 ? invoke(&calleeMix<T>, l, r) : invoke(&calleeMin<T>, l, r);
 	case Kind::Eq:
 		return select(l == r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	case Kind::Ne:
@@ -467,6 +483,49 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 		return select(l >= r, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	default:
 		return TracedValue<T>(T(0)); // unreachable
+	}
+}
+
+/// Traced mirror of EvalNative.hpp's evalNativeCall: fetch kids per the
+/// selected callee's CallDescriptor (Callees.hpp) -- identical layout logic
+/// to the generator and the native evaluator -- then invoke() the same
+/// instantiation the native oracle calls directly, so the differential
+/// surface is exactly the backend's ProxyCall/IndirectCall lowering:
+/// argument count/type marshalling, narrow-integer ABI extension, float
+/// register passing, void-return handling, and pointer argument marshalling.
+template <typename T>
+TracedValue<T> evalNautilusCall(const Ast& ast, const Node& n, std::span<const TracedValue<T>> args,
+                                TracedEvalContext<T>& ctx) {
+	const CallDescriptor callDesc = calleeDescriptor(n.imm);
+	const int vStart = callValueKidStart(callDesc);
+	TracedValue<T> v[3] = {TracedValue<T>(T(0)), TracedValue<T>(T(0)), TracedValue<T>(T(0))};
+	for (int i = 0; i < callDesc.arity; ++i) {
+		v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+	}
+	switch (n.imm % NUM_CALLEES) {
+	case 0:
+		return invoke(&calleeMix<T>, v[0], v[1]);
+	case 1:
+		return invoke(&calleeMin<T>, v[0], v[1]);
+	case 2:
+		return invoke(&calleeConstSeven<T>);
+	case 3:
+		return invoke(&calleeUnary<T>, v[0]);
+	case 4:
+		return invoke(&calleeSum3<T>, v[0], v[1], v[2]);
+	case 5:
+		return invoke(&calleeMixedTypes<T>, v[0], toCrossTraced<T>(v[1]));
+	case 6:
+		return static_cast<TracedValue<T>>(invoke(&calleeNarrowReturn<T>, v[0], v[1]));
+	case 7:
+		// void return: the node's value is its first value-domain kid,
+		// mirroring how Kind::Store evaluates to the value it wrote.
+		invoke(&calleeVoidNoop<T>, v[0], v[1]);
+		return v[0];
+	default: { // ptrSwap: kid[0] is the pointer-domain kid, v[0] is the value written.
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		return invoke(&calleePtrSwap<T>, p, v[0]);
+	}
 	}
 }
 
