@@ -91,6 +91,28 @@ TEST_CASE("Execution Benchmark") {
 	}
 
 #ifdef ENABLE_BC_BACKEND
+	// A/B: P2 IR passes (LICM + LocalCSE) off vs on, bc backend. Measures the
+	// execution-time (dispatch-count) effect of the opt-in passes.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool passesOn : {false, true}) {
+			std::string tag = passesOn ? "passesOn" : "passesOff";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + tag)
+			    .operator=([&func, passesOn](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("ir.enableLICM", passesOn);
+				    op.setOption("ir.enableLocalCSE", passesOn);
+				    func(meter, op);
+			    });
+		}
+	}
+#endif
+
+#ifdef ENABLE_BC_BACKEND
 	// BC-only A/B benchmark comparing execution with and without the
 	// linear register allocator. Lets us track the perf side of the
 	// "bc.registerAllocator" toggle next to the static-size effect that
