@@ -117,10 +117,39 @@ TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	log::debug("Trace Copy");
-	return traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		auto resultRef = state->executionTrace.getNextValueRef();
-		return state->executionTrace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
-	});
+	if (isFollowing()) {
+		return follow(ASSIGN);
+	}
+	auto tag = recordSnapshot();
+	auto& trace = state->executionTrace;
+	auto globalTabIter = trace.globalTagMap.find(tag);
+	if (globalTabIter != trace.globalTagMap.end()) {
+		// This copy's call site was already reached by a different execution
+		// path (e.g. the other arm of a native `cond ? a : b` ternary
+		// copy-constructing from a different pre-existing value). The source
+		// ref legitimately differs per branch, so reaching the same tag here
+		// is not a genuine control-flow reconvergence and must not trigger a
+		// premature merge (which would silently discard the diverging copy on
+		// this path -- the root cause of the "double jump" miscompilation in
+		// issue #95). Record a fresh copy of the current source value, and
+		// reconcile it onto the canonical result ref established by the first
+		// visit, mirroring traceConstant's handling of the same situation for
+		// freshly-constructed literals.
+		auto& originalIdentifier = globalTabIter->second;
+		auto* originalOp =
+		    trace.getBlocks()[originalIdentifier.blockIndex]->operations[originalIdentifier.operationIndex];
+		auto resultRef = trace.getNextValueRef();
+		trace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
+		trace.addAssignmentOperation(tag, originalOp->resultRef, {resultRef, ref.type}, ref.type);
+		return originalOp->resultRef;
+	}
+	if (!trace.checkTag(tag)) {
+		// A local-tag collision (same-pass revisit): defer to the existing
+		// control-flow-merge machinery, unchanged from before this fix.
+		throw TraceTerminationException();
+	}
+	auto resultRef = trace.getNextValueRef();
+	return trace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,

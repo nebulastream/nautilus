@@ -285,4 +285,15 @@ inline val<int32_t> useWrapper(val<CustomStruct2*> a, val<CustomStruct2*> b) {
 	return wrapper.add();
 }
 
+// Regression (issue #95): max() via a native C++ ternary over two
+// pre-existing val<int32_t> lvalues used to always store the "greater" arm's
+// value regardless of which arm was actually taken ("double jump"
+// miscompilation -- see ternary_double_jump_gh_95 in TracingTest.cpp for the
+// trace-level pin).
+inline void storeMaxViaTernary(val<int32_t*> x, val<int32_t*> y) {
+	val<int32_t> a {*x};
+	val<int32_t> b {*y};
+	*x = (val<int32_t>) (a > b ? a : b);
+}
+
 } // namespace nautilus

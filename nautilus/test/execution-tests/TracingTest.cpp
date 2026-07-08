@@ -650,9 +650,24 @@ void store_missing_downcast(val<unsigned int*> v) {
 	*v = (val<long>) -1;
 }
 
+// Regression (issue #95): a native C++ ternary selecting between two
+// pre-existing val<int32_t> lvalues (as opposed to fresh literals) hit both
+// arms via the same copy-construction call site. The tracer's tag-based
+// control-flow-merge detection treated the second arm's copy as a revisit of
+// the first arm's already-recorded copy (same tag, since both arms reach the
+// identical call site) and silently dropped it instead of recording it,
+// so the STORE below always used the "true" arm's value regardless of the
+// branch actually taken ("double jump" miscompilation).
+void ternary_double_jump_gh_95(val<int32_t*> x, val<int32_t*> y) {
+	val<int32_t> a {*x};
+	val<int32_t> b {*y};
+	*x = (val<int32_t>) (a > b ? a : b);
+}
+
 TEST_CASE("Regressions") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)}};
+	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)},
+	    {"ternary_double_jump-gh_#95", details::createFunctionWrapper(ternary_double_jump_gh_95)}};
 	runTraceTests("regressions", tests);
 }
 
