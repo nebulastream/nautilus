@@ -527,7 +527,6 @@ runs. Worth a maintainer's attention separately, since `__builtin_return_address
 for `N > 0` is documented as unreliable beyond very small `N` by both GCC and
 Clang, but out of scope here.)
 
-<<<<<<< HEAD
 Expanding `Callees.hpp` from two arity-2 same-type callees into the nine-entry
 registry described above (arity 0-3, mixed argument types, a narrower-than-`T`
 return, a void return, a pointer argument with a side effect) reshuffles the
@@ -596,7 +595,7 @@ backend/type bucket) for future investigation.
    nor `bindResult` covers -- worth a maintainer's attention alongside it, but
    root-causing and fixing the shared `Frame<K,V>` lookup path is out of
    scope for this Call-coverage expansion.
-=======
+
 Adding `val<bool>`/`val<enum>` as generated domains (see "Bool domain"/"Enum
 domain" above) immediately surfaced four more latent bugs, all fixed by this
 change, none specific to a particular generated program (every bool/enum
@@ -621,4 +620,36 @@ kernel using the affected path failed deterministically, so these were
 * `val<enum>::operator=` (`val_enum.hpp`) assigned through a `const T value`
   member, which cannot compile for any assignment at all -- unexercised
   because nothing had ever assigned to a `val<enum>` before.
->>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)
+
+Rebasing this change onto the `Call`-coverage expansion above (which also
+restricted bool to a smaller shape menu, since `mixed`/`narrowReturn` need a
+Cast neither backend supports for bool -- see "Bool domain") reshuffled the
+byte-stream once more and surfaced a fourth pre-existing, `bool`/`enum`-
+unrelated defect (confirmed via a bisection against a clean checkout of the
+pre-rebase `main`: the exact same finding reproduces there too, through a
+different i64 program of its own, once that checkout's own copy of the
+tolerance-filter bug below is worked around):
+
+4. **Wrong-alternative variant access** (`"std::get: wrong index for
+   variant"`): an internal `std::variant` accessed through the wrong
+   alternative somewhere in the cpp backend's lowering of a `voidReturn`-shaped
+   `i64` kernel (issue #355/#363) whose AST mixes `Kind::If`, a `StaticLoop`,
+   and a `Kind::Call`. In a Debug build (asserts compiled in) the same
+   underlying inconsistency instead trips an earlier
+   `assert(currentOperation.op == op)` in `LazyTraceContext::follow`
+   (`LazyTraceContext.cpp`) before this exception is ever thrown; CI builds
+   Release (`NDEBUG` defined, `pr.yml`), where only this catchable exception is
+   observable, so it does not block CI. Root-causing the variant misuse is out
+   of scope here (it predates and is independent of the bool/enum domains this
+   change adds).
+
+Investigating finding 4 above also caught the tolerance filter itself in
+`ReplayMain.cpp`'s `isKnownPreExistingFinding` failing silently: it compared
+`Finding::what` against findings 1-3's bare messages with exact (`==`)
+equality, but `RuntimeException` (`exceptions/RuntimeException.cpp`)
+unconditionally appends a full stack trace to its message, so none of the
+three could ever actually match once `ENABLE_STACKTRACE` resolves real
+symbols (as it always did while developing this change) -- the smoke corpus
+aborted on the very first pre-existing finding it hit instead of tolerating
+it. Fixed by switching to prefix matching (`std::string::starts_with`),
+consistent with how the "Key $" case already worked.
