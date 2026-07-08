@@ -33,9 +33,10 @@ bug because every generated program is fully defined by construction.
     first finding, like libFuzzer).
   * `nautilus-fuzz-replay <file> ...` — replay specific saved inputs.
   * `nautilus-fuzz-replay --survey [N]` — run N inputs **without** aborting and
-    print findings bucketed by `(backend, type, kind)`, to triage how many
-    distinct bug classes exist (e.g. an `i8`-only bug breaks out from an
-    `f64`-only one instead of merging into one bucket).
+    print findings bucketed by `(backend, config, type, shape, kind)`, to triage
+    how many distinct bug classes exist (e.g. an `i8`-only bug breaks out from an
+    `f64`-only one instead of merging into one bucket; an option-gated miscompile
+    breaks out from a plain backend bug — see [Config sweep](#config-sweep)).
 
 ## Scope: twelve value domains
 
@@ -402,6 +403,66 @@ mismatch.
 This is what makes the native oracle (`EvalNative.hpp`) a valid reference for
 every one of the ten domains.
 
+## Config sweep
+
+The differential oracle is **optimization-level-independent**: the *result* of
+a well-defined program must never depend on which IR passes ran or how a value
+was lowered. So beyond running each program on every backend and every
+[signature shape](#kernel-signature-space), the harness runs it under several
+**compiler-option permutations per backend** — each one a free extra
+differential peer. The same program under two option sets must produce the same
+answer, and both must match the native oracle; a disagreement is a miscompile
+that a single default build would never surface.
+
+`configs()` in `Harness.hpp` returns a list of `(backend, label, OptionsTweak)`
+`Config`s. The menu is deliberately **curated and bounded** — a small set of
+high-value toggles, not a cartesian product (this is a slow, soundness-oriented
+fuzzer). Each compiling backend runs:
+
+| Config label | Tweak | Why |
+|--------------|-------|-----|
+| `default`              | *(none)* | the backend's shipping defaults — the baseline peer |
+| `no-dead-code-elim`    | `ir.disableDeadCodeElimination=true` | a default-**on** P0 pass flipped **off** |
+| `no-const-branch-fold` | `ir.disableConstantBranchFolding=true` | a default-**on** P0 pass flipped **off** |
+| `strength-reduction`   | `ir.enableStrengthReduction=true` | a currently default-**off** pass flipped **on** |
+| `no-algebraic-simpl`   | `ir.disableAlgebraicSimplification=true` | a default-**on** P0 pass flipped **off** |
+
+MLIR additionally runs `no-intrinsics` (`mlir.enableIntrinsics=false`). The
+interpreter runs uncompiled (`engine.Compilation=false`), so the IR pipeline
+never runs for it and it contributes a single `default` peer.
+
+These are per-pass toggles that keep constant folding **on**, so the IR stays
+bounded. There is deliberately **no** blanket `ir.runPasses=false` peer:
+disabling the whole pipeline also disables constant folding, and the resulting
+unoptimized IR of a large generated program overruns the BC backend's 16-bit
+register file (see [Known findings](#known-findings)) — a pre-existing
+scalability crash unrelated to the miscompiles this fuzzer hunts.
+
+A finding records **which** permutation disagreed (the `config` field on
+`Finding`, printed by the harness and part of the `--survey` bucket key), so an
+option-gated bug is distinguished from a plain backend bug.
+
+### Targeting a not-yet-default pass for a soak
+
+The IR-pass milestone (`docs/design/ir-pass-improvements.md`, #343 and siblings)
+gates flipping a pass default-on on "an extended differential-fuzzer soak before
+the default flips … any finding → fix or revert the rule". This sweep is that
+gate. To soak a pass that is still default-off, add one line to the
+`addCompiling` menu in `configs()` (`Harness.hpp`) flipping its toggle on — the
+`strength-reduction` entry is the worked example (`ir.enableStrengthReduction`).
+Then run a long soak:
+
+```bash
+./nautilus/test/fuzz/nautilus-fuzz -max_total_time=3600     # coverage-guided
+./nautilus/test/fuzz/nautilus-fuzz-replay --survey 20000    # or a triage survey
+```
+
+Any finding under that config's label is an option-gated miscompile: fix the
+pass (or revert the default-flip), then **pin** the minimized reproducer as a
+fixed `forEachBackend` regression test with the option tweak applied
+(`makeEngine(backend, tweak)` — see `test/common/ExecutionTest.hpp`), and note
+it under [Known findings](#known-findings).
+
 ## Build & run
 
 Requires Clang (libFuzzer). Opt-in via `-DENABLE_FUZZING=ON`; the target is kept
@@ -460,12 +521,35 @@ A crash input is a self-contained reproducer:
 ./nautilus/test/fuzz/nautilus-fuzz -minimize_crash=1 -runs=10000 crash-<hash>
 ```
 
-On a mismatch the harness prints the offending **backend**, the pretty-printed
+On a mismatch the harness prints the offending **backend**, the **config**
+(option permutation, see [Config sweep](#config-sweep)), the pretty-printed
 **program**, the **args**, and the expected/actual values. Drop the printed
 program + args into a fixed `forEachBackend` case under
-`test/execution-tests/` so the bug stays covered after it is fixed.
+`test/execution-tests/` so the bug stays covered after it is fixed. When the
+`config` is anything other than `default`, the bug is **option-gated**: pass the
+same tweak to `makeEngine(backend, tweak)` (e.g.
+`[](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); }`)
+in the regression test, or it will not reproduce.
 
 ## Known findings
+
+The [config sweep](#config-sweep) itself surfaced a pre-existing BC-backend
+scalability crash while it was being built. An early version of the sweep
+included a blanket `ir.runPasses=false` peer; on a large generated `f64`
+arity-4 program (deeply nested `Cast`/`If`/`Loop`), turning the *whole* IR
+pipeline off — constant folding included — leaves an unoptimized IR with tens
+of thousands of live SSA values. The BC backend indexes its register file with
+16-bit `short`s (`OpCode`/`Code::arguments` in
+`compiler/backends/bc/ByteCode.hpp`), so the register index overflows past
+32767 and `BCLoweringProvider::lower` writes out of bounds, corrupting a
+`bc::Code` vector's control block — the process dies in `Code::~Code()` freeing
+a garbage pointer (a SIGSEGV/`free(0x1)`, no differential report). This is a
+BC register-space limit, not a miscompile, and the optimization passes normally
+keep the IR well under it; it is orthogonal to what this fuzzer hunts. The
+sweep therefore does **not** expose `ir.runPasses=false` — it uses per-pass
+toggles that keep constant folding on (see [Config sweep](#config-sweep)) — and
+the BC 16-bit-register limit is left to be fixed (graceful error, or a wider
+index) as a separate change.
 
 On its first run this fuzzer reproduces a real bug: the IR constant-folding pass
 folds unsigned integer comparison/division/modulo/right-shift with **signed**
