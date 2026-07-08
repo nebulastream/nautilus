@@ -255,6 +255,13 @@ arithmetic, comparisons, casts, and loads/stores are fuzzed identically to
 the rest of the value domain -- following the same well-defined-by-construction
 principle as everything else here.
 
+This domain still deliberately simplifies two other surfaces raised in
+nebulastream/nautilus#357: there is one buffer of one element type `T` (no
+type-punned/mixed-width access), and no aliasing between distinct pointers
+(there's only ever one buffer to point into). Compounding pointer arithmetic
+(the third surface #357 identifies) is covered below; the other two are
+left as follow-up work.
+
 * **`Load`/`Store`**: `kid[0]` (both) is a *pointer-domain* node (see below),
   `kid[1]` (`Store` only) is a value-domain node. `Load` yields `*ptr`; `Store`
   writes through the pointer and yields the stored value, i.e. the value of
@@ -270,17 +277,40 @@ principle as everything else here.
   value-domain comparisons.
 * **Pointer-domain nodes** (`PtrBase`/`PtrAdd`/`PtrSub`, `generatePtrNode` in
   `Ast.hpp`): never chosen as the AST root or by the value-domain generator
-  directly -- only ever a kid of one of the nodes above. Deliberately never
-  nest (`PtrAdd`'s own child is always a *value*-domain offset expression,
-  never another pointer-domain node), so every pointer this can produce is
-  directly `base + clampBufferIndex(x)` or `end - clampBufferIndex(x)` for
-  some single offset expression `x` -- always an in-bounds buffer index by
-  construction, with no need to reason about compounding offsets across
-  hops. `clampBufferIndex`/`clampBufferIndexTraced` reduce the raw offset the
-  same reinterpret-to-unsigned-then-modulo way as `Loop`'s trip count, just
-  modulo `BUFFER_ELEMS` -- exercising real `val<T*>::operator+`/`operator-`
-  (scaled by `sizeof(T)`) while staying safe regardless of what value the
-  offset expression evaluates to.
+  directly -- only ever a kid of one of the nodes above. `PtrAdd`/`PtrSub`
+  each take two kids: `kid[0]` is a *nested pointer-domain* node (either the
+  `PtrBase` leaf, or -- up to `PTR_MAX_HOPS` deep -- another `PtrAdd`/
+  `PtrSub`), `kid[1]` is the value-domain offset expression. When `kid[0]` is
+  the bare `PtrBase` leaf (the common, single-hop shape), this reduces to
+  exactly `base + clampBufferIndex(x)` or `end - clampBufferIndex(x)` as
+  before, via `clampBufferIndex`/`clampBufferIndexTraced` (the same
+  reinterpret-to-unsigned-then-modulo recipe as `Loop`'s trip count, just
+  modulo `BUFFER_ELEMS`).
+
+  When `kid[0]` is itself a nested `PtrAdd`/`PtrSub` (**compounding pointer
+  arithmetic**, e.g. `(base + i) - j`), the outer hop's offset is instead
+  reduced modulo however much room is *actually left* between the inner
+  pointer's index and the relevant buffer edge --
+  `clampIndexMod`/`clampIndexModTraced` (`EvalNative.hpp`/`EvalNautilus.hpp`),
+  the generalization of `clampBufferIndex`/`clampBufferIndexTraced` to a
+  caller-supplied (possibly runtime-computed) modulus instead of the fixed
+  `BUFFER_ELEMS`. Concretely: `PtrAdd` on a nested pointer whose index is
+  already known (by induction) to be in `[0, BUFFER_ELEMS)` computes
+  `capacity = BUFFER_ELEMS - innerIndex` and adds `offset mod capacity`, so
+  the result stays `<= BUFFER_ELEMS - 1`; `PtrSub` mirrors this with
+  `capacity = innerIndex + 1` and subtracts, so the result stays `>= 0`.
+  Because `capacity` is derived from the *actual* (data-dependent) inner
+  index rather than a per-hop generation-time bound, the in-bounds invariant
+  holds inductively for a chain of *any* length -- `PTR_MAX_HOPS` (currently
+  2, i.e. one level of nesting beyond the original single hop) only bounds
+  generation cost/tree size, not soundness. On the traced side, each hop's
+  index is threaded alongside its `val<T*>` (`PtrEvalResult<T>` in
+  `EvalNautilus.hpp`) purely so an outer hop can compute its own capacity
+  without a pointer-minus-pointer operator (which `val<T*>` doesn't have);
+  the pointer itself is built by chaining real `val<T*>::operator+`/
+  `operator-` calls, one per hop, so a nested pointer genuinely exercises
+  pointer arithmetic applied to the *result* of a prior pointer operation,
+  not just a recomputed final index.
 * **Buffer lifecycle**: the harness declares the buffer once per
   `checkOneTyped<T>` call and resets its contents (not its storage) to the
   same initial values before the native-oracle run and before each backend

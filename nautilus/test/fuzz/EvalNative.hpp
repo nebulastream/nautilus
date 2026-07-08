@@ -142,13 +142,15 @@ int clampTripCount(T raw) {
 }
 
 /// Reduce a raw pointer-offset value of type T to a defined index in
-/// [0, BUFFER_ELEMS), via the identical reinterpret-then-modulo recipe as
-/// clampTripCount, just against BUFFER_ELEMS instead of LOOP_MAX_TRIPS + 1.
-/// Shared verbatim (mod constant aside) with clampBufferIndexTraced in
-/// EvalNautilus.hpp so a pointer built from the same raw offset always lands
-/// on the same buffer slot on both the native and traced sides.
+/// [0, modulus), via the identical reinterpret-then-modulo recipe as
+/// clampTripCount. `modulus` need not be a compile-time constant: a nested
+/// pointer-domain hop (see evalNativePtr) derives it at runtime from however
+/// much room is actually left before the buffer edge. Shared verbatim (mod
+/// constant/runtime-ness aside) with clampIndexModTraced in EvalNautilus.hpp
+/// so a pointer built from the same raw offset always lands on the same
+/// buffer slot on both the native and traced sides.
 template <typename T>
-int clampBufferIndex(T raw) {
+int clampIndexMod(T raw, int modulus) {
 	uint64_t u;
 	if constexpr (std::is_floating_point_v<T>) {
 		u = clampFloatToInt<T, uint64_t>(raw);
@@ -159,7 +161,15 @@ int clampBufferIndex(T raw) {
 	} else {
 		u = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(raw));
 	}
-	return static_cast<int>(u % static_cast<uint64_t>(BUFFER_ELEMS));
+	return static_cast<int>(u % static_cast<uint64_t>(modulus));
+}
+
+/// Reduce a raw pointer-offset value of type T to a defined index in
+/// [0, BUFFER_ELEMS) -- the fixed-modulus case of clampIndexMod, used by the
+/// innermost (bare-`PtrBase`-anchored) pointer-domain hop.
+template <typename T>
+int clampBufferIndex(T raw) {
+	return clampIndexMod<T>(raw, BUFFER_ELEMS);
 }
 
 /// Mutable per-evaluation scratch state, separate from the read-only kernel
@@ -203,17 +213,40 @@ template <typename T>
 T evalNativeCall(const Ast& ast, const Node& n, std::span<const T> args, EvalContext<T>& ctx);
 
 /// Evaluate a pointer-domain node (Kind::PtrBase/PtrAdd/PtrSub, see Ast.hpp)
-/// to a buffer index. Always in [0, BUFFER_ELEMS) by construction --
-/// generatePtrNode never nests, so there is no "current pointer" state to
-/// track, just a single offset off of index 0 or BUFFER_ELEMS - 1.
+/// to a buffer index. Always in [0, BUFFER_ELEMS) by construction.
+///
+/// When kid[0] is a bare Kind::PtrBase leaf (the common, original single-hop
+/// shape), this reduces to exactly the historical fixed-anchor formulas:
+/// PtrAdd anchors at index 0 and PtrSub at BUFFER_ELEMS - 1, each spanning the
+/// full buffer via clampBufferIndex. When kid[0] is itself a nested
+/// PtrAdd/PtrSub (generatePtrNode may nest up to PTR_MAX_HOPS deep), its
+/// index is evaluated recursively -- always already in [0, BUFFER_ELEMS) by
+/// induction -- and this hop's offset is instead reduced modulo however much
+/// room is actually left between that index and the relevant buffer edge
+/// (clampIndexMod with a runtime-computed modulus), so the composed index
+/// can never escape [0, BUFFER_ELEMS) regardless of nesting depth.
 template <typename T>
 int evalNativePtr(const Ast& ast, int idx, std::span<const T> args, EvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
-	case Kind::PtrAdd:
-		return clampBufferIndex<T>(evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
-	case Kind::PtrSub:
-		return (BUFFER_ELEMS - 1) - clampBufferIndex<T>(evalNativeGeneric<T>(ast, n.kid[0], args, ctx));
+	case Kind::PtrAdd: {
+		const T rawOffset = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+		if (ast.nodes[n.kid[0]].kind == Kind::PtrBase) {
+			return clampBufferIndex<T>(rawOffset);
+		}
+		const int baseIndex = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const int capacity = BUFFER_ELEMS - baseIndex; // room left below the buffer's upper edge, always >= 1
+		return baseIndex + clampIndexMod<T>(rawOffset, capacity);
+	}
+	case Kind::PtrSub: {
+		const T rawOffset = evalNativeGeneric<T>(ast, n.kid[1], args, ctx);
+		if (ast.nodes[n.kid[0]].kind == Kind::PtrBase) {
+			return (BUFFER_ELEMS - 1) - clampBufferIndex<T>(rawOffset);
+		}
+		const int baseIndex = evalNativePtr<T>(ast, n.kid[0], args, ctx);
+		const int capacity = baseIndex + 1; // room left above index 0, always >= 1
+		return baseIndex - clampIndexMod<T>(rawOffset, capacity);
+	}
 	case Kind::PtrBase:
 	default:
 		return 0;

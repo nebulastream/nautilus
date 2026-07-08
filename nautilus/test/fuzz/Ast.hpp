@@ -153,17 +153,31 @@ enum class Kind : uint8_t {
 	// Never chosen directly by generateNode/INT_KINDS/FLOAT_KINDS, and never
 	// the AST root -- only reachable as a kid of one of the memory-domain
 	// nodes above, built by generatePtrNode. Always resolve to an in-bounds
-	// index of the shared buffer (no nesting -- see generatePtrNode), so every
-	// Load/Store/comparison is guaranteed well-defined by construction.
+	// index of the shared buffer -- provably so even when PtrAdd/PtrSub nest
+	// (see generatePtrNode) -- so every Load/Store/comparison is guaranteed
+	// well-defined by construction.
 	//
-	// PtrBase: the raw pointer parameter, i.e. `&memory[0]`.
+	// PtrBase: the raw pointer parameter, i.e. `&memory[0]`. The only true
+	// leaf of the pointer domain; every PtrAdd/PtrSub chain bottoms out here.
 	PtrBase,
-	// PtrAdd: kid[0] = value-domain offset expression (type T). Result =
-	// `base + clampBufferIndex<T>(offset)`, exercising val<T*>::operator+.
+	// PtrAdd: kid[0] = a nested pointer-domain node (either a Kind::PtrBase
+	// leaf, or -- up to PTR_MAX_HOPS deep, see generatePtrNode -- another
+	// PtrAdd/PtrSub), kid[1] = value-domain offset expression (type T).
+	// Result = `kid[0] + clampIndexMod<T>(offset, capacity)`, where the offset is
+	// reduced modulo however much room is left between kid[0]'s (always
+	// in-bounds, by induction) index and the end of the buffer, so the
+	// result is provably in [0, BUFFER_ELEMS) for *any* value kid[0]
+	// resolves to at runtime -- see evalNativePtr/evalNautilusPtr. When
+	// kid[0] is the base leaf this reduces to the original single-hop
+	// `base + clampBufferIndex<T>(offset)`. Exercises val<T*>::operator+,
+	// chained hop-over-hop when nested.
 	PtrAdd,
-	// PtrSub: kid[0] = value-domain offset expression (type T). Result =
-	// `(base + (BUFFER_ELEMS - 1)) - clampBufferIndex<T>(offset)`, exercising
-	// val<T*>::operator-.
+	// PtrSub: same kid layout as PtrAdd. Result = `kid[0] -
+	// clampIndexMod<T>(offset, capacity)`, the offset reduced modulo however much
+	// room is left between index 0 and kid[0]'s index -- the mirror-image
+	// bound of PtrAdd's. When kid[0] is the base leaf this reduces to the
+	// original `(base + (BUFFER_ELEMS - 1)) - clampBufferIndex<T>(offset)`.
+	// Exercises val<T*>::operator-, chained hop-over-hop when nested.
 	PtrSub
 };
 
@@ -199,6 +213,17 @@ inline constexpr int LOOP_MAX_TRIPS = 8;
 /// small enough to keep the oracle/traced buffers cheap, large enough to make
 /// pointer differences/comparisons non-trivial.
 inline constexpr int BUFFER_ELEMS = 8;
+
+/// Maximum number of chained `PtrAdd`/`PtrSub` hops `generatePtrNode` may
+/// nest on top of the `PtrBase` leaf (a bare `PtrBase` is zero hops; the
+/// original single-hop `base + clampBufferIndex(x)`/`end - clampBufferIndex(x)`
+/// is one hop). Bounded purely to keep pointer-domain subtrees small and AST
+/// generation deterministic/terminating -- staying in bounds does not depend
+/// on this constant: `evalNativePtr`/`evalNautilusPtr` derive each hop's
+/// clamp modulus from however much room is actually left between the
+/// previous hop's (already-proven in-bounds) index and the buffer edge, so
+/// the in-bounds invariant holds inductively for a chain of any length.
+inline constexpr int PTR_MAX_HOPS = 2;
 
 namespace detail {
 
@@ -249,8 +274,6 @@ inline int arity(Kind k) {
 	case Kind::Cast:
 	case Kind::Load:
 	case Kind::PtrToInt:
-	case Kind::PtrAdd:
-	case Kind::PtrSub:
 		return 1;
 	case Kind::Select:
 	case Kind::If:
@@ -258,7 +281,9 @@ inline int arity(Kind k) {
 	case Kind::While:
 		return 3;
 	default:
-		// Includes LoopBreak/LoopContinue (kid[0] = cond, kid[1] = value).
+		// Includes LoopBreak/LoopContinue (kid[0] = cond, kid[1] = value) and
+		// PtrAdd/PtrSub (kid[0] = nested pointer-domain node, kid[1] =
+		// value-domain offset expression -- see generatePtrNode).
 		return 2;
 	}
 }
@@ -289,20 +314,26 @@ inline int pushPtrBase(Ast& ast) {
 }
 
 /// Build a bounded pointer-domain expression: either the raw base pointer, or
-/// a single-hop offset from it (`Kind::PtrAdd`/`Kind::PtrSub`) computed from a
-/// value-domain offset expression. Deliberately never nests (a PtrAdd's own
-/// child is always a value-domain node, never another pointer-domain node),
-/// so every pointer this can produce is directly `base + clampBufferIndex(x)`
-/// or `end - clampBufferIndex(x)` -- always an in-bounds index into the
-/// shared buffer, with no need to reason about compounding offsets across
-/// hops. `depth`/`budget`/`loopDepth`/`breakDepth`/`numParams` are threaded
-/// through exactly like generateNode's, so the shared node budget still
-/// bounds total tree size.
+/// an offset from a nested pointer-domain expression (`Kind::PtrAdd`/
+/// `Kind::PtrSub`) computed from a value-domain offset expression. May nest
+/// up to `PTR_MAX_HOPS` hops deep (`hopsRemaining` counts hops still
+/// available, decremented on each recursive call for kid[0], the nested
+/// pointer -- kid[1], the offset expression, is always value-domain, never
+/// pointer-domain, so nesting only ever grows along kid[0]). Every pointer
+/// this can produce is still provably in [0, BUFFER_ELEMS) by construction:
+/// `evalNativePtr`/`evalNautilusPtr` never apply a fixed modulus to a hop's
+/// offset, they derive it from however much room is actually left between
+/// the *previous* hop's (already-proven in-bounds) index and the relevant
+/// buffer edge, so nesting to any depth preserves the invariant inductively
+/// -- `PTR_MAX_HOPS` only bounds tree size/generation cost, not soundness.
+/// `depth`/`budget`/`loopDepth`/`breakDepth`/`numParams` are threaded through
+/// exactly like generateNode's, so the shared node budget still bounds total
+/// tree size.
 template <typename T>
 int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int loopDepth, int breakDepth,
-                    uint32_t numParams) {
+                    uint32_t numParams, int hopsRemaining = PTR_MAX_HOPS) {
 	const uint8_t sel = reader.byte();
-	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || (sel & 0x1) == 0;
+	bool leaf = depth <= 0 || budget <= 1 || reader.exhausted() || hopsRemaining <= 0 || (sel & 0x1) == 0;
 	if constexpr (std::is_same_v<T, bool>) {
 		// val<bool> has no arithmetic to build a PtrAdd/PtrSub offset from (see
 		// BOOL_KINDS); every bool-domain pointer node stays at the buffer's
@@ -320,7 +351,9 @@ int generatePtrNode(Ast& ast, ByteReader& reader, int depth, int& budget, int lo
 
 	node.kind = (sel & 0x2) ? Kind::PtrAdd : Kind::PtrSub;
 	--budget;
-	node.kid[0] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
+	node.kid[0] =
+	    generatePtrNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams, hopsRemaining - 1);
+	node.kid[1] = generateNode<T>(ast, reader, depth - 1, budget, loopDepth, breakDepth, numParams);
 	const int idx = static_cast<int>(ast.nodes.size());
 	ast.nodes.push_back(node);
 	return idx;
@@ -782,13 +815,17 @@ void print(const Ast& ast, int idx, std::string& out) {
 		out += "mem";
 		return;
 	case Kind::PtrAdd:
-		out += "(mem + idx(";
+		out += "(";
 		print<T>(ast, n.kid[0], out);
+		out += " + idx(";
+		print<T>(ast, n.kid[1], out);
 		out += "))";
 		return;
 	case Kind::PtrSub:
-		out += "(mem_end - idx(";
+		out += "(";
 		print<T>(ast, n.kid[0], out);
+		out += " - idx(";
+		print<T>(ast, n.kid[1], out);
 		out += "))";
 		return;
 	default:
