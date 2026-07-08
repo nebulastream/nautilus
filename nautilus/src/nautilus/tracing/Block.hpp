@@ -80,6 +80,16 @@ public:
 	 * @brief Indicates successors of this block.
 	 */
 	std::vector<uint32_t> predecessors;
+
+	/**
+	 * @brief Trace-mutation epoch of the last modification to this block.
+	 *
+	 * Only maintained while the enclosing ExecutionTrace has delta tracking
+	 * enabled (fork tracer); see ExecutionTrace::enableDeltaTracking(). The
+	 * fork tracer's incremental handoff ships exactly the blocks whose epoch
+	 * is newer than the receiving continuation's fork epoch.
+	 */
+	uint64_t lastModifiedEpoch = 0;
 };
 
 } // namespace nautilus::tracing

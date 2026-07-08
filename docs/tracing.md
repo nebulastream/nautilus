@@ -242,13 +242,20 @@ use-after-return detection; set `ASAN_OPTIONS=detect_stack_use_after_return=0`.
 
 **forkTracing** snapshots the whole process with `fork()` instead: the forked child
 *is* the suspended false-branch continuation - its copied address space already
-holds the correct stack, heap and tracer state. Only the grow-only trace state
-(blocks, operations, tag maps) accumulated by other processes is serialized and
-handed to a continuation when it is resumed; descriptors of pending continuations
-travel along via `SCM_RIGHTS`. This is considerably slower per branch (fork +
-serialization, tens to hundreds of microseconds) but fully isolates the traced
-code: destructors run exactly once per process, so code that is unsafe under
-stackCopyTracing works here. Constraints: POSIX only; tracing must run
+holds the correct stack, heap and tracer state. On resume, a continuation receives
+only the trace mutations it missed since its fork: the trace journals its writes
+under a monotonically increasing epoch (dirty blocks, tag-map writes), each
+continuation remembers its fork epoch, and the handoff ships exactly the newer
+suffix. The payload is staged in an anonymous `MAP_SHARED` region inherited by the
+whole worker tree, so the bytes are written once and read in place - the socket
+message carries only descriptors (`SCM_RIGHTS`) and the payload size, acting as the
+synchronization fence. The delta helps most when forks are recent relative to the
+trace (straight-line-heavy functions); on long branch chains the FIFO resume order
+and the block relocations performed by control-flow merges keep the shipped deltas
+close to the full trace, so the per-branch cost still grows with trace size there.
+Considerably slower per branch than a stack copy in every case, but fully isolates
+the traced code: destructors run exactly once per process, so code that is unsafe
+under stackCopyTracing works here. Constraints: POSIX only; tracing must run
 single-threaded (forking with concurrently allocating threads risks deadlocking the
 children); nested `NautilusFunction` objects must outlive tracing (declare them
 static - objects constructed inside the traced function only exist in one tracing

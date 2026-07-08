@@ -48,6 +48,16 @@ public:
 	 */
 	Tag* internTagPath(const TagAddress* addresses, size_t count);
 
+	/// Root node of this recorder's tag trie. Serialized payloads refer to it as
+	/// node id 0 (see serialization::SnapshotEncoder).
+	Tag* rootTag() noexcept;
+
+	/// Single interning step: returns the child of @p parent carrying @p address,
+	/// creating it if absent. Building tags edge-by-edge lets the fork tracer's
+	/// serialization intern each unique trie node once per payload instead of
+	/// re-walking every operation's full root path.
+	Tag* internTagStep(Tag* parent, TagAddress address);
+
 private:
 	static TagAddress getBaseAddress(TagVector& tag1, TagVector& tag2);
 

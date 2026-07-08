@@ -71,10 +71,43 @@ struct ByteReader {
 	}
 };
 
-/// Serializes a snapshot as its tag's root-first address path plus the state hash.
-void writeSnapshot(ByteWriter& writer, const Snapshot& snapshot);
-/// Reads a snapshot, re-interning the tag path into @p tagRecorder's trie.
-Snapshot readSnapshot(ByteReader& reader, TagRecorder& tagRecorder);
+/**
+ * @brief Serializes the tags of a payload's snapshots as full root-first address
+ * paths (re-interned by the decoder via TagRecorder::internTagPath).
+ *
+ * Note for future optimization attempts: a prefix-deduplicating encoding (emit
+ * each trie edge once per payload, reference nodes by id) was implemented and
+ * benchmarked - and REVERTED. The tag trie is built leaf-first from backtrace()
+ * output (TagRecorder::createReferenceTagBacktrace inserts the innermost frame
+ * as the root's child), so the chains of distinct operations share no trie
+ * nodes and there are no prefixes to deduplicate; the id bookkeeping only added
+ * encoder/decoder overhead. Prefix sharing would require flipping the trie to
+ * root-first order in TagRecorder, which affects every tracer's hot path.
+ */
+class SnapshotEncoder {
+public:
+	explicit SnapshotEncoder(ByteWriter& writer) : writer_(writer) {
+	}
+	void write(const Snapshot& snapshot);
+
+private:
+	ByteWriter& writer_;
+	std::vector<TagAddress> path_; // scratch, reused across snapshots
+};
+
+/// Decodes snapshots written by SnapshotEncoder, re-interning tag paths into
+/// @p tagRecorder (node identity is preserved across payloads).
+class SnapshotDecoder {
+public:
+	SnapshotDecoder(ByteReader& reader, TagRecorder& tagRecorder) : reader_(reader), tagRecorder_(&tagRecorder) {
+	}
+	Snapshot read();
+
+private:
+	ByteReader& reader_;
+	TagRecorder* tagRecorder_;
+	std::vector<TagAddress> path_; // scratch, reused across snapshots
+};
 
 /// Serializes the complete grow-only state of @p trace (blocks, operations, tag map,
 /// return refs, alloca table, value-ref counter).
@@ -82,6 +115,52 @@ void serializeTraceState(ByteWriter& writer, ExecutionTrace& trace);
 /// Replaces the content of @p trace with the serialized state, allocating all blocks
 /// and operations from the trace's own arena.
 void deserializeTraceState(ByteReader& reader, ExecutionTrace& trace, TagRecorder& tagRecorder);
+
+/**
+ * @brief Serializes only the trace mutations newer than @p sinceEpoch: blocks whose
+ * Block::lastModifiedEpoch is newer, the (last-wins deduplicated) tag-journal suffix,
+ * and the small always-shipped scalars (value-ref counter, return refs, alloca table).
+ *
+ * Requires ExecutionTrace::enableDeltaTracking() to have been active for the whole
+ * lifetime of @p trace. A continuation that forked at epoch E has state exactly equal
+ * to the timeline at E (it performs no trace writes while suspended), so applying the
+ * delta > E on top reproduces the sender's full state.
+ */
+void serializeTraceDelta(ByteWriter& writer, ExecutionTrace& trace, uint64_t sinceEpoch);
+/// Applies a delta produced by serializeTraceDelta on top of the receiver's own state,
+/// re-interning tags into @p tagRecorder and extending the receiver's journal so it can
+/// itself produce deltas for older continuations later.
+void applyTraceDelta(ByteReader& reader, ExecutionTrace& trace, TagRecorder& tagRecorder);
+
+/**
+ * @brief Anonymous MAP_SHARED region inherited (at the same address) by every process
+ * forked after its creation. The fork tracer stages handoff payloads here so the bytes
+ * are written once by the sender and read in place by the receiver, instead of being
+ * copied twice through kernel socket buffers; the socket message that follows carries
+ * only the payload size and acts as the synchronization fence. Handoffs are strictly
+ * sequential (exactly one process in the worker tree runs at any moment), so a single
+ * region without further locking is race-free.
+ */
+class SharedHandoffRegion {
+public:
+	explicit SharedHandoffRegion(size_t capacity);
+	~SharedHandoffRegion();
+	SharedHandoffRegion(const SharedHandoffRegion&) = delete;
+	SharedHandoffRegion& operator=(const SharedHandoffRegion&) = delete;
+	SharedHandoffRegion(SharedHandoffRegion&&) = delete;
+	SharedHandoffRegion& operator=(SharedHandoffRegion&&) = delete;
+
+	std::byte* data() {
+		return static_cast<std::byte*>(mapping_);
+	}
+	size_t capacity() const {
+		return capacity_;
+	}
+
+private:
+	void* mapping_ = nullptr;
+	size_t capacity_ = 0;
+};
 
 // --- Socket helpers (length-prefixed messages + SCM_RIGHTS fd transfer) ---
 

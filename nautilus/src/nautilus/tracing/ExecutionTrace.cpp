@@ -164,6 +164,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 		newOp = makeTraceOp(*arena, snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
 	}
 	operations.push_back(newOp);
+	touchBlock(currentBlockIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 
@@ -179,6 +180,7 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	auto op = ASSIGN;
 	auto* operation = makeTraceOp(*arena, snapshot, op, resultType, targetRef, srcRef);
 	operations.push_back(operation);
+	touchBlock(currentBlockIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 	return operation->resultRef;
@@ -191,6 +193,7 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initia
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* newOp = makeTraceOp(*arena, snapshot, operation, Type::v, TypedValueRef(0, Type::v), inputs);
 	operations.push_back(newOp);
+	touchBlock(currentBlockIndex);
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
@@ -203,6 +206,7 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
 	operations.push_back(to);
+	touchBlock(currentBlockIndex);
 
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -227,6 +231,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto* cmpOp = makeTraceOp(*arena, snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
 	                          trueBlockRef, falseBlockRef, probability);
 	operations.push_back(cmpOp);
+	touchBlock(currentBlockIndex);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
 }
@@ -263,7 +268,20 @@ uint32_t ExecutionTrace::createBlock() {
 	auto blockId = static_cast<uint32_t>(blocks.size());
 	auto* block = arena->create<Block>(blockId);
 	blocks.push_back(block);
+	touchBlock(blockId);
 	return block->blockId;
+}
+
+void ExecutionTrace::touchBlock(uint32_t blockIndex) {
+	if (deltaTrackingEnabled) {
+		blocks[blockIndex]->lastModifiedEpoch = ++mutationEpoch;
+	}
+}
+
+void ExecutionTrace::recordTagWrite(const Snapshot& snapshot, operation_identifier identifier) {
+	if (deltaTrackingEnabled) {
+		tagJournal.push_back({snapshot, identifier, ++mutationEpoch});
+	}
 }
 
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
@@ -277,6 +295,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	// some other block.
 	auto& referenceBlock = *blocks[oi.blockIndex];
 	auto& currentBlock = *blocks[currentBlockIndex];
+	const auto mergedFromBlockIndex = currentBlockIndex;
 
 	auto& mergeBlock = getBlock(mergedBlockId);
 	mergeBlock.type = Block::Type::ControlFlowMerge;
@@ -300,6 +319,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 		} else {
 			globalTagMap[opTag] = operationReference;
 			localTagMap[opTag] = operationReference;
+			recordTagWrite(opTag, operationReference);
 		}
 	}
 
@@ -324,12 +344,17 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	if (lastMergeOperation->op == Op::CMP || lastMergeOperation->op == Op::JMP) {
 		for (auto& input : lastMergeOperation->input) {
 			if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
-				auto& blockPredecessor = getBlock((*blockRefPtr)->block).predecessors;
+				auto successorIndex = (*blockRefPtr)->block;
+				auto& blockPredecessor = getBlock(successorIndex).predecessors;
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), oi.blockIndex, mergedBlockId);
 				std::replace(blockPredecessor.begin(), blockPredecessor.end(), currentBlockIndex, mergedBlockId);
+				touchBlock(successorIndex);
 			}
 		}
 	}
+	touchBlock(oi.blockIndex);
+	touchBlock(mergedFromBlockIndex);
+	touchBlock(mergedBlockId);
 	return mergeBlock;
 }
 
@@ -341,6 +366,7 @@ TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 		arguments.resize(argRef);
 	}
 	arguments[index] = TypedValueRef(argRef, type);
+	touchBlock(0);
 	return arguments[index];
 }
 
@@ -371,6 +397,7 @@ const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
 	globalTagMap[snapshot] = identifier;
 	localTagMap[snapshot] = identifier;
+	recordTagWrite(snapshot, identifier);
 }
 
 AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {

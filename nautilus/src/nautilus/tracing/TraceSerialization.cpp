@@ -7,33 +7,37 @@
 #include <cerrno>
 #include <cstring>
 #include <poll.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 namespace nautilus::tracing::serialization {
 
-void writeSnapshot(ByteWriter& writer, const Snapshot& snapshot) {
-	std::vector<TagAddress> path;
-	// Walk to the trie root; the root is a sentinel (parent == nullptr) and carries
-	// no address, so it is excluded from the path.
+void SnapshotEncoder::write(const Snapshot& snapshot) {
+	// Tags are serialized as their full node-to-root address chain. A prefix-
+	// deduplicating encoding (emit each trie edge once per payload) was measured
+	// and rejected: the tag trie is built leaf-first from backtrace() output, so
+	// chains of distinct operations share no nodes and the dedupe only added
+	// per-node bookkeeping overhead.
+	path_.clear();
 	for (const Tag* node = snapshot.getTag(); node != nullptr && node->getParent() != nullptr;
 	     node = node->getParent()) {
-		path.push_back(node->getContent());
+		path_.push_back(node->getContent());
 	}
-	std::reverse(path.begin(), path.end());
-	writer.write<uint8_t>(snapshot.getTag() != nullptr ? 1 : 0);
-	writer.write<uint64_t>(path.size());
-	writer.writeBytes(path.data(), path.size() * sizeof(TagAddress));
-	writer.write<uint64_t>(snapshot.getStateHash());
+	std::reverse(path_.begin(), path_.end());
+	writer_.write<uint8_t>(snapshot.getTag() != nullptr ? 1 : 0);
+	writer_.write<uint64_t>(path_.size());
+	writer_.writeBytes(path_.data(), path_.size() * sizeof(TagAddress));
+	writer_.write<uint64_t>(snapshot.getStateHash());
 }
 
-Snapshot readSnapshot(ByteReader& reader, TagRecorder& tagRecorder) {
-	auto hasTag = reader.read<uint8_t>();
-	auto pathSize = reader.read<uint64_t>();
-	std::vector<TagAddress> path(pathSize);
-	reader.readBytes(path.data(), pathSize * sizeof(TagAddress));
-	auto stateHash = reader.read<uint64_t>();
-	Tag* tag = hasTag != 0 ? tagRecorder.internTagPath(path.data(), path.size()) : nullptr;
+Snapshot SnapshotDecoder::read() {
+	auto hasTag = reader_.read<uint8_t>();
+	auto pathSize = reader_.read<uint64_t>();
+	path_.resize(pathSize);
+	reader_.readBytes(path_.data(), pathSize * sizeof(TagAddress));
+	auto stateHash = reader_.read<uint64_t>();
+	Tag* tag = hasTag != 0 ? tagRecorder_->internTagPath(path_.data(), path_.size()) : nullptr;
 	return {tag, stateHash};
 }
 
@@ -186,29 +190,63 @@ InputVariant readInput(ByteReader& reader, common::Arena& arena) {
 	throw RuntimeException("Invalid trace operation input variant in serialized trace");
 }
 
+/// Serializes a block's mutable content (everything except the blockId).
+void writeBlockContent(ByteWriter& writer, SnapshotEncoder& snapshots, const Block& block) {
+	writer.write<uint8_t>(static_cast<uint8_t>(block.type));
+	writeValueRefs(writer, block.arguments);
+	writer.write<uint64_t>(block.predecessors.size());
+	writer.writeBytes(block.predecessors.data(), block.predecessors.size() * sizeof(uint32_t));
+	writer.write<uint64_t>(block.operations.size());
+	for (const auto* operation : block.operations) {
+		writer.write<uint8_t>(static_cast<uint8_t>(operation->op));
+		writer.write<uint8_t>(static_cast<uint8_t>(operation->resultType));
+		writer.write<uint32_t>(operation->resultRef.ref);
+		writer.write<uint8_t>(static_cast<uint8_t>(operation->resultRef.type));
+		snapshots.write(operation->tag);
+		writer.write<uint64_t>(operation->input.size());
+		for (const auto& input : operation->input) {
+			writeInput(writer, input);
+		}
+	}
+}
+
+/// Rebuilds a block's content in place, allocating fresh operations from @p arena.
+/// Previously referenced operations are abandoned (arena-owned, reclaimed later).
+void readBlockContentInto(ByteReader& reader, SnapshotDecoder& snapshots, Block& block, common::Arena& arena) {
+	block.type = static_cast<Block::Type>(reader.read<uint8_t>());
+	block.arguments = readValueRefs(reader);
+	auto predecessorCount = reader.read<uint64_t>();
+	block.predecessors.resize(predecessorCount);
+	reader.readBytes(block.predecessors.data(), predecessorCount * sizeof(uint32_t));
+	auto operationCount = reader.read<uint64_t>();
+	block.operations.clear();
+	block.operations.reserve(operationCount);
+	for (uint64_t opIndex = 0; opIndex < operationCount; opIndex++) {
+		auto op = static_cast<Op>(reader.read<uint8_t>());
+		auto resultType = static_cast<Type>(reader.read<uint8_t>());
+		auto resultRefId = reader.read<uint32_t>();
+		auto resultRefType = static_cast<Type>(reader.read<uint8_t>());
+		auto tag = snapshots.read();
+		auto inputCount = reader.read<uint64_t>();
+		InputVariant* inputs = detail::allocateInputArray(arena, inputCount);
+		for (uint64_t i = 0; i < inputCount; i++) {
+			::new (&inputs[i]) InputVariant(readInput(reader, arena));
+		}
+		auto* operation = arena.create<TraceOperation>(tag, op, resultType, TypedValueRef {resultRefId, resultRefType},
+		                                               std::span<InputVariant> {inputs, inputCount});
+		block.operations.push_back(operation);
+	}
+}
+
 } // namespace
 
 void serializeTraceState(ByteWriter& writer, ExecutionTrace& trace) {
+	SnapshotEncoder snapshots {writer};
 	auto& blocks = trace.getBlocks();
 	writer.write<uint64_t>(blocks.size());
 	for (const auto* block : blocks) {
 		writer.write<uint32_t>(block->blockId);
-		writer.write<uint8_t>(static_cast<uint8_t>(block->type));
-		writeValueRefs(writer, block->arguments);
-		writer.write<uint64_t>(block->predecessors.size());
-		writer.writeBytes(block->predecessors.data(), block->predecessors.size() * sizeof(uint32_t));
-		writer.write<uint64_t>(block->operations.size());
-		for (const auto* operation : block->operations) {
-			writer.write<uint8_t>(static_cast<uint8_t>(operation->op));
-			writer.write<uint8_t>(static_cast<uint8_t>(operation->resultType));
-			writer.write<uint32_t>(operation->resultRef.ref);
-			writer.write<uint8_t>(static_cast<uint8_t>(operation->resultRef.type));
-			writeSnapshot(writer, operation->tag);
-			writer.write<uint64_t>(operation->input.size());
-			for (const auto& input : operation->input) {
-				writeInput(writer, input);
-			}
-		}
+		writeBlockContent(writer, snapshots, *block);
 	}
 
 	const auto returnRefs = trace.getReturn();
@@ -222,12 +260,13 @@ void serializeTraceState(ByteWriter& writer, ExecutionTrace& trace) {
 
 	writer.write<uint64_t>(trace.globalTagMap.size());
 	for (const auto& [snapshot, identifier] : trace.globalTagMap) {
-		writeSnapshot(writer, snapshot);
+		snapshots.write(snapshot);
 		writer.write<operation_identifier>(identifier);
 	}
 }
 
 void deserializeTraceState(ByteReader& reader, ExecutionTrace& trace, TagRecorder& tagRecorder) {
+	SnapshotDecoder snapshots {reader, tagRecorder};
 	auto& arena = trace.getArena();
 	// Old blocks and operations are simply abandoned; they are arena-owned and get
 	// reclaimed with the arena after compilation.
@@ -242,29 +281,7 @@ void deserializeTraceState(ByteReader& reader, ExecutionTrace& trace, TagRecorde
 	for (uint64_t blockIndex = 0; blockIndex < blockCount; blockIndex++) {
 		auto blockId = reader.read<uint32_t>();
 		auto* block = arena.create<Block>(blockId);
-		block->type = static_cast<Block::Type>(reader.read<uint8_t>());
-		block->arguments = readValueRefs(reader);
-		auto predecessorCount = reader.read<uint64_t>();
-		block->predecessors.resize(predecessorCount);
-		reader.readBytes(block->predecessors.data(), predecessorCount * sizeof(uint32_t));
-		auto operationCount = reader.read<uint64_t>();
-		block->operations.reserve(operationCount);
-		for (uint64_t opIndex = 0; opIndex < operationCount; opIndex++) {
-			auto op = static_cast<Op>(reader.read<uint8_t>());
-			auto resultType = static_cast<Type>(reader.read<uint8_t>());
-			auto resultRefId = reader.read<uint32_t>();
-			auto resultRefType = static_cast<Type>(reader.read<uint8_t>());
-			auto tag = readSnapshot(reader, tagRecorder);
-			auto inputCount = reader.read<uint64_t>();
-			InputVariant* inputs = detail::allocateInputArray(arena, inputCount);
-			for (uint64_t i = 0; i < inputCount; i++) {
-				::new (&inputs[i]) InputVariant(readInput(reader, arena));
-			}
-			auto* operation =
-			    arena.create<TraceOperation>(tag, op, resultType, TypedValueRef {resultRefId, resultRefType},
-			                                 std::span<InputVariant> {inputs, inputCount});
-			block->operations.push_back(operation);
-		}
+		readBlockContentInto(reader, snapshots, *block, arena);
 		trace.blocks.push_back(block);
 	}
 
@@ -281,9 +298,119 @@ void deserializeTraceState(ByteReader& reader, ExecutionTrace& trace, TagRecorde
 	auto tagCount = reader.read<uint64_t>();
 	trace.globalTagMap.reserve(tagCount);
 	for (uint64_t i = 0; i < tagCount; i++) {
-		auto snapshot = readSnapshot(reader, tagRecorder);
+		auto snapshot = snapshots.read();
 		auto identifier = reader.read<operation_identifier>();
 		trace.globalTagMap.emplace(snapshot, identifier);
+	}
+}
+
+void serializeTraceDelta(ByteWriter& writer, ExecutionTrace& trace, uint64_t sinceEpoch) {
+	SnapshotEncoder snapshots {writer};
+	writer.write<uint64_t>(trace.mutationEpoch);
+	writer.write<uint32_t>(trace.lastValueRef);
+
+	// Small always-shipped state: return refs are updated in place by control-flow
+	// merges and the alloca table has no per-entry epoch; both stay tiny.
+	const auto returnRefs = trace.getReturn();
+	writer.write<uint64_t>(returnRefs.size());
+	writer.writeBytes(returnRefs.data(), returnRefs.size() * sizeof(operation_identifier));
+	writer.write<uint64_t>(trace.allocaSpecs.size());
+	writer.writeBytes(trace.allocaSpecs.data(), trace.allocaSpecs.size() * sizeof(AllocaSpec));
+
+	// Dirty blocks (shipped whole, keyed by blockId; includes blocks created after
+	// sinceEpoch, whose creation touched them).
+	auto& blocks = trace.getBlocks();
+	writer.write<uint64_t>(blocks.size());
+	uint64_t dirtyCount = 0;
+	for (const auto* block : blocks) {
+		if (block->lastModifiedEpoch > sinceEpoch) {
+			dirtyCount++;
+		}
+	}
+	writer.write<uint64_t>(dirtyCount);
+	for (const auto* block : blocks) {
+		if (block->lastModifiedEpoch <= sinceEpoch) {
+			continue;
+		}
+		writer.write<uint32_t>(block->blockId);
+		writer.write<uint64_t>(block->lastModifiedEpoch);
+		writeBlockContent(writer, snapshots, *block);
+	}
+
+	// Tag-journal suffix. The journal is in strictly increasing epoch order.
+	const auto& journal = trace.tagJournal;
+	auto firstNewer =
+	    std::lower_bound(journal.begin(), journal.end(), sinceEpoch,
+	                     [](const ExecutionTrace::TagMapWrite& write, uint64_t epoch) { return write.epoch <= epoch; });
+	// Last-wins dedupe: control-flow merges rewrite the tag entries of every moved
+	// operation, so the raw suffix repeats the same keys many times (O(paths x ops)
+	// on merge-heavy traces). The receiver only needs each key's final position.
+	// Keeping the last write per key is epoch-sound: that write carries the key's
+	// maximum epoch, so any later re-delta with a lower cutoff still includes it.
+	std::unordered_map<Snapshot, const ExecutionTrace::TagMapWrite*> lastWrites;
+	for (auto it = firstNewer; it != journal.end(); ++it) {
+		lastWrites[it->snapshot] = &*it;
+	}
+	std::vector<const ExecutionTrace::TagMapWrite*> suffix;
+	suffix.reserve(lastWrites.size());
+	for (const auto& [snapshot, write] : lastWrites) {
+		suffix.push_back(write);
+	}
+	// Receivers append these to their own (epoch-sorted) journal, so keep order.
+	std::sort(
+	    suffix.begin(), suffix.end(),
+	    [](const ExecutionTrace::TagMapWrite* a, const ExecutionTrace::TagMapWrite* b) { return a->epoch < b->epoch; });
+	writer.write<uint64_t>(suffix.size());
+	for (const auto* write : suffix) {
+		snapshots.write(write->snapshot);
+		writer.write<operation_identifier>(write->identifier);
+		writer.write<uint64_t>(write->epoch);
+	}
+}
+
+void applyTraceDelta(ByteReader& reader, ExecutionTrace& trace, TagRecorder& tagRecorder) {
+	SnapshotDecoder snapshots {reader, tagRecorder};
+	auto& arena = trace.getArena();
+
+	trace.mutationEpoch = reader.read<uint64_t>();
+	trace.lastValueRef = reader.read<uint32_t>();
+
+	auto returnCount = reader.read<uint64_t>();
+	trace.returnRefs.resize(returnCount);
+	reader.readBytes(trace.returnRefs.data(), returnCount * sizeof(operation_identifier));
+	auto allocaCount = reader.read<uint64_t>();
+	trace.allocaSpecs.resize(allocaCount);
+	reader.readBytes(trace.allocaSpecs.data(), allocaCount * sizeof(AllocaSpec));
+
+	auto totalBlockCount = reader.read<uint64_t>();
+	while (trace.blocks.size() < totalBlockCount) {
+		auto* block = arena.create<Block>(static_cast<uint32_t>(trace.blocks.size()));
+		trace.blocks.push_back(block);
+	}
+	auto dirtyCount = reader.read<uint64_t>();
+	for (uint64_t i = 0; i < dirtyCount; i++) {
+		auto blockId = reader.read<uint32_t>();
+		auto epoch = reader.read<uint64_t>();
+		if (blockId >= trace.blocks.size()) {
+			throw RuntimeException("forkTracing: delta references an unknown block");
+		}
+		auto& block = *trace.blocks[blockId];
+		readBlockContentInto(reader, snapshots, block, arena);
+		block.lastModifiedEpoch = epoch;
+	}
+
+	// The resumed suffix is a fresh path: apply the journal suffix into the global
+	// map only and extend the receiver's own journal so it can later produce deltas
+	// for continuations that forked before these writes.
+	trace.localTagMap.clear();
+	auto journalCount = reader.read<uint64_t>();
+	trace.tagJournal.reserve(trace.tagJournal.size() + journalCount);
+	for (uint64_t i = 0; i < journalCount; i++) {
+		auto snapshot = snapshots.read();
+		auto identifier = reader.read<operation_identifier>();
+		auto epoch = reader.read<uint64_t>();
+		trace.globalTagMap[snapshot] = identifier;
+		trace.tagJournal.push_back({snapshot, identifier, epoch});
 	}
 }
 
@@ -442,6 +569,22 @@ void receiveFds(int socketFd, int* fds, size_t count) {
 		}
 		std::memcpy(fds + received, CMSG_DATA(header), chunk * sizeof(int));
 		received += chunk;
+	}
+}
+
+SharedHandoffRegion::SharedHandoffRegion(size_t capacity) : capacity_(capacity) {
+	// MAP_SHARED so forked processes see each other's writes; anonymous, so pages
+	// are committed only up to the payload high-water mark, not the full capacity.
+	mapping_ = mmap(nullptr, capacity, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (mapping_ == MAP_FAILED) {
+		mapping_ = nullptr;
+		throw RuntimeException("forkTracing: failed to allocate the shared handoff region");
+	}
+}
+
+SharedHandoffRegion::~SharedHandoffRegion() {
+	if (mapping_ != nullptr) {
+		munmap(mapping_, capacity_);
 	}
 }
 

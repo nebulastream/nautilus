@@ -311,6 +311,46 @@ public:
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
 
+	// --- Delta tracking (fork tracer only) ---------------------------------
+	//
+	// The fork tracer resumes a suspended continuation by shipping it the trace
+	// mutations it missed since its fork.  To make that delta cheap to compute,
+	// the trace can journal its mutations: every write bumps a monotonically
+	// increasing epoch, blocks remember the epoch of their last modification
+	// (Block::lastModifiedEpoch) and every tag-map write is appended to
+	// tagJournal.  Exploration is strictly sequential and every resume first
+	// syncs the resumed process to the sender's epoch, so epochs form one
+	// globally consistent timeline across all processes of a worker tree.
+	//
+	// Disabled by default: the journal append would otherwise sit on the
+	// tracing hot path of the non-forking tracers.
+
+	/// One recorded write to the tag maps, in epoch order.
+	struct TagMapWrite {
+		Snapshot snapshot;
+		operation_identifier identifier;
+		uint64_t epoch;
+	};
+
+	void enableDeltaTracking() {
+		deltaTrackingEnabled = true;
+	}
+
+	void disableDeltaTracking() {
+		deltaTrackingEnabled = false;
+		tagJournal.clear();
+	}
+
+	uint64_t mutationEpoch = 0;
+	bool deltaTrackingEnabled = false;
+	std::vector<TagMapWrite> tagJournal;
+
+	/// Marks @p blockIndex as modified in the current epoch (no-op unless delta
+	/// tracking is enabled).
+	void touchBlock(uint32_t blockIndex);
+	/// Journals a tag-map write (no-op unless delta tracking is enabled).
+	void recordTagWrite(const Snapshot& snapshot, operation_identifier identifier);
+
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it
 	/// only fires for genuinely new alloca sites — re-traces that hit an

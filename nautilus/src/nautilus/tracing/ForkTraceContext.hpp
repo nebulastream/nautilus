@@ -16,6 +16,7 @@ class SymbolicExecutionContext;
 namespace serialization {
 struct ByteWriter;
 struct ByteReader;
+class SharedHandoffRegion;
 } // namespace serialization
 
 /**
@@ -101,6 +102,10 @@ private:
 		// File descriptors of continuations forked later do not exist in earlier
 		// children, so they are transferred via SCM_RIGHTS alongside the state blob.
 		int handoverFd = -1;
+		// Trace-mutation epoch at the continuation's fork. Its copied address space
+		// holds the trace exactly as of this epoch, so a resume only needs to ship
+		// the mutations that are newer (see serialization::serializeTraceDelta).
+		uint64_t forkEpoch = 0;
 	};
 
 	/// A nested function discovered during tracing. Name and attributes are captured
@@ -130,10 +135,15 @@ private:
 	/// Continuation side: blocks until resumed, adopts the handed-over state and
 	/// re-positions the trace at the CMP identified by @p cmpTag.
 	void awaitResume(int receiveFd, const Snapshot& cmpTag);
-	/// Serializes/deserializes the trace plus per-function exploration state
-	/// (work-list discoveries, normalized-name cache, path budget).
-	void serializeWorkerState(serialization::ByteWriter& writer);
-	void deserializeWorkerState(serialization::ByteReader& reader);
+	/// Serializes/deserializes the per-function exploration state that always
+	/// travels whole (work-list discoveries, normalized-name cache, path budget).
+	/// The trace itself follows separately: as an epoch delta on path handoffs,
+	/// or in full for the final result to the root.
+	void serializeWorkerMeta(serialization::ByteWriter& writer);
+	void deserializeWorkerMeta(serialization::ByteReader& reader);
+	/// Stages @p body in the shared handoff region when it fits; returns whether it
+	/// did. On false the caller sends the body through the socket instead.
+	bool stagePayload(const serialization::ByteWriter& body);
 
 	// Persistent per-path state
 	std::vector<StaticVarHolder> staticVars;
@@ -154,6 +164,10 @@ private:
 	const engine::Options* currentOptions_ = nullptr;
 	std::unique_ptr<TagRecorder> tagRecorder_;
 	std::unique_ptr<SymbolicExecutionContext> symbolicExecutionContext_;
+	// Created in the root before the first fork, so every process of every worker
+	// tree inherits the mapping at the same address. Null when the mmap failed;
+	// handoffs then fall back to sending payloads through the socket.
+	std::unique_ptr<serialization::SharedHandoffRegion> handoffRegion_;
 
 	// Work-list for multi-function tracing (drained by the root process only)
 	std::list<compiler::CompilableFunction> functionsToTrace;

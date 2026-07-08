@@ -113,6 +113,14 @@ Tag* TagRecorder::internTagPath(const TagAddress* addresses, size_t count) {
 	return currentTagNode;
 }
 
+Tag* TagRecorder::rootTag() noexcept {
+	return &rootTagThreeNode;
+}
+
+Tag* TagRecorder::internTagStep(Tag* parent, TagAddress address) {
+	return parent->append(address);
+}
+
 template <size_t StackSize>
 __attribute__((noinline)) void* get_addr(size_t index) {
 	return [&]<std::size_t... ints>(std::index_sequence<ints...>) __attribute__((noinline)) {

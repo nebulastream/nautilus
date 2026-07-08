@@ -383,23 +383,18 @@ bool ForkTraceContext::traceBool(const TypedValueRef& valueRef, const double pro
 		state->executionTrace.setCurrentBlock(std::get<BlockRef*>(currentOperation.input[2])->block);
 		return false;
 	}
-	// Parent: remember the continuation and explore the true branch.
+	// Parent: remember the continuation and explore the true branch. The child's
+	// copied address space holds the trace exactly as of the current mutation epoch
+	// (no trace writes happen between the CMP, the fork and this push).
 	::close(handoverPair[0]);
-	pendingContinuations_.push_back({childPid, handoverPair[1]});
+	pendingContinuations_.push_back({childPid, handoverPair[1], state->executionTrace.mutationEpoch});
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	assert(currentOperation.op == CMP);
 	state->executionTrace.setCurrentBlock(std::get<BlockRef*>(currentOperation.input[1])->block);
 	return true;
 }
 
-void ForkTraceContext::serializeWorkerState(serialization::ByteWriter& writer) {
-	auto& trace = state->executionTrace;
-	// Equivalent of ExecutionTrace::resetExecution() between the iterations of the
-	// re-executing tracers.
-	trace.globalTagMap.merge(trace.localTagMap);
-	trace.localTagMap.clear();
-	serialization::serializeTraceState(writer, trace);
-
+void ForkTraceContext::serializeWorkerMeta(serialization::ByteWriter& writer) {
 	writer.write<uint64_t>(pathCount_);
 
 	writer.write<uint64_t>(worklistAdditions_.size());
@@ -421,10 +416,7 @@ void ForkTraceContext::serializeWorkerState(serialization::ByteWriter& writer) {
 	writer.write<uint32_t>(state->nextNormalizedFunctionIndex);
 }
 
-void ForkTraceContext::deserializeWorkerState(serialization::ByteReader& reader) {
-	auto& trace = state->executionTrace;
-	serialization::deserializeTraceState(reader, trace, *tagRecorder_);
-
+void ForkTraceContext::deserializeWorkerMeta(serialization::ByteReader& reader) {
 	pathCount_ = reader.read<uint64_t>();
 
 	auto worklistSize = reader.read<uint64_t>();
@@ -453,22 +445,46 @@ void ForkTraceContext::deserializeWorkerState(serialization::ByteReader& reader)
 	state->nextNormalizedFunctionIndex = reader.read<uint32_t>();
 }
 
+bool ForkTraceContext::stagePayload(const serialization::ByteWriter& body) {
+	if (handoffRegion_ == nullptr || body.buffer.size() > handoffRegion_->capacity()) {
+		return false;
+	}
+	std::memcpy(handoffRegion_->data(), body.buffer.data(), body.buffer.size());
+	return true;
+}
+
 void ForkTraceContext::finishPath() {
 	if (!pendingContinuations_.empty()) {
 		auto next = pendingContinuations_.front();
 		pendingContinuations_.pop_front();
 
-		// The remaining pending continuations travel with the handoff: their pids in
-		// the payload, their descriptors via SCM_RIGHTS (a continuation forked before
-		// a younger sibling never inherited the sibling's descriptor).
-		//
-		// Protocol order matters: a small header and the descriptors go FIRST, the
-		// large state payload last. Ancillary (SCM_RIGHTS) sends fail with EMSGSIZE
-		// on some kernels (xnu) when the peer's receive buffer is occupied instead
-		// of blocking like plain data, so the descriptors must hit an empty socket.
+		// The remaining pending continuations travel with the handoff: their pids and
+		// fork epochs in the payload, their descriptors via SCM_RIGHTS (a continuation
+		// forked before a younger sibling never inherited the sibling's descriptor).
+		// The trace itself travels as an epoch delta: the receiver's address space
+		// already holds everything up to its fork epoch.
+		serialization::ByteWriter body;
+		serializeWorkerMeta(body);
+		serialization::serializeTraceDelta(body, state->executionTrace, next.forkEpoch);
+		for (const auto& pending : pendingContinuations_) {
+			body.write<int32_t>(pending.pid);
+			body.write<uint64_t>(pending.forkEpoch);
+		}
+
+		// Stage the body in the shared region BEFORE the header goes out: the header
+		// message is the fence after which the receiver reads the region.
+		const bool bodyInShm = stagePayload(body);
+
+		// Protocol order matters: a small header and the descriptors go FIRST, any
+		// socket-carried payload last. Ancillary (SCM_RIGHTS) sends fail with
+		// EMSGSIZE on some kernels (xnu) when the peer's receive buffer is occupied
+		// instead of blocking like plain data, so the descriptors must hit an empty
+		// socket.
 		serialization::ByteWriter header;
 		header.write<uint8_t>(static_cast<uint8_t>(MessageKind::PathHandoff));
 		header.write<uint64_t>(pendingContinuations_.size());
+		header.write<uint8_t>(bodyInShm ? 1 : 0);
+		header.write<uint64_t>(body.buffer.size());
 		serialization::writeMessage(next.handoverFd, header.buffer);
 
 		std::vector<int> descriptors;
@@ -478,19 +494,27 @@ void ForkTraceContext::finishPath() {
 		}
 		serialization::sendFds(next.handoverFd, descriptors.data(), descriptors.size());
 
-		serialization::ByteWriter body;
-		serializeWorkerState(body);
-		for (const auto& pending : pendingContinuations_) {
-			body.write<int32_t>(pending.pid);
+		if (!bodyInShm) {
+			serialization::writeMessage(next.handoverFd, body.buffer);
 		}
-		serialization::writeMessage(next.handoverFd, body.buffer);
 		_exit(0);
 	}
 
-	serialization::ByteWriter writer;
-	writer.write<uint8_t>(static_cast<uint8_t>(MessageKind::FinalResult));
-	serializeWorkerState(writer);
-	serialization::writeMessage(resultFd_, writer.buffer);
+	// Final result to the root: the root never explored anything, so it needs the
+	// full trace state, not a delta.
+	serialization::ByteWriter body;
+	serializeWorkerMeta(body);
+	serialization::serializeTraceState(body, state->executionTrace);
+	const bool bodyInShm = stagePayload(body);
+
+	serialization::ByteWriter header;
+	header.write<uint8_t>(static_cast<uint8_t>(MessageKind::FinalResult));
+	header.write<uint8_t>(bodyInShm ? 1 : 0);
+	header.write<uint64_t>(body.buffer.size());
+	serialization::writeMessage(resultFd_, header.buffer);
+	if (!bodyInShm) {
+		serialization::writeMessage(resultFd_, body.buffer);
+	}
 	_exit(0);
 }
 
@@ -502,6 +526,8 @@ void ForkTraceContext::awaitResume(int receiveFd, const Snapshot& cmpTag) {
 		throw RuntimeException("forkTracing: unexpected message kind on continuation resume");
 	}
 	auto pendingCount = header.read<uint64_t>();
+	auto bodyInShm = header.read<uint8_t>() != 0;
+	auto bodySize = header.read<uint64_t>();
 
 	// Descriptors inherited from the fork parent's pending deque are superseded by
 	// the ones arriving with the handoff; close them to avoid descriptor leaks.
@@ -513,16 +539,28 @@ void ForkTraceContext::awaitResume(int receiveFd, const Snapshot& cmpTag) {
 	std::vector<int> descriptors(pendingCount);
 	serialization::receiveFds(receiveFd, descriptors.data(), pendingCount);
 
-	auto payload = serialization::readMessage(receiveFd);
-	serialization::ByteReader reader {payload};
-	deserializeWorkerState(reader);
+	std::vector<std::byte> socketPayload;
+	serialization::ByteReader reader {};
+	if (bodyInShm) {
+		if (handoffRegion_ == nullptr || bodySize > handoffRegion_->capacity()) {
+			throw RuntimeException("forkTracing: handoff payload exceeds the shared region");
+		}
+		reader.data = std::span<const std::byte> {handoffRegion_->data(), bodySize};
+	} else {
+		socketPayload = serialization::readMessage(receiveFd);
+		reader.data = std::span<const std::byte> {socketPayload};
+	}
+
+	deserializeWorkerMeta(reader);
+	serialization::applyTraceDelta(reader, state->executionTrace, *tagRecorder_);
 	if (++pathCount_ > SymbolicExecutionContext::MAX_ITERATIONS) {
 		throw RuntimeException("Tracing got lost and reached the max number of iterations.");
 	}
 
 	for (uint64_t i = 0; i < pendingCount; i++) {
 		auto pid = reader.read<int32_t>();
-		pendingContinuations_.push_back({pid, descriptors[i]});
+		auto forkEpoch = reader.read<uint64_t>();
+		pendingContinuations_.push_back({pid, descriptors[i], forkEpoch});
 	}
 
 	auto& trace = state->executionTrace;
@@ -594,6 +632,23 @@ void ForkTraceContext::traceFunctionInWorkerTree(std::function<void()>& wrapper)
 	symbolicExecutionContext_ = std::make_unique<SymbolicExecutionContext>();
 	tagRecorder_ = std::make_unique<TagRecorder>((TagAddress) 0);
 
+	// Shared region for handoff payloads, created once in the root so every process
+	// of every worker tree inherits the mapping at the same address. Anonymous
+	// shared pages are committed lazily, so the large capacity costs only virtual
+	// address space; payloads that exceed it fall back to the socket.
+	if (handoffRegion_ == nullptr) {
+		try {
+			constexpr size_t handoffRegionCapacity = 64ull * 1024 * 1024;
+			handoffRegion_ = std::make_unique<serialization::SharedHandoffRegion>(handoffRegionCapacity);
+		} catch (const std::exception& exception) {
+			log::debug("forkTracing: no shared handoff region, using socket payloads: {}", exception.what());
+		}
+	}
+
+	// Journal trace mutations so path handoffs can ship epoch deltas instead of the
+	// whole accumulated trace (see serialization::serializeTraceDelta).
+	currentTrace_->enableDeltaTracking();
+
 	auto workerPid = fork();
 	if (workerPid < 0) {
 		::close(resultPair[0]);
@@ -613,10 +668,28 @@ void ForkTraceContext::traceFunctionInWorkerTree(std::function<void()>& wrapper)
 	::close(resultPair[1]);
 
 	auto timeoutMs = currentOptions_->getOptionOrDefault<int>("engine.forkTraceTimeoutMs", 300000);
-	std::vector<std::byte> payload;
+	std::vector<std::byte> headerPayload;
+	std::vector<std::byte> bodyPayload;
+	auto kind = MessageKind::Error;
+	std::string errorMessage;
+	bool bodyInShm = false;
+	uint64_t bodySize = 0;
 	std::exception_ptr failure;
 	try {
-		payload = serialization::readMessageWithTimeout(resultPair[0], timeoutMs);
+		headerPayload = serialization::readMessageWithTimeout(resultPair[0], timeoutMs);
+		if (!headerPayload.empty()) {
+			serialization::ByteReader header {headerPayload};
+			kind = static_cast<MessageKind>(header.read<uint8_t>());
+			if (kind == MessageKind::Error) {
+				errorMessage = header.readString();
+			} else if (kind == MessageKind::FinalResult) {
+				bodyInShm = header.read<uint8_t>() != 0;
+				bodySize = header.read<uint64_t>();
+				if (!bodyInShm) {
+					bodyPayload = serialization::readMessage(resultPair[0]);
+				}
+			}
+		}
 	} catch (...) {
 		failure = std::current_exception();
 	}
@@ -633,27 +706,38 @@ void ForkTraceContext::traceFunctionInWorkerTree(std::function<void()>& wrapper)
 	if (failure != nullptr) {
 		std::rethrow_exception(failure);
 	}
-	if (payload.empty()) {
+	if (headerPayload.empty()) {
 		throw RuntimeException("forkTracing: the worker tree terminated without producing a result");
 	}
-
-	serialization::ByteReader reader {payload};
-	auto kind = static_cast<MessageKind>(reader.read<uint8_t>());
 	if (kind == MessageKind::Error) {
-		throw RuntimeException(reader.readString());
+		throw RuntimeException(errorMessage);
 	}
 	if (kind != MessageKind::FinalResult) {
 		throw RuntimeException("forkTracing: unexpected result message kind");
 	}
+	serialization::ByteReader reader {};
+	if (bodyInShm) {
+		if (handoffRegion_ == nullptr || bodySize > handoffRegion_->capacity()) {
+			throw RuntimeException("forkTracing: result payload exceeds the shared region");
+		}
+		reader.data = std::span<const std::byte> {handoffRegion_->data(), bodySize};
+	} else {
+		reader.data = std::span<const std::byte> {bodyPayload};
+	}
+
 	// Adopt the final trace and the work-list discoveries in the root.
 	state = std::make_unique<TraceState>(*tagRecorder_, *currentTrace_, *symbolicExecutionContext_, *currentOptions_);
 	worklistAdditions_.clear();
 	pendingContinuations_.clear();
-	deserializeWorkerState(reader);
+	deserializeWorkerMeta(reader);
+	serialization::deserializeTraceState(reader, state->executionTrace, *tagRecorder_);
 	for (const auto& addition : worklistAdditions_) {
 		functionsToTrace.emplace_back(addition.name, *addition.wrapper, addition.attributes);
 	}
 	worklistAdditions_.clear();
+	// The adopted trace is final; downstream phases (SSA, IR generation) must not
+	// pay the journaling cost for their own mutations.
+	currentTrace_->disableDeltaTracking();
 	state.reset();
 	tagRecorder_.reset();
 	symbolicExecutionContext_.reset();
