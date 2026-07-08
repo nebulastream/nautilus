@@ -63,7 +63,16 @@ function(download_file url filename)
         endif ()
     endwhile ()
     if (CURRENT_ITERATION EQUAL MAX_RETRIES)
-        message(FATAL_ERROR "Aborting: retry attempts exceeded while failing to download ${url}")
+        message(FATAL_ERROR
+                "Aborting: retry attempts exceeded while failing to download ${url}\n"
+                "Last error: ${ERROR_MESSAGE}\n"
+                "This download failure is most commonly caused by the build machine not "
+                "being able to reach GitHub release assets (e.g. a restrictive proxy/firewall, "
+                "or a sandboxed environment whose network access is scoped to this repository "
+                "only and excludes other repositories such as nebulastream/mlir-binaries, which "
+                "hosts the pre-built MLIR binaries). Verify network/proxy access to ${url}, or "
+                "avoid the download entirely by pointing the build at a local LLVM/MLIR "
+                "installation via -DUSE_EXTERNAL_MLIR=ON.")
     endif ()
 endfunction(download_file)
 
