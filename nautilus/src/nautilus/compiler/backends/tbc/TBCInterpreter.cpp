@@ -1,10 +1,14 @@
 
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCHandlers.hpp"
+#include "nautilus/compiler/backends/tbc/TBCThunkCall.hpp"
+#include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
-#include <dyncall.h>
 #include <vector>
+#ifdef NAUTILUS_TBC_DYNCALL
+#include <dyncall.h>
+#endif
 
 // Dispatch capability detection. The tail-call skin needs Clang's guaranteed
 // [[clang::musttail]]; the computed-goto skin needs the GNU labels-as-values
@@ -38,6 +42,7 @@ VMContext& tlsContext() {
 	return ctx;
 }
 
+#ifdef NAUTILUS_TBC_DYNCALL
 DCCallVM* tlsDyncallVM() {
 	struct Holder {
 		DCCallVM* vm = dcNewCallVM(4096);
@@ -48,6 +53,7 @@ DCCallVM* tlsDyncallVM() {
 	static thread_local Holder holder;
 	return holder.vm;
 }
+#endif
 
 /// The single instruction an entry frame "returns" to; its handler terminates
 /// the dispatch loop and yields the entry result slot.
@@ -75,11 +81,12 @@ uint64_t* pushFrame(VMContext* ctx, const TBCFunction& fn, uint64_t* callerFp, c
 	return fp;
 }
 
+#ifdef NAUTILUS_TBC_DYNCALL
 /// External call through dyncall: marshal the argument registers per the call
 /// site's signature, call, and write the (re-normalized) result. Outgoing
 /// dyncall builds the call frame dynamically without any runtime code
 /// generation, so this path is iOS-safe (unlike dyncallback thunks).
-void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg) {
+void doDyncallExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg) {
 	DCCallVM* vm = tlsDyncallVM();
 	dcReset(vm);
 	for (size_t i = 0; i < site.argRegs.size(); ++i) {
@@ -161,6 +168,25 @@ void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg
 		return;
 	}
 	throw RuntimeException("tbc: unsupported external call return type");
+}
+#endif // NAUTILUS_TBC_DYNCALL
+
+/// External call: sites resolved to a typed thunk (tbc.externalCall=thunks)
+/// marshal through the pre-compiled caller; everything else goes through
+/// dyncall. Neither path generates code at runtime, so both are iOS-safe.
+void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg) {
+	if (site.ext.fn != nullptr) {
+		doThunkExtCall(site, target, fp, dstReg);
+		return;
+	}
+#ifdef NAUTILUS_TBC_DYNCALL
+	doDyncallExtCall(site, target, fp, dstReg);
+#else
+	// Unreachable: without dyncall the backend rejects unresolvable sites at
+	// compile time (TBCBackend::compile).
+	throw RuntimeException("tbc: external call site has no thunk and dyncall is not built "
+	                       "(ENABLE_TBC_DYNCALL=OFF)");
+#endif
 }
 
 /// Control transfer produced by call/return helpers, applied by each skin.
@@ -485,6 +511,24 @@ DispatchMode clampDispatchMode(DispatchMode requested) {
 	// Modes are ordered strongest-first in the enum; a request the build
 	// cannot execute silently degrades to the best available.
 	return static_cast<uint8_t>(requested) < static_cast<uint8_t>(best) ? best : requested;
+}
+
+ExtCallMode defaultExtCallMode() {
+#ifdef NAUTILUS_TBC_DYNCALL
+	return ExtCallMode::Dyncall;
+#else
+	return ExtCallMode::Thunks;
+#endif
+}
+
+ExtCallMode clampExtCallMode([[maybe_unused]] ExtCallMode requested) {
+	// A request the build cannot execute silently degrades, mirroring
+	// clampDispatchMode: dyncall without NAUTILUS_TBC_DYNCALL becomes thunks.
+#ifndef NAUTILUS_TBC_DYNCALL
+	return ExtCallMode::Thunks;
+#else
+	return requested;
+#endif
 }
 
 uint64_t invoke(const TBCProgram& program, uint32_t functionIndex, const uint64_t* args, size_t argCount) {

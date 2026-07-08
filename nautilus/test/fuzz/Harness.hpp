@@ -35,6 +35,11 @@ inline std::vector<std::string> configs() {
 #endif
 #ifdef ENABLE_TBC_BACKEND
 	result.emplace_back("tbc");
+	// Same backend with tbc.externalCall=thunks, so the zero-dependency typed
+	// thunk marshalling is continuously cross-checked against dyncall and all
+	// other backends (on ENABLE_TBC_DYNCALL=OFF builds "tbc" already resolves
+	// to thunks and this peer is redundant but harmless).
+	result.emplace_back("tbc-thunks");
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	result.emplace_back("asmjit");
@@ -46,6 +51,9 @@ inline engine::NautilusEngine makeEngine(const std::string& backend) {
 	engine::Options options;
 	if (backend == "interpreter") {
 		options.setOption("engine.Compilation", false);
+	} else if (backend == "tbc-thunks") {
+		options.setOption("engine.backend", std::string("tbc"));
+		options.setOption("tbc.externalCall", std::string("thunks"));
 	} else {
 		options.setOption("engine.backend", backend);
 	}

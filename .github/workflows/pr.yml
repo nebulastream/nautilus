@@ -39,6 +39,18 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_SHORT_CIRCUIT_BOOL=ON'
+          # tbc without dyncall: external calls only through the built-in
+          # typed thunks (the iOS-equivalent configuration).
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_TBC_DYNCALL=OFF'
+          # ... and additionally without the bc backend, so dyncall is not
+          # built at all (verifies nothing else links or exports it).
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_TBC_DYNCALL=OFF -DENABLE_BC_BACKEND=OFF'
           - os: 'ubuntu-24.04'
             cc: 'clang-21'
             cxx: 'clang++-21'

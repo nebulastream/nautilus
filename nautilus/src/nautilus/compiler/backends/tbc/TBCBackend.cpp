@@ -4,7 +4,10 @@
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
+#include "nautilus/compiler/backends/tbc/TBCThunkCall.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/config.hpp"
+#include "nautilus/exceptions/NotImplementedException.hpp"
 #include <chrono>
 
 namespace nautilus::compiler::tbc {
@@ -36,6 +39,50 @@ const char* dispatchModeName(DispatchMode mode) {
 	}
 	return "unknown";
 }
+
+ExtCallMode parseExtCallMode(const std::string& name) {
+	if (name == "dyncall") {
+		return ExtCallMode::Dyncall;
+	}
+	if (name == "thunks") {
+		return ExtCallMode::Thunks;
+	}
+	// "auto" (and anything unknown) selects the build's default: dyncall when
+	// it is linked, the zero-dependency typed thunks otherwise.
+	return defaultExtCallMode();
+}
+
+const char* extCallModeName(ExtCallMode mode) {
+	switch (mode) {
+	case ExtCallMode::Dyncall:
+		return "dyncall";
+	case ExtCallMode::Thunks:
+		return "thunks";
+	}
+	return "unknown";
+}
+
+/// Bind every external call site (CALL_EXT and CALL_IND share the record
+/// shape; internal CALL sites never reach the external path) to a typed
+/// thunk. Sites whose signature exceeds the thunk caps degrade per-site to
+/// dyncall when it is built; without dyncall they are rejected here, at
+/// compile time, rather than at run time mid-execution.
+void resolveExtCallThunks(TBCProgram& program) {
+	for (auto& site : program.callsites) {
+		if (site.internalFnIdx != ~0u) {
+			continue;
+		}
+		resolveExtCallThunk(site);
+#ifndef NAUTILUS_TBC_DYNCALL
+		if (site.ext.fn == nullptr) {
+			throw NotImplementedException(
+			    "tbc: external call signature exceeds the typed-thunk limits (at most 8 integer-class and 4 "
+			    "float-class arguments, x86-64/AArch64 only) and dyncall is not built; rebuild with "
+			    "-DENABLE_TBC_DYNCALL=ON to marshal such calls through dyncall");
+		}
+#endif
+	}
+}
 } // namespace
 
 std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
@@ -54,6 +101,8 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 	auto program = std::make_shared<TBCProgram>();
 	program->dispatch =
 	    clampDispatchMode(parseDispatchMode(options.getOptionOrDefault<std::string>("tbc.dispatch", "auto")));
+	program->extCall =
+	    clampExtCallMode(parseExtCallMode(options.getOptionOrDefault<std::string>("tbc.externalCall", "auto")));
 	const auto stackSizeKb = options.getOptionOrDefault("tbc.stackSizeKb", 1024);
 	program->minStackSlots = static_cast<uint64_t>(stackSizeKb) * 1024 / sizeof(uint64_t);
 
@@ -87,11 +136,16 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 		maxRegisters = std::max<int64_t>(maxRegisters, function.regSlots);
 	}
 
+	if (program->extCall == ExtCallMode::Thunks) {
+		resolveExtCallThunks(*program);
+	}
+
 	if (statistics != nullptr) {
 		statistics->set("tbc.instructions", totalInstructions);
 		statistics->set("tbc.codeSize.bytes", totalInstructions * static_cast<int64_t>(sizeof(Instr)));
 		statistics->set("tbc.registers.max", maxRegisters);
 		statistics->set("tbc.dispatch", std::string(dispatchModeName(program->dispatch)));
+		statistics->set("tbc.externalCall", std::string(extCallModeName(program->extCall)));
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 

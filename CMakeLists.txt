@@ -19,6 +19,7 @@ cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENAB
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_TBC_BACKEND "Enable the threaded bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_LIBFFI "Use libffi static-trampoline closures for the bytecode backend instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND" OFF)
+cmake_dependent_option(ENABLE_TBC_DYNCALL "Marshal the threaded bytecode backend's outgoing external calls through dyncall (OFF: only the built-in zero-dependency typed thunks are used, dropping tbc's last third-party dependency)" ON "ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
 
@@ -168,7 +169,10 @@ if (ENABLE_STACKTRACE)
 endif ()
 
 
-if (ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND)
+# dyncall is needed by the bc backend (always) and by the tbc backend only
+# when its dyncall external-call marshalling is enabled; with both consumers
+# off the library must be neither built nor exported.
+if (ENABLE_BC_BACKEND OR (ENABLE_TBC_BACKEND AND ENABLE_TBC_DYNCALL))
     add_subdirectory(${THIRD_PARTY_DIR}/dyncall)
     list(APPEND EXPORT_TARGETS dyncall_s)
 

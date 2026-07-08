@@ -9,6 +9,8 @@ endif ()
 # The libffi closure path is selected by the ENABLE_BC_LIBFFI option but exposed to
 # source as NAUTILUS_BC_LIBFFI; mirror the value so #cmakedefine emits the define.
 set(NAUTILUS_BC_LIBFFI ${ENABLE_BC_LIBFFI})
+# Same mirroring for the tbc backend's dyncall external-call marshalling.
+set(NAUTILUS_TBC_DYNCALL ${ENABLE_TBC_DYNCALL})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/nautilus/common/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/nautilus/config.hpp)
 
 add_subdirectory(src)

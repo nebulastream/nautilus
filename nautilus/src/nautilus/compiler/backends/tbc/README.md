@@ -100,8 +100,22 @@ simply pushes further frames at `sp`.
   return to a static `HALT` instruction. No FFI, no C++ recursion.
 - **External** (`invoke`): a single `CALL_EXT` instruction referencing a
   per-call-site record `{target, argRegs, argTypes, returnType}`; one handler
-  drives the outgoing dyncall VM (arguments + call in one dispatch). Outgoing
-  dyncall builds call frames dynamically without executable memory.
+  marshals arguments + call in one dispatch, through one of two mechanisms
+  selected by `tbc.externalCall = auto | dyncall | thunks`:
+  - **dyncall** (default when built, `ENABLE_TBC_DYNCALL=ON`): drives the
+    outgoing dyncall VM, which builds call frames dynamically without
+    executable memory. Covers any signature.
+  - **typed thunks** (`TBCThunkCall.hpp`, always compiled, zero
+    dependencies): each external site is bound at backend-compile time to one
+    of ~1100 pre-compiled template callers keyed on (return kind × integer-arg
+    count × f32/f64 pattern). Integer-class arguments travel as extended
+    `uint64_t` reordered ahead of the fp arguments — ABI-sound on x86-64 SysV
+    and AArch64 (incl. Apple) because the two argument classes are
+    register-assigned independently, with caps (≤ 8 integer-class, ≤ 4
+    fp-class args) that keep every argument out of ABI-visible stack-layout
+    differences. Over-cap or off-platform sites degrade per-site to dyncall;
+    without dyncall in the build they are rejected at compile time with a
+    clear error. `auto` resolves to thunks when dyncall is not built.
 - **Indirect** (`CALL_IND`): the target register always holds a real native
   pointer (see trampolines below), so it uses the external path.
 
@@ -141,8 +155,28 @@ Optimizations are **on by default** (flags exist only for A/B benchmarking):
 - `tbc.coalescing` — block-edge parallel copies emit the minimum number of
   MOVs (one temp only for a genuine permutation cycle).
 
-Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
-`tbc.registerAllocator` (default true).
+Other options: `tbc.dispatch` (see above), `tbc.externalCall` (see Calls;
+default `auto`), `tbc.stackSizeKb` (default 1024), `tbc.registerAllocator`
+(default true).
+
+## iOS support
+
+iOS forbids runtime code generation (no writable+executable pages), which
+rules out the MLIR / C++ / asmjit backends and `bc`'s dyncallback
+trampolines. `tbc` is built to run there:
+
+- **No executable memory anywhere**: bytecode is interpreted in place;
+  escaping internal function pointers come from the pre-compiled trampoline
+  pool (`TBCTrampoline.hpp`).
+- **Dispatch**: the strongest skin, tail-call threading, is Clang-based and
+  works on iOS; `tbc.dispatch = auto` selects it there.
+- **Outgoing external calls**: dyncall's forward-call VM is itself iOS-safe
+  (it builds call frames on a data stack and ships an Apple arm64 ABI
+  implementation), so a default build works. To avoid cross-compiling
+  dyncall's per-target assembly — and to drop tbc's last third-party
+  dependency altogether — configure with `-DENABLE_TBC_DYNCALL=OFF`: external
+  calls then marshal through the built-in typed thunks (see Calls), subject
+  to their signature caps.
 
 ## Testing
 
@@ -200,11 +234,17 @@ Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
   fusion above reuses the same set to drop the fused-away `ADD_imm_i64`, so
   a `ptr + const` feeding a `LOAD`/`STORE` collapses from three instructions
   (`MOV_imm`, `ADD`, `LOAD`/`STORE`) to one.
-- **Zero-dependency typed call thunks**: replace outgoing dyncall with
-  template-instantiated callers selected at lowering time (signatures are
-  statically known). Requires a register-only argument cap and care with the
-  Apple arm64 stack-argument packing rules; would remove the last third-party
-  dependency.
+- ~~**Zero-dependency typed call thunks**~~ — done (`TBCThunkCall.{hpp,cpp}`):
+  outgoing external calls can marshal through pre-compiled template callers
+  bound per call site at backend-compile time (`tbc.externalCall = thunks`,
+  automatic when dyncall is not built). Caps: ≤ 8 integer-class and ≤ 4
+  fp-class arguments, x86-64 SysV / AArch64 only (the Apple arm64
+  stack-argument packing rules are sidestepped by keeping every reordered
+  argument in registers — or, for integer args 7-8 on SysV x86-64, in
+  8-byte-rounded stack slots). Over-cap sites fall back per-site to dyncall
+  when it is built. `-DENABLE_TBC_DYNCALL=OFF` drops the dyncall link
+  entirely, removing tbc's last third-party dependency; over-cap signatures
+  are then rejected at backend-compile time with a clear error.
 - **Float-signature trampolines**: extend the escaping-function-pointer pool
   beyond integer-class signatures if a use case appears.
 - **Instruction-stream prefetch hints / handler layout experiments** once

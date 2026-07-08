@@ -13,6 +13,13 @@ DispatchMode bestAvailableDispatchMode();
 /// Clamp a requested mode to what the build supports.
 DispatchMode clampDispatchMode(DispatchMode requested);
 
+/// External-call marshalling this build defaults to for `tbc.externalCall =
+/// auto`: dyncall when NAUTILUS_TBC_DYNCALL is set, typed thunks otherwise.
+ExtCallMode defaultExtCallMode();
+
+/// Clamp a requested external-call mode to what the build supports.
+ExtCallMode clampExtCallMode(ExtCallMode requested);
+
 /// Execute `program.functions[functionIndex]` with the given 64-bit argument
 /// slots (already normalized per the function's argument types) and return the
 /// raw 64-bit result slot (0 for void). Runs on a thread-local contiguous VM

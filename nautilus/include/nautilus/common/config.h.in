@@ -5,6 +5,7 @@
 #cmakedefine ENABLE_BC_BACKEND
 #cmakedefine ENABLE_TBC_BACKEND
 #cmakedefine NAUTILUS_BC_LIBFFI
+#cmakedefine NAUTILUS_TBC_DYNCALL
 #cmakedefine ENABLE_C_BACKEND
 #cmakedefine ENABLE_MLIR_BACKEND
 #cmakedefine ENABLE_ASMJIT_BACKEND
