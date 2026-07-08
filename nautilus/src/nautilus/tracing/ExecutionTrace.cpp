@@ -2,10 +2,13 @@
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
+#include <bit>
+#include <cstring>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/logging.hpp>
+#include <unordered_set>
 
 namespace nautilus::tracing {
 
@@ -78,6 +81,110 @@ std::vector<std::string> TraceModule::getFunctionNames() const {
 	}
 	std::sort(names.begin(), names.end());
 	return names;
+}
+
+namespace {
+
+// Mixing primes used by computeContentHash.  Distinct from the AliveVariableHash
+// multiplier so identical bits in different roles do not collide.
+constexpr uint64_t CONTENT_OP_MIX = 0x100000001b3ULL;
+constexpr uint64_t CONTENT_TYPE_MIX = 0xbf58476d1ce4e5b9ULL;
+constexpr uint64_t CONTENT_INPUT_MIX = 0x94d049bb133111ebULL;
+constexpr uint64_t CONTENT_CONST_BASE = 0xc6a4a7935bd1e995ULL;
+constexpr uint64_t CONTENT_BLOCKREF_MIX = 0x9e3779b97f4a7c15ULL;
+constexpr uint64_t CONTENT_CALL_MIX = 0xff51afd7ed558ccdULL;
+constexpr uint64_t CONTENT_INDCALL_MIX = 0xd6e8feb86659fd93ULL;
+constexpr uint64_t CONTENT_ARGSEED = 0xa5a5a5a5a5a5a5a5ULL;
+
+inline uint64_t mixBits(uint64_t h, uint64_t v) noexcept {
+	h ^= v;
+	h *= CONTENT_INPUT_MIX;
+	h ^= h >> 33;
+	return h;
+}
+
+inline uint64_t hashConstantLiteral(const ConstantLiteral& lit) noexcept {
+	// Mix the alternative index with the raw literal bits.  Two CONSTs with
+	// the same literal value share a content hash even if they were minted
+	// from different source positions, which is exactly the structural
+	// equivalence the snapshot wants.
+	uint64_t h = CONTENT_CONST_BASE * (static_cast<uint64_t>(lit.index()) + 1);
+	std::visit(
+	    [&h](auto&& v) noexcept {
+		    using V = std::decay_t<decltype(v)>;
+		    if constexpr (std::is_same_v<V, void*>) {
+			    h = mixBits(h, std::bit_cast<uint64_t>(v));
+		    } else {
+			    uint64_t bits = 0;
+			    std::memcpy(&bits, &v, sizeof(v));
+			    h = mixBits(h, bits);
+		    }
+	    },
+	    lit);
+	return h;
+}
+
+} // namespace
+
+uint64_t ExecutionTrace::computeContentHash(Op op, Type resultType,
+                                            std::span<const InputVariant> inputs) const noexcept {
+	uint64_t h = CONTENT_OP_MIX * (static_cast<uint64_t>(op) + 1);
+	h = mixBits(h, CONTENT_TYPE_MIX * (static_cast<uint64_t>(resultType) + 1));
+	for (const auto& input : inputs) {
+		uint64_t inputBits = std::visit(
+		    [this](auto&& v) noexcept -> uint64_t {
+			    using V = std::decay_t<decltype(v)>;
+			    if constexpr (std::is_same_v<V, TypedValueRef>) {
+				    return getContentHashForValueRef(v.ref);
+			    } else if constexpr (std::is_same_v<V, ConstantLiteral>) {
+				    return hashConstantLiteral(v);
+			    } else if constexpr (std::is_same_v<V, BlockRef*>) {
+				    return v == nullptr ? 0 : CONTENT_BLOCKREF_MIX * (static_cast<uint64_t>(v->block) + 1);
+			    } else if constexpr (std::is_same_v<V, FunctionCall*>) {
+				    if (v == nullptr) {
+					    return 0;
+				    }
+				    uint64_t fh = CONTENT_CALL_MIX;
+				    fh = mixBits(fh, std::hash<std::string> {}(v->functionName));
+				    for (const auto& arg : v->arguments) {
+					    fh = mixBits(fh, getContentHashForValueRef(arg.ref));
+				    }
+				    return fh;
+			    } else if constexpr (std::is_same_v<V, IndirectFunctionCall*>) {
+				    if (v == nullptr) {
+					    return 0;
+				    }
+				    uint64_t fh = CONTENT_INDCALL_MIX;
+				    fh = mixBits(fh, getContentHashForValueRef(v->fnPtr.ref));
+				    for (const auto& arg : v->arguments) {
+					    fh = mixBits(fh, getContentHashForValueRef(arg.ref));
+				    }
+				    return fh;
+			    } else if constexpr (std::is_same_v<V, BranchProbability>) {
+				    uint64_t bits;
+				    std::memcpy(&bits, &v, sizeof(v));
+				    return bits;
+			    } else if constexpr (std::is_same_v<V, AllocaIndex>) {
+				    // Each ALLOCA must produce a distinct value-content even though every
+				    // alloca op shares the same op code; mixing the table index ensures
+				    // alloca-derived pointer ValueRefs do not all collapse into one
+				    // content class.
+				    return CONTENT_CALL_MIX * (static_cast<uint64_t>(v) + 1);
+			    } else {
+				    return 0; // None
+			    }
+		    },
+		    input);
+		h = mixBits(h, inputBits);
+	}
+	return h;
+}
+
+void ExecutionTrace::storeContentHashForValueRef(ValueRef ref, uint64_t contentHash) {
+	if (ref >= valueRefContentHashes.size()) {
+		valueRefContentHashes.resize(ref + 1, 0);
+	}
+	valueRefContentHashes[ref] = contentHash;
 }
 
 ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(0), currentOperationIndex(0), blocks() {
@@ -178,6 +285,17 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto op = ASSIGN;
 	auto* operation = makeTraceOp(*arena, snapshot, op, resultType, targetRef, srcRef);
+	// An assignment forwards its source's value to the target; the target's
+	// content-class is therefore the source's content hash, not a new mixture.
+	// We deliberately do not overwrite valueRefContentHashes[targetRef.ref]: the
+	// alive hash for an already-allocated target must stay stable for the
+	// XOR-rollover scheme to remain self-cancelling on free.  The pass-through
+	// here only affects fresh result refs (e.g. traceCopy, the const-aliasing
+	// path in traceConstant) where targetRef was minted by getNextValueRef().
+	operation->contentHash = getContentHashForValueRef(srcRef.ref);
+	if (targetRef.ref >= valueRefContentHashes.size() || valueRefContentHashes[targetRef.ref] == 0) {
+		storeContentHashForValueRef(targetRef.ref, operation->contentHash);
+	}
 	operations.push_back(operation);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -202,6 +320,8 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	to->contentHash = computeContentHash(operation, resultType, to->input);
+	storeContentHashForValueRef(to->resultRef.ref, to->contentHash);
 	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
@@ -333,6 +453,85 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	return mergeBlock;
 }
 
+void ExecutionTrace::bridgeMergeBlockNonLocals(Block& mergeBlock, Block& currentBlock) {
+	// Locals defined inside mergeBlock itself are already SSA-bridgeable.
+	std::unordered_set<ValueRef> definedInMerge;
+	for (auto* op : mergeBlock.operations) {
+		if (op->resultRef.ref != 0) {
+			definedInMerge.insert(op->resultRef.ref);
+		}
+	}
+
+	// Refs already defined locally in currentBlock — either by a path-Y op
+	// that minted them, or by an earlier ASSIGN bridge added by this routine
+	// or by traceConstant's aliasing path.
+	std::unordered_set<ValueRef> definedInCurrent;
+	for (auto* op : currentBlock.operations) {
+		if (op->resultRef.ref != 0) {
+			definedInCurrent.insert(op->resultRef.ref);
+		}
+	}
+
+	// Walk mergeBlock collecting non-local ValueRef uses.  We dedupe via
+	// `bridged` so a given (refToBridge, bridgeSource) only gets one ASSIGN
+	// even if the merge block references the same ref many times.
+	std::unordered_set<ValueRef> bridged;
+	for (auto* op : mergeBlock.operations) {
+		for (auto& input : op->input) {
+			auto* v = std::get_if<TypedValueRef>(&input);
+			if (v == nullptr || v->ref == 0) {
+				continue;
+			}
+			ValueRef refUsed = v->ref;
+			if (definedInMerge.contains(refUsed) || definedInCurrent.contains(refUsed) || bridged.contains(refUsed)) {
+				continue;
+			}
+			uint64_t targetHash = getContentHashForValueRef(refUsed);
+			if (targetHash == 0) {
+				// No content fingerprint recorded for this ref (transient
+				// sentinel or a ref minted before contentHash was wired up).
+				// Cannot pick a safe bridge candidate.
+				continue;
+			}
+			// Find a currentBlock-local op with the matching content hash.
+			TraceOperation* match = nullptr;
+			for (auto* candidate : currentBlock.operations) {
+				if (candidate->resultRef.ref == 0 || candidate->contentHash != targetHash) {
+					continue;
+				}
+				if (candidate->resultRef.ref == refUsed) {
+					// Already locally defined under the canonical ref — no
+					// bridge needed.
+					definedInCurrent.insert(refUsed);
+					break;
+				}
+				match = candidate;
+				break;
+			}
+			if (match == nullptr || definedInCurrent.contains(refUsed)) {
+				continue;
+			}
+			// Emit ASSIGN <refUsed> <match-ref> using a synthetic snapshot
+			// (no tag-map registration needed; bridges are intentionally
+			// outside the dedup machinery).
+			Snapshot bridgeTag {};
+			Type bridgeType = match->resultType;
+			auto* bridgeOp = makeTraceOp(*arena, bridgeTag, Op::ASSIGN, bridgeType, TypedValueRef(refUsed, bridgeType),
+			                             TypedValueRef(match->resultRef.ref, bridgeType));
+			// Re-derive contentHash so downstream users of this bridge value
+			// continue to see the same hash class.
+			bridgeOp->contentHash = targetHash;
+			// We add to block.operations directly: the public add* helpers
+			// would also push the synthetic snapshot into the global / local
+			// tag maps, which we deliberately avoid (the tag has no source-
+			// level meaning and would confuse subsequent checkTag matches).
+			currentBlock.operations.push_back(bridgeOp);
+			definedInCurrent.insert(refUsed);
+			bridged.insert(refUsed);
+		}
+	}
+}
+
 TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 	++lastValueRef;
 	ValueRef argRef = index + 1;
@@ -341,6 +540,13 @@ TypedValueRef& ExecutionTrace::setArgument(Type type, size_t index) {
 		arguments.resize(argRef);
 	}
 	arguments[index] = TypedValueRef(argRef, type);
+	// Seed the argument's content hash deterministically from (index, type).
+	// Re-tracing the same function across iterations therefore produces the
+	// same argument content hash, which is the precondition that lets the
+	// alive-hash mixing cancel cleanly on freeValRef.
+	uint64_t argHash = CONTENT_ARGSEED ^ (static_cast<uint64_t>(index + 1) * CONTENT_OP_MIX);
+	argHash = mixBits(argHash, CONTENT_TYPE_MIX * (static_cast<uint64_t>(type) + 1));
+	storeContentHashForValueRef(argRef, argHash);
 	return arguments[index];
 }
 

@@ -281,6 +281,19 @@ public:
 	 */
 	ValueRef getNextValueRef();
 
+	/**
+	 * @brief Returns the structural content hash recorded for @p ref, or 0
+	 * when the ValueRef has no associated producing operation yet (e.g. dummy
+	 * refs or untracked sentinels).
+	 *
+	 * Used by the trace contexts in allocateValRef / freeValRef so the
+	 * AliveVariableHash is keyed on value-content rather than the arbitrary
+	 * sequential ValueRef ID assigned by getNextValueRef().
+	 */
+	uint64_t getContentHashForValueRef(ValueRef ref) const noexcept {
+		return ref < valueRefContentHashes.size() ? valueRefContentHashes[ref] : 0;
+	}
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -288,6 +301,39 @@ private:
 	 * @param identifier The operation identifier to associate with the tag
 	 */
 	void addTag(Snapshot& snapshot, operation_identifier& identifier);
+
+	/**
+	 * @brief Computes the value-content hash for an operation about to be
+	 * created.  Mixes the op code, result type, and each input's structural
+	 * fingerprint (ValueRef inputs are dereferenced through
+	 * valueRefContentHashes so the hash transitively reflects the producing
+	 * tree).  ConstantLiteral inputs contribute their literal bits, so two
+	 * CONSTs with the same value compare equal regardless of which iteration
+	 * minted them.
+	 */
+	uint64_t computeContentHash(Op op, Type resultType, std::span<const InputVariant> inputs) const noexcept;
+
+	/**
+	 * @brief After a control-flow merge moves operations into @p mergeBlock,
+	 * any ValueRef those operations reference that is not defined in
+	 * mergeBlock itself must be locally defined in every predecessor for the
+	 * SSA pass to find it.  The reference path already has those defs from
+	 * before the split; this routine bridges the *current* path by inserting
+	 * `ASSIGN <ref> <equivalent-local-ref>` for every non-local ValueRef in
+	 * mergeBlock that has a content-equivalent producer locally in
+	 * currentBlock.  Without this, content-hash-based alive mixing would
+	 * leak inlined-callee locals up to the function entry as phantom
+	 * arguments.
+	 */
+	void bridgeMergeBlockNonLocals(Block& mergeBlock, Block& currentBlock);
+
+	/**
+	 * @brief Records the content hash of the operation that minted @p ref.
+	 * Grows the lookup vector as needed.  Idempotent overwrite is safe because
+	 * the producing operation never changes once an Op-with-result is
+	 * appended.
+	 */
+	void storeContentHashForValueRef(ValueRef ref, uint64_t contentHash);
 
 public:
 	/**
@@ -304,6 +350,13 @@ public:
 	ValueRef lastValueRef = 0;
 	std::unordered_map<Snapshot, operation_identifier> globalTagMap;
 	std::unordered_map<Snapshot, operation_identifier> localTagMap;
+
+	/// Per-ValueRef content hash, indexed by ValueRef ID.  Populated whenever a
+	/// new value-producing operation is appended; consulted in allocate/freeValRef
+	/// to mix value-content (not ValueRef identity) into AliveVariableHash.
+	/// Grows monotonically with lastValueRef; persists across iterations because
+	/// the producing operations themselves persist.
+	std::vector<uint64_t> valueRefContentHashes;
 
 	/// Per-function alloca table.  Each Op::ALLOCA trace operation carries an
 	/// AllocaIndex pointing at an entry here.  Copied wholesale to the

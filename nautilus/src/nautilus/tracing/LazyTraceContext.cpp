@@ -448,14 +448,16 @@ void LazyTraceContext::allocateValRef(ValueRef ref) {
 	if (paused_) {
 		return;
 	}
-	aliveVars.increment(ref);
+	uint64_t contentHash = state ? state->executionTrace.getContentHashForValueRef(ref) : 0;
+	aliveVars.increment(ref, contentHash);
 }
 
 void LazyTraceContext::freeValRef(ValueRef ref) {
 	if (paused_) {
 		return;
 	}
-	aliveVars.decrement(ref);
+	uint64_t contentHash = state ? state->executionTrace.getContentHashForValueRef(ref) : 0;
+	aliveVars.decrement(ref, contentHash);
 }
 
 void LazyTraceContext::pushStaticVal(void* valPtr, size_t size) {

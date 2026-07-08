@@ -50,24 +50,41 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
  * of variable IDs while keeping memory usage reasonable. The hash reflects both which variables
  * are alive and their reference counts, updated incrementally in O(1) average time.
  *
- * Implementation details:
- * - Uses XOR-based hashing for O(1) incremental updates
- * - Each variable ID is mixed with a constant multiplier for better hash distribution
- * - The hash incorporates both variable identity (ID) and reference count
- * - Uses unordered_map for sparse storage (only allocates for variables that exist)
+ * The mixed bits per variable are derived from `mix(id, contentHash)`, which by default returns
+ * `id * HASH_MULTIPLIER`.  The contentHash parameter is plumbed through but currently unused
+ * in the mix function — see PathExplosionFunctions.hpp for the motivating use case (collapsing
+ * the M^N inlined-call path explosion).  Wiring contentHash into mix is a one-line change here
+ * but requires complementary work in the SSA phase to bridge cross-path ValueRefs at the merge
+ * points it produces; see /root/.claude/plans/investigate-the-baseline-threecallsnobra-pure-otter.md
+ * for the open follow-up.
  *
  * Performance characteristics:
  * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
  * - decrement(): O(1) average - hash map lookup + two XOR operations, two multiplications
  * - hash(): O(1) - returns cached value
- *
- * @note Changed from fixed array to hash map to support uint32_t ValueRef (was uint16_t).
  */
 class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
 	std::unordered_map<uint32_t, uint32_t> counts;
 	uint64_t alive_hash = 0;
+
+	// The mixed bits per variable.  Currently ID-based; contentHash is plumbed
+	// through but unused while the SSA-side bridging work that would let it
+	// safely collapse the M^N path explosion (see PathExplosionFunctions.hpp)
+	// is still open.  Flipping this to `contentHash != 0 ? contentHash :
+	// id * HASH_MULTIPLIER` collapses the fixture's RETURN count (27 -> 3 on
+	// pathExplosion_baseline_threeCallsNoBranch) but trips the SSA
+	// propagation in the postCallBranch_2/_3 fixtures because content-hash
+	// equivalence is not the same as semantic-role equivalence: when two
+	// content-equivalent CONSTs exist in a single block,
+	// ExecutionTrace::bridgeMergeBlockNonLocals cannot tell which one is the
+	// "outer `a`" vs the "leaf-internal const 1".  Landing the flip therefore
+	// needs phi-aware propagation in SSACreationPhase (or a richer "role
+	// tag" on ValueRefs); both are tracked as follow-ups on the plan.
+	static inline uint64_t mix(uint32_t id, [[maybe_unused]] uint64_t contentHash) noexcept {
+		return id * HASH_MULTIPLIER;
+	}
 
 public:
 	/**
@@ -78,31 +95,31 @@ public:
 	/**
 	 * @brief Increments the reference count for a variable and updates the hash.
 	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
 	 * @param id Variable identifier (32-bit value)
+	 * @param contentHash Structural hash of the value-producing op (plumbed through
+	 *                    but currently unused — see class doc).
 	 */
-	inline void increment(uint32_t id) noexcept {
+	inline void increment(uint32_t id, uint64_t contentHash) noexcept {
 		uint32_t& c = counts[id];
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		uint64_t m = mix(id, contentHash);
+		alive_hash ^= m * c;
 		++c;
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		alive_hash ^= m * c;
 	}
 
 	/**
 	 * @brief Decrements the reference count for a variable and updates the hash.
 	 *
-	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
-	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
-	 *
 	 * @param id Variable identifier (32-bit value)
+	 * @param contentHash Must match the contentHash used in the matching
+	 *                    increment() call so the XOR-rollover cancels cleanly.
 	 */
-	inline void decrement(uint32_t id) noexcept {
+	inline void decrement(uint32_t id, uint64_t contentHash) noexcept {
 		uint32_t& c = counts[id];
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		uint64_t m = mix(id, contentHash);
+		alive_hash ^= m * c;
 		--c;
-		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		alive_hash ^= m * c;
 	}
 
 	/**

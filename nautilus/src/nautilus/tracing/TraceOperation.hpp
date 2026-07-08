@@ -135,6 +135,14 @@ public:
 	/// View over the Arena-allocated input array.  The storage is adjacent to
 	/// (and has the same lifetime as) this TraceOperation.
 	std::span<InputVariant> input;
+	/// Structural hash of the operation tree that produced this op's result, used to
+	/// key AliveVariableHash by value content rather than by ValueRef identity so
+	/// inlined-callee paths that synthesise the same value-shape do not fork the
+	/// snapshot tag of downstream control flow.  Zero for ops without a usable
+	/// result (CMP, RETURN, JMP) and for ops whose result the trace creates outside
+	/// the makeTraceOp call site (the trace context populates it before storing
+	/// the hash in ExecutionTrace::valueRefContentHashes).
+	uint64_t contentHash = 0;
 };
 
 namespace detail {
