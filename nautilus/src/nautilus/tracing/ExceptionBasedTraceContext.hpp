@@ -9,6 +9,7 @@
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus {
 class NautilusFunctionDefinition;
@@ -130,6 +132,66 @@ public:
 			alive_hash = 0;
 		}
 	}
+};
+
+/**
+ * @brief Scope-relative view of `AliveVariableHash` keyed on the Tag chain.
+ *
+ * Stack frames mirror the prefix of the current Tag's parent chain (root → leaf).
+ * Each frame captures `aliveVars.hash()` at the moment the chain first reached that
+ * depth; the snapshot then computes its alive-vars contribution as `currentHash XOR
+ * frames.back().aliveHashOnEntry`, i.e. the delta accumulated since the deepest
+ * scope was entered. This makes in-callee CMPs insensitive to caller-side ValueRef
+ * ids (collapsing call-site path explosion) while keeping loop iterations within
+ * the same scope distinguishable via the growing alive delta.
+ */
+class ScopeFrameStack {
+public:
+	struct Frame {
+		const Tag* tag_at_depth;
+		uint64_t alive_hash_on_entry;
+	};
+
+	/**
+	 * @brief Reconcile the frame stack with the current Tag's parent chain.
+	 *
+	 * Truncates frames at the first divergence from the chain prefix, then pushes a
+	 * frame for each newly entered depth — capturing @p current_alive_hash as the new
+	 * frame's `alive_hash_on_entry`.
+	 */
+	inline void sync(const Tag* current_tag, uint64_t current_alive_hash) {
+		chain_buffer.clear();
+		for (const Tag* t = current_tag; t != nullptr && t->getParent() != nullptr; t = t->getParent()) {
+			chain_buffer.push_back(t);
+		}
+		std::reverse(chain_buffer.begin(), chain_buffer.end());
+		const size_t depth = chain_buffer.size();
+
+		size_t common = 0;
+		while (common < frames.size() && common < depth && frames[common].tag_at_depth == chain_buffer[common]) {
+			++common;
+		}
+		frames.resize(common);
+
+		while (frames.size() < depth) {
+			frames.push_back({chain_buffer[frames.size()], current_alive_hash});
+		}
+	}
+
+	/// Returns the alive-vars hash captured when the innermost scope was entered, or
+	/// 0 when the chain is empty (top-of-trace).
+	[[nodiscard]] inline uint64_t entryHash() const noexcept {
+		return frames.empty() ? 0 : frames.back().alive_hash_on_entry;
+	}
+
+	inline void reset() noexcept {
+		frames.clear();
+		chain_buffer.clear();
+	}
+
+private:
+	std::vector<Frame> frames;
+	std::vector<const Tag*> chain_buffer; // reused across sync() calls
 };
 
 /**
@@ -296,11 +358,13 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
+	Snapshot recordBranchSnapshot();
 	std::string formatStaticVars() const;
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	ScopeFrameStack scopeFrames;             // Scope-relative view of aliveVars, keyed on the Tag chain
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;
 };
