@@ -16,17 +16,10 @@ bug because every generated program is fully defined by construction.
 |------|------|
 | `Types.hpp`        | The `TypeId` domain (twelve root types), imm pack/unpack, type dispatch helpers, value formatting/equality. |
 | `ByteReader.hpp`   | Deterministic `FuzzedDataProvider`-style view over the fuzzer buffer. |
-<<<<<<< HEAD
-| `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type), and a pretty printer. |
-| `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type. |
-| `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation. |
-| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T` and kernel signature shape (see "Kernel signature space"). |
-=======
 | `Ast.hpp`          | Tagged AST, depth/node-budgeted generator (templated on the value type, plus a bespoke enum-domain generator), and a pretty printer. |
 | `EvalNative.hpp`   | Independent C++ ground-truth interpreter (the oracle), templated on the value type, plus a bespoke enum-domain oracle. |
 | `EvalNautilus.hpp` | Walks the same AST emitting `val<T>` ops for tracing/compilation; plus a bespoke enum-domain evaluator. |
-| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T`. |
->>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)
+| `Harness.hpp`      | Shared differential check (`checkOne`/`runOne`) used by both drivers; dispatches each input to the right `T` and kernel signature shape (see "Kernel signature space"). |
 | `FuzzMain.cpp`     | `LLVMFuzzerTestOneInput`: coverage-guided libFuzzer entry point. |
 | `ReplayMain.cpp`   | Plain-`main` driver: replay saved inputs, smoke corpus, or `--survey`. |
 
@@ -48,19 +41,14 @@ bug because every generated program is fully defined by construction.
 
 Each generated program is monomorphic in one of twelve types, picked from the
 first byte of the fuzzer input: `int8_t/16/32/64_t`, `uint8/16/32/64_t`,
-<<<<<<< HEAD
-`float`, `double` (`TypeId` in `Types.hpp`). The rest of the input (AST shape,
-constants, parameters) is generated and evaluated entirely in that one type,
-mirroring how the original `uint64_t`-only fuzzer worked. The second byte of
-the input separately picks the kernel *signature* shape the AST is compiled
-into -- see "Kernel signature space" below -- independent of this type
-selection.
-=======
 `float`, `double`, `bool`, and a small fixed `enum class FuzzEnum` (`TypeId` in
 `Types.hpp`, via `ROOT_TYPES`). The rest of the input (AST shape, constants,
 parameters) is generated and evaluated entirely in that one type, mirroring
-how the original `uint64_t`-only fuzzer worked.
->>>>>>> b957ba1 (Add val<bool> and val<enum> as generated fuzzer domains)
+how the original `uint64_t`-only fuzzer worked. For every domain except enum,
+the second byte of the input separately picks the kernel *signature* shape
+the AST is compiled into -- see "Kernel signature space" below -- independent
+of this type selection; the enum domain keeps its own fixed shape (see
+`checkOneEnum` in Harness.hpp).
 
 * **Integer domain** (8 widths/signs): arithmetic (`+ - * / %`), bitwise
   (`& | ^ << >> ~`), unary negate, comparisons, logical ops, `Select`/`If`,
@@ -197,6 +185,13 @@ packed into the (otherwise-unused, for these kinds) `Node::imm` field. This is
 a codegen hint only -- the native oracle never reads it -- so the existing
 differential check against the oracle is exactly what verifies a hint never
 changes the computed result.
+
+`checkOneTyped<T>`'s kernel-signature-space menu (see below) restricts bool
+to the `arity{1,2,3,4}`/`voidReturn` shapes -- `mixed` and `narrowReturn` both
+convert across a type boundary via a real traced `Cast` (`convertClamped` /
+`convertClampedTraced`), and bc/tbc's `Cast` lowering only ever supported the
+original ten numeric types as a source or target, the same reason `Kind::Cast`
+itself is excluded from `BOOL_KINDS`.
 
 Implementing this domain surfaced several genuine, previously-latent bugs in
 `val<bool>`'s supporting machinery (unexercised because bool was never

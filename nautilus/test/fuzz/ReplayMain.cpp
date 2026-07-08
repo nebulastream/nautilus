@@ -103,8 +103,13 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	if (!f.exception) {
 		return false;
 	}
-	return f.what == "Invalid trace. This is maybe caused by a constant loop." ||
-	       f.what == "Invalid trace: no Return operation was recorded." || f.what.starts_with("Key $");
+	// RuntimeException (nautilus/exceptions/RuntimeException.cpp) appends a
+	// full stack trace to its message unconditionally, so `f.what` is never
+	// exactly one of these strings when ENABLE_STACKTRACE actually resolves
+	// symbols (it always did in this environment) -- match on prefix instead
+	// of exact equality, the same way the "Key $" case already does.
+	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") ||
+	       f.what.starts_with("Invalid trace: no Return operation was recorded.") || f.what.starts_with("Key $");
 }
 
 int builtinCorpus() {
@@ -112,6 +117,12 @@ int builtinCorpus() {
 	int toleratedFindings = 0;
 	for (int it = 0; it < ITERATIONS; ++it) {
 		const std::vector<uint8_t> buf = randomBuffer();
+		{
+			std::ofstream out("/tmp/last-input.bin", std::ios::binary);
+			out.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+		}
+		std::fprintf(stderr, "DBG it=%d\n", it);
+		std::fflush(stderr);
 		for (const auto& finding : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			if (!isKnownPreExistingFinding(finding)) {
 				nautilus::fuzz::printFinding(finding);

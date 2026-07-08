@@ -125,6 +125,10 @@ template <typename T>
 T calleeUnary(T x) {
 	if constexpr (std::is_floating_point_v<T>) {
 		return -x + T(1.5);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// std::make_unsigned_t<bool> is ill-formed; logical negation is the
+		// bool-domain stand-in for this callee's bitwise complement.
+		return !x;
 	} else {
 		using U = std::make_unsigned_t<T>;
 		return static_cast<T>(~static_cast<U>(x));
@@ -138,6 +142,10 @@ template <typename T>
 T calleeSum3(T a, T b, T c) {
 	if constexpr (std::is_floating_point_v<T>) {
 		return a + b + c;
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// std::make_unsigned_t<bool> is ill-formed; logical xor-parity is a
+		// well-defined, equally exercising stand-in for the bool domain.
+		return (a != b) != c;
 	} else {
 		using U = std::make_unsigned_t<T>;
 		return static_cast<T>(static_cast<U>(a) + static_cast<U>(b) + static_cast<U>(c));
@@ -157,6 +165,11 @@ T calleeMixedTypes(T a, CrossType<T> b) {
 	if constexpr (std::is_floating_point_v<T>) {
 		// b : int32_t -- widening it to T is always safe, no clamp needed.
 		return a + static_cast<T>(b) * T(0.25);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// b : double -- convertClamped already handles a bool target (see
+		// Types.hpp); std::make_unsigned_t<bool> below is ill-formed, so
+		// combine with logical xor instead of the general integer path.
+		return a != convertClamped<double, T>(b);
 	} else {
 		// b : double -- the only UB-prone leg of this callee.
 		const T bt = convertClamped<double, T>(b);
@@ -177,6 +190,11 @@ NarrowType<T> calleeNarrowReturn(T a, T b) {
 	using N = NarrowType<T>;
 	if constexpr (std::is_floating_point_v<T>) {
 		return static_cast<N>(a) + static_cast<N>(b);
+	} else if constexpr (std::is_same_v<T, bool>) {
+		// NarrowType<bool> is bool itself (NarrowTypeTrait has no narrower
+		// bool-domain type); std::make_unsigned_t<bool> below is ill-formed,
+		// so combine with logical xor instead of the general integer path.
+		return a != b;
 	} else {
 		using U = std::make_unsigned_t<T>;
 		const T mixed = static_cast<T>(static_cast<U>(a) * U(3) + static_cast<U>(b));

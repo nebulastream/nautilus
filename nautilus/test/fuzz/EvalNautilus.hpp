@@ -286,19 +286,36 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		TracedValue<T> t = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		TracedValue<T> f = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
-		val<bool> cond = c != TracedValue<T>(T(0));
-		applyProbabilityHint<T>(n, cond);
-		return select(cond, t, f);
+		// The probability hint only ever exists for T=bool (see
+		// applyProbabilityHint); every other T keeps the exact expression main
+		// uses (the condition passed to select() directly, no intermediate
+		// named val<bool>) so this shared generic path stays behaviorally
+		// unchanged for the ten pre-existing domains.
+		if constexpr (std::is_same_v<T, bool>) {
+			val<bool> cond = c != TracedValue<T>(T(0));
+			applyProbabilityHint<T>(n, cond);
+			return select(cond, t, f);
+		} else {
+			return select(c != TracedValue<T>(T(0)), t, f);
+		}
 	}
 	case Kind::If: {
 		TracedValue<T> c = evalNautilusGeneric<T>(ast, n.kid[0], args, ctx);
 		// Else-branch first (unconditional), then conditionally overwrite with
 		// the then-branch inside a real traced branch -> produces a phi/merge.
 		TracedValue<T> result = evalNautilusGeneric<T>(ast, n.kid[2], args, ctx);
-		val<bool> cond = c != TracedValue<T>(T(0));
-		applyProbabilityHint<T>(n, cond);
-		if (cond) {
-			result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+		// See the Select case above: keep non-bool T on main's original
+		// inline-condition expression untouched.
+		if constexpr (std::is_same_v<T, bool>) {
+			val<bool> cond = c != TracedValue<T>(T(0));
+			applyProbabilityHint<T>(n, cond);
+			if (cond) {
+				result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+			}
+		} else {
+			if (c != TracedValue<T>(T(0))) {
+				result = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+			}
 		}
 		return result;
 	}

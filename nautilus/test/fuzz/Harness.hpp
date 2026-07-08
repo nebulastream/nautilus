@@ -470,23 +470,50 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 /// wherever the caller (checkOne) left off, so the whole pipeline -- type
 /// selection, shape selection, AST generation, arg generation -- is one
 /// linear, deterministic pass over a single buffer.
+///
+/// bool is restricted to arity{1,2,3,4}/voidReturn: "mixed"/"narrowReturn"
+/// both convert across a type boundary via a real traced Cast (Types.hpp's
+/// convertClamped / EvalNautilus.hpp's convertClampedTraced), and every
+/// backend's Cast lowering only ever supported casts among the original ten
+/// numeric types (bool never participated in Kind::Cast either -- see
+/// BOOL_KINDS in Ast.hpp) -- so a bool<->double (mixed) or bool<->int8
+/// (narrowReturn) boundary cast throws in bc/tbc. Skipping these two shapes
+/// for bool avoids exercising a Cast target/source the backends were never
+/// built to support, the same reasoning that already excludes Kind::Cast
+/// from BOOL_KINDS.
 template <typename T>
 std::vector<Finding> checkOneTyped(ByteReader& reader, uint32_t shape) {
-	switch (shape % NUM_SIGNATURE_SHAPES) {
-	case 0:
-		return checkOneArity<T, 1>(reader);
-	case 1:
-		return checkOneArity<T, 2>(reader);
-	case 2:
-		return checkOneArity<T, 3>(reader);
-	case 3:
-		return checkOneArity<T, 4>(reader);
-	case 4:
-		return checkOneMixed<T>(reader);
-	case 5:
-		return checkOneNarrowReturn<T>(reader);
-	default:
-		return checkOneVoidReturn<T>(reader);
+	if constexpr (std::is_same_v<T, bool>) {
+		constexpr uint32_t kBoolShapeCount = 5; // arity1, arity2, arity3, arity4, voidReturn
+		switch (shape % kBoolShapeCount) {
+		case 0:
+			return checkOneArity<T, 1>(reader);
+		case 1:
+			return checkOneArity<T, 2>(reader);
+		case 2:
+			return checkOneArity<T, 3>(reader);
+		case 3:
+			return checkOneArity<T, 4>(reader);
+		default:
+			return checkOneVoidReturn<T>(reader);
+		}
+	} else {
+		switch (shape % NUM_SIGNATURE_SHAPES) {
+		case 0:
+			return checkOneArity<T, 1>(reader);
+		case 1:
+			return checkOneArity<T, 2>(reader);
+		case 2:
+			return checkOneArity<T, 3>(reader);
+		case 3:
+			return checkOneArity<T, 4>(reader);
+		case 4:
+			return checkOneMixed<T>(reader);
+		case 5:
+			return checkOneNarrowReturn<T>(reader);
+		default:
+			return checkOneVoidReturn<T>(reader);
+		}
 	}
 }
 
