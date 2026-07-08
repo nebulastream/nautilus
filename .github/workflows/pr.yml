@@ -205,6 +205,52 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "conditionalSumPlain  = 7"
           echo "$out" | grep -q "conditionalSumHinted = 7"
+  fuzz-replay-smoke:
+    runs-on: ubuntu-24.04
+    name: Fuzzer replay smoke corpus (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: Cache MLIR binaries
+        uses: actions/cache@v4
+        with:
+          path: build/mlir-*
+          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-fuzz-replay-smoke
+      - name: Install clang 21
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 clang++-21
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_FUZZER_REPLAY=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-fuzz-replay
+      - name: run deterministic smoke corpus
+        shell: bash
+        run: |
+          # Bounded, deterministic regression gate: no libFuzzer, no
+          # nondeterminism, fixed iteration count. Aborts with a full
+          # `Finding` report on the first genuine backend disagreement (see
+          # nautilus/test/fuzz/README.md "Known findings" / "Build & run").
+          # A larger, coverage-guided sweep runs weekly (fuzz-weekly.yml).
+          ./build/nautilus/test/fuzz/nautilus-fuzz-replay
   llvm-ir-test:
     runs-on: ubuntu-24.04
     name: LLVM IR Test (clang-21)

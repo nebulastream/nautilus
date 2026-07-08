@@ -428,6 +428,29 @@ exec/s than a typical libFuzzer target — this is a soundness fuzzer, not a
 throughput one. The AST size bounds in `Ast.hpp` (`MAX_DEPTH`, `MAX_NODES`) keep
 each program tractable.
 
+## Continuous fuzzing (CI)
+
+Two scheduled/CI jobs run the harness so its coverage doesn't regress silently
+between fuzzing sessions:
+
+- **PR gate** (`.github/workflows/pr.yml`, job `fuzz-replay-smoke`): builds
+  `nautilus-fuzz-replay` and runs it with no args on every push/PR. This is the
+  deterministic 2000-input built-in corpus — bounded, reproducible, no
+  libFuzzer dependency. Any genuine backend disagreement fails the build with
+  the `Finding` report in the log (see "Known findings" below for the handful
+  of pre-existing exceptions this corpus tolerates). The iteration count is
+  configurable via the `NAUTILUS_FUZZ_ITERATIONS` env var if a different bound
+  is ever needed.
+- **Weekly sweep** (`.github/workflows/fuzz-weekly.yml`): every Monday (plus
+  on-demand via `workflow_dispatch`), builds the real coverage-guided
+  `nautilus-fuzz` with Clang and runs it for a large, bounded budget
+  (`-max_total_time=7200 -runs=5000000` by default, both configurable as
+  workflow inputs). Any crash or mismatch uploads the crash input + log as a
+  build artifact and automatically files a GitHub issue (labeled
+  `fuzzer-finding`) with the `Finding` report and repro steps; a recurrence of
+  an already-filed finding gets a comment on the existing issue instead of a
+  duplicate.
+
 ## Reproducing and pinning a finding
 
 A crash input is a self-contained reproducer:
@@ -672,6 +695,24 @@ tolerance-filter bug below is worked around):
    observable, so it does not block CI. Root-causing the variant misuse is out
    of scope here (it predates and is independent of the bool/enum domains this
    change adds).
+
+Wiring the deterministic corpus into CI for the first time (`fuzz-replay-smoke`,
+nebulastream/nautilus#376) immediately surfaced a fifth pre-existing finding on
+the very first CI run -- confirmed independent of that PR (reproduces from a
+clean `main` checkout the same way):
+
+5. **MLIR module verification failure** (`"verification of MLIR module
+   failed!"`): a `u16`/`mixed`-shape kernel --
+   ```
+   ((((((mem + idx(39420u16)) + idx((i64)(if(p1 != 0, p1, p2)))) <= (mem + idx((uintptr_t)((mem + idx(60247u16)))))) ? 1 : 0) * ((((mem < mem) ? 1 : 0) == p0) ? 1 : 0)) - ((mem <= (mem - idx((while(init=(p1 << 3044u16), cond=cont(cond=3715u16, value=29463u16), body=(*(mem) = p2)) ^ 11218u16)))) ? 1 : 0))
+   ```
+   -- reaches `MLIRLoweringProvider`'s `cf.cond_br` emission
+   (`resolveOperand(ifOp->getValue(), frame)`) with an `i32` operand where MLIR
+   requires `i1`, so MLIR's own verifier rejects the module before LLVM
+   lowering ever runs (`'cf.cond_br' op operand #0 must be 1-bit signless
+   integer, but got 'i32'`). Root-causing exactly which sub-expression's
+   condition loses its `Type::b` stamp on the way to the branch is out of
+   scope for a CI-wiring change; tracked in nebulastream/nautilus#377.
 
 Investigating finding 4 above also caught the tolerance filter itself in
 `ReplayMain.cpp`'s `isKnownPreExistingFinding` failing silently: it compared
