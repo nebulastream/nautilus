@@ -90,6 +90,40 @@ TEST_CASE("Execution Benchmark") {
 		}
 	}
 
+	// A/B: P2 IR passes (LICM + LocalCSE) off vs on, on every direct-lowering
+	// backend (bc/tbc/asmjit) -- the ones for which the IR pass pipeline is the
+	// whole optimizer. Measures the execution-time (dispatch/instruction-count)
+	// effect of the opt-in passes.
+	std::vector<std::string> abBackends = {};
+#ifdef ENABLE_BC_BACKEND
+	abBackends.emplace_back("bc");
+#endif
+#ifdef ENABLE_TBC_BACKEND
+	abBackends.emplace_back("tbc");
+#endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	abBackends.emplace_back("asmjit");
+#endif
+	for (auto& backend : abBackends) {
+		for (auto& test : benchmarks) {
+			auto func = std::get<1>(test);
+			auto name = std::get<0>(test);
+			for (bool passesOn : {false, true}) {
+				std::string tag = passesOn ? "passesOn" : "passesOff";
+				Catch::Benchmark::Benchmark("exec_" + backend + "_" + name + "_" + tag)
+				    .operator=([&func, backend, passesOn](Catch::Benchmark::Chronometer meter) {
+					    auto op = engine::Options();
+					    op.setOption("mlir.eager_compilation", true);
+					    op.setOption("engine.backend", backend);
+					    op.setOption("engine.traceMode", "lazyTracing");
+					    op.setOption("ir.enableLICM", passesOn);
+					    op.setOption("ir.enableLocalCSE", passesOn);
+					    func(meter, op);
+				    });
+			}
+		}
+	}
+
 #ifdef ENABLE_BC_BACKEND
 	// BC-only A/B benchmark comparing execution with and without the
 	// linear register allocator. Lets us track the perf side of the

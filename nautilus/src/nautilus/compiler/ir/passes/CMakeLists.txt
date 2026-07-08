@@ -5,6 +5,7 @@ add_source_files(nautilus
         IRPassManager.cpp
         Dominators.cpp
         FunctionRewriter.cpp
+        LoopInfo.cpp
         EmptyBlockEliminationPass.cpp
         ConstantFoldingAndCopyPropagationPass.cpp
         StrengthReductionPass.cpp
@@ -13,4 +14,6 @@ add_source_files(nautilus
         ConstantBranchFoldingPass.cpp
         BlockMergingPass.cpp
         BlockArgumentPruningPass.cpp
+        LocalCSEPass.cpp
+        LoopInvariantCodeMotionPass.cpp
 )

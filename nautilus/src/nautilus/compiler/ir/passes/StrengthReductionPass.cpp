@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/passes/LoopInfo.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -68,38 +69,9 @@ struct Candidate {
 	Operation* basePtr;
 };
 
-/// Forward-reachability (via successor edges, >= 1 step) from every block in
-/// @p fn, memoized per block. Function CFGs here are small (tens of blocks),
-/// so a plain per-block BFS is more than fast enough.
-class Reachability {
-public:
-	const std::unordered_set<BasicBlock*>& from(BasicBlock* start) {
-		auto it = cache_.find(start);
-		if (it != cache_.end()) {
-			return it->second;
-		}
-		std::unordered_set<BasicBlock*> visited;
-		std::vector<BasicBlock*> frontier = start->getSuccessors();
-		while (!frontier.empty()) {
-			auto* b = frontier.back();
-			frontier.pop_back();
-			if (b == nullptr || !visited.insert(b).second) {
-				continue;
-			}
-			for (auto* s : b->getSuccessors()) {
-				frontier.push_back(s);
-			}
-		}
-		return cache_.emplace(start, std::move(visited)).first->second;
-	}
-
-private:
-	std::unordered_map<BasicBlock*, std::unordered_set<BasicBlock*>> cache_;
-};
-
 /// Resolves the induction-variable operand of a multiply: either the header
 /// argument directly, or a CastOperation whose sole input is that argument.
-/// Returns {nullptr, nullptr} if @p operand doesn't match either shape.
+/// Returns {nullptr, false} if @p operand doesn't match either shape.
 struct IvUse {
 	CastOperation* castOp = nullptr; // non-null iff matched through a cast
 	bool matched = false;
@@ -133,187 +105,12 @@ bool splitMulOperands(MulOperation& mul, Operation*& indexOperand, ConstIntOpera
 	return false;
 }
 
-/// Finds the natural-loop back edge / preheader edge into @p header, if
-/// header has exactly the shape this pass handles: exactly two predecessor
-/// edges, one of which is a back edge (header is reachable from it) and one
-/// a forward edge (the preheader). Returns false (leaving the out-params
-/// untouched) for anything else -- multiple latches, multiple preheaders,
-/// irreducible control flow, etc. are all conservatively skipped.
-bool findSimpleLoopEdges(BasicBlock* header, Reachability& reach, BasicBlock*& latch, BasicBlockInvocation*& latchInv,
-                         BasicBlock*& preheader, BasicBlockInvocation*& preheaderInv) {
-	const auto& preds = header->getPredecessors();
-	if (preds.size() != 2) {
-		return false;
-	}
-	BasicBlock* back = nullptr;
-	BasicBlock* fwd = nullptr;
-	for (auto* p : preds) {
-		if (p == nullptr) {
-			return false;
-		}
-		const bool isBack = reach.from(header).contains(p);
-		if (isBack) {
-			if (back != nullptr) {
-				return false;
-			}
-			back = p;
-		} else {
-			if (fwd != nullptr) {
-				return false;
-			}
-			fwd = p;
-		}
-	}
-	if (back == nullptr || fwd == nullptr) {
-		return false;
-	}
-
-	auto findSingleInvocationTo = [&](BasicBlock* pred, BasicBlockInvocation*& out) {
-		BasicBlockInvocation* found = nullptr;
-		int count = 0;
-		for (auto* inv : getSuccessorInvocations(*pred->getTerminatorOp())) {
-			if (inv->getBlock() == header) {
-				found = inv;
-				count++;
-			}
-		}
-		if (count != 1) {
-			return false;
-		}
-		out = found;
-		return true;
-	};
-	if (!findSingleInvocationTo(back, latchInv) || !findSingleInvocationTo(fwd, preheaderInv)) {
-		return false;
-	}
-	if (latchInv->getArguments().size() != header->getArguments().size() ||
-	    preheaderInv->getArguments().size() != header->getArguments().size()) {
-		return false;
-	}
-	latch = back;
-	preheader = fwd;
-	return true;
-}
-
-/// Computes the natural-loop body for the (header, latch) pair: header
-/// itself plus every block reachable from header that can also reach latch.
-std::unordered_set<BasicBlock*> computeLoopBody(BasicBlock* header, BasicBlock* latch, Reachability& reach) {
-	std::unordered_set<BasicBlock*> body;
-	body.insert(header);
-	for (auto* b : reach.from(header)) {
-		if (b == latch || reach.from(b).contains(latch)) {
-			body.insert(b);
-		}
-	}
-	body.insert(latch);
-	return body;
-}
-
-/// A control-flow edge into a successor block rebinds every argument to a
-/// *fresh* BasicBlockArgument object owned by that successor -- even a plain
-/// pass-through edge (e.g. the header handing its own induction variable
-/// straight into the loop body block) mints a new object that is only
-/// value-equivalent to the source, not pointer-equal. Operations inside the
-/// loop body therefore never reference the header's own argument object
-/// directly; they reference whichever block-local alias was bound on the
-/// edge that reached them. This walks every pass-through edge inside
-/// @p loopBody starting from @p ivArg and returns the full set of objects
-/// that all represent the same loop-carried value (including @p ivArg
-/// itself). The insert-based visited check naturally stops the walk at the
-/// back edge (whose argument is the *incremented* value, a different object)
-/// without needing to special-case it.
-std::unordered_set<Operation*> computeIvAliases(BasicBlock* header, BasicBlockArgument* ivArg,
-                                                const std::unordered_set<BasicBlock*>& loopBody) {
-	std::unordered_set<Operation*> aliases;
-	aliases.insert(ivArg);
-	std::vector<std::pair<BasicBlock*, Operation*>> frontier = {{header, ivArg}};
-	while (!frontier.empty()) {
-		auto [block, val] = frontier.back();
-		frontier.pop_back();
-		auto* terminator = block->getTerminatorOp();
-		if (terminator == nullptr) {
-			continue;
-		}
-		for (auto* inv : getSuccessorInvocations(*terminator)) {
-			auto* target = const_cast<BasicBlock*>(inv->getBlock());
-			if (target == nullptr || !loopBody.contains(target)) {
-				continue;
-			}
-			const auto args = inv->getArguments();
-			const auto& targetArgs = target->getArguments();
-			for (size_t k = 0; k < args.size() && k < targetArgs.size(); k++) {
-				if (args[k] == val && aliases.insert(targetArgs[k]).second) {
-					frontier.emplace_back(target, targetArgs[k]);
-				}
-			}
-		}
-	}
-	return aliases;
-}
-
-/// For every header argument slot, determines whether the loop actually
-/// changes it or just threads the same value through unchanged every
-/// iteration (a "pass-through" phi, e.g. a pointer parameter that flows into
-/// the body block and back out to the header via the back edge without any
-/// arithmetic on it). A slot is a pass-through iff the latch's supplied
-/// value for that slot is itself a member of the slot's own alias set (see
-/// computeIvAliases) -- i.e. closing the back edge doesn't introduce a new
-/// value, it just confirms the cycle is stable. Returns a map from every
-/// alias object of every pass-through slot to `true`; members of a slot
-/// whose latch value is *not* in the alias set (a real induction/accumulator
-/// variable) are omitted, so callers should treat "not present" as unknown
-/// rather than "not invariant".
-std::unordered_map<Operation*, bool> computeHeaderPassThroughMap(BasicBlock* header, BasicBlockInvocation* latchInv,
-                                                                 const std::unordered_set<BasicBlock*>& loopBody) {
-	std::unordered_map<Operation*, bool> result;
-	const auto& headerArgs = header->getArguments();
-	const auto latchArgs = latchInv->getArguments();
-	for (size_t k = 0; k < headerArgs.size() && k < latchArgs.size(); k++) {
-		auto aliases = computeIvAliases(header, headerArgs[k], loopBody);
-		if (aliases.contains(latchArgs[k])) {
-			for (auto* a : aliases) {
-				result[a] = true;
-			}
-		}
-	}
-	return result;
-}
-
-/// Returns true if @p op is loop-invariant: either its defining block is
-/// outside @p loopBody outright, or it is a member of a header argument slot
-/// that @p passThroughMap identified as a pass-through (see
-/// computeHeaderPassThroughMap). Operations with no entry in @p definingBlock
-/// (e.g. a function argument on the entry block, already covered by the
-/// first check) are treated as invariant.
-bool isLoopInvariant(Operation* op, const std::unordered_map<Operation*, BasicBlock*>& definingBlock,
-                     const std::unordered_set<BasicBlock*>& loopBody,
-                     const std::unordered_map<Operation*, bool>& passThroughMap) {
-	if (passThroughMap.contains(op)) {
-		return true;
-	}
-	auto it = definingBlock.find(op);
-	if (it == definingBlock.end()) {
-		return true;
-	}
-	return !loopBody.contains(it->second);
-}
-
 void findCandidatesInFunction(FunctionOperation& fn, const std::unordered_map<Operation*, BasicBlock*>& definingBlock,
                               std::vector<Candidate>& out) {
-	Reachability reach;
-
-	for (auto* header : fn.getBasicBlocks()) {
-		BasicBlock* latch = nullptr;
-		BasicBlockInvocation* latchInv = nullptr;
-		BasicBlock* preheader = nullptr;
-		BasicBlockInvocation* preheaderInv = nullptr;
-		if (!findSimpleLoopEdges(header, reach, latch, latchInv, preheader, preheaderInv)) {
-			continue;
-		}
-		auto loopBody = computeLoopBody(header, latch, reach);
-		if (loopBody.contains(preheader)) {
-			continue;
-		}
+	for (auto& loop : findNaturalLoops(fn)) {
+		auto* header = loop.header;
+		const auto& loopBody = loop.body;
+		auto* latchInv = loop.latchInv;
 		auto passThroughMap = computeHeaderPassThroughMap(header, latchInv, loopBody);
 
 		const auto& headerArgs = header->getArguments();
@@ -394,8 +191,9 @@ void findCandidatesInFunction(FunctionOperation& fn, const std::unordered_map<Op
 							if (countConsumers(fn, mul) != 1) {
 								continue;
 							}
-							out.push_back(Candidate {header, ivArg, j, step, preheader, preheaderInv, latch, latchInv,
-							                         B, mul, elemSizeConst, ivUse.castOp, add2, basePtr});
+							out.push_back(Candidate {header, ivArg, j, step, loop.preheader, loop.preheaderInv,
+							                         loop.latch, latchInv, B, mul, elemSizeConst, ivUse.castOp, add2,
+							                         basePtr});
 						}
 					}
 				}
@@ -475,15 +273,7 @@ bool StrengthReductionPass::apply(IRGraph& ir) {
 		if (fn == nullptr) {
 			continue;
 		}
-		std::unordered_map<Operation*, BasicBlock*> definingBlock;
-		for (auto* block : fn->getBasicBlocks()) {
-			for (auto* arg : block->getArguments()) {
-				definingBlock[arg] = block;
-			}
-			for (auto* op : block->getOperations()) {
-				definingBlock[op] = block;
-			}
-		}
+		const auto definingBlock = computeDefiningBlocks(*fn);
 
 		std::vector<Candidate> candidates;
 		findCandidatesInFunction(*fn, definingBlock, candidates);

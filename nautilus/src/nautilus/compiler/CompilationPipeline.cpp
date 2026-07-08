@@ -27,6 +27,8 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
+#include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
+#include "nautilus/compiler/ir/passes/LoopInvariantCodeMotionPass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
@@ -167,6 +169,13 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		if (!moduleOptions.getOptionOrDefault("ir.disableBlockMerging", false)) {
 			group.push_back(std::make_unique<ir::BlockMergingPass>());
 		}
+		// Block-local CSE over the long straight-line blocks block merging
+		// just produced; see design §4.3-F. Opt-in (default off) pending the
+		// benchmark sweep that gates promoting it to default-on
+		// (`ir.disableLocalCSE`); DCE below sweeps the duplicates it removes.
+		if (moduleOptions.getOptionOrDefault("ir.enableLocalCSE", false)) {
+			group.push_back(std::make_unique<ir::LocalCSEPass>());
+		}
 		// Opt-in (default off), unlike the two passes above: correct, but
 		// measured to regress the BC interpreter's dispatch-bound cost model
 		// (see StrengthReductionPass.hpp) -- may still be worth enabling for
@@ -193,6 +202,12 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
 		const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
 		passManager.addFixedPointGroup(std::move(group), maxIterations);
+		// Loop-invariant code motion runs once, after the cleanup group has
+		// canonicalized the CFG (single preheaders/latches), and stays opt-in
+		// (default off) as the highest-risk pass; see design §4.3-G / §4.4.
+		if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
+			passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
+		}
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}
