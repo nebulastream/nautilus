@@ -15,11 +15,34 @@ namespace nautilus::fuzz {
 /// Every concrete C++ type the fuzzer can generate a kernel over. Picked once
 /// per fuzzer input (the very first byte) and held fixed for the rest of
 /// generation/evaluation -- each generated program is monomorphic in one of
-/// these ten types, mirroring how the original uint64_t-only fuzzer worked.
-enum class TypeId : uint8_t { I8, I16, I32, I64, U8, U16, U32, U64, F32, F64 };
+/// these types, mirroring how the original uint64_t-only fuzzer worked.
+/// `Bool`/`Enum` are additional first-class domains alongside the original
+/// ten (see `BOOL_KINDS` in Ast.hpp and `generateFuzzEnumAst`); they are
+/// deliberately excluded from `ALL_TYPES` below since that array also serves
+/// as the `Cast` target list for the original ten, and neither `val<bool>`
+/// nor `val<enum>` participates in `Cast` (see Ast.hpp/EvalNautilus.hpp).
+enum class TypeId : uint8_t { I8, I16, I32, I64, U8, U16, U32, U64, F32, F64, Bool, Enum };
+
+/// A small, fixed enum with a fixed underlying type (required so every bit
+/// pattern of that underlying type is a valid value, letting Const leaves be
+/// generated the same way as any other domain's -- see generateFuzzEnumAst).
+enum class FuzzEnum : int32_t { A = 0, B = 1, C = 2, D = 3 };
+
+/// Number of value-domain parameters the enum domain's kernels take. Unlike
+/// every other domain, enum doesn't participate in the arity{1,2,3,4}/mixed/
+/// narrowReturn/voidReturn signature-shape space (Harness.hpp's checkOneEnum
+/// keeps the harness's original fixed shape), so this stays a plain constant
+/// rather than a per-call parameter.
+inline constexpr uint32_t ENUM_NUM_PARAMS = 3;
 
 inline constexpr TypeId ALL_TYPES[] = {TypeId::I8,  TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,
                                        TypeId::U16, TypeId::U32, TypeId::U64, TypeId::F32, TypeId::F64};
+
+/// Every top-level domain the fuzzer picks from the first input byte:
+/// ALL_TYPES plus the bool/enum domains. Kept separate from ALL_TYPES because
+/// the latter doubles as the Cast target list (see above).
+inline constexpr TypeId ROOT_TYPES[] = {TypeId::I8,  TypeId::I16, TypeId::I32, TypeId::I64, TypeId::U8,   TypeId::U16,
+                                        TypeId::U32, TypeId::U64, TypeId::F32, TypeId::F64, TypeId::Bool, TypeId::Enum};
 
 /// The eight integer TypeIds, used to pick Cast targets for the integer
 /// domain (int<->float casts are intentionally out of scope -- casting an
@@ -57,6 +80,10 @@ inline const char* typeName(TypeId t) {
 		return "f32";
 	case TypeId::F64:
 		return "f64";
+	case TypeId::Bool:
+		return "bool";
+	case TypeId::Enum:
+		return "enum";
 	}
 	return "?";
 }
@@ -134,6 +161,21 @@ auto dispatchAnyType(TypeId target, Fn&& fn) {
 	return dispatchIntType(target, std::forward<Fn>(fn));
 }
 
+/// Top-level dispatch across all twelve root domains (the original ten plus
+/// bool). Excludes TypeId::Enum -- unlike bool, the enum domain doesn't reuse
+/// generateNode<T>/evalNativeGeneric<T>/evalNautilusGeneric<T> (val<enum> is
+/// missing too many of the operators those templates assume; see
+/// generateFuzzEnumAst/evalNativeFuzzEnum/evalNautilusFuzzEnum), so its
+/// caller (Harness.hpp's checkOne) handles TypeId::Enum directly instead of
+/// going through this generic `fn.template operator()<T>()` dispatch.
+template <typename Fn>
+auto dispatchRootType(TypeId target, Fn&& fn) {
+	if (target == TypeId::Bool) {
+		return fn.template operator()<bool>();
+	}
+	return dispatchAnyType(target, std::forward<Fn>(fn));
+}
+
 /// Compile-time type -> short suffix, the mirror of typeName(TypeId) for use
 /// in templated contexts (e.g. annotating a printed Const literal).
 template <typename T>
@@ -158,6 +200,10 @@ constexpr const char* typeSuffix() {
 		return "f32";
 	} else if constexpr (std::is_same_v<T, double>) {
 		return "f64";
+	} else if constexpr (std::is_same_v<T, bool>) {
+		return "bool";
+	} else if constexpr (std::is_enum_v<T>) {
+		return "enum";
 	} else {
 		static_assert(!sizeof(T), "unsupported fuzz value type");
 	}
@@ -170,7 +216,9 @@ constexpr const char* typeSuffix() {
 /// for both).
 template <typename T>
 std::string formatValue(T v) {
-	if constexpr (std::is_floating_point_v<T>) {
+	if constexpr (std::is_enum_v<T>) {
+		return std::to_string(static_cast<std::underlying_type_t<T>>(v));
+	} else if constexpr (std::is_floating_point_v<T>) {
 		char buf[64];
 		std::snprintf(buf, sizeof(buf), "%.17g", static_cast<double>(v));
 		return buf;

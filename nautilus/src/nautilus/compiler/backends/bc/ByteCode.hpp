@@ -333,6 +333,7 @@ enum class ByteCode : short {
 	BAND_ui16,
 	BAND_ui32,
 	BAND_ui64,
+	BAND_b,
 	// bor
 	BOR_i8,
 	BOR_i16,
@@ -342,6 +343,7 @@ enum class ByteCode : short {
 	BOR_ui16,
 	BOR_ui32,
 	BOR_ui64,
+	BOR_b,
 	// bxor
 	BXOR_i8,
 	BXOR_i16,
@@ -351,6 +353,7 @@ enum class ByteCode : short {
 	BXOR_ui16,
 	BXOR_ui32,
 	BXOR_ui64,
+	BXOR_b,
 	// blsh
 	BLSH_i8,
 	BLSH_i16,
@@ -709,6 +712,15 @@ void cast(const OpCode& c, RegisterFile& regs) {
 	writeReg<TargetRegisterType>(regs, c.output, value);
 }
 
+// bitwiseAnd<bool>/bitwiseOr<bool> (Type::b's &/| -- a well-defined bitwise-
+// as-logical combine over a 0/1 domain, see val_bool.hpp) apply & / | to two
+// raw bools, which Clang's -Wall flags as likely-meant-logical; silence at
+// the template definition rather than disabling it project-wide.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#endif
+
 template <class RegisterType>
 void bitwiseAnd(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
@@ -722,6 +734,10 @@ void bitwiseOr(const OpCode& c, RegisterFile& regs) {
 	auto r = readReg<RegisterType>(regs, c.reg2);
 	writeReg(regs, c.output, l | r);
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 template <class RegisterType>
 void bitwiseXOr(const OpCode& c, RegisterFile& regs) {

@@ -104,7 +104,14 @@ public:
 	operator val<underlying_type_t>() const {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
-			return val<underlying_type_t>(state);
+			// Mirrors val_arith.hpp's cross-type cast operator: `state` is a
+			// const TypedValueRefHolder, but val<underlying_type_t>'s
+			// trace-state constructor takes a non-const TypedValueRef&, so a
+			// real CAST op (rather than reusing `state` directly) is needed to
+			// get a bindable, non-const result reference.
+			auto resultRef =
+			    tracing::traceUnaryOp(tracing::CAST, tracing::TypeResolver<underlying_type_t>::to_type(), state);
+			return val<underlying_type_t>(resultRef);
 		}
 #endif
 		return val<underlying_type_t>(static_cast<std::underlying_type_t<T>>(value));
@@ -130,7 +137,11 @@ public:
 
 private:
 	friend details::RawValueResolver<T>;
-	const T value;
+	// Not const: operator=() above assigns through this member, which would
+	// be ill-formed (and was, until this fix -- never previously exercised)
+	// if it stayed const like the constructors' member-init-list style might
+	// suggest.
+	T value;
 };
 
 template <typename Type>

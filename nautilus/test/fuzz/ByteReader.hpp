@@ -61,4 +61,13 @@ private:
 	size_t pos_ = 0;
 };
 
+/// bool-specific consume(): the generic memcpy-based consume<T>() would
+/// reinterpret a raw byte as bool, and a byte other than 0/1 is not a valid
+/// bool object representation. Masking to the low bit keeps every consumed
+/// bool well-defined.
+template <>
+inline bool ByteReader::consume<bool>() {
+	return (byte() & 0x1) != 0;
+}
+
 } // namespace nautilus::fuzz

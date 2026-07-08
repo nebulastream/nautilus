@@ -126,8 +126,11 @@ namespace nautilus::compiler::tbc {
 	TBC_NUM10(X, STORE_off, opStoreOff)                                                                                \
 	X(STORE_off_b, (opStoreOff<bool>) )                                                                                \
 	TBC_INT8(X, BAND, opBand)                                                                                          \
+	X(BAND_b, (opBand<bool>) )                                                                                         \
 	TBC_INT8(X, BOR, opBor)                                                                                            \
+	X(BOR_b, (opBor<bool>) )                                                                                           \
 	TBC_INT8(X, BXOR, opBxor)                                                                                          \
+	X(BXOR_b, (opBxor<bool>) )                                                                                         \
 	TBC_INT8(X, SHL, opShl)                                                                                            \
 	TBC_INT8(X, SHR, opShr)                                                                                            \
 	X(BNOT_i64, (opBnot))                                                                                              \
@@ -207,6 +210,9 @@ static_assert(opIndex(Op::LOAD_b) == opIndex(Op::LOAD_i8) + 10);
 static_assert(opIndex(Op::STORE_b) == opIndex(Op::STORE_i8) + 10);
 static_assert(opIndex(Op::LOAD_off_b) == opIndex(Op::LOAD_off_i8) + 10);
 static_assert(opIndex(Op::STORE_off_b) == opIndex(Op::STORE_off_i8) + 10);
+static_assert(opIndex(Op::BAND_b) == opIndex(Op::BAND_i8) + 8);
+static_assert(opIndex(Op::BOR_b) == opIndex(Op::BOR_i8) + 8);
+static_assert(opIndex(Op::BXOR_b) == opIndex(Op::BXOR_i8) + 8);
 static_assert(opIndex(Op::CAST_f64_f64) == opIndex(Op::CAST_i8_i8) + 99);
 static_assert(opIndex(Op::MOV_imm_ui64) == opIndex(Op::MOV_imm_i8) + 7);
 static_assert(opIndex(Op::CJMP_GE_i64) == opIndex(Op::CJMP_EQ_i32) + 11);
