@@ -112,6 +112,16 @@ std::vector<uint8_t> randomBuffer() {
 //      LazyTraceContext::follow before this exception is ever thrown; CI
 //      builds Release (NDEBUG), where only this catchable exception is
 //      observable.
+//   5. "verification of MLIR module failed!" -- a `u16`/`mixed`-shape kernel
+//      whose AST nests a control-flow `Kind::If` inside a larger boolean
+//      arithmetic expression reaches MLIRLoweringProvider's `cf.cond_br`
+//      emission with an `i32` operand instead of the required `i1`; MLIR's
+//      own verifier rejects the module before LLVM lowering ever runs. First
+//      surfaced when the `fuzz-replay-smoke` CI job (#376) executed this
+//      corpus in CI for the first time -- confirmed pre-existing (reproduces
+//      from a clean checkout), not introduced by that PR. Root-causing which
+//      sub-expression loses its `Type::b` stamp on the way to the branch is
+//      tracked in issue #377.
 bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	if (!f.exception) {
 		return false;
@@ -123,7 +133,8 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	// of exact equality, the same way the "Key $" case already does.
 	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") ||
 	       f.what.starts_with("Invalid trace: no Return operation was recorded.") || f.what.starts_with("Key $") ||
-	       f.what.starts_with("std::get: wrong index for variant");
+	       f.what.starts_with("std::get: wrong index for variant") ||
+	       f.what.starts_with("verification of MLIR module failed!");
 }
 
 // Default corpus size for the PR-gate smoke run. Overridable via

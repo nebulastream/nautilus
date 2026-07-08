@@ -696,6 +696,24 @@ tolerance-filter bug below is worked around):
    of scope here (it predates and is independent of the bool/enum domains this
    change adds).
 
+Wiring the deterministic corpus into CI for the first time (`fuzz-replay-smoke`,
+nebulastream/nautilus#376) immediately surfaced a fifth pre-existing finding on
+the very first CI run -- confirmed independent of that PR (reproduces from a
+clean `main` checkout the same way):
+
+5. **MLIR module verification failure** (`"verification of MLIR module
+   failed!"`): a `u16`/`mixed`-shape kernel --
+   ```
+   ((((((mem + idx(39420u16)) + idx((i64)(if(p1 != 0, p1, p2)))) <= (mem + idx((uintptr_t)((mem + idx(60247u16)))))) ? 1 : 0) * ((((mem < mem) ? 1 : 0) == p0) ? 1 : 0)) - ((mem <= (mem - idx((while(init=(p1 << 3044u16), cond=cont(cond=3715u16, value=29463u16), body=(*(mem) = p2)) ^ 11218u16)))) ? 1 : 0))
+   ```
+   -- reaches `MLIRLoweringProvider`'s `cf.cond_br` emission
+   (`resolveOperand(ifOp->getValue(), frame)`) with an `i32` operand where MLIR
+   requires `i1`, so MLIR's own verifier rejects the module before LLVM
+   lowering ever runs (`'cf.cond_br' op operand #0 must be 1-bit signless
+   integer, but got 'i32'`). Root-causing exactly which sub-expression's
+   condition loses its `Type::b` stamp on the way to the branch is out of
+   scope for a CI-wiring change; tracked in nebulastream/nautilus#377.
+
 Investigating finding 4 above also caught the tolerance filter itself in
 `ReplayMain.cpp`'s `isKnownPreExistingFinding` failing silently: it compared
 `Finding::what` against findings 1-3's bare messages with exact (`==`)
