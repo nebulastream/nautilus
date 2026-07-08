@@ -1,0 +1,14 @@
+EXECUTE:
+B0($1:ptr,$2:ptr)
+	LOAD	$5	$1	:i32
+	LOAD	$8	$2	:i32
+	GT	$9	$5	$8	:bool
+	CMP	$10	$9	B1($1,$5)	B2($1,$8)	:void
+B1($1:ptr,$5:i32)
+	JMP	$0	B3($1,$5)	:void
+B2($1:ptr,$8:i32)
+	JMP	$0	B3($1,$8)	:void
+B3($13:ptr,$14:i32) ControlFlowMerge
+	STORE	$15	$13	$14	:void
+	RETURN	$0	:void
+

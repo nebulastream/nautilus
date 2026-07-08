@@ -1,0 +1,30 @@
+EXECUTE:
+B0($1:ptr,$2:ptr)
+	ASSIGN	$3	$1	:ptr
+	ASSIGN	$4	$3	:ptr
+	LOAD	$5	$4	:i32
+	ASSIGN	$6	$2	:ptr
+	ASSIGN	$7	$6	:ptr
+	LOAD	$8	$7	:i32
+	GT	$9	$5	$8	:bool
+	CMP	$10	$9	B1()	B2()	:void
+B1()
+	ASSIGN	$11	$5	:i32
+	ASSIGN	$12	$1	:ptr
+	ASSIGN	$13	$12	:ptr
+	ASSIGN	$14	$11	:i32
+	JMP	$0	B3()	:void
+B2()
+	ASSIGN	$18	$8	:i32
+	ASSIGN	$11	$18	:i32
+	ASSIGN	$19	$1	:ptr
+	ASSIGN	$12	$19	:ptr
+	ASSIGN	$20	$12	:ptr
+	ASSIGN	$13	$20	:ptr
+	ASSIGN	$21	$11	:i32
+	ASSIGN	$14	$21	:i32
+	JMP	$0	B3()	:void
+B3() ControlFlowMerge
+	STORE	$15	$13	$14	:void
+	RETURN	$0	:void
+

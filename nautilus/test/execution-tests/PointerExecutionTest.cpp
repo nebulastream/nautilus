@@ -303,6 +303,19 @@ void pointerTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(&values[1]) == 5); // values[4] = 5
 		REQUIRE(f(&values[5]) == 9); // values[8] = 9
 	}
+
+	SECTION("storeMaxViaTernary-gh_#95") {
+		auto f = engine.registerFunction(storeMaxViaTernary);
+		int32_t a = 100;
+		int32_t b = 5;
+		f(&a, &b);
+		REQUIRE(a == 100); // max(100, 5), "greater" arm taken
+
+		a = 5;
+		b = 100;
+		f(&a, &b);
+		REQUIRE(a == 100); // max(5, 100), "lesser" arm taken -- previously miscompiled to 5
+	}
 }
 
 TEST_CASE("Pointer Test") {
