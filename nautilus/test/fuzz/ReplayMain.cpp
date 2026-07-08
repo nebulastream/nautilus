@@ -16,6 +16,8 @@
 //   nautilus-fuzz-replay <file> [<file> ...]   replay specific input(s)
 //   nautilus-fuzz-replay                       run a built-in deterministic
 //                                              corpus of N pseudo-random inputs
+//                                              (N = NAUTILUS_FUZZ_ITERATIONS env
+//                                              var if set, else 2000)
 //
 // Any mismatch aborts with a full report (see Harness.hpp), so this also works
 // as a self-checking smoke test: exit 0 means every generated program agreed
@@ -124,10 +126,24 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	       f.what.starts_with("std::get: wrong index for variant");
 }
 
+// Default corpus size for the PR-gate smoke run. Overridable via
+// NAUTILUS_FUZZ_ITERATIONS so the same deterministic driver can also serve a
+// much larger, e.g. weekly, sweep without a source change.
+constexpr int DEFAULT_ITERATIONS = 2000;
+
+int iterationCount() {
+	const char* env = std::getenv("NAUTILUS_FUZZ_ITERATIONS");
+	if (env == nullptr) {
+		return DEFAULT_ITERATIONS;
+	}
+	const int parsed = std::atoi(env);
+	return parsed > 0 ? parsed : DEFAULT_ITERATIONS;
+}
+
 int builtinCorpus() {
-	constexpr int ITERATIONS = 2000;
+	const int iterations = iterationCount();
 	int toleratedFindings = 0;
-	for (int it = 0; it < ITERATIONS; ++it) {
+	for (int it = 0; it < iterations; ++it) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& finding : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			if (!isKnownPreExistingFinding(finding)) {
@@ -137,10 +153,10 @@ int builtinCorpus() {
 			++toleratedFindings;
 		}
 		if ((it + 1) % 200 == 0) {
-			std::printf("  ... %d/%d inputs agreed across all backends\n", it + 1, ITERATIONS);
+			std::printf("  ... %d/%d inputs agreed across all backends\n", it + 1, iterations);
 		}
 	}
-	std::printf("OK: %d generated programs agreed across all backends + interpreter", ITERATIONS);
+	std::printf("OK: %d generated programs agreed across all backends + interpreter", iterations);
 	if (toleratedFindings > 0) {
 		std::printf(" (%d known pre-existing tracer/IR exceptions tolerated, see README.md \"Known findings\")",
 		            toleratedFindings);

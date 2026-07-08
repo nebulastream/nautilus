@@ -428,6 +428,29 @@ exec/s than a typical libFuzzer target — this is a soundness fuzzer, not a
 throughput one. The AST size bounds in `Ast.hpp` (`MAX_DEPTH`, `MAX_NODES`) keep
 each program tractable.
 
+## Continuous fuzzing (CI)
+
+Two scheduled/CI jobs run the harness so its coverage doesn't regress silently
+between fuzzing sessions:
+
+- **PR gate** (`.github/workflows/pr.yml`, job `fuzz-replay-smoke`): builds
+  `nautilus-fuzz-replay` and runs it with no args on every push/PR. This is the
+  deterministic 2000-input built-in corpus — bounded, reproducible, no
+  libFuzzer dependency. Any genuine backend disagreement fails the build with
+  the `Finding` report in the log (see "Known findings" below for the handful
+  of pre-existing exceptions this corpus tolerates). The iteration count is
+  configurable via the `NAUTILUS_FUZZ_ITERATIONS` env var if a different bound
+  is ever needed.
+- **Weekly sweep** (`.github/workflows/fuzz-weekly.yml`): every Monday (plus
+  on-demand via `workflow_dispatch`), builds the real coverage-guided
+  `nautilus-fuzz` with Clang and runs it for a large, bounded budget
+  (`-max_total_time=7200 -runs=5000000` by default, both configurable as
+  workflow inputs). Any crash or mismatch uploads the crash input + log as a
+  build artifact and automatically files a GitHub issue (labeled
+  `fuzzer-finding`) with the `Finding` report and repro steps; a recurrence of
+  an already-filed finding gets a comment on the existing issue instead of a
+  duplicate.
+
 ## Reproducing and pinning a finding
 
 A crash input is a self-contained reproducer:

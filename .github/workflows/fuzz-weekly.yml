@@ -1,0 +1,167 @@
+name: Weekly fuzz
+run-name: Weekly Nautilus fuzz sweep
+on:
+  schedule:
+    # Every Monday at 03:00 UTC.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: 'libFuzzer -max_total_time budget, in seconds'
+        required: false
+        default: '7200'
+      runs:
+        description: 'libFuzzer -runs iteration cap (whichever bound hits first wins)'
+        required: false
+        default: '5000000'
+# Only one weekly sweep at a time; never cancel one that's already running.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+  issues: write
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    name: Coverage-guided fuzz (clang-21)
+    env:
+      CC: clang-21
+      CXX: clang++-21
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: get cmake
+        uses: lukka/get-cmake@latest
+      - name: Cache MLIR binaries
+        uses: actions/cache@v4
+        with:
+          path: build/mlir-*
+          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
+      - name: get ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          key: ${{ github.job }}-fuzz-weekly
+      - name: Install clang 21
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 clang++-21
+      - name: cmake
+        shell: bash
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_FUZZING=ON -G Ninja -S . -B build
+      - name: build
+        shell: bash
+        run: |
+          cmake --build build --target nautilus-fuzz
+      - name: run coverage-guided fuzz sweep
+        id: fuzz
+        shell: bash
+        working-directory: build/nautilus/test/fuzz
+        env:
+          MAX_TOTAL_TIME: ${{ github.event.inputs.max_total_time || '7200' }}
+          RUNS: ${{ github.event.inputs.runs || '5000000' }}
+        run: |
+          set +e
+          ./nautilus-fuzz -max_total_time="${MAX_TOTAL_TIME}" -runs="${RUNS}" -artifact_prefix=./ 2>&1 | tee fuzz.log
+          exit_code="${PIPESTATUS[0]}"
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload findings
+        if: steps.fuzz.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-weekly-findings-${{ github.run_id }}
+          path: |
+            build/nautilus/test/fuzz/crash-*
+            build/nautilus/test/fuzz/fuzz.log
+          if-no-files-found: warn
+          retention-days: 90
+      - name: File or update a GitHub issue for the regression
+        if: steps.fuzz.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let log = '';
+            try {
+              log = fs.readFileSync('build/nautilus/test/fuzz/fuzz.log', 'utf8');
+            } catch (e) {
+              log = `(could not read fuzz.log: ${e.message})`;
+            }
+
+            // Pull out the harness's own "Finding" report (see Harness.hpp
+            // printFinding) rather than dumping the full, possibly huge, log.
+            const marker = '==== Nautilus differential fuzzer';
+            const idx = log.lastIndexOf(marker);
+            const report = idx >= 0 ? log.slice(Math.max(0, idx - 80)) : log.slice(-4000);
+
+            const whatMatch = report.match(/what\(\)\s*:\s*(.+)/);
+            const backendMatch = report.match(/backend\s*:\s*(.+)/);
+            const shapeMatch = report.match(/shape\s*:\s*(.+)/);
+            const signature = (
+              (backendMatch ? backendMatch[1].trim() + ' | ' : '') +
+              (whatMatch ? whatMatch[1].trim() : (shapeMatch ? shapeMatch[1].trim() : 'unknown finding'))
+            ).slice(0, 150);
+
+            const label = 'fuzzer-finding';
+            const title = `[fuzzer] Weekly sweep: ${signature}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: openIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            });
+            const existing = openIssues.find((issue) => issue.title === title);
+
+            const runNote = `Seen again in the [weekly fuzz run](${runUrl}) on ${new Date().toISOString().slice(0, 10)}.`;
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: runNote,
+              });
+              return;
+            }
+
+            const body = [
+              'The weekly coverage-guided fuzz sweep (`nautilus-fuzz`, see `nautilus/test/fuzz/README.md`) found a backend disagreement or crash.',
+              '',
+              `Run: ${runUrl}`,
+              'A minimized crash input (and the full log) is attached to that run as the `fuzz-weekly-findings-*` artifact.',
+              '',
+              '### Finding report',
+              '```',
+              report.trim(),
+              '```',
+              '',
+              'To reproduce locally:',
+              '```bash',
+              'cmake -DENABLE_FUZZING=ON -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_BUILD_TYPE=Release ..',
+              'cmake --build . --target nautilus-fuzz',
+              './nautilus/test/fuzz/nautilus-fuzz <crash-file-from-the-artifact>',
+              '```',
+              'See "Reproducing and pinning a finding" in `nautilus/test/fuzz/README.md` for minimizing the input and turning it into a permanent regression test.',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: [label, 'bug'],
+            });
+      - name: Fail the job if the fuzzer found a regression
+        if: steps.fuzz.outputs.exit_code != '0'
+        run: exit 1
