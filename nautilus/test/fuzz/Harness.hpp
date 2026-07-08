@@ -19,30 +19,102 @@
 
 namespace nautilus::fuzz {
 
-/// Backends compiled into this build, mirroring testing::availableBackends().
-/// The interpreter is always present and acts as an extra differential peer.
-inline std::vector<std::string> configs() {
-	std::vector<std::string> result;
-	result.emplace_back("interpreter");
+/// Layers extra options on top of a config's backend defaults (empty == plain
+/// defaults). Mirrors testing::OptionsTweak in test/common/ExecutionTest.hpp.
+using OptionsTweak = std::function<void(engine::Options&)>;
+
+/// One (backend, option-permutation) differential peer. Every generated
+/// program is compiled once per Config; because the differential oracle is
+/// optimization-level-independent (the *result* must never depend on which
+/// passes ran or how a value was lowered), any two Configs -- and the native
+/// oracle -- must agree. `label` names the permutation so a finding records
+/// *which* configuration disagreed, not just the backend; `tweak` layers the
+/// permutation's options over the backend defaults.
+struct Config {
+	std::string backend;
+	std::string label;
+	OptionsTweak tweak;
+};
+
+/// The differential config matrix: for every backend compiled into this build
+/// (mirroring testing::availableBackends()), a curated menu of option
+/// permutations. The interpreter is always present as an extra peer.
+///
+/// The differential oracle is optimization-level-independent, so each
+/// permutation is a free extra peer: the same program under two option sets
+/// must agree, and both must match the native oracle -- a disagreement is a
+/// miscompile a single default build would never surface. This is a
+/// deliberately BOUNDED, curated menu of high-value toggles -- NOT a cartesian
+/// product (see fuzz/README.md "Config sweep"). Each compiling backend runs its
+/// plain defaults plus a small set of IR-pass permutations that each exercise a
+/// distinct lowering/optimization path; a pass author soaking a not-yet-default
+/// pass adds one entry here (see the README).
+inline std::vector<Config> configs() {
+	std::vector<Config> result;
+
+	// The interpreter runs uncompiled (engine.Compilation=false), so the IR
+	// optimization pipeline never runs for it -- IR-pass tweaks would be exact
+	// no-op rebuilds. It contributes a single differential peer.
+	result.push_back({"interpreter", "default", {}});
+
+	// Appends one compiling backend's permutation menu: plain defaults plus the
+	// shared IR-pass sweep, plus any backend-specific `extra` permutations.
+	auto addCompiling = [&result](const std::string& backend, std::vector<Config> extra = {}) {
+		result.push_back({backend, "default", {}});
+		// Individual default-ON optimization passes flipped OFF, each isolating a
+		// distinct lowering path. NOTE: we deliberately do NOT expose a blanket
+		// `ir.runPasses=false` -- that also disables constant folding, and the
+		// resulting unoptimized IR of a large generated program overruns the BC
+		// backend's 16-bit (`short`) register file (see README.md "Known
+		// findings"); these per-pass toggles keep constant folding on, so the IR
+		// stays bounded while still exercising the un-optimized path.
+		result.push_back({backend, "no-dead-code-elim", [](engine::Options& o) {
+			                  o.setOption("ir.disableDeadCodeElimination", true);
+		                  }});
+		result.push_back({backend, "no-const-branch-fold", [](engine::Options& o) {
+			                  o.setOption("ir.disableConstantBranchFolding", true);
+		                  }});
+		// A currently default-OFF pass flipped ON. This is exactly the
+		// "extended differential-fuzzer soak before the default flips" gate the
+		// IR-pass milestone (#343 and siblings) requires: point the fuzzer here
+		// to soak a not-yet-default pass against the oracle. StrengthReduction
+		// is the one opt-in pass wired today (see CompilationPipeline.cpp); add
+		// a sibling entry for the next pass you promote.
+		result.push_back({backend, "strength-reduction", [](engine::Options& o) {
+			                  o.setOption("ir.enableStrengthReduction", true);
+		                  }});
+		// A default-ON P0 pass flipped OFF: differentially tests the
+		// un-simplified lowering path against the simplified default.
+		result.push_back({backend, "no-algebraic-simpl", [](engine::Options& o) {
+			                  o.setOption("ir.disableAlgebraicSimplification", true);
+		                  }});
+		for (auto& c : extra) {
+			result.push_back(std::move(c));
+		}
+	};
+
 #ifdef ENABLE_MLIR_BACKEND
-	result.emplace_back("mlir");
+	// MLIR-specific: intrinsic lowering off exercises the non-intrinsic path.
+	addCompiling("mlir", {{"mlir", "no-intrinsics", [](engine::Options& o) {
+		                       o.setOption("mlir.enableIntrinsics", false);
+	                       }}});
 #endif
 #ifdef ENABLE_C_BACKEND
-	result.emplace_back("cpp");
+	addCompiling("cpp");
 #endif
 #ifdef ENABLE_BC_BACKEND
-	result.emplace_back("bc");
+	addCompiling("bc");
 #endif
 #ifdef ENABLE_TBC_BACKEND
-	result.emplace_back("tbc");
+	addCompiling("tbc");
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
-	result.emplace_back("asmjit");
+	addCompiling("asmjit");
 #endif
 	return result;
 }
 
-inline engine::NautilusEngine makeEngine(const std::string& backend) {
+inline engine::NautilusEngine makeEngine(const std::string& backend, const OptionsTweak& tweak = {}) {
 	engine::Options options;
 	if (backend == "interpreter") {
 		options.setOption("engine.Compilation", false);
@@ -64,6 +136,11 @@ inline engine::NautilusEngine makeEngine(const std::string& backend) {
 		options.setOption("ir.verifyAfterEachPass", true);
 		options.setOption("ir.failOnVerifyError", true);
 	}
+	// The config's option permutation wins over the backend defaults and env
+	// hooks above (matches testing::makeEngine's tweak-last ordering).
+	if (tweak) {
+		tweak(options);
+	}
 	return engine::NautilusEngine(options);
 }
 
@@ -74,6 +151,7 @@ inline engine::NautilusEngine makeEngine(const std::string& backend) {
 /// signature shape.
 struct Finding {
 	std::string backend;
+	std::string config; // option-permutation label that disagreed (see configs()), e.g. "no-ir-passes"
 	std::string typeName;
 	std::string shape; // which signature shape generated this kernel, see below
 	std::string program;
@@ -106,6 +184,7 @@ inline void printFinding(const Finding& f) {
 	if (f.exception) {
 		std::fprintf(stderr, "\n==== Nautilus differential fuzzer: EXCEPTION ====\n");
 		std::fprintf(stderr, "backend  : %s\n", f.backend.c_str());
+		std::fprintf(stderr, "config   : %s\n", f.config.c_str());
 		std::fprintf(stderr, "type     : %s\n", f.typeName.c_str());
 		std::fprintf(stderr, "shape    : %s\n", f.shape.c_str());
 		std::fprintf(stderr, "program  : %s\n", f.program.c_str());
@@ -115,6 +194,7 @@ inline void printFinding(const Finding& f) {
 	} else {
 		std::fprintf(stderr, "\n==== Nautilus differential fuzzer: MISMATCH ====\n");
 		std::fprintf(stderr, "backend  : %s\n", f.backend.c_str());
+		std::fprintf(stderr, "config   : %s\n", f.config.c_str());
 		std::fprintf(stderr, "type     : %s\n", f.typeName.c_str());
 		std::fprintf(stderr, "shape    : %s\n", f.shape.c_str());
 		std::fprintf(stderr, "program  : %s\n", f.program.c_str());
@@ -264,9 +344,9 @@ std::vector<Finding> checkOneArity(ByteReader& reader) {
 	const std::string shapeName = "arity" + std::to_string(N);
 
 	std::vector<Finding> findings;
-	for (const auto& backend : configs()) {
+	for (const auto& cfg : configs()) {
 		try {
-			auto engine = makeEngine(backend);
+			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<ArityKernelSignature<T, N>> kernel = [&ast](val<T*> mem, auto... a) {
 				TracedArgs<T, static_cast<std::size_t>(N)> traced {a...};
 				return evalNautilus<T>(ast, mem, traced);
@@ -277,12 +357,12 @@ std::vector<Finding> checkOneArity(ByteReader& reader) {
 				return compiled(memory.data(), args[Is]...);
 			}(std::make_index_sequence<static_cast<std::size_t>(N)> {});
 			if (!valuesEqual<T>(got, expected)) {
-				findings.push_back({backend, typeSuffix<T>(), shapeName, program, argStrs, memoryStrs,
+				findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), shapeName, program, argStrs, memoryStrs,
 				                    formatValue<T>(expected), formatValue<T>(got), false, "", hasParam});
 			}
 		} catch (const std::exception& e) {
-			findings.push_back(
-			    {backend, typeSuffix<T>(), shapeName, program, argStrs, memoryStrs, "", "", true, e.what(), hasParam});
+			findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), shapeName, program, argStrs, memoryStrs, "",
+			                    "", true, e.what(), hasParam});
 		}
 	}
 	return findings;
@@ -320,9 +400,9 @@ std::vector<Finding> checkOneMixed(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& backend : configs()) {
+	for (const auto& cfg : configs()) {
 		try {
-			auto engine = makeEngine(backend);
+			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<MixedKernelSignature<T>> kernel = [&ast](val<T*> mem, val<S> p0, val<T> p1, val<T> p2) {
 				TracedArgs<T, N> traced {convertClampedTraced<S, T>(p0), p1, p2};
 				return evalNautilus<T>(ast, mem, traced);
@@ -331,12 +411,12 @@ std::vector<Finding> checkOneMixed(ByteReader& reader) {
 			memory = initialMemory;
 			const T got = compiled(memory.data(), secondaryRaw, arg1, arg2);
 			if (!valuesEqual<T>(got, expected)) {
-				findings.push_back({backend, typeSuffix<T>(), "mixed", program, argStrs, memoryStrs,
+				findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "mixed", program, argStrs, memoryStrs,
 				                    formatValue<T>(expected), formatValue<T>(got), false, "", hasParam});
 			}
 		} catch (const std::exception& e) {
-			findings.push_back(
-			    {backend, typeSuffix<T>(), "mixed", program, argStrs, memoryStrs, "", "", true, e.what(), hasParam});
+			findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "mixed", program, argStrs, memoryStrs, "", "",
+			                    true, e.what(), hasParam});
 		}
 	}
 	return findings;
@@ -377,9 +457,9 @@ std::vector<Finding> checkOneNarrowReturn(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& backend : configs()) {
+	for (const auto& cfg : configs()) {
 		try {
-			auto engine = makeEngine(backend);
+			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<NarrowReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
 				TracedArgs<T, N> traced {a, b, c};
 				TracedValue<T> result = evalNautilus<T>(ast, mem, traced);
@@ -389,13 +469,13 @@ std::vector<Finding> checkOneNarrowReturn(ByteReader& reader) {
 			memory = initialMemory;
 			const NarrowReturnType got = compiled(memory.data(), args[0], args[1], args[2]);
 			if (!valuesEqual<NarrowReturnType>(got, expected)) {
-				findings.push_back({backend, typeSuffix<T>(), "narrowReturn", program, argStrs, memoryStrs,
-				                    formatValue<NarrowReturnType>(expected), formatValue<NarrowReturnType>(got), false,
-				                    "", hasParam});
+				findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "narrowReturn", program, argStrs,
+				                    memoryStrs, formatValue<NarrowReturnType>(expected),
+				                    formatValue<NarrowReturnType>(got), false, "", hasParam});
 			}
 		} catch (const std::exception& e) {
-			findings.push_back({backend, typeSuffix<T>(), "narrowReturn", program, argStrs, memoryStrs, "", "", true,
-			                    e.what(), hasParam});
+			findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "narrowReturn", program, argStrs, memoryStrs,
+			                    "", "", true, e.what(), hasParam});
 		}
 	}
 	return findings;
@@ -441,9 +521,9 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& backend : configs()) {
+	for (const auto& cfg : configs()) {
 		try {
-			auto engine = makeEngine(backend);
+			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			std::function<VoidReturnKernelSignature<T>> kernel = [&ast](val<T*> mem, val<T> a, val<T> b, val<T> c) {
 				TracedArgs<T, N> traced {a, b, c};
 				TracedValue<T> result = evalNautilus<T>(ast, mem, traced);
@@ -453,13 +533,13 @@ std::vector<Finding> checkOneVoidReturn(ByteReader& reader) {
 			memory = initialMemory;
 			compiled(memory.data(), args[0], args[1], args[2]);
 			if (!arraysEqual<T, BUFFER_ELEMS>(memory, expectedMemory)) {
-				findings.push_back({backend, typeSuffix<T>(), "voidReturn", program, argStrs, memoryStrs,
+				findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "voidReturn", program, argStrs, memoryStrs,
 				                    formatArray<T, BUFFER_ELEMS>(expectedMemory), formatArray<T, BUFFER_ELEMS>(memory),
 				                    false, "", hasParam});
 			}
 		} catch (const std::exception& e) {
-			findings.push_back({backend, typeSuffix<T>(), "voidReturn", program, argStrs, memoryStrs, "", "", true,
-			                    e.what(), hasParam});
+			findings.push_back({cfg.backend, cfg.label, typeSuffix<T>(), "voidReturn", program, argStrs, memoryStrs, "",
+			                    "", true, e.what(), hasParam});
 		}
 	}
 	return findings;
@@ -555,9 +635,9 @@ inline std::vector<Finding> checkOneEnum(ByteReader& reader) {
 	}
 
 	std::vector<Finding> findings;
-	for (const auto& backend : configs()) {
+	for (const auto& cfg : configs()) {
 		try {
-			auto engine = makeEngine(backend);
+			auto engine = makeEngine(cfg.backend, cfg.tweak);
 			// The kernel returns val<Underlying>, not val<FuzzEnum>: unlike
 			// every other domain here, val<FuzzEnum>::raw_type (Underlying) is
 			// NOT val<FuzzEnum> itself (val_enum.hpp), so registerFunction's
@@ -576,12 +656,13 @@ inline std::vector<Finding> checkOneEnum(ByteReader& reader) {
 			memory = initialMemory;
 			const FuzzEnum got = static_cast<FuzzEnum>(compiled(memory.data(), args[0], args[1], args[2]));
 			if (!valuesEqual<FuzzEnum>(got, expected)) {
-				findings.push_back({backend, typeSuffix<FuzzEnum>(), "arity3", program, argStrs, memoryStrs,
-				                    formatValue<FuzzEnum>(expected), formatValue<FuzzEnum>(got), false, "", hasParam});
+				findings.push_back({cfg.backend, cfg.label, typeSuffix<FuzzEnum>(), "arity3", program, argStrs,
+				                    memoryStrs, formatValue<FuzzEnum>(expected), formatValue<FuzzEnum>(got), false, "",
+				                    hasParam});
 			}
 		} catch (const std::exception& e) {
-			findings.push_back({backend, typeSuffix<FuzzEnum>(), "arity3", program, argStrs, memoryStrs, "", "", true,
-			                    e.what(), hasParam});
+			findings.push_back({cfg.backend, cfg.label, typeSuffix<FuzzEnum>(), "arity3", program, argStrs, memoryStrs,
+			                    "", "", true, e.what(), hasParam});
 		}
 	}
 	return findings;

@@ -177,10 +177,13 @@ int builtinCorpus() {
 }
 
 // Survey mode: run many inputs WITHOUT aborting, bucketing findings by
-// (backend, type, has-runtime-parameter) and keeping one example per bucket.
-// Used to see whether distinct bug classes exist (e.g. a mismatch involving a
-// runtime parameter would point to a codegen bug rather than constant
-// folding; the type breaks out e.g. an i8-only bug from an f64-only one).
+// (backend, config, type, shape, has-runtime-parameter) and keeping one example
+// per bucket. Used to see whether distinct bug classes exist (e.g. a mismatch
+// involving a runtime parameter would point to a codegen bug rather than
+// constant folding; the type breaks out e.g. an i8-only bug from an f64-only
+// one; the config permutation breaks out an option-gated miscompile -- one that
+// only appears under a non-default IR-pass toggle -- from a plain backend bug
+// that reproduces under every config).
 // Each bucket's first input is also saved to fuzz-finding-<n>.bin in the
 // working directory so it can be replayed (`nautilus-fuzz-replay <file>`)
 // and minimized -- essential when a finding depends on the runtime buffer
@@ -196,7 +199,7 @@ int survey(int iterations) {
 		const std::vector<uint8_t> buf = randomBuffer();
 		for (const auto& f : nautilus::fuzz::checkOne(buf.data(), buf.size())) {
 			++totalFindings;
-			const std::string key = f.backend + "|" + f.typeName + "|" + f.shape +
+			const std::string key = f.backend + "|" + f.config + "|" + f.typeName + "|" + f.shape +
 			                        (f.exception ? "|exception|" + f.what : (f.hasParam ? "|has-param" : "|all-const"));
 			counts[key]++;
 			if (!buckets.count(key)) {
