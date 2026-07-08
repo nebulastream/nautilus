@@ -152,20 +152,32 @@ void applyProbabilityHint(const Node& n, val<bool>& cond) {
 	}
 }
 
-/// Traced mirror of EvalNative.hpp's clampBufferIndex: same recipe as
-/// clampTripCountTraced, just against BUFFER_ELEMS instead of
-/// LOOP_MAX_TRIPS + 1, so a pointer built from the same raw offset lands on
-/// the same buffer slot as the native oracle.
+/// Traced mirror of EvalNative.hpp's clampIndexMod: same recipe as
+/// clampTripCountTraced, just against a caller-supplied modulus instead of a
+/// fixed LOOP_MAX_TRIPS + 1. `modulus` is itself a traced value (not
+/// necessarily a compile-time constant): a nested pointer-domain hop (see
+/// evalNautilusPtr) derives it at runtime from however much room is actually
+/// left before the buffer edge, exactly like the native oracle's runtime
+/// `capacity`.
 template <typename T>
-val<int32_t> clampBufferIndexTraced(TracedValue<T> raw) {
+val<int32_t> clampIndexModTraced(TracedValue<T> raw, val<uint64_t> modulus) {
 	TracedValue<uint64_t> u(uint64_t(0));
 	if constexpr (std::is_floating_point_v<T>) {
 		u = clampFloatToIntTraced<T, uint64_t>(raw);
 	} else {
 		u = static_cast<TracedValue<uint64_t>>(static_cast<TracedValue<std::make_unsigned_t<T>>>(raw));
 	}
-	TracedValue<uint64_t> index = u % TracedValue<uint64_t>(uint64_t(BUFFER_ELEMS));
+	TracedValue<uint64_t> index = u % modulus;
 	return static_cast<val<int32_t>>(index);
+}
+
+/// Traced mirror of EvalNative.hpp's clampBufferIndex: the fixed-modulus
+/// (BUFFER_ELEMS) case of clampIndexModTraced, used by the innermost
+/// (bare-`PtrBase`-anchored) pointer-domain hop, so a pointer built from the
+/// same raw offset lands on the same buffer slot as the native oracle.
+template <typename T>
+val<int32_t> clampBufferIndexTraced(TracedValue<T> raw) {
+	return clampIndexModTraced<T>(raw, val<uint64_t>(uint64_t(BUFFER_ELEMS)));
 }
 
 /// Mutable per-evaluation scratch state mirroring EvalNative.hpp's
@@ -206,11 +218,37 @@ template <typename T>
 TracedValue<T> evalNautilusCall(const Ast& ast, const Node& n, std::span<const TracedValue<T>> args,
                                 TracedEvalContext<T>& ctx);
 
+/// Result of evaluating a pointer-domain node: the real val<T*> (for
+/// Load/Store/PtrToInt/Ptr-comparisons to consume) plus its buffer index
+/// (always in [0, BUFFER_ELEMS), tracked alongside the pointer purely so an
+/// outer, nested hop can derive its own safe clamp modulus without
+/// re-deriving it from the pointer itself -- val<T*> has no pointer-minus-
+/// pointer operator to recover an index from a bare val<T*>).
+template <typename T>
+struct PtrEvalResult {
+	val<T*> ptr;
+	val<int32_t> index;
+};
+
 /// Traced mirror of EvalNative.hpp's evalNativePtr: evaluates a
 /// pointer-domain node to a real val<T*>, using the exact same
 /// operator+/operator- val<T*> arithmetic under test.
+///
+/// When kid[0] is a bare Kind::PtrBase leaf (the common, original single-hop
+/// shape), this reduces to exactly the historical fixed-anchor formulas:
+/// PtrAdd off ctx.basePtr, PtrSub off ctx.lastPtr, each spanning the full
+/// buffer via clampBufferIndexTraced. When kid[0] is itself a nested
+/// PtrAdd/PtrSub (generatePtrNode may nest up to PTR_MAX_HOPS deep), it is
+/// evaluated recursively -- its index always already in [0, BUFFER_ELEMS) by
+/// induction -- and this hop's offset is instead reduced modulo however much
+/// room is actually left between that index and the relevant buffer edge
+/// (clampIndexModTraced with a runtime-computed val<uint64_t> modulus), so
+/// the composed pointer can never escape the buffer regardless of nesting
+/// depth -- exercising val<T*>::operator+/- chained hop-over-hop on a
+/// pointer that is itself the result of a prior traced pointer operation.
 template <typename T>
-val<T*> evalNautilusPtr(const Ast& ast, int idx, std::span<const TracedValue<T>> args, TracedEvalContext<T>& ctx) {
+PtrEvalResult<T> evalNautilusPtr(const Ast& ast, int idx, std::span<const TracedValue<T>> args,
+                                 TracedEvalContext<T>& ctx) {
 	const Node& n = ast.nodes[idx];
 	switch (n.kind) {
 	case Kind::PtrAdd:
@@ -222,19 +260,33 @@ val<T*> evalNautilusPtr(const Ast& ast, int idx, std::span<const TracedValue<T>>
 			// exist) is never instantiated.
 			__builtin_unreachable();
 		} else {
-			val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx));
-			return ctx.basePtr + off;
+			TracedValue<T> rawOffset = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+			if (ast.nodes[n.kid[0]].kind == Kind::PtrBase) {
+				val<int32_t> off = clampBufferIndexTraced<T>(rawOffset);
+				return {ctx.basePtr + off, off};
+			}
+			PtrEvalResult<T> inner = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+			val<uint64_t> capacity = static_cast<val<uint64_t>>(val<int32_t>(int32_t(BUFFER_ELEMS)) - inner.index);
+			val<int32_t> off = clampIndexModTraced<T>(rawOffset, capacity);
+			return {inner.ptr + off, inner.index + off};
 		}
 	case Kind::PtrSub:
 		if constexpr (std::is_same_v<T, bool>) {
 			__builtin_unreachable();
 		} else {
-			val<int32_t> off = clampBufferIndexTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx));
-			return ctx.lastPtr - off;
+			TracedValue<T> rawOffset = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
+			if (ast.nodes[n.kid[0]].kind == Kind::PtrBase) {
+				val<int32_t> off = clampBufferIndexTraced<T>(rawOffset);
+				return {ctx.lastPtr - off, val<int32_t>(int32_t(BUFFER_ELEMS - 1)) - off};
+			}
+			PtrEvalResult<T> inner = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+			val<uint64_t> capacity = static_cast<val<uint64_t>>(inner.index + val<int32_t>(int32_t(1)));
+			val<int32_t> off = clampIndexModTraced<T>(rawOffset, capacity);
+			return {inner.ptr - off, inner.index - off};
 		}
 	case Kind::PtrBase:
 	default:
-		return ctx.basePtr;
+		return {ctx.basePtr, val<int32_t>(int32_t(0))};
 	}
 }
 
@@ -445,12 +497,12 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 			return castThroughTraced<T>(evalNautilusGeneric<T>(ast, n.kid[0], args, ctx), static_cast<TypeId>(n.imm));
 		}
 	case Kind::Load: {
-		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx).ptr;
 		TracedValue<T> v = *p;
 		return v;
 	}
 	case Kind::Store: {
-		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx).ptr;
 		TracedValue<T> v = evalNautilusGeneric<T>(ast, n.kid[1], args, ctx);
 		*p = v;
 		return v;
@@ -462,7 +514,7 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 			// excludes bool), so this must never be instantiated for T=bool.
 			__builtin_unreachable();
 		} else {
-			return static_cast<TracedValue<T>>(evalNautilusPtr<T>(ast, n.kid[0], args, ctx));
+			return static_cast<TracedValue<T>>(evalNautilusPtr<T>(ast, n.kid[0], args, ctx).ptr);
 		}
 	case Kind::PtrEq:
 	case Kind::PtrNe:
@@ -470,8 +522,8 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 	case Kind::PtrLe:
 	case Kind::PtrGt:
 	case Kind::PtrGe: {
-		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
-		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx);
+		val<T*> a = evalNautilusPtr<T>(ast, n.kid[0], args, ctx).ptr;
+		val<T*> b = evalNautilusPtr<T>(ast, n.kid[1], args, ctx).ptr;
 		val<bool> cmp = comparePtrTraced<T>(n.kind, a, b);
 		return select(cmp, TracedValue<T>(T(1)), TracedValue<T>(T(0)));
 	}
@@ -623,7 +675,7 @@ TracedValue<T> evalNautilusCall(const Ast& ast, const Node& n, std::span<const T
 		invoke(&calleeVoidNoop<T>, v[0], v[1]);
 		return v[0];
 	default: { // ptrSwap: kid[0] is the pointer-domain kid, v[0] is the value written.
-		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx);
+		val<T*> p = evalNautilusPtr<T>(ast, n.kid[0], args, ctx).ptr;
 		return invoke(&calleePtrSwap<T>, p, v[0]);
 	}
 	}
