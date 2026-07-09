@@ -9,10 +9,8 @@
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
-#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <list>
@@ -59,9 +57,11 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
  * - Each variable ID is mixed with a constant multiplier for better hash distribution
  * - The hash incorporates both variable identity (ID) and reference count
  * - Uses unordered_map for sparse storage (only allocates for variables that exist)
- * - Map nodes come from an internal free-list pool (see NodePool); entries are erased
- *   when their count reaches zero, so memory stays bounded by the peak number of
- *   alive variables instead of growing with every value ref ever seen
+ * - Map nodes are bump-allocated from an internal common::Arena and entries are erased
+ *   when their count reaches zero, so the live entry set stays bounded by the peak
+ *   number of alive variables instead of growing with every value ref ever seen. The
+ *   arena itself is bulk-reclaimed by reset(), which resume() calls after every
+ *   symbolic-execution iteration, so per-iteration node churn does not accumulate.
  *
  * Performance characteristics:
  * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
@@ -73,112 +73,47 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
-	// Free-list node pool backing the counts map. The tracing workload inserts and
-	// erases one map node per value lifetime; routing those through the general-purpose
-	// allocator costs a malloc/free pair per traced value, which measurably slows
-	// tracing of large functions. The pool hands blocks out of bump-allocated chunks
-	// and recycles freed blocks via per-size free lists (the allocator is rebound to
-	// different types - nodes and bucket arrays - so size classes must not be mixed).
-	// Memory stays bounded by the peak number of alive variables.
-	class NodePool {
-		static constexpr std::size_t CHUNK_SIZE = 16 * 1024;
-		static constexpr std::size_t BLOCK_ALIGN = alignof(std::max_align_t);
-		static constexpr std::size_t MAX_POOLED_SIZE = 4 * BLOCK_ALIGN;
-		static constexpr std::size_t NUM_SIZE_CLASSES = MAX_POOLED_SIZE / BLOCK_ALIGN;
-
-		std::vector<void*> chunks;
-		std::array<void*, NUM_SIZE_CLASSES> freeHeads {};
-		std::byte* cursor = nullptr;
-		std::byte* chunkEnd = nullptr;
-
-		static constexpr std::size_t roundedSize(std::size_t size) noexcept {
-			return (size + BLOCK_ALIGN - 1) & ~(BLOCK_ALIGN - 1);
-		}
-
-	public:
-		NodePool() = default;
-		NodePool(const NodePool&) = delete;
-		NodePool& operator=(const NodePool&) = delete;
-		~NodePool() {
-			for (void* chunk : chunks) {
-				std::free(chunk);
-			}
-		}
-
-		void* allocate(std::size_t size) {
-			const std::size_t step = roundedSize(size);
-			if (step > MAX_POOLED_SIZE) {
-				return ::operator new(size);
-			}
-			void*& freeHead = freeHeads[step / BLOCK_ALIGN - 1];
-			if (freeHead != nullptr) {
-				void* block = freeHead;
-				freeHead = *static_cast<void**>(block);
-				return block;
-			}
-			if (cursor == nullptr || cursor + step > chunkEnd) {
-				void* chunk = std::malloc(CHUNK_SIZE);
-				if (chunk == nullptr) {
-					throw std::bad_alloc();
-				}
-				chunks.push_back(chunk);
-				cursor = static_cast<std::byte*>(chunk);
-				chunkEnd = cursor + CHUNK_SIZE;
-			}
-			void* block = cursor;
-			cursor += step;
-			return block;
-		}
-
-		void deallocate(void* block, std::size_t size) noexcept {
-			const std::size_t step = roundedSize(size);
-			if (step > MAX_POOLED_SIZE) {
-				::operator delete(block);
-				return;
-			}
-			void*& freeHead = freeHeads[step / BLOCK_ALIGN - 1];
-			*static_cast<void**>(block) = freeHead;
-			freeHead = block;
-		}
-	};
-
+	// Allocator adapter that backs the counts map's nodes with nautilus's standard
+	// common::Arena (the same bump-pointer pool used for Block / TraceOperation).
+	// Arena only supports bulk reclamation, not freeing a single node, so deallocate()
+	// for a node is a no-op: the actual reclaim happens when AliveVariableHash::reset()
+	// calls arena.softReset(), which resume() does after every symbolic-execution
+	// iteration. Bucket arrays (n > 1, resized rarely) go through the regular heap
+	// instead, so a softReset() can never invalidate memory the map still references.
 	template <typename T>
-	struct PoolAllocator {
+	struct ArenaAllocator {
 		using value_type = T;
-		NodePool* pool;
+		Arena* arena;
 
-		explicit PoolAllocator(NodePool* pool) noexcept : pool(pool) {
+		explicit ArenaAllocator(Arena* arena) noexcept : arena(arena) {
 		}
 		template <typename U>
-		PoolAllocator(const PoolAllocator<U>& other) noexcept : pool(other.pool) {
+		ArenaAllocator(const ArenaAllocator<U>& other) noexcept : arena(other.arena) {
 		}
 		template <typename U>
-		bool operator==(const PoolAllocator<U>& other) const noexcept {
-			return pool == other.pool;
+		bool operator==(const ArenaAllocator<U>& other) const noexcept {
+			return arena == other.arena;
 		}
 
 		T* allocate(std::size_t n) {
 			if (n == 1) {
-				return static_cast<T*>(pool->allocate(sizeof(T)));
+				return static_cast<T*>(arena->allocate(sizeof(T), alignof(T)));
 			}
-			// Bucket arrays (n > 1) are few and resize rarely; the heap handles them.
 			return static_cast<T*>(::operator new(n * sizeof(T)));
 		}
 		void deallocate(T* p, std::size_t n) noexcept {
-			if (n == 1) {
-				pool->deallocate(p, sizeof(T));
-			} else {
+			if (n != 1) {
 				::operator delete(p);
 			}
 		}
 	};
 
 	using CountsMap = std::unordered_map<uint32_t, uint32_t, std::hash<uint32_t>, std::equal_to<uint32_t>,
-	                                     PoolAllocator<std::pair<const uint32_t, uint32_t>>>;
+	                                     ArenaAllocator<std::pair<const uint32_t, uint32_t>>>;
 
-	NodePool pool; // Must be declared before counts so it outlives the map's nodes.
+	Arena arena; // Must be declared before counts so it outlives the map's nodes.
 	CountsMap counts {0, std::hash<uint32_t> {}, std::equal_to<uint32_t> {},
-	                  PoolAllocator<std::pair<const uint32_t, uint32_t>> {&pool}};
+	                  ArenaAllocator<std::pair<const uint32_t, uint32_t>> {&arena}};
 	uint64_t alive_hash = 0;
 
 public:
@@ -255,16 +190,18 @@ public:
 	/**
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
-	 * This efficiently clears all counts without creating a temporary object.
 	 * Since decrement() erases entries when they reach zero, a balanced trace iteration
-	 * leaves the map empty and this is a no-op. The emptiness check (rather than a hash
-	 * check) also guards against the rare XOR collision where live entries hash to 0.
+	 * already leaves the map empty; the emptiness check (rather than a hash check) also
+	 * guards against the rare XOR collision where live entries hash to 0. clear() runs
+	 * first so every node is destroyed (and its arena-backed deallocate() no-op invoked)
+	 * before softReset() bulk-invalidates the arena's bump-allocated node storage.
 	 */
 	inline void reset() noexcept {
 		if (!counts.empty()) {
 			counts.clear();
 		}
 		alive_hash = 0;
+		arena.softReset();
 	}
 };
 
