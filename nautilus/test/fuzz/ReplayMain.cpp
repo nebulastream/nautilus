@@ -65,12 +65,12 @@ std::vector<uint8_t> randomBuffer() {
 	return buf;
 }
 
-// Four pre-existing, out-of-scope tracer/IR limitations, all in shared
+// Three pre-existing, out-of-scope tracer/IR limitations, all in shared
 // infrastructure well outside Kind::Call's own lowering or the bool/enum
 // domains this fuzzer also adds (see README.md "Known findings" for the full
 // writeup of each). Widening Kind::Call's generation surface and adding the
 // bool/enum domains both reshuffle the byte-stream enough that the
-// fixed-seed smoke corpus below reaches all four on a combined ~8.5% of
+// fixed-seed smoke corpus below reaches all three on a combined ~8.5% of
 // inputs; `--survey` buckets by backend/type/exact exception text (see the
 // key in survey() below) so every one of them stays individually visible and
 // triageable rather than silently folding into a single backend/type bucket.
@@ -102,16 +102,6 @@ std::vector<uint8_t> randomBuffer() {
 //      Kind::If inside a Kind::Call argument -- the same *class* of
 //      merged-value bookkeeping bug as the already-fixed BC/AsmJit
 //      instances documented below, just a shape those fixes didn't cover.
-//   4. "std::get: wrong index for variant" -- an internal std::variant
-//      accessed through the wrong alternative somewhere in the cpp backend's
-//      lowering of a voidReturn-shaped kernel (issue #355/#363) whose AST
-//      mixes Kind::If, a StaticLoop, and a Kind::Call, all i64 -- unrelated to
-//      bool/enum (see README.md "Known findings"). In a Debug build (asserts
-//      compiled in) the same underlying inconsistency instead trips an
-//      earlier `assert(currentOperation.op == op)` in
-//      LazyTraceContext::follow before this exception is ever thrown; CI
-//      builds Release (NDEBUG), where only this catchable exception is
-//      observable.
 //
 // Finding 5 ("verification of MLIR module failed!") is no longer tolerated: it
 // was a default-constructed `val<bool>` carrying an `i32` trace stamp (its
@@ -120,6 +110,18 @@ std::vector<uint8_t> randomBuffer() {
 // MLIR's own verifier reject the module. Fixed in val_bool.hpp (issue #377) by
 // stamping the default state `Type::b`; the smoke corpus now actively guards
 // against its recurrence.
+//
+// Finding 4 ("std::get: wrong index for variant") is no longer tolerated
+// either: traceConstant/traceCopy's globalTagMap-collision branch (added for
+// issue #95) folds a primary operation plus a same-tagged reconciliation
+// ASSIGN into a single call, but LazyTraceContext::follow() only ever
+// consumed one recorded operation per call when replaying that call site on
+// a later symbolic-execution iteration -- desynchronizing the replay cursor
+// from the recorded operation stream as soon as it stepped over such a pair,
+// corrupting every operation after it in the block. Fixed in
+// LazyTraceContext.cpp (issue #384) by having follow() recognize the
+// reconciliation ASSIGN by its shared tag and transparently skip it; the
+// smoke corpus now actively guards against its recurrence.
 bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	if (!f.exception) {
 		return false;
@@ -130,8 +132,7 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	// symbols (it always did in this environment) -- match on prefix instead
 	// of exact equality, the same way the "Key $" case already does.
 	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") ||
-	       f.what.starts_with("Invalid trace: no Return operation was recorded.") || f.what.starts_with("Key $") ||
-	       f.what.starts_with("std::get: wrong index for variant");
+	       f.what.starts_with("Invalid trace: no Return operation was recorded.") || f.what.starts_with("Key $");
 }
 
 // Default corpus size for the PR-gate smoke run. Overridable via

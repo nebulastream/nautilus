@@ -751,17 +751,44 @@ different i64 program of its own, once that checkout's own copy of the
 tolerance-filter bug below is worked around):
 
 4. **Wrong-alternative variant access** (`"std::get: wrong index for
-   variant"`): an internal `std::variant` accessed through the wrong
-   alternative somewhere in the cpp backend's lowering of a `voidReturn`-shaped
-   `i64` kernel (issue #355/#363) whose AST mixes `Kind::If`, a `StaticLoop`,
-   and a `Kind::Call`. In a Debug build (asserts compiled in) the same
-   underlying inconsistency instead trips an earlier
-   `assert(currentOperation.op == op)` in `LazyTraceContext::follow`
-   (`LazyTraceContext.cpp`) before this exception is ever thrown; CI builds
-   Release (`NDEBUG` defined, `pr.yml`), where only this catchable exception is
-   observable, so it does not block CI. Root-causing the variant misuse is out
-   of scope here (it predates and is independent of the bool/enum domains this
-   change adds).
+   variant"`) -- **now fixed** (nebulastream/nautilus#384): an internal
+   `std::variant` accessed through the wrong alternative somewhere in the cpp
+   backend's lowering of a `voidReturn`-shaped `i64` kernel (issue #355/#363)
+   whose AST mixes `Kind::If`, a `StaticLoop`, and a `Kind::Call`. In a Debug
+   build (asserts compiled in) the same underlying inconsistency instead
+   tripped an earlier `assert(currentOperation.op == op)` in
+   `LazyTraceContext::follow` (`LazyTraceContext.cpp`) before this exception
+   was ever thrown; CI built Release (`NDEBUG` defined, `pr.yml`), where only
+   this catchable exception was observable, so it never blocked CI.
+
+   Root cause, confirmed with a minimized reproducer (`f32|arity2`):
+
+   ```
+   (((((i16)(((p0 > ((p0 >= (1.6652564597907199e-37f32 / 3.1431495184364167e-09f32)) ? 1 : 0)) ? 1 : 0)) >= ((loop(count=mix(((mem == mem) ? 1 : 0), ((mem != mem) ? 1 : 0)), init=(f32)((-5.8244682405710905e+27f32 / p1)), body=(0f32 + 0f32)) <= 0f32) ? 1 : 0)) ? 1 : 0) == 0f32) ? 1 : 0)
+   ```
+
+   `traceConstant`/`traceCopy` (`LazyTraceContext.cpp`) each have a
+   globalTagMap-collision branch (added for issue #95) that records a
+   *reconciliation* `ASSIGN` immediately after the primary operation, sharing
+   its exact tag, so that a stale value ref from an earlier,
+   structurally-identical call site is patched to the freshly recorded value
+   -- folding **two** recorded operations into a **single** `traceConstant()`/
+   `traceCopy()` call. Here, evaluating the two bare `mem` leaves of
+   `mem == mem` and `mem != mem` -- both reached via the tracer's generic
+   pointer-domain evaluator (`evalNautilusPtr`, a single shared call site for
+   every `Kind::PtrBase` leaf anywhere in the AST) -- collided onto the same
+   Tag/Snapshot, since both hit the identical call-stack shape with an
+   identical alive-variable footprint. `LazyTraceContext::follow()`, used to
+   replay that call site on the second symbolic-execution iteration
+   (triggered by the outer `If`), only ever consumed **one** recorded
+   operation per call, so it silently drifted one entry behind the recorded
+   operation stream as soon as it stepped over that reconciliation pair --
+   corrupting every subsequent `follow()` in the block. Fixed by having
+   `follow()` recognize a reconciliation operation by its shared tag and
+   transparently skip it, keeping the replay cursor aligned with what was
+   actually recorded. Pinned by `issue384_traceFollowDesync` in
+   `ControlFlowFunctions.hpp`; the smoke corpus no longer tolerates this
+   exception.
 
 Wiring the deterministic corpus into CI for the first time (`fuzz-replay-smoke`,
 nebulastream/nautilus#376) immediately surfaced a fifth pre-existing finding on

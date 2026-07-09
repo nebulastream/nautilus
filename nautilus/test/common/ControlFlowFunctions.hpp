@@ -2,6 +2,7 @@
 
 #include "nautilus/function.hpp"
 #include <nautilus/Engine.hpp>
+#include <nautilus/select.hpp>
 
 namespace nautilus::engine {
 
@@ -337,6 +338,51 @@ val<uint64_t> zeroTripLoopMergeThenAddConstant(val<uint64_t> c, val<uint64_t> p)
 		result = acc;
 	}
 	return result + val<uint64_t>(static_cast<uint64_t>(119));
+}
+
+// Every logical reference to `mem` copy-constructs through this single call
+// site, mirroring the differential fuzzer's evalNautilusPtr<T> (which every
+// generated `mem` leaf reaches via the same recursive-descent code
+// regardless of which AST node it belongs to -- see issue #384).
+val<float*> issue384_copyBasePtr(val<float*> mem) {
+	return mem;
+}
+
+// Called from the SAME call site (the loop in issue384_traceFollowDesync
+// below) for both comparisons, differentiated only by a native, untraced
+// `bool` -- mirroring the fuzzer's generic AST evaluator dispatching on a
+// runtime node kind through shared code.
+val<bool> issue384_evalCmp(bool wantEq, val<float*> mem) {
+	val<float*> a = issue384_copyBasePtr(mem);
+	val<float*> b = issue384_copyBasePtr(mem);
+	if (wantEq) {
+		return a == b;
+	}
+	return a != b;
+}
+
+// Regression (differential fuzzer, issue #384): traceConstant/traceCopy's
+// globalTagMap-collision branch (added for issue #95) folds a primary
+// operation plus a same-tagged reconciliation ASSIGN into a single call, but
+// LazyTraceContext::follow() only ever consumed one recorded operation per
+// call when replaying that call site on a later symbolic-execution
+// iteration. The two `issue384_copyBasePtr(mem)` calls below collide onto
+// the same tag (identical call-stack shape, identical alive-variable set),
+// tripping that reconciliation path during recording; the `if` beneath
+// forces a second, FOLLOW-mode trace iteration that replays this code and
+// used to desynchronize the follow() cursor, corrupting every operation
+// after it in the block (a Debug assert in LazyTraceContext::follow, or
+// "std::get: wrong index for variant" in Release).
+val<float> issue384_traceFollowDesync(val<float*> mem, val<float> p0) {
+	val<float> acc = 0.0f;
+	for (int i = 0; i < 2; ++i) {
+		val<bool> flag = issue384_evalCmp(i == 0, mem);
+		acc = acc + select<float>(flag, val<float>(1.0f), val<float>(0.0f));
+	}
+	if (p0 > val<float>(0.0f)) {
+		return acc + val<float>(1.0f);
+	}
+	return acc;
 }
 
 } // namespace nautilus::engine
