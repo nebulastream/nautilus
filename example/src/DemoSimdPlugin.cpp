@@ -86,14 +86,11 @@ val<int32_t> conditionalSumSimd(val<int32_t> size, val<const int32_t*> values, v
 
 int main(int, char*[]) {
 	engine::Options options;
-	// Use the MLIR backend directly so the vector intrinsics lower to real
-	// SIMD instructions (e.g. vmovdqu / vpmulld on AVX-512) instead of
-	// falling back to scalar loops through the bytecode interpreter.
-	// Use the MLIR backend directly (not tiered) so the vector intrinsics
-	// lower to real SIMD instructions in a single synchronous compilation
-	// pass, rather than first running through the bytecode interpreter.
+	// Pin the MLIR backend (single-tier) so the vector intrinsics lower to
+	// real SIMD instructions (e.g. vmovdqu / vpmulld on AVX-512) in one
+	// synchronous compilation pass, rather than first running through the
+	// bytecode interpreter at tier-0.
 	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
 	auto engine = engine::NautilusEngine(options);
 
 	const size_t widthBytes = RuntimeSimdWidth();

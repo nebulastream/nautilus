@@ -97,6 +97,17 @@ Store elements to non-contiguous memory locations. Stores lane `i` to `base[indi
 v.Scatter(base_ptr, index_ptr);
 ```
 
+### Compress-Store
+
+Write only the lanes whose mask bit is set, packed contiguously starting at `dst`, and return the number of elements written (the popcount of the mask). A lane is active when its mask element is non-zero, so the mask is typically produced by a comparison. This is the core primitive for stream compaction / filtering and lowers to `llvm.masked.compressstore` (AVX-512 `vcompressps`/`vpcompressd`) on the MLIR backend, falling back to a scalar packing loop elsewhere.
+
+```cpp
+// Keep only the elements greater than the threshold, packed contiguously.
+auto v = val<vec<int32_t>>::Load(data);
+auto mask = v > val<vec<int32_t>>::Broadcast(threshold);
+val<int32_t> written = v.CompressStore(out_ptr, mask);
+```
+
 ## Lane Access
 
 ### Extract
@@ -287,6 +298,7 @@ When the MLIR backend is not available, all vector operations fall back to porta
 |--------|---------|-------------|
 | `Store(val<T*> ptr)` | `void` | Store to contiguous memory |
 | `Scatter(val<T*> base, val<const int32_t*> idx)` | `void` | Store to non-contiguous memory |
+| `CompressStore(val<T*> dst, val<vec<T>> mask)` | `val<int32_t>` | Store active lanes packed contiguously; returns count written |
 | `Get(val<int32_t> idx)` | `val<T>` | Extract a single lane |
 | `Set(val<int32_t> idx, val<T> value)` | `val<vec<T>>` | Return vector with one lane replaced |
 | `Abs()` | `val<vec<T>>` | Element-wise absolute value |

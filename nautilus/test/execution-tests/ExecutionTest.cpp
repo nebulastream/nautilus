@@ -13,6 +13,8 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/val_concepts.hpp"
 #include <catch2/catch_all.hpp>
+#include <cmath>
+#include <limits>
 namespace nautilus::engine {
 
 val<bool> makeConstantOfTracingValue(val<int> ref) {
@@ -42,6 +44,24 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(1) == -2);
 		REQUIRE(f(INT_MAX) == INT_MIN);
 		REQUIRE(f(INT_MIN) == INT_MAX);
+	}
+
+	SECTION("floatUnaryMinus") {
+		auto f = engine.registerFunction(negate<float>);
+		REQUIRE(f(42.5f) == -42.5f);
+		REQUIRE(f(-42.5f) == 42.5f);
+		// IEEE-754 sign-flip must be exact for zero, not just numerically equal
+		// (0.0f == -0.0f, so the value alone can't distinguish them).
+		REQUIRE(std::signbit(f(0.0f)));
+		REQUIRE_FALSE(std::signbit(f(-0.0f)));
+	}
+
+	SECTION("doubleUnaryMinus") {
+		auto f = engine.registerFunction(negate<double>);
+		REQUIRE(f(42.5) == -42.5);
+		REQUIRE(f(-42.5) == 42.5);
+		REQUIRE(std::signbit(f(0.0)));
+		REQUIRE_FALSE(std::signbit(f(-0.0)));
 	}
 
 	SECTION("uintBitwiseNegate") {
@@ -371,9 +391,31 @@ void expressionTests(engine::NautilusEngine& engine) {
 		REQUIRE(f(5) == 5);
 		REQUIRE(f(0) == 0);
 	}
+	// Regression (differential fuzzer): wrapped u32 subtraction feeding an
+	// unsigned compare; see u32WrapSubThenCompare in ExpressionFunctions.hpp.
+	SECTION("u32WrapSubThenCompare") {
+		auto f = engine.registerFunction(u32WrapSubThenCompare);
+		// Wrapped: 159212978 - 4279714710 = 174465564 (mod 2^32) <= 882064733.
+		REQUIRE(f(159212978u, 882064733u) == 1u);
+		// Not wrapped: 4279714711 - 4279714710 = 1.
+		REQUIRE(f(4279714711u, 0u) == 0u);
+		REQUIRE(f(4279714711u, 1u) == 1u);
+		// Wrapped from zero: 0 - 4279714710 = 15252586 (mod 2^32).
+		REQUIRE(f(0u, 15252585u) == 0u);
+		REQUIRE(f(0u, 15252586u) == 1u);
+	}
 }
 
 void controlFlowTest(engine::NautilusEngine& engine) {
+
+	// Regression (differential fuzzer): see zeroTripLoopMergeThenAddConstant
+	// in ControlFlowFunctions.hpp.
+	SECTION("zeroTripLoopMergeThenAddConstant") {
+		auto f = engine.registerFunction(zeroTripLoopMergeThenAddConstant);
+		REQUIRE(f(uint64_t(0), uint64_t(0)) == 119);
+		REQUIRE(f(uint64_t(0), uint64_t(23)) == 142);
+		REQUIRE(f(uint64_t(1), uint64_t(23)) == 119); // then-arm: zero-trip loop leaves acc == 0
+	}
 
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
@@ -927,6 +969,31 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 			REQUIRE(f(true) == 5);
 		}
 	}
+	// Regression (differential fuzzer): narrow i16 return value of a proxy
+	// call feeding a signed comparison; see i16NarrowCallReturnCompare in
+	// RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallReturnCompare") {
+		auto f = engine.registerFunction(i16NarrowCallReturnCompare);
+		// 25158 * 3 - 24951 = 50523 -> wraps to -15013 < 0.
+		REQUIRE(f(int16_t(25158), int16_t(-24951)) == 1);
+		// 100 * 3 + 5 = 305, no wrap, not negative.
+		REQUIRE(f(int16_t(100), int16_t(5)) == 0);
+		// -100 * 3 + 5 = -295, negative without wrapping.
+		REQUIRE(f(int16_t(-100), int16_t(5)) == 1);
+	}
+	// Regression (differential fuzzer): narrow i16 *argument* of a proxy call
+	// truncated from a wider value with live upper bits; see
+	// i16NarrowCallArgCompare in RunctimeCallFunctions.hpp.
+	SECTION("i16NarrowCallArgCompare") {
+		auto f = engine.registerFunction(i16NarrowCallArgCompare);
+		// 65537 truncates to 1; a caller that skips the extension hands the
+		// callee 65537, which is no longer < 5.
+		REQUIRE(f(int64_t(65537), int16_t(5)) == 1);
+		// 0xFFFE0003 truncates to 3.
+		REQUIRE(f(int64_t(0xFFFE0003), int16_t(7)) == 3);
+		// Negative wide value truncating to a negative narrow one.
+		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
+	}
 }
 
 void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
@@ -967,6 +1034,131 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(3, 4) == 7);
 		REQUIRE(f(0, 0) == 0);
 		REQUIRE(f(-5, 5) == 0);
+	}
+
+	SECTION("nautilusFunctionInt8") {
+		auto f = engine.registerFunction(nautilusFunctionInt8);
+		REQUIRE(f(int8_t(3), int8_t(4)) == int8_t(7));
+		REQUIRE(f(int8_t(-100), int8_t(-27)) == int8_t(-127));
+		REQUIRE(f(int8_t(0), int8_t(0)) == int8_t(0));
+		// Two's-complement wraparound at the int8_t boundaries.
+		REQUIRE(f(std::numeric_limits<int8_t>::max(), int8_t(1)) == std::numeric_limits<int8_t>::min());
+		REQUIRE(f(std::numeric_limits<int8_t>::min(), int8_t(-1)) == std::numeric_limits<int8_t>::max());
+		REQUIRE(f(std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::min()) == int8_t(0));
+	}
+	SECTION("nautilusFunctionUInt8") {
+		auto f = engine.registerFunction(nautilusFunctionUInt8);
+		REQUIRE(f(uint8_t(3), uint8_t(4)) == uint8_t(12));
+		REQUIRE(f(uint8_t(0), uint8_t(200)) == uint8_t(0));
+		// Unsigned wraparound (mod 256) at and beyond the uint8_t max.
+		REQUIRE(f(std::numeric_limits<uint8_t>::max(), uint8_t(1)) == std::numeric_limits<uint8_t>::max());
+		REQUIRE(f(std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()) == uint8_t(1));
+		REQUIRE(f(uint8_t(128), uint8_t(2)) == uint8_t(0));
+	}
+	SECTION("nautilusFunctionInt16") {
+		auto f = engine.registerFunction(nautilusFunctionInt16);
+		REQUIRE(f(int16_t(10), int16_t(4)) == int16_t(6));
+		REQUIRE(f(int16_t(-1000), int16_t(500)) == int16_t(-1500));
+		REQUIRE(f(int16_t(0), int16_t(0)) == int16_t(0));
+		// Two's-complement wraparound at the int16_t boundaries.
+		REQUIRE(f(std::numeric_limits<int16_t>::min(), int16_t(1)) == std::numeric_limits<int16_t>::max());
+		REQUIRE(f(std::numeric_limits<int16_t>::max(), int16_t(-1)) == std::numeric_limits<int16_t>::min());
+	}
+	SECTION("nautilusFunctionUInt16") {
+		auto f = engine.registerFunction(nautilusFunctionUInt16);
+		REQUIRE(f(uint16_t(3), uint16_t(4)) == uint16_t(7));
+		REQUIRE(f(uint16_t(60000), uint16_t(5000)) == uint16_t(65000));
+		// Unsigned wraparound (mod 65536) at and beyond the uint16_t max.
+		REQUIRE(f(std::numeric_limits<uint16_t>::max(), uint16_t(1)) == uint16_t(0));
+		REQUIRE(f(std::numeric_limits<uint16_t>::max(), std::numeric_limits<uint16_t>::max()) == uint16_t(65534));
+	}
+	SECTION("nautilusFunctionUInt32") {
+		auto f = engine.registerFunction(nautilusFunctionUInt32);
+		REQUIRE(f(uint32_t(6), uint32_t(7)) == uint32_t(42));
+		REQUIRE(f(uint32_t(0), uint32_t(123456)) == uint32_t(0));
+		// Unsigned wraparound (mod 2^32) at and beyond the uint32_t max.
+		REQUIRE(f(std::numeric_limits<uint32_t>::max(), uint32_t(1)) == std::numeric_limits<uint32_t>::max());
+		REQUIRE(f(uint32_t(1) << 16, uint32_t(1) << 16) == uint32_t(0));
+	}
+	SECTION("nautilusFunctionInt64") {
+		auto f = engine.registerFunction(nautilusFunctionInt64);
+		REQUIRE(f(int64_t(3), int64_t(4)) == int64_t(7));
+		REQUIRE(f(int64_t(-9000000000LL), int64_t(1000000000LL)) == int64_t(-8000000000LL));
+		REQUIRE(f(int64_t(0), int64_t(0)) == int64_t(0));
+		// Two's-complement wraparound at the int64_t boundaries.
+		REQUIRE(f(std::numeric_limits<int64_t>::max(), int64_t(1)) == std::numeric_limits<int64_t>::min());
+		REQUIRE(f(std::numeric_limits<int64_t>::min(), int64_t(-1)) == std::numeric_limits<int64_t>::max());
+	}
+	SECTION("nautilusFunctionUInt64") {
+		auto f = engine.registerFunction(nautilusFunctionUInt64);
+		REQUIRE(f(uint64_t(6), uint64_t(7)) == uint64_t(42));
+		REQUIRE(f(uint64_t(0), uint64_t(123456789ULL)) == uint64_t(0));
+		// Unsigned wraparound (mod 2^64) at and beyond the uint64_t max.
+		REQUIRE(f(std::numeric_limits<uint64_t>::max(), uint64_t(1)) == std::numeric_limits<uint64_t>::max());
+		REQUIRE(f(uint64_t(1) << 32, uint64_t(1) << 32) == uint64_t(0));
+	}
+	SECTION("nautilusFunctionFloat") {
+		auto f = engine.registerFunction(nautilusFunctionFloat);
+		REQUIRE(f(3.5f, 4.25f) == 7.75f);
+		REQUIRE(f(0.0f, 0.0f) == 0.0f);
+		REQUIRE(f(-3.5f, -4.25f) == -7.75f);
+		REQUIRE(f(1.0f, std::numeric_limits<float>::epsilon()) == 1.0f + std::numeric_limits<float>::epsilon());
+		// Overflow to +/-infinity beyond the finite float range.
+		REQUIRE(std::isinf(f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max())));
+		REQUIRE(std::isinf(f(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max())));
+	}
+	SECTION("nautilusFunctionDouble") {
+		auto f = engine.registerFunction(nautilusFunctionDouble);
+		REQUIRE(f(3.5, 2.0) == 7.0);
+		REQUIRE(f(0.0, 123.456) == 0.0);
+		REQUIRE(f(-3.5, 2.0) == -7.0);
+		// Underflow to zero for a product below the smallest representable magnitude.
+		REQUIRE(f(std::numeric_limits<double>::min(), std::numeric_limits<double>::min()) == 0.0);
+		// Overflow to +infinity beyond the finite double range.
+		REQUIRE(std::isinf(f(std::numeric_limits<double>::max(), 2.0)));
+		// Sign of a negative-zero product is preserved.
+		REQUIRE(std::signbit(f(-0.0, 5.0)));
+	}
+	SECTION("nautilusFunctionBool") {
+		auto f = engine.registerFunction(nautilusFunctionBool);
+		REQUIRE(f(true, true) == true);
+		REQUIRE(f(true, false) == false);
+		REQUIRE(f(false, true) == false);
+		REQUIRE(f(false, false) == false);
+	}
+	SECTION("nautilusFunctionPtr") {
+		auto f = engine.registerFunction(nautilusFunctionPtr);
+		int32_t value = 10;
+		REQUIRE(f(&value, 5) == 15);
+		value = -3;
+		REQUIRE(f(&value, 3) == 0);
+		value = 0;
+		REQUIRE(f(&value, 0) == 0);
+		// Two's-complement wraparound of the addition through the pointer load.
+		value = std::numeric_limits<int32_t>::max();
+		REQUIRE(f(&value, 1) == std::numeric_limits<int32_t>::min());
+		value = std::numeric_limits<int32_t>::min();
+		REQUIRE(f(&value, -1) == std::numeric_limits<int32_t>::max());
+	}
+	SECTION("nautilusFunctionPtrWrite") {
+		auto f = engine.registerFunction(nautilusFunctionPtrWrite);
+		double value = 0.0;
+		REQUIRE(f(&value, 42.5) == 42.5);
+		REQUIRE(value == 42.5);
+		REQUIRE(f(&value, -123.456) == -123.456);
+		REQUIRE(value == -123.456);
+		REQUIRE(f(&value, std::numeric_limits<double>::max()) == std::numeric_limits<double>::max());
+		REQUIRE(value == std::numeric_limits<double>::max());
+		// Overwriting a non-zero value with zero exercises the store path, not just its initial value.
+		REQUIRE(f(&value, 0.0) == 0.0);
+		REQUIRE(value == 0.0);
+	}
+	SECTION("nautilusFunctionEnum") {
+		auto f = engine.registerFunction(nautilusFunctionEnum);
+		// Exhaustive over the whole enum domain.
+		REQUIRE(f(NautilusFunctionColor::RED) == 1);
+		REQUIRE(f(NautilusFunctionColor::GREEN) == 2);
+		REQUIRE(f(NautilusFunctionColor::BLUE) == 3);
 	}
 }
 

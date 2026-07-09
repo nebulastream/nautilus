@@ -18,6 +18,8 @@ std::string getAnyBackend() {
 	return "cpp";
 #elif defined(ENABLE_TRACING) && defined(ENABLE_BC_BACKEND)
 	return "bc";
+#elif defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
+	return "tbc";
 #else
 	return "";
 #endif
@@ -36,10 +38,10 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	}
 
 	Options options;
+	// An explicit backend forces single-tier compilation, so the stats on
+	// the active executable carry both frontend and backend keys in the
+	// same report.
 	options.setOption("engine.backend", backend);
-	// Force the non-tiered path so the tier-0 stats carry both frontend
-	// and backend keys in the same report.
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
 
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(statsAddOne);
@@ -72,6 +74,10 @@ TEST_CASE("CompilationStatistics: compiled module exposes pipeline stats") {
 	REQUIRE(stats->contains("backend.totalMs"));
 	REQUIRE(stats->contains("backend.name"));
 	REQUIRE(std::get<std::string>(*stats->find("backend.name")) == backend);
+
+	// The explicit backend runs as the single (tier-1) tier.
+	REQUIRE(stats->contains("tier"));
+	REQUIRE(std::get<std::string>(*stats->find("tier")) == "tier1");
 
 	// End-to-end total covers everything.
 	REQUIRE(stats->contains("compilation.totalMs"));
@@ -109,7 +115,6 @@ val<int32_t> statsLoopSum(val<int32_t> n) {
 TEST_CASE("CompilationStatistics: bytecode backend reports code size") {
 	Options options;
 	options.setOption("engine.backend", std::string {"bc"});
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
 
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(statsAddOne);
@@ -134,7 +139,6 @@ TEST_CASE("CompilationStatistics: bc.registerAllocator option shrinks the regist
 	auto compileWithAllocator = [](bool enabled) {
 		Options options;
 		options.setOption("engine.backend", std::string {"bc"});
-		options.setOption("engine.compilationStrategy", std::string("legacy"));
 		options.setOption("bc.registerAllocator", enabled);
 		auto engine = std::make_unique<NautilusEngine>(options);
 		auto fn = engine->registerFunction(statsLoopSum);
@@ -157,6 +161,31 @@ TEST_CASE("CompilationStatistics: bc.registerAllocator option shrinks the regist
 	INFO("registers with allocator=" << withAlloc << " without=" << withoutAlloc);
 	REQUIRE(withAlloc <= withoutAlloc);
 	REQUIRE(withAlloc < withoutAlloc); // for this workload reuse is always possible
+}
+#endif
+
+#if defined(ENABLE_TRACING) && defined(ENABLE_TBC_BACKEND)
+TEST_CASE("CompilationStatistics: tbc backend reports code size") {
+	Options options;
+	options.setOption("engine.backend", std::string {"tbc"});
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(statsAddOne);
+	REQUIRE(fn(5) == 6);
+
+	auto stats = fn.getStatistics();
+	REQUIRE(stats != nullptr);
+	REQUIRE(stats->contains("tbc.instructions"));
+	REQUIRE(stats->contains("tbc.codeSize.bytes"));
+	REQUIRE(stats->contains("tbc.registers.max"));
+	REQUIRE(stats->contains("tbc.dispatch"));
+	REQUIRE(std::get<int64_t>(*stats->find("tbc.instructions")) > 0);
+	REQUIRE(std::get<int64_t>(*stats->find("tbc.codeSize.bytes")) > 0);
+	REQUIRE(std::get<int64_t>(*stats->find("tbc.registers.max")) > 0);
+	// The recorded dispatch mode is the one actually selected after clamping
+	// to what this build supports.
+	const auto dispatch = std::get<std::string>(*stats->find("tbc.dispatch"));
+	REQUIRE((dispatch == "tailcall" || dispatch == "goto" || dispatch == "switch"));
 }
 #endif
 

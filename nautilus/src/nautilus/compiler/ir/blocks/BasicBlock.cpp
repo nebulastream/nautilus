@@ -49,6 +49,16 @@ const std::vector<BasicBlockArgument*>& BasicBlock::getArguments() const {
 	return arguments;
 }
 
+void BasicBlock::addArgument(BasicBlockArgument* argument) {
+	arguments.push_back(argument);
+}
+
+void BasicBlock::removeArgument(size_t index) {
+	if (index < arguments.size()) {
+		arguments.erase(arguments.begin() + static_cast<std::ptrdiff_t>(index));
+	}
+}
+
 uint64_t BasicBlock::getIndexOfArgument(Operation* arg) {
 	for (uint64_t i = 0; i < arguments.size(); i++) {
 		if (arguments[i] == arg) {
@@ -94,6 +104,22 @@ void BasicBlock::replaceOperation(size_t operationIndex, Operation* operation) {
 		return;
 	}
 	operations.at(operationIndex) = operation;
+}
+
+void BasicBlock::removeOperation(Operation* operation) {
+	auto it = std::find(operations.begin(), operations.end(), operation);
+	if (it != operations.end()) {
+		operations.erase(it);
+	}
+}
+
+void BasicBlock::addOperationBefore(Operation* before, Operation* operation) {
+	auto it = std::find(operations.begin(), operations.end(), before);
+	if (it != operations.end()) {
+		operations.insert(it, operation);
+	} else {
+		operations.push_back(operation);
+	}
 }
 
 const std::vector<BasicBlock*>& BasicBlock::getPredecessors() const {

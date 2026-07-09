@@ -611,6 +611,58 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 }
 
 // ============================================================================
+// Compress-store: store the active lanes packed contiguously, return popcount
+//
+// Lowers to llvm.masked.compressstore, which LLVM turns into AVX-512
+// vcompressps/vpcompressd where available and scalarizes elsewhere. The mask
+// follows the same convention as blend: a lane is active when its element is
+// non-zero. We additionally compute the number of stored elements (popcount of
+// the mask) so callers can advance the destination pointer for compaction.
+// ============================================================================
+
+template <typename ElemT, int64_t N>
+bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
+                                  const compiler::ir::ProxyCallOperation* call,
+                                  MLIRLoweringProvider::ValueFrame& frame) {
+	auto dstPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+	auto maskPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+	auto dataPtr = frame.getValue(call->getInputArguments()[2]->getIdentifier());
+	auto loc = builder->getUnknownLoc();
+
+	auto elemTy = getElemType<ElemT>(*builder);
+	auto vecTy = getVecType(elemTy, N);
+
+	auto mask = loadVecFromPtr(builder, maskPtr, vecTy);
+	auto data = loadVecFromPtr(builder, dataPtr, vecTy);
+
+	// Convert the lane mask to a vector<NxI1> (active == element != 0), matching
+	// the blend convention.
+	::mlir::Value maskI1;
+	if constexpr (std::is_floating_point_v<ElemT>) {
+		auto intElemTy = builder->getIntegerType(elemTy.getIntOrFloatBitWidth());
+		auto intVecTy = getVecType(intElemTy, N);
+		auto maskInt = builder->create<::mlir::LLVM::BitcastOp>(loc, intVecTy, mask);
+		auto zero = builder->create<::mlir::arith::ConstantOp>(loc, intVecTy, builder->getZeroAttr(intVecTy));
+		maskI1 = builder->create<::mlir::LLVM::ICmpOp>(loc, ::mlir::LLVM::ICmpPredicate::ne, maskInt, zero);
+	} else {
+		auto zero = builder->create<::mlir::arith::ConstantOp>(loc, vecTy, builder->getZeroAttr(vecTy));
+		maskI1 = builder->create<::mlir::LLVM::ICmpOp>(loc, ::mlir::LLVM::ICmpPredicate::ne, mask, zero);
+	}
+
+	// Store the active lanes packed contiguously at dst.
+	builder->create<::mlir::LLVM::masked_compressstore>(loc, data, dstPtr, maskI1);
+
+	// Popcount of the mask = number of stored elements: zext i1 -> i32, reduce.add.
+	auto i32Ty = builder->getI32Type();
+	auto i32VecTy = getVecType(i32Ty, N);
+	auto maskExt = builder->create<::mlir::LLVM::ZExtOp>(loc, i32VecTy, maskI1);
+	auto count = builder->create<::mlir::LLVM::vector_reduce_add>(loc, i32Ty, maskExt);
+
+	frame.setValue(call->getIdentifier(), count);
+	return true;
+}
+
+// ============================================================================
 // Extract: get a single lane by runtime index
 // ============================================================================
 
@@ -812,6 +864,11 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_scatter_##SUFFIX##_impl),                                   \
 	                     (vectorScatterIntrinsic<T, N>));
 
+// Register compress-store (packed masked store)
+#define REGISTER_VECTOR_COMPRESS_STORE(manager, T, N, SUFFIX)                                                        \
+	manager.addIntrinsic(reinterpret_cast<void*>(&vector_compress_store_##SUFFIX##_impl),                            \
+	                     (vectorCompressStoreIntrinsic<T, N>));
+
 // Register extract (lane access)
 #define REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                               \
 	manager.addIntrinsic(reinterpret_cast<void*>(&vector_extract_##SUFFIX##_impl),                                   \
@@ -844,6 +901,7 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	REGISTER_VECTOR_BROADCAST(manager, T, N, SUFFIX)                                                                 \
 	REGISTER_VECTOR_GATHER(manager, T, N, SUFFIX)                                                                    \
 	REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_COMPRESS_STORE(manager, T, N, SUFFIX)                                                            \
 	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)
 
@@ -861,6 +919,7 @@ bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 	REGISTER_VECTOR_BROADCAST(manager, T, N, SUFFIX)                                                                 \
 	REGISTER_VECTOR_GATHER(manager, T, N, SUFFIX)                                                                    \
 	REGISTER_VECTOR_SCATTER(manager, T, N, SUFFIX)                                                                   \
+	REGISTER_VECTOR_COMPRESS_STORE(manager, T, N, SUFFIX)                                                            \
 	REGISTER_VECTOR_EXTRACT(manager, T, N, SUFFIX)                                                                   \
 	REGISTER_VECTOR_INSERT(manager, T, N, SUFFIX)                                                                    \
 	REGISTER_VECTOR_SHIFT_INT(manager, T, N, SUFFIX)

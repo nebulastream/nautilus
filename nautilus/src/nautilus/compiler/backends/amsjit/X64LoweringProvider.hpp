@@ -11,11 +11,13 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/options.hpp"
 #include <asmjit/x86.h>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::compiler {
 class CompilationStatistics;
+class DumpHandler;
 } // namespace nautilus::compiler
 
 namespace nautilus::compiler::asmjit {
@@ -36,6 +38,8 @@ public:
 		void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
 		std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
 		uint64_t codeSize = 0;                          ///< Total emitted machine-code size in bytes.
+		std::string asmjitIR;                           ///< AsmJit builder node list (only captured when dumping).
+		std::string assembly;                           ///< Generated assembly listing (only captured when dumping).
 	};
 
 	/// Compile all functions in the IR graph into one JIT allocation.
@@ -43,8 +47,12 @@ public:
 	/// When @p statistics is non-null, the optional post-RA peephole pass
 	/// (see @ref X64PostRAPeepholePass) records its per-run counters into
 	/// it under the `asmjit.peephole.*` key namespace.
+	///
+	/// When @p dumpHandler requests the `after_asmjit_generation` /
+	/// `after_asmjit_assembly` dumps, the corresponding textual representations
+	/// are captured into @ref LowerResult.
 	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime, const engine::Options& options,
-	                  CompilationStatistics* statistics = nullptr);
+	                  const DumpHandler& dumpHandler, CompilationStatistics* statistics = nullptr);
 
 private:
 	// AsmReg / RegisterFrame come from AsmJitRegister.hpp at namespace scope so
@@ -59,7 +67,10 @@ private:
 		                CompilationStatistics* statistics, const AsmJitIntrinsicManager& intrinsicManager);
 
 		/// Pass 1 + Pass 2 + finalize.
-		void processAll();
+		///
+		/// When @p asmjitIRDump is non-null, the AsmJit builder node list is formatted into it
+		/// just before finalize() (i.e. while virtual registers are still present).
+		void processAll(std::string* asmjitIRDump = nullptr);
 
 		/// Must be called after processAll() and before rt.add() to capture label offsets.
 		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
@@ -80,6 +91,29 @@ private:
 		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
 		std::unordered_set<ir::BlockIdentifier> processedBlocks;
+		/// Static SSA usage counts for the current function (see ir::countUsages).
+		/// Only populated when branch fusion is enabled; used to prove that a
+		/// compare's sole consumer is the IfOperation that follows it.
+		std::unordered_map<ir::OperationIdentifier, uint32_t> usageCounts_;
+		/// Set by processBlock when the next dispatched operation is an
+		/// IfOperation that can consume this compare's EFLAGS directly. The
+		/// compare's own lowering (cmp+setcc+movzx) is skipped and visitIf
+		/// emits a fused cmp+jcc instead.
+		const ir::CompareOperation* pendingFusedCompare_ = nullptr;
+		/// Gates the compare→branch fusion (option `asmjit.enableBranchFusion`).
+		bool enableBranchFusion_ = true;
+		/// Gates constant deferral + immediate folding (option
+		/// `asmjit.enableConstFolding`). When on, integer/bool/ptr constants
+		/// are not materialised at their definition; consumers either fold
+		/// them as immediate operands or rematerialise them per use.
+		bool enableConstFolding_ = true;
+		/// Gates the branch-free select lowering via cmov (option
+		/// `asmjit.enableSelectCmov`).
+		bool enableSelectCmov_ = true;
+		/// Statistics sink shared with the rest of the pipeline; may be null.
+		CompilationStatistics* statistics_ = nullptr;
+		int64_t fusedBranches_ = 0;
+		int64_t foldedImmediates_ = 0;
 		/// Pointer registers for the current function's alloca slots, indexed
 		/// by AllocaOperation::getIndex(). Materialised once in the function
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
@@ -95,11 +129,68 @@ private:
 		static ::asmjit::x86::Gp toGp(const AsmReg& r);
 		static ::asmjit::x86::Xmm toXmm(const AsmReg& r);
 
+		// Re-sign/zero-extend a GP register's low `stamp`-width bits across the
+		// full 64-bit register per `stamp`'s signedness. Integer arithmetic on
+		// sub-64-bit types is computed at full 64-bit width (see the class
+		// comment), which can leave the upper bits inconsistent with the
+		// narrow-width invariant (e.g. an i32 add that overflows 32 bits still
+		// produces a "correct" 64-bit sum, whose 64-bit sign-extension no
+		// longer matches the sign-extension of the wrapped-around 32-bit
+		// result). Every op whose narrow-width result can differ from its
+		// 64-bit computation -- Add/Sub/Mul/Negate(bitwise not)/Shift -- must
+		// restore the invariant afterward so later consumers (comparisons,
+		// casts, ...) that read the full register see the right value.
+		void narrowToStamp(::asmjit::x86::Gp reg, Type stamp);
+
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
 
+		// The canonical 64-bit register pattern of an integer-like constant
+		// operation (sign-extended for signed stamps, zero-extended for
+		// unsigned/bool/ptr) or of an integer cast of a constant chain, or
+		// nullopt when @p in is not such a constant. The constant-folding IR
+		// pass guarantees pointer-consistent input edges (issue #327), so the
+		// definition is always recovered from the operation pointer itself.
+		std::optional<int64_t> foldableConstValue(const ir::Operation* in);
+		// Fetch @p in's GP register from the frame, or rematerialise a
+		// deferred constant into a fresh register (per use — a shared lazy
+		// binding would not dominate uses in sibling branches).
+		::asmjit::x86::Gp gpOperand(const ir::Operation* in, RegisterFrame& frame);
+		// Like gpOperand but preserves the GP/XMM distinction. Floats are
+		// never deferred, so the rematerialisation path is GP-only.
+		AsmReg regOperand(const ir::Operation* in, RegisterFrame& frame);
+		// The constant's canonical pattern when @p in is a deferred constant
+		// that fits a sign-extended imm32 operand; nullopt otherwise.
+		std::optional<int32_t> imm32Operand(const ir::Operation* in);
+		// Move @p src's value into @p dst: a register move when bound, a
+		// direct `mov dst, imm` when @p src is a deferred constant.
+		void emitMoveFromOperand(const AsmReg& dst, const ir::Operation* src, RegisterFrame& frame);
+
+		// Bind an operation's freshly computed result to its SSA identifier.
+		// For a normal (single) definition this just records the register.
+		// But a value's identifier can coincide with a downstream merge
+		// block's parameter whose register was already allocated by an
+		// earlier-emitted predecessor edge -- Nautilus SSA reuses an incoming
+		// value's name for the block parameter, and the diamond/loop CFG can
+		// emit that predecessor before this definition. In that case the
+		// identifier is already bound to the parameter register, and this
+		// definition is the value flowing in along *this* edge, so its result
+		// must be copied into the parameter register. Frame::setValue is
+		// emplace-only and would silently ignore the rebind, orphaning the
+		// computed value and leaving the merge parameter uninitialised along
+		// this path (issue #321).
+		void bindResult(const ir::OperationIdentifier& id, const AsmReg& reg, RegisterFrame& frame);
+
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);
+
+		// True when `cmp` may skip materialising its boolean because the
+		// immediately following IfOperation is its only consumer and can read
+		// the flags directly.
+		bool isFusibleCompare(const ir::CompareOperation* cmp, const ir::Operation* next, RegisterFrame& frame);
+		// Emit the compare and the negated conditional jump to @p falseTarget
+		// in place of the unfused cmp+setcc+movzx / test+jz sequence.
+		void emitFusedCompareBranch(const ir::CompareOperation* cmp, ::asmjit::Label falseTarget, RegisterFrame& frame);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame);

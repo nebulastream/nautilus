@@ -13,7 +13,7 @@
 namespace nautilus::compiler::asmjit {
 
 std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
-                                                              const DumpHandler& /*dumpHandler*/,
+                                                              const DumpHandler& dumpHandler,
                                                               const engine::Options& options,
                                                               CompilationStatistics* statistics) const {
 	const auto backendStart = std::chrono::steady_clock::now();
@@ -24,11 +24,18 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_
 	const auto compileStart = std::chrono::steady_clock::now();
 	// Thread the statistics sink through lower() so the optional post-RA
 	// peephole pass can record its counters under backend-scoped keys
-	// (asmjit.peephole.*).
-	auto result = provider.lower(ir, *runtime, options, statistics);
+	// (asmjit.peephole.*). The DumpHandler lets lower() capture the AsmJit
+	// builder IR and the generated assembly when those dumps are requested.
+	auto result = provider.lower(ir, *runtime, options, dumpHandler, statistics);
 	if (!result.basePtr) {
 		return nullptr;
 	}
+
+	// Emit the captured textual representations. lower() only fills these in when the
+	// matching dump is enabled, so the dump callbacks are cheap no-ops otherwise.
+	dumpHandler.dump("after_asmjit_generation", "asmjit", [&]() { return result.asmjitIR; });
+	dumpHandler.dump("after_asmjit_assembly", "asm", [&]() { return result.assembly; });
+
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("asmjit.compile.ms", compileStart);
 		statistics->set("asmjit.codeSize.bytes", static_cast<int64_t>(result.codeSize));

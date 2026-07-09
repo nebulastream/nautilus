@@ -16,6 +16,7 @@
 
 namespace nautilus::compiler {
 class CompilationStatistics;
+class DumpHandler;
 } // namespace nautilus::compiler
 
 namespace nautilus::compiler::asmjit {
@@ -36,6 +37,8 @@ public:
 		void* basePtr = nullptr;                        ///< Single JIT allocation base; release exactly once.
 		std::unordered_map<std::string, void*> jitPtrs; ///< Per-function pointers within the allocation.
 		uint64_t codeSize = 0;                          ///< Total emitted machine-code size in bytes.
+		std::string asmjitIR;                           ///< AsmJit builder node list (only captured when dumping).
+		std::string assembly;                           ///< Generated assembly listing (only captured when dumping).
 	};
 
 	/// Compile all functions in the IR graph into one JIT allocation.
@@ -43,8 +46,12 @@ public:
 	/// When @p statistics is non-null, the optional post-RA peephole pass
 	/// (see @ref A64PostRAPeepholePass) records its per-run counters into
 	/// it under the `asmjit.peephole.*` key namespace.
+	///
+	/// When @p dumpHandler requests the `after_asmjit_generation` /
+	/// `after_asmjit_assembly` dumps, the corresponding textual representations
+	/// are captured into @ref LowerResult.
 	LowerResult lower(std::shared_ptr<ir::IRGraph> ir, ::asmjit::JitRuntime& runtime, const engine::Options& options,
-	                  CompilationStatistics* statistics = nullptr);
+	                  const DumpHandler& dumpHandler, CompilationStatistics* statistics = nullptr);
 
 private:
 	// AsmReg / RegisterFrame come from AsmJitRegister.hpp at namespace scope so
@@ -59,7 +66,10 @@ private:
 		                CompilationStatistics* statistics, const AsmJitIntrinsicManager& intrinsicManager);
 
 		/// Pass 1 + Pass 2 + finalize.
-		void processAll();
+		///
+		/// When @p asmjitIRDump is non-null, the AsmJit builder node list is formatted into it
+		/// just before finalize() (i.e. while virtual registers are still present).
+		void processAll(std::string* asmjitIRDump = nullptr);
 
 		/// Must be called after processAll() and before rt.add() to capture label offsets.
 		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
@@ -90,6 +100,17 @@ private:
 		static bool isFloatType(Type t);
 		static bool isUnsignedType(Type t);
 
+		// Re-establish the register invariant for narrow integer stamps: every
+		// value register holds its narrow value sign-extended (signed stamps) or
+		// zero-extended (unsigned stamps) to the full 64 bits. Entry arguments
+		// and casts establish it; any op whose 64-bit result can exceed the
+		// stamp's width (add/sub/mul wraparound, left shift, bitwise not) must
+		// call this afterwards, because downstream consumers (cmp, udiv/sdiv,
+		// msub, ucvtf/scvtf) operate on the full X register and silently
+		// mis-evaluate a non-canonical value. Mirrors X64LoweringProvider's
+		// narrowToStamp.
+		void narrowToStamp(::asmjit::a64::Gp reg, Type stamp);
+
 		// All integer types are mapped to 64-bit GP (X); floats to Vec (S/D).
 		AsmReg allocReg(Type t);
 		static ::asmjit::a64::Gp toGp(const AsmReg& r);
@@ -97,6 +118,21 @@ private:
 
 		::asmjit::Label getOrCreateLabel(ir::BlockIdentifier blockId);
 		void emitMove(const AsmReg& dst, const AsmReg& src);
+
+		// Bind an operation's freshly computed result to its SSA identifier.
+		// For a normal (single) definition this just records the register.
+		// But a value's identifier can coincide with a downstream merge
+		// block's parameter whose register was already allocated by an
+		// earlier-emitted predecessor edge -- Nautilus SSA reuses an incoming
+		// value's name for the block parameter, and the diamond/loop CFG can
+		// emit that predecessor before this definition. In that case the
+		// identifier is already bound to the parameter register, and this
+		// definition is the value flowing in along *this* edge, so its result
+		// must be copied into the parameter register. Frame::setValue is
+		// emplace-only and would silently ignore the rebind, orphaning the
+		// computed value and leaving the merge parameter uninitialised along
+		// this path (issue #321).
+		void bindResult(const ir::OperationIdentifier& id, const AsmReg& reg, RegisterFrame& frame);
 
 		void processBlock(const ir::BasicBlock* block, RegisterFrame& frame);
 		void processBlockInvocation(const ir::BasicBlockInvocation& bi, RegisterFrame& frame);

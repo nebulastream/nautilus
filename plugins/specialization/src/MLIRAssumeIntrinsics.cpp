@@ -69,6 +69,19 @@ public:
 			                                            ::mlir::LLVM::AssumeAlignTag {}, ptr, align);
 			    return true;
 		    });
+		manager.addIntrinsic(
+		    reinterpret_cast<void*>(&nautilus_assume_separate_storage_stub),
+		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+		       [[maybe_unused]] compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) -> bool {
+			    auto constOp =
+			        builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
+			                                                   builder->getIntegerAttr(builder->getI1Type(), true));
+			    auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
+			    auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), constOp,
+			                                            ::mlir::LLVM::AssumeSeparateStorageTag {}, ptrA, ptrB);
+			    return true;
+		    });
 	}
 	~NautilusAssumeIntrinsicPlugin() override = default;
 };

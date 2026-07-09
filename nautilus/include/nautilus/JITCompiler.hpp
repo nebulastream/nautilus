@@ -5,6 +5,10 @@
 #include <list>
 #include <memory>
 
+namespace nautilus::engine::details {
+struct ModuleState;
+}
+
 namespace nautilus::compiler {
 
 class Executable;
@@ -48,6 +52,22 @@ public:
 	 */
 	[[nodiscard]] virtual std::unique_ptr<Executable>
 	compile(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions = {}) const = 0;
+
+	/**
+	 * @brief Compile @p functions and publish the result into @p state.
+	 *
+	 * Sets @c state->executable to the produced executable. Compilers that
+	 * promote in the background (tiered) additionally start an asynchronous
+	 * promotion targeting @p state. Passing the module state lets each compile
+	 * carry its own IR to its own promotion, so concurrent compile() calls on a
+	 * shared engine never share compiler-level state.
+	 *
+	 * @param functions List of named compilable functions to trace and compile.
+	 * @param moduleOptions Per-module options for this compilation.
+	 * @param state Module state to populate (and, for tiered compilers, promote).
+	 */
+	virtual void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
+	                           std::shared_ptr<engine::details::ModuleState> state) const = 0;
 
 	/**
 	 * @brief Get the name of the primary compilation backend.

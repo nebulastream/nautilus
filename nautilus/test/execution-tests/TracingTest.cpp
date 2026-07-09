@@ -179,6 +179,8 @@ TEST_CASE("Expression Trace Test") {
 	    {"shiftRight_i64", details::createFunctionWrapper(shiftRight<int64_t>)},
 	    {"shiftRight_ui64", details::createFunctionWrapper(shiftRight<uint64_t>)},
 	    {"negate_i8", details::createFunctionWrapper(negate<int8_t>)},
+	    {"negate_f32", details::createFunctionWrapper(negate<float>)},
+	    {"negate_f64", details::createFunctionWrapper(negate<double>)},
 	    {"logicalNot_bool", details::createFunctionWrapper(logicalNot<bool>)},
 	    {"mulInt64AndNotDefinedI64", details::createFunctionWrapper(mulInt64AndNotDefinedI64)},
 	    {"subInt8AndInt8", details::createFunctionWrapper(subInt8AndInt8)},
@@ -648,9 +650,24 @@ void store_missing_downcast(val<unsigned int*> v) {
 	*v = (val<long>) -1;
 }
 
+// Regression (issue #95): a native C++ ternary selecting between two
+// pre-existing val<int32_t> lvalues (as opposed to fresh literals) hit both
+// arms via the same copy-construction call site. The tracer's tag-based
+// control-flow-merge detection treated the second arm's copy as a revisit of
+// the first arm's already-recorded copy (same tag, since both arms reach the
+// identical call site) and silently dropped it instead of recording it,
+// so the STORE below always used the "true" arm's value regardless of the
+// branch actually taken ("double jump" miscompilation).
+void ternary_double_jump_gh_95(val<int32_t*> x, val<int32_t*> y) {
+	val<int32_t> a {*x};
+	val<int32_t> b {*y};
+	*x = (val<int32_t>) (a > b ? a : b);
+}
+
 TEST_CASE("Regressions") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)}};
+	    {"store_mising_downcast-gh_#90", details::createFunctionWrapper(store_missing_downcast)},
+	    {"ternary_double_jump-gh_#95", details::createFunctionWrapper(ternary_double_jump_gh_95)}};
 	runTraceTests("regressions", tests);
 }
 
@@ -731,6 +748,19 @@ TEST_CASE("Nautilus Function Call Trace Test") {
 	    {"nautilusFunctionInlineMember", details::createFunctionWrapper(nautilusFunctionInlineMember)},
 	    {"nautilusFunctionMultipleInline", details::createFunctionWrapper(nautilusFunctionMultipleInline)},
 	    {"nautilusFunctionGetFuncPtr", details::createFunctionWrapper(nautilusFunctionGetFuncPtr)},
+	    {"nautilusFunctionInt8", details::createFunctionWrapper(nautilusFunctionInt8)},
+	    {"nautilusFunctionUInt8", details::createFunctionWrapper(nautilusFunctionUInt8)},
+	    {"nautilusFunctionInt16", details::createFunctionWrapper(nautilusFunctionInt16)},
+	    {"nautilusFunctionUInt16", details::createFunctionWrapper(nautilusFunctionUInt16)},
+	    {"nautilusFunctionUInt32", details::createFunctionWrapper(nautilusFunctionUInt32)},
+	    {"nautilusFunctionInt64", details::createFunctionWrapper(nautilusFunctionInt64)},
+	    {"nautilusFunctionUInt64", details::createFunctionWrapper(nautilusFunctionUInt64)},
+	    {"nautilusFunctionFloat", details::createFunctionWrapper(nautilusFunctionFloat)},
+	    {"nautilusFunctionDouble", details::createFunctionWrapper(nautilusFunctionDouble)},
+	    {"nautilusFunctionBool", details::createFunctionWrapper(nautilusFunctionBool)},
+	    {"nautilusFunctionPtr", details::createFunctionWrapper(nautilusFunctionPtr)},
+	    {"nautilusFunctionPtrWrite", details::createFunctionWrapper(nautilusFunctionPtrWrite)},
+	    {"nautilusFunctionEnum", details::createFunctionWrapper(nautilusFunctionEnum)},
 	};
 	runTraceTests("nautilus-function-call-tests", tests);
 }

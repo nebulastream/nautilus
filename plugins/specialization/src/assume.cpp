@@ -45,4 +45,13 @@ void nautilus_assume_nonzero(val<int64_t> value) {
 	invoke(nautilus_assume_nonzero_stub, value);
 }
 
+void nautilus_assume_separate_storage_stub(void*, void*) {
+	// This function is a stub for optimization purposes.
+	// It does nothing at runtime.
+}
+
+void nautilus_assume_noalias(val<void*> a, val<void*> b) {
+	invoke(nautilus_assume_separate_storage_stub, a, b);
+}
+
 } // namespace nautilus

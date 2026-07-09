@@ -61,6 +61,13 @@ val<int> cfWithAssumeAlignment(val<int32_t*> a) {
 	return *a + 10;
 }
 
+val<int32_t> cfWithNoalias(val<int32_t*> a, val<int32_t*> b) {
+	nautilus_assume_noalias((val<void*>) a, (val<void*>) b);
+	*a = 1;              // store through a
+	val<int32_t> r = *b; // load from b - provably independent of *a
+	return r + *a;
+}
+
 TEST_CASE("MLIR Intrinsic Function Test") {
 	for (auto useIntrinsics : {false, true}) {
 		DYNAMIC_SECTION("useIntrinsics:" << useIntrinsics) {
@@ -113,6 +120,16 @@ TEST_CASE("MLIR Intrinsic Function Test") {
 					REQUIRE(f(3) == 8);
 					REQUIRE_THROWS(f(0));
 				}
+			}
+
+			SECTION("cfWithNoalias") {
+				// The separate_storage hint is a compile-time no-op for the
+				// observable result; verify the intrinsic lowers and runs.
+				auto f = engine.registerFunction(cfWithNoalias);
+				int32_t x = 0;
+				int32_t y = 7;
+				REQUIRE(f(&x, &y) == 8); // r (==7) + *a (==1)
+				REQUIRE(x == 1);
 			}
 		}
 	}

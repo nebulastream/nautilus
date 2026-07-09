@@ -210,17 +210,17 @@ public:
 
 private:
 	/**
-	 * @brief Arena owned by the engine and reused across every compilation.
+	 * @brief Pool of trace arenas owned by the engine.
 	 *
-	 * The JIT compiler holds a non-owning reference to this arena and
-	 * softReset()s it at the start of each compile().  Keeping the arena
-	 * on the engine (rather than inside the compiler) matches the intent
-	 * that it is an engine-level resource that can be shared with other
-	 * engine-scoped infrastructure in the future.  Declared before
-	 * @ref jit_ so the compiler's reference remains valid throughout its
-	 * lifetime.
+	 * Each compile() acquires a fresh trace arena from this pool for the
+	 * duration of its tracing/IR-generation, then returns it (softReset and
+	 * recycled) when done.  Because the pool is internally synchronized and
+	 * hands every concurrent compile() a distinct arena, multiple threads may
+	 * compile on a single shared engine without racing on a common bump
+	 * allocator.  Declared before @ref jit_ so the compiler's reference
+	 * remains valid throughout its lifetime.
 	 */
-	std::unique_ptr<common::Arena> arena_;
+	std::unique_ptr<common::ArenaPool> traceArenaPool_;
 	/**
 	 * @brief Pool of IR-graph arenas owned by the engine.
 	 *
@@ -337,17 +337,15 @@ public:
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
-			auto executable = jit_.compile(functions_, moduleOptions_);
-			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
-
-			// If using tiered compilation, start background promotion.
-			// The TieredJITCompiler directly swaps the executable and bumps
-			// the version in the module state when tier-1 compilation completes.
-			// if (auto* tiered = dynamic_cast<const compiler::TieredJITCompiler*>(&jit_)) {
-			//	tiered->promoteAsync(module.getState());
-			//}
-
-			return module;
+			// Compile into a freshly created module state. Each compile() carries
+			// its own IR to its own (optional, tiered) background promotion, so
+			// concurrent compiles on a shared engine share no compiler-level
+			// state. A tiered compiler swaps in the tier-1 executable and bumps
+			// the version on this state when promotion completes.
+			auto state = std::make_shared<details::ModuleState>();
+			state->interpretedFunctions = std::move(interpretedFunctions_);
+			jit_.compileModule(functions_, moduleOptions_, state);
+			return CompiledModule(std::move(state));
 		}
 #endif
 		return CompiledModule(std::move(interpretedFunctions_));

@@ -52,4 +52,18 @@ If `value == 0` at runtime, behavior is undefined.
 */
 void nautilus_assume_nonzero(val<int64_t> value);
 
+/*
+Declares that the two pointers refer to separate (non-overlapping) storage,
+i.e. neither aliases the other. This is the tracing equivalent of the C
+`restrict` qualifier: the optimizer may use the information to reorder or
+eliminate memory accesses and to vectorize loops that would otherwise be
+blocked by potential aliasing.
+
+If the pointers actually overlap at runtime, the behavior is undefined.
+
+Like the other assume helpers, the pointer expressions are never evaluated for
+side effects; only their values are used for optimization.
+*/
+void nautilus_assume_noalias(val<void*> a, val<void*> b);
+
 } // namespace nautilus

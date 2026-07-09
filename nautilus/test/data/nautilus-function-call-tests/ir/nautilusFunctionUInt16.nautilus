@@ -1,0 +1,15 @@
+nautilus {
+addUInt16($1:ui16, $2:ui16) :ui16 {
+Block_0($1:ui16, $2:ui16):
+	$3 = $1 cast_to i32 :i32
+	$4 = $2 cast_to i32 :i32
+	$5 = $3 + $4 :i32
+	$6 = $5 cast_to ui16 :ui16
+	return ($6) :ui16
+}
+execute($1:ui16, $2:ui16) :ui16 {
+Block_0($1:ui16, $2:ui16):
+	$3 = func_*($1,$2) :ui16
+	return ($3) :ui16
+}
+} //nautilus

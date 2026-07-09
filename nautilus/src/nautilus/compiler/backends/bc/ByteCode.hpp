@@ -11,6 +11,43 @@
 
 namespace nautilus::compiler::bc {
 
+// Fused compare-and-branch superinstructions for the flattened threaded path
+// (Step 5). Each entry fuses a single-use integer comparison feeding a
+// conditional branch into one opcode, removing a dispatch and the separate
+// branch per loop iteration. Columns: fused opcode, the source comparison opcode
+// it replaces, the C++ operand type, and the comparison operator. This one list
+// generates the enum entries, the threaded label table, the handlers, the
+// source→fused mapping, and the defensive switch cases — so they cannot drift.
+#define NAUTILUS_BC_FUSED_BRANCH_LIST(X)                                                                               \
+	X(CJMP_LT_i32, LESS_THAN_i32, int32_t, <)                                                                          \
+	X(CJMP_LT_i64, LESS_THAN_i64, int64_t, <)                                                                          \
+	X(CJMP_LE_i32, LESS_THAN_EQUALS_i32, int32_t, <=)                                                                  \
+	X(CJMP_LE_i64, LESS_THAN_EQUALS_i64, int64_t, <=)                                                                  \
+	X(CJMP_GT_i32, GREATER_THAN_i32, int32_t, >)                                                                       \
+	X(CJMP_GT_i64, GREATER_THAN_i64, int64_t, >)                                                                       \
+	X(CJMP_GE_i32, GREATER_THAN_EQUALS_i32, int32_t, >=)                                                               \
+	X(CJMP_GE_i64, GREATER_THAN_EQUALS_i64, int64_t, >=)                                                               \
+	X(CJMP_EQ_i32, EQ_i32, int32_t, ==)                                                                                \
+	X(CJMP_EQ_i64, EQ_i64, int64_t, ==)                                                                                \
+	X(CJMP_NE_i32, NOT_EQUALS_i32, int32_t, !=)                                                                        \
+	X(CJMP_NE_i64, NOT_EQUALS_i64, int64_t, !=)
+
+// Immediate-folding superinstructions for the flattened threaded path (Step 6).
+// Each fuses a compile-time-constant right operand directly into an arithmetic op,
+// removing one register read per use. The immediate is packed into the OpCode's
+// reg2 field (a 16-bit short), so only constants that fit are folded — which
+// covers the dominant loop-increment idiom (i = i + 1). Columns: immediate opcode,
+// the source opcode it replaces, the C++ operand type, the operator. This one list
+// generates the enum entries, threaded labels/handlers, source→imm mapping, and
+// the defensive switch cases.
+#define NAUTILUS_BC_IMM_LIST(X)                                                                                        \
+	X(ADD_imm_i32, ADD_i32, int32_t, +)                                                                                \
+	X(ADD_imm_i64, ADD_i64, int64_t, +)                                                                                \
+	X(SUB_imm_i32, SUB_i32, int32_t, -)                                                                                \
+	X(SUB_imm_i64, SUB_i64, int64_t, -)                                                                                \
+	X(MUL_imm_i32, MUL_i32, int32_t, *)                                                                                \
+	X(MUL_imm_i64, MUL_i64, int64_t, *)
+
 /**
  * @brief This defines the central register file for the byte-code interpreter.
  * Uses a dynamic vector sized based on actual register usage.
@@ -296,6 +333,7 @@ enum class ByteCode : short {
 	BAND_ui16,
 	BAND_ui32,
 	BAND_ui64,
+	BAND_b,
 	// bor
 	BOR_i8,
 	BOR_i16,
@@ -305,6 +343,7 @@ enum class ByteCode : short {
 	BOR_ui16,
 	BOR_ui32,
 	BOR_ui64,
+	BOR_b,
 	// bxor
 	BXOR_i8,
 	BXOR_i16,
@@ -314,6 +353,7 @@ enum class ByteCode : short {
 	BXOR_ui16,
 	BXOR_ui32,
 	BXOR_ui64,
+	BXOR_b,
 	// blsh
 	BLSH_i8,
 	BLSH_i16,
@@ -334,6 +374,8 @@ enum class ByteCode : short {
 	BRSH_ui64,
 	// negate
 	BNEGATE_I64,
+	NEG_f,
+	NEG_d,
 	// select
 	SELECT_i8,
 	SELECT_i16,
@@ -347,6 +389,26 @@ enum class ByteCode : short {
 	SELECT_d,
 	SELECT_b,
 	SELECT_ptr,
+	// Terminator pseudo-opcodes used only by the flattened threaded execution
+	// path (Step 3). They are appended last so the value-opcode indices above —
+	// and therefore the OpTable layout — never shift. They are intentionally NOT
+	// part of NAUTILUS_BC_OPCODE_LIST: the call/switch paths keep the structured
+	// per-block terminators (BranchOp/ConditionalJumpOp/ReturnOp) and never see
+	// these in a block's operation stream.
+	JMP,  // unconditional jump: reg1 = target block index
+	CJMP, // conditional jump:   reg1 = condition reg, reg2 = true block, reg3 = false block
+	RET,  // return:             reg1 = result reg (< 0 for void)
+	      // Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
+	      // reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
+	      // after the plain terminators so earlier opcode values never shift.
+#define NAUTILUS_BC_FUSED_ENUM_ENTRY(fused, src, ctype, cmp) fused,
+	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_ENUM_ENTRY)
+#undef NAUTILUS_BC_FUSED_ENUM_ENTRY
+// Immediate-folding pseudo-opcodes (Step 6), threaded path only. Packed as
+// reg1 = operand, reg2 = signed 16-bit immediate, output = result. Appended last.
+#define NAUTILUS_BC_IMM_ENUM_ENTRY(immOp, src, ctype, op) immOp,
+	    NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_ENUM_ENTRY)
+#undef NAUTILUS_BC_IMM_ENUM_ENTRY
 };
 
 /**
@@ -650,6 +712,15 @@ void cast(const OpCode& c, RegisterFile& regs) {
 	writeReg<TargetRegisterType>(regs, c.output, value);
 }
 
+// bitwiseAnd<bool>/bitwiseOr<bool> (Type::b's &/| -- a well-defined bitwise-
+// as-logical combine over a 0/1 domain, see val_bool.hpp) apply & / | to two
+// raw bools, which Clang's -Wall flags as likely-meant-logical; silence at
+// the template definition rather than disabling it project-wide.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#endif
+
 template <class RegisterType>
 void bitwiseAnd(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
@@ -663,6 +734,10 @@ void bitwiseOr(const OpCode& c, RegisterFile& regs) {
 	auto r = readReg<RegisterType>(regs, c.reg2);
 	writeReg(regs, c.output, l | r);
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 template <class RegisterType>
 void bitwiseXOr(const OpCode& c, RegisterFile& regs) {
@@ -689,6 +764,18 @@ template <class RegisterType>
 void bitwiseNot(const OpCode& c, RegisterFile& regs) {
 	auto l = readReg<RegisterType>(regs, c.reg1);
 	writeReg(regs, c.output, ~l);
+}
+
+/**
+ * @brief Defines an IEEE-754 sign-flip negate in the bytecode interpreter
+ * @tparam RegisterType
+ * @param c
+ * @param regs
+ */
+template <class RegisterType>
+void neg(const OpCode& c, RegisterFile& regs) {
+	auto l = readReg<RegisterType>(regs, c.reg1);
+	writeReg(regs, c.output, -l);
 }
 
 /**
@@ -720,6 +807,18 @@ public:
 
 	std::vector<OpCode> code = std::vector<OpCode>();
 	std::variant<BranchOp, ConditionalJumpOp, ReturnOp> terminatorOp = ReturnOp {0};
+
+	// Set by the lowering when this block ends in a ConditionalJumpOp whose
+	// condition is a single-use CompareOperation. Signals that the flattened
+	// threaded path may fuse the trailing compare into the branch (Step 5). Only
+	// consulted when bc.superinstructions is enabled; call/switch ignore it.
+	bool fuseCompareIntoBranch = false;
+
+	// Recorded by the lowering for arithmetic ops whose right operand is a small
+	// integer constant: (index of the op within `code`, the immediate). The
+	// flattened threaded path uses these to fold the constant into the op (Step 6)
+	// when bc.immediates is enabled; call/switch ignore them.
+	std::vector<std::pair<uint32_t, int16_t>> foldableImmediates = {};
 
 	friend std::ostream& operator<<(std::ostream& os, const CodeBlock& block);
 };

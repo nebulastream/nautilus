@@ -67,6 +67,9 @@ TEST_CASE("Execution Benchmark") {
 #ifdef ENABLE_BC_BACKEND
 	backends.emplace_back("bc");
 #endif
+#ifdef ENABLE_TBC_BACKEND
+	backends.emplace_back("tbc");
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	backends.emplace_back("asmjit");
 #endif
@@ -87,6 +90,40 @@ TEST_CASE("Execution Benchmark") {
 		}
 	}
 
+	// A/B: P2 IR passes (LICM + LocalCSE) off vs on, on every direct-lowering
+	// backend (bc/tbc/asmjit) -- the ones for which the IR pass pipeline is the
+	// whole optimizer. Measures the execution-time (dispatch/instruction-count)
+	// effect of the opt-in passes.
+	std::vector<std::string> abBackends = {};
+#ifdef ENABLE_BC_BACKEND
+	abBackends.emplace_back("bc");
+#endif
+#ifdef ENABLE_TBC_BACKEND
+	abBackends.emplace_back("tbc");
+#endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	abBackends.emplace_back("asmjit");
+#endif
+	for (auto& backend : abBackends) {
+		for (auto& test : benchmarks) {
+			auto func = std::get<1>(test);
+			auto name = std::get<0>(test);
+			for (bool passesOn : {false, true}) {
+				std::string tag = passesOn ? "passesOn" : "passesOff";
+				Catch::Benchmark::Benchmark("exec_" + backend + "_" + name + "_" + tag)
+				    .operator=([&func, backend, passesOn](Catch::Benchmark::Chronometer meter) {
+					    auto op = engine::Options();
+					    op.setOption("mlir.eager_compilation", true);
+					    op.setOption("engine.backend", backend);
+					    op.setOption("engine.traceMode", "lazyTracing");
+					    op.setOption("ir.enableLICM", passesOn);
+					    op.setOption("ir.enableLocalCSE", passesOn);
+					    func(meter, op);
+				    });
+			}
+		}
+	}
+
 #ifdef ENABLE_BC_BACKEND
 	// BC-only A/B benchmark comparing execution with and without the
 	// linear register allocator. Lets us track the perf side of the
@@ -104,6 +141,151 @@ TEST_CASE("Execution Benchmark") {
 				    op.setOption("engine.backend", std::string("bc"));
 				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.registerAllocator", allocOn);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// BC-only A/B benchmark comparing the bytecode dispatch strategies:
+	// "call" indirect-calls through the OpTable, "switch" uses an inlined
+	// switch that removes the per-instruction non-inlined call.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + dispatch)
+			    .operator=([&func, dispatch](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", dispatch);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// BC-only A/B benchmark for recycling the per-invocation register file from a
+	// thread-local pool (bc.regfileReuse) instead of heap-allocating a fresh copy.
+	// Most visible on the per-call-dominated "add" workload.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool reuse : {false, true}) {
+			std::string tag = reuse ? "reuse" : "noReuse";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, reuse](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.regfileReuse", reuse);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// BC-only A/B for compare+branch superinstructions on the threaded path
+	// (bc.superinstructions). Most visible on branch-heavy loops (fibonacci).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool super : {false, true}) {
+			std::string tag = super ? "superinstr" : "noSuperinstr";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, super](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.superinstructions", super);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// BC-only comparison of the threaded baseline against all threaded-path
+	// optimizations stacked (superinstructions + immediate folding).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allOpts : {false, true}) {
+			std::string tag = allOpts ? "allOpts" : "baseline";
+			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
+			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("bc"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("bc.dispatch", std::string("threaded"));
+				    op.setOption("bc.superinstructions", allOpts);
+				    op.setOption("bc.immediates", allOpts);
+				    func(meter, op);
+			    });
+		}
+	}
+#endif
+
+#ifdef ENABLE_ASMJIT_BACKEND
+	// AsmJit-only A/B benchmark for the compare→branch fusion in the lowering
+	// (asmjit.enableBranchFusion). Most visible on branch-heavy loops
+	// (fibonacci), where fusion removes the setcc+movzx+test round-trip per
+	// iteration.
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fusion : {false, true}) {
+			std::string tag = fusion ? "branchFusion" : "noBranchFusion";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fusion](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", fusion);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// AsmJit-only A/B benchmark for constant deferral + immediate folding
+	// (asmjit.enableConstFolding). Most visible where loop bodies contain
+	// constant operands (i = i + 1, cmp i, n).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool fold : {false, true}) {
+			std::string tag = fold ? "constFold" : "noConstFold";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, fold](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableConstFolding", fold);
+				    func(meter, op);
+			    });
+		}
+	}
+
+	// AsmJit-only comparison of the lowering baseline against all lowering
+	// optimizations stacked (branch fusion + const folding + select cmov).
+	for (auto& test : benchmarks) {
+		auto func = std::get<1>(test);
+		auto name = std::get<0>(test);
+		for (bool allOpts : {false, true}) {
+			std::string tag = allOpts ? "allOpts" : "baseline";
+			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
+			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
+				    auto op = engine::Options();
+				    op.setOption("mlir.eager_compilation", true);
+				    op.setOption("engine.backend", std::string("asmjit"));
+				    op.setOption("engine.traceMode", "lazyTracing");
+				    op.setOption("asmjit.enableBranchFusion", allOpts);
+				    op.setOption("asmjit.enableConstFolding", allOpts);
+				    op.setOption("asmjit.enableSelectCmov", allOpts);
 				    func(meter, op);
 			    });
 		}

@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
 #include <cstring>
@@ -26,11 +27,22 @@ public:
 AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
                                                                   ::asmjit::JitRuntime& runtime,
                                                                   const engine::Options& options,
+                                                                  const DumpHandler& dumpHandler,
                                                                   CompilationStatistics* statistics) {
 	CodeHolder code;
 	code.init(runtime.environment(), runtime.cpuFeatures());
 	ThrowOnError errHandler;
 	code.setErrorHandler(&errHandler);
+
+	// Only pay the formatting/logging cost when the corresponding dump is requested.
+	const bool dumpAsmjitIR = dumpHandler.shouldDump("after_asmjit_generation");
+	const bool dumpAssembly = dumpHandler.shouldDump("after_asmjit_assembly");
+
+	// When requested, attach a StringLogger so finalize() records the emitted assembly.
+	StringLogger asmLogger;
+	if (dumpAssembly) {
+		code.setLogger(&asmLogger);
+	}
 
 	// Build the intrinsic manager from the global plugin registry. Gated by
 	// `asmjit.enableIntrinsics` (default true), mirroring `mlir.enableIntrinsics`.
@@ -42,7 +54,8 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	}
 
 	LoweringContext ctx(std::move(ir), code, options, statistics, intrinsicManager);
-	ctx.processAll();
+	std::string asmjitIR;
+	ctx.processAll(dumpAsmjitIR ? &asmjitIR : nullptr);
 
 	std::unordered_map<std::string, uint64_t> offsets;
 	for (const auto& [name, funcNode] : ctx.getFuncNodes()) {
@@ -61,6 +74,10 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 	result.codeSize = codeSize;
 	for (const auto& [name, offset] : offsets) {
 		result.jitPtrs[name] = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(basePtr) + offset);
+	}
+	result.asmjitIR = std::move(asmjitIR);
+	if (dumpAssembly) {
+		result.assembly.assign(asmLogger.data(), asmLogger.dataSize());
 	}
 	return result;
 }
@@ -118,6 +135,32 @@ bool AsmJitLoweringProvider::LoweringContext::isUnsignedType(Type t) {
 	return t == Type::ui8 || t == Type::ui16 || t == Type::ui32 || t == Type::ui64 || t == Type::b || t == Type::ptr;
 }
 
+void AsmJitLoweringProvider::LoweringContext::narrowToStamp(Gp reg, Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+		cc.sxtb(reg.x(), reg.w());
+		break;
+	case Type::b:
+	case Type::ui8:
+		cc.uxtb(reg.w(), reg.w());
+		break;
+	case Type::i16:
+		cc.sxth(reg.x(), reg.w());
+		break;
+	case Type::ui16:
+		cc.uxth(reg.w(), reg.w());
+		break;
+	case Type::i32:
+		cc.sxtw(reg.x(), reg.w());
+		break;
+	case Type::ui32:
+		cc.mov(reg.w(), reg.w()); // zero-extends upper 32 bits
+		break;
+	default:
+		break; // i64, ui64, ptr -- already full-width, no narrowing needed.
+	}
+}
+
 // ── Register allocation ───────────────────────────────────────────────────────
 
 AsmJitLoweringProvider::AsmReg AsmJitLoweringProvider::LoweringContext::allocReg(Type t) {
@@ -157,9 +200,21 @@ void AsmJitLoweringProvider::LoweringContext::emitMove(const AsmReg& dst, const 
 	}
 }
 
+// See the header for the rationale (issue #321). When the identifier is
+// already bound it is a downstream merge-block parameter register; copy the
+// result into it rather than dropping the definition.
+void AsmJitLoweringProvider::LoweringContext::bindResult(const ir::OperationIdentifier& id, const AsmReg& reg,
+                                                         RegisterFrame& frame) {
+	if (frame.contains(id)) {
+		emitMove(frame.getValue(id), reg);
+	} else {
+		frame.setValue(id, reg);
+	}
+}
+
 // ── Two-pass compilation ──────────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::processAll() {
+void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDump) {
 	const auto& functionOperations = ir->getFunctionOperations();
 	if (functionOperations.empty()) {
 		throw std::runtime_error("AsmJit/A64: no functions found in IR graph");
@@ -242,6 +297,15 @@ void AsmJitLoweringProvider::LoweringContext::processAll() {
 		cc.endFunc();
 	}
 
+	// Format the builder node list before finalize(): at this point the IR still carries
+	// virtual registers, which is the representation users want to inspect as "asmjit IR".
+	if (asmjitIRDump != nullptr) {
+		::asmjit::String sb;
+		::asmjit::FormatOptions formatOptions;
+		::asmjit::Formatter::formatNodeList(sb, formatOptions, &cc);
+		asmjitIRDump->assign(sb.data(), sb.size());
+	}
+
 	cc.finalize();
 }
 
@@ -297,13 +361,13 @@ void AsmJitLoweringProvider::LoweringContext::processBlockInvocation(const ir::B
 void AsmJitLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::b);
 	cc.mov(toGp(reg), static_cast<int64_t>(op->getValue() ? 1 : 0));
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(op->getStamp());
 	cc.mov(toGp(reg), op->getValue());
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperation* op, RegisterFrame& frame) {
@@ -324,13 +388,13 @@ void AsmJitLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOper
 		cc.mov(tempGp, bits);
 		cc.fmov(vecReg, tempGp);
 	}
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* op, RegisterFrame& frame) {
 	auto reg = allocReg(Type::ptr);
 	cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getValue()));
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 // ── Arithmetic ────────────────────────────────────────────────────────────────
@@ -343,8 +407,13 @@ void AsmJitLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* op, Reg
 		cc.fadd(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.add(toGp(result), toGp(left), toGp(right));
+		// An add that overflows the narrow stamp's width still produces a
+		// "correct" 64-bit sum; re-extend per the result type so its
+		// sign/zero-extension matches the wrapped-around narrow-width value
+		// (see narrowToStamp's doc comment).
+		narrowToStamp(toGp(result), op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, RegisterFrame& frame) {
@@ -355,8 +424,9 @@ void AsmJitLoweringProvider::LoweringContext::visitSub(ir::SubOperation* op, Reg
 		cc.fsub(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.sub(toGp(result), toGp(left), toGp(right));
+		narrowToStamp(toGp(result), op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, RegisterFrame& frame) {
@@ -367,8 +437,9 @@ void AsmJitLoweringProvider::LoweringContext::visitMul(ir::MulOperation* op, Reg
 		cc.fmul(toVec(result), toVec(left), toVec(right));
 	} else {
 		cc.mul(toGp(result), toGp(left), toGp(right));
+		narrowToStamp(toGp(result), op->getStamp());
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, RegisterFrame& frame) {
@@ -382,7 +453,7 @@ void AsmJitLoweringProvider::LoweringContext::visitDiv(ir::DivOperation* op, Reg
 	} else {
 		cc.sdiv(toGp(result), toGp(left), toGp(right));
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, RegisterFrame& frame) {
@@ -398,7 +469,7 @@ void AsmJitLoweringProvider::LoweringContext::visitMod(ir::ModOperation* op, Reg
 	}
 	// msub dst, quotient, right, left → dst = left - quotient * right
 	cc.msub(toGp(result), quotient, toGp(right), toGp(left));
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Logical / compare ─────────────────────────────────────────────────────────
@@ -448,7 +519,15 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		else
 			condCode = static_cast<uint32_t>(CC::kNE);
 	} else {
-		cc.cmp(toGp(left), toGp(right));
+		// Peephole: `cmp x, <const 0>` → `cmp x, #0` (immediate form). Same
+		// NZCV output, and it avoids depending on a separately-materialized
+		// zero register, which lets that constant be dead-code-eliminated.
+		const auto* rightConst = ir::dyn_cast<ir::ConstIntOperation>(op->getRightInput());
+		if (rightConst != nullptr && rightConst->getValue() == 0) {
+			cc.cmp(toGp(left), Imm(0));
+		} else {
+			cc.cmp(toGp(left), toGp(right));
+		}
 		if (leftIsUnsigned) {
 			switch (op->getComparator()) {
 			case ir::CompareOperation::EQ:
@@ -494,7 +573,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation*
 		}
 	}
 	cc.cset(resultGp, Imm(condCode));
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, RegisterFrame& frame) {
@@ -502,7 +581,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAnd(ir::AndOperation* op, Reg
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 	cc.and_(toGp(result), left, right);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, RegisterFrame& frame) {
@@ -510,21 +589,33 @@ void AsmJitLoweringProvider::LoweringContext::visitOr(ir::OrOperation* op, Regis
 	auto right = toGp(frame.getValue(op->getRightInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 	cc.orr(toGp(result), left, right);
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitNot(ir::NotOperation* op, RegisterFrame& frame) {
 	auto input = toGp(frame.getValue(op->getInput()->getIdentifier()));
 	auto result = allocReg(op->getStamp());
 	cc.eor(toGp(result), input, Imm(1));
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* op, RegisterFrame& frame) {
 	auto src = frame.getValue(op->getInput()->getIdentifier());
 	auto result = allocReg(op->getStamp());
+	if (isFloatType(op->getStamp())) {
+		// ARM64 has a native FNEG vector instruction: a real IEEE-754
+		// sign-flip, correct for every input including zero.
+		cc.fneg(toVec(result), toVec(src));
+		bindResult(op->getIdentifier(), result, frame);
+		return;
+	}
 	cc.mvn(toGp(result), toGp(src));
-	frame.setValue(op->getIdentifier(), result);
+	// mvn flips the full 64-bit register, including the extension padding.
+	// That happens to stay correct for signed stamps (flipping a sign bit
+	// flips its replicated extension consistently) but is wrong for unsigned
+	// stamps, whose invariant is a zero-extended (not flipped) upper half.
+	narrowToStamp(toGp(result), op->getStamp());
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Binary bit operations ─────────────────────────────────────────────────────
@@ -540,7 +631,16 @@ void AsmJitLoweringProvider::LoweringContext::visitShift(ir::ShiftOperation* op,
 	} else {
 		cc.asr(toGp(result), left, right);
 	}
-	frame.setValue(op->getIdentifier(), result);
+	// Shifting the full 64-bit register (rather than just the narrow stamp's
+	// width) can leave the extension padding inconsistent with the
+	// narrow-width result -- e.g. a left shift that overflows the stamp's
+	// width still computes a "correct" 64-bit shift, whose sign-extension no
+	// longer matches the wrapped-around narrow-width value. asr already
+	// shifts in the sign bit, but a shift can still move that bit into
+	// positions that change the narrow-width result's own sign, so this is
+	// needed for all three shift forms.
+	narrowToStamp(toGp(result), op->getStamp());
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperation* op, RegisterFrame& frame) {
@@ -558,7 +658,7 @@ void AsmJitLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOper
 		cc.eor(toGp(result), left, right);
 		break;
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Control flow ──────────────────────────────────────────────────────────────
@@ -609,26 +709,9 @@ void AsmJitLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* o
 			cc.ret(toVec(retReg));
 		} else {
 			auto gp = toGp(retReg);
-			// Ensure sub-32-bit return values are properly narrowed so the
-			// caller sees a clean W0 value that matches the ABI contract.
-			auto retType = op->getReturnValue()->getStamp();
-			switch (retType) {
-			case Type::i8:
-				cc.sxtb(gp.x(), gp.w());
-				break;
-			case Type::b:
-			case Type::ui8:
-				cc.uxtb(gp.w(), gp.w());
-				break;
-			case Type::i16:
-				cc.sxth(gp.x(), gp.w());
-				break;
-			case Type::ui16:
-				cc.uxth(gp.w(), gp.w());
-				break;
-			default:
-				break;
-			}
+			// Ensure narrow return values are properly extended so the caller
+			// sees a clean W0/X0 value that matches the ABI contract.
+			narrowToStamp(gp, op->getReturnValue()->getStamp());
 			cc.ret(gp);
 		}
 	} else {
@@ -653,7 +736,7 @@ void AsmJitLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* o
 		cc.csel(toGp(result), toGp(trueVal), toGp(falseVal), Imm(static_cast<uint32_t>(CC::kNE)));
 	}
 
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────────
@@ -698,7 +781,7 @@ void AsmJitLoweringProvider::LoweringContext::visitLoad(ir::LoadOperation* op, R
 			break;
 		}
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitStore(ir::StoreOperation* op, RegisterFrame& frame) {
@@ -737,7 +820,7 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 	// pointer register.
 	auto index = op->getIndex();
 	assert(index < functionAllocaSlots_.size() && "AllocaOperation index out of range for function");
-	frame.setValue(op->getIdentifier(), functionAllocaSlots_[index]);
+	bindResult(op->getIdentifier(), functionAllocaSlots_[index], frame);
 }
 
 // ── External function calls ───────────────────────────────────────────────────
@@ -786,11 +869,17 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
+		if (std::holds_alternative<Vec>(result)) {
 			invokeNode->setRet(0, toVec(result));
-		else
+		} else {
 			invokeNode->setRet(0, toGp(result));
-		frame.setValue(op->getIdentifier(), result);
+			// The ABI leaves the upper bits of a narrow integer return value
+			// unspecified (the callee only guarantees the stamp's own width),
+			// so re-establish the extension invariant before anything reads
+			// the full X register.
+			narrowToStamp(toGp(result), op->getStamp());
+		}
+		bindResult(op->getIdentifier(), result, frame);
 	}
 }
 
@@ -817,11 +906,15 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 
 	if (op->getStamp() != Type::v) {
 		auto result = allocReg(op->getStamp());
-		if (std::holds_alternative<Vec>(result))
+		if (std::holds_alternative<Vec>(result)) {
 			invokeNode->setRet(0, toVec(result));
-		else
+		} else {
 			invokeNode->setRet(0, toGp(result));
-		frame.setValue(op->getIdentifier(), result);
+			// See visitProxyCall: narrow integer returns arrive with
+			// unspecified upper bits and must be re-extended.
+			narrowToStamp(toGp(result), op->getStamp());
+		}
+		bindResult(op->getIdentifier(), result, frame);
 	}
 }
 
@@ -834,7 +927,7 @@ void AsmJitLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::Functio
 	} else {
 		cc.mov(toGp(reg), reinterpret_cast<uint64_t>(op->getFunctionPtr()));
 	}
-	frame.setValue(op->getIdentifier(), reg);
+	bindResult(op->getIdentifier(), reg, frame);
 }
 
 // ── Type conversion ───────────────────────────────────────────────────────────
@@ -941,7 +1034,7 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		// Float → float: f32↔f64.
 		cc.fcvt(toVec(result), toVec(src));
 	}
-	frame.setValue(op->getIdentifier(), result);
+	bindResult(op->getIdentifier(), result, frame);
 }
 
 } // namespace nautilus::compiler::asmjit

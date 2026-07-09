@@ -1,0 +1,10 @@
+ANDBOOL:
+B0($1:bool,$2:bool)
+	AND	$3	$1	$2	:bool
+	RETURN	$0	$3	:bool
+
+EXECUTE:
+B0($1:bool,$2:bool)
+	CALL	$3	func_*($1,$2)	:bool
+	RETURN	$0	$3	:bool
+

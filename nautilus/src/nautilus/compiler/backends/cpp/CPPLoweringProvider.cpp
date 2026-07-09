@@ -455,7 +455,14 @@ void CPPLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* nega
 		blockArguments << getType(negateOperation->getStamp()) << " " << resultVar << ";\n";
 		frame.setValue(negateOperation->getIdentifier(), resultVar);
 	}
-	blocks[blockIndex] << resultVar << " = ~" << input << ";\n";
+	auto stamp = negateOperation->getStamp();
+	if (stamp == Type::f32 || stamp == Type::f64) {
+		// Bitwise NOT (~) is not valid on float/double in C++; unary minus is
+		// the real IEEE-754 sign-flip and is correct for every input including zero.
+		blocks[blockIndex] << resultVar << " = -" << input << ";\n";
+	} else {
+		blocks[blockIndex] << resultVar << " = ~" << input << ";\n";
+	}
 }
 
 void CPPLoweringProvider::LoweringContext::visitNot(ir::NotOperation* notOperation, short blockIndex,

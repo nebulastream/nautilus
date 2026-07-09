@@ -9,6 +9,28 @@
 
 namespace nautilus::compiler::bc {
 
+namespace {
+// Record an arithmetic op's right operand as a foldable immediate (Step 6) when it
+// is an integer constant that fits the 16-bit immediate slot. The recorded index is
+// the op's about-to-be-emitted position in the block. Only i32/i64 are folded; the
+// flattened threaded path consumes these when bc.immediates is enabled.
+void recordFoldableImmediate(CodeBlock& codeBlock, ir::Operation* rightInput, Type type) {
+	if (type != Type::i32 && type != Type::i64) {
+		return;
+	}
+	const auto* constInt = ir::dyn_cast<ir::ConstIntOperation>(rightInput);
+	if (constInt == nullptr) {
+		return;
+	}
+	const int64_t value = constInt->getValue();
+	if (value < -32768 || value > 32767) {
+		return;
+	}
+	codeBlock.foldableImmediates.emplace_back(static_cast<uint32_t>(codeBlock.code.size()),
+	                                          static_cast<int16_t>(value));
+}
+} // namespace
+
 BCLoweringProvider::BCLoweringProvider() {
 }
 
@@ -257,6 +279,7 @@ void BCLoweringProvider::LoweringContext::visitAdd(ir::AddOperation* addOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], addOpt->getRightInput(), type);
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -307,6 +330,7 @@ void BCLoweringProvider::LoweringContext::visitSub(ir::SubOperation* subOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], subOpt->getRightInput(), subOpt->getStamp());
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -358,6 +382,7 @@ void BCLoweringProvider::LoweringContext::visitMul(ir::MulOperation* mulOpt, sho
 		throw NotImplementedException("This type is not supported.");
 	}
 	}
+	recordFoldableImmediate(program.blocks[block], mulOpt->getRightInput(), mulOpt->getStamp());
 	OpCode oc = {bc, leftInput, rightInput, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -983,6 +1008,19 @@ void BCLoweringProvider::LoweringContext::visitBinaryComp(ir::BinaryCompOperatio
 			break;
 		}
 		break;
+	case Type::b:
+		switch (opType) {
+		case ir::BinaryCompOperation::BAND:
+			bc = ByteCode::BAND_b;
+			break;
+		case ir::BinaryCompOperation::BOR:
+			bc = ByteCode::BOR_b;
+			break;
+		case ir::BinaryCompOperation::XOR:
+			bc = ByteCode::BXOR_b;
+			break;
+		}
+		break;
 	default: {
 		throw NotImplementedException("This type is not supported.");
 	}
@@ -1097,63 +1135,203 @@ void BCLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocation
                                                   RegisterFrame& parentFrame) {
 	// Two-phase emission so the callers can route the writes into a
 	// different block than the reads when needed (see `visitIf`).
-	// Phase-1 (reads) snapshots every input value into a fresh temp
-	// register inside `block`; phase-2 either binds the target
-	// identifier to that temp (first invocation wins) or emits a MOV
-	// from the temp into the already-bound target register, also into
-	// `block`. For unconditional branches both phases live in the same
-	// BC block, which is what the original implementation did.
-	//
-	// Phase-2 then emits a sequence of parallel-copy MOVs
-	// (tempArg -> bound target). If any tempArg aliased a bound target
-	// register a later MOV in the same phase would read a value that an
-	// earlier MOV already overwrote, silently corrupting the edge. The
-	// free list holds exactly the registers that previous ops released
-	// — a set that can include already-bound target slots — so tempArgs
-	// must come from a *fresh* counter to guarantee no aliasing. The
-	// cost is two or three extra register slots per block invocation;
-	// all other operations still enjoy the full benefit of free-list
-	// reuse.
+	// Phase-1 reads every input value; phase-2 does the writes. Keeping
+	// all reads strictly before all writes guarantees a target register
+	// that is also the source of another argument in this same edge
+	// (which is the common case on a loop back-edge: e.g. fibonacci's
+	// `a = b; b = c`) is read before it can be overwritten.
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
-	std::vector<short> tempArgs;
-	tempArgs.reserve(blockInputArguments.size());
-	for (auto* input : blockInputArguments) {
-		auto sourceReg = parentFrame.getValue(input->getIdentifier());
-		auto tempReg = registerProvider.allocFreshRegister();
-		tempArgs.push_back(tempReg);
-		program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
-		// The block-invocation REG_MOV is the final consumer of the
-		// value for this edge, so release its register once it has
-		// been copied into the successor's temporary slot.
-		useValue(input->getIdentifier(), parentFrame);
-	}
-	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
-		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
-		if (!parentFrame.contains(blockTargetArgument)) {
-			// First invocation to target this block-arg id wins the
-			// register; subsequent invocations MOV into it.
-			parentFrame.setValue(blockTargetArgument, tempArgs[i]);
-		} else {
-			auto targetReg = parentFrame.getValue(blockTargetArgument);
-			if (targetReg != tempArgs[i]) {
-				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
+
+	if (!loweringOptions.enableRegisterAllocator) {
+		// Legacy behaviour reproduced exactly: every argument round-trips
+		// through a fresh temp register, regardless of whether a cheaper
+		// direct/parallel-copy sequencing would be correct. Kept bit-for-bit
+		// so bc.registerAllocator=false stays a faithful, unoptimized A/B
+		// baseline (freeRegister() is a no-op in this mode anyway).
+		std::vector<short> tempArgs;
+		tempArgs.reserve(blockInputArguments.size());
+		for (auto* input : blockInputArguments) {
+			auto sourceReg = parentFrame.getValue(input->getIdentifier());
+			auto tempReg = registerProvider.allocFreshRegister();
+			tempArgs.push_back(tempReg);
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
+			useValue(input->getIdentifier(), parentFrame);
+		}
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			if (!parentFrame.contains(blockTargetArgument)) {
+				parentFrame.setValue(blockTargetArgument, tempArgs[i]);
+			} else {
+				auto targetReg = parentFrame.getValue(blockTargetArgument);
+				if (targetReg != tempArgs[i]) {
+					program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
+				}
 			}
-			// The tempArg was only a parallel-copy staging slot; once
-			// MOVed into the bound target it is never read again, so
-			// hand it back to the free list for future normal ops to
-			// reuse. Skipped when the allocator is disabled so the
-			// baseline behaviour (no register reuse at all) is
-			// reproduced faithfully.
-			if (loweringOptions.enableRegisterAllocator) {
+		}
+		return;
+	}
+
+	if (!loweringOptions.enableRegisterCoalescing) {
+		// Register allocator enabled, coalescing not opted into: same
+		// temp-staging structure as the legacy path above, but the temp is
+		// returned to the free list once consumed (the allocator's normal
+		// reuse behavior). This is the pre-coalescing baseline: every
+		// argument still round-trips through a fresh temp register.
+		std::vector<short> tempArgs;
+		tempArgs.reserve(blockInputArguments.size());
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto* input = blockInputArguments[i];
+			auto sourceReg = parentFrame.getValue(input->getIdentifier());
+			// A temp that will become the binding of a cross-block target
+			// argument must be pinned (see `crossBlockIds`); a temp that is
+			// only staging into an already-bound target stays recyclable.
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			const bool becomesCrossBlockBinding =
+			    !parentFrame.contains(blockTargetArgument) && crossBlockIds.contains(blockTargetArgument);
+			auto tempReg = becomesCrossBlockBinding ? registerProvider.allocPinnedRegister()
+			                                        : registerProvider.allocFreshRegister();
+			tempArgs.push_back(tempReg);
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, tempReg});
+			useValue(input->getIdentifier(), parentFrame);
+		}
+		for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+			auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+			if (!parentFrame.contains(blockTargetArgument)) {
+				parentFrame.setValue(blockTargetArgument, tempArgs[i]);
+			} else {
+				auto targetReg = parentFrame.getValue(blockTargetArgument);
+				if (targetReg != tempArgs[i]) {
+					program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, tempArgs[i], -1, targetReg});
+				}
 				registerProvider.freeRegister(tempArgs[i]);
 			}
 		}
+		return;
+	}
+
+	// Register allocator and coalescing both enabled: a target that is not
+	// yet bound still gets a fresh register up front (mirrors the legacy
+	// path — its slot can never alias anything a sibling argument in this
+	// same edge freed below, since allocFreshRegister() bypasses the free
+	// list). A target that is already bound (the loop-back-edge case) is
+	// instead collected as a (targetReg, sourceReg) pair and handed to
+	// emitParallelCopy, which sequences the whole edge with the minimum
+	// number of REG_MOVs instead of unconditionally staging every argument
+	// through a temp — turning e.g. fibonacci's 3-argument back-edge (a, b, i)
+	// from 6 MOVs into 3.
+	std::vector<std::pair<short, short>> boundPairs;
+	std::vector<std::pair<ir::OperationIdentifier, short>> freshBindings;
+	for (std::size_t i = 0; i < blockInputArguments.size(); ++i) {
+		auto* input = blockInputArguments[i];
+		auto sourceReg = parentFrame.getValue(input->getIdentifier());
+		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
+		if (!parentFrame.contains(blockTargetArgument)) {
+			// Cross-block target arguments get a pinned register (see
+			// `crossBlockIds`); allocFreshRegister still bypasses the free
+			// list either way, so nothing here can alias a sibling
+			// argument's just-freed slot.
+			auto freshReg = crossBlockIds.contains(blockTargetArgument) ? registerProvider.allocPinnedRegister()
+			                                                            : registerProvider.allocFreshRegister();
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, sourceReg, -1, freshReg});
+			freshBindings.emplace_back(blockTargetArgument, freshReg);
+		} else {
+			auto targetReg = parentFrame.getValue(blockTargetArgument);
+			if (targetReg != sourceReg) {
+				boundPairs.emplace_back(targetReg, sourceReg);
+			}
+		}
+		// The block-invocation read is the final consumer of the value for
+		// this edge, so release its register once captured above.
+		useValue(input->getIdentifier(), parentFrame);
+	}
+	// First invocation to target a block-arg id wins the register; deferred
+	// until every read above has run, matching the original two-phase order.
+	for (auto& [identifier, reg] : freshBindings) {
+		parentFrame.setValue(identifier, reg);
+	}
+	emitParallelCopy(block, std::move(boundPairs));
+}
+
+void BCLoweringProvider::LoweringContext::emitParallelCopy(short block, std::vector<std::pair<short, short>> pairs) {
+	if (pairs.empty()) {
+		return;
+	}
+	// Classic parallel-copy sequentialization (as used for SSA-destruction /
+	// phi-node lowering): repeatedly emit any move whose destination is not
+	// needed as a source by another still-pending move — nothing left needs
+	// that register's old value, so overwriting it now is safe. When no such
+	// move exists, every remaining move is part of a cycle (e.g. a literal
+	// swap: dst1<-src1=dst2, dst2<-src2=dst1): break one by stashing its
+	// destination's current value in a fresh temp and redirecting whichever
+	// pending move(s) were reading that destination to read the temp
+	// instead — this frees the destination, which the outer loop then
+	// drains normally. `dst` values are pairwise distinct (each is the
+	// unique physical register of a distinct already-bound SSA identifier),
+	// so this is a well-formed functional-graph sequentialization problem.
+	std::unordered_map<short, int> pendingReads;
+	for (auto& p : pairs) {
+		pendingReads[p.second]++;
+	}
+	std::vector<char> done(pairs.size(), 0);
+	std::vector<short> cycleTemps;
+	std::size_t remaining = pairs.size();
+	while (remaining > 0) {
+		bool progressed = false;
+		for (std::size_t i = 0; i < pairs.size(); i++) {
+			if (done[i]) {
+				continue;
+			}
+			auto [dst, src] = pairs[i];
+			if (pendingReads[dst] == 0) {
+				program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, src, -1, dst});
+				done[i] = 1;
+				remaining--;
+				progressed = true;
+				pendingReads[src]--;
+			}
+		}
+		if (progressed || remaining == 0) {
+			continue;
+		}
+		// Stuck: break the first pending cycle member.
+		for (std::size_t i = 0; i < pairs.size(); i++) {
+			if (done[i]) {
+				continue;
+			}
+			short dst = pairs[i].first;
+			short temp = registerProvider.allocFreshRegister();
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, dst, -1, temp});
+			cycleTemps.push_back(temp);
+			for (std::size_t j = 0; j < pairs.size(); j++) {
+				if (!done[j] && pairs[j].second == dst) {
+					pairs[j].second = temp;
+				}
+			}
+			pendingReads[dst] = 0;
+			break;
+		}
+	}
+	for (short temp : cycleTemps) {
+		registerProvider.freeRegister(temp);
 	}
 }
 
 void BCLoweringProvider::LoweringContext::visitIf(ir::IfOperation* ifOpt, short block, RegisterFrame& frame) {
 	auto conditionalReg = frame.getValue(ifOpt->getValue()->getIdentifier());
+
+	// Step 5 (superinstructions): if the condition is a comparison used nowhere but
+	// this branch, mark the block so the flattened threaded path may fuse the
+	// trailing compare into the conditional jump. Checked before useValue() runs, so
+	// the static count still reflects the original number of uses. The flat builder
+	// additionally verifies the compare is the block's last op (operand-safety) and
+	// only acts when bc.superinstructions is set, so call/switch are unaffected.
+	if (const auto* cmp = ir::dyn_cast<ir::CompareOperation>(ifOpt->getValue())) {
+		const auto it = usageCounts.find(cmp->getIdentifier());
+		if (it != usageCounts.end() && it->second == 1) {
+			program.blocks[block].fuseCompareIntoBranch = true;
+		}
+	}
 	// The conditional jump is this block's terminator, so no further
 	// operation in `block` will read the condition once we have
 	// captured its register number. The landing pads created below
@@ -1219,7 +1397,10 @@ void BCLoweringProvider::LoweringContext::visitConstPtr(ir::ConstPtrOperation* c
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = (int64_t) constPtr->getValue();
 
-	auto targetRegister = registerProvider.allocRegister();
+	// getResultRegister (not a plain allocRegister) so a definition whose SSA
+	// name doubles as an already-bound merge-block parameter writes into that
+	// parameter's register; setValue is emplace-only and keeps the binding.
+	auto targetRegister = getResultRegister(constPtr, frame);
 	frame.setValue(constPtr->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1231,7 +1412,7 @@ void BCLoweringProvider::LoweringContext::visitConstBoolean(ir::ConstBooleanOper
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1242,7 +1423,7 @@ void BCLoweringProvider::LoweringContext::visitConstInt(ir::ConstIntOperation* c
 	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	defaultRegisterFile[defaultRegister] = constInt->getValue();
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1262,7 +1443,7 @@ void BCLoweringProvider::LoweringContext::visitConstFloat(ir::ConstFloatOperatio
 		*floatReg = floatValue;
 	}
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(constInt, frame);
 	frame.setValue(constInt->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);
@@ -1554,7 +1735,18 @@ void BCLoweringProvider::LoweringContext::visitNegate(ir::NegateOperation* negat
 	useValue(negateOperation->getInput()->getIdentifier(), frame);
 	auto resultReg = getResultRegister(negateOperation, frame);
 	frame.setValue(negateOperation->getIdentifier(), resultReg);
-	ByteCode bc = ByteCode::BNEGATE_I64;
+	ByteCode bc;
+	switch (negateOperation->getStamp()) {
+	case Type::f32:
+		bc = ByteCode::NEG_f;
+		break;
+	case Type::f64:
+		bc = ByteCode::NEG_d;
+		break;
+	default:
+		bc = ByteCode::BNEGATE_I64;
+		break;
+	}
 	OpCode oc = {bc, input, -1, resultReg};
 	program.blocks[block].code.emplace_back(oc);
 }
@@ -1970,44 +2162,25 @@ void BCLoweringProvider::LoweringContext::visitCast(ir::CastOperation* castOp, s
 	program.blocks[block].code.emplace_back(oc);
 }
 
-short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation*, RegisterFrame&) {
-	// auto optResultIdentifier = opt->getIdentifier();
-
-	// if the result value of opt is directly passed to an block argument, then we
-	// can directly write the value to the correct target register.
-
-	/*
-	if (opt->getUsages().size() == 1) {
-	    auto *usage = opt->getUsages()[0];
-	    if (usage->getOperationType() ==
-	ir::Operation::OperationType::BlockInvocation) { auto bi = dynamic_cast<const
-	ir::BasicBlockInvocation *>(usage); auto blockInputArguments =
-	bi->getArguments(); auto blockTargetArguments =
-	bi->getBlock()->getArguments();
-
-	        std::vector<uint64_t> matchingArguments;
-
-	        for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
-	            auto blockArgument = blockInputArguments[i]->getIdentifier();
-	            if (blockArgument == optResultIdentifier) {
-	                matchingArguments.emplace_back(i);
-	            }
-	        }
-
-	        if (matchingArguments.size() == 1) {
-	            auto blockTargetArgumentIdentifier =
-	blockTargetArguments[matchingArguments[0]]->getIdentifier(); if
-	(!frame.contains(blockTargetArgumentIdentifier)) { auto resultReg =
-	registerProvider.allocRegister();
-	                frame.setValue(blockTargetArgumentIdentifier, resultReg);
-	                return resultReg;
-	            } else {
-	                return frame.getValue(blockTargetArgumentIdentifier);
-	            }
-	        }
-	    }
+short BCLoweringProvider::LoweringContext::getResultRegister(ir::Operation* opt, RegisterFrame& frame) {
+	// When the identifier is already bound, this definition's SSA name doubles
+	// as a downstream merge-block parameter whose register was already chosen
+	// by an earlier-emitted predecessor edge (Nautilus SSA reuses an incoming
+	// value's name for the block parameter, and the diamond/loop CFG can emit
+	// that predecessor's invocation before this definition -- issue #321, the
+	// same collision AsmJitLoweringProvider::bindResult handles). The
+	// visitors' subsequent frame.setValue is emplace-only, so allocating a
+	// fresh register here would leave the merge parameter reading a register
+	// this definition never writes. Return the bound register so the op
+	// writes straight into it.
+	if (frame.contains(opt->getIdentifier())) {
+		return frame.getValue(opt->getIdentifier());
 	}
-	 */
+	// Values read outside their defining block must never enter the reuse
+	// pool (see the `crossBlockIds` policy in the header).
+	if (crossBlockIds.contains(opt->getIdentifier())) {
+		return registerProvider.allocPinnedRegister();
+	}
 	return registerProvider.allocRegister();
 }
 
@@ -2017,21 +2190,41 @@ void BCLoweringProvider::LoweringContext::countAllUsages(const ir::BasicBlock* e
 	// operand span uniformly — the only values that live outside that
 	// span are the arguments attached to the BasicBlockInvocations
 	// embedded in IfOp and BranchOp terminators, so we visit those
-	// explicitly.
+	// explicitly. The same walk classifies cross-block reads for the
+	// pinning policy documented at `crossBlockIds`: a block's arguments
+	// and definitions are recorded before its uses are scanned, and SSA
+	// dominance guarantees a use's defining block is walked no later
+	// than the use itself, so the map is always complete when consulted.
 	std::unordered_set<ir::BlockIdentifier> visited;
 	std::vector<const ir::BasicBlock*> worklist;
 	worklist.push_back(entryBlock);
 	visited.insert(entryBlock->getIdentifier());
 
-	auto countInput = [this](const ir::Operation* input) {
+	std::unordered_map<const ir::Operation*, const ir::BasicBlock*> definingBlock;
+	const ir::BasicBlock* currentBlock = nullptr;
+
+	auto countInput = [this, &definingBlock, &currentBlock](const ir::Operation* input) {
 		if (input != nullptr) {
 			usageCounts[input->getIdentifier()]++;
+			auto it = definingBlock.find(input);
+			// An unknown defining block cannot be proven block-local, so it
+			// is conservatively treated as a cross-block read.
+			if (it == definingBlock.end() || it->second != currentBlock) {
+				crossBlockIds.insert(input->getIdentifier());
+			}
 		}
 	};
 
 	while (!worklist.empty()) {
 		const auto* block = worklist.back();
 		worklist.pop_back();
+		currentBlock = block;
+		for (auto* argument : block->getArguments()) {
+			definingBlock[argument] = block;
+		}
+		for (auto* opt : block->getOperations()) {
+			definingBlock[opt] = block;
+		}
 		for (auto* opt : block->getOperations()) {
 			for (auto* input : opt->getInputs()) {
 				countInput(input);
@@ -2147,15 +2340,26 @@ void BCLoweringProvider::LoweringContext::visitSelect(ir::SelectOperation* selec
 	program.blocks[block].code.emplace_back(oc);
 }
 
-void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short /*block*/,
+void BCLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* allocaOp, short block,
                                                       RegisterFrame& frame) {
 	// The slot register and its backing buffer were created in the
 	// function prologue from FunctionOperation::getAllocaSpecs().  Every
 	// per-use AllocaOperation just rebinds its identifier to the
-	// already-pinned register.
+	// already-pinned register -- unless the identifier is already bound as a
+	// downstream merge-block parameter (see getResultRegister), in which case
+	// the slot pointer must be copied into the parameter's register instead,
+	// since setValue's emplace would silently keep the old binding.
 	auto index = allocaOp->getIndex();
 	assert(index < functionAllocaSlots.size() && "AllocaOperation index out of range for function");
-	frame.setValue(allocaOp->getIdentifier(), functionAllocaSlots[index]);
+	auto slotRegister = functionAllocaSlots[index];
+	if (frame.contains(allocaOp->getIdentifier())) {
+		auto target = frame.getValue(allocaOp->getIdentifier());
+		if (target != slotRegister) {
+			program.blocks[block].code.emplace_back(OpCode {ByteCode::REG_MOV, slotRegister, -1, target});
+		}
+	} else {
+		frame.setValue(allocaOp->getIdentifier(), slotRegister);
+	}
 }
 
 void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* funcAddrOp,
@@ -2171,7 +2375,7 @@ void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAdd
 		defaultRegisterFile[defaultRegister] = (int64_t) funcAddrOp->getFunctionPtr();
 	}
 
-	auto targetRegister = registerProvider.allocRegister();
+	auto targetRegister = getResultRegister(funcAddrOp, frame);
 	frame.setValue(funcAddrOp->getIdentifier(), targetRegister);
 	OpCode oc = {ByteCode::REG_MOV, defaultRegister, -1, targetRegister};
 	program.blocks[block].code.emplace_back(oc);

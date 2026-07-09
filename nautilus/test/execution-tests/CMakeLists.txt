@@ -2,9 +2,15 @@ include(CTest)
 include(Catch)
 set(NAUTILUS_EXECUTION_TEST_SOURCES
         ExecutionTest.cpp
+        AsmJitLoweringModeTest.cpp
+        BCDispatchModeTest.cpp
+        BCRegisterCoalescingTest.cpp
+        TBCDispatchModeTest.cpp
+        TBCMemoryOffsetTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
         CompilationStatisticsTest.cpp
+        ConcurrentCompilationTest.cpp
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp

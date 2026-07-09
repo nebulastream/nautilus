@@ -11,13 +11,25 @@
 namespace nautilus::compiler::bc {
 
 /**
- * @brief Configuration for the BCLoweringProvider. Currently selects
- * whether the simple linear register allocator runs; disabling it
- * reproduces the "one fresh register per SSA value" behaviour and is
- * useful for A/B performance comparisons.
+ * @brief Configuration for the BCLoweringProvider.
+ *
+ * enableRegisterAllocator: whether the simple linear register allocator
+ * runs; disabling it reproduces the "one fresh register per SSA value"
+ * behaviour and is useful for A/B performance comparisons.
+ *
+ * enableRegisterCoalescing: when the allocator is enabled, whether
+ * block-invocation arguments that are already bound (the common case on a
+ * loop back-edge, e.g. a/b/i in a fibonacci-style loop) are sequenced as a
+ * parallel copy (fewer REG_MOVs -- one per argument in the common
+ * non-cyclic case, one temp only for a genuine permutation cycle) instead
+ * of unconditionally staging every argument through a fresh temp register.
+ * Off by default so existing callers see no behavior change; the
+ * transformation only ever changes which registers a value visits, never
+ * program semantics, so it is always safe to opt into.
  */
 struct LoweringOptions {
 	bool enableRegisterAllocator = true;
+	bool enableRegisterCoalescing = false;
 };
 
 /**
@@ -117,6 +129,20 @@ private:
 		std::unordered_map<ir::BlockIdentifier, short> activeBlocks;
 		std::unordered_map<ir::OperationIdentifier, int> usageCounts;
 		std::unordered_set<ir::OperationIdentifier> functionArgs;
+		/// Identifiers with at least one use outside their defining block
+		/// (IR passes such as block-argument pruning may replace a block
+		/// argument with a dominating value from another block). Such values
+		/// stay live across block boundaries -- possibly across a backward
+		/// branch into an earlier-emitted block -- so the emission-order
+		/// use-count freeing below is unsound for them: their registers are
+		/// allocated pinned (never recycled). Registers in the free-list pool
+		/// therefore only ever back block-locally-used values, whose def and
+		/// uses execute contiguously within one atomic block execution, which
+		/// is what keeps reuse (and re-executed stale defs of a reused slot)
+		/// unobservable. Empty whenever the IR keeps the strict
+		/// block-argument threading discipline, making this a no-op for such
+		/// functions.
+		std::unordered_set<ir::OperationIdentifier> crossBlockIds;
 		/// Pinned registers backing each entry in the current function's
 		/// alloca table.  Each register holds a stable pointer to its
 		/// corresponding allocaBuffers slot; visitAlloca resolves an index
@@ -124,6 +150,15 @@ private:
 		std::vector<short> functionAllocaSlots;
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
+
+		/// Sequentialize a parallel register-to-register copy (dst_i <- src_i, as if
+		/// every read happened before any write) into an ordered list of REG_MOVs,
+		/// using a fresh temp only to break a genuine permutation cycle. `dst` values
+		/// must be pairwise distinct and each pair must have dst != src. Used by
+		/// process() to move values into already-bound block-invocation targets
+		/// (e.g. loop back-edges) without unconditionally staging every argument
+		/// through a temp register.
+		void emitParallelCopy(short block, std::vector<std::pair<short, short>> pairs);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitAdd(ir::AddOperation* opt, short block, RegisterFrame& frame);

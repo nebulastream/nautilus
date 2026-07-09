@@ -51,6 +51,14 @@ namespace nautilus {
 /// @see val_bool.hpp for the bool specialization
 /// @see val_details.hpp for implementation utilities
 
+namespace details {
+/// Forward declaration: negation (bitwise NOT for integral types, IEEE-754
+/// sign-flip for floating-point types). Defined below; declared here so
+/// `operator-()`'s inline float branch can call it by qualified name.
+template <is_arithmetic LHS>
+val<LHS> neg(const val<LHS>& value);
+} // namespace details
+
 // Partial specialization for arithmetic types only
 template <typename ValueType>
     requires is_arithmetic<ValueType>
@@ -175,7 +183,17 @@ public:
 	/// Unary negation operator.
 	/// Const-qualified to work on const values, matching C++ semantics.
 	val<ValueType> operator-() const {
-		return (ValueType) 0 - *this;
+		if constexpr (std::floating_point<ValueType>) {
+			// `0 - x` is not IEEE-754 negation: subtraction of two exactly
+			// equal-magnitude operands rounds to +0.0 in the default
+			// round-to-nearest mode, so `0.0 - 0.0` is `+0.0`, not the `-0.0`
+			// that negating `+0.0` must produce. Route through NEGATE instead,
+			// a real sign-bit flip that is correct for zero (and every other
+			// value) instead of going through cancellation.
+			return details::neg(*this);
+		} else {
+			return (ValueType) 0 - *this;
+		}
 	}
 
 	/// Prefix decrement operator.
@@ -223,8 +241,9 @@ private:
 
 namespace details {
 
-/// Bitwise negation (NOT) operation for integral types
-template <is_integral LHS>
+/// Negation operation: bitwise NOT (~x) for integral types, IEEE-754
+/// sign-flip (-x) for floating-point types.
+template <is_arithmetic LHS>
 val<LHS> neg(const val<LHS>& val) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
@@ -232,7 +251,11 @@ val<LHS> neg(const val<LHS>& val) {
 		return tc;
 	}
 #endif
-	return ~RawValueResolver<LHS>::getRawValue(val);
+	if constexpr (std::floating_point<LHS>) {
+		return -RawValueResolver<LHS>::getRawValue(val);
+	} else {
+		return ~RawValueResolver<LHS>::getRawValue(val);
+	}
 }
 
 // Type helper for integer promotion rules
@@ -314,9 +337,26 @@ DEFINE_BINARY_OPERATOR_HELPER(>, gt, GT, bool)
 
 DEFINE_BINARY_OPERATOR_HELPER(>=, gte, GTE, bool)
 
+// bAnd/bOr's OP is applied directly to two raw commonType values pulled out
+// of RawValueResolver; when commonType is bool (val<bool> & val<bool> etc. --
+// unexercised before val<bool> gained integral-category operators) that's
+// `bool & bool`/`bool | bool`, which Clang's -Wall flags as likely-meant-
+// logical. It's the deliberate, well-defined bitwise-as-logical behavior for
+// a 0/1 domain (see val_bool.hpp), so silence the warning at the template
+// definition rather than disabling it project-wide; ^ has no logical
+// counterpart and isn't covered by the warning.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
+#endif
+
 DEFINE_BINARY_OPERATOR_HELPER(&, bAnd, BAND, COMMON_RETURN_TYPE)
 
 DEFINE_BINARY_OPERATOR_HELPER(|, bOr, BOR, COMMON_RETURN_TYPE)
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 DEFINE_BINARY_OPERATOR_HELPER(^, bXOr, BXOR, COMMON_RETURN_TYPE)
 

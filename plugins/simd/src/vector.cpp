@@ -215,6 +215,18 @@ static vector_data<T, N>* nextSlot() {
 		for (size_t i = 0; i < N; i++) base[indices[i]] = data->data[i];                                      \
 	}
 
+// Compress-store: write only the lanes whose mask bit is set, packed
+// contiguously at dst. Returns the number of elements written (popcount of
+// the mask). Mirrors LLVM's llvm.masked.compressstore semantics, with a lane
+// considered active when its mask element is non-zero (same convention as blend).
+#define VECTOR_IMPL_COMPRESS_STORE(T, N, SUFFIX)                                                                       \
+	extern "C" int32_t vector_compress_store_##SUFFIX##_impl(T* dst, vector_data<T, N>* mask, vector_data<T, N>* data) { \
+		int32_t count = 0;                                                                                            \
+		for (size_t i = 0; i < N; i++)                                                                                \
+			if (mask->data[i] != T(0)) dst[count++] = data->data[i];                                                  \
+		return count;                                                                                                 \
+	}
+
 #define VECTOR_IMPL_EXTRACT(T, N, SUFFIX)                                                     \
 	extern "C" T vector_extract_##SUFFIX##_impl(vector_data<T, N>* v, int32_t idx) {          \
 		return v->data[idx];                                                                  \
@@ -266,6 +278,7 @@ static vector_data<T, N>* nextSlot() {
 	VECTOR_IMPL_BROADCAST(T, N, SUFFIX)                           \
 	VECTOR_IMPL_GATHER(T, N, SUFFIX)                              \
 	VECTOR_IMPL_SCATTER(T, N, SUFFIX)                             \
+	VECTOR_IMPL_COMPRESS_STORE(T, N, SUFFIX)                      \
 	VECTOR_IMPL_EXTRACT(T, N, SUFFIX)                             \
 	VECTOR_IMPL_INSERT(T, N, SUFFIX)
 
@@ -376,6 +389,14 @@ namespace detail {
 		    vector_scatter_##SUFFIX##_impl, base, indices, data);                                        \
 	}
 
+#define VEC_INVOKE_COMPRESS_STORE(T, N, SUFFIX)                                                           \
+	template <>                                                                                          \
+	val<int32_t> vec_compress_store<T, N>(val<T*> dst, val<vector_data<T, N>*> mask,                     \
+	                                      val<vector_data<T, N>*> data) {                                 \
+		return invoke<int32_t, T*, vector_data<T, N>*, vector_data<T, N>*>(                              \
+		    vector_compress_store_##SUFFIX##_impl, dst, mask, data);                                     \
+	}
+
 #define VEC_INVOKE_EXTRACT(T, N, SUFFIX)                                                                  \
 	template <>                                                                                          \
 	val<T> vec_extract<T, N>(val<vector_data<T, N>*> v, val<int32_t> idx) {                              \
@@ -416,6 +437,7 @@ namespace detail {
 	VEC_INVOKE_BROADCAST(T, N, SUFFIX)                                                                   \
 	VEC_INVOKE_GATHER(T, N, SUFFIX)                                                                      \
 	VEC_INVOKE_SCATTER(T, N, SUFFIX)                                                                     \
+	VEC_INVOKE_COMPRESS_STORE(T, N, SUFFIX)                                                              \
 	VEC_INVOKE_EXTRACT(T, N, SUFFIX)                                                                     \
 	VEC_INVOKE_INSERT(T, N, SUFFIX)
 

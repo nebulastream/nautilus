@@ -183,7 +183,11 @@ val<T> shiftRight(val<T> x, val<T> y) {
 
 template <typename T>
 val<T> negate(val<T> x) {
-	return ~x;
+	if constexpr (std::is_floating_point_v<T>) {
+		return -x;
+	} else {
+		return ~x;
+	}
 }
 
 template <typename T>
@@ -261,6 +265,21 @@ val<int32_t> prefixIncrementReturnValue(val<int32_t> x) {
 val<int32_t> prefixDecrementReturnValue(val<int32_t> x) {
 	// --x should return x after decrement, so (--x) + 1 = x
 	return (--x) + 1;
+}
+
+// Regression (differential fuzzer): a narrow unsigned subtraction that wraps
+// around feeds an unsigned comparison. Backends that keep narrow integers in
+// full-width registers must re-normalize (zero-extend) the wrapped result
+// before the compare; the AsmJit A64 backend used to skip that, so the
+// comparison saw the un-wrapped 64-bit difference and answered with the
+// opposite result for wrapped values.
+val<uint32_t> u32WrapSubThenCompare(val<uint32_t> x, val<uint32_t> y) {
+	val<uint32_t> wrapped = x - val<uint32_t>(4279714710u); // wraps for x < 4279714710
+	val<uint32_t> result = 0u;
+	if (wrapped <= y) {
+		result = 1u;
+	}
+	return result;
 }
 
 } // namespace nautilus::engine

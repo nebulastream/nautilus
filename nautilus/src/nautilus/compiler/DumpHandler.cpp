@@ -29,6 +29,9 @@ bool DumpHandler::shallCreateFolder() const {
 	generallyDump = generallyDump or shouldDump("after_llvm_generation");
 	generallyDump = generallyDump or shouldDump("after_cpp_generation");
 	generallyDump = generallyDump or shouldDump("after_bc_generation");
+	generallyDump = generallyDump or shouldDump("after_tbc_generation");
+	generallyDump = generallyDump or shouldDump("after_asmjit_generation");
+	generallyDump = generallyDump or shouldDump("after_asmjit_assembly");
 	return generallyDump and dumpToFile();
 }
 

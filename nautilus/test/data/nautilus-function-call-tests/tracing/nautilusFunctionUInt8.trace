@@ -1,0 +1,13 @@
+EXECUTE:
+B0($1:ui8,$2:ui8)
+	CALL	$3	func_*($1,$2)	:ui8
+	RETURN	$0	$3	:ui8
+
+MULUINT8:
+B0($1:ui8,$2:ui8)
+	CAST	$3	$1	:i32
+	CAST	$4	$2	:i32
+	MUL	$5	$3	$4	:i32
+	CAST	$6	$5	:ui8
+	RETURN	$0	$6	:ui8
+

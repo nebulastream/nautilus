@@ -4,7 +4,11 @@
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include <cmath>
+#include <iomanip>
+#include <limits>
 #include <sstream>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -92,12 +96,36 @@ private:
 			}
 
 			std::stringstream ss;
-			ss << constValue->getValue();
+			if constexpr (std::is_floating_point_v<decltype(constValue->getValue())>) {
+				const auto value = constValue->getValue();
+				if (std::isnan(value)) {
+					// operator<< prints non-finite doubles as the bare words
+					// "nan"/"inf", which aren't valid C++ literal syntax and
+					// fail to recompile. Emit compiler builtins instead, which
+					// need no extra #include in the generated source.
+					ss << (std::signbit(value) ? "-__builtin_nan(\"\")" : "__builtin_nan(\"\")");
+				} else if (std::isinf(value)) {
+					ss << (value < 0 ? "-__builtin_inf()" : "__builtin_inf()");
+				} else {
+					// Floating-point constants need full round-trip precision:
+					// the default stream precision is 6 significant digits, so
+					// without this the generated C++ source re-parses a
+					// rounded-off literal (e.g. a double could silently lose
+					// ~11 significant digits).
+					ss << std::setprecision(std::numeric_limits<double>::max_digits10);
+					ss << value;
+				}
+			} else {
+				ss << constValue->getValue();
+			}
 			if (ss.str() == "(nil)") {
 				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")(nullptr);\n";
 			} else {
-				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << constValue->getValue()
-				                   << ";\n";
+				// Emit ss.str() (built with round-trip precision above), not a
+				// fresh `<< constValue->getValue()` -- that would re-stream the
+				// raw value at default (6 significant digit) precision and
+				// silently undo the setprecision() above.
+				blocks[blockIndex] << var << " = (" << getType(constValue->getStamp()) << ")" << ss.str() << ";\n";
 			}
 		}
 

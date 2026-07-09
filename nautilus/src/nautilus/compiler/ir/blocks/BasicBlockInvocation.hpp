@@ -52,6 +52,13 @@ public:
 
 	void replaceArgument(const Operation* toReplace, Operation* replaceWith);
 
+	/// Removes the argument at @p index, shifting every later argument down
+	/// by one slot. The backing arena buffer is left as-is (only the visible
+	/// span shrinks) -- consistent with the rest of this class's arena
+	/// ownership model, where freed slots are reclaimed by the arena in bulk
+	/// rather than individually.
+	void removeArgument(size_t index);
+
 	std::span<Operation* const> getArguments() const;
 
 	/**

@@ -318,4 +318,25 @@ val<int32_t> withBranchProbability(val<int32_t> value) {
 	}
 }
 
+// Regression (differential fuzzer): a zero-trip loop inside an if-arm, merged
+// after the if, then combined with a constant. The merge block's parameter
+// reuses the SSA identifier that the untaken arm re-defines (the constant is
+// traced once per path), and the taken arm's edge is emitted first, so it
+// binds that identifier before the other arm's definition runs. The BC
+// backend's emplace-only frame binding then silently dropped the later
+// definition: the constant was written to a fresh register nobody read, the
+// merge parameter's register stayed zero-initialised, and the final addition
+// returned the merged value unmodified.
+val<uint64_t> zeroTripLoopMergeThenAddConstant(val<uint64_t> c, val<uint64_t> p) {
+	val<uint64_t> result = p;
+	if (c != val<uint64_t>(static_cast<uint64_t>(0))) {
+		val<uint64_t> acc = static_cast<uint64_t>(0);
+		for (val<int32_t> i = 0; i < val<int32_t>(0); i = i + 1) {
+			acc = acc + val<uint64_t>(static_cast<uint64_t>(1));
+		}
+		result = acc;
+	}
+	return result + val<uint64_t>(static_cast<uint64_t>(119));
+}
+
 } // namespace nautilus::engine

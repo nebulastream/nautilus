@@ -17,11 +17,10 @@
 // cmath wrapper.
 //
 // NOTE ON THE COMPILER: main() does not override any engine options, so the
-// engine runs with the default tiered JIT compiler. See
-// nautilus/src/nautilus/compiler/Engine.cpp — when
-// `engine.compilationStrategy` is unset it defaults to "tiered" and
-// constructs a TieredJITCompiler. That means this demo is exercising the
-// production-recommended compilation pipeline.
+// engine runs with the default tiered JIT compiler (see
+// nautilus/src/nautilus/compiler/Engine.cpp). That means this demo is
+// exercising the production-recommended compilation pipeline. To pin a
+// single backend instead, set `engine.backend`.
 
 #include <cstdint>
 #include <iostream>

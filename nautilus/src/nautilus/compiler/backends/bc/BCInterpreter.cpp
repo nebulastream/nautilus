@@ -107,362 +107,505 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	writeReg<double>(regs, op.output, returnValue);
 }
 
-static Operation* OpTable[] = {
-    (Operation*) regMov,
-    // add
-    (Operation*) add<int8_t>,
-    (Operation*) add<int16_t>,
-    (Operation*) add<int32_t>,
-    (Operation*) add<int64_t>,
-    (Operation*) add<uint8_t>,
-    (Operation*) add<uint16_t>,
-    (Operation*) add<uint32_t>,
-    (Operation*) add<uint64_t>,
-    (Operation*) add<float>,
-    (Operation*) add<double>,
-    // sub
-    (Operation*) sub<int8_t>,
-    (Operation*) sub<int16_t>,
-    (Operation*) sub<int32_t>,
-    (Operation*) sub<int64_t>,
-    (Operation*) sub<uint8_t>,
-    (Operation*) sub<uint16_t>,
-    (Operation*) sub<uint32_t>,
-    (Operation*) sub<uint64_t>,
-    (Operation*) sub<float>,
-    (Operation*) sub<double>,
-    // mul
-    (Operation*) mul<int8_t>,
-    (Operation*) mul<int16_t>,
-    (Operation*) mul<int32_t>,
-    (Operation*) mul<int64_t>,
-    (Operation*) mul<uint8_t>,
-    (Operation*) mul<uint16_t>,
-    (Operation*) mul<uint32_t>,
-    (Operation*) mul<uint64_t>,
-    (Operation*) mul<float>,
-    (Operation*) mul<double>,
-    // div
-    (Operation*) div<int8_t>,
-    (Operation*) div<int16_t>,
-    (Operation*) div<int32_t>,
-    (Operation*) div<int64_t>,
-    (Operation*) div<uint8_t>,
-    (Operation*) div<uint16_t>,
-    (Operation*) div<uint32_t>,
-    (Operation*) div<uint64_t>,
-    (Operation*) div<float>,
-    (Operation*) div<double>,
-    // mod
-    (Operation*) mod<int8_t>,
-    (Operation*) mod<int16_t>,
-    (Operation*) mod<int32_t>,
-    (Operation*) mod<int64_t>,
-    (Operation*) mod<uint8_t>,
-    (Operation*) mod<uint16_t>,
-    (Operation*) mod<uint32_t>,
-    (Operation*) mod<uint64_t>,
-    // equals
-    (Operation*) equals<int8_t>,
-    (Operation*) equals<int16_t>,
-    (Operation*) equals<int32_t>,
-    (Operation*) equals<int64_t>,
-    (Operation*) equals<uint8_t>,
-    (Operation*) equals<uint16_t>,
-    (Operation*) equals<uint32_t>,
-    (Operation*) equals<uint64_t>,
-    (Operation*) equals<float>,
-    (Operation*) equals<double>,
-    (Operation*) equals<bool>,
-    // less than
-    (Operation*) lessThan<int8_t>,
-    (Operation*) lessThan<int16_t>,
-    (Operation*) lessThan<int32_t>,
-    (Operation*) lessThan<int64_t>,
-    (Operation*) lessThan<uint8_t>,
-    (Operation*) lessThan<uint16_t>,
-    (Operation*) lessThan<uint32_t>,
-    (Operation*) lessThan<uint64_t>,
-    (Operation*) lessThan<float>,
-    (Operation*) lessThan<double>,
-    // less than equals
-    (Operation*) lessThanEquals<int8_t>,
-    (Operation*) lessThanEquals<int16_t>,
-    (Operation*) lessThanEquals<int32_t>,
-    (Operation*) lessThanEquals<int64_t>,
-    (Operation*) lessThanEquals<uint8_t>,
-    (Operation*) lessThanEquals<uint16_t>,
-    (Operation*) lessThanEquals<uint32_t>,
-    (Operation*) lessThanEquals<uint64_t>,
-    (Operation*) lessThanEquals<float>,
-    (Operation*) lessThanEquals<double>,
-    // greater than
-    (Operation*) greaterThan<int8_t>,
-    (Operation*) greaterThan<int16_t>,
-    (Operation*) greaterThan<int32_t>,
-    (Operation*) greaterThan<int64_t>,
-    (Operation*) greaterThan<uint8_t>,
-    (Operation*) greaterThan<uint16_t>,
-    (Operation*) greaterThan<uint32_t>,
-    (Operation*) greaterThan<uint64_t>,
-    (Operation*) greaterThan<float>,
-    (Operation*) greaterThan<double>,
-    // greater than equals
-    (Operation*) greaterThanEquals<int8_t>,
-    (Operation*) greaterThanEquals<int16_t>,
-    (Operation*) greaterThanEquals<int32_t>,
-    (Operation*) greaterThanEquals<int64_t>,
-    (Operation*) greaterThanEquals<uint8_t>,
-    (Operation*) greaterThanEquals<uint16_t>,
-    (Operation*) greaterThanEquals<uint32_t>,
-    (Operation*) greaterThanEquals<uint64_t>,
-    (Operation*) greaterThanEquals<float>,
-    (Operation*) greaterThanEquals<double>,
-    // not equals
-    (Operation*) notEquals<bool>,
-    (Operation*) notEquals<int8_t>,
-    (Operation*) notEquals<int16_t>,
-    (Operation*) notEquals<int32_t>,
-    (Operation*) notEquals<int64_t>,
-    (Operation*) notEquals<uint8_t>,
-    (Operation*) notEquals<uint16_t>,
-    (Operation*) notEquals<uint32_t>,
-    (Operation*) notEquals<uint64_t>,
-    (Operation*) notEquals<float>,
-    (Operation*) notEquals<double>,
-    // load
-    (Operation*) load<int8_t>,
-    (Operation*) load<int16_t>,
-    (Operation*) load<int32_t>,
-    (Operation*) load<int64_t>,
-    (Operation*) load<uint8_t>,
-    (Operation*) load<uint16_t>,
-    (Operation*) load<uint32_t>,
-    (Operation*) load<uint64_t>,
-    (Operation*) load<float>,
-    (Operation*) load<double>,
-    (Operation*) load<bool>,
-    // store
-    (Operation*) store<int8_t>,
-    (Operation*) store<int16_t>,
-    (Operation*) store<int32_t>,
-    (Operation*) store<int64_t>,
-    (Operation*) store<uint8_t>,
-    (Operation*) store<uint16_t>,
-    (Operation*) store<uint32_t>,
-    (Operation*) store<uint64_t>,
-    (Operation*) store<float>,
-    (Operation*) store<double>,
-    (Operation*) store<bool>,
-    // and
-    (Operation*) andOp<bool>,
-    (Operation*) orOp<bool>,
-    (Operation*) notOp<bool>,
-    // Casts
-    // int to int
-    (Operation*) cast<int8_t, int16_t>,
-    (Operation*) cast<int8_t, int32_t>,
-    (Operation*) cast<int8_t, int64_t>,
-    (Operation*) cast<int16_t, int8_t>,
-    (Operation*) cast<int16_t, int32_t>,
-    (Operation*) cast<int16_t, int64_t>,
-    (Operation*) cast<int32_t, int8_t>,
-    (Operation*) cast<int32_t, int16_t>,
-    (Operation*) cast<int32_t, int64_t>,
-    (Operation*) cast<int64_t, int8_t>,
-    (Operation*) cast<int64_t, int16_t>,
-    (Operation*) cast<int64_t, int32_t>,
-    // uint to int
-    (Operation*) cast<uint8_t, int8_t>,
-    (Operation*) cast<uint8_t, int16_t>,
-    (Operation*) cast<uint8_t, int32_t>,
-    (Operation*) cast<uint8_t, int64_t>,
-    (Operation*) cast<uint16_t, int8_t>,
-    (Operation*) cast<uint16_t, int16_t>,
-    (Operation*) cast<uint16_t, int32_t>,
-    (Operation*) cast<uint16_t, int64_t>,
-    (Operation*) cast<uint32_t, int8_t>,
-    (Operation*) cast<uint32_t, int16_t>,
-    (Operation*) cast<uint32_t, int32_t>,
-    (Operation*) cast<uint32_t, int64_t>,
-    (Operation*) cast<uint64_t, int8_t>,
-    (Operation*) cast<uint64_t, int16_t>,
-    (Operation*) cast<uint64_t, int32_t>,
-    (Operation*) cast<uint64_t, int64_t>,
-    // uint to uint
-    (Operation*) cast<uint8_t, uint16_t>,
-    (Operation*) cast<uint8_t, uint32_t>,
-    (Operation*) cast<uint8_t, uint64_t>,
-    (Operation*) cast<uint16_t, uint8_t>,
-    (Operation*) cast<uint16_t, uint32_t>,
-    (Operation*) cast<uint16_t, uint64_t>,
-    (Operation*) cast<uint32_t, uint8_t>,
-    (Operation*) cast<uint32_t, uint16_t>,
-    (Operation*) cast<uint32_t, uint64_t>,
-    (Operation*) cast<uint64_t, uint8_t>,
-    (Operation*) cast<uint64_t, uint16_t>,
-    (Operation*) cast<uint64_t, uint32_t>,
-    // int to uint
-    (Operation*) cast<int8_t, uint8_t>,
-    (Operation*) cast<int8_t, uint16_t>,
-    (Operation*) cast<int8_t, uint32_t>,
-    (Operation*) cast<int8_t, uint64_t>,
-    (Operation*) cast<int16_t, uint8_t>,
-    (Operation*) cast<int16_t, uint16_t>,
-    (Operation*) cast<int16_t, uint32_t>,
-    (Operation*) cast<int16_t, uint64_t>,
-    (Operation*) cast<int32_t, uint8_t>,
-    (Operation*) cast<int32_t, uint16_t>,
-    (Operation*) cast<int32_t, uint32_t>,
-    (Operation*) cast<int32_t, uint64_t>,
-    (Operation*) cast<int64_t, uint8_t>,
-    (Operation*) cast<int64_t, uint16_t>,
-    (Operation*) cast<int64_t, uint32_t>,
-    (Operation*) cast<int64_t, uint64_t>,
-    // from float to int
-    (Operation*) cast<float, int8_t>,
-    (Operation*) cast<float, int16_t>,
-    (Operation*) cast<float, int32_t>,
-    (Operation*) cast<float, int64_t>,
-    (Operation*) cast<float, uint8_t>,
-    (Operation*) cast<float, uint16_t>,
-    (Operation*) cast<float, uint32_t>,
-    (Operation*) cast<float, uint64_t>,
-    (Operation*) cast<float, double>,
-    // from double to int
-    (Operation*) cast<double, int8_t>,
-    (Operation*) cast<double, int16_t>,
-    (Operation*) cast<double, int32_t>,
-    (Operation*) cast<double, int64_t>,
-    (Operation*) cast<double, uint8_t>,
-    (Operation*) cast<double, uint16_t>,
-    (Operation*) cast<double, uint32_t>,
-    (Operation*) cast<double, uint64_t>,
-    (Operation*) cast<double, float>,
-    // from int to floats
-    (Operation*) cast<int8_t, float>,
-    (Operation*) cast<int8_t, double>,
-    (Operation*) cast<int16_t, float>,
-    (Operation*) cast<int16_t, double>,
-    (Operation*) cast<int32_t, float>,
-    (Operation*) cast<int32_t, double>,
-    (Operation*) cast<int64_t, float>,
-    (Operation*) cast<int64_t, double>,
-    // uint to float
-    (Operation*) cast<uint8_t, float>,
-    (Operation*) cast<uint8_t, double>,
-    (Operation*) cast<uint16_t, float>,
-    (Operation*) cast<uint16_t, double>,
-    (Operation*) cast<uint32_t, float>,
-    (Operation*) cast<uint32_t, double>,
-    (Operation*) cast<uint64_t, float>,
-    (Operation*) cast<uint64_t, double>,
-    // FUNCTION CALLS
-    (Operation*) dyncallReset,
-    (Operation*) dyncallArgB,
-    (Operation*) dyncallArgI8,
-    (Operation*) dyncallArgI16,
-    (Operation*) dyncallArgI32,
-    (Operation*) dyncallArgI64,
-    (Operation*) dyncallArgF,
-    (Operation*) dyncallArgD,
-    (Operation*) dyncallArgPtr,
-    (Operation*) dyncallCallV,
-    (Operation*) dyncallCallB,
-    (Operation*) dyncallCallI8,
-    (Operation*) dyncallCallI16,
-    (Operation*) dyncallCallI32,
-    (Operation*) dyncallCallI64,
-    (Operation*) dyncallCallPtr,
-    (Operation*) dyncallCallf,
-    (Operation*) dyncallCalld,
-    // BITWISE OPS
-    // band
-    (Operation*) bitwiseAnd<int8_t>,
-    (Operation*) bitwiseAnd<int16_t>,
-    (Operation*) bitwiseAnd<int32_t>,
-    (Operation*) bitwiseAnd<int64_t>,
-    (Operation*) bitwiseAnd<uint8_t>,
-    (Operation*) bitwiseAnd<uint16_t>,
-    (Operation*) bitwiseAnd<uint32_t>,
-    (Operation*) bitwiseAnd<uint64_t>,
-    // bor
-    (Operation*) bitwiseOr<int8_t>,
-    (Operation*) bitwiseOr<int16_t>,
-    (Operation*) bitwiseOr<int32_t>,
-    (Operation*) bitwiseOr<int64_t>,
-    (Operation*) bitwiseOr<uint8_t>,
-    (Operation*) bitwiseOr<uint16_t>,
-    (Operation*) bitwiseOr<uint32_t>,
-    (Operation*) bitwiseOr<uint64_t>,
-    // bxor
-    (Operation*) bitwiseXOr<int8_t>,
-    (Operation*) bitwiseXOr<int16_t>,
-    (Operation*) bitwiseXOr<int32_t>,
-    (Operation*) bitwiseXOr<int64_t>,
-    (Operation*) bitwiseXOr<uint8_t>,
-    (Operation*) bitwiseXOr<uint16_t>,
-    (Operation*) bitwiseXOr<uint32_t>,
-    (Operation*) bitwiseXOr<uint64_t>,
-    // blsh
-    (Operation*) bitwiseLSH<int8_t>,
-    (Operation*) bitwiseLSH<int16_t>,
-    (Operation*) bitwiseLSH<int32_t>,
-    (Operation*) bitwiseLSH<int64_t>,
-    (Operation*) bitwiseLSH<uint8_t>,
-    (Operation*) bitwiseLSH<uint16_t>,
-    (Operation*) bitwiseLSH<uint32_t>,
-    (Operation*) bitwiseLSH<uint64_t>,
-    // brsh
-    (Operation*) bitwiseRSH<int8_t>,
-    (Operation*) bitwiseRSH<int16_t>,
-    (Operation*) bitwiseRSH<int32_t>,
-    (Operation*) bitwiseRSH<int64_t>,
-    (Operation*) bitwiseRSH<uint8_t>,
-    (Operation*) bitwiseRSH<uint16_t>,
-    (Operation*) bitwiseRSH<uint32_t>,
-    (Operation*) bitwiseRSH<uint64_t>,
-    // bnot
-    (Operation*) bitwiseNot<int64_t>,
-    // select
-    (Operation*) selectOp<int8_t>,
-    (Operation*) selectOp<int16_t>,
-    (Operation*) selectOp<int32_t>,
-    (Operation*) selectOp<int64_t>,
-    (Operation*) selectOp<uint8_t>,
-    (Operation*) selectOp<uint16_t>,
-    (Operation*) selectOp<uint32_t>,
-    (Operation*) selectOp<uint64_t>,
-    (Operation*) selectOp<float>,
-    (Operation*) selectOp<double>,
-    (Operation*) selectOp<bool>,
-    (Operation*) selectOp<void*>,
+// Single source of truth mapping every ByteCode to its handler, listed in the
+// exact order of the ByteCode enum. This list generates BOTH the function-pointer
+// dispatch table (OpTable, used by the "call" dispatch mode) and the inlined
+// switch in execute() (the "switch" dispatch mode). Generating both from one
+// list guarantees they cannot diverge: a wrong or missing entry corrupts the
+// default "call" path too, which every existing test exercises. The handler is
+// taken via __VA_ARGS__ so commas inside template arguments (e.g.
+// cast<float, int8_t>) are not split into separate macro arguments.
+#define NAUTILUS_BC_OPCODE_LIST(X)                                                                                     \
+	X(REG_MOV, regMov)                                                                                                 \
+	/* add */                                                                                                          \
+	X(ADD_i8, add<int8_t>)                                                                                             \
+	X(ADD_i16, add<int16_t>)                                                                                           \
+	X(ADD_i32, add<int32_t>)                                                                                           \
+	X(ADD_i64, add<int64_t>)                                                                                           \
+	X(ADD_ui8, add<uint8_t>)                                                                                           \
+	X(ADD_ui16, add<uint16_t>)                                                                                         \
+	X(ADD_ui32, add<uint32_t>)                                                                                         \
+	X(ADD_ui64, add<uint64_t>)                                                                                         \
+	X(ADD_f, add<float>)                                                                                               \
+	X(ADD_d, add<double>)                                                                                              \
+	/* sub */                                                                                                          \
+	X(SUB_i8, sub<int8_t>)                                                                                             \
+	X(SUB_i16, sub<int16_t>)                                                                                           \
+	X(SUB_i32, sub<int32_t>)                                                                                           \
+	X(SUB_i64, sub<int64_t>)                                                                                           \
+	X(SUB_ui8, sub<uint8_t>)                                                                                           \
+	X(SUB_ui16, sub<uint16_t>)                                                                                         \
+	X(SUB_ui32, sub<uint32_t>)                                                                                         \
+	X(SUB_ui64, sub<uint64_t>)                                                                                         \
+	X(SUB_f, sub<float>)                                                                                               \
+	X(SUB_d, sub<double>)                                                                                              \
+	/* mul */                                                                                                          \
+	X(MUL_i8, mul<int8_t>)                                                                                             \
+	X(MUL_i16, mul<int16_t>)                                                                                           \
+	X(MUL_i32, mul<int32_t>)                                                                                           \
+	X(MUL_i64, mul<int64_t>)                                                                                           \
+	X(MUL_ui8, mul<uint8_t>)                                                                                           \
+	X(MUL_ui16, mul<uint16_t>)                                                                                         \
+	X(MUL_ui32, mul<uint32_t>)                                                                                         \
+	X(MUL_ui64, mul<uint64_t>)                                                                                         \
+	X(MUL_f, mul<float>)                                                                                               \
+	X(MUL_d, mul<double>)                                                                                              \
+	/* div */                                                                                                          \
+	X(DIV_i8, div<int8_t>)                                                                                             \
+	X(DIV_i16, div<int16_t>)                                                                                           \
+	X(DIV_i32, div<int32_t>)                                                                                           \
+	X(DIV_i64, div<int64_t>)                                                                                           \
+	X(DIV_ui8, div<uint8_t>)                                                                                           \
+	X(DIV_ui16, div<uint16_t>)                                                                                         \
+	X(DIV_ui32, div<uint32_t>)                                                                                         \
+	X(DIV_ui64, div<uint64_t>)                                                                                         \
+	X(DIV_f, div<float>)                                                                                               \
+	X(DIV_d, div<double>)                                                                                              \
+	/* mod */                                                                                                          \
+	X(MOD_i8, mod<int8_t>)                                                                                             \
+	X(MOD_i16, mod<int16_t>)                                                                                           \
+	X(MOD_i32, mod<int32_t>)                                                                                           \
+	X(MOD_i64, mod<int64_t>)                                                                                           \
+	X(MOD_ui8, mod<uint8_t>)                                                                                           \
+	X(MOD_ui16, mod<uint16_t>)                                                                                         \
+	X(MOD_ui32, mod<uint32_t>)                                                                                         \
+	X(MOD_ui64, mod<uint64_t>)                                                                                         \
+	/* equals */                                                                                                       \
+	X(EQ_i8, equals<int8_t>)                                                                                           \
+	X(EQ_i16, equals<int16_t>)                                                                                         \
+	X(EQ_i32, equals<int32_t>)                                                                                         \
+	X(EQ_i64, equals<int64_t>)                                                                                         \
+	X(EQ_ui8, equals<uint8_t>)                                                                                         \
+	X(EQ_ui16, equals<uint16_t>)                                                                                       \
+	X(EQ_ui32, equals<uint32_t>)                                                                                       \
+	X(EQ_ui64, equals<uint64_t>)                                                                                       \
+	X(EQ_f, equals<float>)                                                                                             \
+	X(EQ_d, equals<double>)                                                                                            \
+	X(EQ_b, equals<bool>)                                                                                              \
+	/* less than */                                                                                                    \
+	X(LESS_THAN_i8, lessThan<int8_t>)                                                                                  \
+	X(LESS_THAN_i16, lessThan<int16_t>)                                                                                \
+	X(LESS_THAN_i32, lessThan<int32_t>)                                                                                \
+	X(LESS_THAN_i64, lessThan<int64_t>)                                                                                \
+	X(LESS_THAN_ui8, lessThan<uint8_t>)                                                                                \
+	X(LESS_THAN_ui16, lessThan<uint16_t>)                                                                              \
+	X(LESS_THAN_ui32, lessThan<uint32_t>)                                                                              \
+	X(LESS_THAN_ui64, lessThan<uint64_t>)                                                                              \
+	X(LESS_THAN_f, lessThan<float>)                                                                                    \
+	X(LESS_THAN_d, lessThan<double>)                                                                                   \
+	/* less than equals */                                                                                             \
+	X(LESS_THAN_EQUALS_i8, lessThanEquals<int8_t>)                                                                     \
+	X(LESS_THAN_EQUALS_i16, lessThanEquals<int16_t>)                                                                   \
+	X(LESS_THAN_EQUALS_i32, lessThanEquals<int32_t>)                                                                   \
+	X(LESS_THAN_EQUALS_i64, lessThanEquals<int64_t>)                                                                   \
+	X(LESS_THAN_EQUALS_ui8, lessThanEquals<uint8_t>)                                                                   \
+	X(LESS_THAN_EQUALS_ui16, lessThanEquals<uint16_t>)                                                                 \
+	X(LESS_THAN_EQUALS_ui32, lessThanEquals<uint32_t>)                                                                 \
+	X(LESS_THAN_EQUALS_ui64, lessThanEquals<uint64_t>)                                                                 \
+	X(LESS_THAN_EQUALS_f, lessThanEquals<float>)                                                                       \
+	X(LESS_THAN_EQUALS_d, lessThanEquals<double>)                                                                      \
+	/* greater than */                                                                                                 \
+	X(GREATER_THAN_i8, greaterThan<int8_t>)                                                                            \
+	X(GREATER_THAN_i16, greaterThan<int16_t>)                                                                          \
+	X(GREATER_THAN_i32, greaterThan<int32_t>)                                                                          \
+	X(GREATER_THAN_i64, greaterThan<int64_t>)                                                                          \
+	X(GREATER_THAN_ui8, greaterThan<uint8_t>)                                                                          \
+	X(GREATER_THAN_ui16, greaterThan<uint16_t>)                                                                        \
+	X(GREATER_THAN_ui32, greaterThan<uint32_t>)                                                                        \
+	X(GREATER_THAN_ui64, greaterThan<uint64_t>)                                                                        \
+	X(GREATER_THAN_f, greaterThan<float>)                                                                              \
+	X(GREATER_THAN_d, greaterThan<double>)                                                                             \
+	/* greater than equals */                                                                                          \
+	X(GREATER_THAN_EQUALS_i8, greaterThanEquals<int8_t>)                                                               \
+	X(GREATER_THAN_EQUALS_i16, greaterThanEquals<int16_t>)                                                             \
+	X(GREATER_THAN_EQUALS_i32, greaterThanEquals<int32_t>)                                                             \
+	X(GREATER_THAN_EQUALS_i64, greaterThanEquals<int64_t>)                                                             \
+	X(GREATER_THAN_EQUALS_ui8, greaterThanEquals<uint8_t>)                                                             \
+	X(GREATER_THAN_EQUALS_ui16, greaterThanEquals<uint16_t>)                                                           \
+	X(GREATER_THAN_EQUALS_ui32, greaterThanEquals<uint32_t>)                                                           \
+	X(GREATER_THAN_EQUALS_ui64, greaterThanEquals<uint64_t>)                                                           \
+	X(GREATER_THAN_EQUALS_f, greaterThanEquals<float>)                                                                 \
+	X(GREATER_THAN_EQUALS_d, greaterThanEquals<double>)                                                                \
+	/* not equals */                                                                                                   \
+	X(NOT_EQUALS_b, notEquals<bool>)                                                                                   \
+	X(NOT_EQUALS_i8, notEquals<int8_t>)                                                                                \
+	X(NOT_EQUALS_i16, notEquals<int16_t>)                                                                              \
+	X(NOT_EQUALS_i32, notEquals<int32_t>)                                                                              \
+	X(NOT_EQUALS_i64, notEquals<int64_t>)                                                                              \
+	X(NOT_EQUALS_ui8, notEquals<uint8_t>)                                                                              \
+	X(NOT_EQUALS_ui16, notEquals<uint16_t>)                                                                            \
+	X(NOT_EQUALS_ui32, notEquals<uint32_t>)                                                                            \
+	X(NOT_EQUALS_ui64, notEquals<uint64_t>)                                                                            \
+	X(NOT_EQUALS_f, notEquals<float>)                                                                                  \
+	X(NOT_EQUALS_d, notEquals<double>)                                                                                 \
+	/* load */                                                                                                         \
+	X(LOAD_i8, load<int8_t>)                                                                                           \
+	X(LOAD_i16, load<int16_t>)                                                                                         \
+	X(LOAD_i32, load<int32_t>)                                                                                         \
+	X(LOAD_i64, load<int64_t>)                                                                                         \
+	X(LOAD_ui8, load<uint8_t>)                                                                                         \
+	X(LOAD_ui16, load<uint16_t>)                                                                                       \
+	X(LOAD_ui32, load<uint32_t>)                                                                                       \
+	X(LOAD_ui64, load<uint64_t>)                                                                                       \
+	X(LOAD_f, load<float>)                                                                                             \
+	X(LOAD_d, load<double>)                                                                                            \
+	X(LOAD_b, load<bool>)                                                                                              \
+	/* store */                                                                                                        \
+	X(STORE_i8, store<int8_t>)                                                                                         \
+	X(STORE_i16, store<int16_t>)                                                                                       \
+	X(STORE_i32, store<int32_t>)                                                                                       \
+	X(STORE_i64, store<int64_t>)                                                                                       \
+	X(STORE_ui8, store<uint8_t>)                                                                                       \
+	X(STORE_ui16, store<uint16_t>)                                                                                     \
+	X(STORE_ui32, store<uint32_t>)                                                                                     \
+	X(STORE_ui64, store<uint64_t>)                                                                                     \
+	X(STORE_f, store<float>)                                                                                           \
+	X(STORE_d, store<double>)                                                                                          \
+	X(STORE_b, store<bool>)                                                                                            \
+	/* logical */                                                                                                      \
+	X(AND_b, andOp<bool>)                                                                                              \
+	X(OR_b, orOp<bool>)                                                                                                \
+	X(NOT_b, notOp<bool>)                                                                                              \
+	/* casts: int to int */                                                                                            \
+	X(CAST_i8_i16, cast<int8_t, int16_t>)                                                                              \
+	X(CAST_i8_i32, cast<int8_t, int32_t>)                                                                              \
+	X(CAST_i8_i64, cast<int8_t, int64_t>)                                                                              \
+	X(CAST_i16_i8, cast<int16_t, int8_t>)                                                                              \
+	X(CAST_i16_i32, cast<int16_t, int32_t>)                                                                            \
+	X(CAST_i16_i64, cast<int16_t, int64_t>)                                                                            \
+	X(CAST_i32_i8, cast<int32_t, int8_t>)                                                                              \
+	X(CAST_i32_i16, cast<int32_t, int16_t>)                                                                            \
+	X(CAST_i32_i64, cast<int32_t, int64_t>)                                                                            \
+	X(CAST_i64_i8, cast<int64_t, int8_t>)                                                                              \
+	X(CAST_i64_i16, cast<int64_t, int16_t>)                                                                            \
+	X(CAST_i64_i32, cast<int64_t, int32_t>)                                                                            \
+	/* casts: uint to int */                                                                                           \
+	X(CAST_ui8_i8, cast<uint8_t, int8_t>)                                                                              \
+	X(CAST_ui8_i16, cast<uint8_t, int16_t>)                                                                            \
+	X(CAST_ui8_i32, cast<uint8_t, int32_t>)                                                                            \
+	X(CAST_ui8_i64, cast<uint8_t, int64_t>)                                                                            \
+	X(CAST_ui16_i8, cast<uint16_t, int8_t>)                                                                            \
+	X(CAST_ui16_i16, cast<uint16_t, int16_t>)                                                                          \
+	X(CAST_ui16_i32, cast<uint16_t, int32_t>)                                                                          \
+	X(CAST_ui16_i64, cast<uint16_t, int64_t>)                                                                          \
+	X(CAST_ui32_i8, cast<uint32_t, int8_t>)                                                                            \
+	X(CAST_ui32_i16, cast<uint32_t, int16_t>)                                                                          \
+	X(CAST_ui32_i32, cast<uint32_t, int32_t>)                                                                          \
+	X(CAST_ui32_i64, cast<uint32_t, int64_t>)                                                                          \
+	X(CAST_ui64_i8, cast<uint64_t, int8_t>)                                                                            \
+	X(CAST_ui64_i16, cast<uint64_t, int16_t>)                                                                          \
+	X(CAST_ui64_i32, cast<uint64_t, int32_t>)                                                                          \
+	X(CAST_ui64_i64, cast<uint64_t, int64_t>)                                                                          \
+	/* casts: uint to uint */                                                                                          \
+	X(CAST_ui8_ui16, cast<uint8_t, uint16_t>)                                                                          \
+	X(CAST_ui8_ui32, cast<uint8_t, uint32_t>)                                                                          \
+	X(CAST_ui8_ui64, cast<uint8_t, uint64_t>)                                                                          \
+	X(CAST_ui16_ui8, cast<uint16_t, uint8_t>)                                                                          \
+	X(CAST_ui16_ui32, cast<uint16_t, uint32_t>)                                                                        \
+	X(CAST_ui16_ui64, cast<uint16_t, uint64_t>)                                                                        \
+	X(CAST_ui32_ui8, cast<uint32_t, uint8_t>)                                                                          \
+	X(CAST_ui32_ui16, cast<uint32_t, uint16_t>)                                                                        \
+	X(CAST_ui32_ui64, cast<uint32_t, uint64_t>)                                                                        \
+	X(CAST_ui64_ui8, cast<uint64_t, uint8_t>)                                                                          \
+	X(CAST_ui64_ui16, cast<uint64_t, uint16_t>)                                                                        \
+	X(CAST_ui64_ui32, cast<uint64_t, uint32_t>)                                                                        \
+	/* casts: int to uint */                                                                                           \
+	X(CAST_i8_ui8, cast<int8_t, uint8_t>)                                                                              \
+	X(CAST_i8_ui16, cast<int8_t, uint16_t>)                                                                            \
+	X(CAST_i8_ui32, cast<int8_t, uint32_t>)                                                                            \
+	X(CAST_i8_ui64, cast<int8_t, uint64_t>)                                                                            \
+	X(CAST_i16_ui8, cast<int16_t, uint8_t>)                                                                            \
+	X(CAST_i16_ui16, cast<int16_t, uint16_t>)                                                                          \
+	X(CAST_i16_ui32, cast<int16_t, uint32_t>)                                                                          \
+	X(CAST_i16_ui64, cast<int16_t, uint64_t>)                                                                          \
+	X(CAST_i32_ui8, cast<int32_t, uint8_t>)                                                                            \
+	X(CAST_i32_ui16, cast<int32_t, uint16_t>)                                                                          \
+	X(CAST_i32_ui32, cast<int32_t, uint32_t>)                                                                          \
+	X(CAST_i32_ui64, cast<int32_t, uint64_t>)                                                                          \
+	X(CAST_i64_ui8, cast<int64_t, uint8_t>)                                                                            \
+	X(CAST_i64_ui16, cast<int64_t, uint16_t>)                                                                          \
+	X(CAST_i64_ui32, cast<int64_t, uint32_t>)                                                                          \
+	X(CAST_i64_ui64, cast<int64_t, uint64_t>)                                                                          \
+	/* casts: float to int */                                                                                          \
+	X(CAST_f_i8, cast<float, int8_t>)                                                                                  \
+	X(CAST_f_i16, cast<float, int16_t>)                                                                                \
+	X(CAST_f_i32, cast<float, int32_t>)                                                                                \
+	X(CAST_f_i64, cast<float, int64_t>)                                                                                \
+	X(CAST_f_ui8, cast<float, uint8_t>)                                                                                \
+	X(CAST_f_ui16, cast<float, uint16_t>)                                                                              \
+	X(CAST_f_ui32, cast<float, uint32_t>)                                                                              \
+	X(CAST_f_ui64, cast<float, uint64_t>)                                                                              \
+	X(CAST_f_d, cast<float, double>)                                                                                   \
+	/* casts: double to int */                                                                                         \
+	X(CAST_d_i8, cast<double, int8_t>)                                                                                 \
+	X(CAST_d_i16, cast<double, int16_t>)                                                                               \
+	X(CAST_d_i32, cast<double, int32_t>)                                                                               \
+	X(CAST_d_i64, cast<double, int64_t>)                                                                               \
+	X(CAST_d_ui8, cast<double, uint8_t>)                                                                               \
+	X(CAST_d_ui16, cast<double, uint16_t>)                                                                             \
+	X(CAST_d_ui32, cast<double, uint32_t>)                                                                             \
+	X(CAST_d_ui64, cast<double, uint64_t>)                                                                             \
+	X(CAST_d_f, cast<double, float>)                                                                                   \
+	/* casts: int to float */                                                                                          \
+	X(CAST_i8_f, cast<int8_t, float>)                                                                                  \
+	X(CAST_i8_d, cast<int8_t, double>)                                                                                 \
+	X(CAST_i16_f, cast<int16_t, float>)                                                                                \
+	X(CAST_i16_d, cast<int16_t, double>)                                                                               \
+	X(CAST_i32_f, cast<int32_t, float>)                                                                                \
+	X(CAST_i32_d, cast<int32_t, double>)                                                                               \
+	X(CAST_i64_f, cast<int64_t, float>)                                                                                \
+	X(CAST_i64_d, cast<int64_t, double>)                                                                               \
+	/* casts: uint to float */                                                                                         \
+	X(CAST_ui8_f, cast<uint8_t, float>)                                                                                \
+	X(CAST_ui8_d, cast<uint8_t, double>)                                                                               \
+	X(CAST_ui16_f, cast<uint16_t, float>)                                                                              \
+	X(CAST_ui16_d, cast<uint16_t, double>)                                                                             \
+	X(CAST_ui32_f, cast<uint32_t, float>)                                                                              \
+	X(CAST_ui32_d, cast<uint32_t, double>)                                                                             \
+	X(CAST_ui64_f, cast<uint64_t, float>)                                                                              \
+	X(CAST_ui64_d, cast<uint64_t, double>)                                                                             \
+	/* dynamic function calls using dyncall.h */                                                                       \
+	X(DYNCALL_reset, dyncallReset)                                                                                     \
+	X(DYNCALL_arg_b, dyncallArgB)                                                                                      \
+	X(DYNCALL_arg_i8, dyncallArgI8)                                                                                    \
+	X(DYNCALL_arg_i16, dyncallArgI16)                                                                                  \
+	X(DYNCALL_arg_i32, dyncallArgI32)                                                                                  \
+	X(DYNCALL_arg_i64, dyncallArgI64)                                                                                  \
+	X(DYNCALL_arg_f, dyncallArgF)                                                                                      \
+	X(DYNCALL_arg_d, dyncallArgD)                                                                                      \
+	X(DYNCALL_arg_ptr, dyncallArgPtr)                                                                                  \
+	X(DYNCALL_call_v, dyncallCallV)                                                                                    \
+	X(DYNCALL_call_b, dyncallCallB)                                                                                    \
+	X(DYNCALL_call_i8, dyncallCallI8)                                                                                  \
+	X(DYNCALL_call_i16, dyncallCallI16)                                                                                \
+	X(DYNCALL_call_i32, dyncallCallI32)                                                                                \
+	X(DYNCALL_call_i64, dyncallCallI64)                                                                                \
+	X(DYNCALL_call_ptr, dyncallCallPtr)                                                                                \
+	X(DYNCALL_call_f, dyncallCallf)                                                                                    \
+	X(DYNCALL_call_d, dyncallCalld)                                                                                    \
+	/* bitwise: band */                                                                                                \
+	X(BAND_i8, bitwiseAnd<int8_t>)                                                                                     \
+	X(BAND_i16, bitwiseAnd<int16_t>)                                                                                   \
+	X(BAND_i32, bitwiseAnd<int32_t>)                                                                                   \
+	X(BAND_i64, bitwiseAnd<int64_t>)                                                                                   \
+	X(BAND_ui8, bitwiseAnd<uint8_t>)                                                                                   \
+	X(BAND_ui16, bitwiseAnd<uint16_t>)                                                                                 \
+	X(BAND_ui32, bitwiseAnd<uint32_t>)                                                                                 \
+	X(BAND_ui64, bitwiseAnd<uint64_t>)                                                                                 \
+	X(BAND_b, bitwiseAnd<bool>)                                                                                        \
+	/* bitwise: bor */                                                                                                 \
+	X(BOR_i8, bitwiseOr<int8_t>)                                                                                       \
+	X(BOR_i16, bitwiseOr<int16_t>)                                                                                     \
+	X(BOR_i32, bitwiseOr<int32_t>)                                                                                     \
+	X(BOR_i64, bitwiseOr<int64_t>)                                                                                     \
+	X(BOR_ui8, bitwiseOr<uint8_t>)                                                                                     \
+	X(BOR_ui16, bitwiseOr<uint16_t>)                                                                                   \
+	X(BOR_ui32, bitwiseOr<uint32_t>)                                                                                   \
+	X(BOR_ui64, bitwiseOr<uint64_t>)                                                                                   \
+	X(BOR_b, bitwiseOr<bool>)                                                                                          \
+	/* bitwise: bxor */                                                                                                \
+	X(BXOR_i8, bitwiseXOr<int8_t>)                                                                                     \
+	X(BXOR_i16, bitwiseXOr<int16_t>)                                                                                   \
+	X(BXOR_i32, bitwiseXOr<int32_t>)                                                                                   \
+	X(BXOR_i64, bitwiseXOr<int64_t>)                                                                                   \
+	X(BXOR_ui8, bitwiseXOr<uint8_t>)                                                                                   \
+	X(BXOR_ui16, bitwiseXOr<uint16_t>)                                                                                 \
+	X(BXOR_ui32, bitwiseXOr<uint32_t>)                                                                                 \
+	X(BXOR_ui64, bitwiseXOr<uint64_t>)                                                                                 \
+	X(BXOR_b, bitwiseXOr<bool>)                                                                                        \
+	/* bitwise: blsh */                                                                                                \
+	X(BLSH_i8, bitwiseLSH<int8_t>)                                                                                     \
+	X(BLSH_i16, bitwiseLSH<int16_t>)                                                                                   \
+	X(BLSH_i32, bitwiseLSH<int32_t>)                                                                                   \
+	X(BLSH_i64, bitwiseLSH<int64_t>)                                                                                   \
+	X(BLSH_ui8, bitwiseLSH<uint8_t>)                                                                                   \
+	X(BLSH_ui16, bitwiseLSH<uint16_t>)                                                                                 \
+	X(BLSH_ui32, bitwiseLSH<uint32_t>)                                                                                 \
+	X(BLSH_ui64, bitwiseLSH<uint64_t>)                                                                                 \
+	/* bitwise: brsh */                                                                                                \
+	X(BRSH_i8, bitwiseRSH<int8_t>)                                                                                     \
+	X(BRSH_i16, bitwiseRSH<int16_t>)                                                                                   \
+	X(BRSH_i32, bitwiseRSH<int32_t>)                                                                                   \
+	X(BRSH_i64, bitwiseRSH<int64_t>)                                                                                   \
+	X(BRSH_ui8, bitwiseRSH<uint8_t>)                                                                                   \
+	X(BRSH_ui16, bitwiseRSH<uint16_t>)                                                                                 \
+	X(BRSH_ui32, bitwiseRSH<uint32_t>)                                                                                 \
+	X(BRSH_ui64, bitwiseRSH<uint64_t>)                                                                                 \
+	/* bitwise: bnot */                                                                                                \
+	X(BNEGATE_I64, bitwiseNot<int64_t>)                                                                                \
+	/* negate: float sign-flip */                                                                                      \
+	X(NEG_f, neg<float>)                                                                                               \
+	X(NEG_d, neg<double>)                                                                                              \
+	/* select */                                                                                                       \
+	X(SELECT_i8, selectOp<int8_t>)                                                                                     \
+	X(SELECT_i16, selectOp<int16_t>)                                                                                   \
+	X(SELECT_i32, selectOp<int32_t>)                                                                                   \
+	X(SELECT_i64, selectOp<int64_t>)                                                                                   \
+	X(SELECT_ui8, selectOp<uint8_t>)                                                                                   \
+	X(SELECT_ui16, selectOp<uint16_t>)                                                                                 \
+	X(SELECT_ui32, selectOp<uint32_t>)                                                                                 \
+	X(SELECT_ui64, selectOp<uint64_t>)                                                                                 \
+	X(SELECT_f, selectOp<float>)                                                                                       \
+	X(SELECT_d, selectOp<double>)                                                                                      \
+	X(SELECT_b, selectOp<bool>)                                                                                        \
+	X(SELECT_ptr, selectOp<void*>)
 
+static Operation* OpTable[] = {
+#define NAUTILUS_BC_TABLE_ENTRY(name, ...) (Operation*) __VA_ARGS__,
+    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_TABLE_ENTRY)
+#undef NAUTILUS_BC_TABLE_ENTRY
 };
 
 FunctionCallTarget::FunctionCallTarget(std::vector<std::pair<short, Type>> arguments, void* functionPtr)
     : arguments(std::move(arguments)), functionPtr(functionPtr) {
 }
 
-BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile)
-    : code(std::move(code)), registerFile(std::move(registerFile)) {
+// Computed goto (labels-as-values) is a GCC/Clang extension. Where it is not
+// available we fall back to the switch path, so "threaded" stays selectable
+// everywhere and simply degrades to "switch".
+#if defined(__GNUC__) || defined(__clang__)
+#define NAUTILUS_BC_HAS_COMPUTED_GOTO 1
+#endif
+
+DispatchMode parseDispatchMode(const std::string& value) {
+	if (value == "switch") {
+		return DispatchMode::Switch;
+	}
+	if (value == "threaded") {
+		return DispatchMode::Threaded;
+	}
+	return DispatchMode::Call;
+}
+
+BCInterpreter::BCInterpreter(Code code, RegisterFile registerFile, BCInterpreterOptions options)
+    : code(std::move(code)), registerFile(std::move(registerFile)), options(options) {
 	// The register file was built against a temporary Code instance whose allocaBuffers
 	// may have been copied (and thus relocated) before reaching this constructor.
 	// Re-point each alloca register at the actual buffer in *this* code object.
 	for (const auto& [reg, bufIdx] : this->code.allocaRegisterMap) {
 		this->registerFile[reg] = reinterpret_cast<int64_t>(this->code.allocaBuffers[bufIdx].data());
 	}
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+	if (this->options.dispatch == DispatchMode::Threaded) {
+		buildFlatCode();
+	}
+#endif
+}
+
+namespace {
+// Map a comparison opcode to its fused compare+branch opcode, if one exists.
+// Returns true and sets `out` on success. Drives the Step 5 fusion.
+bool fusedBranchFor(ByteCode cmp, ByteCode& out) {
+	switch (cmp) {
+#define NAUTILUS_BC_FUSED_MAP(fused, src, ctype, cmpOp)                                                                \
+	case ByteCode::src:                                                                                                \
+		out = ByteCode::fused;                                                                                         \
+		return true;
+		NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_MAP)
+#undef NAUTILUS_BC_FUSED_MAP
+	default:
+		return false;
+	}
+}
+
+// Map an arithmetic opcode to its immediate-folded opcode, if one exists.
+// Returns true and sets `out` on success. Drives the Step 6 folding.
+bool immOpcodeFor(ByteCode op, ByteCode& out) {
+	switch (op) {
+#define NAUTILUS_BC_IMM_MAP(immOp, src, ctype, oper)                                                                   \
+	case ByteCode::src:                                                                                                \
+		out = ByteCode::immOp;                                                                                         \
+		return true;
+		NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_MAP)
+#undef NAUTILUS_BC_IMM_MAP
+	default:
+		return false;
+	}
+}
+} // namespace
+
+void BCInterpreter::buildFlatCode() {
+	// Concatenate every block's operations in their existing order (block order
+	// matters: visitIf emits landing-pad blocks inline, so offsets are correct by
+	// construction). After each block's ops, append its terminator as a JMP/CJMP/
+	// RET pseudo-op. Terminator targets stay block indices here; they are mapped to
+	// flat offsets through blockStart_ at run time.
+	blockStart_.resize(code.blocks.size());
+	for (size_t i = 0; i < code.blocks.size(); i++) {
+		const auto& block = code.blocks[i];
+		blockStart_[i] = static_cast<int32_t>(flatCode_.size());
+
+		// Step 6: emit op `k` of this block, folding a recorded small constant right
+		// operand into an *_imm opcode (operand in reg1, immediate in reg2) when
+		// enabled. foldableImmediates is sorted by index, so a single cursor suffices.
+		size_t foldCursor = 0;
+		auto emitOp = [&](size_t k) {
+			const OpCode& op = block.code[k];
+			if (options.immediates) {
+				while (foldCursor < block.foldableImmediates.size() && block.foldableImmediates[foldCursor].first < k) {
+					foldCursor++;
+				}
+				if (foldCursor < block.foldableImmediates.size() && block.foldableImmediates[foldCursor].first == k) {
+					ByteCode immOp {};
+					if (immOpcodeFor(op.op, immOp)) {
+						const int16_t imm = block.foldableImmediates[foldCursor].second;
+						// reg1 = operand, reg2 = immediate, output = result.
+						flatCode_.emplace_back(immOp, op.reg1, imm, op.output);
+						return;
+					}
+				}
+			}
+			flatCode_.push_back(op);
+		};
+
+		// Step 5: fuse a single-use trailing compare into the conditional jump when
+		// enabled. Sound only if (a) the lowering marked the compare single-use and
+		// (b) the compare is the block's last op (so its operands are not clobbered
+		// before the branch) writing the condition register, and (c) the comparison
+		// has a fused form. Otherwise fall through to the plain emission below.
+		if (options.superinstructions && block.fuseCompareIntoBranch && !block.code.empty()) {
+			if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
+				const OpCode& last = block.code.back();
+				ByteCode fused {};
+				if (last.output == res->conditionalReg && fusedBranchFor(last.op, fused)) {
+					for (size_t k = 0; k + 1 < block.code.size(); k++) {
+						emitOp(k);
+					}
+					// reg1 = left, reg2 = right, output = true block, reg3 = false block.
+					flatCode_.emplace_back(fused, last.reg1, last.reg2, res->trueBlock, res->falseBlock);
+					continue;
+				}
+			}
+		}
+
+		for (size_t k = 0; k < block.code.size(); k++) {
+			emitOp(k);
+		}
+		if (const auto* res = std::get_if<BranchOp>(&block.terminatorOp)) {
+			flatCode_.emplace_back(ByteCode::JMP, res->nextBlock, -1, -1);
+		} else if (const auto* res = std::get_if<ConditionalJumpOp>(&block.terminatorOp)) {
+			// OpCode ctor order is (op, reg1, reg2, output, reg3).
+			flatCode_.emplace_back(ByteCode::CJMP, res->conditionalReg, res->trueBlock, -1, res->falseBlock);
+		} else {
+			const auto& ret = std::get<ReturnOp>(block.terminatorOp);
+			flatCode_.emplace_back(ByteCode::RET, ret.resultReg, -1, -1);
+		}
+	}
 }
 
 BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
                            std::vector<std::unique_ptr<BCCallbackData>> callbackData,
-                           std::vector<DCCallback*> callbacks)
+                           std::vector<BCClosureHandle> callbacks)
     : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)) {
 }
 
 BCExecutable::~BCExecutable() {
 	for (auto* cb : callbacks_) {
+#ifdef NAUTILUS_BC_LIBFFI
+		ffi_closure_free(cb);
+#else
 		dcbFreeCallback(cb);
+#endif
 	}
 }
 
@@ -478,9 +621,48 @@ bool BCExecutable::hasInvocableFunctionPtr() {
 	return true;
 }
 
-int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
-	// Per-invocation copy of the register file (thread-safe + reentrant).
-	RegisterFile regs = registerFile;
+namespace {
+// Thread-local pool that recycles per-invocation register files so repeated calls
+// avoid a heap allocation (the dominant cost for tiny functions). Each acquire()
+// hands back a distinct buffer, so nested bc->bc calls on one thread never alias;
+// the pool is thread_local, so concurrent threads stay independent. Used only when
+// bc.regfileReuse is enabled. The copy-assign in acquire reuses the buffer's heap
+// capacity, so after warmup no allocation happens.
+thread_local std::vector<RegisterFile> tlRegisterFilePool;
+
+RegisterFile acquireRegisterFile(const RegisterFile& init) {
+	if (tlRegisterFilePool.empty()) {
+		return init;
+	}
+	RegisterFile buf = std::move(tlRegisterFilePool.back());
+	tlRegisterFilePool.pop_back();
+	buf = init;
+	return buf;
+}
+
+void releaseRegisterFile(RegisterFile&& buf) {
+	tlRegisterFilePool.push_back(std::move(buf));
+}
+} // namespace
+
+template <class Reader>
+int64_t BCInterpreter::invokeImpl(const std::vector<Type>& argTypes, Reader reader) {
+	// Per-invocation register file: a fresh copy by default, or one recycled from a
+	// thread-local pool when bc.regfileReuse is set. Both give each invocation its
+	// own buffer, so nested and concurrent calls remain correct.
+	const bool reuse = options.reuseRegisterFile;
+	RegisterFile regs = reuse ? acquireRegisterFile(registerFile) : registerFile;
+	// Return the recycled buffer to the pool on every exit path, including if
+	// execute() throws.
+	struct PoolGuard {
+		RegisterFile* regs;
+		bool active;
+		~PoolGuard() {
+			if (active) {
+				releaseRegisterFile(std::move(*regs));
+			}
+		}
+	} guard {&regs, reuse};
 
 	// Per-invocation alloca buffers, zeroed for a clean stack frame.
 	std::vector<std::vector<uint8_t>> localAllocaBuffers(code.allocaBuffers.size());
@@ -489,10 +671,68 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 		regs[reg] = reinterpret_cast<int64_t>(localAllocaBuffers[bufIdx].data());
 	}
 
-	// Read arguments from DCArgs directly into the local register file.
+	// Load arguments into the local register file. The reader is the only part that
+	// differs between the dyncall and libffi entry points.
 	for (size_t i = 0; i < argTypes.size(); i++) {
-		auto reg = code.arguments[i];
-		switch (argTypes[i]) {
+		reader(regs, code.arguments[i], argTypes[i], i);
+	}
+
+	return execute(regs);
+}
+
+#ifdef NAUTILUS_BC_LIBFFI
+int64_t BCInterpreter::invoke(void** args, const std::vector<Type>& argTypes) {
+	// libffi passes each argument as a pointer to its native value in args[i].
+	return invokeImpl(argTypes, [args](RegisterFile& regs, short reg, Type type, size_t i) {
+		switch (type) {
+		case Type::b:
+			// bool is mapped to ffi_type_uint8; read a single byte.
+			writeReg<bool>(regs, reg, *reinterpret_cast<uint8_t*>(args[i]) != 0);
+			break;
+		case Type::i8:
+			writeReg<int8_t>(regs, reg, *reinterpret_cast<int8_t*>(args[i]));
+			break;
+		case Type::i16:
+			writeReg<int16_t>(regs, reg, *reinterpret_cast<int16_t*>(args[i]));
+			break;
+		case Type::i32:
+			writeReg<int32_t>(regs, reg, *reinterpret_cast<int32_t*>(args[i]));
+			break;
+		case Type::i64:
+			writeReg<int64_t>(regs, reg, *reinterpret_cast<int64_t*>(args[i]));
+			break;
+		case Type::ui8:
+			writeReg<uint8_t>(regs, reg, *reinterpret_cast<uint8_t*>(args[i]));
+			break;
+		case Type::ui16:
+			writeReg<uint16_t>(regs, reg, *reinterpret_cast<uint16_t*>(args[i]));
+			break;
+		case Type::ui32:
+			writeReg<uint32_t>(regs, reg, *reinterpret_cast<uint32_t*>(args[i]));
+			break;
+		case Type::ui64:
+			writeReg<uint64_t>(regs, reg, *reinterpret_cast<uint64_t*>(args[i]));
+			break;
+		case Type::f32:
+			writeReg<float>(regs, reg, *reinterpret_cast<float*>(args[i]));
+			break;
+		case Type::f64:
+			writeReg<double>(regs, reg, *reinterpret_cast<double*>(args[i]));
+			break;
+		case Type::ptr:
+			regs[reg] = reinterpret_cast<int64_t>(*reinterpret_cast<void**>(args[i]));
+			break;
+		default:
+			break;
+		}
+	});
+}
+#else
+int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
+	// dyncall reads arguments sequentially from the DCArgs cursor, so the reader must
+	// consume them in order; invokeImpl iterates argTypes in order.
+	return invokeImpl(argTypes, [args](RegisterFile& regs, short reg, Type type, size_t) {
+		switch (type) {
 		case Type::b:
 			// dyncall's dcbArgBool returns DCbool (int); mask to the low
 			// byte before converting to bool — see Dyncall::callB.
@@ -534,18 +774,53 @@ int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
 		default:
 			break;
 		}
-	}
-
-	return execute(regs);
+	});
 }
+#endif
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+	if (options.dispatch == DispatchMode::Threaded) {
+		return executeThreaded(regs);
+	}
+#endif
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
+	// Threaded falls here when computed goto is unavailable, behaving as Switch.
+	const bool useSwitch = options.dispatch != DispatchMode::Call;
 	while (true) {
-		// execute operations in block
-		for (const auto& c : currentBlock->code) {
-			OpTable[(int16_t) c.op](c, regs);
+		// execute operations in block. The dispatch mode is constant for the whole
+		// run, so this branch is perfectly predicted; it picks between the legacy
+		// indirect-call table and the inlined switch (which avoids a non-inlined
+		// call per instruction and lets the compiler keep the register base hot).
+		if (useSwitch) {
+			for (const auto& c : currentBlock->code) {
+				switch (c.op) {
+#define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
+	case ByteCode::name:                                                                                               \
+		__VA_ARGS__(c, regs);                                                                                          \
+		break;
+					NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
+#undef NAUTILUS_BC_SWITCH_CASE
+				// Terminator pseudo-opcodes never appear in a block's operation stream
+				// in the call/switch paths (they keep the structured terminators); these
+				// cases exist only so the switch covers the whole ByteCode enum.
+				case ByteCode::JMP:
+				case ByteCode::CJMP:
+				case ByteCode::RET:
+#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
+					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
+#undef NAUTILUS_BC_FUSED_SWITCH
+#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
+					NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
+#undef NAUTILUS_BC_IMM_SWITCH
+					break;
+				}
+			}
+		} else {
+			for (const auto& c : currentBlock->code) {
+				OpTable[(int16_t) c.op](c, regs);
+			}
 		}
 		// handle terminator
 		if (const auto* res = std::get_if<BranchOp>(&currentBlock->terminatorOp)) {
@@ -564,6 +839,100 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		}
 	}
 }
+
+#ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
+// Token-threaded execution: each handler computes its result and jumps straight
+// to the next handler via a computed goto, instead of returning to a central
+// loop. This gives the CPU a distinct indirect-branch site per opcode (better
+// prediction) and removes the per-op loop bookkeeping. The label table is plain
+// data (addresses of labels in this function), so this stays a pure interpreter
+// with no runtime code generation. labels-as-values is a GCC/Clang extension, so
+// the pedantic diagnostic is locally suppressed.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wgnu-label-as-value"
+#endif
+int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
+	// Address table indexed by opcode, in the same order as the ByteCode enum.
+	// Built once at first entry (label addresses are not constant expressions).
+	// The value ops come from NAUTILUS_BC_OPCODE_LIST; the three terminator
+	// pseudo-opcodes (JMP/CJMP/RET) are appended in the same order they were added
+	// to the enum, so labels[(int) op] stays correct for every opcode.
+	static void* const labels[] = {
+#define NAUTILUS_BC_LABEL(name, ...) &&L_##name,
+	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
+#undef NAUTILUS_BC_LABEL
+	        && L_JMP,
+	    &&L_CJMP, &&L_RET,
+	// Fused compare+branch labels, in the same order they were appended to the enum.
+#define NAUTILUS_BC_FUSED_LABEL(fused, src, ctype, cmp) &&L_##fused,
+	    NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_LABEL)
+#undef NAUTILUS_BC_FUSED_LABEL
+	// Immediate-folded labels, in the same order they were appended to the enum.
+#define NAUTILUS_BC_IMM_LABEL(immOp, src, ctype, oper) &&L_##immOp,
+	        NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_LABEL)
+#undef NAUTILUS_BC_IMM_LABEL
+	};
+
+	// Flattened stream: blocks concatenated in order, each ended by a JMP/CJMP/RET.
+	// There is no end-of-block check and no variant dispatch — every block ends in
+	// a terminator op, so control always leaves via L_JMP/L_CJMP/L_RET.
+	const OpCode* const base = flatCode_.data();
+	const OpCode* ip = base;
+
+#define NAUTILUS_BC_NEXT() goto* labels[(int16_t) ip->op]
+
+	NAUTILUS_BC_NEXT();
+
+#define NAUTILUS_BC_HANDLER(name, ...)                                                                                 \
+	L_##name : {                                                                                                       \
+		__VA_ARGS__(*ip, regs);                                                                                        \
+		++ip;                                                                                                          \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_HANDLER)
+#undef NAUTILUS_BC_HANDLER
+
+L_JMP:
+	ip = base + blockStart_[ip->reg1];
+	NAUTILUS_BC_NEXT();
+L_CJMP:
+	ip = base + blockStart_[readReg<bool>(regs, ip->reg1) ? ip->reg2 : ip->reg3];
+	NAUTILUS_BC_NEXT();
+L_RET:
+	if (ip->reg1 < 0) {
+		return 0;
+	}
+	return regs[ip->reg1];
+
+	// Fused compare+branch handlers (Step 5): read both operands, compare, and jump
+	// to the true/false block in one step. reg1 = left, reg2 = right, output = true
+	// block, reg3 = false block. Only reached via the label table.
+#define NAUTILUS_BC_FUSED_HANDLER(fused, src, ctype, cmp)                                                              \
+	L_##fused : {                                                                                                      \
+		const bool taken = readReg<ctype>(regs, ip->reg1) cmp readReg<ctype>(regs, ip->reg2);                          \
+		ip = base + blockStart_[taken ? ip->output : ip->reg3];                                                        \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_HANDLER)
+#undef NAUTILUS_BC_FUSED_HANDLER
+
+	// Immediate-folded arithmetic handlers (Step 6): operand in reg1, signed 16-bit
+	// immediate in reg2 (widened to the op type), result in output.
+#define NAUTILUS_BC_IMM_HANDLER(immOp, src, ctype, oper)                                                               \
+	L_##immOp : {                                                                                                      \
+		writeReg<ctype>(regs, ip->output,                                                                              \
+		                static_cast<ctype>(readReg<ctype>(regs, ip->reg1) oper static_cast<ctype>(ip->reg2)));         \
+		++ip;                                                                                                          \
+		NAUTILUS_BC_NEXT();                                                                                            \
+	}
+	NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_HANDLER)
+#undef NAUTILUS_BC_IMM_HANDLER
+#undef NAUTILUS_BC_NEXT
+}
+#pragma GCC diagnostic pop
+#endif // NAUTILUS_BC_HAS_COMPUTED_GOTO
 
 std::ostream& operator<<(std::ostream& os, const Code& code) {
 	for (size_t i = 0; i < code.blocks.size(); i++) {

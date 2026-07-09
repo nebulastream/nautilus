@@ -108,6 +108,8 @@ val<vector_data<T, N>*> vec_gather(val<const T*> base, val<const int32_t*> indic
 template <typename T, size_t N>
 void vec_scatter(val<T*> base, val<const int32_t*> indices, val<vector_data<T, N>*> data);
 template <typename T, size_t N>
+val<int32_t> vec_compress_store(val<T*> dst, val<vector_data<T, N>*> mask, val<vector_data<T, N>*> data);
+template <typename T, size_t N>
 val<T> vec_extract(val<vector_data<T, N>*> v, val<int32_t> idx);
 template <typename T, size_t N>
 val<vector_data<T, N>*> vec_insert(val<vector_data<T, N>*> v, val<T> value, val<int32_t> idx);
@@ -253,6 +255,20 @@ public:
 		static_assert(std::is_same_v<IdxT, int32_t>, "Index type must be int32_t");
 		detail::dispatch_by_lanes_void<T>([&](auto N_tag) {
 			detail::vec_scatter<T, N_tag.value>(base, indices, detail::vec_from_max<T, N_tag.value>(ptr_));
+		});
+	}
+
+	/// Compress-store: write only the lanes whose mask bit is set, packed
+	/// contiguously starting at dst, and return the number of elements written
+	/// (the popcount of the mask). A lane is active when its mask element is
+	/// non-zero — pass a mask produced by a comparison (operator<, ==, ...).
+	/// This is the core primitive for stream compaction / filtering and lowers
+	/// to llvm.masked.compressstore (AVX-512 vcompressps/vpcompressd) on the
+	/// MLIR backend.
+	val<int32_t> CompressStore(val<T*> dst, val<vec<T>> mask) const {
+		return detail::dispatch_by_lanes<T>([&](auto N_tag) {
+			return detail::vec_compress_store<T, N_tag.value>(dst, detail::vec_from_max<T, N_tag.value>(mask.Data()),
+			                                                  detail::vec_from_max<T, N_tag.value>(ptr_));
 		});
 	}
 

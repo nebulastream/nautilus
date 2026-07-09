@@ -5,7 +5,9 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
+#include <unordered_set>
 
 namespace nautilus::compiler::ir {
 
@@ -31,9 +33,8 @@ bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
 	return target != nullptr && target != &block;
 }
 
-/// Rebuilds @p predInv (an invocation in `pred`'s terminator that was
-/// targeting `victim`) so that it carries the argument list for the edge
-/// `pred -> victim's successor`.
+/// Computes the argument list @p predInv (currently targeting `victim`)
+/// must carry once retargeted straight to `victim`'s successor.
 ///
 /// Let N = |victimOutgoing.args|, V = victim's block-arg count. For each
 /// i in [0, N):
@@ -42,18 +43,16 @@ bool isRemovableEmptyBlock(BasicBlock& block, const FunctionOperation& fn) {
 ///     (i.e. predInv's original j-th arg);
 ///   - otherwise the original value passes through (constant / external).
 ///
-/// This is an arity change in general (N may differ from V), so we clear
-/// and re-append instead of using replaceArgument.
-void rebuildInvocationForSkippedBlock(common::Arena& arena, BasicBlockInvocation& predInv, BasicBlock& victim,
-                                      const BasicBlockInvocation& victimOutgoing) {
+/// A pure query -- it does not mutate @p predInv; the caller applies the
+/// result via `FunctionRewriter::setInvocationArguments`.
+std::vector<Operation*> substitutedArguments(const BasicBlockInvocation& predInv, const BasicBlock& victim,
+                                             const BasicBlockInvocation& victimOutgoing) {
 	const auto victimOutArgs = victimOutgoing.getArguments();
-	// Snapshot pred's current argument list before clearing; we use it to
-	// resolve substitutions in the loop below.
-	std::vector<Operation*> predSuppliedArgs(predInv.getArguments().begin(), predInv.getArguments().end());
+	const auto predSuppliedArgs = predInv.getArguments();
 	const auto& victimParams = victim.getArguments();
 
-	predInv.clearArguments();
-
+	std::vector<Operation*> result;
+	result.reserve(victimOutArgs.size());
 	for (auto* victimOutArg : victimOutArgs) {
 		Operation* replacement = victimOutArg;
 		// If this outgoing arg references one of victim's block arguments,
@@ -66,11 +65,15 @@ void rebuildInvocationForSkippedBlock(common::Arena& arena, BasicBlockInvocation
 				break;
 			}
 		}
-		predInv.addArgument(arena, replacement);
+		result.push_back(replacement);
 	}
+	return result;
 }
 
-void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
+bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
+	FunctionRewriter rewriter(fn, arena);
+
+	bool anyChanged = false;
 	bool changed = true;
 	// Generous fixed-point bound: each round either removes a block or
 	// none at all (we break on change). With at most B blocks, at most B
@@ -79,8 +82,8 @@ void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
 	size_t iterations = 0;
 	while (changed && iterations++ < iterationBound) {
 		changed = false;
-		// Snapshot the block list because detachBasicBlock mutates the
-		// underlying vector.
+		// Snapshot the block list because eraseBlock mutates the underlying
+		// vector.
 		auto blocks = fn.getBasicBlocks();
 		for (auto* block : blocks) {
 			if (!isRemovableEmptyBlock(*block, fn)) {
@@ -91,45 +94,55 @@ void applyToFunction(common::Arena& arena, FunctionOperation& fn) {
 			auto& outgoing = branch->getNextBlockInvocation();
 			auto* succ = const_cast<BasicBlock*>(outgoing.getBlock());
 
-			// Snapshot predecessors before rewiring (replaceSuccessor
-			// mutates the predecessor list of `block`).
+			// Snapshot predecessors before rewiring (setInvocationTarget
+			// mutates `block`'s predecessor list); dedup by predecessor
+			// block since one predecessor's terminator may hold more than
+			// one invocation targeting `block` (both arms of an `if`).
 			auto preds = block->getPredecessors();
+			std::unordered_set<BasicBlock*> visitedPreds;
 			for (auto* pred : preds) {
-				if (pred == nullptr) {
+				if (pred == nullptr || !visitedPreds.insert(pred).second) {
 					continue;
 				}
 				auto* predTerminator = pred->getTerminatorOp();
 				if (predTerminator == nullptr) {
 					continue;
 				}
-				// Rebuild every invocation in pred's terminator that was
-				// targeting `block` so it passes the right argument list
-				// to `succ`.
 				for (auto* predInv : getSuccessorInvocations(*predTerminator)) {
-					if (predInv->getBlock() == block) {
-						rebuildInvocationForSkippedBlock(arena, *predInv, *block, outgoing);
+					if (predInv->getBlock() != block) {
+						continue;
 					}
+					auto newArgs = substitutedArguments(*predInv, *block, outgoing);
+					rewriter.setInvocationArguments(*predInv, newArgs);
+					rewriter.setInvocationTarget(*predInv, succ);
 				}
-				pred->replaceSuccessor(block, succ);
 			}
 
-			// All predecessor edges redirected; detach the empty block.
-			fn.detachBasicBlock(block);
+			// Every predecessor edge now bypasses `block` directly to
+			// `succ`; `block` has zero predecessors and can be erased.
+			// `eraseBlock` also drops `block`'s own outgoing edge's
+			// predecessor entry on `succ` (the edge that predates all of
+			// the rewiring above and is never touched by it).
+			rewriter.eraseBlock(block);
 			changed = true;
+			anyChanged = true;
 			break;
 		}
 	}
+	return anyChanged;
 }
 
 } // namespace
 
-void EmptyBlockEliminationPass::apply(IRGraph& ir) {
+bool EmptyBlockEliminationPass::apply(IRGraph& ir) {
 	common::Arena& arena = ir.getArena();
+	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			applyToFunction(arena, *fn);
+			changed |= applyToFunction(*fn, arena);
 		}
 	}
+	return changed;
 }
 
 } // namespace nautilus::compiler::ir
