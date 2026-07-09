@@ -9,7 +9,7 @@
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
-#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -17,6 +17,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus {
 class NautilusFunctionDefinition;
@@ -55,6 +56,8 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
  * - Each variable ID is mixed with a constant multiplier for better hash distribution
  * - The hash incorporates both variable identity (ID) and reference count
  * - Uses unordered_map for sparse storage (only allocates for variables that exist)
+ * - Entries are erased when their count reaches zero, so the map stays bounded by the
+ *   peak number of alive variables instead of growing with every value ref ever seen
  *
  * Performance characteristics:
  * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
@@ -96,13 +99,23 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
+	 * Entries that reach a count of zero are erased. This is hash-neutral (a zero count
+	 * contributes 0 to the XOR hash, identical to an absent entry) and keeps the map size
+	 * proportional to the number of currently-alive variables. Without the erase, the map
+	 * grows with every value ref ever seen and — because the trace context is thread_local —
+	 * persists across trace iterations and across traced functions.
+	 *
 	 * @param id Variable identifier (32-bit value)
 	 */
 	inline void decrement(uint32_t id) noexcept {
-		uint32_t& c = counts[id];
+		const auto it = counts.try_emplace(id, 0).first;
+		uint32_t& c = it->second;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		--c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			counts.erase(it);
+		}
 	}
 
 	/**
@@ -119,16 +132,30 @@ public:
 	}
 
 	/**
+	 * @brief Returns the number of tracked entries.
+	 *
+	 * Since zero-count entries are erased by decrement(), this is the number of
+	 * currently-alive variables (variables with a non-zero reference count).
+	 *
+	 * @return Number of entries in the underlying map
+	 */
+	inline size_t size() const noexcept {
+		return counts.size();
+	}
+
+	/**
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
 	 * This efficiently clears all counts without creating a temporary object.
-	 * Optimized: if hash is already 0, we assume counts are already empty and skip the clear.
+	 * Since decrement() erases entries when they reach zero, a balanced trace iteration
+	 * leaves the map empty and this is a no-op. The emptiness check (rather than a hash
+	 * check) also guards against the rare XOR collision where live entries hash to 0.
 	 */
 	inline void reset() noexcept {
-		if (alive_hash != 0) {
+		if (!counts.empty()) {
 			counts.clear();
-			alive_hash = 0;
 		}
+		alive_hash = 0;
 	}
 };
 
