@@ -549,7 +549,7 @@ keep the IR well under it; it is orthogonal to what this fuzzer hunts. The
 sweep therefore does **not** expose `ir.runPasses=false` — it uses per-pass
 toggles that keep constant folding on (see [Config sweep](#config-sweep)) — and
 the BC 16-bit-register limit is left to be fixed (graceful error, or a wider
-index) as a separate change.
+index) as a separate change, tracked in nebulastream/nautilus#385.
 
 On its first run this fuzzer reproduces a real bug: the IR constant-folding pass
 folds unsigned integer comparison/division/modulo/right-shift with **signed**
@@ -702,7 +702,7 @@ backend/type bucket) for future investigation.
    shapes being reachable reintroduces the collision on unrelated trees
    elsewhere in the corpus -- i.e. the byte-stream *shift* from having more
    `Kind::Call` diversity is what surfaces it, not anything specific to a
-   given new callee's own marshalling.
+   given new callee's own marshalling. Tracked in nebulastream/nautilus#381.
 2. **Empty return list** (`"Invalid trace: no Return operation was
    recorded."`, hardened from a crash): a kernel combining `Kind::If` with a
    pointer `Store` and two nested `nautilus::invoke()` calls (concretely:
@@ -721,7 +721,7 @@ backend/type bucket) for future investigation.
    own "a trivial kernel crashes the same way through an ad hoc harness"
    caveat and making this specific defect resistant to standalone
    minimization; it is only reliably reproduced through the real fuzz/replay
-   harness's deeper call stack.
+   harness's deeper call stack. Tracked in nebulastream/nautilus#382.
 3. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
    a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
    providers) lookup miss for an SSA value merged across two `Kind::If` arms,
@@ -731,7 +731,11 @@ backend/type bucket) for future investigation.
    BC/AsmJit fix above, just a control-flow shape neither `getResultRegister`
    nor `bindResult` covers -- worth a maintainer's attention alongside it, but
    root-causing and fixing the shared `Frame<K,V>` lookup path is out of
-   scope for this Call-coverage expansion.
+   scope for this Call-coverage expansion. Tracked in
+   nebulastream/nautilus#383 (which also records that later byte-stream
+   reshuffles moved this finding out of the deterministic corpus's reach --
+   a 10000-input `--survey` on current `main` no longer hits it, while the
+   other tolerated findings all still fire).
 
 Adding `val<bool>`/`val<enum>` as generated domains (see "Bool domain"/"Enum
 domain" above) immediately surfaced four more latent bugs, all fixed by this
@@ -778,7 +782,11 @@ tolerance-filter bug below is worked around):
    Release (`NDEBUG` defined, `pr.yml`), where only this catchable exception is
    observable, so it does not block CI. Root-causing the variant misuse is out
    of scope here (it predates and is independent of the bool/enum domains this
-   change adds).
+   change adds). Tracked in nebulastream/nautilus#384, which also corrects the
+   scope: a later audit showed it is not cpp-specific -- every affected
+   program fails identically on all four compiled backends under every config
+   permutation, pointing at shared tracing/IR infrastructure (consistent with
+   the Debug-build assert living in `LazyTraceContext::follow`).
 
 Wiring the deterministic corpus into CI for the first time (`fuzz-replay-smoke`,
 nebulastream/nautilus#376) immediately surfaced a fifth pre-existing finding on

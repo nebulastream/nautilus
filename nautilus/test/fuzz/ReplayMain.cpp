@@ -87,7 +87,7 @@ std::vector<uint8_t> randomBuffer() {
 //      call sites* a tracing evaluator takes to reach an `if` -- not on
 //      which logical AST node it is -- so two unrelated Kind::If nodes
 //      reached via the same shape of recursive descent can collide onto the
-//      same Tag.
+//      same Tag. Tracked in issue #381.
 //   2. "Invalid trace: no Return operation was recorded." -- some traced
 //      kernels combining Kind::If with a pointer Store and nested
 //      nautilus::invoke() calls complete tracing without ever recording a
@@ -95,13 +95,15 @@ std::vector<uint8_t> randomBuffer() {
 //      front() on that empty list (undefined behavior, a real crash) -- now
 //      hardened (see SSACreationPhase.cpp) to throw this catchable exception
 //      instead. The underlying "why is the Return missing" tracing defect is
-//      still open.
+//      still open; tracked in issue #382.
 //   3. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
 //      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
 //      SSA value merged across two Kind::If arms, reachable with nested
 //      Kind::If inside a Kind::Call argument -- the same *class* of
 //      merged-value bookkeeping bug as the already-fixed BC/AsmJit
 //      instances documented below, just a shape those fixes didn't cover.
+//      Tracked in issue #383 (currently latent: later byte-stream reshuffles
+//      moved it out of this deterministic corpus's reach).
 //   4. "std::get: wrong index for variant" -- an internal std::variant
 //      accessed through the wrong alternative somewhere in the cpp backend's
 //      lowering of a voidReturn-shaped kernel (issue #355/#363) whose AST
@@ -111,7 +113,8 @@ std::vector<uint8_t> randomBuffer() {
 //      earlier `assert(currentOperation.op == op)` in
 //      LazyTraceContext::follow before this exception is ever thrown; CI
 //      builds Release (NDEBUG), where only this catchable exception is
-//      observable.
+//      observable. Tracked in issue #384 (not actually cpp-specific: every
+//      affected program fails identically on all four compiled backends).
 //   5. "verification of MLIR module failed!" -- a `u16`/`mixed`-shape kernel
 //      whose AST nests a control-flow `Kind::If` inside a larger boolean
 //      arithmetic expression reaches MLIRLoweringProvider's `cf.cond_br`
