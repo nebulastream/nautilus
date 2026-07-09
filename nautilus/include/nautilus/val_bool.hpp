@@ -170,14 +170,17 @@ public:
 	/// Default constructor.
 	///
 	/// Initializes the boolean value to false with default probability 0.5.
-	/// If tracing is enabled, records a constant 0 (false) in the trace.
+	/// If tracing is enabled, records a boolean `false` constant in the trace.
+	/// The literal must be a `bool` (not an `int`) so the traced state is
+	/// stamped `Type::b`; seeding it from an `int` `0` would stamp it `i32`
+	/// and feed a non-`i1` operand into the MLIR backend's `cf.cond_br`.
 	///
 	/// # Example
 	/// ```cpp
 	/// val<bool> b;  // b = false, probability = 0.5
 	/// ```
 #ifdef ENABLE_TRACING
-	val() : state(tracing::traceConstant(0)), value(false) {
+	val() : state(tracing::traceConstant(false)), value(false) {
 	}
 #else
 	val() {
