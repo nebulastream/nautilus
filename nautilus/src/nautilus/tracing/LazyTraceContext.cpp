@@ -51,8 +51,30 @@ bool LazyTraceContext::isFollowing() {
 
 TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
+	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
+	// traceConstant/traceCopy's globalTagMap-collision branch (see their
+	// definitions below) records a *reconciliation* ASSIGN immediately after
+	// the primary operation, sharing its exact tag, so that a stale value ref
+	// from an earlier, structurally-identical call site is patched to the
+	// freshly recorded value -- folding two recorded operations into a single
+	// traceConstant()/traceCopy() call. A later FOLLOW-mode replay only ever
+	// issues one follow() call per call site, so without this the cursor
+	// would desynchronize from the recorded operation stream by one entry as
+	// soon as it stepped over such a pair, corrupting every subsequent follow()
+	// in the block (this was the root cause of #384). Skip any run of
+	// same-tagged reconciliation operations here to keep the cursor aligned.
+	while (true) {
+		auto& block = state->executionTrace.getCurrentBlock();
+		if (state->executionTrace.currentOperationIndex >= block.operations.size()) {
+			break;
+		}
+		if (!(block.operations[state->executionTrace.currentOperationIndex]->tag == consumedTag)) {
+			break;
+		}
+		state->executionTrace.nextOperation();
+	}
 	return currentOperation.resultRef;
 }
 
