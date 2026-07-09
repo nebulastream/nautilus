@@ -723,15 +723,74 @@ backend/type bucket) for future investigation.
    minimization; it is only reliably reproduced through the real fuzz/replay
    harness's deeper call stack.
 3. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
-   a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
-   providers) lookup miss for an SSA value merged across two `Kind::If` arms,
-   reachable with a `Kind::If` nested inside a `Kind::Call` argument (e.g.
-   `if(p0 != 0, sum3(p1, if(...) ^ (...), p0), p2)`). This looks like the same
-   *class* of merged-value bookkeeping bug as the `zeroTripLoopMergeThenAddConstant`
-   BC/AsmJit fix above, just a control-flow shape neither `getResultRegister`
-   nor `bindResult` covers -- worth a maintainer's attention alongside it, but
-   root-causing and fixing the shared `Frame<K,V>` lookup path is out of
-   scope for this Call-coverage expansion.
+   originally described (and tracked as nebulastream/nautilus#383) as a
+   `Frame<K,V>` lookup miss in the cpp/bc/asmjit lowering providers for a
+   `Kind::If` nested inside a `Kind::Call` argument, e.g.
+   `if(p0 != 0, sum3(p1, if(...) ^ (...), p0), p2)`, and believed to be the
+   same *class* of merged-value bookkeeping bug as the
+   `zeroTripLoopMergeThenAddConstant` BC/AsmJit fix above (`getResultRegister`
+   / `bindResult`), just a shape neither of those covers.
+   A 2026-07-09 audit could not reproduce it (`nautilus-fuzz-replay --survey
+   10000` came back clean) and marked it latent.
+
+   **Update, same day, after a wider search (~2M generated programs across
+   bc/tbc/asmjit) turned up a live reproducer**
+   (`test/fuzz/regressions/finding3-loop-call-continue.bin`, replay with
+   `nautilus-fuzz-replay test/fuzz/regressions/finding3-loop-call-continue.bin`):
+   this is **not** a lowering-provider register/variable-binding bug at all --
+   `getResultRegister`/`bindResult`/the cpp backend's `getVariable` are all
+   fine here, and every one of them throws identically for the *same* input,
+   including the interpreter-free cpp backend which has no register frame to
+   get out of sync (`Frame<K,V>` is also instantiated, with a different `V`,
+   by `TraceToIRConversionPhase::IRConversionContext` -- the plain trace ->
+   IR conversion that runs once, before any backend sees the IR at all).
+   Minimized, the crash reduces to nothing resembling the original `Kind::If`
+   shape:
+
+   ```
+   loop(count=((0i8 + 0i8) + 0i8), init=0i8, body=sum3(0i8, cont(cond=0i8, value=0i8), 0i8))
+   ```
+
+   i.e. a `Kind::Loop` whose trip count traces to (but is not a literal) zero,
+   whose body is a `Kind::Call` one of whose arguments is a
+   `Kind::LoopContinue` (`cont`) -- no `Kind::If` required. Root cause, traced
+   with instrumented builds of `SSACreationPhase.cpp`: the block reached when
+   the loop's `i < trips` guard is taken (the loop body) never gets visited by
+   `SSACreationPhaseContext::processBlock`'s worklist at all, even though it is
+   a live successor of a real `CMP` in the recorded trace. That worklist only
+   walks *backward from the recorded `Return` operation* via `Block::predecessors`
+   (by design -- it's how the value-propagation in `propagateValue`/
+   `processValueRef` decides what needs threading as a block argument, and
+   blocks that don't reach any `Return` are legitimately dead code). Here,
+   with the trip count resolved to zero, the *only* recorded `Return` is
+   reached through the loop's exit edge (`i < trips` false), never through the
+   body -- meaning the tracer never recorded a back-edge from the body
+   (executed only via the tracer's own speculative/backtracking exploration of
+   "what if `i < trips`", needed even though this program's concrete trip
+   count is zero, because the compiled function must still be correct for
+   whatever trip count a *future* call computes) closing back to the loop's
+   own condition check. The body block is therefore real (a genuine `CMP`
+   successor with real operations, including the `Kind::LoopContinue`'s own
+   internal branch merge) but orphaned from the backward walk, so nothing
+   ever threads its free values ($128 in the original repro, $35 in the
+   minimized one -- the loop index / accumulator snapshot the `Call`
+   argument's `LoopContinue` merge needs) in as block arguments.
+   `TraceToIRConversionPhase` visits the orphaned block anyway (it walks every
+   `CMP`/`JMP` successor unconditionally, not just backward-from-return), finds
+   the value was never threaded, and `Frame::getValue` throws.
+
+   This is a bug in the tracer's loop/back-edge recording for a
+   provably-zero-trip loop, one level upstream of `SSACreationPhase`'s own
+   backward walk (in the same speculative-exploration machinery already
+   implicated by findings 1 and 2 below -- `ExecutionTrace`/
+   `TagRecorder`/the exception-based retracing that explores a branch the
+   concrete run didn't take), not a register-allocation or variable-naming
+   bug in any lowering provider. A fix belongs in that tracing layer, not in
+   `Frame<K,V>`, `getResultRegister`, `bindResult`, or the cpp backend's
+   `getVariable` -- out of scope to attempt blind here given how fragile that
+   machinery already is (see findings 1-2), but the tolerance in
+   `ReplayMain.cpp` stays (this is confirmed live, not latent) and the pinned
+   reproducer above makes it directly actionable for whoever picks it up.
 
 Adding `val<bool>`/`val<enum>` as generated domains (see "Bool domain"/"Enum
 domain" above) immediately surfaced four more latent bugs, all fixed by this
