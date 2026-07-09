@@ -385,4 +385,43 @@ val<float> issue384_traceFollowDesync(val<float*> mem, val<float> p0) {
 	return acc;
 }
 
+uint32_t issue382_sum3(uint32_t a, uint32_t b, uint32_t c) {
+	return a + b + c;
+}
+
+// Regression (differential fuzzer, issue #382): a native, untraced `for` loop
+// populates a fixed-size array of `val<uint32_t>` slots -- mirroring the
+// differential fuzzer's evalNautilusCall<T>, which populates a call's
+// argument array through the exact same loop-body call site regardless of
+// which argument index is being evaluated. Slots 0 and 2 are assigned the
+// same literal-zero constant; slot 1's assignment is preceded by a real
+// traced `if` (with a pointer Store in its body) that slots 0/2 don't go
+// through. Tag identity is purely a call-stack return-address chain
+// (TagRecorder.cpp) plus the alive-variable footprint, so slot 2's
+// assignment reaches the identical tag already recorded for slot 0's
+// assignment -- despite writing to a *different* target. Before the fix,
+// LazyTraceContext::traceAssignment treated any tag match as a genuine
+// control-flow re-entry and forced a control-flow merge back into the if's
+// own condition block, discarding the call and the return that should have
+// followed; SSACreationPhase::getReturnBlock then found no Return operation
+// at all ("Invalid trace: no Return operation was recorded.").
+val<int8_t> issue382_siblingArgAssignCollision(val<uint32_t*> mem, val<uint32_t> p0) {
+	val<uint32_t> args[3] = {val<uint32_t>(0u), val<uint32_t>(0u), val<uint32_t>(0u)};
+	for (int i = 0; i < 3; ++i) {
+		val<uint32_t> value = val<uint32_t>(0u);
+		if (i == 1) {
+			val<bool> cond = p0 != val<uint32_t>(0u);
+			val<uint32_t> branchValue = val<uint32_t>(0u);
+			if (cond) {
+				branchValue = val<uint32_t>(0u);
+			}
+			*mem = branchValue;
+			value = branchValue;
+		}
+		args[i] = value;
+	}
+	val<uint32_t> result = invoke(issue382_sum3, args[0], args[1], args[2]);
+	return static_cast<val<int8_t>>(result);
+}
+
 } // namespace nautilus::engine

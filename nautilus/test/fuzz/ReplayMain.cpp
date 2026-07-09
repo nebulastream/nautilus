@@ -65,12 +65,12 @@ std::vector<uint8_t> randomBuffer() {
 	return buf;
 }
 
-// Three pre-existing, out-of-scope tracer/IR limitations, all in shared
+// Two pre-existing, out-of-scope tracer/IR limitations, both in shared
 // infrastructure well outside Kind::Call's own lowering or the bool/enum
 // domains this fuzzer also adds (see README.md "Known findings" for the full
 // writeup of each). Widening Kind::Call's generation surface and adding the
 // bool/enum domains both reshuffle the byte-stream enough that the
-// fixed-seed smoke corpus below reaches all three on a combined ~8.5% of
+// fixed-seed smoke corpus below reaches both on a combined ~8.5% of
 // inputs; `--survey` buckets by backend/type/exact exception text (see the
 // key in survey() below) so every one of them stays individually visible and
 // triageable rather than silently folding into a single backend/type bucket.
@@ -88,20 +88,31 @@ std::vector<uint8_t> randomBuffer() {
 //      which logical AST node it is -- so two unrelated Kind::If nodes
 //      reached via the same shape of recursive descent can collide onto the
 //      same Tag.
-//   2. "Invalid trace: no Return operation was recorded." -- some traced
-//      kernels combining Kind::If with a pointer Store and nested
-//      nautilus::invoke() calls complete tracing without ever recording a
-//      Return operation; SSACreationPhase::getReturnBlock used to call
-//      front() on that empty list (undefined behavior, a real crash) -- now
-//      hardened (see SSACreationPhase.cpp) to throw this catchable exception
-//      instead. The underlying "why is the Return missing" tracing defect is
-//      still open.
-//   3. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
+//   2. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
 //      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
 //      SSA value merged across two Kind::If arms, reachable with nested
 //      Kind::If inside a Kind::Call argument -- the same *class* of
 //      merged-value bookkeeping bug as the already-fixed BC/AsmJit
 //      instances documented below, just a shape those fixes didn't cover.
+//
+// Finding "Invalid trace: no Return operation was recorded." is no longer
+// tolerated either (issue #382): LazyTraceContext::traceAssignment's generic
+// tag-collision handling treated *any* tag match as a genuine control-flow
+// re-entry, but Tag identity is purely a call-stack return-address chain
+// (TagRecorder.cpp) plus the alive-variable footprint -- it says nothing
+// about which variable is being assigned. Two structurally-identical
+// sibling call arguments (e.g. `sum3(0, x, 0)`, both literal-zero) evaluated
+// by the same argument-evaluation loop reach the identical tag while
+// assigning *different* targets (two different array slots), which was
+// wrongly folded into a bogus control-flow merge -- discarding every
+// operation traced afterwards, including the call and the return. Fixed in
+// LazyTraceContext.cpp by comparing the target ref against the operation
+// already recorded at that tag: a mismatch means the collision is
+// coincidental, not a real revisit, so the assignment is now recorded
+// normally instead of merged, mirroring how traceCopy already reconciles
+// instead of merging when a repeated call site's source legitimately
+// differs (issue #95/#384). The smoke corpus now actively guards against
+// its recurrence.
 //
 // Finding 5 ("verification of MLIR module failed!") is no longer tolerated: it
 // was a default-constructed `val<bool>` carrying an `i32` trace stamp (its
@@ -131,8 +142,7 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	// exactly one of these strings when ENABLE_STACKTRACE actually resolves
 	// symbols (it always did in this environment) -- match on prefix instead
 	// of exact equality, the same way the "Key $" case already does.
-	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") ||
-	       f.what.starts_with("Invalid trace: no Return operation was recorded.") || f.what.starts_with("Key $");
+	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") || f.what.starts_with("Key $");
 }
 
 // Default corpus size for the PR-gate smoke run. Overridable via

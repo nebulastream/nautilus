@@ -426,6 +426,15 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(buffer, -1.0f) == 1.0f);
 	}
 
+	// Regression (differential fuzzer, issue #382): see
+	// issue382_siblingArgAssignCollision in ControlFlowFunctions.hpp.
+	SECTION("issue382_siblingArgAssignCollision") {
+		uint32_t buffer[1] = {0};
+		auto f = engine.registerFunction(issue382_siblingArgAssignCollision);
+		REQUIRE(f(buffer, 0u) == 0);
+		REQUIRE(f(buffer, 7u) == 0);
+	}
+
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
 		REQUIRE(f(42) == 42);
