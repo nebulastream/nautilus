@@ -417,6 +417,15 @@ void controlFlowTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(uint64_t(1), uint64_t(23)) == 119); // then-arm: zero-trip loop leaves acc == 0
 	}
 
+	// Regression (differential fuzzer, issue #384): see
+	// issue384_traceFollowDesync in ControlFlowFunctions.hpp.
+	SECTION("issue384_traceFollowDesync") {
+		float buffer[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+		auto f = engine.registerFunction(issue384_traceFollowDesync);
+		REQUIRE(f(buffer, 1.0f) == 2.0f);
+		REQUIRE(f(buffer, -1.0f) == 1.0f);
+	}
+
 	SECTION("chainedIf100") {
 		auto f = engine.registerFunction(chainedIf100);
 		REQUIRE(f(42) == 42);
