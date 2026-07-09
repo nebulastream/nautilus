@@ -96,6 +96,11 @@ private:
 		}
 
 	private:
+		/// Increment currentRegister, throwing a RuntimeException instead of
+		/// silently overflowing the 16-bit counter once SHRT_MAX registers
+		/// have been allocated.
+		short allocNewRegister();
+
 		short currentRegister = 0;
 		std::vector<short> freeList;
 		std::unordered_set<short> pinned;

@@ -434,9 +434,10 @@ never runs for it and it contributes a single `default` peer.
 These are per-pass toggles that keep constant folding **on**, so the IR stays
 bounded. There is deliberately **no** blanket `ir.runPasses=false` peer:
 disabling the whole pipeline also disables constant folding, and the resulting
-unoptimized IR of a large generated program overruns the BC backend's 16-bit
-register file (see [Known findings](#known-findings)) — a pre-existing
-scalability crash unrelated to the miscompiles this fuzzer hunts.
+unoptimized IR of a large generated program can exceed the BC backend's
+32767-register limit (`BCLoweringProvider::RegisterProvider::allocRegister()`
+throws a `RuntimeException` rather than overflowing) — a scalability limit
+unrelated to the miscompiles this fuzzer hunts.
 
 A finding records **which** permutation disagreed (the `config` field on
 `Finding`, printed by the harness and part of the `--survey` bucket key), so an
@@ -532,24 +533,6 @@ same tweak to `makeEngine(backend, tweak)` (e.g.
 in the regression test, or it will not reproduce.
 
 ## Known findings
-
-The [config sweep](#config-sweep) itself surfaced a pre-existing BC-backend
-scalability crash while it was being built. An early version of the sweep
-included a blanket `ir.runPasses=false` peer; on a large generated `f64`
-arity-4 program (deeply nested `Cast`/`If`/`Loop`), turning the *whole* IR
-pipeline off — constant folding included — leaves an unoptimized IR with tens
-of thousands of live SSA values. The BC backend indexes its register file with
-16-bit `short`s (`OpCode`/`Code::arguments` in
-`compiler/backends/bc/ByteCode.hpp`), so the register index overflows past
-32767 and `BCLoweringProvider::lower` writes out of bounds, corrupting a
-`bc::Code` vector's control block — the process dies in `Code::~Code()` freeing
-a garbage pointer (a SIGSEGV/`free(0x1)`, no differential report). This is a
-BC register-space limit, not a miscompile, and the optimization passes normally
-keep the IR well under it; it is orthogonal to what this fuzzer hunts. The
-sweep therefore does **not** expose `ir.runPasses=false` — it uses per-pass
-toggles that keep constant folding on (see [Config sweep](#config-sweep)) — and
-the BC 16-bit-register limit is left to be fixed (graceful error, or a wider
-index) as a separate change.
 
 On its first run this fuzzer reproduces a real bug: the IR constant-folding pass
 folds unsigned integer comparison/division/modulo/right-shift with **signed**
