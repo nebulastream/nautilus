@@ -15,7 +15,6 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <new>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,11 +56,8 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
  * - Each variable ID is mixed with a constant multiplier for better hash distribution
  * - The hash incorporates both variable identity (ID) and reference count
  * - Uses unordered_map for sparse storage (only allocates for variables that exist)
- * - Map nodes are bump-allocated from an internal common::Arena and entries are erased
- *   when their count reaches zero, so the live entry set stays bounded by the peak
- *   number of alive variables instead of growing with every value ref ever seen. The
- *   arena itself is bulk-reclaimed by reset(), which resume() calls after every
- *   symbolic-execution iteration, so per-iteration node churn does not accumulate.
+ * - Entries are erased when their count reaches zero, so the map stays bounded by the
+ *   peak number of alive variables instead of growing with every value ref ever seen
  *
  * Performance characteristics:
  * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
@@ -73,47 +69,7 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
-	// Allocator adapter that backs the counts map's nodes with nautilus's standard
-	// common::Arena (the same bump-pointer pool used for Block / TraceOperation).
-	// Arena only supports bulk reclamation, not freeing a single node, so deallocate()
-	// for a node is a no-op: the actual reclaim happens when AliveVariableHash::reset()
-	// calls arena.softReset(), which resume() does after every symbolic-execution
-	// iteration. Bucket arrays (n > 1, resized rarely) go through the regular heap
-	// instead, so a softReset() can never invalidate memory the map still references.
-	template <typename T>
-	struct ArenaAllocator {
-		using value_type = T;
-		Arena* arena;
-
-		explicit ArenaAllocator(Arena* arena) noexcept : arena(arena) {
-		}
-		template <typename U>
-		ArenaAllocator(const ArenaAllocator<U>& other) noexcept : arena(other.arena) {
-		}
-		template <typename U>
-		bool operator==(const ArenaAllocator<U>& other) const noexcept {
-			return arena == other.arena;
-		}
-
-		T* allocate(std::size_t n) {
-			if (n == 1) {
-				return static_cast<T*>(arena->allocate(sizeof(T), alignof(T)));
-			}
-			return static_cast<T*>(::operator new(n * sizeof(T)));
-		}
-		void deallocate(T* p, std::size_t n) noexcept {
-			if (n != 1) {
-				::operator delete(p);
-			}
-		}
-	};
-
-	using CountsMap = std::unordered_map<uint32_t, uint32_t, std::hash<uint32_t>, std::equal_to<uint32_t>,
-	                                     ArenaAllocator<std::pair<const uint32_t, uint32_t>>>;
-
-	Arena arena; // Must be declared before counts so it outlives the map's nodes.
-	CountsMap counts {0, std::hash<uint32_t> {}, std::equal_to<uint32_t> {},
-	                  ArenaAllocator<std::pair<const uint32_t, uint32_t>> {&arena}};
+	std::unordered_map<uint32_t, uint32_t> counts;
 	uint64_t alive_hash = 0;
 
 public:
@@ -190,18 +146,16 @@ public:
 	/**
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
+	 * This efficiently clears all counts without creating a temporary object.
 	 * Since decrement() erases entries when they reach zero, a balanced trace iteration
-	 * already leaves the map empty; the emptiness check (rather than a hash check) also
-	 * guards against the rare XOR collision where live entries hash to 0. clear() runs
-	 * first so every node is destroyed (and its arena-backed deallocate() no-op invoked)
-	 * before softReset() bulk-invalidates the arena's bump-allocated node storage.
+	 * leaves the map empty and this is a no-op. The emptiness check (rather than a hash
+	 * check) also guards against the rare XOR collision where live entries hash to 0.
 	 */
 	inline void reset() noexcept {
 		if (!counts.empty()) {
 			counts.clear();
 		}
 		alive_hash = 0;
-		arena.softReset();
 	}
 };
 
