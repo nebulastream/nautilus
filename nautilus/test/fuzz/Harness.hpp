@@ -64,10 +64,10 @@ inline std::vector<Config> configs() {
 		// Individual default-ON optimization passes flipped OFF, each isolating a
 		// distinct lowering path. NOTE: we deliberately do NOT expose a blanket
 		// `ir.runPasses=false` -- that also disables constant folding, and the
-		// resulting unoptimized IR of a large generated program overruns the BC
-		// backend's 16-bit (`short`) register file (see README.md "Known
-		// findings"); these per-pass toggles keep constant folding on, so the IR
-		// stays bounded while still exercising the un-optimized path.
+		// resulting unoptimized IR of a large generated program can exceed the BC
+		// backend's 32767-register limit (see README.md "Config sweep"); these
+		// per-pass toggles keep constant folding on, so the IR stays bounded while
+		// still exercising the un-optimized path.
 		result.push_back({backend, "no-dead-code-elim", [](engine::Options& o) {
 			                  o.setOption("ir.disableDeadCodeElimination", true);
 		                  }});

@@ -4,7 +4,9 @@
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <cassert>
+#include <climits>
 #include <utility>
 
 namespace nautilus::compiler::bc {
@@ -94,6 +96,13 @@ BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& fu
 	return ctx.process();
 }
 
+short BCLoweringProvider::RegisterProvider::allocNewRegister() {
+	if (currentRegister == SHRT_MAX) {
+		throw RuntimeException("BC backend register file exhausted (32767); reduce kernel size or enable IR passes");
+	}
+	return currentRegister++;
+}
+
 short BCLoweringProvider::RegisterProvider::allocRegister() {
 	// Reuse freed registers if available
 	if (!freeList.empty()) {
@@ -102,7 +111,7 @@ short BCLoweringProvider::RegisterProvider::allocRegister() {
 		return reg;
 	}
 	// Otherwise allocate a new register
-	return currentRegister++;
+	return allocNewRegister();
 }
 
 short BCLoweringProvider::RegisterProvider::allocPinnedRegister() {
@@ -110,13 +119,13 @@ short BCLoweringProvider::RegisterProvider::allocPinnedRegister() {
 	// pre-initialised from the default register file on every
 	// invocation and must never be clobbered by another operation
 	// during the run, so the slot cannot be taken from the free list.
-	short reg = currentRegister++;
+	short reg = allocNewRegister();
 	pinned.insert(reg);
 	return reg;
 }
 
 short BCLoweringProvider::RegisterProvider::allocFreshRegister() {
-	return currentRegister++;
+	return allocNewRegister();
 }
 
 void BCLoweringProvider::RegisterProvider::freeRegister(short reg) {
