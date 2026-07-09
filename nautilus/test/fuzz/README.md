@@ -786,17 +786,29 @@ the very first CI run -- confirmed independent of that PR (reproduces from a
 clean `main` checkout the same way):
 
 5. **MLIR module verification failure** (`"verification of MLIR module
-   failed!"`): a `u16`/`mixed`-shape kernel --
+   failed!"`) -- **now fixed** (nebulastream/nautilus#377): a `u16`/`mixed`-shape
+   kernel --
    ```
    ((((((mem + idx(39420u16)) + idx((i64)(if(p1 != 0, p1, p2)))) <= (mem + idx((uintptr_t)((mem + idx(60247u16)))))) ? 1 : 0) * ((((mem < mem) ? 1 : 0) == p0) ? 1 : 0)) - ((mem <= (mem - idx((while(init=(p1 << 3044u16), cond=cont(cond=3715u16, value=29463u16), body=(*(mem) = p2)) ^ 11218u16)))) ? 1 : 0))
    ```
-   -- reaches `MLIRLoweringProvider`'s `cf.cond_br` emission
+   -- reached `MLIRLoweringProvider`'s `cf.cond_br` emission
    (`resolveOperand(ifOp->getValue(), frame)`) with an `i32` operand where MLIR
-   requires `i1`, so MLIR's own verifier rejects the module before LLVM
-   lowering ever runs (`'cf.cond_br' op operand #0 must be 1-bit signless
-   integer, but got 'i32'`). Root-causing exactly which sub-expression's
-   condition loses its `Type::b` stamp on the way to the branch is out of
-   scope for a CI-wiring change; tracked in nebulastream/nautilus#377.
+   requires `i1`, so MLIR's own verifier rejected the module before LLVM
+   lowering ever ran (`'cf.cond_br' op operand #0 must be 1-bit signless
+   integer, but got 'i32'`). Root cause: `val<bool>`'s **default constructor**
+   (`include/nautilus/val_bool.hpp`) seeded its initial `false` state via an
+   `int` literal -- `tracing::traceConstant(0)` deduces `T = int`, so the
+   constant was stamped `Type::i32` rather than `Type::b`, giving every
+   default-constructed `val<bool>` an `i32` trace state. The `while` body's
+   `cont` (`Kind::LoopContinue`) drives the enclosing loop's default-constructed
+   `val<bool>` break/continue signal (`TracedLoopSignal` in `EvalNautilus.hpp`),
+   so the `if (signal)` post-body check branched on that mis-stamped `i32`.
+   Fixed by seeding the default state with a `bool` literal
+   (`tracing::traceConstant(false)`), matching how `val(bool)` and
+   `val_arith.hpp`'s `traceConstant<raw_type>(0)` already stamp their constants.
+   Pinned by `defaultConstructedBoolBranch` in `test/common/BoolOperations.hpp`
+   (exercised across every backend by `BoolExecutionTest.cpp`), and the smoke
+   corpus no longer tolerates this exception.
 
 Investigating finding 4 above also caught the tolerance filter itself in
 `ReplayMain.cpp`'s `isKnownPreExistingFinding` failing silently: it compared

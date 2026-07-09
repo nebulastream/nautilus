@@ -47,6 +47,26 @@ val<bool> boolIfElse(val<bool> x, val<bool> z) {
 	}
 }
 
+// Regression for #377: a default-constructed val<bool> must carry a boolean
+// (i1) trace stamp, not i32. The default constructor used to seed its initial
+// `false` state through an `int` literal (traceConstant(0)), which stamped the
+// value i32 instead of Type::b. Branching on such a value then fed a non-i1
+// operand into the MLIR backend's `cf.cond_br`, and MLIR's own verifier
+// rejected the module ("operand #0 must be 1-bit signless integer, but got
+// 'i32'"). This mirrors the loop break/continue signal shape the differential
+// fuzzer first hit: a default-constructed val<bool>, conditionally assigned,
+// then used as a branch condition.
+val<bool> defaultConstructedBoolBranch(val<int32_t> x) {
+	val<bool> flag;
+	if (x == 42) {
+		flag = true;
+	}
+	if (flag) {
+		return true;
+	}
+	return false;
+}
+
 val<bool> eval(val<bool> x, val<bool> z) {
 	return x == z;
 }

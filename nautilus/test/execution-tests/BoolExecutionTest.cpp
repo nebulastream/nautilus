@@ -77,6 +77,15 @@ void boolTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(true, false) == false);
 	}
 
+	// Regression for #377: default-constructed val<bool> used as a branch
+	// condition must lower to an i1 in the MLIR backend (was stamped i32).
+	SECTION("defaultConstructedBoolBranch") {
+		auto f = engine.registerFunction(defaultConstructedBoolBranch);
+		REQUIRE(f(42) == true);
+		REQUIRE(f(0) == false);
+		REQUIRE(f(7) == false);
+	}
+
 	SECTION("boolNestedFunction") {
 		auto f = engine.registerFunction(boolNestedFunction);
 		REQUIRE(f(true, true) == true);
