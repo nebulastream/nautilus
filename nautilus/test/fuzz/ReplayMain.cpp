@@ -96,12 +96,13 @@ std::vector<uint8_t> randomBuffer() {
 //      hardened (see SSACreationPhase.cpp) to throw this catchable exception
 //      instead. The underlying "why is the Return missing" tracing defect is
 //      still open.
-//   3. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
-//      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
-//      SSA value merged across two Kind::If arms, reachable with nested
-//      Kind::If inside a Kind::Call argument -- the same *class* of
-//      merged-value bookkeeping bug as the already-fixed BC/AsmJit
-//      instances documented below, just a shape those fixes didn't cover.
+//   3. "Key $N does not exists in frame." -- confirmed live (issue #383),
+//      root-caused to a tracer bug in loop back-edge recording for a
+//      provably-zero-trip Kind::Loop whose body contains a Kind::Call
+//      argument with a Kind::LoopContinue, one layer upstream of any
+//      lowering provider (see README.md "Known findings" #3 for the full
+//      writeup and test/fuzz/regressions/finding3-loop-call-continue.bin
+//      for a minimized, directly replayable reproducer).
 //   4. "std::get: wrong index for variant" -- an internal std::variant
 //      accessed through the wrong alternative somewhere in the cpp backend's
 //      lowering of a voidReturn-shaped kernel (issue #355/#363) whose AST
