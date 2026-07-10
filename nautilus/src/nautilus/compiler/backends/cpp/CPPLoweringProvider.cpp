@@ -249,23 +249,49 @@ void CPPLoweringProvider::LoweringContext::process(const ir::BasicBlockInvocatio
                                                    RegisterFrame& parentFrame) {
 	auto blockInputArguments = bi.getArguments();
 	auto& blockTargetArguments = bi.getBlock()->getArguments();
-	blocks[blockIndex] << "// prepare block arguments\n";
-	blocks[blockIndex] << "{\n";
-	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
-		auto blockArgument = blockInputArguments[i]->getIdentifier();
-		blocks[blockIndex] << getType(blockTargetArguments[i]->getStamp()) << " temp_" << i << " = "
-		                   << parentFrame.getValue(blockArgument) << ";\n";
+	if (blockInputArguments.empty()) {
+		return;
 	}
-	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
-		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
 
+	std::vector<std::string> sourceVars(blockInputArguments.size());
+	std::vector<std::string> targetVars(blockInputArguments.size());
+	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
+		sourceVars[i] = parentFrame.getValue(blockInputArguments[i]->getIdentifier());
+
+		auto blockTargetArgument = blockTargetArguments[i]->getIdentifier();
 		if (!parentFrame.contains(blockTargetArgument)) {
 			auto var = getVariable(blockTargetArgument);
 			parentFrame.setValue(blockTargetArgument, var);
 			blockArguments << getType(blockTargetArguments[i]->getStamp()) << " " << var << ";\n";
 		}
+		targetVars[i] = parentFrame.getValue(blockTargetArgument);
+	}
 
-		blocks[blockIndex] << parentFrame.getValue(blockTargetArgument) << " = " << "temp_" << i << ";\n";
+	bool needsAssignment = false;
+	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
+		if (sourceVars[i] != targetVars[i]) {
+			needsAssignment = true;
+			break;
+		}
+	}
+	if (!needsAssignment) {
+		return;
+	}
+
+	blocks[blockIndex] << "// prepare block arguments\n";
+	blocks[blockIndex] << "{\n";
+	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
+		if (sourceVars[i] == targetVars[i]) {
+			continue;
+		}
+		blocks[blockIndex] << getType(blockTargetArguments[i]->getStamp()) << " temp_" << i << " = " << sourceVars[i]
+		                   << ";\n";
+	}
+	for (uint64_t i = 0; i < blockInputArguments.size(); i++) {
+		if (sourceVars[i] == targetVars[i]) {
+			continue;
+		}
+		blocks[blockIndex] << targetVars[i] << " = " << "temp_" << i << ";\n";
 	}
 	blocks[blockIndex] << "}\n";
 }
