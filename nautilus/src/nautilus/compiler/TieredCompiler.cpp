@@ -10,8 +10,13 @@
 
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <chrono>
 #include <thread>
+
+#ifdef ENABLE_TRACING
+#include "nautilus/compiler/ir/util/IRSerializationUtil.hpp"
+#endif
 
 namespace nautilus::compiler {
 
@@ -161,6 +166,54 @@ void TieredJITCompiler::compileModule(std::list<CompilableFunction>& functions,
 	promoteAsync(state, std::move(ir), moduleOptions);
 }
 
+std::unique_ptr<Executable> TieredJITCompiler::compileIRTier(const std::shared_ptr<ir::IRGraph>& ir,
+                                                             const engine::ModuleOptions& moduleOptions,
+                                                             const std::string& backend,
+                                                             const std::string& tierLabel) const {
+	auto statistics = std::make_shared<CompilationStatistics>();
+	const auto compilationStart = std::chrono::steady_clock::now();
+
+	auto executable = pipeline_.compileIR(ir, backend, moduleOptions, statistics.get());
+
+	statistics->recordTimingMs("compilation.totalMs", compilationStart);
+	statistics->set("tier", tierLabel);
+
+	if (moduleOptions.getOptionOrDefault("engine.logStatistics", false)) {
+		const auto id = statistics->find("compilation.unitId") != nullptr
+		                    ? std::get<std::string>(*statistics->find("compilation.unitId"))
+		                    : std::string {};
+		log::info("\n{}", statistics->formatReport(id, backend));
+	}
+
+	executable->setCompilationStatistics(std::static_pointer_cast<const CompilationStatistics>(std::move(statistics)));
+	return executable;
+}
+
+std::string TieredJITCompiler::compileToSerializedIR(std::list<CompilableFunction>& functions,
+                                                     const engine::ModuleOptions& moduleOptions) const {
+#ifdef ENABLE_TRACING
+	auto ir = pipeline_.compileToIR(functions, moduleOptions);
+	return ir::serializeIR(*ir);
+#else
+	(void) functions;
+	(void) moduleOptions;
+	throw RuntimeException("Serializing IR requires a build with ENABLE_TRACING");
+#endif
+}
+
+void TieredJITCompiler::compileIRModule(std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions,
+                                        std::shared_ptr<engine::details::ModuleState> state) const {
+	if (!config_.backgroundPromotion || config_.tier0.backend == engine::INTERPRETER_BACKEND) {
+		// Single-tier, or interpreter tier 0: a loaded module has no original
+		// callables to run interpreted, so compile tier 1 synchronously.
+		state->executable = compileIRTier(ir, moduleOptions, config_.tier1.backend, "tier1");
+		return;
+	}
+	// Two-tier: fast tier-0 now, then promote to tier-1 in the background.
+	state->executable = compileIRTier(ir, moduleOptions, config_.tier0.backend, "tier0");
+	promoteAsync(state, std::move(ir), moduleOptions);
+}
+
 void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState> state, std::shared_ptr<ir::IRGraph> ir,
                                      engine::ModuleOptions options) const {
 	if (!ir) {
@@ -268,6 +321,19 @@ std::unique_ptr<Executable> TieredJITCompiler::compileTier(std::list<CompilableF
 }
 void TieredJITCompiler::compileModule(std::list<CompilableFunction>&, const engine::ModuleOptions&,
                                       std::shared_ptr<engine::details::ModuleState>) const {
+	throw RuntimeException("Jit not initialised");
+}
+std::unique_ptr<Executable> TieredJITCompiler::compileIRTier(const std::shared_ptr<ir::IRGraph>&,
+                                                             const engine::ModuleOptions&, const std::string&,
+                                                             const std::string&) const {
+	throw RuntimeException("Jit not initialised");
+}
+std::string TieredJITCompiler::compileToSerializedIR(std::list<CompilableFunction>&,
+                                                     const engine::ModuleOptions&) const {
+	throw RuntimeException("Jit not initialised");
+}
+void TieredJITCompiler::compileIRModule(std::shared_ptr<ir::IRGraph>, const engine::ModuleOptions&,
+                                        std::shared_ptr<engine::details::ModuleState>) const {
 	throw RuntimeException("Jit not initialised");
 }
 void TieredJITCompiler::promoteAsync(std::weak_ptr<engine::details::ModuleState>, std::shared_ptr<ir::IRGraph>,

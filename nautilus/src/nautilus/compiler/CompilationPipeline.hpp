@@ -17,6 +17,10 @@ namespace ir {
 class IRGraph;
 }
 
+/// Creates a fresh, unique compilation-unit id (timestamp + random suffix).
+/// Only available in builds with ENABLE_COMPILER and ENABLE_TRACING.
+std::string createCompilationUnitID();
+
 /**
  * @brief Frontend + backend compilation pipeline shared by all tiers.
  *

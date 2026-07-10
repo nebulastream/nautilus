@@ -97,6 +97,24 @@ public:
 	void compileModule(std::list<CompilableFunction>& functions, const engine::ModuleOptions& moduleOptions,
 	                   std::shared_ptr<engine::details::ModuleState> state) const override;
 
+	/**
+	 * @brief Trace @p functions and return their IR as portable text (see
+	 * JITCompiler::compileToSerializedIR).
+	 */
+	[[nodiscard]] std::string compileToSerializedIR(std::list<CompilableFunction>& functions,
+	                                                const engine::ModuleOptions& moduleOptions) const override;
+
+	/**
+	 * @brief Compile a pre-built IR graph into @p state, skipping tracing.
+	 *
+	 * Runs the same tier logic as compileModule: tier 0 synchronously, then
+	 * background tier-1 promotion. An interpreter tier 0 falls back to a
+	 * synchronous tier-1 compile because a loaded module has no original
+	 * callables to interpret.
+	 */
+	void compileIRModule(std::shared_ptr<ir::IRGraph> ir, const engine::ModuleOptions& moduleOptions,
+	                     std::shared_ptr<engine::details::ModuleState> state) const override;
+
 	std::string getName() const override;
 	const engine::Options& getOptions() const override;
 
@@ -121,6 +139,15 @@ private:
 	                                                      const engine::ModuleOptions& moduleOptions,
 	                                                      const std::string& backend, const std::string& tierLabel,
 	                                                      std::shared_ptr<ir::IRGraph>& outIR) const;
+
+	/**
+	 * @brief Compile the pre-built @p ir with the named @p backend, mirroring
+	 * compileTier without the tracing frontend.
+	 */
+	[[nodiscard]] std::unique_ptr<Executable> compileIRTier(const std::shared_ptr<ir::IRGraph>& ir,
+	                                                        const engine::ModuleOptions& moduleOptions,
+	                                                        const std::string& backend,
+	                                                        const std::string& tierLabel) const;
 
 	/**
 	 * @brief Start background tier-1 promotion of @p ir targeting @p state.
