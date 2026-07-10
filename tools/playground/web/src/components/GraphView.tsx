@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import { parse } from '@nautilus-ir/parser';
 import { cfgFor } from '@nautilus-ir/cfgFromParsedIr';
@@ -32,6 +32,29 @@ export function GraphView({ stages }: GraphViewProps) {
 	const [svg, setSvg] = useState<string>('');
 	const [error, setError] = useState<string>('');
 	const [zoom, setZoom] = useState(1);
+	const canvasRef = useRef<HTMLDivElement>(null);
+
+	const fitToView = () => {
+		const canvas = canvasRef.current;
+		const rendered = canvas?.querySelector('svg');
+		if (!canvas || !rendered) {
+			return;
+		}
+		const graphWidth = rendered.getBoundingClientRect().width / zoom;
+		if (graphWidth > 0) {
+			setZoom(Math.min(2, Math.max(0.25, (canvas.clientWidth - 40) / graphWidth)));
+		}
+	};
+
+	const downloadSvg = () => {
+		const blob = new Blob([svg], { type: 'image/svg+xml' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `${activeFunction ?? 'cfg'}-${activeStage?.key ?? 'ir'}.svg`;
+		link.click();
+		URL.revokeObjectURL(url);
+	};
 
 	const activeStage = irStages.find((s) => s.key === stageKey) ?? irStages[irStages.length - 1];
 
@@ -108,13 +131,21 @@ export function GraphView({ stages }: GraphViewProps) {
 					</select>
 				</label>
 				<span className="graph-zoom">
-					<button onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}>−</button>
+					<button onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} aria-label="Zoom out">
+						−
+					</button>
 					<span>{Math.round(zoom * 100)}%</span>
-					<button onClick={() => setZoom((z) => Math.min(4, z + 0.25))}>+</button>
+					<button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} aria-label="Zoom in">
+						+
+					</button>
+					<button onClick={fitToView}>Fit</button>
+					<button onClick={downloadSvg} disabled={!svg}>
+						Download SVG
+					</button>
 				</span>
 			</div>
 			{error && <div className="graph-error">Graph rendering failed: {error}</div>}
-			<div className="graph-canvas">
+			<div className="graph-canvas" ref={canvasRef}>
 				<div
 					className="graph-svg"
 					style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}

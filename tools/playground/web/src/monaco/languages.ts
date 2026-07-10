@@ -47,6 +47,8 @@ export function registerLanguages(): void {
 		tokenizer: {
 			root: [
 				[/\/\/.*$/, 'comment'],
+				// Per-function section header emitted by TraceModule::toString().
+				[/^[A-Z0-9_]+:$/, 'entity.name.function'],
 				[/^\s*B\d+\b/, 'type.identifier'],
 				[/\bBlock_?\d+\b/, 'type.identifier'],
 				[
