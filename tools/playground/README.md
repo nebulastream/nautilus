@@ -136,9 +136,25 @@ The result payload contains ordered `stages` (`{key, title, phase, lang,
 order, text, truncated}`), `diagnostics` (failure phase + captured
 stdout/stderr; clang errors map onto editor squiggles), and `timings`.
 
+## Plugins
+
+The runner image ships the `nautilus-std`, `nautilus-simd`, and
+`nautilus-specialization` plugins (whole-archive-linked into
+`libplayground_core.so` so their registration initializers run), and their
+headers are staged into the user include path — playground code can use
+`#include <nautilus/std/vector.h>`, `<nautilus/std/cmath.h>`,
+`<nautilus/vector.hpp>` (SIMD), and `<nautilus/specialization/...>`. The
+inlining plugin is excluded: it requires a Clang pass plugin attached to the
+user TU at compile time, which does not fit the prebuilt-core model.
+
+## Permalinks
+
+The Share button compresses the full editor state (source, backend, pass
+options) into the URL fragment as `#code=<lz-string>` and copies the link.
+Fragments never reach the server; opening a shared link restores the state
+and compiles it automatically.
+
 ## Not in v1 (planned)
 
-- Side-by-side diff between consecutive pass snapshots (Monaco diff editor)
-- Shareable permalinks (`#code=<lz-string>`)
-- Nautilus plugins (std/simd/specialization) in the runner image
 - Dark mode
+- Execution panel (run compiled functions with user-provided arguments)

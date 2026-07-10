@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@mantine/core": "^9.4.1",
 		"@mantine/hooks": "^9.4.1",
+		"lz-string": "^1.5.0",
 		"mermaid": "^11.0.0",
 		"monaco-editor": "^0.50.0",
 		"react": "^19.2.7",

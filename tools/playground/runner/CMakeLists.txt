@@ -16,6 +16,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(ENABLE_ASMJIT_BACKEND ON CACHE BOOL "" FORCE)
 set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+# Shipped plugins, so user code can #include <nautilus/std/...>,
+# <nautilus/vector.hpp> (SIMD), and <nautilus/specialization/...>. The
+# inlining plugin is excluded: it needs a Clang pass plugin attached to the
+# user TU at compile time, which does not fit the prebuilt-core model.
+set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../.. ${CMAKE_CURRENT_BINARY_DIR}/nautilus)
 
@@ -26,15 +33,20 @@ else ()
     message(FATAL_ERROR "The playground runner requires GCC or Clang (whole-archive linking).")
 endif ()
 
-# libplayground_core.so: the whole nautilus static library (plus its
-# transitive MLIR/backend dependencies) pre-linked into one shared library.
-# Whole-archive is required — without it the linker would only pull the
-# archive members referenced by core.cpp, i.e. nothing, and the per-request
-# link of user_module.o would miss every nautilus symbol. Pre-linking once at
-# image build time makes the per-request link sub-second.
+# libplayground_core.so: the whole nautilus static library and the shipped
+# plugins (plus their transitive MLIR/backend dependencies) pre-linked into
+# one shared library. Whole-archive is required — without it the linker
+# would only pull the archive members referenced by core.cpp, i.e. nothing,
+# and the per-request link of user_module.o would miss every nautilus
+# symbol. The plugins additionally rely on whole-archive to keep their
+# static-initializer registration TUs (StdPluginInit.cpp etc.), exactly as
+# example/CMakeLists.txt documents. Pre-linking once at image build time
+# makes the per-request link sub-second.
 add_library(playground_core SHARED core.cpp)
 target_link_libraries(playground_core PUBLIC
-        ${WHOLE_ARCHIVE_PREFIX} nautilus ${WHOLE_ARCHIVE_SUFFIX})
+        ${WHOLE_ARCHIVE_PREFIX}
+        nautilus nautilus-std nautilus-simd nautilus-specialization
+        ${WHOLE_ARCHIVE_SUFFIX})
 
 # libplayground_driver.a: the prebuilt driver holding main(). The per-request
 # link is `user_module.o + libplayground_driver.a + libplayground_core.so`;
@@ -55,6 +67,15 @@ add_custom_target(playground-dist ALL
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:playground_driver> ${PLAYGROUND_DIST}/lib/
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 ${CMAKE_CURRENT_SOURCE_DIR}/../../../nautilus/include/nautilus
+                ${PLAYGROUND_DIST}/include/nautilus
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../../plugins/std/include/nautilus
+                ${PLAYGROUND_DIST}/include/nautilus
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../../plugins/simd/include/nautilus
+                ${PLAYGROUND_DIST}/include/nautilus
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../../plugins/specialization/include/nautilus
                 ${PLAYGROUND_DIST}/include/nautilus
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_CURRENT_BINARY_DIR}/nautilus/nautilus/include/nautilus/config.hpp

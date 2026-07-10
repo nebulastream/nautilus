@@ -3,6 +3,7 @@ import { Badge, Button, CopyButton, Group, Select, Switch, Text } from '@mantine
 import { parse } from '@nautilus-ir/parser';
 import { makeTextDocument } from './lib/vscodeShim';
 import { splitTraceSections } from './lib/traceSections';
+import { decodeShareHash, encodeShareHash } from './lib/permalink';
 import { compile, fetchExamples, type Backend, type CompileOptions, type CompileResult, type Example, type Stage } from './api';
 import { Editor, type EditorMarker } from './components/Editor';
 import { Toolbar, type StatusKind } from './components/Toolbar';
@@ -86,21 +87,34 @@ export function App() {
 		}
 	};
 
-	// First run: load the default example and compile it automatically so a
-	// visitor lands on a live pipeline. The server-side result cache makes
-	// this effectively free; the guard keeps user edits untouched.
+	// First run: a `#code=` permalink takes precedence — restore and compile
+	// the shared snippet. Otherwise load the default example and compile it
+	// automatically so a visitor lands on a live pipeline. The server-side
+	// result cache makes this effectively free; the guard keeps user edits
+	// untouched.
 	useEffect(() => {
 		void fetchExamples().then((loaded) => {
 			setExamples(loaded);
 			setStatus('ready');
-			if (!autoCompiledRef.current && !userEditedRef.current) {
-				autoCompiledRef.current = true;
-				const example = loaded.find((x) => x.id === DEFAULT_EXAMPLE_ID) ?? loaded[0];
-				if (example) {
-					setSource(example.source);
-					setExampleId(example.id);
-					void doCompile(example.source);
-				}
+			if (autoCompiledRef.current || userEditedRef.current) {
+				return;
+			}
+			autoCompiledRef.current = true;
+			const shared = decodeShareHash(window.location.hash);
+			if (shared) {
+				setSource(shared.source);
+				setBackend(shared.backend);
+				setOptions(shared.options);
+				backendRef.current = shared.backend;
+				optionsRef.current = shared.options;
+				void doCompile(shared.source);
+				return;
+			}
+			const example = loaded.find((x) => x.id === DEFAULT_EXAMPLE_ID) ?? loaded[0];
+			if (example) {
+				setSource(example.source);
+				setExampleId(example.id);
+				void doCompile(example.source);
 			}
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,6 +144,12 @@ export function App() {
 	const resolvedKey = activeKey || stages[0]?.key || '';
 	const activeStage = stages.find((s) => s.key === resolvedKey);
 	const selectedExample = examples.find((x) => x.id === exampleId);
+
+	const makeShareUrl = () => {
+		const hash = encodeShareHash({ source: sourceRef.current, backend: backendRef.current, options: optionsRef.current });
+		window.history.replaceState(null, '', hash);
+		return `${window.location.origin}${window.location.pathname}${hash}`;
+	};
 	const statusDetail = result
 		? `queue ${result.timings.queueMs} ms · sandbox ${result.timings.sandboxMs} ms · total ${result.timings.totalMs} ms`
 		: undefined;
@@ -150,6 +170,7 @@ export function App() {
 					void doCompile(example.source);
 				}}
 				onCompile={() => void doCompile()}
+				makeShareUrl={makeShareUrl}
 				status={status}
 				statusKind={statusKind}
 				statusDetail={statusDetail}

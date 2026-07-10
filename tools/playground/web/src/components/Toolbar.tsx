@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Anchor, Badge, Button, Checkbox, Divider, Group, Popover, Select, Text, Tooltip } from '@mantine/core';
 import { BACKENDS, type Backend, type CompileOptions, type Example } from '../api';
 
@@ -12,6 +13,8 @@ interface ToolbarProps {
 	selectedExampleId: string;
 	onExampleSelect: (example: Example) => void;
 	onCompile: () => void;
+	/** Builds the #code= permalink, updates the address bar, returns the URL. */
+	makeShareUrl: () => string;
 	status: string;
 	statusKind: StatusKind;
 	statusDetail?: string;
@@ -32,6 +35,26 @@ const STATUS_COLORS: Record<StatusKind, string> = {
 	done: 'nautilus',
 	failed: 'red',
 };
+
+function ShareButton({ makeShareUrl }: { makeShareUrl: () => string }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<Button
+			className="share-button"
+			size="xs"
+			variant="default"
+			onClick={() => {
+				const url = makeShareUrl();
+				void navigator.clipboard.writeText(url).then(() => {
+					setCopied(true);
+					setTimeout(() => setCopied(false), 1800);
+				});
+			}}
+		>
+			{copied ? 'Link copied ✓' : 'Share'}
+		</Button>
+	);
+}
 
 /** Stylised nautilus-shell spiral, drawn inline so the page stays self-contained. */
 function BrandMark() {
@@ -63,6 +86,7 @@ export function Toolbar({
 	selectedExampleId,
 	onExampleSelect,
 	onCompile,
+	makeShareUrl,
 	status,
 	statusKind,
 	statusDetail,
@@ -179,6 +203,7 @@ export function Toolbar({
 						SIGMOD ’24 paper
 					</Anchor>
 					<Divider orientation="vertical" />
+					<ShareButton makeShareUrl={makeShareUrl} />
 					<Tooltip label={statusDetail} disabled={!statusDetail} withArrow>
 						<Badge
 							className={`status-pill status-${statusKind}`}
