@@ -654,15 +654,16 @@ byte-stream enough that the fixed-seed smoke corpus (`nautilus-fuzz-replay`,
 no arguments) now reaches the *exact* call-stack-depth artifact predicted
 above -- this time through the **real** fuzz harness, not an ad hoc one --
 plus two further pre-existing defects, on a combined ~6.5% of the 2000-input
-corpus (129 findings via `--survey 2000`). All three are in shared
+corpus (129 findings via `--survey 2000`). All three were in shared
 tracer/IR infrastructure well outside `Kind::Call`'s own lowering (the actual
-subject of this expansion), so the smoke corpus tolerates exactly these three
-diagnosed exception strings (see `isKnownPreExistingFinding` in
-`ReplayMain.cpp`) without treating them as pass/fail signal; any other
-exception, or any value mismatch, still aborts the smoke corpus immediately,
-and `--survey` keeps every occurrence of all three individually visible
-(bucketed by backend/type/exact exception text, not merged into one
-backend/type bucket) for future investigation.
+subject of this expansion); the smoke corpus tolerated their diagnosed
+exception strings (see `isKnownPreExistingFinding` in `ReplayMain.cpp`)
+without treating them as pass/fail signal, while any other exception, or any
+value mismatch, still aborted the smoke corpus immediately, and `--survey`
+kept every occurrence individually visible (bucketed by backend/type/exact
+exception text, not merged into one backend/type bucket) for future
+investigation. One of the three (finding 2 below) is now fixed and no longer
+tolerated.
 
 1. **Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
    constant loop."`, ~126 of the 129 findings): the exact fragility the
@@ -687,24 +688,43 @@ backend/type bucket) for future investigation.
    `Kind::Call` diversity is what surfaces it, not anything specific to a
    given new callee's own marshalling.
 2. **Empty return list** (`"Invalid trace: no Return operation was
-   recorded."`, hardened from a crash): a kernel combining `Kind::If` with a
-   pointer `Store` and two nested `nautilus::invoke()` calls (concretely:
-   `narrowReturn(A, mix(p0 - (Store(...) + ptrSwap(mem, if(...))), B))`)
-   completed tracing without ever recording a `Return` operation.
-   `SSACreationPhase::getReturnBlock` (`SSACreationPhase.cpp`) called
-   `.front()` on that empty list -- undefined behavior, a real segfault on
-   every compiled backend, reproduced deterministically via
-   `nautilus-fuzz-replay` and isolated with `gdb`. Hardened here: an empty
-   return list now throws a catchable `RuntimeException` instead of reading
-   past the end of the vector. The underlying "why does this trace shape
-   never record a Return" defect is still open -- a standalone minimization
-   attempt (a small hand-written kernel with the same `if`/`Store`/nested-
-   `invoke()` shape) reproduced the unrelated `TagRecorder` call-stack-depth
-   artifact from finding 1 instead of this bug, confirming that artifact's
-   own "a trivial kernel crashes the same way through an ad hoc harness"
-   caveat and making this specific defect resistant to standalone
-   minimization; it is only reliably reproduced through the real fuzz/replay
-   harness's deeper call stack.
+   recorded."`) -- **now fixed** (nebulastream/nautilus#382): a kernel
+   combining `Kind::If` with a pointer `Store` and two nested
+   `nautilus::invoke()` calls (concretely: `narrowReturn(A, mix(p0 -
+   (Store(...) + ptrSwap(mem, if(...))), B))`) completed tracing without
+   ever recording a `Return` operation. `SSACreationPhase::getReturnBlock`
+   (`SSACreationPhase.cpp`) called `.front()` on that empty list --
+   undefined behavior, a real segfault on every compiled backend, first
+   hardened to throw a catchable `RuntimeException` instead of reading past
+   the end of the vector, and later root-caused and fixed outright.
+
+   Root cause, minimized down to `(i8)((sum3(0u32, ((uintptr_t)(mem) +
+   (*(mem) = if(0u32 != 0, 0u32, 0u32))), 0u32) + 0u32))`: `Tag` identity is
+   purely a call-stack return-address chain (`TagRecorder.cpp`) plus an
+   alive-variable footprint hash, so it carries no information about *which
+   variable* an operation touches. `evalNautilusCall`'s argument-evaluation
+   loop (`v[i] = evalNautilusGeneric(...)`) assigns each call argument
+   through the same loop-body call site; when two sibling arguments are
+   structurally identical (here, `sum3`'s literal-zero argument 0 and
+   argument 2), the second assignment reaches the identical tag already
+   recorded for the first -- despite writing to a *different* target array
+   slot. `LazyTraceContext::traceAssignment` (and its twin in
+   `ExceptionBasedTraceContext`) treated any tag match as a genuine
+   control-flow re-entry and forced a bogus merge back into the `if`'s own
+   condition block, discarding the call and the return that should have
+   followed. Fixed by comparing the target ref against the operation
+   already recorded at the matched tag: a mismatch means the collision is
+   coincidental, not a real revisit, so the assignment is now recorded
+   normally instead of merged -- mirroring how `traceConstant`/`traceCopy`
+   already reconcile instead of merging when a repeated call site's
+   *source* legitimately differs (issue #95/#384). A standalone
+   minimization attempt (a small hand-written kernel with the same
+   `if`/`Store`/nested-`invoke()` shape) used to reproduce the unrelated
+   `TagRecorder` call-stack-depth artifact from finding 1 instead of this
+   bug; that caveat no longer matters now that the underlying defect itself
+   is fixed. Pinned by `issue382_siblingArgAssignCollision` in
+   `ControlFlowFunctions.hpp`; the smoke corpus no longer tolerates this
+   exception.
 3. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
    a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
    providers) lookup miss for an SSA value merged across two `Kind::If` arms,
