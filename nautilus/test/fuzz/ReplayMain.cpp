@@ -65,35 +65,45 @@ std::vector<uint8_t> randomBuffer() {
 	return buf;
 }
 
-// Two pre-existing, out-of-scope tracer/IR limitations, both in shared
+// One pre-existing, out-of-scope tracer/IR limitation, in shared
 // infrastructure well outside Kind::Call's own lowering or the bool/enum
 // domains this fuzzer also adds (see README.md "Known findings" for the full
-// writeup of each). Widening Kind::Call's generation surface and adding the
-// bool/enum domains both reshuffle the byte-stream enough that the
-// fixed-seed smoke corpus below reaches both on a combined ~8.5% of
-// inputs; `--survey` buckets by backend/type/exact exception text (see the
-// key in survey() below) so every one of them stays individually visible and
-// triageable rather than silently folding into a single backend/type bucket.
-// Tolerated here, in the deterministic smoke corpus only, so these known
-// fragilities don't block the actual regression signal this corpus exists to
-// catch: any genuine value mismatch, or any other exception, still aborts
-// immediately.
+// writeup). Widening Kind::Call's generation surface and adding the
+// bool/enum domains reshuffle the byte-stream enough that the fixed-seed
+// smoke corpus below still reaches it on a small fraction of inputs;
+// `--survey` buckets by backend/type/exact exception text (see the key in
+// survey() below) so it stays individually visible and triageable rather
+// than silently folding into a single backend/type bucket. Tolerated here,
+// in the deterministic smoke corpus only, so this known fragility doesn't
+// block the actual regression signal this corpus exists to catch: any
+// genuine value mismatch, or any other exception, still aborts immediately.
 //
-//   1. "Invalid trace. This is maybe caused by a constant loop." --
-//      ExecutionTrace::processControlFlowMerge treats a Tag/Snapshot match
-//      against the block currently being built as an unconditional fatal
-//      error, but Tag identity is a raw __builtin_return_address chain
-//      (TagRecorder.cpp) that depends only on the *sequence of recursive
-//      call sites* a tracing evaluator takes to reach an `if` -- not on
-//      which logical AST node it is -- so two unrelated Kind::If nodes
-//      reached via the same shape of recursive descent can collide onto the
-//      same Tag.
-//   2. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
+//   1. "Key $N does not exists in frame." -- a Frame<K,V> (compiler/Frame.hpp,
 //      shared by the cpp/bc/asmjit lowering providers) lookup miss for an
 //      SSA value merged across two Kind::If arms, reachable with nested
 //      Kind::If inside a Kind::Call argument -- the same *class* of
 //      merged-value bookkeeping bug as the already-fixed BC/AsmJit
 //      instances documented below, just a shape those fixes didn't cover.
+//
+// Finding "Invalid trace. This is maybe caused by a constant loop." is no
+// longer tolerated either (issue #381): ExecutionTrace::processControlFlowMerge
+// treated a Tag/Snapshot match against the block currently being built as an
+// unconditional fatal error, but Tag identity is a raw
+// __builtin_return_address chain (TagRecorder.cpp) that depends only on the
+// *sequence of call sites* used to reach a traced operation -- not on which
+// logical operation it is. A shared, non-inlined call-dispatch site (e.g. a
+// recursive expression evaluator's single nautilus::invoke() call, reached
+// for many different AST nodes) can therefore produce byte-identical Tags for
+// two unrelated Op::CALL operations targeting different callees. Fixed in
+// LazyTraceContext.cpp/ExceptionBasedTraceContext.cpp by comparing the callee
+// (FunctionCall::ptr) already recorded at that tag against the one about to
+// be traced: a mismatch means the collision is coincidental, not a real
+// control-flow re-entry, so the call is now recorded fresh instead of forcing
+// a bogus merge, mirroring how traceAssignment/traceCopy already reconcile
+// instead of merging for the same underlying Tag-collision defect (issue
+// #95/#382/#384). Pinned by sharedCallSiteDifferentCallees in
+// RunctimeCallFunctions.hpp; the smoke corpus now actively guards against its
+// recurrence.
 //
 // Finding "Invalid trace: no Return operation was recorded." is no longer
 // tolerated either (issue #382): LazyTraceContext::traceAssignment's generic
@@ -139,10 +149,10 @@ bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {
 	}
 	// RuntimeException (nautilus/exceptions/RuntimeException.cpp) appends a
 	// full stack trace to its message unconditionally, so `f.what` is never
-	// exactly one of these strings when ENABLE_STACKTRACE actually resolves
-	// symbols (it always did in this environment) -- match on prefix instead
-	// of exact equality, the same way the "Key $" case already does.
-	return f.what.starts_with("Invalid trace. This is maybe caused by a constant loop.") || f.what.starts_with("Key $");
+	// exactly this string when ENABLE_STACKTRACE actually resolves symbols
+	// (it always did in this environment) -- match on prefix instead of exact
+	// equality.
+	return f.what.starts_with("Key $");
 }
 
 // Default corpus size for the PR-gate smoke run. Overridable via

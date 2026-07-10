@@ -662,33 +662,52 @@ treating them as pass/fail signal, while any other exception, or any value
 mismatch, still aborted the smoke corpus immediately, and `--survey` kept
 every occurrence individually visible (bucketed by backend/type/exact
 exception text, not merged into one backend/type bucket) for future
-investigation. The two still open are listed below (a third, "no Return
-operation was recorded", was fixed in nebulastream/nautilus#382 and is no
-longer tolerated or tracked here).
+investigation. One is still open, listed below (a second, "no Return
+operation was recorded", was fixed in nebulastream/nautilus#382, and a third,
+the Tag/Snapshot collision described next, was fixed in
+nebulastream/nautilus#381; neither is tolerated or tracked here anymore).
 
-1. **Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
-   constant loop."`, ~126 of the 129 findings): the exact fragility the
-   paragraph above already predicted, now confirmed reachable through the
-   real fuzz harness rather than merely a standalone reproduction script.
-   `ExecutionTrace::processControlFlowMerge` treats a Tag/Snapshot match
-   against the block currently being built as an unconditional fatal error
-   (`ExecutionTrace.cpp`), but Tag identity is a raw
-   `__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
-   `TagRecorder.cpp`) that depends only on the *sequence of recursive call
-   sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
-   takes to reach an `if` -- not on which logical AST node it is. Two
-   unrelated `Kind::If` nodes reached via the same shape of recursive descent
-   through the evaluator can therefore collide onto the same Tag and falsely
-   read as "this exact operation was already traced in the current block."
-   Confirmed empirically: forcing every `Kind::Call` selection back to the
-   original arity-2 same-type shape (i.e. `imm % NUM_CALLEES` always landing
-   on `calleeMix`/`calleeMin`, with the rest of the new registry unreachable)
-   keeps the 2000-input smoke corpus perfectly clean, while any of the wider
-   shapes being reachable reintroduces the collision on unrelated trees
-   elsewhere in the corpus -- i.e. the byte-stream *shift* from having more
-   `Kind::Call` diversity is what surfaces it, not anything specific to a
-   given new callee's own marshalling.
-2. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
+**Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
+constant loop."`, ~126 of the 129 findings) -- **now fixed**
+(nebulastream/nautilus#381): the exact fragility the paragraph above already
+predicted, confirmed reachable through the real fuzz harness rather than
+merely a standalone reproduction script. `ExecutionTrace::processControlFlowMerge`
+treated a Tag/Snapshot match against the block currently being built as an
+unconditional fatal error (`ExecutionTrace.cpp`), but Tag identity is a raw
+`__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
+`TagRecorder.cpp`) that depends only on the *sequence of recursive call
+sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
+takes to reach an `if` or a call -- not on which logical AST node it is. Two
+unrelated `Kind::Call` nodes reached via the same shape of recursive descent
+through the evaluator (i.e. through `evalCall`'s single, shared
+`nautilus::invoke()` dispatch, regardless of which of the nine callees got
+selected) can therefore collide onto the same Tag and falsely read as "this
+exact operation was already traced in the current block." Confirmed
+empirically: forcing every `Kind::Call` selection back to the original
+arity-2 same-type shape (i.e. `imm % NUM_CALLEES` always landing on
+`calleeMix`/`calleeMin`, with the rest of the new registry unreachable) keeps
+the 2000-input smoke corpus perfectly clean, while any of the wider shapes
+being reachable reintroduces the collision on unrelated trees elsewhere in
+the corpus -- i.e. the byte-stream *shift* from having more `Kind::Call`
+diversity is what surfaces it, not anything specific to a given new callee's
+own marshalling. Fixed in `LazyTraceContext.cpp`/`ExceptionBasedTraceContext.cpp`
+by comparing the callee (`FunctionCall::ptr`) already recorded at a colliding
+tag against the one about to be traced: a mismatch means the collision is
+coincidental, not a real control-flow re-entry, so the call is recorded fresh
+instead of forcing a bogus merge -- the same reconciliation strategy already
+used for `traceConstant`/`traceCopy` (issue #95) and `traceAssignment` (issue
+#382) for this identical underlying Tag-collision defect. Pinned by
+`sharedCallSiteDifferentCallees` in `test/common/RunctimeCallFunctions.hpp`
+(a shared, non-inlined dispatch call site invoking two different native
+callees, deterministically reproducing the collision independent of the
+fuzzer's own byte-stream); the smoke corpus no longer tolerates this
+exception. The underlying fragility of `__builtin_return_address`-based Tag
+identity for *other* operation kinds (arithmetic, allocas) is not fully
+addressed -- only `Op::CALL`/`Op::FUNC_ADDR`, which is what every finding
+observed so far has been -- and is worth a maintainer's attention if a future
+fuzzer extension surfaces a collision there too.
+
+1. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
    a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
    providers) lookup miss for an SSA value merged across two `Kind::If` arms,
    reachable with a `Kind::If` nested inside a `Kind::Call` argument (e.g.

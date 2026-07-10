@@ -322,6 +322,15 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	/**
+	 * @brief Like traceOperation, but for Op::CALL/Op::FUNC_ADDR operations that carry a
+	 * callee identity (a FunctionCall's `ptr`). A Tag match against an operation that
+	 * targets a *different* callee is not a genuine control-flow re-entry -- it is a
+	 * false collision from Tag identity being purely a call-stack shape (issue #381) --
+	 * so it is recorded fresh instead of going through the control-flow-merge machinery.
+	 */
+	template <typename OnCreation>
+	TypedValueRef& traceCallOperation(Op op, void* calleePtr, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 

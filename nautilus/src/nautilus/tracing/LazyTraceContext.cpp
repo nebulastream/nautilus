@@ -119,6 +119,50 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	}
 }
 
+template <typename OnCreation>
+TypedValueRef& LazyTraceContext::traceCallOperation(Op op, void* calleePtr, OnCreation&& onCreation) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	if (isFollowing()) {
+		return follow(op);
+	}
+	auto tag = recordSnapshot();
+	auto& trace = state->executionTrace;
+
+	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
+	// so a tag match here does not by itself prove this call is a genuine
+	// control-flow re-entry (a loop back-edge or an if/else merge point): the
+	// identical call-stack shape can also be reached while invoking a
+	// *different* callee through a single shared call-dispatch site -- e.g. an
+	// interpreter that resolves its target function pointer at runtime and
+	// issues every call through one nautilus::invoke() call site, exactly how
+	// a query compiler uses Nautilus (issue #381). Distinguish the two by
+	// checking whether the operation already recorded at this tag targets the
+	// same callee: if not, this is an unrelated call that merely collided, so
+	// record it fresh instead of forcing a bogus merge/abort. Mirrors
+	// traceAssignment's #382 fix and traceCopy's #95 fix for the same
+	// underlying Tag-collision defect.
+	const operation_identifier* existing = nullptr;
+	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
+		existing = &it->second;
+	} else if (auto localIt = trace.localTagMap.find(tag); localIt != trace.localTagMap.end()) {
+		existing = &localIt->second;
+	}
+	if (existing != nullptr) {
+		auto* existingOp = trace.getBlocks()[existing->blockIndex]->operations[existing->operationIndex];
+		bool sameCallee = existingOp->op == op && std::get<FunctionCall*>(existingOp->input[0])->ptr == calleePtr;
+		if (!sameCallee) {
+			return onCreation(tag);
+		}
+	}
+	if (!trace.checkTag(tag)) {
+		paused_ = true;
+		return dummyRef_;
+	}
+	return onCreation(tag);
+}
+
 TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
@@ -178,7 +222,7 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceCallOperation(op, fptn, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = mangledName,
@@ -218,7 +262,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		           functionsToTrace.size());
 	}
 	auto op = Op::CALL;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceCallOperation(op, (void*) definition, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -243,7 +287,7 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	}
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceCallOperation(op, (void*) definition, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
