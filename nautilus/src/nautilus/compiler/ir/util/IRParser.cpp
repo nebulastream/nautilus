@@ -38,6 +38,7 @@
 #include <dlfcn.h>
 #include <fmt/format.h>
 #include <limits>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -94,12 +95,31 @@ struct LineCursor {
 
 	template <typename T>
 	T parseNumber() {
+		// Integral only: libc++ does not implement std::from_chars for
+		// floating-point types (see parseDouble).
+		static_assert(std::is_integral_v<T>);
 		T value {};
 		auto [ptr, ec] = std::from_chars(text.data() + pos, text.data() + text.size(), value);
 		if (ec != std::errc()) {
 			fail("expected a number");
 		}
 		pos = static_cast<size_t>(ptr - text.data());
+		return value;
+	}
+
+	/// Parses a floating-point number via strtod on a bounded copy, since
+	/// std::from_chars for doubles is unavailable in libc++.
+	double parseDouble() {
+		const size_t start = pos;
+		while (pos < text.size() && text[pos] != ')' && text[pos] != ' ' && text[pos] != '\t') {
+			pos++;
+		}
+		const std::string token(text.substr(start, pos - start));
+		char* end = nullptr;
+		const double value = std::strtod(token.c_str(), &end);
+		if (token.empty() || end != token.c_str() + token.size()) {
+			fail("expected a floating-point number");
+		}
 		return value;
 	}
 
@@ -540,7 +560,7 @@ private:
 			cursor.skipWs();
 			double probability = 0.5;
 			if (cursor.tryConsume("prob(")) {
-				probability = cursor.parseNumber<double>();
+				probability = cursor.parseDouble();
 				cursor.expect(")");
 			}
 			if (cursor.parseTrailingStamp() != Type::v) {
