@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { BACKENDS } from '../types.js';
 import { allowRequest } from '../rateLimit.js';
 import { cachedResult, cacheKeyFor, getJob, QueueFullError, submitJob, subscribe } from '../jobs/queue.js';
-import { loadExamples } from '../examples/index.js';
+import type { Example } from '../examples/index.js';
 
 const compileSchema = z.object({
 	source: z.string().min(1),
@@ -19,7 +19,7 @@ const compileSchema = z.object({
 		.optional(),
 });
 
-export function registerRoutes(app: FastifyInstance): void {
+export function registerRoutes(app: FastifyInstance, examples: Example[]): void {
 	app.post('/api/compile', async (request, reply) => {
 		const parsed = compileSchema.safeParse(request.body);
 		if (!parsed.success) {
@@ -87,7 +87,8 @@ export function registerRoutes(app: FastifyInstance): void {
 		send(initial);
 	});
 
-	app.get('/api/examples', async () => loadExamples());
+	// Served from memory — the gallery is loaded once at startup.
+	app.get('/api/examples', async () => examples);
 
 	app.get('/api/meta', async () => ({
 		backends: BACKENDS,

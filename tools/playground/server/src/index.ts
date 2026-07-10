@@ -5,9 +5,11 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { config } from './config.js';
 import { registerRoutes } from './routes/compile.js';
+import { loadExamples } from './examples/index.js';
 
 async function main(): Promise<void> {
 	await mkdir(config.jobRoot, { recursive: true });
+	const examples = await loadExamples();
 
 	const app = Fastify({
 		logger: true,
@@ -29,7 +31,7 @@ async function main(): Promise<void> {
 		});
 	}
 
-	registerRoutes(app);
+	registerRoutes(app, examples);
 
 	await app.listen({ port: config.port, host: config.host });
 }

@@ -9,17 +9,15 @@ export interface Example {
 	source: string;
 }
 
-let cache: Example[] | null = null;
-
 /**
  * Loads the curated gallery from `examples/*.cpp`. Each file starts with
  * `// title: ...` and `// description: ...` header comments, which are
  * stripped from the source shown in the editor.
+ *
+ * Called once at server startup; the route handler serves the returned
+ * array from memory so no request triggers filesystem access.
  */
 export async function loadExamples(): Promise<Example[]> {
-	if (cache) {
-		return cache;
-	}
 	const examples: Example[] = [];
 	let files: string[] = [];
 	try {
@@ -53,6 +51,5 @@ export async function loadExamples(): Promise<Example[]> {
 			source: lines.slice(bodyStart).join('\n').replace(/^\n+/, ''),
 		});
 	}
-	cache = examples;
 	return examples;
 }
