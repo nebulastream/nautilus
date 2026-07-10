@@ -274,12 +274,36 @@ __attribute__((noinline)) val<int32_t> evalSharedDispatchCallee(const SharedDisp
 // Tag, which ExecutionTrace::processControlFlowMerge used to treat as an
 // unconditional fatal "Invalid trace. This is maybe caused by a constant
 // loop." error even though there is no real control-flow re-entry.
+//
+// The `for (int i...)` loop below is deliberately a plain, untraced host
+// loop rather than a `static_val`/`static_iterable`-driven one: `static_val`
+// folds its counter into the tracer's Snapshot hash and *would* sidestep this
+// specific collision, but that idiom is for loops a Nautilus *kernel* author
+// writes (the StaticLoop feature -- a loop that is itself part of the traced
+// program's semantics). The actual defect lives one layer further out, in
+// generic interpreter/compiler infrastructure that drives Nautilus's tracing
+// API from *outside* any single kernel body and has no static_val to reach
+// for. This loop shape is not hypothetical: it is modeled directly on
+// `evalNautilusCall`'s own argument-evaluation loop in the differential
+// fuzzer (`nautilus/test/fuzz/EvalNautilus.hpp`) --
+//   for (int i = 0; i < callDesc.arity; ++i) {
+//       v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+//   }
+// -- which is exactly how the fuzzer's `min(0f64, 0f64)`/`mix(0u32, 0u32)`
+// minimal reproductions in issue #381 collide: a Kind::Call node's own
+// arguments (themselves potentially nested Kind::Call nodes targeting
+// different callees) are evaluated through this one shared, plain-`int`
+// loop, with no static_val anywhere in sight.
 val<int32_t> sharedCallSiteDifferentCallees(val<int32_t> x, val<int32_t> y) {
 	static const SharedDispatchCallee callees[] = {{addI32}, {mulI32}};
-	// volatile blocks constant-propagation of the trip count, so the compiler
-	// cannot unroll this loop into two distinct call instructions -- the whole
-	// point is that both calls into evalSharedDispatchCallee execute through
-	// the exact same physical instruction.
+	// volatile mirrors the fuzzer's `callDesc.arity`, whose value comes from a
+	// fuzzed-input-driven table lookup and is therefore genuinely opaque to
+	// the optimizer: it blocks constant-propagation of the trip count so the
+	// compiler cannot unroll this loop into two distinct call instructions
+	// (which would trivially -- and unrealistically -- avoid the collision by
+	// giving each call its own call-stack shape). The whole point is that
+	// both calls into evalSharedDispatchCallee execute through the exact same
+	// physical instruction, exactly as they do in the real fuzzer.
 	volatile int count = 2;
 	val<int32_t> acc = 0;
 	for (int i = 0; i < count; i++) {
