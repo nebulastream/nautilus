@@ -1,0 +1,275 @@
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	margin: 0;
+	height: 100%;
+	font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+	font-size: 14px;
+	color: #1c2733;
+	background: #f6f8fa;
+}
+
+.app {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+/* --- toolbar --- */
+.toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 14px;
+	background: #10222e;
+	color: #e8eef2;
+	flex-wrap: wrap;
+}
+
+.brand {
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	margin-right: 8px;
+}
+
+.toolbar select,
+.toolbar button {
+	font: inherit;
+	padding: 4px 8px;
+	border-radius: 6px;
+	border: 1px solid #33505e;
+	background: #1a3242;
+	color: #e8eef2;
+}
+
+.compile-button {
+	background: #3cb4a4 !important;
+	border-color: #3cb4a4 !important;
+	color: #06231e !important;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.compile-button:disabled {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+.status-pill {
+	font-size: 12px;
+	padding: 3px 10px;
+	border-radius: 999px;
+	background: #1a3242;
+	border: 1px solid #33505e;
+}
+
+.options-popover {
+	position: relative;
+}
+
+.options-popover summary {
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 6px;
+	border: 1px solid #33505e;
+	background: #1a3242;
+	list-style: none;
+}
+
+.options-body {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	background: #10222e;
+	border: 1px solid #33505e;
+	border-radius: 8px;
+	white-space: nowrap;
+}
+
+/* --- panes --- */
+.panes {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+}
+
+.pane {
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.editor-pane {
+	flex: 0 0 45%;
+	border-right: 1px solid #d7dee4;
+}
+
+.inspector-pane {
+	flex: 1;
+	background: #fff;
+	overflow: hidden;
+}
+
+.editor-container {
+	flex: 1;
+	min-height: 0;
+}
+
+/* --- inspector --- */
+.placeholder {
+	padding: 32px;
+	max-width: 560px;
+	color: #46586a;
+	line-height: 1.55;
+}
+
+.stage-tabs {
+	display: flex;
+	gap: 14px;
+	padding: 8px 12px;
+	border-bottom: 1px solid #d7dee4;
+	overflow-x: auto;
+	flex-wrap: wrap;
+	background: #fbfcfd;
+}
+
+.stage-group {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.stage-group-label {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #7a8a99;
+	margin-right: 2px;
+}
+
+.stage-tab {
+	font: inherit;
+	font-size: 12.5px;
+	padding: 3px 9px;
+	border-radius: 999px;
+	border: 1px solid #d7dee4;
+	background: #fff;
+	color: #1c2733;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.stage-tab.active {
+	background: #3cb4a4;
+	border-color: #3cb4a4;
+	color: #06231e;
+	font-weight: 600;
+}
+
+.stage-content {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.stage-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.stage-note {
+	font-size: 12px;
+	color: #7a6114;
+	background: #fdf6dd;
+	border-bottom: 1px solid #f0e3ad;
+	padding: 4px 12px;
+}
+
+/* --- diagnostics --- */
+.diagnostics {
+	border-bottom: 1px solid #f0c7cd;
+	background: #fdf0f2;
+	max-height: 40%;
+	overflow: auto;
+}
+
+.diagnostics-headline {
+	font-weight: 600;
+	color: #a11f38;
+	padding: 8px 12px 0;
+}
+
+.diagnostics-detail {
+	margin: 6px 0 0;
+	padding: 8px 12px 12px;
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+	white-space: pre-wrap;
+	color: #58202e;
+}
+
+/* --- graph view --- */
+.graph-view {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.graph-controls {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 8px 12px;
+	border-bottom: 1px solid #d7dee4;
+	background: #fbfcfd;
+}
+
+.graph-controls select {
+	font: inherit;
+	padding: 3px 6px;
+}
+
+.graph-zoom {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.graph-zoom button {
+	width: 26px;
+	height: 26px;
+	border-radius: 6px;
+	border: 1px solid #d7dee4;
+	background: #fff;
+	cursor: pointer;
+}
+
+.graph-canvas {
+	flex: 1;
+	overflow: auto;
+	padding: 16px;
+}
+
+.graph-empty,
+.graph-error {
+	padding: 24px;
+	color: #46586a;
+}
+
+.graph-error {
+	color: #a11f38;
+}

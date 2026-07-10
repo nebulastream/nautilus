@@ -1,0 +1,74 @@
+# Nautilus Playground runner image.
+#
+# Build (from the repository root — the whole repo is the build context):
+#   docker build -f tools/playground/runner/Dockerfile.runner -t nautilus-playground-runner .
+#
+# All heavy work happens once, here: the MLIR tarball download, the full
+# nautilus build pre-linked into libplayground_core.so, and the precompiled
+# header for the public API. Per-request work inside a container is only
+# compile user_module.cpp → link one object → run the driver once.
+#
+# The final stage still carries clang-21 + lld: user code is compiled at
+# request time. It runs as the non-root `runner` user, and the orchestrator
+# adds --network=none, --read-only, memory/cpu/pids limits, etc.
+
+FROM ubuntu:24.04 AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg lsb-release software-properties-common \
+        cmake ninja-build git python3 xz-utils zstd \
+    && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
+    && chmod +x /tmp/llvm.sh && /tmp/llvm.sh 21 \
+    && apt-get install -y --no-install-recommends clang-21 lld-21 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . /src
+
+# Release build of nautilus with every backend (MLIR download happens here),
+# pre-linked into libplayground_core.so + the prebuilt driver archive. The
+# playground-dist target stages lib/ + include/ + playground_pch.hpp.
+RUN cmake -S /src/tools/playground/runner -B /build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_COMPILER=clang++-21 \
+        -DCMAKE_C_COMPILER=clang-21 \
+    && cmake --build /build --target playground-dist
+
+FROM ubuntu:24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg lsb-release software-properties-common \
+    && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
+    && chmod +x /tmp/llvm.sh && /tmp/llvm.sh 21 \
+    && apt-get install -y --no-install-recommends clang-21 lld-21 libc++-21-dev \
+    && apt-get purge -y curl gnupg lsb-release software-properties-common \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /tmp/llvm.sh
+
+COPY --from=build /build/playground-dist /opt/playground
+COPY tools/playground/runner/entrypoint.sh /opt/playground/entrypoint.sh
+RUN chmod +x /opt/playground/entrypoint.sh
+
+# Defaults consumed by entrypoint.sh; the orchestrator overrides per job.
+# PG_OPT_LEVEL applies to the user TU only — it has no effect on the traced
+# IR or generated backend code, just on how fast the one tracing run
+# executes. Flags here must match the PCH generation below.
+ENV PG_HOME=/opt/playground \
+    PG_OPT_LEVEL=-O0 \
+    PG_BACKEND=mlir
+
+# Precompiled header for the public API, generated with the exact flags
+# entrypoint.sh compiles user_module.cpp with (see CXX_FLAGS there).
+RUN clang++-21 -std=c++20 ${PG_OPT_LEVEL} -fPIC -fno-omit-frame-pointer \
+        -I/opt/playground/include \
+        -x c++-header /opt/playground/playground_pch.hpp \
+        -o /opt/playground/playground_pch.pch
+
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin runner \
+    && mkdir -p /work /in /out \
+    && chown runner:runner /work /out
+
+USER runner
+WORKDIR /work
+ENTRYPOINT ["/opt/playground/entrypoint.sh"]
