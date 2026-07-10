@@ -1,10 +1,10 @@
 nautilus {
-execute($1:i32) :i32 {
+execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = 0 :i32
 	$3 = 3 :i32
 	$4 = $3 > $1 :bool
-	if $4 ? Block_1($1, $2) : Block_2($2, $1) :void
+	if $4 ? Block_1($1, $2) : Block_2($2, $1) prob(0.5) :void
 
 Block_1($1:i32, $2:i32):
 	$6 = 1 :i32
@@ -14,7 +14,7 @@ Block_1($1:i32, $2:i32):
 
 Block_11($2:i32, $1:i32, $8:i32):
 	$9 = $8 > $1 :bool
-	if $9 ? Block_3($1, $2) : Block_4($2, $1) :void
+	if $9 ? Block_3($1, $2) : Block_4($2, $1) prob(0.5) :void
 
 Block_3($1:i32, $2:i32):
 	$11 = 1 :i32
@@ -24,7 +24,7 @@ Block_3($1:i32, $2:i32):
 
 Block_12($2:i32, $1:i32, $13:i32):
 	$14 = $13 > $1 :bool
-	if $14 ? Block_5($1, $2) : Block_6($2, $1) :void
+	if $14 ? Block_5($1, $2) : Block_6($2, $1) prob(0.5) :void
 
 Block_5($1:i32, $2:i32):
 	$16 = 1 :i32
@@ -34,7 +34,7 @@ Block_5($1:i32, $2:i32):
 
 Block_13($2:i32, $1:i32, $18:i32):
 	$19 = $18 > $1 :bool
-	if $19 ? Block_7($1, $2) : Block_8($2, $1) :void
+	if $19 ? Block_7($1, $2) : Block_8($2, $1) prob(0.5) :void
 
 Block_7($1:i32, $2:i32):
 	$21 = 1 :i32
@@ -44,7 +44,7 @@ Block_7($1:i32, $2:i32):
 
 Block_14($2:i32, $23:i32, $1:i32):
 	$24 = $23 > $1 :bool
-	if $24 ? Block_9($2) : Block_15($2) :void
+	if $24 ? Block_9($2) : Block_15($2) prob(0.5) :void
 
 Block_9($2:i32):
 	$26 = 1 :i32

@@ -1,5 +1,5 @@
 nautilus {
-execute($1:f64) :i32 {
+execute($1:f64) :i32 attrs["entry"="true"] {
 Block_0($1:f64):
 	$2 = $1 cast_to i32 :i32
 	return ($2) :i32

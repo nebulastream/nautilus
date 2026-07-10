@@ -1,7 +1,7 @@
 nautilus {
-execute($1:ptr) :i32 {
+execute($1:ptr) :i32 attrs["entry"="true"] {
 Block_0($1:ptr):
-	func_*($1) :void
+	call func_*($1) :void
 	$5 = load($1) :i32
 	return ($5) :i32
 }

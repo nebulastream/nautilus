@@ -1,5 +1,5 @@
 nautilus {
-execute() :i32 {
+execute() :i32 attrs["entry"="true"] {
 Block_0():
 	$3 = 42 :i32
 	return ($3) :i32

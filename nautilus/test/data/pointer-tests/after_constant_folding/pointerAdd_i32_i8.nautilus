@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:i8) :i32 {
+execute($1:ptr, $2:i8) :i32 attrs["entry"="true"] {
 Block_0($1:ptr, $2:i8):
 	$6 = 4 :ui64
 	$7 = $2 cast_to ui64 :ui64

@@ -88,6 +88,11 @@ struct LineCursor {
 
 	void expectEnd() {
 		skipWs();
+		// Ignore `; ...` comment trailers (source-location annotations of
+		// the display form).
+		if (peek() == ';') {
+			pos = text.size();
+		}
 		if (!atEnd()) {
 			fail("unexpected trailing characters");
 		}
@@ -213,7 +218,9 @@ public:
 			while (indent < line.size() && (line[indent] == ' ' || line[indent] == '\t')) {
 				indent++;
 			}
-			if (indent < line.size()) {
+			// Skip blank lines and `; ...` comment lines (continuation lines
+			// of source-location annotations in the display form).
+			if (indent < line.size() && line[indent] != ';') {
 				lines.push_back(LineCursor {line, lineNumber, indent});
 			}
 			lineNumber++;
@@ -299,6 +306,12 @@ private:
 		if (auto [it, inserted] = functionScope.emplace(id, operation); !inserted) {
 			it->second = nullptr;
 		}
+	}
+
+	[[noreturn]] static void failLossyExternalReference(LineCursor& cursor) {
+		cursor.fail("this IR was produced by the display printer (IRGraph::toString), which hides external function "
+		            "symbols behind 'func_*'. Re-generate the file with NautilusModule::serializeIR to obtain "
+		            "loadable IR.");
 	}
 
 	void* resolveFunctionAddress(const std::string& symbol, const std::string& name, LineCursor& cursor) {
@@ -613,12 +626,18 @@ private:
 			parseIndirectCall(cursor, block, nextAnonymousId--, /*hasResult*/ false);
 			return;
 		}
+		if (cursor.tryConsume("func_*") || cursor.tryConsume("call func_*")) {
+			failLossyExternalReference(cursor);
+		}
 
 		// Value-producing operations: `$<id> = <rhs> :<type>`.
 		const auto resultId = cursor.parseValueRef();
 		cursor.skipWs();
 		cursor.expect("=");
 		cursor.skipWs();
+		if (cursor.tryConsume("func_*") || cursor.tryConsume("call func_*") || cursor.tryConsume("addressof func_*")) {
+			failLossyExternalReference(cursor);
+		}
 		if (cursor.tryConsume("call @")) {
 			parseProxyCall(cursor, block, resultId, /*hasResult*/ true);
 			return;

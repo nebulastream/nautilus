@@ -230,11 +230,26 @@ TEST_CASE("IR parser accepts pretty-printer output for call-free graphs", "[IRSe
 	                                  "}\n"
 	                                  "} //nautilus\n";
 	auto graph = parseIR(prettyPrinted, "test");
-	// The pretty printer and the serializer share their grammar: for a graph
-	// without probability annotations the only difference is the explicit
-	// `prob(0.5)` trailer on `if`.
-	REQUIRE(graph->toString() == prettyPrinted);
 	REQUIRE(graph->getFunctionOperation("execute") != nullptr);
+	// toString (the display form) shares the writer with the serializer and
+	// keeps the stored identifiers, so re-printing the parsed graph
+	// reproduces the input except for the explicit `prob(0.5)` trailer the
+	// unified grammar adds to `if`.
+	std::string expected = prettyPrinted;
+	const std::string legacyIf = "if $9 ? Block_1($7, $5) : Block_2($5) :void";
+	expected.replace(expected.find(legacyIf), legacyIf.size(), "if $9 ? Block_1($7, $5) : Block_2($5) prob(0.5) :void");
+	REQUIRE(graph->toString() == expected);
+}
+
+TEST_CASE("IR parser rejects display dumps with hidden call symbols", "[IRSerialization]") {
+	const std::string text = "nautilus {\n"
+	                         "execute($1:i32) :i32 {\n"
+	                         "Block_0($1:i32):\n"
+	                         "\t$2 = func_*($1, $1) :i32\n"
+	                         "\treturn ($2) :i32\n"
+	                         "}\n"
+	                         "} //nautilus\n";
+	REQUIRE_THROWS_WITH(parseIR(text, "test"), Catch::Matchers::ContainsSubstring("serializeIR"));
 }
 
 TEST_CASE("IR parser reports errors", "[IRSerialization]") {

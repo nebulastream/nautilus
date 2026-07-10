@@ -1,5 +1,5 @@
 nautilus {
-execute() :i32 {
+execute() :i32 allocas[(8,4),(8,4)] attrs["entry"="true"] {
 Block_0():
 	$1 = alloca[0] :ptr
 	$3 = 0 :ui64
@@ -16,7 +16,7 @@ Block_0():
 	store($22, $19) :void
 	$26 = alloca[1] :ptr
 	$27 = 8 :ui64
-	$28 = func_*($26,$1,$27) :ptr
+	$28 = call func_*($26, $1, $27) :ptr
 	$30 = 0 :ui64
 	$32 = 1 :ui64
 	$33 = $30 * $32 :ui64

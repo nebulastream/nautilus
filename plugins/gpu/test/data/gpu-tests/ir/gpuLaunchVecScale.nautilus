@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:ui32) :void {
+execute($1:ptr, $2:ptr, $3:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -7,14 +7,14 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$8 = 256 :ui32
 	$10 = 1 :ui32
 	$11 = 1 :ui32
-	func_*($4,$6,$7) :void
-	func_*($8,$10,$11) :void
-	func_*($1,$2,$3) :void
+	call func_*($4, $6, $7) :void
+	call func_*($8, $10, $11) :void
+	call func_*($1, $2, $3) :void
 	return :void
 }
-vecScale($1:ptr, $2:ptr, $3:ui32) :void {
+vecScale($1:ptr, $2:ptr, $3:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = func_*() :ui32
+	$6 = call func_*() :ui32
 	$7 = $6 cast_to i32 :i32
 	$11 = 4 :ui64
 	$12 = $7 cast_to ui64 :ui64

@@ -1,21 +1,21 @@
 nautilus {
-execute($1:i32) :i32 {
+execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
 	$3 = 1 :i32
 	$4 = $1 == $3 :bool
-	if $4 ? Block_1() : Block_2($1) :void
+	if $4 ? Block_1() : Block_2($1) prob(0.5) :void
 
 Block_1():
 	$6 = 1 :i32
 	$8 = 1 :i32
 	$9 = $6 == $8 :bool
-	if $9 ? Block_3() : Block_4($6) :void
+	if $9 ? Block_3() : Block_4($6) prob(0.5) :void
 
 Block_3():
 	$11 = 1 :i32
 	$13 = 1 :i32
 	$14 = $11 == $13 :bool
-	if $14 ? Block_5() : Block_6($11) :void
+	if $14 ? Block_5() : Block_6($11) prob(0.5) :void
 
 Block_5():
 	$16 = 1 :i32
@@ -27,7 +27,7 @@ Block_53($16:i32):
 Block_6($12:i32):
 	$43 = 10 :i32
 	$44 = $12 < $43 :bool
-	if $44 ? Block_17() : Block_18($12) :void
+	if $44 ? Block_17() : Block_18($12) prob(0.5) :void
 
 Block_17():
 	$46 = 42 :i32
@@ -42,13 +42,13 @@ Block_18($12:i32):
 Block_4($7:i32):
 	$33 = 10 :i32
 	$34 = $7 < $33 :bool
-	if $34 ? Block_13() : Block_14($7) :void
+	if $34 ? Block_13() : Block_14($7) prob(0.5) :void
 
 Block_13():
 	$36 = 42 :i32
 	$38 = 1 :i32
 	$39 = $36 == $38 :bool
-	if $39 ? Block_15() : Block_16($36) :void
+	if $39 ? Block_15() : Block_16($36) prob(0.5) :void
 
 Block_15():
 	$41 = 1 :i32
@@ -57,7 +57,7 @@ Block_15():
 Block_16($37:i32):
 	$86 = 10 :i32
 	$87 = $37 < $86 :bool
-	if $87 ? Block_31() : Block_32($37) :void
+	if $87 ? Block_31() : Block_32($37) prob(0.5) :void
 
 Block_31():
 	$89 = 42 :i32
@@ -75,7 +75,7 @@ Block_14($7:i32):
 	$79 = $77 + $78 :i32
 	$81 = 1 :i32
 	$82 = $79 == $81 :bool
-	if $82 ? Block_29() : Block_30($79) :void
+	if $82 ? Block_29() : Block_30($79) prob(0.5) :void
 
 Block_29():
 	$84 = 1 :i32
@@ -84,7 +84,7 @@ Block_29():
 Block_30($80:i32):
 	$128 = 10 :i32
 	$129 = $80 < $128 :bool
-	if $129 ? Block_43() : Block_44($80) :void
+	if $129 ? Block_43() : Block_44($80) prob(0.5) :void
 
 Block_43():
 	$131 = 42 :i32
@@ -99,19 +99,19 @@ Block_44($80:i32):
 Block_2($2:i32):
 	$18 = 10 :i32
 	$19 = $2 < $18 :bool
-	if $19 ? Block_7() : Block_8($2) :void
+	if $19 ? Block_7() : Block_8($2) prob(0.5) :void
 
 Block_7():
 	$21 = 42 :i32
 	$23 = 1 :i32
 	$24 = $21 == $23 :bool
-	if $24 ? Block_9() : Block_10($21) :void
+	if $24 ? Block_9() : Block_10($21) prob(0.5) :void
 
 Block_9():
 	$26 = 1 :i32
 	$28 = 1 :i32
 	$29 = $26 == $28 :bool
-	if $29 ? Block_11() : Block_12($26) :void
+	if $29 ? Block_11() : Block_12($26) prob(0.5) :void
 
 Block_11():
 	$31 = 1 :i32
@@ -120,7 +120,7 @@ Block_11():
 Block_12($27:i32):
 	$72 = 10 :i32
 	$73 = $27 < $72 :bool
-	if $73 ? Block_27() : Block_28($27) :void
+	if $73 ? Block_27() : Block_28($27) prob(0.5) :void
 
 Block_27():
 	$75 = 42 :i32
@@ -135,13 +135,13 @@ Block_28($27:i32):
 Block_10($22:i32):
 	$62 = 10 :i32
 	$63 = $22 < $62 :bool
-	if $63 ? Block_23() : Block_24($22) :void
+	if $63 ? Block_23() : Block_24($22) prob(0.5) :void
 
 Block_23():
 	$65 = 42 :i32
 	$67 = 1 :i32
 	$68 = $65 == $67 :bool
-	if $68 ? Block_25() : Block_26($65) :void
+	if $68 ? Block_25() : Block_26($65) prob(0.5) :void
 
 Block_25():
 	$70 = 1 :i32
@@ -150,7 +150,7 @@ Block_25():
 Block_26($66:i32):
 	$119 = 10 :i32
 	$120 = $66 < $119 :bool
-	if $120 ? Block_41() : Block_42($66) :void
+	if $120 ? Block_41() : Block_42($66) prob(0.5) :void
 
 Block_41():
 	$122 = 42 :i32
@@ -168,7 +168,7 @@ Block_24($22:i32):
 	$112 = $110 + $111 :i32
 	$114 = 1 :i32
 	$115 = $112 == $114 :bool
-	if $115 ? Block_39() : Block_40($112) :void
+	if $115 ? Block_39() : Block_40($112) prob(0.5) :void
 
 Block_39():
 	$117 = 1 :i32
@@ -177,7 +177,7 @@ Block_39():
 Block_40($113:i32):
 	$155 = 10 :i32
 	$156 = $113 < $155 :bool
-	if $156 ? Block_49() : Block_50($113) :void
+	if $156 ? Block_49() : Block_50($113) prob(0.5) :void
 
 Block_49():
 	$158 = 42 :i32
@@ -195,13 +195,13 @@ Block_8($2:i32):
 	$50 = $48 + $49 :i32
 	$52 = 1 :i32
 	$53 = $50 == $52 :bool
-	if $53 ? Block_19() : Block_20($50) :void
+	if $53 ? Block_19() : Block_20($50) prob(0.5) :void
 
 Block_19():
 	$55 = 1 :i32
 	$57 = 1 :i32
 	$58 = $55 == $57 :bool
-	if $58 ? Block_21() : Block_22($55) :void
+	if $58 ? Block_21() : Block_22($55) prob(0.5) :void
 
 Block_21():
 	$60 = 1 :i32
@@ -210,7 +210,7 @@ Block_21():
 Block_22($56:i32):
 	$105 = 10 :i32
 	$106 = $56 < $105 :bool
-	if $106 ? Block_37() : Block_38($56) :void
+	if $106 ? Block_37() : Block_38($56) prob(0.5) :void
 
 Block_37():
 	$108 = 42 :i32
@@ -225,13 +225,13 @@ Block_38($56:i32):
 Block_20($51:i32):
 	$95 = 10 :i32
 	$96 = $51 < $95 :bool
-	if $96 ? Block_33() : Block_34($51) :void
+	if $96 ? Block_33() : Block_34($51) prob(0.5) :void
 
 Block_33():
 	$98 = 42 :i32
 	$100 = 1 :i32
 	$101 = $98 == $100 :bool
-	if $101 ? Block_35() : Block_36($98) :void
+	if $101 ? Block_35() : Block_36($98) prob(0.5) :void
 
 Block_35():
 	$103 = 1 :i32
@@ -240,7 +240,7 @@ Block_35():
 Block_36($99:i32):
 	$146 = 10 :i32
 	$147 = $99 < $146 :bool
-	if $147 ? Block_47() : Block_48($99) :void
+	if $147 ? Block_47() : Block_48($99) prob(0.5) :void
 
 Block_47():
 	$149 = 42 :i32
@@ -258,7 +258,7 @@ Block_34($51:i32):
 	$139 = $137 + $138 :i32
 	$141 = 1 :i32
 	$142 = $139 == $141 :bool
-	if $142 ? Block_45() : Block_46($139) :void
+	if $142 ? Block_45() : Block_46($139) prob(0.5) :void
 
 Block_45():
 	$144 = 1 :i32
@@ -267,7 +267,7 @@ Block_45():
 Block_46($140:i32):
 	$168 = 10 :i32
 	$169 = $140 < $168 :bool
-	if $169 ? Block_51() : Block_52($140) :void
+	if $169 ? Block_51() : Block_52($140) prob(0.5) :void
 
 Block_51():
 	$171 = 42 :i32

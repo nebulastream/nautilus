@@ -1,5 +1,5 @@
 nautilus {
-execute($1:i32) :i32 {
+execute($1:i32) :i32 allocas[(8,4)] attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
 	$7 = 0 :ui64
@@ -11,7 +11,7 @@ Block_0($1:i32):
 
 Block_3($2:ptr, $15:i32, $1:i32):
 	$16 = $15 < $1 :bool
-	if $16 ? Block_1($2, $1, $15) : Block_2($2) :void
+	if $16 ? Block_1($2, $1, $15) : Block_2($2) prob(0.5) :void
 
 Block_1($2:ptr, $1:i32, $15:i32):
 	$22 = 0 :ui64

@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:f32) :void {
+execute($1:ptr, $2:ptr, $3:f32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:f32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -7,17 +7,17 @@ Block_0($1:ptr, $2:ptr, $3:f32):
 	$8 = 256 :ui32
 	$10 = 1 :ui32
 	$11 = 1 :ui32
-	func_*($4,$6,$7) :void
-	func_*($8,$10,$11) :void
-	func_*($1,$2,$3) :void
+	call func_*($4, $6, $7) :void
+	call func_*($8, $10, $11) :void
+	call func_*($1, $2, $3) :void
 	return :void
 }
-saxpy($1:ptr, $2:ptr, $3:f32) :void {
+saxpy($1:ptr, $2:ptr, $3:f32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:f32):
-	$6 = func_*() :ui32
-	$7 = func_*() :ui32
+	$6 = call func_*() :ui32
+	$7 = call func_*() :ui32
 	$8 = $6 * $7 :ui32
-	$9 = func_*() :ui32
+	$9 = call func_*() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 cast_to i32 :i32
 	$15 = 4 :ui64

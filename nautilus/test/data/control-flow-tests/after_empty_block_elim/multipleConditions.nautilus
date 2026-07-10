@@ -1,5 +1,5 @@
 nautilus {
-execute($1:i32) :i32 {
+execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = 0 :i32
 	$3 = 0 :i32
@@ -10,7 +10,7 @@ Block_0($1:i32):
 	$8 = 20 :i32
 	$9 = $1 == $8 :bool
 	$10 = $7 or $9 :bool
-	if $10 ? Block_1() : Block_3($2) :void
+	if $10 ? Block_1() : Block_3($2) prob(0.5) :void
 
 Block_1():
 	$12 = 1 :i32

@@ -1,9 +1,9 @@
 nautilus {
-execute($1:ptr, $2:i32, $3:i32) :i32 {
+execute($1:ptr, $2:i32, $3:i32) :i32 attrs["entry"="true"] {
 Block_0($1:ptr, $2:i32, $3:i32):
-	$5 = * :ptr
+	$5 = null :ptr
 	$8 = $1 == $5 :bool
-	if $8 ? Block_1() : Block_2($1, $2, $3) :void
+	if $8 ? Block_1() : Block_2($1, $2, $3) prob(0.5) :void
 
 Block_1():
 	$10 = 0 :i32
@@ -13,7 +13,7 @@ Block_3($10:i32):
 	return ($10) :i32
 
 Block_2($1:ptr, $2:i32, $3:i32):
-	$14 :i32
+	$14 = call_indirect $1($2, $3) :i32
 	br Block_3($14) :void
 }
 } //nautilus

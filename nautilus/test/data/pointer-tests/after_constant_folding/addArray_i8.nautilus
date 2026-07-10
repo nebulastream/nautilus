@@ -1,12 +1,12 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:i8) :void {
+execute($1:ptr, $2:ptr, $3:i8) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:i8):
 	$4 = 0 :i8
 	br Block_3($4, $3, $1, $2) :void
 
 Block_3($4:i8, $3:i8, $1:ptr, $2:ptr):
 	$5 = $4 < $3 :bool
-	if $5 ? Block_1($3, $4, $1, $2) : Block_2() :void
+	if $5 ? Block_1($3, $4, $1, $2) : Block_2() prob(0.5) :void
 
 Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
 	$7 = $4 cast_to i32 :i32

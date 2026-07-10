@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:i32) :void {
+execute($1:ptr, $2:i32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:i32):
 	$5 = 0 :ui64
 	$7 = 1 :ui64

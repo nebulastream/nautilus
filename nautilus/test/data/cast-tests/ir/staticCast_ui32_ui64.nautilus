@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ui32) :ui64 {
+execute($1:ui32) :ui64 attrs["entry"="true"] {
 Block_0($1:ui32):
 	$2 = $1 cast_to ui64 :ui64
 	return ($2) :ui64

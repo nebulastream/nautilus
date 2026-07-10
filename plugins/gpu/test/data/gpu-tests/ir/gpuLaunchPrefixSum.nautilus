@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:ui32) :void {
+execute($1:ptr, $2:ptr, $3:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
 	$6 = 1 :ui32
@@ -7,20 +7,20 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$8 = 256 :ui32
 	$10 = 1 :ui32
 	$11 = 1 :ui32
-	func_*($4,$6,$7) :void
-	func_*($8,$10,$11) :void
-	func_*($1,$2,$3) :void
+	call func_*($4, $6, $7) :void
+	call func_*($8, $10, $11) :void
+	call func_*($1, $2, $3) :void
 	return :void
 }
-prefixSum($1:ptr, $2:ptr, $3:ui32) :void {
+prefixSum($1:ptr, $2:ptr, $3:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = func_*() :ui32
-	$7 = func_*() :ui32
+	$6 = call func_*() :ui32
+	$7 = call func_*() :ui32
 	$8 = $6 * $7 :ui32
-	$9 = func_*() :ui32
+	$9 = call func_*() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() :void
+	if $11 ? Block_1($2, $10, $1) : Block_2() prob(0.5) :void
 
 Block_1($5:ptr, $10:ui32, $4:ptr):
 	$13 = 0 :ui32
@@ -29,7 +29,7 @@ Block_1($5:ptr, $10:ui32, $4:ptr):
 
 Block_5($5:ptr, $10:ui32, $13:ui32, $14:ui32, $4:ptr):
 	$15 = $14 <= $10 :bool
-	if $15 ? Block_3($5, $10, $14, $13, $4) : Block_4($5, $10, $13) :void
+	if $15 ? Block_3($5, $10, $14, $13, $4) : Block_4($5, $10, $13) prob(0.5) :void
 
 Block_3($5:ptr, $10:ui32, $14:ui32, $13:ui32, $4:ptr):
 	$17 = $14 cast_to i32 :i32

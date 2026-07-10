@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
+execute($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$5 = 255 :ui32
 	$6 = $4 + $5 :ui32
@@ -10,20 +10,20 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$13 = 256 :ui32
 	$15 = 1 :ui32
 	$16 = 1 :ui32
-	func_*($8,$11,$12) :void
-	func_*($13,$15,$16) :void
-	func_*($1,$2,$3,$4) :void
+	call func_*($8, $11, $12) :void
+	call func_*($13, $15, $16) :void
+	call func_*($1, $2, $3, $4) :void
 	return :void
 }
-vecAddBounded($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
+vecAddBounded($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
-	$8 = func_*() :ui32
-	$9 = func_*() :ui32
+	$8 = call func_*() :ui32
+	$9 = call func_*() :ui32
 	$10 = $8 * $9 :ui32
-	$11 = func_*() :ui32
+	$11 = call func_*() :ui32
 	$12 = $10 + $11 :ui32
 	$13 = $12 < $4 :bool
-	if $13 ? Block_1($3, $12, $2, $1) : Block_2() :void
+	if $13 ? Block_1($3, $12, $2, $1) : Block_2() prob(0.5) :void
 
 Block_1($7:ptr, $12:ui32, $6:ptr, $5:ptr):
 	$15 = $12 cast_to i32 :i32

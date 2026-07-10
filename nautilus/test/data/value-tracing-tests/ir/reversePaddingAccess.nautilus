@@ -1,5 +1,5 @@
 nautilus {
-execute($1:i64, $2:i8, $3:i16) :i64 {
+execute($1:i64, $2:i8, $3:i16) :i64 allocas[(16,8)] attrs["entry"="true"] {
 Block_0($1:i64, $2:i8, $3:i16):
 	$4 = alloca[0] :ptr
 	$8 = 0 :ui64

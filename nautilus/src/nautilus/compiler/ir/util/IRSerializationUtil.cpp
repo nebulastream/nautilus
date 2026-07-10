@@ -23,10 +23,12 @@
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
-#include <algorithm>
+#include "nautilus/logging.hpp"
+#include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <map>
+#include <unordered_map>
 
 namespace nautilus::compiler::ir {
 
@@ -88,18 +90,24 @@ std::string quoted(const std::string& text) {
 	return out;
 }
 
-/// Function-wide value numbering used for every printed `$<id>`.
+/// How every printed `$<id>` is chosen.
 ///
 /// The in-memory IR distinguishes values by pointer identity and reuses the
-/// same textual identifier for different values in different blocks (the
+/// same numeric identifier for different values in different blocks (the
 /// tracer numbers per value slot, and passes such as block-argument pruning
-/// create cross-block references between them). A faithful text format
-/// therefore cannot reuse the in-memory identifiers: the serializer assigns
-/// every value-producing operation and block argument a fresh id that is
-/// unique within its function, so every reference is unambiguous.
-class ValueNumbering {
+/// create cross-block references between them). The portable rendering
+/// therefore renumbers every value-producing operation and block argument
+/// with an id that is unique within its function, so every reference in the
+/// text is unambiguous. The display rendering keeps the stored identifiers
+/// so dumps line up with in-memory state (verifier messages, backend
+/// register frames, MLIR debug info).
+class IdMap {
 public:
-	explicit ValueNumbering(const FunctionOperation& function) {
+	/// Display: stored identifiers.
+	IdMap() = default;
+
+	/// Portable: function-wide unique renumbering.
+	explicit IdMap(const FunctionOperation& function) : renumbered(true) {
 		uint32_t next = 1;
 		for (const auto* block : function.getBasicBlocks()) {
 			for (const auto* argument : block->getArguments()) {
@@ -114,6 +122,9 @@ public:
 	}
 
 	uint32_t ref(const Operation* operation) const {
+		if (!renumbered) {
+			return operation->getIdentifier().getId();
+		}
 		auto it = ids.find(operation);
 		if (it == ids.end()) {
 			throw RuntimeException(fmt::format(
@@ -124,11 +135,27 @@ public:
 	}
 
 private:
+	bool renumbered = false;
 	std::unordered_map<const Operation*, uint32_t> ids;
 };
 
-/// Emits the non-default subset of @p attrs as ` attrs[...]`, or nothing
-/// when every attribute has its default value.
+/// Rendering configuration shared by the whole writer. `portable` selects
+/// the strict serialization form (full external symbols, errors on
+/// process-specific state); otherwise the display form is produced
+/// (placeholders, never throws, optional source locations).
+struct WriterConfig {
+	bool portable = false;
+	const IRPrintOptions* displayOptions = nullptr;
+
+	/// Whether external function symbols/names may be printed. The display
+	/// form hides them behind `func_*` by default because symbols recorded
+	/// for non-exported functions are raw addresses, which would make dumps
+	/// nondeterministic.
+	bool showExternalSymbols() const {
+		return portable || log::options::getLogAddresses();
+	}
+};
+
 void writeFunctionAttributes(fmt::memory_buffer& out, const FunctionAttributes& attrs) {
 	std::vector<std::string> parts;
 	if (attrs.modRefInfo != ModRefInfo::ModRef) {
@@ -145,7 +172,7 @@ void writeFunctionAttributes(fmt::memory_buffer& out, const FunctionAttributes& 
 	}
 }
 
-void writeArgumentList(fmt::memory_buffer& out, std::span<Operation* const> args, const ValueNumbering& values) {
+void writeArgumentList(fmt::memory_buffer& out, std::span<Operation* const> args, const IdMap& values) {
 	out.push_back('(');
 	for (size_t i = 0; i < args.size(); ++i) {
 		if (i > 0) {
@@ -156,12 +183,24 @@ void writeArgumentList(fmt::memory_buffer& out, std::span<Operation* const> args
 	out.push_back(')');
 }
 
-void writeInvocation(fmt::memory_buffer& out, const BasicBlockInvocation& invocation, const ValueNumbering& values) {
+void writeInvocation(fmt::memory_buffer& out, const BasicBlockInvocation& invocation, const IdMap& values) {
 	fmt::format_to(std::back_inserter(out), "Block_{}", invocation.getBlock()->getIdentifier().getId());
 	writeArgumentList(out, invocation.getArguments(), values);
 }
 
-void writeOperation(fmt::memory_buffer& out, const Operation& op, const ValueNumbering& values) {
+/// Appends the external-function reference of a proxy call or address-of
+/// operation: the full `@"symbol" "name"` form when symbols may be shown,
+/// the deterministic `func_*` placeholder otherwise.
+void writeExternalFunction(fmt::memory_buffer& out, const std::string& symbol, const std::string& name,
+                           const WriterConfig& config) {
+	if (config.showExternalSymbols()) {
+		fmt::format_to(std::back_inserter(out), "@{} {}", quoted(symbol), quoted(name));
+	} else {
+		fmt::format_to(std::back_inserter(out), "func_*");
+	}
+}
+
+void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& values, const WriterConfig& config) {
 	using OpType = Operation::OperationType;
 	auto it = std::back_inserter(out);
 	// Only value-producing operations carry a printable id; void operations
@@ -223,13 +262,16 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const ValueNum
 	case OpType::ConstPtrOp: {
 		// A pointer constant is a raw address in the producing process; it
 		// cannot mean anything in the process that loads the IR. Only null
-		// is portable.
-		if (cast<ConstPtrOperation>(&op)->getValue() != nullptr) {
+		// is portable; the display form keeps the historic `*` placeholder.
+		if (cast<ConstPtrOperation>(&op)->getValue() == nullptr) {
+			fmt::format_to(it, "${} = null", id);
+		} else if (config.portable) {
 			throw RuntimeException(fmt::format("Cannot serialize IR: ${} is a non-null pointer constant, which is "
 			                                   "process-specific. Pass the pointer as a function parameter instead.",
 			                                   id));
+		} else {
+			fmt::format_to(it, "${} = *", id);
 		}
-		fmt::format_to(it, "${} = null", id);
 		break;
 	}
 	case OpType::CastOp:
@@ -258,7 +300,8 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const ValueNum
 		if (op.getStamp() != Type::v) {
 			fmt::format_to(it, "${} = ", id);
 		}
-		fmt::format_to(it, "call @{} {}", quoted(callOp->getFunctionSymbol()), quoted(callOp->getFunctionName()));
+		fmt::format_to(it, "call ");
+		writeExternalFunction(out, callOp->getFunctionSymbol(), callOp->getFunctionName(), config);
 		writeArgumentList(out, callOp->getInputArguments(), values);
 		writeFunctionAttributes(out, callOp->getFunctionAttributes());
 		break;
@@ -275,8 +318,8 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const ValueNum
 	}
 	case OpType::FunctionAddressOfOp: {
 		const auto* addressOfOp = cast<FunctionAddressOfOperation>(&op);
-		fmt::format_to(it, "${} = addressof @{} {}", id, quoted(addressOfOp->getFunctionSymbol()),
-		               quoted(addressOfOp->getFunctionName()));
+		fmt::format_to(it, "${} = addressof ", id);
+		writeExternalFunction(out, addressOfOp->getFunctionSymbol(), addressOfOp->getFunctionName(), config);
 		break;
 	}
 	case OpType::BranchOp:
@@ -301,13 +344,37 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const ValueNum
 		break;
 	}
 	default:
-		throw RuntimeException(fmt::format("Cannot serialize IR: unsupported operation type {} (op ${})",
-		                                   static_cast<uint32_t>(op.getOperationType()), op.getIdentifier().getId()));
+		if (config.portable) {
+			throw RuntimeException(fmt::format("Cannot serialize IR: unsupported operation type {} (op ${})",
+			                                   static_cast<uint32_t>(op.getOperationType()),
+			                                   op.getIdentifier().getId()));
+		}
+		fmt::format_to(it, "${}", id);
+		break;
 	}
 	fmt::format_to(it, " :{}", toString(op.getStamp()));
+
+	// Opt-in source-location trailer of the display form: `; `-prefixed
+	// comments that the parser skips.
+	if (const auto* opts = config.displayOptions;
+	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
+		if (const auto* tag = op.getSourceTag()) {
+			const auto frames = opts->resolver->resolveStack(tag);
+			if (!frames.empty()) {
+				// Innermost frame on the same line; outer frames continue on
+				// their own lines, outermost last. Two tabs line them up
+				// under the op text that the block writer indents with one tab.
+				const auto& innermost = frames.back();
+				fmt::format_to(it, "  ; at {}:{} ({})", innermost.file, innermost.line, innermost.function);
+				for (auto frame = frames.rbegin() + 1; frame != frames.rend(); ++frame) {
+					fmt::format_to(it, "\n\t\t; inlined from {}:{} ({})", frame->file, frame->line, frame->function);
+				}
+			}
+		}
+	}
 }
 
-void writeBlock(fmt::memory_buffer& out, const BasicBlock& block, const ValueNumbering& values) {
+void writeBlock(fmt::memory_buffer& out, const BasicBlock& block, const IdMap& values, const WriterConfig& config) {
 	auto it = std::back_inserter(out);
 	fmt::format_to(it, "\nBlock_{}(", block.getIdentifier().getId());
 	const auto& args = block.getArguments();
@@ -320,29 +387,44 @@ void writeBlock(fmt::memory_buffer& out, const BasicBlock& block, const ValueNum
 	fmt::format_to(it, "):\n");
 	for (const auto* operation : block.getOperations()) {
 		out.push_back('\t');
-		writeOperation(out, *operation, values);
+		writeOperation(out, *operation, values, config);
 		out.push_back('\n');
 	}
 }
 
-void writeFunction(fmt::memory_buffer& out, const FunctionOperation& function) {
+void writeFunction(fmt::memory_buffer& out, const FunctionOperation& function, const WriterConfig& config) {
 	auto it = std::back_inserter(out);
 	fmt::format_to(it, "{}(", function.getName());
 	const auto* entry = function.getEntryBlock();
-	if (entry == nullptr) {
+	if (config.portable && entry == nullptr) {
 		throw RuntimeException(
 		    fmt::format("Cannot serialize IR: function '{}' has no entry block", function.getName()));
 	}
-	const ValueNumbering values(function);
-	// Function parameters are the entry block's arguments (the trace-to-IR
-	// conversion leaves FunctionOperation::inputArgs empty; see the pretty
-	// printer in IRGraph.cpp).
-	const auto& params = entry->getArguments();
-	for (size_t i = 0; i < params.size(); ++i) {
-		if (i > 0) {
-			fmt::format_to(it, ", ");
+	const IdMap values = config.portable ? IdMap(function) : IdMap();
+	// The function's parameters are the entry block's arguments; the
+	// trace-to-IR conversion leaves FunctionOperation::inputArgs empty.
+	// Hand-built graphs (test fixtures) may instead populate inputArgs.
+	const auto& argTypes = function.getInputArgs();
+	const auto& argNames = function.getInputArgNames();
+	if (entry != nullptr && argTypes.empty() && argNames.empty()) {
+		const auto& params = entry->getArguments();
+		for (size_t i = 0; i < params.size(); ++i) {
+			if (i > 0) {
+				fmt::format_to(it, ", ");
+			}
+			fmt::format_to(it, "${}:{}", values.ref(params[i]), toString(params[i]->getStamp()));
 		}
-		fmt::format_to(it, "${}:{}", values.ref(params[i]), toString(params[i]->getStamp()));
+	} else {
+		for (size_t i = 0; i < argTypes.size(); ++i) {
+			if (i > 0) {
+				fmt::format_to(it, ", ");
+			}
+			if (i < argNames.size()) {
+				fmt::format_to(it, "{}:{}", argNames[i], toString(argTypes[i]));
+			} else {
+				fmt::format_to(it, "{}", toString(argTypes[i]));
+			}
+		}
 	}
 	fmt::format_to(it, ") :{}", toString(function.getOutputArg()));
 	const auto& allocaSpecs = function.getAllocaSpecs();
@@ -367,20 +449,39 @@ void writeFunction(fmt::memory_buffer& out, const FunctionOperation& function) {
 	}
 	fmt::format_to(it, " {{");
 	for (const auto* block : function.getBasicBlocks()) {
-		writeBlock(out, *block, values);
+		writeBlock(out, *block, values, config);
 	}
 	fmt::format_to(it, "}}\n");
+}
+
+std::string writeGraph(const IRGraph& graph, const WriterConfig& config) {
+	fmt::memory_buffer out;
+	fmt::format_to(std::back_inserter(out), "nautilus {{\n");
+	for (const auto* function : graph.getFunctionOperations()) {
+		writeFunction(out, *function, config);
+	}
+	fmt::format_to(std::back_inserter(out), "}} //nautilus\n");
+	return fmt::to_string(out);
 }
 
 } // namespace
 
 std::string serializeIR(const IRGraph& graph) {
+	WriterConfig config;
+	config.portable = true;
+	return writeGraph(graph, config);
+}
+
+std::string printIR(const IRGraph& graph, const IRPrintOptions& options) {
+	WriterConfig config;
+	config.displayOptions = &options;
+	return writeGraph(graph, config);
+}
+
+std::string printOperation(const Operation& operation) {
 	fmt::memory_buffer out;
-	fmt::format_to(std::back_inserter(out), "nautilus {{\n");
-	for (const auto* function : graph.getFunctionOperations()) {
-		writeFunction(out, *function);
-	}
-	fmt::format_to(std::back_inserter(out), "}} //nautilus\n");
+	WriterConfig config;
+	writeOperation(out, operation, IdMap(), config);
 	return fmt::to_string(out);
 }
 

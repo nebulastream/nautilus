@@ -1,7 +1,7 @@
 nautilus {
-execute($1:ptr, $2:ptr, $3:ptr) :void {
+execute($1:ptr, $2:ptr, $3:ptr) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ptr):
-	$4 = func_*() :ui32
+	$4 = call func_*() :ui32
 	$5 = $4 cast_to i32 :i32
 	$9 = 4 :ui64
 	$10 = $5 cast_to ui64 :ui64
@@ -21,7 +21,7 @@ Block_0($1:ptr, $2:ptr, $3:ptr):
 	$34 = $33 * $32 :ui64
 	$35 = $3 + $34 :ptr
 	store($27, $35) :void
-	func_*() :void
+	call func_*() :void
 	return :void
 }
 } //nautilus

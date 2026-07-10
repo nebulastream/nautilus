@@ -1,40 +1,40 @@
 nautilus {
-execute($1:i32) :bool {
+execute($1:i32) :bool attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = true :bool
-	if $2 ? Block_1($1) : Block_2($1) :void
+	if $2 ? Block_1($1) : Block_2($1) prob(0.5) :void
 
 Block_1($1:i32):
 	$4 = 42 :i64
 	$5 = $1 cast_to i64 :i64
 	$6 = $5 == $4 :bool
-	if $6 ? Block_3($1) : Block_4($1) :void
+	if $6 ? Block_3($1) : Block_4($1) prob(0.5) :void
 
 Block_3($1:i32):
 	$8 = true :bool
 	br Block_13($1, $8) :void
 
 Block_13($1:i32, $2:bool):
-	if $2 ? Block_5($1) : Block_6($1) :void
+	if $2 ? Block_5($1) : Block_6($1) prob(0.5) :void
 
 Block_5($1:i32):
 	$10 = 42 :i64
 	$11 = $1 cast_to i64 :i64
 	$12 = $11 == $10 :bool
-	if $12 ? Block_7($1) : Block_8($1) :void
+	if $12 ? Block_7($1) : Block_8($1) prob(0.5) :void
 
 Block_7($1:i32):
 	$14 = true :bool
 	br Block_15($1, $14) :void
 
 Block_15($1:i32, $2:bool):
-	if $2 ? Block_9($1) : Block_10() :void
+	if $2 ? Block_9($1) : Block_10() prob(0.5) :void
 
 Block_9($1:i32):
 	$16 = 42 :i64
 	$17 = $1 cast_to i64 :i64
 	$18 = $17 == $16 :bool
-	if $18 ? Block_11() : Block_12() :void
+	if $18 ? Block_11() : Block_12() prob(0.5) :void
 
 Block_11():
 	$20 = true :bool

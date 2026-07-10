@@ -5,14 +5,14 @@ Block_0($1:i32):
 	$3 = $1 + $2 :i32
 	return ($3) :i32
 }
-execute($1:i32) :i32 {
+execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = 10 :i32
 	$3 = $1 > $2 :bool
-	if $3 ? Block_1($1) : Block_3($1) :void
+	if $3 ? Block_1($1) : Block_3($1) prob(0.5) :void
 
 Block_1($1:i32):
-	$5 = func_*($1) :i32
+	$5 = call func_*($1) :i32
 	br Block_3($5) :void
 
 Block_3($5:i32):
