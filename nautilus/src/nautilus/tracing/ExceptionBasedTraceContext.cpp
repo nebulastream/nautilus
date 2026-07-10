@@ -251,9 +251,46 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 
 void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source,
                                                  Type resultType) {
-	traceOperation(ASSIGN, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addAssignmentOperation(tag, target, source, resultType);
-	});
+	if (isFollowing()) {
+		follow(ASSIGN);
+		return;
+	}
+	auto tag = recordSnapshot();
+	auto& trace = state->executionTrace;
+
+	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
+	// so a tag match here does not by itself prove this ASSIGN is a genuine
+	// control-flow re-entry (a loop back-edge or an if/else merge point): the
+	// identical call-stack shape, with an identical alive-variable footprint,
+	// can also be reached while assigning a *different* target -- e.g. two
+	// structurally-identical sibling arguments of the same call (`f(0, x, 0)`)
+	// evaluated by the same argument-evaluation loop, or two slots of the same
+	// array assigned via the same loop body. Distinguish the two by checking
+	// whether the operation already recorded at this tag assigned the same
+	// target: if not, this is an unrelated assignment that merely collided,
+	// so record it fresh instead of forcing a bogus merge that would discard
+	// everything traced afterwards (issue #382). This mirrors how traceCopy
+	// already reconciles instead of merging when a repeated call site's
+	// *source* legitimately differs (issue #95/#384). Same defect and same
+	// fix as LazyTraceContext::traceAssignment -- this tracer keeps its own
+	// copy of the mechanism.
+	const operation_identifier* existing = nullptr;
+	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
+		existing = &it->second;
+	} else if (auto localIt = trace.localTagMap.find(tag); localIt != trace.localTagMap.end()) {
+		existing = &localIt->second;
+	}
+	if (existing != nullptr) {
+		auto* existingOp = trace.getBlocks()[existing->blockIndex]->operations[existing->operationIndex];
+		if (existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref) {
+			trace.addAssignmentOperation(tag, target, source, resultType);
+			return;
+		}
+	}
+	if (!trace.checkTag(tag)) {
+		throw TraceTerminationException();
+	}
+	trace.addAssignmentOperation(tag, target, source, resultType);
 }
 
 void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
