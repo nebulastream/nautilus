@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActionIcon, Button, Group, Select, Text } from '@mantine/core';
 import mermaid from 'mermaid';
 import { parse } from '@nautilus-ir/parser';
 import { cfgFor } from '@nautilus-ir/cfgFromParsedIr';
@@ -109,41 +110,53 @@ export function GraphView({ stages }: GraphViewProps) {
 
 	return (
 		<div className="graph-view">
-			<div className="graph-controls">
-				<label>
-					Stage{' '}
-					<select value={activeStage?.key ?? ''} onChange={(e) => setStageKey(e.target.value)}>
-						{irStages.map((s) => (
-							<option key={s.key} value={s.key}>
-								{s.title}
-							</option>
-						))}
-					</select>
-				</label>
-				<label>
-					Function{' '}
-					<select value={activeFunction ?? ''} onChange={(e) => setFunctionName(e.target.value)}>
-						{functionNames.map((name) => (
-							<option key={name} value={name}>
-								{name}
-							</option>
-						))}
-					</select>
-				</label>
-				<span className="graph-zoom">
-					<button onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} aria-label="Zoom out">
+			<Group className="graph-controls" gap="md" px="md" py={6} wrap="wrap">
+				<Group gap="xs">
+					<Text size="xs" c="dimmed">
+						Stage
+					</Text>
+					<Select
+						size="xs"
+						w={230}
+						value={activeStage?.key ?? null}
+						data={irStages.map((s) => ({ value: s.key, label: s.title }))}
+						onChange={(value) => value && setStageKey(value)}
+						comboboxProps={{ shadow: 'md' }}
+						allowDeselect={false}
+					/>
+				</Group>
+				<Group gap="xs">
+					<Text size="xs" c="dimmed">
+						Function
+					</Text>
+					<Select
+						size="xs"
+						w={150}
+						value={activeFunction ?? null}
+						data={functionNames.map((name) => ({ value: name, label: name }))}
+						onChange={(value) => value && setFunctionName(value)}
+						comboboxProps={{ shadow: 'md' }}
+						allowDeselect={false}
+					/>
+				</Group>
+				<Group gap={6}>
+					<ActionIcon variant="default" size="input-xs" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} aria-label="Zoom out">
 						−
-					</button>
-					<span>{Math.round(zoom * 100)}%</span>
-					<button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} aria-label="Zoom in">
+					</ActionIcon>
+					<Text size="xs" w={38} ta="center">
+						{Math.round(zoom * 100)}%
+					</Text>
+					<ActionIcon variant="default" size="input-xs" onClick={() => setZoom((z) => Math.min(4, z + 0.25))} aria-label="Zoom in">
 						+
-					</button>
-					<button onClick={fitToView}>Fit</button>
-					<button onClick={downloadSvg} disabled={!svg}>
+					</ActionIcon>
+					<Button size="compact-xs" variant="default" onClick={fitToView}>
+						Fit
+					</Button>
+					<Button size="compact-xs" variant="default" onClick={downloadSvg} disabled={!svg}>
 						Download SVG
-					</button>
-				</span>
-			</div>
+					</Button>
+				</Group>
+			</Group>
 			{error && <div className="graph-error">Graph rendering failed: {error}</div>}
 			<div className="graph-canvas" ref={canvasRef}>
 				<div

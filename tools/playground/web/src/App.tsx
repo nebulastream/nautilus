@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Badge, Button, CopyButton, Group, Select, Switch, Text } from '@mantine/core';
 import { parse } from '@nautilus-ir/parser';
 import { makeTextDocument } from './lib/vscodeShim';
 import { splitTraceSections } from './lib/traceSections';
@@ -36,7 +37,6 @@ export function App() {
 	const [statusKind, setStatusKind] = useState<StatusKind>('ready');
 	const [busy, setBusy] = useState(false);
 	const [activeKey, setActiveKey] = useState<string>('');
-	const [introDismissed, setIntroDismissed] = useState(false);
 	const userEditedRef = useRef(false);
 	const autoCompiledRef = useRef(false);
 	const sourceRef = useRef(source);
@@ -155,12 +155,6 @@ export function App() {
 				statusDetail={statusDetail}
 				busy={busy}
 			/>
-			{selectedExample && (
-				<div className="example-bar">
-					<b>{selectedExample.title}</b>
-					<span>{selectedExample.description}</span>
-				</div>
-			)}
 			<main className="panes">
 				<section className="pane editor-pane">
 					<Editor
@@ -181,24 +175,6 @@ export function App() {
 				<section className="pane inspector-pane">
 					{result ? (
 						<>
-							{!introDismissed && (
-								<div className="intro-strip">
-									<span>
-										Every stage of the Nautilus tracing-JIT pipeline, live: trace → SSA → IR → optimization
-										passes → backend code.{' '}
-										<a href="https://github.com/nebulastream/nautilus" target="_blank" rel="noreferrer">
-											GitHub
-										</a>
-										{' · '}
-										<a href="https://dl.acm.org/doi/10.1145/3626246.3653373" target="_blank" rel="noreferrer">
-											SIGMOD&nbsp;’24 paper
-										</a>
-									</span>
-									<button onClick={() => setIntroDismissed(true)} aria-label="Dismiss">
-										✕
-									</button>
-								</div>
-							)}
 							{result.diagnostics.phase && <DiagnosticsPanel diagnostics={result.diagnostics} />}
 							{stages.length > 0 && (
 								<>
@@ -230,23 +206,6 @@ export function App() {
 				</section>
 			</main>
 		</div>
-	);
-}
-
-function CopyButton({ text }: { text: string }) {
-	const [copied, setCopied] = useState(false);
-	return (
-		<button
-			className="chip-button"
-			onClick={() => {
-				void navigator.clipboard.writeText(text).then(() => {
-					setCopied(true);
-					setTimeout(() => setCopied(false), 1500);
-				});
-			}}
-		>
-			{copied ? 'Copied ✓' : 'Copy'}
-		</button>
 	);
 }
 
@@ -293,37 +252,61 @@ function StageBody({ stage, stages }: { stage: Stage; stages: Stage[] }) {
 
 	return (
 		<div className="stage-body">
-			<div className="stage-toolbar">
+			<Group className="stage-toolbar" gap="md" px="md" py={6} wrap="wrap">
 				{stage.phase === 'pass' && (
 					<>
-						<span className="stage-chip" title="Per-pass dumps are written when the pass changed the IR, once per fixed-point iteration">
+						<Badge
+							variant="light"
+							color="gray"
+							radius="xl"
+							style={{ textTransform: 'none', fontWeight: 500 }}
+							title="Per-pass dumps are written when the pass changed the IR, once per fixed-point iteration"
+						>
 							after last iteration that changed the IR
-						</span>
+						</Badge>
 						{previousIr && (
-							<label className="stage-toggle">
-								<input type="checkbox" checked={showDiff} onChange={(e) => setShowDiff(e.target.checked)} />
-								Show changes vs. {previousIr.title}
-							</label>
+							<Switch
+								size="xs"
+								label={`Show changes vs. ${previousIr.title}`}
+								checked={showDiff}
+								onChange={(e) => setShowDiff(e.currentTarget.checked)}
+							/>
 						)}
 					</>
 				)}
 				{traceSections.length > 1 && (
-					<label className="stage-toggle">
-						Function{' '}
-						<select value={traceFunction} onChange={(e) => setTraceFunction(e.target.value)}>
-							<option value="all">All functions</option>
-							{traceSections.map((section) => (
-								<option key={section.header} value={section.header}>
-									{section.name}
-								</option>
-							))}
-						</select>
-					</label>
+					<Group gap="xs">
+						<Text size="xs" c="dimmed">
+							Function
+						</Text>
+						<Select
+							size="xs"
+							w={170}
+							value={traceFunction}
+							data={[
+								{ value: 'all', label: 'All functions' },
+								...traceSections.map((section) => ({ value: section.header, label: section.name })),
+							]}
+							onChange={(value) => value && setTraceFunction(value)}
+							comboboxProps={{ shadow: 'md' }}
+							allowDeselect={false}
+						/>
+					</Group>
 				)}
-				{stage.truncated && <span className="stage-chip stage-chip-warn">output truncated at 2 MB</span>}
-				<div className="stage-toolbar-spacer" />
-				<CopyButton text={stage.text} />
-			</div>
+				{stage.truncated && (
+					<Badge variant="light" color="yellow" radius="xl" style={{ textTransform: 'none', fontWeight: 500 }}>
+						output truncated at 2 MB
+					</Badge>
+				)}
+				<div style={{ flex: 1 }} />
+				<CopyButton value={stage.text} timeout={1500}>
+					{({ copied, copy }) => (
+						<Button size="compact-xs" variant="default" onClick={copy}>
+							{copied ? 'Copied ✓' : 'Copy'}
+						</Button>
+					)}
+				</CopyButton>
+			</Group>
 			{showDiffView ? (
 				<DiffEditor original={previousIr.text} modified={stage.text} language="nautilus-ir" />
 			) : (

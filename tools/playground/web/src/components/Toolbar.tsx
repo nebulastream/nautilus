@@ -1,3 +1,4 @@
+import { Anchor, Badge, Button, Checkbox, Divider, Group, Popover, Select, Text, Tooltip } from '@mantine/core';
 import { BACKENDS, type Backend, type CompileOptions, type Example } from '../api';
 
 export type StatusKind = 'ready' | 'working' | 'done' | 'failed';
@@ -25,15 +26,22 @@ const BACKEND_LABELS: Record<Backend, string> = {
 	asmjit: 'AsmJit',
 };
 
+const STATUS_COLORS: Record<StatusKind, string> = {
+	ready: 'gray',
+	working: 'yellow',
+	done: 'nautilus',
+	failed: 'red',
+};
+
 /** Stylised nautilus-shell spiral, drawn inline so the page stays self-contained. */
 function BrandMark() {
 	return (
-		<svg className="brand-mark" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
-			<circle cx="16" cy="16" r="15" fill="#3cb4a4" opacity="0.16" />
+		<svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true">
+			<circle cx="16" cy="16" r="15" fill="#3cb4a4" opacity="0.14" />
 			<path
 				d="M16 27 C9.9 27 5 22.1 5 16 C5 9.9 9.9 5 16 5 C20.4 5 24 8.6 24 13 C24 16.9 20.9 20 17 20 C13.7 20 11 17.3 11 14 C11 11.2 13.2 9 16 9"
 				fill="none"
-				stroke="#3cb4a4"
+				stroke="#2c9486"
 				strokeWidth="2.4"
 				strokeLinecap="round"
 			/>
@@ -41,6 +49,11 @@ function BrandMark() {
 	);
 }
 
+/**
+ * Single unified navbar: brand, example + backend pickers, pass options,
+ * project links, status, and the compile action all live here — no
+ * secondary banners.
+ */
 export function Toolbar({
 	backend,
 	onBackendChange,
@@ -55,85 +68,136 @@ export function Toolbar({
 	statusDetail,
 	busy,
 }: ToolbarProps) {
+	const selectedExample = examples.find((x) => x.id === selectedExampleId);
+
+	const exampleSelect = (
+		<Select
+			className="example-select"
+			size="xs"
+			w={210}
+			value={selectedExampleId || null}
+			placeholder="Custom code"
+			data={examples.map((x) => ({ value: x.id, label: x.title }))}
+			onChange={(id) => {
+				const example = examples.find((x) => x.id === id);
+				if (example) {
+					onExampleSelect(example);
+				}
+			}}
+			comboboxProps={{ shadow: 'md' }}
+			allowDeselect={false}
+		/>
+	);
+
 	return (
 		<header className="toolbar">
-			<span className="brand">
-				<BrandMark />
-				<span className="brand-name">
-					Nautilus <span className="brand-sub">Playground</span>
-				</span>
-			</span>
+			<Group gap="lg" wrap="wrap" style={{ width: '100%' }}>
+				<Group gap={9}>
+					<BrandMark />
+					<Text fw={650} size="md">
+						Nautilus{' '}
+						<Text span c="dimmed" fw={400}>
+							Playground
+						</Text>
+					</Text>
+				</Group>
 
-			<label className="toolbar-field">
-				Example
-				<select
-					className="example-select"
-					value={selectedExampleId}
-					onChange={(e) => {
-						const example = examples.find((x) => x.id === e.target.value);
-						if (example) {
-							onExampleSelect(example);
-						}
-					}}
-				>
-					{selectedExampleId === '' && <option value="">Custom code</option>}
-					{examples.map((example) => (
-						<option key={example.id} value={example.id} title={example.description}>
-							{example.title}
-						</option>
-					))}
-				</select>
-			</label>
+				<Group gap="xs">
+					<Text size="xs" c="dimmed">
+						Example
+					</Text>
+					{selectedExample?.description ? (
+						<Tooltip label={selectedExample.description} maw={360} multiline withArrow>
+							{exampleSelect}
+						</Tooltip>
+					) : (
+						exampleSelect
+					)}
+				</Group>
 
-			<label className="toolbar-field">
-				Backend
-				<select value={backend} onChange={(e) => onBackendChange(e.target.value as Backend)}>
-					{BACKENDS.map((b) => (
-						<option key={b} value={b}>
-							{BACKEND_LABELS[b]}
-						</option>
-					))}
-				</select>
-			</label>
+				<Group gap="xs">
+					<Text size="xs" c="dimmed">
+						Backend
+					</Text>
+					<Select
+						size="xs"
+						w={150}
+						value={backend}
+						data={BACKENDS.map((b) => ({ value: b, label: BACKEND_LABELS[b] }))}
+						onChange={(value) => value && onBackendChange(value as Backend)}
+						comboboxProps={{ shadow: 'md' }}
+						allowDeselect={false}
+					/>
+				</Group>
 
-			<details className="options-popover">
-				<summary>Options</summary>
-				<div className="options-body">
-					<label>
-						<input
-							type="checkbox"
+				<Popover position="bottom-start" shadow="md" width={260}>
+					<Popover.Target>
+						<Button size="xs" variant="default">
+							Passes
+						</Button>
+					</Popover.Target>
+					<Popover.Dropdown>
+						<Text size="xs" c="dimmed" mb={8}>
+							Opt-in optimization passes
+						</Text>
+						<Checkbox
+							size="xs"
+							mb={6}
+							label="Loop-invariant code motion"
 							checked={options.enableLICM ?? false}
-							onChange={(e) => onOptionsChange({ ...options, enableLICM: e.target.checked })}
-						/>{' '}
-						Loop-invariant code motion
-					</label>
-					<label>
-						<input
-							type="checkbox"
+							onChange={(e) => onOptionsChange({ ...options, enableLICM: e.currentTarget.checked })}
+						/>
+						<Checkbox
+							size="xs"
+							mb={6}
+							label="Local CSE"
 							checked={options.enableLocalCSE ?? false}
-							onChange={(e) => onOptionsChange({ ...options, enableLocalCSE: e.target.checked })}
-						/>{' '}
-						Local CSE
-					</label>
-					<label>
-						<input
-							type="checkbox"
+							onChange={(e) => onOptionsChange({ ...options, enableLocalCSE: e.currentTarget.checked })}
+						/>
+						<Checkbox
+							size="xs"
+							label="Strength reduction"
 							checked={options.enableStrengthReduction ?? false}
-							onChange={(e) => onOptionsChange({ ...options, enableStrengthReduction: e.target.checked })}
-						/>{' '}
-						Strength reduction
-					</label>
-				</div>
-			</details>
+							onChange={(e) => onOptionsChange({ ...options, enableStrengthReduction: e.currentTarget.checked })}
+						/>
+					</Popover.Dropdown>
+				</Popover>
 
-			<div className="toolbar-spacer" />
+				<div style={{ flex: 1 }} />
 
-			<span className={`status-pill status-${statusKind}`} title={statusDetail}>
-				{status}
-			</span>
-			<button className="compile-button" onClick={onCompile} disabled={busy} title="Ctrl/Cmd+Enter">
-				{busy ? 'Compiling…' : 'Compile'}
-			</button>
+				<Group gap="sm">
+					<Anchor href="https://github.com/nebulastream/nautilus" target="_blank" rel="noreferrer" size="xs" c="dimmed">
+						GitHub
+					</Anchor>
+					<Anchor
+						href="https://dl.acm.org/doi/10.1145/3626246.3653373"
+						target="_blank"
+						rel="noreferrer"
+						size="xs"
+						c="dimmed"
+					>
+						SIGMOD ’24 paper
+					</Anchor>
+					<Divider orientation="vertical" />
+					<Tooltip label={statusDetail} disabled={!statusDetail} withArrow>
+						<Badge
+							className={`status-pill status-${statusKind}`}
+							variant="light"
+							color={STATUS_COLORS[statusKind]}
+							size="lg"
+							radius="xl"
+							style={{ textTransform: 'none', fontWeight: 500 }}
+						>
+							{status}
+						</Badge>
+					</Tooltip>
+					<Tooltip label="Ctrl/Cmd + Enter" withArrow>
+						<Button className="compile-button" size="xs" onClick={onCompile} disabled={busy} loading={busy}>
+							Compile
+						</Button>
+					</Tooltip>
+				</Group>
+			</Group>
 		</header>
 	);
 }
