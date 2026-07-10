@@ -86,24 +86,29 @@ std::vector<uint8_t> randomBuffer() {
 //      instances documented below, just a shape those fixes didn't cover.
 //
 // Finding "Invalid trace. This is maybe caused by a constant loop." is no
-// longer tolerated either (issue #381): ExecutionTrace::processControlFlowMerge
-// treated a Tag/Snapshot match against the block currently being built as an
-// unconditional fatal error, but Tag identity is a raw
+// longer tolerated either (issue #381): Tag identity is a raw
 // __builtin_return_address chain (TagRecorder.cpp) that depends only on the
 // *sequence of call sites* used to reach a traced operation -- not on which
-// logical operation it is. A shared, non-inlined call-dispatch site (e.g. a
-// recursive expression evaluator's single nautilus::invoke() call, reached
-// for many different AST nodes) can therefore produce byte-identical Tags for
-// two unrelated Op::CALL operations targeting different callees. Fixed in
-// LazyTraceContext.cpp/ExceptionBasedTraceContext.cpp by comparing the callee
-// (FunctionCall::ptr) already recorded at that tag against the one about to
-// be traced: a mismatch means the collision is coincidental, not a real
-// control-flow re-entry, so the call is now recorded fresh instead of forcing
-// a bogus merge, mirroring how traceAssignment/traceCopy already reconcile
-// instead of merging for the same underlying Tag-collision defect (issue
-// #95/#382/#384). Pinned by sharedCallSiteDifferentCallees in
-// RunctimeCallFunctions.hpp; the smoke corpus now actively guards against its
-// recurrence.
+// logical operation it is, so it cannot distinguish two logically-unrelated
+// operations reached through an identical call-stack shape. The root cause
+// was not in the core tracer, though: `evalNautilusCall`'s own
+// argument-evaluation loop (EvalNautilus.hpp) used a plain `int` counter --
+//   for (int i = 0; i < callDesc.arity; ++i) {
+//       v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+//   }
+// -- to drive repeated evalNautilusGeneric()/invoke() calls through one
+// shared, non-inlined call site, e.g. for a Kind::Call node's own arguments
+// (themselves potentially nested Kind::Call nodes targeting different
+// callees, or same-shaped sibling Kind::Const leaves). Nautilus's only
+// sanctioned trace-time-unrolled-loop constructs are `val<T>` (a real runtime
+// loop) and `static_val<T>`/`static_iterable` (trace-time unrolled, folding
+// the loop counter into the tracer's Snapshot hash on every step precisely to
+// keep repeated call sites distinguishable -- see docs/loops.md and
+// docs/static-val.md); a plain `int` counter here fell outside that contract.
+// Fixed by switching the loop counter to `static_val<int>`, matching every
+// other trace-time-unrolled loop already in this evaluator (e.g. the
+// StaticLoop handling a few cases up); the smoke corpus now actively guards
+// against its recurrence.
 //
 // Finding "Invalid trace: no Return operation was recorded." is no longer
 // tolerated either (issue #382): LazyTraceContext::traceAssignment's generic

@@ -651,7 +651,19 @@ TracedValue<T> evalNautilusCall(const Ast& ast, const Node& n, std::span<const T
 	const CallDescriptor callDesc = calleeDescriptor(n.imm);
 	const int vStart = callValueKidStart(callDesc);
 	TracedValue<T> v[3] = {TracedValue<T>(T(0)), TracedValue<T>(T(0)), TracedValue<T>(T(0))};
-	for (int i = 0; i < callDesc.arity; ++i) {
+	// static_val, not a plain int: this loop's body calls evalNautilusGeneric
+	// (and, transitively, invoke()) through one shared call site regardless of
+	// which argument index is being evaluated. Nautilus's only sanctioned
+	// trace-time-unrolled-loop constructs are val<T> (real runtime loop) and
+	// static_val<T>/static_iterable (trace-time unrolled, see docs/loops.md
+	// and docs/static-val.md) -- a plain int counter here means two
+	// same-shaped sibling arguments (e.g. two bare Const kids) are traced
+	// through an identical call-stack shape, which the tracer's Tag identity
+	// (a raw __builtin_return_address chain, TagRecorder.cpp) cannot
+	// distinguish, aborting with "Invalid trace. This is maybe caused by a
+	// constant loop." static_val's counter is folded into the tracer's
+	// Snapshot hash on every step specifically to prevent this.
+	for (static_val<int> i = 0; i < callDesc.arity; ++i) {
 		v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
 	}
 	switch (n.imm % NUM_CALLEES) {

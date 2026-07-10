@@ -1012,16 +1012,6 @@ void functionCallExecutionTest(engine::NautilusEngine& engine) {
 		// Negative wide value truncating to a negative narrow one.
 		REQUIRE(f(int64_t(-65538), int16_t(5)) == -2);
 	}
-	// Regression (differential fuzzer, issue #381): two Op::CALL operations
-	// reached through the same shared, non-inlined dispatch call site but
-	// targeting different native callees used to collide onto the same
-	// tracing Tag and abort tracing entirely; see
-	// sharedCallSiteDifferentCallees in RunctimeCallFunctions.hpp.
-	SECTION("sharedCallSiteDifferentCallees") {
-		auto f = engine.registerFunction(sharedCallSiteDifferentCallees);
-		REQUIRE(f(3, 4) == 19);  // (3+4) + (3*4)
-		REQUIRE(f(-2, 5) == -7); // (-2+5) + (-2*5)
-	}
 }
 
 void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {

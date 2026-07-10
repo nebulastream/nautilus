@@ -671,9 +671,7 @@ nebulastream/nautilus#381; neither is tolerated or tracked here anymore).
 constant loop."`, ~126 of the 129 findings) -- **now fixed**
 (nebulastream/nautilus#381): the exact fragility the paragraph above already
 predicted, confirmed reachable through the real fuzz harness rather than
-merely a standalone reproduction script. `ExecutionTrace::processControlFlowMerge`
-treated a Tag/Snapshot match against the block currently being built as an
-unconditional fatal error (`ExecutionTrace.cpp`), but Tag identity is a raw
+merely a standalone reproduction script. Tag identity is a raw
 `__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
 `TagRecorder.cpp`) that depends only on the *sequence of recursive call
 sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
@@ -682,30 +680,48 @@ unrelated `Kind::Call` nodes reached via the same shape of recursive descent
 through the evaluator (i.e. through `evalCall`'s single, shared
 `nautilus::invoke()` dispatch, regardless of which of the nine callees got
 selected) can therefore collide onto the same Tag and falsely read as "this
-exact operation was already traced in the current block." Confirmed
-empirically: forcing every `Kind::Call` selection back to the original
-arity-2 same-type shape (i.e. `imm % NUM_CALLEES` always landing on
-`calleeMix`/`calleeMin`, with the rest of the new registry unreachable) keeps
-the 2000-input smoke corpus perfectly clean, while any of the wider shapes
-being reachable reintroduces the collision on unrelated trees elsewhere in
-the corpus -- i.e. the byte-stream *shift* from having more `Kind::Call`
-diversity is what surfaces it, not anything specific to a given new callee's
-own marshalling. Fixed in `LazyTraceContext.cpp`/`ExceptionBasedTraceContext.cpp`
-by comparing the callee (`FunctionCall::ptr`) already recorded at a colliding
-tag against the one about to be traced: a mismatch means the collision is
-coincidental, not a real control-flow re-entry, so the call is recorded fresh
-instead of forcing a bogus merge -- the same reconciliation strategy already
-used for `traceConstant`/`traceCopy` (issue #95) and `traceAssignment` (issue
-#382) for this identical underlying Tag-collision defect. Pinned by
-`sharedCallSiteDifferentCallees` in `test/common/RunctimeCallFunctions.hpp`
-(a shared, non-inlined dispatch call site invoking two different native
-callees, deterministically reproducing the collision independent of the
-fuzzer's own byte-stream); the smoke corpus no longer tolerates this
-exception. The underlying fragility of `__builtin_return_address`-based Tag
-identity for *other* operation kinds (arithmetic, allocas) is not fully
-addressed -- only `Op::CALL`/`Op::FUNC_ADDR`, which is what every finding
-observed so far has been -- and is worth a maintainer's attention if a future
-fuzzer extension surfaces a collision there too.
+exact operation was already traced in the current block," which
+`ExecutionTrace::processControlFlowMerge` treats as an unconditional fatal
+error (`ExecutionTrace.cpp`). Confirmed empirically: forcing every
+`Kind::Call` selection back to the original arity-2 same-type shape (i.e.
+`imm % NUM_CALLEES` always landing on `calleeMix`/`calleeMin`, with the rest
+of the new registry unreachable) keeps the 2000-input smoke corpus perfectly
+clean, while any of the wider shapes being reachable reintroduces the
+collision on unrelated trees elsewhere in the corpus -- i.e. the byte-stream
+*shift* from having more `Kind::Call` diversity is what surfaces it, not
+anything specific to a given new callee's own marshalling.
+
+Root cause: `evalNautilusCall`'s own argument-evaluation loop
+(`EvalNautilus.hpp`) --
+
+```cpp
+for (int i = 0; i < callDesc.arity; ++i) {
+    v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+}
+```
+
+-- used a plain `int` counter to drive repeated `evalNautilusGeneric()` (and
+transitively `invoke()`) calls through one shared, non-inlined call site for
+each of a `Kind::Call` node's own arguments, including same-shaped sibling
+`Kind::Const` leaves and nested `Kind::Call` arguments targeting different
+callees. Nautilus's only two sanctioned trace-time-loop constructs are
+`val<T>` (a real runtime loop) and `static_val<T>`/`static_iterable`
+(trace-time unrolled, folding the loop counter into the tracer's Snapshot
+hash on every step *specifically* to keep repeated call sites
+distinguishable -- see `docs/loops.md`/`docs/static-val.md`); this loop used
+neither, so two same-shaped arguments were traced through an identical
+call-stack shape the tracer cannot tell apart. This is not a core-tracer
+defect: the identical class of Tag collision was already fixed twice before
+in shared tracer code, for `traceConstant`/`traceCopy` (issue #95) and
+`traceAssignment` (issue #382), precisely because *those* call sites have no
+static_val-equivalent recourse (they are reached through the tracer's own
+internal bookkeeping, not a loop counter a caller controls) -- but
+`evalNautilusCall`'s loop is ordinary caller-controlled code with a
+documented, already-in-use-elsewhere-in-this-file fix available. Fixed by
+switching the loop counter to `static_val<int>`, matching every other
+trace-time-unrolled loop already in this evaluator (e.g. the `StaticLoop`
+handling a few cases up); the smoke corpus no longer tolerates this
+exception.
 
 1. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
    a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
