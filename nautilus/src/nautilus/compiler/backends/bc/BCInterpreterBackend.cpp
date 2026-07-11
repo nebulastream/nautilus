@@ -303,6 +303,13 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	int64_t totalRegisters = 0;
 	int64_t maxRegisters = 0;
 
+	// The dump must cover every module function, not just a fixed "execute"
+	// entry point (module-API functions carry user-chosen names). Code is
+	// moved into the interpreter below, so the text is aggregated per
+	// function and dumped once after the loop.
+	std::string bytecodeDump;
+	const bool dumpBytecode = dumpHandler.shouldDump("after_bc_generation");
+
 	// Phase 2: Lower all functions to bytecode and set the interpreter.
 	// All function pointers are now available, so every function can call any other.
 	for (size_t i = 0; i < functionOperations.size(); i++) {
@@ -311,8 +318,8 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		auto& code = std::get<0>(result);
 		auto& regFile = std::get<1>(result);
 
-		if (funcOp->getName() == "execute") {
-			dumpHandler.dump("after_bc_generation", "bc", [&code]() { return code.toString(); });
+		if (dumpBytecode) {
+			bytecodeDump += "// function " + funcOp->getName() + "\n" + code.toString() + "\n";
 		}
 
 		if (statistics != nullptr) {
@@ -326,6 +333,10 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 
 		callbackDataStore[i]->interpreter =
 		    std::make_unique<BCInterpreter>(std::move(code), std::move(regFile), interpreterOptions);
+	}
+
+	if (dumpBytecode) {
+		dumpHandler.dump("after_bc_generation", "bc", [&bytecodeDump]() { return bytecodeDump; });
 	}
 
 	if (statistics != nullptr) {
