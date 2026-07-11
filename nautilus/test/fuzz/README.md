@@ -662,33 +662,68 @@ treating them as pass/fail signal, while any other exception, or any value
 mismatch, still aborted the smoke corpus immediately, and `--survey` kept
 every occurrence individually visible (bucketed by backend/type/exact
 exception text, not merged into one backend/type bucket) for future
-investigation. The two still open are listed below (a third, "no Return
-operation was recorded", was fixed in nebulastream/nautilus#382 and is no
-longer tolerated or tracked here).
+investigation. One is still open, listed below (a second, "no Return
+operation was recorded", was fixed in nebulastream/nautilus#382, and a third,
+the Tag/Snapshot collision described next, was fixed in
+nebulastream/nautilus#381; neither is tolerated or tracked here anymore).
 
-1. **Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
-   constant loop."`, ~126 of the 129 findings): the exact fragility the
-   paragraph above already predicted, now confirmed reachable through the
-   real fuzz harness rather than merely a standalone reproduction script.
-   `ExecutionTrace::processControlFlowMerge` treats a Tag/Snapshot match
-   against the block currently being built as an unconditional fatal error
-   (`ExecutionTrace.cpp`), but Tag identity is a raw
-   `__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
-   `TagRecorder.cpp`) that depends only on the *sequence of recursive call
-   sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
-   takes to reach an `if` -- not on which logical AST node it is. Two
-   unrelated `Kind::If` nodes reached via the same shape of recursive descent
-   through the evaluator can therefore collide onto the same Tag and falsely
-   read as "this exact operation was already traced in the current block."
-   Confirmed empirically: forcing every `Kind::Call` selection back to the
-   original arity-2 same-type shape (i.e. `imm % NUM_CALLEES` always landing
-   on `calleeMix`/`calleeMin`, with the rest of the new registry unreachable)
-   keeps the 2000-input smoke corpus perfectly clean, while any of the wider
-   shapes being reachable reintroduces the collision on unrelated trees
-   elsewhere in the corpus -- i.e. the byte-stream *shift* from having more
-   `Kind::Call` diversity is what surfaces it, not anything specific to a
-   given new callee's own marshalling.
-2. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
+**Tag/Snapshot collision** (`"Invalid trace. This is maybe caused by a
+constant loop."`, ~126 of the 129 findings) -- **now fixed**
+(nebulastream/nautilus#381): the exact fragility the paragraph above already
+predicted, confirmed reachable through the real fuzz harness rather than
+merely a standalone reproduction script. Tag identity is a raw
+`__builtin_return_address` chain (`TagRecorder::createReferenceTagBuildin`,
+`TagRecorder.cpp`) that depends only on the *sequence of recursive call
+sites* a tracing evaluator (here: this fuzzer's own `evalNautilusGeneric`)
+takes to reach an `if` or a call -- not on which logical AST node it is. Two
+unrelated `Kind::Call` nodes reached via the same shape of recursive descent
+through the evaluator (i.e. through `evalCall`'s single, shared
+`nautilus::invoke()` dispatch, regardless of which of the nine callees got
+selected) can therefore collide onto the same Tag and falsely read as "this
+exact operation was already traced in the current block," which
+`ExecutionTrace::processControlFlowMerge` treats as an unconditional fatal
+error (`ExecutionTrace.cpp`). Confirmed empirically: forcing every
+`Kind::Call` selection back to the original arity-2 same-type shape (i.e.
+`imm % NUM_CALLEES` always landing on `calleeMix`/`calleeMin`, with the rest
+of the new registry unreachable) keeps the 2000-input smoke corpus perfectly
+clean, while any of the wider shapes being reachable reintroduces the
+collision on unrelated trees elsewhere in the corpus -- i.e. the byte-stream
+*shift* from having more `Kind::Call` diversity is what surfaces it, not
+anything specific to a given new callee's own marshalling.
+
+Root cause: `evalNautilusCall`'s own argument-evaluation loop
+(`EvalNautilus.hpp`) --
+
+```cpp
+for (int i = 0; i < callDesc.arity; ++i) {
+    v[i] = evalNautilusGeneric<T>(ast, n.kid[vStart + i], args, ctx);
+}
+```
+
+-- used a plain `int` counter to drive repeated `evalNautilusGeneric()` (and
+transitively `invoke()`) calls through one shared, non-inlined call site for
+each of a `Kind::Call` node's own arguments, including same-shaped sibling
+`Kind::Const` leaves and nested `Kind::Call` arguments targeting different
+callees. Nautilus's only two sanctioned trace-time-loop constructs are
+`val<T>` (a real runtime loop) and `static_val<T>`/`static_iterable`
+(trace-time unrolled, folding the loop counter into the tracer's Snapshot
+hash on every step *specifically* to keep repeated call sites
+distinguishable -- see `docs/loops.md`/`docs/static-val.md`); this loop used
+neither, so two same-shaped arguments were traced through an identical
+call-stack shape the tracer cannot tell apart. This is not a core-tracer
+defect: the identical class of Tag collision was already fixed twice before
+in shared tracer code, for `traceConstant`/`traceCopy` (issue #95) and
+`traceAssignment` (issue #382), precisely because *those* call sites have no
+static_val-equivalent recourse (they are reached through the tracer's own
+internal bookkeeping, not a loop counter a caller controls) -- but
+`evalNautilusCall`'s loop is ordinary caller-controlled code with a
+documented, already-in-use-elsewhere-in-this-file fix available. Fixed by
+switching the loop counter to `static_val<int>`, matching every other
+trace-time-unrolled loop already in this evaluator (e.g. the `StaticLoop`
+handling a few cases up); the smoke corpus no longer tolerates this
+exception.
+
+1. **Merged-value Frame lookup miss** (`"Key $N does not exists in frame."`):
    a `Frame<K,V>` (`compiler/Frame.hpp`, shared by the cpp/bc/asmjit lowering
    providers) lookup miss for an SSA value merged across two `Kind::If` arms,
    reachable with a `Kind::If` nested inside a `Kind::Call` argument (e.g.
