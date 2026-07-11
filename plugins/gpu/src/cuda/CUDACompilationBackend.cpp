@@ -1,5 +1,6 @@
 
 #include "CUDACompilationBackend.hpp"
+#include "../GPUCodegenOnlyExecutable.hpp"
 #include "CUDACompiler.hpp"
 #include "CUDAExecutable.hpp"
 #include "CUDALoweringProvider.hpp"
@@ -12,6 +13,12 @@ std::unique_ptr<Executable> CUDACompilationBackend::compile(const std::shared_pt
                                                             CompilationStatistics* /*statistics*/) const {
 	auto code = CUDALoweringProvider::lower(ir, options);
 	dumpHandler.dump("after_cuda_generation", ".cu", [&]() { return code; });
+
+	// Stop after code generation when requested — machines without the CUDA
+	// toolkit can still inspect the generated .cu source.
+	if (options.getOptionOrDefault("gpu.codegenOnly", false)) {
+		return std::make_unique<nautilus::gpu::CodegenOnlyExecutable>();
+	}
 
 	std::string identifier = "nautilus_cuda_" + ir->getId();
 
