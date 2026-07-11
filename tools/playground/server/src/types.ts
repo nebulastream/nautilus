@@ -1,4 +1,4 @@
-export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit'] as const;
+export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
 export type Backend = (typeof BACKENDS)[number];
 
 export interface CompileOptions {
@@ -27,6 +27,14 @@ export interface Stage {
 	truncated: boolean;
 }
 
+/** One CompilationStatistics entry, as emitted by the runner's driver. */
+export interface StatEntry {
+	key: string;
+	/** counter (integer) | duration (milliseconds) | text */
+	type: 'counter' | 'duration' | 'text';
+	value: number | string;
+}
+
 export type FailurePhase = 'compile' | 'link' | 'trace' | 'pipeline' | 'timeout' | 'oom' | 'internal';
 
 export interface Diagnostics {
@@ -43,6 +51,7 @@ export interface CompileResult {
 	status: 'done' | 'failed';
 	backend: Backend;
 	stages: Stage[];
+	statistics: StatEntry[];
 	diagnostics: Diagnostics;
 	timings: {
 		queueMs: number;
@@ -65,6 +74,7 @@ export interface RunnerManifest {
 	schema: number;
 	backend: string;
 	error?: string;
+	statistics?: StatEntry[];
 	stages: Array<{
 		key: string;
 		title: string;

@@ -27,6 +27,8 @@ const BACKEND_LABELS: Record<Backend, string> = {
 	bc: 'Bytecode',
 	tbc: 'Tiered bytecode',
 	asmjit: 'AsmJit',
+	cuda: 'CUDA (codegen)',
+	metal: 'Metal (codegen)',
 };
 
 const STATUS_COLORS: Record<StatusKind, string> = {

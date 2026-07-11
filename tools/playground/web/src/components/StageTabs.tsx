@@ -2,7 +2,8 @@ import type { Stage } from '../api';
 
 interface StageTabsProps {
 	stages: Stage[];
-	/** 'graph' is a synthetic tab rendered client-side from the IR stages. */
+	/** Whether the result carries compilation statistics ('statistics' is a synthetic client-side tab). */
+	hasStatistics: boolean;
 	activeKey: string;
 	onSelect: (key: string) => void;
 }
@@ -16,10 +17,10 @@ const PHASE_LABELS: Record<string, string> = {
 
 /**
  * Pipeline stepper: stages grouped by phase in pipeline order, plus the
- * synthetic Graph tab. The engine's own graph/mermaid dumps are folded into
- * the Graph experience, so they are hidden from the text tabs.
+ * synthetic Statistics tab. The engine's own graph/mermaid dumps are hidden —
+ * every IR stage offers its own Text|CFG toggle instead.
  */
-export function StageTabs({ stages, activeKey, onSelect }: StageTabsProps) {
+export function StageTabs({ stages, hasStatistics, activeKey, onSelect }: StageTabsProps) {
 	const groups = new Map<string, Stage[]>();
 	for (const stage of stages) {
 		if (stage.phase === 'graph') {
@@ -32,6 +33,17 @@ export function StageTabs({ stages, activeKey, onSelect }: StageTabsProps) {
 
 	return (
 		<nav className="stage-tabs">
+			{hasStatistics && (
+				<div className="stage-group">
+					<span className="stage-group-label">Compilation</span>
+					<button
+						className={activeKey === 'statistics' ? 'stage-tab active' : 'stage-tab'}
+						onClick={() => onSelect('statistics')}
+					>
+						Statistics
+					</button>
+				</div>
+			)}
 			{[...groups.entries()].map(([phase, phaseStages]) => (
 				<div key={phase} className="stage-group">
 					<span className="stage-group-label">{PHASE_LABELS[phase] ?? phase}</span>
@@ -47,15 +59,6 @@ export function StageTabs({ stages, activeKey, onSelect }: StageTabsProps) {
 					))}
 				</div>
 			))}
-			<div className="stage-group">
-				<span className="stage-group-label">Graph</span>
-				<button
-					className={activeKey === 'graph' ? 'stage-tab active' : 'stage-tab'}
-					onClick={() => onSelect('graph')}
-				>
-					CFG
-				</button>
-			</div>
 		</nav>
 	);
 }

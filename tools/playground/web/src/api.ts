@@ -1,6 +1,6 @@
 // Client-side mirror of the server API types (tools/playground/server/src/types.ts).
 
-export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit'] as const;
+export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
 export type Backend = (typeof BACKENDS)[number];
 
 export interface CompileOptions {
@@ -29,10 +29,19 @@ export interface Diagnostics {
 	pipelineError: string;
 }
 
+/** One CompilationStatistics entry recorded by the engine during the compile. */
+export interface StatEntry {
+	key: string;
+	/** counter (integer) | duration (milliseconds) | text */
+	type: 'counter' | 'duration' | 'text';
+	value: number | string;
+}
+
 export interface CompileResult {
 	status: 'done' | 'failed';
 	backend: Backend;
 	stages: Stage[];
+	statistics?: StatEntry[];
 	diagnostics: Diagnostics;
 	timings: { queueMs: number; sandboxMs: number; totalMs: number };
 }

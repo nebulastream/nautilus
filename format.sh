@@ -71,8 +71,11 @@ FAIL=0
 if [ "${1-}" = "-i" ]
 then
     # clang-format
+    # Playground gallery examples are display snippets hand-formatted for the
+    # web editor; clang-format's continuation alignment hurts them.
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
+      | grep --invert-match "^tools/playground/server/src/examples/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" -i
 
     # newline at eof
@@ -90,6 +93,7 @@ else
     # clang-format
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
+      | grep --invert-match "^tools/playground/server/src/examples/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" --dry-run -Werror \
       || FAIL=1
 

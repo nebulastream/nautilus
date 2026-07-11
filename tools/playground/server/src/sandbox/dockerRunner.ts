@@ -36,7 +36,10 @@ export async function runInSandbox(jobId: string, source: string, backend: Backe
 		'--name', containerName,
 		'--network=none',
 		'--read-only',
-		'--tmpfs', '/work:rw,size=512m',
+		// Explicit mode: with the containerd image store (Docker Desktop default)
+		// the tmpfs does not inherit /work's image ownership and comes up
+		// root:0755, unwritable for the non-root runner user.
+		'--tmpfs', '/work:rw,exec,size=512m,mode=1777',
 		'-v', `${inDir}:/in:ro`,
 		'-v', `${outDir}:/out:rw`,
 		'--memory=2g',

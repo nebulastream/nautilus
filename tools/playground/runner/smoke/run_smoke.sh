@@ -21,7 +21,7 @@ run_fixture() {
 
 	docker run --rm \
 		--network=none --read-only \
-		--tmpfs /work:rw,size=512m \
+		--tmpfs /work:rw,exec,size=512m,mode=1777 \
 		-v "$job/in:/in:ro" -v "$job/out:/out:rw" \
 		--memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 \
 		--cap-drop=ALL --security-opt=no-new-privileges \
@@ -56,6 +56,8 @@ run_fixture() {
 		bc) backend_key="after_bc_generation" ;;
 		tbc) backend_key="after_tbc_generation" ;;
 		asmjit) backend_key="after_asmjit_generation" ;;
+		cuda) backend_key="after_cuda_generation" ;;
+		metal) backend_key="after_metal_generation" ;;
 		esac
 		if ! grep -q "\"key\":\"$backend_key\"" "$manifest"; then
 			echo "FAIL $fixture [$backend]: manifest missing backend stage $backend_key"
@@ -70,6 +72,12 @@ for backend in mlir cpp bc tbc asmjit; do
 	for fixture in basic.cpp loops.cpp branch_folding.cpp std_plugin.cpp; do
 		run_fixture "$fixture" "$backend" 0
 	done
+done
+
+# GPU backends run codegen-only (no nvcc/xcrun in the image); the kernel
+# fixture must still produce the generated device-code stage.
+for backend in cuda metal; do
+	run_fixture gpu_kernel.cpp "$backend" 0
 done
 
 run_fixture compile_error.cpp mlir 10

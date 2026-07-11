@@ -8,11 +8,14 @@
 // image; only the user TU is compiled per request.
 
 #include "manifest.hpp"
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <nautilus/Engine.hpp>
 #include <string>
 #include <string_view>
+#include <variant>
+#include <vector>
 
 // Implemented by the user's translation unit.
 extern void playground_register(nautilus::engine::NautilusModule& m);
@@ -54,6 +57,34 @@ DriverArgs parseArgs(int argc, char** argv) {
 	return args;
 }
 
+// Encode the compilation statistics (always collected by the engine) as
+// pre-serialized JSON entries for the manifest. Counters map to raw numbers,
+// timings (double, milliseconds) keep sub-ms precision, text stays a string.
+std::vector<playground::StatEntry> encodeStatistics(const nautilus::compiler::CompilationStatistics* statistics) {
+	std::vector<playground::StatEntry> entries;
+	if (statistics == nullptr) {
+		return entries;
+	}
+	for (const auto& [key, value] : *statistics) {
+		playground::StatEntry entry;
+		entry.key = key;
+		if (const auto* counter = std::get_if<int64_t>(&value)) {
+			entry.type = "counter";
+			entry.valueJson = std::to_string(*counter);
+		} else if (const auto* duration = std::get_if<double>(&value)) {
+			entry.type = "duration";
+			char buf[32];
+			std::snprintf(buf, sizeof(buf), "%.6g", *duration);
+			entry.valueJson = buf;
+		} else {
+			entry.type = "text";
+			entry.valueJson = "\"" + playground::jsonEscape(std::get<std::string>(value)) + "\"";
+		}
+		entries.push_back(std::move(entry));
+	}
+	return entries;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -69,6 +100,10 @@ int main(int argc, char** argv) {
 	options.setOption("dump.graph", true);
 	options.setOption("dump.graph.type", std::string("mermaid"));
 	options.setOption("ir.maxPipelineIterations", args.maxPipelineIterations);
+	// The runner image ships no GPU toolchain (nvcc / xcrun): the CUDA and
+	// Metal backends stop after emitting device/host sources, which is all
+	// the playground needs to display.
+	options.setOption("gpu.codegenOnly", true);
 	if (args.enableLICM) {
 		options.setOption("ir.enableLICM", true);
 	}
@@ -79,12 +114,13 @@ int main(int argc, char** argv) {
 		options.setOption("ir.enableStrengthReduction", true);
 	}
 
+	std::vector<playground::StatEntry> statistics;
 	try {
 		const auto engine = nautilus::engine::NautilusEngine(options);
 		auto module = engine.createModule();
 		playground_register(module);
 		auto compiled = module.compile();
-		(void) compiled;
+		statistics = encodeStatistics(compiled.getStatistics().get());
 	} catch (const std::exception& e) {
 		// Still write the manifest: stages dumped before the failure remain
 		// inspectable, and the error text tells the user what broke.
@@ -93,6 +129,6 @@ int main(int argc, char** argv) {
 		return 13;
 	}
 
-	playground::writeManifest(args.outDir, args.backend);
+	playground::writeManifest(args.outDir, args.backend, "", statistics);
 	return 0;
 }

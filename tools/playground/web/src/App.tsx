@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, CopyButton, Group, Select, Switch, Text } from '@mantine/core';
+import { Badge, Button, CopyButton, Group, SegmentedControl, Select, Switch, Text } from '@mantine/core';
 import { parse } from '@nautilus-ir/parser';
 import { makeTextDocument } from './lib/vscodeShim';
 import { splitTraceSections } from './lib/traceSections';
@@ -9,6 +9,7 @@ import { Editor, type EditorMarker } from './components/Editor';
 import { Toolbar, type StatusKind } from './components/Toolbar';
 import { StageTabs } from './components/StageTabs';
 import { GraphView } from './components/GraphView';
+import { StatisticsView } from './components/StatisticsView';
 import { DiffEditor } from './components/DiffEditor';
 import { DiagnosticsPanel, markersFromClangStderr } from './components/Diagnostics';
 
@@ -70,7 +71,8 @@ export function App() {
 					setStatusKind('failed');
 				}
 				setActiveKey((current) => {
-					if (current === 'graph' || view.result!.stages.some((s) => s.key === current)) {
+					const stats = view.result!.statistics ?? [];
+					if ((current === 'statistics' && stats.length > 0) || view.result!.stages.some((s) => s.key === current)) {
 						return current;
 					}
 					return view.result!.stages[0]?.key ?? '';
@@ -199,10 +201,15 @@ export function App() {
 							{result.diagnostics.phase && <DiagnosticsPanel diagnostics={result.diagnostics} />}
 							{stages.length > 0 && (
 								<>
-									<StageTabs stages={stages} activeKey={resolvedKey} onSelect={setActiveKey} />
+									<StageTabs
+										stages={stages}
+										hasStatistics={(result.statistics ?? []).length > 0}
+										activeKey={resolvedKey}
+										onSelect={setActiveKey}
+									/>
 									<div className="stage-content">
-										{resolvedKey === 'graph' ? (
-											<GraphView stages={stages} />
+										{resolvedKey === 'statistics' ? (
+											<StatisticsView statistics={result.statistics ?? []} />
 										) : (
 											activeStage && <StageBody stage={activeStage} stages={stages} />
 										)}
@@ -233,6 +240,11 @@ export function App() {
 function StageBody({ stage, stages }: { stage: Stage; stages: Stage[] }) {
 	const [showDiff, setShowDiff] = useState(true);
 	const [traceFunction, setTraceFunction] = useState('all');
+	// Shared across stage switches (the component stays mounted), so flipping
+	// to CFG and stepping through passes keeps showing graphs.
+	const [irView, setIrView] = useState<'text' | 'cfg'>('text');
+	const isIr = stage.lang === 'nautilus-ir';
+	const showCfg = isIr && irView === 'cfg';
 
 	// Predecessor snapshot for pass stages: nearest earlier IR-bearing stage.
 	const previousIr = useMemo(() => {
@@ -269,11 +281,22 @@ function StageBody({ stage, stages }: { stage: Stage; stages: Stage[] }) {
 			? stage.text
 			: (traceSections.find((s) => s.header === traceFunction)?.text ?? stage.text);
 
-	const showDiffView = stage.phase === 'pass' && showDiff && previousIr !== null;
+	const showDiffView = stage.phase === 'pass' && showDiff && previousIr !== null && !showCfg;
 
 	return (
 		<div className="stage-body">
 			<Group className="stage-toolbar" gap="md" px="md" py={6} wrap="wrap">
+				{isIr && (
+					<SegmentedControl
+						size="xs"
+						value={irView}
+						onChange={(value) => setIrView(value as 'text' | 'cfg')}
+						data={[
+							{ value: 'text', label: 'Text' },
+							{ value: 'cfg', label: 'CFG' },
+						]}
+					/>
+				)}
 				{stage.phase === 'pass' && (
 					<>
 						<Badge
@@ -285,7 +308,7 @@ function StageBody({ stage, stages }: { stage: Stage; stages: Stage[] }) {
 						>
 							after last iteration that changed the IR
 						</Badge>
-						{previousIr && (
+						{previousIr && !showCfg && (
 							<Switch
 								size="xs"
 								label={`Show changes vs. ${previousIr.title}`}
@@ -328,7 +351,9 @@ function StageBody({ stage, stages }: { stage: Stage; stages: Stage[] }) {
 					)}
 				</CopyButton>
 			</Group>
-			{showDiffView ? (
+			{showCfg ? (
+				<GraphView stage={stage} />
+			) : showDiffView ? (
 				<DiffEditor original={previousIr.text} modified={stage.text} language="nautilus-ir" />
 			) : (
 				<Editor value={stage.lang === 'nautilus-trace' ? traceText : stage.text} language={stage.lang} readOnly />

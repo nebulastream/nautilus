@@ -26,6 +26,11 @@ function langFor(key: string, ext: string): string {
 	if (ext === 'c' || key === 'after_c_generation' || key === 'after_cpp_generation') {
 		return 'cpp';
 	}
+	// CUDA C, Metal Shading Language, and Objective-C++ host code are all
+	// close enough to C++ for Monaco's cpp grammar.
+	if (ext === 'cu' || ext === 'metal' || ext === 'mm') {
+		return 'cpp';
+	}
 	if (ext === 'asm') {
 		return 'asm';
 	}
@@ -102,6 +107,7 @@ export async function assembleResult(outcome: SandboxOutcome, backend: Backend, 
 		status: phase === null ? 'done' : 'failed',
 		backend,
 		stages,
+		statistics: manifest?.statistics ?? [],
 		diagnostics,
 		timings: {
 			queueMs: Math.round(queueMs),

@@ -123,6 +123,11 @@ body,
 	display: flex;
 	align-items: center;
 	gap: 5px;
+	/* A group with many tabs (all optimization passes active) must break
+	   into multiple lines instead of forcing one overlong row. */
+	flex-wrap: wrap;
+	max-width: 100%;
+	row-gap: 6px;
 }
 
 .stage-group-label {
@@ -235,4 +240,53 @@ body,
 
 .graph-error {
 	color: var(--red-700);
+}
+
+/* --- statistics view --- */
+.stats-view {
+	flex: 1;
+	overflow: auto;
+	padding: 18px 22px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	align-items: flex-start;
+}
+
+.stats-group-title {
+	margin: 0 0 6px;
+	font-size: 10.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--text-400);
+}
+
+.stats-table {
+	border-collapse: collapse;
+	font-family: var(--mono);
+	font-size: 12.5px;
+}
+
+.stats-table td {
+	padding: 3px 0;
+	border-bottom: 1px solid var(--line-100);
+	vertical-align: top;
+}
+
+.stats-table td.stats-key {
+	color: var(--text-600);
+	padding-right: 28px;
+	white-space: nowrap;
+}
+
+.stats-value {
+	color: var(--text-900);
+	text-align: right;
+	white-space: nowrap;
+}
+
+.stats-empty {
+	padding: 26px;
+	color: var(--text-600);
 }

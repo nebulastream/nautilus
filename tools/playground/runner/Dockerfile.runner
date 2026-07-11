@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release software-properties-common \
     && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
     && chmod +x /tmp/llvm.sh && /tmp/llvm.sh 21 \
-    && apt-get install -y --no-install-recommends clang-21 lld-21 libc++-21-dev \
+    && apt-get install -y --no-install-recommends clang-21 lld-21 libc++-21-dev clang-format-21 \
     && apt-get purge -y curl gnupg lsb-release software-properties-common \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /tmp/llvm.sh
@@ -49,6 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /build/playground-dist /opt/playground
 COPY tools/playground/runner/entrypoint.sh /opt/playground/entrypoint.sh
 RUN chmod +x /opt/playground/entrypoint.sh
+
+# The C backend compiles its generated source by shelling out to `cc`.
+RUN ln -s /usr/bin/clang-21 /usr/local/bin/cc
 
 # Defaults consumed by entrypoint.sh; the orchestrator overrides per job.
 # PG_OPT_LEVEL applies to the user TU only — it has no effect on the traced

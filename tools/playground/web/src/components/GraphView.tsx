@@ -16,8 +16,8 @@ mermaid.initialize({
 let renderCounter = 0;
 
 interface GraphViewProps {
-	/** All stages of the current result; the IR-bearing ones are selectable. */
-	stages: Stage[];
+	/** The IR-bearing stage to render; the stage bar drives which one is shown. */
+	stage: Stage;
 }
 
 /**
@@ -26,9 +26,7 @@ interface GraphViewProps {
  * Mermaid via cfgFor — this covers every per-pass snapshot, not just the
  * single stage the engine's own dump.graph option would export.
  */
-export function GraphView({ stages }: GraphViewProps) {
-	const irStages = useMemo(() => stages.filter((s) => s.lang === 'nautilus-ir'), [stages]);
-	const [stageKey, setStageKey] = useState<string>('');
+export function GraphView({ stage }: GraphViewProps) {
 	const [functionName, setFunctionName] = useState<string>('');
 	const [svg, setSvg] = useState<string>('');
 	const [error, setError] = useState<string>('');
@@ -52,23 +50,18 @@ export function GraphView({ stages }: GraphViewProps) {
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `${activeFunction ?? 'cfg'}-${activeStage?.key ?? 'ir'}.svg`;
+		link.download = `${activeFunction ?? 'cfg'}-${stage.key}.svg`;
 		link.click();
 		URL.revokeObjectURL(url);
 	};
 
-	const activeStage = irStages.find((s) => s.key === stageKey) ?? irStages[irStages.length - 1];
-
 	const parsed = useMemo(() => {
-		if (!activeStage) {
-			return null;
-		}
 		try {
-			return parse(makeTextDocument(activeStage.text));
+			return parse(makeTextDocument(stage.text));
 		} catch {
 			return null;
 		}
-	}, [activeStage]);
+	}, [stage]);
 
 	const functionNames = useMemo(() => (parsed ? parsed.functions.map((f) => f.name) : []), [parsed]);
 	const activeFunction = functionNames.includes(functionName) ? functionName : functionNames[0];
@@ -104,27 +97,9 @@ export function GraphView({ stages }: GraphViewProps) {
 		};
 	}, [parsed, activeFunction]);
 
-	if (irStages.length === 0) {
-		return <div className="graph-empty">Compile first — the graph is built from the dumped IR stages.</div>;
-	}
-
 	return (
 		<div className="graph-view">
 			<Group className="graph-controls" gap="md" px="md" py={6} wrap="wrap">
-				<Group gap="xs">
-					<Text size="xs" c="dimmed">
-						Stage
-					</Text>
-					<Select
-						size="xs"
-						w={230}
-						value={activeStage?.key ?? null}
-						data={irStages.map((s) => ({ value: s.key, label: s.title }))}
-						onChange={(value) => value && setStageKey(value)}
-						comboboxProps={{ shadow: 'md' }}
-						allowDeselect={false}
-					/>
-				</Group>
 				<Group gap="xs">
 					<Text size="xs" c="dimmed">
 						Function

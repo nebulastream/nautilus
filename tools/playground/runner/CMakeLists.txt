@@ -23,6 +23,10 @@ set(ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
+# GPU plugin: the CUDA/Metal lowering is pure codegen (no SDK needed to
+# build). The driver sets gpu.codegenOnly so the toolchain step (nvcc /
+# xcrun) is skipped and users inspect the generated device/host sources.
+set(ENABLE_GPU_PLUGIN ON CACHE BOOL "" FORCE)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../.. ${CMAKE_CURRENT_BINARY_DIR}/nautilus)
 
@@ -45,7 +49,7 @@ endif ()
 add_library(playground_core SHARED core.cpp)
 target_link_libraries(playground_core PUBLIC
         ${WHOLE_ARCHIVE_PREFIX}
-        nautilus nautilus-std nautilus-simd nautilus-specialization
+        nautilus nautilus-std nautilus-simd nautilus-specialization nautilus-gpu
         ${WHOLE_ARCHIVE_SUFFIX})
 
 # libplayground_driver.a: the prebuilt driver holding main(). The per-request
@@ -77,6 +81,12 @@ add_custom_target(playground-dist ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 ${CMAKE_CURRENT_SOURCE_DIR}/../../../plugins/specialization/include/nautilus
                 ${PLAYGROUND_DIST}/include/nautilus
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../../plugins/gpu/include/nautilus
+                ${PLAYGROUND_DIST}/include/nautilus
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_CURRENT_BINARY_DIR}/nautilus/plugins/gpu/include/nautilus/gpu/config.hpp
+                ${PLAYGROUND_DIST}/include/nautilus/gpu/config.hpp
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_CURRENT_BINARY_DIR}/nautilus/nautilus/include/nautilus/config.hpp
                 ${PLAYGROUND_DIST}/include/nautilus/config.hpp
