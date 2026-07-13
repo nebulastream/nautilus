@@ -96,7 +96,7 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
 		::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		if (currentOp_ != nullptr && currentFunctionLines_ != nullptr) {
-			const uint32_t id = currentOp_->getIdentifier().getId();
+			const uint32_t id = dollarId(currentOp_);
 			if (auto it = currentFunctionLines_->operationLines.find(id);
 			    it != currentFunctionLines_->operationLines.end()) {
 				const std::string dollarName = "$" + std::to_string(id);
@@ -118,6 +118,20 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	}
 	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
 	return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
+}
+
+uint32_t MLIRLoweringProvider::dollarId(const ir::Operation* operation) const {
+	// The IR dump numbers values uniquely per function; translate the
+	// operation to its printed `$N` id so NameLocs, shadow allocas, and
+	// line lookups all agree with the text GDB displays. Fall back to the
+	// stored identifier when no source map is active.
+	if (currentFunctionLines_ != nullptr) {
+		if (auto it = currentFunctionLines_->printedIds.find(operation);
+		    it != currentFunctionLines_->printedIds.end()) {
+			return it->second;
+		}
+	}
+	return operation->getIdentifier().getId();
 }
 
 mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef fallbackName) {
@@ -544,7 +558,7 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 		// Shadow-store the op's result into its $N alloca.  Control-flow
 		// ops (branch, return) don't register a value and are skipped.
 		if (debugInfo_.enable && frame.contains(operation->getIdentifier())) {
-			const uint32_t id = operation->getIdentifier().getId();
+			const uint32_t id = dollarId(operation);
 			if (auto produced = resolveOperand(operation, frame)) {
 				storeDebugValue(id, produced, makeDollarLoc(id, "debug.store"));
 			}
@@ -720,7 +734,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 		// prologue (allocas + param saves) to collapse into one GDB
 		// stop instead of bouncing through each param's later decl line.
 		if (debugInfo_.enable && irSourceMap_ != nullptr) {
-			const uint32_t id = irArgs.at(i)->getIdentifier().getId();
+			const uint32_t id = dollarId(irArgs.at(i));
 			auto argNameLoc = makeDollarLoc(id, "arg");
 			mlirFunction.getArgument(i).setLoc(argNameLoc);
 			auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
@@ -1120,9 +1134,8 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// EmitDbgValuePass line up with the right shadow alloca.
 	auto& targetBlockArguments = targetBlock->getArguments();
 	for (auto& blockArg : targetBlockArguments) {
-		auto argLoc = debugInfo_.enable && irSourceMap_ != nullptr
-		                  ? makeDollarLoc(blockArg->getIdentifier().getId(), "arg")
-		                  : getNameLoc("arg");
+		auto argLoc =
+		    debugInfo_.enable && irSourceMap_ != nullptr ? makeDollarLoc(dollarId(blockArg), "arg") : getNameLoc("arg");
 		mlirBasicBlock->addArgument(getMLIRType(blockArg->getStamp()), argLoc);
 	}
 	ValueFrame blockFrame;
@@ -1146,8 +1159,7 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		auto storeLoc = mlir::FileLineColLoc::get(fileAttr, blockLine, 1);
 		for (uint32_t i = 0; i < targetBlockArguments.size(); i++) {
-			const uint32_t id = targetBlockArguments[i]->getIdentifier().getId();
-			storeDebugValue(id, mlirBasicBlock->getArgument(i), storeLoc);
+			storeDebugValue(dollarId(targetBlockArguments[i]), mlirBasicBlock->getArgument(i), storeLoc);
 		}
 	}
 

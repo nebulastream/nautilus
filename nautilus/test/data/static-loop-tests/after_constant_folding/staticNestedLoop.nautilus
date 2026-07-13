@@ -1,7 +1,7 @@
 nautilus {
 execute() :i32 attrs["entry"="true"] {
 Block_0():
-	$25 = 12 :i32
-	return ($25) :i32
+	$1 = 12 :i32
+	return ($1) :i32
 }
 } //nautilus

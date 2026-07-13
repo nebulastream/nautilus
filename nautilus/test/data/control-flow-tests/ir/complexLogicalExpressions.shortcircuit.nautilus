@@ -6,62 +6,62 @@ Block_0($1:i32):
 	$4 = $1 > $3 :bool
 	if $4 ? Block_1($1, $2) : Block_2($1, $2) prob(0.5) :void
 
-Block_1($1:i32, $2:i32):
-	$6 = 10 :i32
-	$7 = $1 < $6 :bool
-	if $7 ? Block_3() : Block_4($1, $2) prob(0.5) :void
+Block_1($5:i32, $6:i32):
+	$7 = 10 :i32
+	$8 = $5 < $7 :bool
+	if $8 ? Block_3() : Block_4($5, $6) prob(0.5) :void
 
 Block_3():
 	$9 = 1 :i32
 	br Block_9($9) :void
 
-Block_9($9:i32):
-	br Block_14($9) :void
+Block_9($10:i32):
+	br Block_14($10) :void
 
-Block_14($9:i32):
-	br Block_15($9) :void
+Block_14($11:i32):
+	br Block_15($11) :void
 
-Block_15($2:i32):
-	return ($2) :i32
+Block_15($12:i32):
+	return ($12) :i32
 
-Block_4($1:i32, $2:i32):
-	$19 = 15 :i32
-	$20 = $1 > $19 :bool
-	if $20 ? Block_10($1, $2) : Block_11($2) prob(0.5) :void
+Block_4($14:i32, $15:i32):
+	$16 = 15 :i32
+	$17 = $14 > $16 :bool
+	if $17 ? Block_10($14, $15) : Block_11($15) prob(0.5) :void
 
-Block_10($1:i32, $2:i32):
-	$22 = 20 :i32
-	$23 = $1 < $22 :bool
-	if $23 ? Block_12() : Block_13($2) prob(0.5) :void
+Block_10($18:i32, $19:i32):
+	$20 = 20 :i32
+	$21 = $18 < $20 :bool
+	if $21 ? Block_12() : Block_13($19) prob(0.5) :void
 
 Block_12():
-	$25 = 1 :i32
-	br Block_14($25) :void
+	$22 = 1 :i32
+	br Block_14($22) :void
 
-Block_13($2:i32):
-	br Block_15($2) :void
+Block_13($23:i32):
+	br Block_15($23) :void
 
-Block_11($2:i32):
-	br Block_15($2) :void
+Block_11($24:i32):
+	br Block_15($24) :void
 
-Block_2($1:i32, $2:i32):
-	$11 = 15 :i32
-	$12 = $1 > $11 :bool
-	if $12 ? Block_5($1, $2) : Block_6($2) prob(0.5) :void
+Block_2($25:i32, $26:i32):
+	$27 = 15 :i32
+	$28 = $25 > $27 :bool
+	if $28 ? Block_5($25, $26) : Block_6($26) prob(0.5) :void
 
-Block_5($1:i32, $2:i32):
-	$14 = 20 :i32
-	$15 = $1 < $14 :bool
-	if $15 ? Block_7() : Block_8($2) prob(0.5) :void
+Block_5($29:i32, $30:i32):
+	$31 = 20 :i32
+	$32 = $29 < $31 :bool
+	if $32 ? Block_7() : Block_8($30) prob(0.5) :void
 
 Block_7():
-	$17 = 1 :i32
-	br Block_9($17) :void
+	$33 = 1 :i32
+	br Block_9($33) :void
 
-Block_8($2:i32):
-	br Block_15($2) :void
+Block_8($34:i32):
+	br Block_15($34) :void
 
-Block_6($2:i32):
-	br Block_15($2) :void
+Block_6($35:i32):
+	br Block_15($35) :void
 }
 } //nautilus

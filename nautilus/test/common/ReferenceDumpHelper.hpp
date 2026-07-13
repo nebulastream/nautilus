@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IRDumpNormalization.hpp"
 #include "nautilus/config.hpp"
 #include <filesystem>
 #include <fstream>

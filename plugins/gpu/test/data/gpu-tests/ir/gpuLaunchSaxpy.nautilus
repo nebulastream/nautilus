@@ -2,43 +2,43 @@ nautilus {
 execute($1:ptr, $2:ptr, $3:f32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:f32):
 	$4 = 1 :ui32
+	$5 = 1 :ui32
 	$6 = 1 :ui32
-	$7 = 1 :ui32
-	$8 = 256 :ui32
-	$10 = 1 :ui32
-	$11 = 1 :ui32
-	call func_*($4, $6, $7) :void
-	call func_*($8, $10, $11) :void
-	call func_*($1, $2, $3) :void
+	$7 = 256 :ui32
+	$8 = 1 :ui32
+	$9 = 1 :ui32
+	call @"<symbol>" "<name>"($4, $5, $6) :void
+	call @"<symbol>" "<name>"($7, $8, $9) :void
+	call @"<symbol>" "<name>"($1, $2, $3) :void
 	return :void
 }
 saxpy($1:ptr, $2:ptr, $3:f32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:f32):
-	$6 = call func_*() :ui32
-	$7 = call func_*() :ui32
-	$8 = $6 * $7 :ui32
-	$9 = call func_*() :ui32
-	$10 = $8 + $9 :ui32
-	$11 = $10 cast_to i32 :i32
-	$15 = 4 :ui64
-	$16 = $11 cast_to ui64 :ui64
-	$17 = $16 * $15 :ui64
-	$18 = $1 + $17 :ptr
-	$21 = load($18) :f32
-	$22 = $3 * $21 :f32
-	$23 = $10 cast_to i32 :i32
-	$27 = 4 :ui64
-	$28 = $23 cast_to ui64 :ui64
-	$29 = $28 * $27 :ui64
-	$30 = $2 + $29 :ptr
-	$33 = load($30) :f32
-	$34 = $22 + $33 :f32
-	$35 = $10 cast_to i32 :i32
-	$39 = 4 :ui64
-	$40 = $35 cast_to ui64 :ui64
-	$41 = $40 * $39 :ui64
-	$42 = $2 + $41 :ptr
-	store($34, $42) :void
+	$4 = call @"<symbol>" "<name>"() :ui32
+	$5 = call @"<symbol>" "<name>"() :ui32
+	$6 = $4 * $5 :ui32
+	$7 = call @"<symbol>" "<name>"() :ui32
+	$8 = $6 + $7 :ui32
+	$9 = $8 cast_to i32 :i32
+	$10 = 4 :ui64
+	$11 = $9 cast_to ui64 :ui64
+	$12 = $11 * $10 :ui64
+	$13 = $1 + $12 :ptr
+	$14 = load($13) :f32
+	$15 = $3 * $14 :f32
+	$16 = $8 cast_to i32 :i32
+	$17 = 4 :ui64
+	$18 = $16 cast_to ui64 :ui64
+	$19 = $18 * $17 :ui64
+	$20 = $2 + $19 :ptr
+	$21 = load($20) :f32
+	$22 = $15 + $21 :f32
+	$23 = $8 cast_to i32 :i32
+	$24 = 4 :ui64
+	$25 = $23 cast_to ui64 :ui64
+	$26 = $25 * $24 :ui64
+	$27 = $2 + $26 :ptr
+	store($22, $27) :void
 	return :void
 }
 } //nautilus

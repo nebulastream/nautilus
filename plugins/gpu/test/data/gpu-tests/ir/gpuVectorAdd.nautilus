@@ -1,27 +1,27 @@
 nautilus {
 execute($1:ptr, $2:ptr, $3:ptr) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ptr):
-	$4 = call func_*() :ui32
+	$4 = call @"<symbol>" "<name>"() :ui32
 	$5 = $4 cast_to i32 :i32
-	$9 = 4 :ui64
-	$10 = $5 cast_to ui64 :ui64
-	$11 = $10 * $9 :ui64
-	$12 = $1 + $11 :ptr
-	$15 = $4 cast_to i32 :i32
+	$6 = 4 :ui64
+	$7 = $5 cast_to ui64 :ui64
+	$8 = $7 * $6 :ui64
+	$9 = $1 + $8 :ptr
+	$10 = $4 cast_to i32 :i32
+	$11 = 4 :ui64
+	$12 = $10 cast_to ui64 :ui64
+	$13 = $12 * $11 :ui64
+	$14 = $2 + $13 :ptr
+	$15 = load($9) :ui32
+	$16 = load($14) :ui32
+	$17 = $15 + $16 :ui32
+	$18 = $4 cast_to i32 :i32
 	$19 = 4 :ui64
-	$20 = $15 cast_to ui64 :ui64
+	$20 = $18 cast_to ui64 :ui64
 	$21 = $20 * $19 :ui64
-	$22 = $2 + $21 :ptr
-	$25 = load($12) :ui32
-	$26 = load($22) :ui32
-	$27 = $25 + $26 :ui32
-	$28 = $4 cast_to i32 :i32
-	$32 = 4 :ui64
-	$33 = $28 cast_to ui64 :ui64
-	$34 = $33 * $32 :ui64
-	$35 = $3 + $34 :ptr
-	store($27, $35) :void
-	call func_*() :void
+	$22 = $3 + $21 :ptr
+	store($17, $22) :void
+	call @"<symbol>" "<name>"() :void
 	return :void
 }
 } //nautilus

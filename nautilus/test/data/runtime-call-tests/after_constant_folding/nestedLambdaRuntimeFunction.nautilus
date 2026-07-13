@@ -1,8 +1,8 @@
 nautilus {
 execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
-	$2 = call func_*($1) :i32
-	$3 = call func_*($2) :i32
+	$2 = call @"<symbol>" "<name>"($1) :i32
+	$3 = call @"<symbol>" "<name>"($2) :i32
 	return ($3) :i32
 }
 } //nautilus

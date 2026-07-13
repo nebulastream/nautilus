@@ -2,52 +2,52 @@ nautilus {
 execute($1:i32) :i32 allocas[(8,4)] attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$4 = 0 :ui64
-	$6 = 1 :ui64
-	$7 = $4 * $6 :ui64
-	$8 = $2 + $7 :ptr
-	$11 = 0 :i32
-	store($11, $8) :void
-	$15 = 0 :i32
-	br Block_3($2, $15, $1) :void
+	$3 = 0 :ui64
+	$4 = 1 :ui64
+	$5 = $3 * $4 :ui64
+	$6 = $2 + $5 :ptr
+	$7 = 0 :i32
+	store($7, $6) :void
+	$8 = 0 :i32
+	br Block_3($2, $8, $1) :void
 
-Block_3($2:ptr, $15:i32, $1:i32):
-	$16 = $15 < $1 :bool
-	if $16 ? Block_1($2, $1, $15) : Block_2($2) prob(0.5) :void
+Block_3($9:ptr, $10:i32, $11:i32):
+	$12 = $10 < $11 :bool
+	if $12 ? Block_1($9, $11, $10) : Block_2($9) prob(0.5) :void
 
-Block_1($2:ptr, $1:i32, $15:i32):
-	$19 = 1 :i32
-	call func_*($2, $19) :void
-	$21 = 1 :i32
-	$22 = $15 + $21 :i32
-	br Block_3($2, $22, $1) :void
+Block_1($13:ptr, $14:i32, $15:i32):
+	$16 = 1 :i32
+	call @"<symbol>" "<name>"($13, $16) :void
+	$17 = 1 :i32
+	$18 = $15 + $17 :i32
+	br Block_3($13, $18, $14) :void
 
-Block_2($2:ptr):
-	$25 = call func_*($2) :i32
-	return ($25) :i32
+Block_2($19:ptr):
+	$20 = call @"<symbol>" "<name>"($19) :i32
+	return ($20) :i32
 }
 incrementFieldA($1:ptr, $2:i32) :void {
 Block_0($1:ptr, $2:i32):
-	$4 = 0 :ui64
-	$6 = 1 :ui64
-	$7 = $4 * $6 :ui64
-	$8 = $1 + $7 :ptr
-	$12 = load($8) :i32
-	$13 = $12 + $2 :i32
-	$15 = 0 :ui64
-	$17 = 1 :ui64
-	$18 = $15 * $17 :ui64
-	$19 = $1 + $18 :ptr
-	store($13, $19) :void
+	$3 = 0 :ui64
+	$4 = 1 :ui64
+	$5 = $3 * $4 :ui64
+	$6 = $1 + $5 :ptr
+	$7 = load($6) :i32
+	$8 = $7 + $2 :i32
+	$9 = 0 :ui64
+	$10 = 1 :ui64
+	$11 = $9 * $10 :ui64
+	$12 = $1 + $11 :ptr
+	store($8, $12) :void
 	return :void
 }
 readFieldA($1:ptr) :i32 {
 Block_0($1:ptr):
-	$3 = 0 :ui64
-	$5 = 1 :ui64
-	$6 = $3 * $5 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i32
-	return ($10) :i32
+	$2 = 0 :ui64
+	$3 = 1 :ui64
+	$4 = $2 * $3 :ui64
+	$5 = $1 + $4 :ptr
+	$6 = load($5) :i32
+	return ($6) :i32
 }
 } //nautilus

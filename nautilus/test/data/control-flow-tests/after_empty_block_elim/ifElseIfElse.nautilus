@@ -7,23 +7,23 @@ Block_0($1:i32):
 	if $4 ? Block_1() : Block_2($1) prob(0.5) :void
 
 Block_1():
-	$6 = 10 :i32
-	br Block_5($6) :void
+	$5 = 10 :i32
+	br Block_5($5) :void
 
-Block_5($2:i32):
-	return ($2) :i32
+Block_5($6:i32):
+	return ($6) :i32
 
-Block_2($1:i32):
-	$8 = 1 :i32
-	$9 = $1 == $8 :bool
-	if $9 ? Block_3() : Block_4() prob(0.5) :void
+Block_2($8:i32):
+	$9 = 1 :i32
+	$10 = $8 == $9 :bool
+	if $10 ? Block_3() : Block_4() prob(0.5) :void
 
 Block_3():
 	$11 = 20 :i32
 	br Block_5($11) :void
 
 Block_4():
-	$13 = 30 :i32
-	br Block_5($13) :void
+	$12 = 30 :i32
+	br Block_5($12) :void
 }
 } //nautilus

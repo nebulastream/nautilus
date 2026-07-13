@@ -1,7 +1,7 @@
 nautilus {
 execute($1:ui8, $2:ui8) :ui8 attrs["entry"="true"] {
 Block_0($1:ui8, $2:ui8):
-	$3 = call func_*($1, $2) :ui8
+	$3 = call @"<symbol>" "<name>"($1, $2) :ui8
 	return ($3) :ui8
 }
 mulUInt8($1:ui8, $2:ui8) :ui8 {

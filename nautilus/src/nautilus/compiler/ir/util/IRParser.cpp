@@ -309,9 +309,9 @@ private:
 	}
 
 	[[noreturn]] static void failLossyExternalReference(LineCursor& cursor) {
-		cursor.fail("this IR was produced by the display printer (IRGraph::toString), which hides external function "
-		            "symbols behind 'func_*'. Re-generate the file with NautilusModule::serializeIR to obtain "
-		            "loadable IR.");
+		cursor.fail("this IR was produced by a legacy pretty printer that hid external function symbols behind "
+		            "'func_*'. Re-generate the file with NautilusModule::serializeIR (or a current IRGraph::toString) "
+		            "to obtain loadable IR.");
 	}
 
 	void* resolveFunctionAddress(const std::string& symbol, const std::string& name, LineCursor& cursor) {

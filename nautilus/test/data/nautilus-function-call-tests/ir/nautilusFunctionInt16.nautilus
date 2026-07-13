@@ -1,7 +1,7 @@
 nautilus {
 execute($1:i16, $2:i16) :i16 attrs["entry"="true"] {
 Block_0($1:i16, $2:i16):
-	$3 = call func_*($1, $2) :i16
+	$3 = call @"<symbol>" "<name>"($1, $2) :i16
 	return ($3) :i16
 }
 subInt16($1:i16, $2:i16) :i16 {

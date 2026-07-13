@@ -11,8 +11,8 @@ Block_0($1:i32, $2:i32, $3:i32):
 execute($1:i32, $2:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32, $2:i32):
 	$3 = 5 :i32
-	$4 = call func_*($1, $2, $3) :i32
-	$5 = call func_*($4, $1, $2) :i32
+	$4 = call @"<symbol>" "<name>"($1, $2, $3) :i32
+	$5 = call @"<symbol>" "<name>"($4, $1, $2) :i32
 	return ($5) :i32
 }
 } //nautilus

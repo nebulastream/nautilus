@@ -1,88 +1,88 @@
 nautilus {
 classify($1:ptr, $2:ptr, $3:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = call func_*() :ui32
-	$7 = call func_*() :ui32
-	$8 = $6 * $7 :ui32
-	$9 = call func_*() :ui32
-	$10 = $8 + $9 :ui32
-	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() prob(0.5) :void
+	$4 = call @"<symbol>" "<name>"() :ui32
+	$5 = call @"<symbol>" "<name>"() :ui32
+	$6 = $4 * $5 :ui32
+	$7 = call @"<symbol>" "<name>"() :ui32
+	$8 = $6 + $7 :ui32
+	$9 = $8 < $3 :bool
+	if $9 ? Block_1($2, $8, $1) : Block_2() prob(0.5) :void
 
-Block_1($5:ptr, $10:ui32, $4:ptr):
-	$13 = $10 cast_to i32 :i32
-	$17 = 4 :ui64
-	$18 = $13 cast_to ui64 :ui64
-	$19 = $18 * $17 :ui64
-	$20 = $4 + $19 :ptr
-	$23 = 200 :ui32
-	$24 = load($20) :ui32
-	$25 = $24 > $23 :bool
-	if $25 ? Block_3($5, $10) : Block_4($5, $10, $4) prob(0.5) :void
+Block_1($10:ptr, $11:ui32, $12:ptr):
+	$13 = $11 cast_to i32 :i32
+	$14 = 4 :ui64
+	$15 = $13 cast_to ui64 :ui64
+	$16 = $15 * $14 :ui64
+	$17 = $12 + $16 :ptr
+	$18 = 200 :ui32
+	$19 = load($17) :ui32
+	$20 = $19 > $18 :bool
+	if $20 ? Block_3($10, $11) : Block_4($10, $11, $12) prob(0.5) :void
 
-Block_3($5:ptr, $10:ui32):
-	$27 = 3 :ui32
-	$28 = $10 cast_to i32 :i32
-	$32 = 4 :ui64
-	$33 = $28 cast_to ui64 :ui64
-	$34 = $33 * $32 :ui64
-	$35 = $5 + $34 :ptr
-	store($27, $35) :void
+Block_3($21:ptr, $22:ui32):
+	$23 = 3 :ui32
+	$24 = $22 cast_to i32 :i32
+	$25 = 4 :ui64
+	$26 = $24 cast_to ui64 :ui64
+	$27 = $26 * $25 :ui64
+	$28 = $21 + $27 :ptr
+	store($23, $28) :void
 	br Block_9() :void
 
 Block_9():
 	return :void
 
-Block_4($5:ptr, $10:ui32, $4:ptr):
-	$46 = $10 cast_to i32 :i32
-	$50 = 4 :ui64
-	$51 = $46 cast_to ui64 :ui64
-	$52 = $51 * $50 :ui64
-	$53 = $4 + $52 :ptr
-	$56 = 100 :ui32
-	$57 = load($53) :ui32
+Block_4($29:ptr, $30:ui32, $31:ptr):
+	$32 = $30 cast_to i32 :i32
+	$33 = 4 :ui64
+	$34 = $32 cast_to ui64 :ui64
+	$35 = $34 * $33 :ui64
+	$36 = $31 + $35 :ptr
+	$37 = 100 :ui32
+	$38 = load($36) :ui32
+	$39 = $38 > $37 :bool
+	if $39 ? Block_5($29, $30) : Block_6($29, $30, $31) prob(0.5) :void
+
+Block_5($40:ptr, $41:ui32):
+	$42 = 2 :ui32
+	$43 = $41 cast_to i32 :i32
+	$44 = 4 :ui64
+	$45 = $43 cast_to ui64 :ui64
+	$46 = $45 * $44 :ui64
+	$47 = $40 + $46 :ptr
+	store($42, $47) :void
+	br Block_9() :void
+
+Block_6($48:ptr, $49:ui32, $50:ptr):
+	$51 = $49 cast_to i32 :i32
+	$52 = 4 :ui64
+	$53 = $51 cast_to ui64 :ui64
+	$54 = $53 * $52 :ui64
+	$55 = $50 + $54 :ptr
+	$56 = 0 :ui32
+	$57 = load($55) :ui32
 	$58 = $57 > $56 :bool
-	if $58 ? Block_5($5, $10) : Block_6($5, $10, $4) prob(0.5) :void
+	if $58 ? Block_7($48, $49) : Block_8($48, $49) prob(0.5) :void
 
-Block_5($5:ptr, $10:ui32):
-	$60 = 2 :ui32
-	$61 = $10 cast_to i32 :i32
-	$65 = 4 :ui64
-	$66 = $61 cast_to ui64 :ui64
-	$67 = $66 * $65 :ui64
-	$68 = $5 + $67 :ptr
-	store($60, $68) :void
+Block_7($59:ptr, $60:ui32):
+	$61 = 1 :ui32
+	$62 = $60 cast_to i32 :i32
+	$63 = 4 :ui64
+	$64 = $62 cast_to ui64 :ui64
+	$65 = $64 * $63 :ui64
+	$66 = $59 + $65 :ptr
+	store($61, $66) :void
 	br Block_9() :void
 
-Block_6($5:ptr, $10:ui32, $4:ptr):
-	$76 = $10 cast_to i32 :i32
-	$80 = 4 :ui64
-	$81 = $76 cast_to ui64 :ui64
-	$82 = $81 * $80 :ui64
-	$83 = $4 + $82 :ptr
-	$86 = 0 :ui32
-	$87 = load($83) :ui32
-	$88 = $87 > $86 :bool
-	if $88 ? Block_7($5, $10) : Block_8($5, $10) prob(0.5) :void
-
-Block_7($5:ptr, $10:ui32):
-	$90 = 1 :ui32
-	$91 = $10 cast_to i32 :i32
-	$95 = 4 :ui64
-	$96 = $91 cast_to ui64 :ui64
-	$97 = $96 * $95 :ui64
-	$98 = $5 + $97 :ptr
-	store($90, $98) :void
-	br Block_9() :void
-
-Block_8($5:ptr, $10:ui32):
-	$106 = 0 :ui32
-	$107 = $10 cast_to i32 :i32
-	$111 = 4 :ui64
-	$112 = $107 cast_to ui64 :ui64
-	$113 = $112 * $111 :ui64
-	$114 = $5 + $113 :ptr
-	store($106, $114) :void
+Block_8($67:ptr, $68:ui32):
+	$69 = 0 :ui32
+	$70 = $68 cast_to i32 :i32
+	$71 = 4 :ui64
+	$72 = $70 cast_to ui64 :ui64
+	$73 = $72 * $71 :ui64
+	$74 = $67 + $73 :ptr
+	store($69, $74) :void
 	br Block_9() :void
 
 Block_2():
@@ -91,14 +91,14 @@ Block_2():
 execute($1:ptr, $2:ptr, $3:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
+	$5 = 1 :ui32
 	$6 = 1 :ui32
-	$7 = 1 :ui32
-	$8 = 256 :ui32
-	$10 = 1 :ui32
-	$11 = 1 :ui32
-	call func_*($4, $6, $7) :void
-	call func_*($8, $10, $11) :void
-	call func_*($1, $2, $3) :void
+	$7 = 256 :ui32
+	$8 = 1 :ui32
+	$9 = 1 :ui32
+	call @"<symbol>" "<name>"($4, $5, $6) :void
+	call @"<symbol>" "<name>"($7, $8, $9) :void
+	call @"<symbol>" "<name>"($1, $2, $3) :void
 	return :void
 }
 } //nautilus

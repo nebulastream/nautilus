@@ -10,10 +10,10 @@ Block_0($1:i32):
 	if $7 ? Block_1() : Block_3($2) prob(0.5) :void
 
 Block_1():
-	$9 = 1 :i32
-	br Block_3($9) :void
+	$8 = 1 :i32
+	br Block_3($8) :void
 
-Block_3($2:i32):
-	return ($2) :i32
+Block_3($9:i32):
+	return ($9) :i32
 }
 } //nautilus

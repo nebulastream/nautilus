@@ -6,17 +6,17 @@ Block_0($1:i32, $2:i32):
 	$5 = $1 == $4 :bool
 	if $5 ? Block_1($3, $2) : Block_5($3) prob(0.5) :void
 
-Block_1($3:i32, $2:i32):
-	$7 = 1 :i32
-	$8 = $2 == $7 :bool
-	if $8 ? Block_3($3) : Block_5($3) prob(0.5) :void
+Block_1($6:i32, $7:i32):
+	$8 = 1 :i32
+	$9 = $7 == $8 :bool
+	if $9 ? Block_3($6) : Block_5($6) prob(0.5) :void
 
-Block_3($3:i32):
-	$10 = 14 :i32
-	$11 = $3 + $10 :i32
-	br Block_5($11) :void
+Block_3($10:i32):
+	$11 = 14 :i32
+	$12 = $10 + $11 :i32
+	br Block_5($12) :void
 
-Block_5($3:i32):
-	return ($3) :i32
+Block_5($13:i32):
+	return ($13) :i32
 }
 } //nautilus

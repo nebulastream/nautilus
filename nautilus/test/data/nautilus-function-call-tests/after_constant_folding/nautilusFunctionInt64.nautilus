@@ -6,7 +6,7 @@ Block_0($1:i64, $2:i64):
 }
 execute($1:i64, $2:i64) :i64 attrs["entry"="true"] {
 Block_0($1:i64, $2:i64):
-	$3 = call func_*($1, $2) :i64
+	$3 = call @"<symbol>" "<name>"($1, $2) :i64
 	return ($3) :i64
 }
 } //nautilus

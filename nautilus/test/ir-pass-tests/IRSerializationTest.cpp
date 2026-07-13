@@ -26,6 +26,9 @@ void* resolveToDummy(const std::string&, const std::string&) {
 std::string roundTrip(const std::string& text) {
 	auto graph = parseIR(text, "test", resolveToDummy);
 	auto serialized = serializeIR(*graph);
+	// There is exactly one IR text format: the dump rendering and the
+	// serializer produce byte-identical output.
+	REQUIRE(graph->toString() == serialized);
 	auto reparsed = parseIR(serialized, "test", resolveToDummy);
 	REQUIRE(serializeIR(*reparsed) == serialized);
 	return serialized;
@@ -231,14 +234,35 @@ TEST_CASE("IR parser accepts pretty-printer output for call-free graphs", "[IRSe
 	                                  "} //nautilus\n";
 	auto graph = parseIR(prettyPrinted, "test");
 	REQUIRE(graph->getFunctionOperation("execute") != nullptr);
-	// toString (the display form) shares the writer with the serializer and
-	// keeps the stored identifiers, so re-printing the parsed graph
-	// reproduces the input except for the explicit `prob(0.5)` trailer the
-	// unified grammar adds to `if`.
-	std::string expected = prettyPrinted;
-	const std::string legacyIf = "if $9 ? Block_1($7, $5) : Block_2($5) :void";
-	expected.replace(expected.find(legacyIf), legacyIf.size(), "if $9 ? Block_1($7, $5) : Block_2($5) prob(0.5) :void");
-	REQUIRE(graph->toString() == expected);
+	// Re-printing the parsed graph produces the canonical form: values are
+	// renumbered with function-wide-unique ids and `if` carries its
+	// explicit probability.
+	const std::string canonical = "nautilus {\n"
+	                              "execute($1:i32) :i32 {\n"
+	                              "Block_0($1:i32):\n"
+	                              "\t$2 = 0 :i32\n"
+	                              "\t$3 = 10 :i32\n"
+	                              "\tbr Block_3($1, $2, $3) :void\n"
+	                              "\n"
+	                              "Block_3($4:i32, $5:i32, $6:i32):\n"
+	                              "\t$7 = $4 % $6 :i32\n"
+	                              "\t$8 = $5 + $7 :i32\n"
+	                              "\t$9 = 10 :i32\n"
+	                              "\t$10 = $4 / $9 :i32\n"
+	                              "\t$11 = 0 :i32\n"
+	                              "\t$12 = $10 > $11 :bool\n"
+	                              "\tif $12 ? Block_1($10, $8) : Block_2($8) prob(0.5) :void\n"
+	                              "\n"
+	                              "Block_1($13:i32, $14:i32):\n"
+	                              "\t$15 = 10 :i32\n"
+	                              "\tbr Block_3($13, $14, $15) :void\n"
+	                              "\n"
+	                              "Block_2($16:i32):\n"
+	                              "\treturn ($16) :i32\n"
+	                              "}\n"
+	                              "} //nautilus\n";
+	REQUIRE(graph->toString() == canonical);
+	REQUIRE(serializeIR(*graph) == canonical);
 }
 
 TEST_CASE("IR parser rejects display dumps with hidden call symbols", "[IRSerialization]") {

@@ -4,67 +4,67 @@ Block_0($1:i32):
 	$2 = true :bool
 	if $2 ? Block_1($1) : Block_2($1) prob(0.5) :void
 
-Block_1($1:i32):
+Block_1($3:i32):
 	$4 = 42 :i64
-	$5 = $1 cast_to i64 :i64
+	$5 = $3 cast_to i64 :i64
 	$6 = $5 == $4 :bool
-	if $6 ? Block_3($1) : Block_4($1) prob(0.5) :void
+	if $6 ? Block_3($3) : Block_4($3) prob(0.5) :void
 
-Block_3($1:i32):
+Block_3($7:i32):
 	$8 = true :bool
-	br Block_13($1, $8) :void
+	br Block_13($7, $8) :void
 
-Block_13($1:i32, $2:bool):
-	if $2 ? Block_5($1) : Block_6($1) prob(0.5) :void
+Block_13($9:i32, $10:bool):
+	if $10 ? Block_5($9) : Block_6($9) prob(0.5) :void
 
-Block_5($1:i32):
-	$10 = 42 :i64
-	$11 = $1 cast_to i64 :i64
-	$12 = $11 == $10 :bool
-	if $12 ? Block_7($1) : Block_8($1) prob(0.5) :void
+Block_5($11:i32):
+	$12 = 42 :i64
+	$13 = $11 cast_to i64 :i64
+	$14 = $13 == $12 :bool
+	if $14 ? Block_7($11) : Block_8($11) prob(0.5) :void
 
-Block_7($1:i32):
-	$14 = true :bool
-	br Block_15($1, $14) :void
+Block_7($15:i32):
+	$16 = true :bool
+	br Block_15($15, $16) :void
 
-Block_15($1:i32, $2:bool):
-	if $2 ? Block_9($1) : Block_10() prob(0.5) :void
+Block_15($17:i32, $18:bool):
+	if $18 ? Block_9($17) : Block_10() prob(0.5) :void
 
-Block_9($1:i32):
-	$16 = 42 :i64
-	$17 = $1 cast_to i64 :i64
-	$18 = $17 == $16 :bool
-	if $18 ? Block_11() : Block_12() prob(0.5) :void
+Block_9($19:i32):
+	$20 = 42 :i64
+	$21 = $19 cast_to i64 :i64
+	$22 = $21 == $20 :bool
+	if $22 ? Block_11() : Block_12() prob(0.5) :void
 
 Block_11():
-	$20 = true :bool
-	br Block_18($20) :void
+	$23 = true :bool
+	br Block_18($23) :void
 
-Block_18($2:bool):
-	return ($2) :bool
+Block_18($24:bool):
+	return ($24) :bool
 
 Block_12():
-	$32 = false :bool
-	br Block_18($32) :void
+	$26 = false :bool
+	br Block_18($26) :void
 
 Block_10():
-	$30 = false :bool
-	br Block_18($30) :void
+	$27 = false :bool
+	br Block_18($27) :void
 
-Block_8($1:i32):
-	$28 = false :bool
-	br Block_15($1, $28) :void
+Block_8($28:i32):
+	$29 = false :bool
+	br Block_15($28, $29) :void
 
-Block_6($1:i32):
-	$26 = false :bool
-	br Block_15($1, $26) :void
+Block_6($30:i32):
+	$31 = false :bool
+	br Block_15($30, $31) :void
 
-Block_4($1:i32):
-	$24 = false :bool
-	br Block_13($1, $24) :void
+Block_4($32:i32):
+	$33 = false :bool
+	br Block_13($32, $33) :void
 
-Block_2($1:i32):
-	$22 = false :bool
-	br Block_13($1, $22) :void
+Block_2($34:i32):
+	$35 = false :bool
+	br Block_13($34, $35) :void
 }
 } //nautilus

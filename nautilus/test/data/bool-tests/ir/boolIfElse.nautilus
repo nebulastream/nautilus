@@ -5,14 +5,14 @@ Block_0($1:bool, $2:bool):
 	if $3 ? Block_1() : Block_2() prob(0.5) :void
 
 Block_1():
-	$5 = true :bool
-	br Block_3($5) :void
+	$4 = true :bool
+	br Block_3($4) :void
 
 Block_3($5:bool):
 	return ($5) :bool
 
 Block_2():
-	$8 = false :bool
-	br Block_3($8) :void
+	$7 = false :bool
+	br Block_3($7) :void
 }
 } //nautilus

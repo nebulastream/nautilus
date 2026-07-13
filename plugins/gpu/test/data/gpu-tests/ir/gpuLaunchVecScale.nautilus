@@ -2,32 +2,32 @@ nautilus {
 execute($1:ptr, $2:ptr, $3:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
+	$5 = 1 :ui32
 	$6 = 1 :ui32
-	$7 = 1 :ui32
-	$8 = 256 :ui32
-	$10 = 1 :ui32
-	$11 = 1 :ui32
-	call func_*($4, $6, $7) :void
-	call func_*($8, $10, $11) :void
-	call func_*($1, $2, $3) :void
+	$7 = 256 :ui32
+	$8 = 1 :ui32
+	$9 = 1 :ui32
+	call @"<symbol>" "<name>"($4, $5, $6) :void
+	call @"<symbol>" "<name>"($7, $8, $9) :void
+	call @"<symbol>" "<name>"($1, $2, $3) :void
 	return :void
 }
 vecScale($1:ptr, $2:ptr, $3:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = call func_*() :ui32
-	$7 = $6 cast_to i32 :i32
-	$11 = 4 :ui64
-	$12 = $7 cast_to ui64 :ui64
-	$13 = $12 * $11 :ui64
-	$14 = $1 + $13 :ptr
-	$18 = load($14) :ui32
-	$19 = $18 * $3 :ui32
-	$20 = $6 cast_to i32 :i32
-	$24 = 4 :ui64
-	$25 = $20 cast_to ui64 :ui64
-	$26 = $25 * $24 :ui64
-	$27 = $2 + $26 :ptr
-	store($19, $27) :void
+	$4 = call @"<symbol>" "<name>"() :ui32
+	$5 = $4 cast_to i32 :i32
+	$6 = 4 :ui64
+	$7 = $5 cast_to ui64 :ui64
+	$8 = $7 * $6 :ui64
+	$9 = $1 + $8 :ptr
+	$10 = load($9) :ui32
+	$11 = $10 * $3 :ui32
+	$12 = $4 cast_to i32 :i32
+	$13 = 4 :ui64
+	$14 = $12 cast_to ui64 :ui64
+	$15 = $14 * $13 :ui64
+	$16 = $2 + $15 :ptr
+	store($11, $16) :void
 	return :void
 }
 } //nautilus

@@ -2,54 +2,54 @@ nautilus {
 execute($1:ptr, $2:ptr, $3:ui32) :void attrs["entry"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
 	$4 = 1 :ui32
+	$5 = 1 :ui32
 	$6 = 1 :ui32
-	$7 = 1 :ui32
-	$8 = 256 :ui32
-	$10 = 1 :ui32
-	$11 = 1 :ui32
-	call func_*($4, $6, $7) :void
-	call func_*($8, $10, $11) :void
-	call func_*($1, $2, $3) :void
+	$7 = 256 :ui32
+	$8 = 1 :ui32
+	$9 = 1 :ui32
+	call @"<symbol>" "<name>"($4, $5, $6) :void
+	call @"<symbol>" "<name>"($7, $8, $9) :void
+	call @"<symbol>" "<name>"($1, $2, $3) :void
 	return :void
 }
 prefixSum($1:ptr, $2:ptr, $3:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = call func_*() :ui32
-	$7 = call func_*() :ui32
-	$8 = $6 * $7 :ui32
-	$9 = call func_*() :ui32
-	$10 = $8 + $9 :ui32
-	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() prob(0.5) :void
+	$4 = call @"<symbol>" "<name>"() :ui32
+	$5 = call @"<symbol>" "<name>"() :ui32
+	$6 = $4 * $5 :ui32
+	$7 = call @"<symbol>" "<name>"() :ui32
+	$8 = $6 + $7 :ui32
+	$9 = $8 < $3 :bool
+	if $9 ? Block_1($2, $8, $1) : Block_2() prob(0.5) :void
 
-Block_1($5:ptr, $10:ui32, $4:ptr):
+Block_1($10:ptr, $11:ui32, $12:ptr):
 	$13 = 0 :ui32
 	$14 = 0 :ui32
-	br Block_5($5, $10, $13, $14, $4) :void
+	br Block_5($10, $11, $13, $14, $12) :void
 
-Block_5($5:ptr, $10:ui32, $13:ui32, $14:ui32, $4:ptr):
-	$15 = $14 <= $10 :bool
-	if $15 ? Block_3($5, $10, $14, $13, $4) : Block_4($5, $10, $13) prob(0.5) :void
+Block_5($15:ptr, $16:ui32, $17:ui32, $18:ui32, $19:ptr):
+	$20 = $18 <= $16 :bool
+	if $20 ? Block_3($15, $16, $18, $17, $19) : Block_4($15, $16, $17) prob(0.5) :void
 
-Block_3($5:ptr, $10:ui32, $14:ui32, $13:ui32, $4:ptr):
-	$17 = $14 cast_to i32 :i32
-	$21 = 4 :ui64
-	$22 = $17 cast_to ui64 :ui64
-	$23 = $22 * $21 :ui64
-	$24 = $4 + $23 :ptr
-	$27 = load($24) :ui32
-	$28 = $13 + $27 :ui32
-	$29 = 1 :ui32
-	$30 = $14 + $29 :ui32
-	br Block_5($5, $10, $28, $30, $4) :void
+Block_3($21:ptr, $22:ui32, $23:ui32, $24:ui32, $25:ptr):
+	$26 = $23 cast_to i32 :i32
+	$27 = 4 :ui64
+	$28 = $26 cast_to ui64 :ui64
+	$29 = $28 * $27 :ui64
+	$30 = $25 + $29 :ptr
+	$31 = load($30) :ui32
+	$32 = $24 + $31 :ui32
+	$33 = 1 :ui32
+	$34 = $23 + $33 :ui32
+	br Block_5($21, $22, $32, $34, $25) :void
 
-Block_4($5:ptr, $10:ui32, $13:ui32):
-	$38 = $10 cast_to i32 :i32
-	$42 = 4 :ui64
-	$43 = $38 cast_to ui64 :ui64
-	$44 = $43 * $42 :ui64
-	$45 = $5 + $44 :ptr
-	store($13, $45) :void
+Block_4($35:ptr, $36:ui32, $37:ui32):
+	$38 = $36 cast_to i32 :i32
+	$39 = 4 :ui64
+	$40 = $38 cast_to ui64 :ui64
+	$41 = $40 * $39 :ui64
+	$42 = $35 + $41 :ptr
+	store($37, $42) :void
 	br Block_6() :void
 
 Block_6():

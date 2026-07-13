@@ -1,7 +1,7 @@
 nautilus {
 execute($1:bool, $2:i16, $3:i16) :i16 attrs["entry"="true"] {
 Block_0($1:bool, $2:i16, $3:i16):
-	$7 = select $1 ? $2 : $3 :i16
-	return ($7) :i16
+	$4 = select $1 ? $2 : $3 :i16
+	return ($4) :i16
 }
 } //nautilus

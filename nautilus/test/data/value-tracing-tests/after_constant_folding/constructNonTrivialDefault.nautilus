@@ -2,14 +2,14 @@ nautilus {
 execute() :i32 allocas[(8,4)] attrs["entry"="true"] {
 Block_0():
 	$1 = alloca[0] :ptr
-	call func_*($1) :void
-	$7 = 0 :ui64
-	$8 = $1 + $7 :ptr
-	$11 = 7 :i32
-	store($11, $8) :void
-	$19 = 0 :ui64
-	$20 = $1 + $19 :ptr
-	$23 = load($20) :i32
-	return ($23) :i32
+	call @"<symbol>" "<name>"($1) :void
+	$2 = 0 :ui64
+	$3 = $1 + $2 :ptr
+	$4 = 7 :i32
+	store($4, $3) :void
+	$5 = 0 :ui64
+	$6 = $1 + $5 :ptr
+	$7 = load($6) :i32
+	return ($7) :i32
 }
 } //nautilus

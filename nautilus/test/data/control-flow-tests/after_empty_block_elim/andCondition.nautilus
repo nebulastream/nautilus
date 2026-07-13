@@ -9,12 +9,12 @@ Block_0($1:i32, $2:i32):
 	$8 = $5 and $7 :bool
 	if $8 ? Block_1($3) : Block_3($3) prob(0.5) :void
 
-Block_1($3:i32):
+Block_1($9:i32):
 	$10 = 14 :i32
-	$11 = $3 + $10 :i32
+	$11 = $9 + $10 :i32
 	br Block_3($11) :void
 
-Block_3($3:i32):
-	return ($3) :i32
+Block_3($12:i32):
+	return ($12) :i32
 }
 } //nautilus

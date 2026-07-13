@@ -1,9 +1,9 @@
 nautilus {
 execute($1:ptr) :i8 attrs["entry"="true"] {
 Block_0($1:ptr):
-	$6 = 2 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i8
-	return ($10) :i8
+	$2 = 2 :ui64
+	$3 = $1 + $2 :ptr
+	$4 = load($3) :i8
+	return ($4) :i8
 }
 } //nautilus

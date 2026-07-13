@@ -2,18 +2,18 @@ nautilus {
 execute() :i32 allocas[(4,4),(4,4)] attrs["entry"="true"] {
 Block_0():
 	$1 = alloca[0] :ptr
-	call func_*($1) :void
-	$7 = 0 :ui64
-	$8 = $1 + $7 :ptr
-	$11 = 99 :i32
-	store($11, $8) :void
-	$15 = alloca[1] :ptr
-	call func_*($15, $1) :void
-	$21 = 0 :ui64
-	$22 = $15 + $21 :ptr
-	$25 = load($22) :i32
-	call func_*($15) :void
-	call func_*($1) :void
-	return ($25) :i32
+	call @"<symbol>" "<name>"($1) :void
+	$2 = 0 :ui64
+	$3 = $1 + $2 :ptr
+	$4 = 99 :i32
+	store($4, $3) :void
+	$5 = alloca[1] :ptr
+	call @"<symbol>" "<name>"($5, $1) :void
+	$6 = 0 :ui64
+	$7 = $5 + $6 :ptr
+	$8 = load($7) :i32
+	call @"<symbol>" "<name>"($5) :void
+	call @"<symbol>" "<name>"($1) :void
+	return ($8) :i32
 }
 } //nautilus

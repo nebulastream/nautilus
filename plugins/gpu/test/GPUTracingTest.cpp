@@ -1,3 +1,4 @@
+#include "IRDumpNormalization.hpp"
 #include "common/GPUFunctions.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/Engine.hpp"
@@ -27,6 +28,9 @@ namespace nautilus::engine {
 
 static bool checkTestFile(std::string actual, const std::string& category, const std::string& group,
                           const std::string& name, const std::string& extension = ".trace") {
+	// External-function references in IR dumps carry build-dependent
+	// symbols; normalize them so the reference files stay deterministic.
+	actual = testing::normalizeExternalFunctionReferences(std::move(actual));
 	auto groupDir = std::string(GPU_TEST_DATA_FOLDER) + category + "/" + group + "/";
 	if (!std::filesystem::exists(groupDir)) {
 		std::filesystem::create_directories(groupDir);

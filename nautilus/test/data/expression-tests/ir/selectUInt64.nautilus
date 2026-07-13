@@ -1,7 +1,7 @@
 nautilus {
 execute($1:bool, $2:ui64, $3:ui64) :ui64 attrs["entry"="true"] {
 Block_0($1:bool, $2:ui64, $3:ui64):
-	$7 = select $1 ? $2 : $3 :ui64
-	return ($7) :ui64
+	$4 = select $1 ? $2 : $3 :ui64
+	return ($4) :ui64
 }
 } //nautilus

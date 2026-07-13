@@ -1,10 +1,10 @@
 nautilus {
 execute($1:ptr, $2:i32) :ptr attrs["entry"="true"] {
 Block_0($1:ptr, $2:i32):
-	$6 = 12 :ui64
-	$7 = $2 cast_to ui64 :ui64
-	$8 = $7 * $6 :ui64
-	$9 = $1 + $8 :ptr
-	return ($9) :ptr
+	$3 = 12 :ui64
+	$4 = $2 cast_to ui64 :ui64
+	$5 = $4 * $3 :ui64
+	$6 = $1 + $5 :ptr
+	return ($6) :ptr
 }
 } //nautilus

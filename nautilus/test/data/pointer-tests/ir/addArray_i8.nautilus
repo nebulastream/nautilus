@@ -4,38 +4,38 @@ Block_0($1:ptr, $2:ptr, $3:i8):
 	$4 = 0 :i8
 	br Block_3($4, $3, $1, $2) :void
 
-Block_3($4:i8, $3:i8, $1:ptr, $2:ptr):
-	$5 = $4 < $3 :bool
-	if $5 ? Block_1($3, $4, $1, $2) : Block_2() prob(0.5) :void
+Block_3($5:i8, $6:i8, $7:ptr, $8:ptr):
+	$9 = $5 < $6 :bool
+	if $9 ? Block_1($6, $5, $7, $8) : Block_2() prob(0.5) :void
 
-Block_1($3:i8, $4:i8, $1:ptr, $2:ptr):
-	$7 = $4 cast_to i32 :i32
-	$11 = 1 :ui64
-	$12 = $7 cast_to ui64 :ui64
-	$13 = $12 * $11 :ui64
-	$14 = $1 + $13 :ptr
-	$17 = load($14) :i8
-	$18 = $4 cast_to i32 :i32
-	$22 = 1 :ui64
-	$23 = $18 cast_to ui64 :ui64
-	$24 = $23 * $22 :ui64
-	$25 = $2 + $24 :ptr
-	$28 = load($25) :i8
-	$29 = $17 cast_to i32 :i32
-	$30 = $28 cast_to i32 :i32
-	$31 = $29 + $30 :i32
-	$32 = $4 cast_to i32 :i32
-	$36 = 1 :ui64
-	$37 = $32 cast_to ui64 :ui64
-	$38 = $37 * $36 :ui64
-	$39 = $1 + $38 :ptr
-	$42 = $31 cast_to i8 :i8
-	store($42, $39) :void
-	$44 = 1 :i32
-	$45 = $4 cast_to i32 :i32
-	$46 = $45 + $44 :i32
-	$47 = $46 cast_to i8 :i8
-	br Block_3($47, $3, $1, $2) :void
+Block_1($10:i8, $11:i8, $12:ptr, $13:ptr):
+	$14 = $11 cast_to i32 :i32
+	$15 = 1 :ui64
+	$16 = $14 cast_to ui64 :ui64
+	$17 = $16 * $15 :ui64
+	$18 = $12 + $17 :ptr
+	$19 = load($18) :i8
+	$20 = $11 cast_to i32 :i32
+	$21 = 1 :ui64
+	$22 = $20 cast_to ui64 :ui64
+	$23 = $22 * $21 :ui64
+	$24 = $13 + $23 :ptr
+	$25 = load($24) :i8
+	$26 = $19 cast_to i32 :i32
+	$27 = $25 cast_to i32 :i32
+	$28 = $26 + $27 :i32
+	$29 = $11 cast_to i32 :i32
+	$30 = 1 :ui64
+	$31 = $29 cast_to ui64 :ui64
+	$32 = $31 * $30 :ui64
+	$33 = $12 + $32 :ptr
+	$34 = $28 cast_to i8 :i8
+	store($34, $33) :void
+	$35 = 1 :i32
+	$36 = $11 cast_to i32 :i32
+	$37 = $36 + $35 :i32
+	$38 = $37 cast_to i8 :i8
+	br Block_3($38, $10, $12, $13) :void
 
 Block_2():
 	return :void

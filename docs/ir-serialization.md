@@ -80,29 +80,31 @@ auto resolver = [](const std::string& symbol, const std::string& name) -> void* 
 auto loaded = engine.loadModuleFromIRFile("module.nautilus", resolver);
 ```
 
-## One grammar, two renderings
+## One format
 
-There is a single IR text grammar with one writer behind it. It has two renderings:
+There is exactly one IR text format: `IRGraph::toString` (the `dump.after_ir_creation` /
+`dump.after_ir_passes` dumps) and `serializeIR` produce **byte-identical** output. Every dump is a
+serialized module and vice versa.
 
-- **Portable** (`serializeIR`, used by `NautilusModule::serializeIR`): complete and unambiguous.
-  Every block argument and value-producing operation is renumbered with an id that is unique within
-  its function, so every reference in the text is exact — the in-memory IR distinguishes values by
-  pointer identity and legitimately reuses numeric ids across blocks, and optimization passes create
-  cross-block references between them. External functions are printed with their mangled symbol and
-  human-readable name (`call @"_Z3addii" "add(int, int)"(...)`). Non-null pointer constants fail
-  serialization with a descriptive error (they are raw addresses, meaningless in another process);
-  pass such pointers as function parameters instead.
+- **Unique value numbering.** Every block argument and value-producing operation is printed with an
+  id that is unique within its function (assigned block by block, arguments before operations), so
+  every reference in the text is exact. The in-memory IR distinguishes values by pointer identity
+  and legitimately reuses numeric ids across blocks, and optimization passes create cross-block
+  references between them — printing the stored ids would make the text ambiguous. Consumers that
+  correlate operations with the printed text (e.g. the MLIR debug-info source map) translate through
+  `computePrintedValueIds`.
+- **External symbols.** External functions are printed with their mangled symbol and human-readable
+  name: `call @"_Z3addii" "add(int, int)"(...)`.
+- **Strictness is the only difference.** `toString` never throws: state that cannot be reconstructed
+  in another process — a non-null pointer constant, i.e. a raw address — is rendered as the `*`
+  placeholder. `serializeIR` validates the graph first and fails with a descriptive error instead of
+  writing a file the parser would reject later. Pass such pointers as function parameters instead.
+- Optional `; ...` source-location comment trailers (`dump.sourceLocations`) can be appended to
+  dumps; the parser skips them.
 
-- **Display** (`IRGraph::toString`, i.e. the `dump.after_ir_creation` / `dump.after_ir_passes`
-  dumps): faithful to the in-memory graph for debugging. Operations keep their stored identifiers so
-  dumps line up with verifier messages, backend register frames, and MLIR debug info; external
-  function references stay hidden behind the deterministic `func_*` placeholder (unless address
-  logging is enabled); non-null pointer constants print as `*`; and optional `; ...` source-location
-  trailers can be appended (`dump.sourceLocations`).
-
-Display dumps parse as long as they contain no `func_*` references, no `*` pointer constants, and no
-ambiguous cross-block references — the parser rejects each with a clear error pointing at
-`serializeIR`. For reliable round-trips, always produce files with `serializeIR()`.
+The golden test fixtures normalize the volatile parts of external references (mangled symbols depend
+on the build) to `@"<symbol>" "<name>"` placeholders; see
+`testing::normalizeExternalFunctionReferences`.
 
 ## Guarantees and limits
 

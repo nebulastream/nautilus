@@ -1,6 +1,8 @@
 
 #include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/util/IRSerializationUtil.hpp"
 #include <cctype>
 #include <cstdint>
 #include <limits>
@@ -172,6 +174,15 @@ IRSourceMap dumpIRWithSourceMap(const ir::IRGraph& graph) {
 			break;
 		}
 		remaining = remaining.substr(nl + 1);
+	}
+
+	// Fill each function's printed-id translation table: the dump numbers
+	// values uniquely per function, while operations keep their (reusable)
+	// stored identifiers in memory.
+	for (const auto* function : graph.getFunctionOperations()) {
+		if (auto it = result.functions.find(function->getName()); it != result.functions.end()) {
+			it->second.printedIds = ir::computePrintedValueIds(*function);
+		}
 	}
 
 	return result;

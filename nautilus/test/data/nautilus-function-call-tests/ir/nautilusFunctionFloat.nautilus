@@ -6,7 +6,7 @@ Block_0($1:f32, $2:f32):
 }
 execute($1:f32, $2:f32) :f32 attrs["entry"="true"] {
 Block_0($1:f32, $2:f32):
-	$3 = call func_*($1, $2) :f32
+	$3 = call @"<symbol>" "<name>"($1, $2) :f32
 	return ($3) :f32
 }
 } //nautilus

@@ -6,38 +6,38 @@ Block_0($1:i64):
 	$4 = $1 > $3 :bool
 	if $4 ? Block_1($1) : Block_2($1) prob(0.5) :void
 
-Block_1($1:i64):
+Block_1($5:i64):
 	$6 = alloca[0] :ptr
 	$7 = 1 :i8
-	$13 = 0 :ui64
+	$8 = 0 :ui64
+	$9 = $6 + $8 :ptr
+	store($7, $9) :void
+	$10 = 2 :i32
+	$11 = 4 :ui64
+	$12 = $6 + $11 :ptr
+	store($10, $12) :void
+	$13 = 8 :ui64
 	$14 = $6 + $13 :ptr
-	store($7, $14) :void
-	$20 = 2 :i32
-	$26 = 4 :ui64
-	$27 = $6 + $26 :ptr
-	store($20, $27) :void
-	$39 = 8 :ui64
-	$40 = $6 + $39 :ptr
-	store($1, $40) :void
-	$50 = 0 :ui64
-	$51 = $6 + $50 :ptr
-	$54 = load($51) :i8
-	$59 = 4 :ui64
-	$60 = $6 + $59 :ptr
-	$63 = load($60) :i32
-	$68 = 8 :ui64
-	$69 = $6 + $68 :ptr
-	$72 = load($69) :i64
-	$73 = $54 cast_to i64 :i64
-	$74 = $63 cast_to i64 :i64
-	$75 = $73 + $74 :i64
-	$76 = $75 + $72 :i64
-	br Block_3($76) :void
+	store($5, $14) :void
+	$15 = 0 :ui64
+	$16 = $6 + $15 :ptr
+	$17 = load($16) :i8
+	$18 = 4 :ui64
+	$19 = $6 + $18 :ptr
+	$20 = load($19) :i32
+	$21 = 8 :ui64
+	$22 = $6 + $21 :ptr
+	$23 = load($22) :i64
+	$24 = $17 cast_to i64 :i64
+	$25 = $20 cast_to i64 :i64
+	$26 = $24 + $25 :i64
+	$27 = $26 + $23 :i64
+	br Block_3($27) :void
 
-Block_3($76:i64):
-	return ($76) :i64
+Block_3($28:i64):
+	return ($28) :i64
 
-Block_2($1:i64):
-	br Block_3($1) :void
+Block_2($30:i64):
+	br Block_3($30) :void
 }
 } //nautilus

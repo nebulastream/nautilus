@@ -1,31 +1,31 @@
 nautilus {
 execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
-	$3 = 1 :i32
-	$4 = $1 == $3 :bool
-	if $4 ? Block_1() : Block_2($1) prob(0.5) :void
+	$2 = 1 :i32
+	$3 = $1 == $2 :bool
+	if $3 ? Block_1() : Block_2($1) prob(0.5) :void
 
 Block_1():
-	$6 = 1 :i32
-	$7 = 42 :i32
-	$8 = $6 == $7 :bool
-	if $8 ? Block_3($6) : Block_4($6) prob(0.5) :void
+	$4 = 1 :i32
+	$5 = 42 :i32
+	$6 = $4 == $5 :bool
+	if $6 ? Block_3($4) : Block_4($4) prob(0.5) :void
 
-Block_3($6:i32):
-	$10 = 1 :i32
-	$11 = $6 + $10 :i32
-	br Block_11($11) :void
+Block_3($7:i32):
+	$8 = 1 :i32
+	$9 = $7 + $8 :i32
+	br Block_11($9) :void
 
-Block_11($11:i32):
-	return ($11) :i32
+Block_11($10:i32):
+	return ($10) :i32
 
-Block_4($6:i32):
-	br Block_11($6) :void
+Block_4($12:i32):
+	br Block_11($12) :void
 
-Block_2($2:i32):
-	$13 = 10 :i32
-	$14 = $2 < $13 :bool
-	if $14 ? Block_5() : Block_6($2) prob(0.5) :void
+Block_2($13:i32):
+	$14 = 10 :i32
+	$15 = $13 < $14 :bool
+	if $15 ? Block_5() : Block_6($13) prob(0.5) :void
 
 Block_5():
 	$16 = 42 :i32
@@ -33,28 +33,28 @@ Block_5():
 	$18 = $16 == $17 :bool
 	if $18 ? Block_7($16) : Block_8($16) prob(0.5) :void
 
-Block_7($16:i32):
+Block_7($19:i32):
 	$20 = 1 :i32
-	$21 = $16 + $20 :i32
+	$21 = $19 + $20 :i32
 	br Block_11($21) :void
 
-Block_8($16:i32):
-	br Block_11($16) :void
+Block_8($22:i32):
+	br Block_11($22) :void
 
-Block_6($2:i32):
-	$24 = $2 + $2 :i32
+Block_6($23:i32):
+	$24 = $23 + $23 :i32
 	$25 = 1 :i32
 	$26 = $24 + $25 :i32
 	$27 = 42 :i32
 	$28 = $26 == $27 :bool
 	if $28 ? Block_9($26) : Block_10($26) prob(0.5) :void
 
-Block_9($26:i32):
+Block_9($29:i32):
 	$30 = 1 :i32
-	$31 = $26 + $30 :i32
+	$31 = $29 + $30 :i32
 	br Block_11($31) :void
 
-Block_10($26:i32):
-	br Block_11($26) :void
+Block_10($32:i32):
+	br Block_11($32) :void
 }
 } //nautilus

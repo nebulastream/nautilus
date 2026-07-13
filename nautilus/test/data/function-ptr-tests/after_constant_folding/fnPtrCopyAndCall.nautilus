@@ -1,7 +1,7 @@
 nautilus {
 execute($1:ptr, $2:i32, $3:i32) :i32 attrs["entry"="true"] {
 Block_0($1:ptr, $2:i32, $3:i32):
-	$5 = call_indirect $1($2, $3) :i32
-	return ($5) :i32
+	$4 = call_indirect $1($2, $3) :i32
+	return ($4) :i32
 }
 } //nautilus

@@ -2,34 +2,34 @@ nautilus {
 execute($1:i32) :i32 allocas[(8,4)] attrs["entry"="true"] {
 Block_0($1:i32):
 	$2 = alloca[0] :ptr
-	$7 = 0 :ui64
-	$8 = $2 + $7 :ptr
-	$11 = 0 :i32
-	store($11, $8) :void
-	$15 = 0 :i32
-	br Block_3($2, $15, $1) :void
+	$3 = 0 :ui64
+	$4 = $2 + $3 :ptr
+	$5 = 0 :i32
+	store($5, $4) :void
+	$6 = 0 :i32
+	br Block_3($2, $6, $1) :void
 
-Block_3($2:ptr, $15:i32, $1:i32):
-	$16 = $15 < $1 :bool
-	if $16 ? Block_1($2, $1, $15) : Block_2($2) prob(0.5) :void
+Block_3($7:ptr, $8:i32, $9:i32):
+	$10 = $8 < $9 :bool
+	if $10 ? Block_1($7, $9, $8) : Block_2($7) prob(0.5) :void
 
-Block_1($2:ptr, $1:i32, $15:i32):
-	$22 = 0 :ui64
-	$23 = $2 + $22 :ptr
-	$26 = 1 :i32
-	$28 = load($23) :i32
-	$29 = $28 + $26 :i32
-	$35 = 0 :ui64
-	$36 = $2 + $35 :ptr
-	store($29, $36) :void
-	$42 = 1 :i32
-	$43 = $15 + $42 :i32
-	br Block_3($2, $43, $1) :void
+Block_1($11:ptr, $12:i32, $13:i32):
+	$14 = 0 :ui64
+	$15 = $11 + $14 :ptr
+	$16 = 1 :i32
+	$17 = load($15) :i32
+	$18 = $17 + $16 :i32
+	$19 = 0 :ui64
+	$20 = $11 + $19 :ptr
+	store($18, $20) :void
+	$21 = 1 :i32
+	$22 = $13 + $21 :i32
+	br Block_3($11, $22, $12) :void
 
-Block_2($2:ptr):
-	$49 = 0 :ui64
-	$50 = $2 + $49 :ptr
-	$53 = load($50) :i32
-	return ($53) :i32
+Block_2($23:ptr):
+	$24 = 0 :ui64
+	$25 = $23 + $24 :ptr
+	$26 = load($25) :i32
+	return ($26) :i32
 }
 } //nautilus

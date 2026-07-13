@@ -5,46 +5,46 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$6 = $4 + $5 :ui32
 	$7 = 256 :ui32
 	$8 = $6 / $7 :ui32
-	$11 = 1 :ui32
+	$9 = 1 :ui32
+	$10 = 1 :ui32
+	$11 = 256 :ui32
 	$12 = 1 :ui32
-	$13 = 256 :ui32
-	$15 = 1 :ui32
-	$16 = 1 :ui32
-	call func_*($8, $11, $12) :void
-	call func_*($13, $15, $16) :void
-	call func_*($1, $2, $3, $4) :void
+	$13 = 1 :ui32
+	call @"<symbol>" "<name>"($8, $9, $10) :void
+	call @"<symbol>" "<name>"($11, $12, $13) :void
+	call @"<symbol>" "<name>"($1, $2, $3, $4) :void
 	return :void
 }
 vecAddBounded($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void attrs["kernel"="true"] {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
-	$8 = call func_*() :ui32
-	$9 = call func_*() :ui32
-	$10 = $8 * $9 :ui32
-	$11 = call func_*() :ui32
-	$12 = $10 + $11 :ui32
-	$13 = $12 < $4 :bool
-	if $13 ? Block_1($3, $12, $2, $1) : Block_2() prob(0.5) :void
+	$5 = call @"<symbol>" "<name>"() :ui32
+	$6 = call @"<symbol>" "<name>"() :ui32
+	$7 = $5 * $6 :ui32
+	$8 = call @"<symbol>" "<name>"() :ui32
+	$9 = $7 + $8 :ui32
+	$10 = $9 < $4 :bool
+	if $10 ? Block_1($3, $9, $2, $1) : Block_2() prob(0.5) :void
 
-Block_1($7:ptr, $12:ui32, $6:ptr, $5:ptr):
+Block_1($11:ptr, $12:ui32, $13:ptr, $14:ptr):
 	$15 = $12 cast_to i32 :i32
-	$19 = 4 :ui64
-	$20 = $15 cast_to ui64 :ui64
-	$21 = $20 * $19 :ui64
-	$22 = $5 + $21 :ptr
-	$25 = $12 cast_to i32 :i32
+	$16 = 4 :ui64
+	$17 = $15 cast_to ui64 :ui64
+	$18 = $17 * $16 :ui64
+	$19 = $14 + $18 :ptr
+	$20 = $12 cast_to i32 :i32
+	$21 = 4 :ui64
+	$22 = $20 cast_to ui64 :ui64
+	$23 = $22 * $21 :ui64
+	$24 = $13 + $23 :ptr
+	$25 = load($19) :ui32
+	$26 = load($24) :ui32
+	$27 = $25 + $26 :ui32
+	$28 = $12 cast_to i32 :i32
 	$29 = 4 :ui64
-	$30 = $25 cast_to ui64 :ui64
+	$30 = $28 cast_to ui64 :ui64
 	$31 = $30 * $29 :ui64
-	$32 = $6 + $31 :ptr
-	$35 = load($22) :ui32
-	$36 = load($32) :ui32
-	$37 = $35 + $36 :ui32
-	$38 = $12 cast_to i32 :i32
-	$42 = 4 :ui64
-	$43 = $38 cast_to ui64 :ui64
-	$44 = $43 * $42 :ui64
-	$45 = $7 + $44 :ptr
-	store($37, $45) :void
+	$32 = $11 + $31 :ptr
+	store($27, $32) :void
 	br Block_3() :void
 
 Block_3():

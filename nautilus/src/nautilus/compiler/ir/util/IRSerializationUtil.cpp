@@ -23,7 +23,6 @@
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
-#include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -90,70 +89,34 @@ std::string quoted(const std::string& text) {
 	return out;
 }
 
-/// How every printed `$<id>` is chosen.
-///
-/// The in-memory IR distinguishes values by pointer identity and reuses the
-/// same numeric identifier for different values in different blocks (the
-/// tracer numbers per value slot, and passes such as block-argument pruning
-/// create cross-block references between them). The portable rendering
-/// therefore renumbers every value-producing operation and block argument
-/// with an id that is unique within its function, so every reference in the
-/// text is unambiguous. The display rendering keeps the stored identifiers
-/// so dumps line up with in-memory state (verifier messages, backend
-/// register frames, MLIR debug info).
+/// Resolves every printed `$<id>` from the shared value numbering (see
+/// computePrintedValueIds). Falls back to the stored identifier for
+/// operations outside the numbering — either a single-operation rendering
+/// without function context (printOperation) or a reference into a
+/// malformed graph, which the verifier rejects at load time.
 class IdMap {
 public:
-	/// Display: stored identifiers.
+	/// Single-operation rendering: stored identifiers.
 	IdMap() = default;
 
-	/// Portable: function-wide unique renumbering.
-	explicit IdMap(const FunctionOperation& function) : renumbered(true) {
-		uint32_t next = 1;
-		for (const auto* block : function.getBasicBlocks()) {
-			for (const auto* argument : block->getArguments()) {
-				ids.emplace(argument, next++);
-			}
-			for (const auto* operation : block->getOperations()) {
-				if (operation->getStamp() != Type::v) {
-					ids.emplace(operation, next++);
-				}
-			}
-		}
+	explicit IdMap(const FunctionOperation& function) : ids(computePrintedValueIds(function)) {
 	}
 
 	uint32_t ref(const Operation* operation) const {
-		if (!renumbered) {
-			return operation->getIdentifier().getId();
+		if (auto it = ids.find(operation); it != ids.end()) {
+			return it->second;
 		}
-		auto it = ids.find(operation);
-		if (it == ids.end()) {
-			throw RuntimeException(fmt::format(
-			    "Cannot serialize IR: operation ${} is referenced but not defined in any block of its function",
-			    operation->getIdentifier().getId()));
-		}
-		return it->second;
+		return operation->getIdentifier().getId();
 	}
 
 private:
-	bool renumbered = false;
-	std::unordered_map<const Operation*, uint32_t> ids;
+	PrintedValueIds ids;
 };
 
-/// Rendering configuration shared by the whole writer. `portable` selects
-/// the strict serialization form (full external symbols, errors on
-/// process-specific state); otherwise the display form is produced
-/// (placeholders, never throws, optional source locations).
+/// Rendering configuration: the format is fixed; only the opt-in `; ...`
+/// source-location comment trailers vary.
 struct WriterConfig {
-	bool portable = false;
-	const IRPrintOptions* displayOptions = nullptr;
-
-	/// Whether external function symbols/names may be printed. The display
-	/// form hides them behind `func_*` by default because symbols recorded
-	/// for non-exported functions are raw addresses, which would make dumps
-	/// nondeterministic.
-	bool showExternalSymbols() const {
-		return portable || log::options::getLogAddresses();
-	}
+	const IRPrintOptions* options = nullptr;
 };
 
 void writeFunctionAttributes(fmt::memory_buffer& out, const FunctionAttributes& attrs) {
@@ -189,15 +152,9 @@ void writeInvocation(fmt::memory_buffer& out, const BasicBlockInvocation& invoca
 }
 
 /// Appends the external-function reference of a proxy call or address-of
-/// operation: the full `@"symbol" "name"` form when symbols may be shown,
-/// the deterministic `func_*` placeholder otherwise.
-void writeExternalFunction(fmt::memory_buffer& out, const std::string& symbol, const std::string& name,
-                           const WriterConfig& config) {
-	if (config.showExternalSymbols()) {
-		fmt::format_to(std::back_inserter(out), "@{} {}", quoted(symbol), quoted(name));
-	} else {
-		fmt::format_to(std::back_inserter(out), "func_*");
-	}
+/// operation as `@"symbol" "name"`.
+void writeExternalFunction(fmt::memory_buffer& out, const std::string& symbol, const std::string& name) {
+	fmt::format_to(std::back_inserter(out), "@{} {}", quoted(symbol), quoted(name));
 }
 
 void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& values, const WriterConfig& config) {
@@ -262,13 +219,11 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& v
 	case OpType::ConstPtrOp: {
 		// A pointer constant is a raw address in the producing process; it
 		// cannot mean anything in the process that loads the IR. Only null
-		// is portable; the display form keeps the historic `*` placeholder.
+		// is loadable; a non-null constant renders as the historic `*`
+		// placeholder, which serializeIR rejects up front and the parser
+		// rejects at load time.
 		if (cast<ConstPtrOperation>(&op)->getValue() == nullptr) {
 			fmt::format_to(it, "${} = null", id);
-		} else if (config.portable) {
-			throw RuntimeException(fmt::format("Cannot serialize IR: ${} is a non-null pointer constant, which is "
-			                                   "process-specific. Pass the pointer as a function parameter instead.",
-			                                   id));
 		} else {
 			fmt::format_to(it, "${} = *", id);
 		}
@@ -301,7 +256,7 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& v
 			fmt::format_to(it, "${} = ", id);
 		}
 		fmt::format_to(it, "call ");
-		writeExternalFunction(out, callOp->getFunctionSymbol(), callOp->getFunctionName(), config);
+		writeExternalFunction(out, callOp->getFunctionSymbol(), callOp->getFunctionName());
 		writeArgumentList(out, callOp->getInputArguments(), values);
 		writeFunctionAttributes(out, callOp->getFunctionAttributes());
 		break;
@@ -319,7 +274,7 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& v
 	case OpType::FunctionAddressOfOp: {
 		const auto* addressOfOp = cast<FunctionAddressOfOperation>(&op);
 		fmt::format_to(it, "${} = addressof ", id);
-		writeExternalFunction(out, addressOfOp->getFunctionSymbol(), addressOfOp->getFunctionName(), config);
+		writeExternalFunction(out, addressOfOp->getFunctionSymbol(), addressOfOp->getFunctionName());
 		break;
 	}
 	case OpType::BranchOp:
@@ -344,11 +299,8 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& v
 		break;
 	}
 	default:
-		if (config.portable) {
-			throw RuntimeException(fmt::format("Cannot serialize IR: unsupported operation type {} (op ${})",
-			                                   static_cast<uint32_t>(op.getOperationType()),
-			                                   op.getIdentifier().getId()));
-		}
+		// Unknown operation kinds only appear in malformed graphs; render
+		// the bare id so dumping never throws (serializeIR rejects them).
 		fmt::format_to(it, "${}", id);
 		break;
 	}
@@ -356,8 +308,7 @@ void writeOperation(fmt::memory_buffer& out, const Operation& op, const IdMap& v
 
 	// Opt-in source-location trailer of the display form: `; `-prefixed
 	// comments that the parser skips.
-	if (const auto* opts = config.displayOptions;
-	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
+	if (const auto* opts = config.options; opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
 		if (const auto* tag = op.getSourceTag()) {
 			const auto frames = opts->resolver->resolveStack(tag);
 			if (!frames.empty()) {
@@ -396,11 +347,7 @@ void writeFunction(fmt::memory_buffer& out, const FunctionOperation& function, c
 	auto it = std::back_inserter(out);
 	fmt::format_to(it, "{}(", function.getName());
 	const auto* entry = function.getEntryBlock();
-	if (config.portable && entry == nullptr) {
-		throw RuntimeException(
-		    fmt::format("Cannot serialize IR: function '{}' has no entry block", function.getName()));
-	}
-	const IdMap values = config.portable ? IdMap(function) : IdMap();
+	const IdMap values(function);
 	// The function's parameters are the entry block's arguments; the
 	// trace-to-IR conversion leaves FunctionOperation::inputArgs empty.
 	// Hand-built graphs (test fixtures) may instead populate inputArgs.
@@ -464,24 +411,64 @@ std::string writeGraph(const IRGraph& graph, const WriterConfig& config) {
 	return fmt::to_string(out);
 }
 
+/// Rejects graphs whose text rendering would not be loadable: the format is
+/// shared with `toString`, so serializeIR fails up front instead of writing
+/// a file the parser would reject later.
+void validateSerializable(const IRGraph& graph) {
+	for (const auto* function : graph.getFunctionOperations()) {
+		if (function->getEntryBlock() == nullptr) {
+			throw RuntimeException(
+			    fmt::format("Cannot serialize IR: function '{}' has no entry block", function->getName()));
+		}
+		if (!function->getInputArgs().empty()) {
+			throw RuntimeException(fmt::format("Cannot serialize IR: function '{}' declares explicit input argument "
+			                                   "types; parameters must be entry-block arguments",
+			                                   function->getName()));
+		}
+		for (const auto* block : function->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (const auto* pointerConstant = dyn_cast<ConstPtrOperation>(operation);
+				    pointerConstant != nullptr && pointerConstant->getValue() != nullptr) {
+					throw RuntimeException(
+					    fmt::format("Cannot serialize IR: function '{}' contains a non-null pointer constant, which "
+					                "is process-specific. Pass the pointer as a function parameter instead.",
+					                function->getName()));
+				}
+			}
+		}
+	}
+}
+
 } // namespace
 
+PrintedValueIds computePrintedValueIds(const FunctionOperation& function) {
+	PrintedValueIds ids;
+	uint32_t next = 1;
+	for (const auto* block : function.getBasicBlocks()) {
+		for (const auto* argument : block->getArguments()) {
+			ids.emplace(argument, next++);
+		}
+		for (const auto* operation : block->getOperations()) {
+			if (operation->getStamp() != Type::v) {
+				ids.emplace(operation, next++);
+			}
+		}
+	}
+	return ids;
+}
+
 std::string serializeIR(const IRGraph& graph) {
-	WriterConfig config;
-	config.portable = true;
-	return writeGraph(graph, config);
+	validateSerializable(graph);
+	return writeGraph(graph, WriterConfig {});
 }
 
 std::string printIR(const IRGraph& graph, const IRPrintOptions& options) {
-	WriterConfig config;
-	config.displayOptions = &options;
-	return writeGraph(graph, config);
+	return writeGraph(graph, WriterConfig {&options});
 }
 
 std::string printOperation(const Operation& operation) {
 	fmt::memory_buffer out;
-	WriterConfig config;
-	writeOperation(out, operation, IdMap(), config);
+	writeOperation(out, operation, IdMap(), WriterConfig {});
 	return fmt::to_string(out);
 }
 
