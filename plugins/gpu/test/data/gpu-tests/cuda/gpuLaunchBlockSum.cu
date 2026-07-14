@@ -20,6 +20,7 @@ uint64_t var_$20;
 uint64_t var_$21;
 uint8_t* var_$22;
 uint32_t var_$25;
+uint32_t var_$26;
 int32_t var_$27;
 uint64_t var_$31;
 uint64_t var_$32;
@@ -53,20 +54,20 @@ uint8_t* var_$79;
 uint32_t var_$85;
 uint32_t var_$86;
 uint32_t var_$87;
-uint32_t var_$94;
-bool var_$95;
-int32_t var_$97;
-uint64_t var_$101;
+uint32_t var_$95;
+bool var_$96;
+int32_t var_$98;
 uint64_t var_$102;
 uint64_t var_$103;
-uint8_t* var_$104;
-uint32_t var_$107;
-uint32_t var_$109;
-int32_t var_$110;
-uint64_t var_$114;
+uint64_t var_$104;
+uint8_t* var_$105;
+uint32_t var_$108;
+uint32_t var_$110;
+int32_t var_$111;
 uint64_t var_$115;
 uint64_t var_$116;
-uint8_t* var_$117;
+uint64_t var_$117;
+uint8_t* var_$118;
 Block_0:
 var_$4 = (uint64_t)1024;
 var_$5 = (uint64_t)4;
@@ -120,7 +121,7 @@ uint32_t temp_3 = var_$25;
 var_$2 = temp_0;
 var_$6 = temp_1;
 var_$7 = temp_2;
-var_$12 = temp_3;
+var_$26 = temp_3;
 }
 goto Block_8;
 
@@ -130,7 +131,7 @@ var_$31 = (uint64_t)4;
 var_$32 = (uint64_t)var_$27;
 var_$33 = var_$32*var_$31;
 var_$34 = var_$6+var_$33;
-*((uint32_t*)(var_$34)) = var_$12;
+*((uint32_t*)(var_$34)) = var_$26;
 __syncthreads();
 var_$40 = blockDim.x;
 var_$41 = (uint32_t)2;
@@ -268,9 +269,9 @@ var_$42 = temp_3;
 goto Block_11;
 
 Block_4:
-var_$94 = (uint32_t)0;
-var_$95 = var_$7 == var_$94;
-if (var_$95){
+var_$95 = (uint32_t)0;
+var_$96 = var_$7 == var_$95;
+if (var_$96){
 {
 uint8_t* temp_0 = var_$2;
 uint8_t* temp_1 = var_$6;
@@ -284,19 +285,19 @@ goto Block_9;
 goto Block_10;}
 
 Block_9:
-var_$97 = (int32_t)0;
-var_$101 = (uint64_t)4;
-var_$102 = (uint64_t)var_$97;
-var_$103 = var_$102*var_$101;
-var_$104 = var_$6+var_$103;
-var_$107 = *((uint32_t*)(var_$104));
-var_$109 = blockIdx.x;
-var_$110 = (int32_t)var_$109;
-var_$114 = (uint64_t)4;
-var_$115 = (uint64_t)var_$110;
-var_$116 = var_$115*var_$114;
-var_$117 = var_$2+var_$116;
-*((uint32_t*)(var_$117)) = var_$107;
+var_$98 = (int32_t)0;
+var_$102 = (uint64_t)4;
+var_$103 = (uint64_t)var_$98;
+var_$104 = var_$103*var_$102;
+var_$105 = var_$6+var_$104;
+var_$108 = *((uint32_t*)(var_$105));
+var_$110 = blockIdx.x;
+var_$111 = (int32_t)var_$110;
+var_$115 = (uint64_t)4;
+var_$116 = (uint64_t)var_$111;
+var_$117 = var_$116*var_$115;
+var_$118 = var_$2+var_$117;
+*((uint32_t*)(var_$118)) = var_$108;
 {
 }
 goto Block_12;
@@ -318,7 +319,7 @@ uint32_t temp_3 = var_$12;
 var_$2 = temp_0;
 var_$6 = temp_1;
 var_$7 = temp_2;
-var_$12 = temp_3;
+var_$26 = temp_3;
 }
 goto Block_8;
 

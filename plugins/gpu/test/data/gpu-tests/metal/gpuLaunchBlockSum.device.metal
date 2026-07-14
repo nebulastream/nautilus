@@ -28,6 +28,7 @@ ulong var_$20;
 ulong var_$21;
 device uchar* var_$22;
 uint var_$25;
+uint var_$26;
 int var_$27;
 ulong var_$31;
 ulong var_$32;
@@ -61,20 +62,20 @@ threadgroup uchar* var_$79;
 uint var_$85;
 uint var_$86;
 uint var_$87;
-uint var_$94;
-bool var_$95;
-int var_$97;
-ulong var_$101;
+uint var_$95;
+bool var_$96;
+int var_$98;
 ulong var_$102;
 ulong var_$103;
-threadgroup uchar* var_$104;
-uint var_$107;
-uint var_$109;
-int var_$110;
-ulong var_$114;
+ulong var_$104;
+threadgroup uchar* var_$105;
+uint var_$108;
+uint var_$110;
+int var_$111;
 ulong var_$115;
 ulong var_$116;
-device uchar* var_$117;
+ulong var_$117;
+device uchar* var_$118;
 var_$3 = var_$3_arg;
 int __pc = 0;
 while (true) {
@@ -132,7 +133,7 @@ uint temp_3 = var_$25;
 var_$2 = temp_0;
 var_$6 = temp_1;
 var_$7 = temp_2;
-var_$12 = temp_3;
+var_$26 = temp_3;
 }
 __pc = 2; continue;
 }
@@ -142,7 +143,7 @@ var_$31 = (ulong)4;
 var_$32 = (ulong)var_$27;
 var_$33 = var_$32*var_$31;
 var_$34 = var_$6+var_$33;
-*((threadgroup uint*)(var_$34)) = var_$12;
+*((threadgroup uint*)(var_$34)) = var_$26;
 threadgroup_barrier(mem_flags::mem_threadgroup);
 var_$40 = nautilus_blockDim.x;
 var_$41 = (uint)2;
@@ -280,9 +281,9 @@ var_$42 = temp_3;
 __pc = 6; continue;
 }
 case 8: {
-var_$94 = (uint)0;
-var_$95 = var_$7 == var_$94;
-if (var_$95){
+var_$95 = (uint)0;
+var_$96 = var_$7 == var_$95;
+if (var_$96){
 {
 device uchar* temp_0 = var_$2;
 threadgroup uchar* temp_1 = var_$6;
@@ -296,19 +297,19 @@ __pc = 9; continue;
 __pc = 11; continue;}
 }
 case 9: {
-var_$97 = (int)0;
-var_$101 = (ulong)4;
-var_$102 = (ulong)var_$97;
-var_$103 = var_$102*var_$101;
-var_$104 = var_$6+var_$103;
-var_$107 = *((threadgroup uint*)(var_$104));
-var_$109 = nautilus_blockIdx.x;
-var_$110 = (int)var_$109;
-var_$114 = (ulong)4;
-var_$115 = (ulong)var_$110;
-var_$116 = var_$115*var_$114;
-var_$117 = var_$2+var_$116;
-*((device uint*)(var_$117)) = var_$107;
+var_$98 = (int)0;
+var_$102 = (ulong)4;
+var_$103 = (ulong)var_$98;
+var_$104 = var_$103*var_$102;
+var_$105 = var_$6+var_$104;
+var_$108 = *((threadgroup uint*)(var_$105));
+var_$110 = nautilus_blockIdx.x;
+var_$111 = (int)var_$110;
+var_$115 = (ulong)4;
+var_$116 = (ulong)var_$111;
+var_$117 = var_$116*var_$115;
+var_$118 = var_$2+var_$117;
+*((device uint*)(var_$118)) = var_$108;
 {
 }
 __pc = 10; continue;
@@ -330,7 +331,7 @@ uint temp_3 = var_$12;
 var_$2 = temp_0;
 var_$6 = temp_1;
 var_$7 = temp_2;
-var_$12 = temp_3;
+var_$26 = temp_3;
 }
 __pc = 2; continue;
 }

@@ -22,13 +22,13 @@ Block_1($2:ptr, $6:ptr, $7:ui32, $1:ptr, $11:ui32):
 	$25 = load($22) :ui32
 	br Block_8($2, $6, $7, $25) :void
 
-Block_8($2:ptr, $6:ptr, $7:ui32, $12:ui32):
+Block_8($2:ptr, $6:ptr, $7:ui32, $26:ui32):
 	$27 = $7 cast_to i32 :i32
 	$31 = 4 :ui64
 	$32 = $27 cast_to ui64 :ui64
 	$33 = $32 * $31 :ui64
 	$34 = $6 + $33 :ptr
-	store($12, $34) :void
+	store($26, $34) :void
 	func_*() :void
 	$40 = func_*() :ui32
 	$41 = 2 :ui32
@@ -78,24 +78,24 @@ Block_6($2:ptr, $6:ptr, $7:ui32, $42:ui32):
 	br Block_11($2, $6, $7, $42) :void
 
 Block_4($2:ptr, $6:ptr, $7:ui32):
-	$94 = 0 :ui32
-	$95 = $7 == $94 :bool
-	if $95 ? Block_9($2, $6) : Block_10() :void
+	$95 = 0 :ui32
+	$96 = $7 == $95 :bool
+	if $96 ? Block_9($2, $6) : Block_10() :void
 
 Block_9($2:ptr, $6:ptr):
-	$97 = 0 :i32
-	$101 = 4 :ui64
-	$102 = $97 cast_to ui64 :ui64
-	$103 = $102 * $101 :ui64
-	$104 = $6 + $103 :ptr
-	$107 = load($104) :ui32
-	$109 = func_*() :ui32
-	$110 = $109 cast_to i32 :i32
-	$114 = 4 :ui64
-	$115 = $110 cast_to ui64 :ui64
-	$116 = $115 * $114 :ui64
-	$117 = $2 + $116 :ptr
-	store($107, $117) :void
+	$98 = 0 :i32
+	$102 = 4 :ui64
+	$103 = $98 cast_to ui64 :ui64
+	$104 = $103 * $102 :ui64
+	$105 = $6 + $104 :ptr
+	$108 = load($105) :ui32
+	$110 = func_*() :ui32
+	$111 = $110 cast_to i32 :i32
+	$115 = 4 :ui64
+	$116 = $111 cast_to ui64 :ui64
+	$117 = $116 * $115 :ui64
+	$118 = $2 + $117 :ptr
+	store($108, $118) :void
 	br Block_12() :void
 
 Block_12():
