@@ -24,6 +24,24 @@ namespace nautilus::engine {
 namespace details {
 
 /**
+ * Argument factory: builds a traced function-argument value from its value ref.
+ *
+ * The default constructs the plain `val<raw_type>` exactly as before, so every
+ * existing `val<T>` parameter is unaffected. A parameter type can specialize
+ * this trait to wrap that single value ref in a richer handle that still
+ * occupies exactly one IR/ABI argument slot (e.g. the GPU plugin's
+ * `gpu::Array<T>`, which carries a `val<T*>` plus host-side metadata). The
+ * specialization must build from a single `TypedValueRef` and expose the same
+ * `raw_type` so type, slot index, and raw-signature derivation stay correct.
+ */
+template <typename ArgValueType>
+struct arg_factory {
+	static ArgValueType make(tracing::TypedValueRef ref) {
+		return val<typename ArgValueType::raw_type>(ref);
+	}
+};
+
+/**
  * Creates an val argument that has a correct value ref for tracing
  * @tparam Arg
  * @tparam I
@@ -33,7 +51,7 @@ template <typename ArgValueType, size_t I>
 auto createTraceableArgument() {
 	auto type = tracing::TypeResolver<typename ArgValueType::raw_type>::to_type();
 	auto valueRef = tracing::registerFunctionArgument(type, I);
-	return val<typename ArgValueType::raw_type>(valueRef);
+	return arg_factory<ArgValueType>::make(valueRef);
 }
 
 #ifdef ENABLE_TRACING

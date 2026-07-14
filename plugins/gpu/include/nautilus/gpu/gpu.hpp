@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/function.hpp"
+#include "nautilus/gpu/array.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"

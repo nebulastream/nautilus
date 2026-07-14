@@ -10,33 +10,33 @@ kernel void vecScale(
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
-uint var_$6;
-int var_$7;
+uint var_$4;
+int var_$5;
+ulong var_$9;
+ulong var_$10;
 ulong var_$11;
-ulong var_$12;
-ulong var_$13;
-device uchar* var_$14;
-uint var_$18;
-uint var_$19;
-int var_$20;
+device uchar* var_$12;
+uint var_$16;
+uint var_$17;
+int var_$18;
+ulong var_$22;
+ulong var_$23;
 ulong var_$24;
-ulong var_$25;
-ulong var_$26;
-device uchar* var_$27;
-var_$6 = nautilus_threadIdx.x;
-var_$7 = (int)var_$6;
-var_$11 = (ulong)4;
-var_$12 = (ulong)var_$7;
-var_$13 = var_$12*var_$11;
-var_$14 = var_$1+var_$13;
-var_$18 = *((device uint*)(var_$14));
-var_$19 = var_$18*var_$3;
-var_$20 = (int)var_$6;
-var_$24 = (ulong)4;
-var_$25 = (ulong)var_$20;
-var_$26 = var_$25*var_$24;
-var_$27 = var_$2+var_$26;
-*((device uint*)(var_$27)) = var_$19;
+device uchar* var_$25;
+var_$4 = nautilus_threadIdx.x;
+var_$5 = (int)var_$4;
+var_$9 = (ulong)4;
+var_$10 = (ulong)var_$5;
+var_$11 = var_$10*var_$9;
+var_$12 = var_$1+var_$11;
+var_$16 = *((device uint*)(var_$12));
+var_$17 = var_$16*var_$3;
+var_$18 = (int)var_$4;
+var_$22 = (ulong)4;
+var_$23 = (ulong)var_$18;
+var_$24 = var_$23*var_$22;
+var_$25 = var_$2+var_$24;
+*((device uint*)(var_$25)) = var_$17;
 return;
 
 }

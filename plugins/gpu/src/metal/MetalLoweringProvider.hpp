@@ -34,7 +34,7 @@ private:
 	class HostContext : public gpu::GPULoweringProviderBase<HostContext> {
 	public:
 		explicit HostContext(std::shared_ptr<ir::IRGraph> ir);
-		Code process(int bufferSize = 4096);
+		Code process();
 
 		static std::string getType(const Type& stamp);
 		void processOperation(ir::Operation* operation, short block, gpu::RegisterFrame& frame);
