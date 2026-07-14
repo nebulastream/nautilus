@@ -35,9 +35,9 @@ std::shared_ptr<TBCProgram> makeArithmeticProgram() {
 	fn.frameSlots = 3 + fn.regSlots;
 	fn.initImage.assign(fn.regSlots, 0);
 	fn.code = {
-	    instr(Op::MOV_imm_i64, 0, 0, 7),  // r0 = 7
-	    instr(Op::ADD_i64, 1, 0, 0),      // r1 = r0 + r0
-	    instr(Op::MUL_imm_i64, 1, 1, 3),  // r1 = r1 * 3
+	    instr(Op::MOV_imm_i64, 0, 0, 7), // r0 = 7
+	    instr(Op::ADD_i64, 1, 0, 0),     // r1 = r0 + r0
+	    instr(Op::MUL_imm_i64, 1, 1, 3), // r1 = r1 * 3
 	    instr(Op::RET, 1),
 	};
 	program->functionIndex["main"] = 0;

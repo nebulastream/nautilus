@@ -17,37 +17,37 @@ namespace nautilus::compiler::tbc::jit {
 /// their meaning per opcode from the stitcher (register byte-offset,
 /// raw field, or sign-extended immediate); the symbol only names the field.
 enum class HoleSym : uint8_t {
-	A,              // instruction field a (word1.a for the 2-word SELECT's D)
-	B,              // instruction field b
-	C,              // instruction field c
-	D,              // second-word field a (SELECT false-register)
-	Target,         // stitched address of the branch-taken instruction
-	Continue,       // stitched address of the next instruction
-	CallTarget,     // stitched entry of the callee function (CALL)
-	Site,           // &program->callsites[siteIdx]
-	Func,           // &program->functions[fnIdx]
-	Unwind,         // program's UNWIND stencil address
+	A,               // instruction field a (word1.a for the 2-word SELECT's D)
+	B,               // instruction field b
+	C,               // instruction field c
+	D,               // second-word field a (SELECT false-register)
+	Target,          // stitched address of the branch-taken instruction
+	Continue,        // stitched address of the next instruction
+	CallTarget,      // stitched entry of the callee function (CALL)
+	Site,            // &program->callsites[siteIdx]
+	Func,            // &program->functions[fnIdx]
+	Unwind,          // program's UNWIND stencil address
 	HelperPushFrame, // address of tbcJitPushFrame
 	HelperExtCall,   // address of tbcJitExtCall
 	HelperIndCall,   // address of tbcJitIndCall
-	Data,           // base of the program's copy of the stencil rodata image
+	Data,            // base of the program's copy of the stencil rodata image
 };
 
 /// How the patch value is encoded at the hole offset.
 enum class HoleKind : uint8_t {
-	Abs64,         // little-endian 64-bit absolute (x86-64 movabs imm / .quad)
-	A64MovwG0,     // aarch64 movz/movk :abs_g0_nc: bits [15:0]
-	A64MovwG1,     // aarch64 movk :abs_g1_nc:      bits [31:16]
-	A64MovwG2,     // aarch64 movk :abs_g2_nc:      bits [47:32]
-	A64MovwG3,     // aarch64 movk :abs_g3:         bits [63:48]
-	A64Jump26,     // aarch64 b:  imm26 pc-relative (tail branch; intra-span)
-	A64Call26,     // aarch64 bl: imm26 pc-relative (helper call; via range thunk)
-	A64AdrpPage21, // aarch64 adrp: page delta to the patch value
-	A64AddLo12,    // aarch64 add: low 12 bits of the patch value
-	A64Ldst64Lo12, // aarch64 64-bit load/store: low 12 bits, scaled by 8
-	A64Ldst32Lo12, // aarch64 32-bit load/store: low 12 bits, scaled by 4
-	A64Ldst128Lo12, // aarch64 128-bit load/store: low 12 bits, scaled by 16
-	A64GotLoadPage21,  // Mach-O arm64: adrp of an emulated-GOT slot
+	Abs64,               // little-endian 64-bit absolute (x86-64 movabs imm / .quad)
+	A64MovwG0,           // aarch64 movz/movk :abs_g0_nc: bits [15:0]
+	A64MovwG1,           // aarch64 movk :abs_g1_nc:      bits [31:16]
+	A64MovwG2,           // aarch64 movk :abs_g2_nc:      bits [47:32]
+	A64MovwG3,           // aarch64 movk :abs_g3:         bits [63:48]
+	A64Jump26,           // aarch64 b:  imm26 pc-relative (tail branch; intra-span)
+	A64Call26,           // aarch64 bl: imm26 pc-relative (helper call; via range thunk)
+	A64AdrpPage21,       // aarch64 adrp: page delta to the patch value
+	A64AddLo12,          // aarch64 add: low 12 bits of the patch value
+	A64Ldst64Lo12,       // aarch64 64-bit load/store: low 12 bits, scaled by 8
+	A64Ldst32Lo12,       // aarch64 32-bit load/store: low 12 bits, scaled by 4
+	A64Ldst128Lo12,      // aarch64 128-bit load/store: low 12 bits, scaled by 16
+	A64GotLoadPage21,    // Mach-O arm64: adrp of an emulated-GOT slot
 	A64GotLoadPageOff12, // Mach-O arm64: ldr page-offset of an emulated-GOT slot
 };
 

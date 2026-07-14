@@ -77,14 +77,14 @@ uint64_t tbcJitExtCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uin
 uint64_t tbcJitIndCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw, void* target);
 }
 
-#define OFF_A ((uint64_t)(uintptr_t) & _JIT_A)
-#define OFF_B ((uint64_t)(uintptr_t) & _JIT_B)
-#define OFF_C ((uint64_t)(uintptr_t) & _JIT_C)
-#define OFF_D ((uint64_t)(uintptr_t) & _JIT_D)
+#define OFF_A ((uint64_t) (uintptr_t) & _JIT_A)
+#define OFF_B ((uint64_t) (uintptr_t) & _JIT_B)
+#define OFF_C ((uint64_t) (uintptr_t) & _JIT_C)
+#define OFF_D ((uint64_t) (uintptr_t) & _JIT_D)
 
-#define TAIL_NEXT() [[clang::musttail]] return ((JitHandler)&_JIT_CONTINUE)(fp, ctx)
-#define TAIL_TARGET() [[clang::musttail]] return ((JitHandler)&_JIT_TARGET)(fp, ctx)
-#define TAIL_UNWIND() [[clang::musttail]] return ((JitHandler)&_JIT_UNWIND)(fp, ctx)
+#define TAIL_NEXT() [[clang::musttail]] return ((JitHandler) & _JIT_CONTINUE)(fp, ctx)
+#define TAIL_TARGET() [[clang::musttail]] return ((JitHandler) & _JIT_TARGET)(fp, ctx)
+#define TAIL_UNWIND() [[clang::musttail]] return ((JitHandler) & _JIT_UNWIND)(fp, ctx)
 
 namespace {
 
@@ -384,7 +384,7 @@ extern "C" uint64_t STENCIL_CC stencil_CALL(uint64_t* fp, VMContextPrefix* ctx) 
 	if (newFp == nullptr) {
 		TAIL_UNWIND();
 	}
-	[[clang::musttail]] return ((JitHandler)&_JIT_CALL_TARGET)(newFp, ctx);
+	[[clang::musttail]] return ((JitHandler) &_JIT_CALL_TARGET)(newFp, ctx);
 }
 
 extern "C" uint64_t STENCIL_CC stencil_CALL_EXT(uint64_t* fp, VMContextPrefix* ctx) {

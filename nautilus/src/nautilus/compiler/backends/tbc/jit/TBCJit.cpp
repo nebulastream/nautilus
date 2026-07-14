@@ -42,7 +42,7 @@ bool jitRuntimeAvailable() {
 #ifdef TBC_JIT_CAN_EXECUTE
 
 namespace {
-using JitHandler = uint64_t(__attribute__((preserve_none))*)(uint64_t*, VMContext*);
+using JitHandler = uint64_t(__attribute__((preserve_none)) *)(uint64_t*, VMContext*);
 }
 
 uint64_t invokeJit(const TBCProgram& program, uint32_t functionIndex, const uint64_t* args, size_t argCount) {

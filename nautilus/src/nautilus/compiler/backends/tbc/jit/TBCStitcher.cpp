@@ -101,8 +101,8 @@ uint32_t gotSlotCount(const Stencil& stencil, uint32_t emitSize) {
 }
 
 struct Layout {
-	std::vector<std::vector<InstrPlan>> plans;    // [fn][wordIdx], instruction starts only
-	std::vector<std::vector<uint32_t>> wordOffs;  // [fn][wordIdx] -> span offset (branch targets)
+	std::vector<std::vector<InstrPlan>> plans;   // [fn][wordIdx], instruction starts only
+	std::vector<std::vector<uint32_t>> wordOffs; // [fn][wordIdx] -> span offset (branch targets)
 	uint32_t epilogueOff = 0;
 	uint32_t unwindOff = 0;
 	uint32_t thunkOff[3] = {0, 0, 0}; // aarch64 helper-call range thunks
@@ -247,9 +247,7 @@ public:
 		code->entries.resize(program.functions.size());
 		for (size_t fn = 0; fn < program.functions.size(); ++fn) {
 			code->entries[fn] =
-			    program.functions[fn].code.empty()
-			        ? nullptr
-			        : reinterpret_cast<void*>(base + lay.wordOffs[fn][0]);
+			    program.functions[fn].code.empty() ? nullptr : reinterpret_cast<void*>(base + lay.wordOffs[fn][0]);
 		}
 		code->epilogue = reinterpret_cast<void*>(base + lay.epilogueOff);
 		return code;
@@ -515,8 +513,8 @@ private:
 					const uint32_t slotOff = lay.gotOff + plan.gotOff + static_cast<uint32_t>(slot) * 8;
 					std::memcpy(buffer + slotOff, &value, sizeof(value));
 				}
-				const uint64_t slotAddr =
-				    base + lay.gotOff + plan.gotOff + static_cast<uint32_t>(gotSlot[static_cast<uint8_t>(hole.sym)]) * 8;
+				const uint64_t slotAddr = base + lay.gotOff + plan.gotOff +
+				                          static_cast<uint32_t>(gotSlot[static_cast<uint8_t>(hole.sym)]) * 8;
 				uint8_t* at = buffer + offset + hole.offset;
 				if (hole.kind == HoleKind::A64GotLoadPage21) {
 					patchA64AdrpPage21(at, base + offset + hole.offset, slotAddr);
