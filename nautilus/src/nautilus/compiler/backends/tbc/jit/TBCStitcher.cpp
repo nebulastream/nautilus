@@ -79,7 +79,26 @@ struct InstrPlan {
 	const Stencil* stencil = nullptr;
 	uint32_t offset = 0;   // span offset of this instruction's code
 	uint32_t emitSize = 0; // stencil size minus an elided trailing jump
+	uint32_t gotOff = 0;   // span offset of this instruction's emulated-GOT slots (Mach-O)
 };
+
+/// Number of emulated-GOT slots an instruction needs: one per distinct hole
+/// symbol referenced through a GOT-load pair (Mach-O arm64, where Apple
+/// codegen routes every external symbol reference through the GOT — the
+/// stitcher materializes per-instruction slots holding the patched values).
+uint32_t gotSlotCount(const Stencil& stencil, uint32_t emitSize) {
+	uint32_t seen = 0;
+	for (uint16_t h = 0; h < stencil.holeCount; ++h) {
+		const StencilHole& hole = stencil.holes[h];
+		if (hole.offset >= emitSize) {
+			continue;
+		}
+		if (hole.kind == HoleKind::A64GotLoadPage21 || hole.kind == HoleKind::A64GotLoadPageOff12) {
+			seen |= 1u << static_cast<uint8_t>(hole.sym);
+		}
+	}
+	return static_cast<uint32_t>(__builtin_popcount(seen));
+}
 
 struct Layout {
 	std::vector<std::vector<InstrPlan>> plans;    // [fn][wordIdx], instruction starts only
@@ -88,6 +107,7 @@ struct Layout {
 	uint32_t unwindOff = 0;
 	uint32_t thunkOff[3] = {0, 0, 0}; // aarch64 helper-call range thunks
 	uint32_t dataOff = 0;
+	uint32_t gotOff = 0; // emulated-GOT region base (Mach-O; 0 slots elsewhere)
 	uint32_t totalSize = 0;
 };
 
@@ -161,6 +181,7 @@ void patchA64Imm12(uint8_t* at, uint64_t value, unsigned scaleShift) {
 /// x86-64 peephole: a patched `movabs $imm64, %reg; jmp *%reg` whose target
 /// lies within ±2GB of the site becomes `jmp rel32` (+ never-executed NOP
 /// padding). Intra-span code targets always qualify.
+#if defined(__x86_64__)
 void relaxX64JumpAt(uint8_t* buffer, uint32_t holeOff, uint32_t emitEnd, uint64_t bufferBaseAddr, uint64_t target) {
 	if (holeOff < 2) {
 		return;
@@ -192,6 +213,7 @@ void relaxX64JumpAt(uint8_t* buffer, uint32_t holeOff, uint32_t emitEnd, uint64_
 	std::memcpy(buffer + start + 1, &rel32, sizeof(rel32));
 	std::memset(buffer + start + 5, 0x90, (holeOff + 8 + jmpLen) - (start + 5));
 }
+#endif // __x86_64__
 
 class Stitcher {
 public:
@@ -263,6 +285,7 @@ private:
 			return false;
 		}
 		uint32_t cursor = 0;
+		uint32_t gotSlots = 0;
 		lay.plans.resize(program.functions.size());
 		lay.wordOffs.resize(program.functions.size());
 		for (size_t fn = 0; fn < program.functions.size(); ++fn) {
@@ -285,6 +308,8 @@ private:
 				plan.stencil = stencil;
 				plan.offset = cursor;
 				plan.emitSize = elide ? stencil->continueJmpOffset : stencil->size;
+				plan.gotOff = gotSlots * 8;
+				gotSlots += gotSlotCount(*stencil, plan.emitSize);
 				lay.wordOffs[fn][word] = cursor;
 				cursor += plan.emitSize;
 				word += words;
@@ -303,6 +328,9 @@ private:
 		cursor = (cursor + 15u) & ~15u;
 		lay.dataOff = cursor;
 		cursor += stencils.dataSize;
+		cursor = (cursor + 7u) & ~7u;
+		lay.gotOff = cursor;
+		cursor += gotSlots * 8;
 		lay.totalSize = cursor;
 		return true;
 	}
@@ -463,15 +491,40 @@ private:
 		}
 	}
 
-	void stitchOne(uint8_t* buffer, const Stencil& stencil, uint32_t offset, uint32_t emitSize, size_t fn,
-	               uint32_t word, uint64_t base) const {
+	void stitchOne(uint8_t* buffer, const InstrPlan& plan, size_t fn, uint32_t word, uint64_t base) const {
+		const Stencil& stencil = *plan.stencil;
+		const uint32_t offset = plan.offset;
+		const uint32_t emitSize = plan.emitSize;
 		std::memcpy(buffer + offset, stencil.code, emitSize);
+		// Emulated-GOT slots (Mach-O): one per distinct symbol this
+		// instruction references through a GOT-load pair, filled with the
+		// patched value; the adrp/ldr pair is redirected to the slot.
+		int8_t gotSlot[16];
+		std::memset(gotSlot, -1, sizeof(gotSlot));
+		uint32_t gotUsed = 0;
 		for (uint16_t h = 0; h < stencil.holeCount; ++h) {
 			const StencilHole& hole = stencil.holes[h];
 			if (hole.offset >= emitSize) {
 				continue; // hole inside the elided trailing jump
 			}
 			const uint64_t value = holeValue(hole, fn, word, base);
+			if (hole.kind == HoleKind::A64GotLoadPage21 || hole.kind == HoleKind::A64GotLoadPageOff12) {
+				int8_t& slot = gotSlot[static_cast<uint8_t>(hole.sym)];
+				if (slot < 0) {
+					slot = static_cast<int8_t>(gotUsed++);
+					const uint32_t slotOff = lay.gotOff + plan.gotOff + static_cast<uint32_t>(slot) * 8;
+					std::memcpy(buffer + slotOff, &value, sizeof(value));
+				}
+				const uint64_t slotAddr =
+				    base + lay.gotOff + plan.gotOff + static_cast<uint32_t>(gotSlot[static_cast<uint8_t>(hole.sym)]) * 8;
+				uint8_t* at = buffer + offset + hole.offset;
+				if (hole.kind == HoleKind::A64GotLoadPage21) {
+					patchA64AdrpPage21(at, base + offset + hole.offset, slotAddr);
+				} else {
+					patchA64Imm12(at, slotAddr, 3);
+				}
+				continue;
+			}
 			applyHole(buffer, offset, hole, value, base);
 #if defined(__x86_64__)
 			if (hole.kind == HoleKind::Abs64 && isCodeAddressSym(hole.sym)) {
@@ -485,8 +538,7 @@ private:
 		for (size_t fn = 0; fn < program.functions.size(); ++fn) {
 			const auto& codeStream = program.functions[fn].code;
 			for (uint32_t word = 0; word < codeStream.size();) {
-				const InstrPlan& plan = lay.plans[fn][word];
-				stitchOne(buffer, *plan.stencil, plan.offset, plan.emitSize, fn, word, base);
+				stitchOne(buffer, lay.plans[fn][word], fn, word, base);
 				word += instrWords(codeStream[word].op);
 			}
 		}

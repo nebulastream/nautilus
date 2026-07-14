@@ -76,6 +76,14 @@ HOLE_SYMS = {
     "tbcJitIndCall": "HelperIndCall",
 }
 
+# Mach-O arm64 relocation type -> HoleKind enumerator. Apple codegen routes
+# every external symbol reference through the GOT; the stitcher emulates the
+# GOT with per-instruction slots holding the patched values.
+MACHO_ARM64_RELOC_KINDS = {
+    5: "A64GotLoadPage21",     # ARM64_RELOC_GOT_LOAD_PAGE21
+    6: "A64GotLoadPageOff12",  # ARM64_RELOC_GOT_LOAD_PAGEOFF12
+}
+
 # ELF relocation type -> HoleKind enumerator.
 ELF_RELOC_KINDS = {
     "R_X86_64_64": "Abs64",
@@ -256,6 +264,113 @@ def parse_elf(readobj, obj_path):
     return stencils, bytes(data_image)
 
 
+def parse_macho_arm64(obj_path):
+    """Returns (stencils, data_image) parsed from a Mach-O arm64 relocatable
+    object. Minimal hand-rolled parser (llvm-readobj has no JSON output for
+    Mach-O): one __TEXT,__text section sliced at symbol boundaries
+    (.subsections_via_symbols), relocations classified per function.
+
+    Apple codegen references every external symbol through the GOT
+    (ARM64_RELOC_GOT_LOAD_PAGE21/PAGEOFF12 pairs); the stitcher emulates the
+    GOT with per-instruction value slots, so both kinds map 1:1 to holes.
+    """
+    import struct
+
+    blob = obj_path.read_bytes()
+    magic, cputype, _cpusub, filetype, ncmds, _sizeofcmds, _flags, _res = struct.unpack_from("<IiiIIIII", blob, 0)
+    if magic != 0xFEEDFACF:
+        fail("not a 64-bit Mach-O object")
+    if cputype != 0x0100000C:
+        fail("not an arm64 Mach-O object")
+    if filetype != 1:  # MH_OBJECT
+        fail("not a relocatable Mach-O object")
+
+    sections = []  # (sectname, segname, addr, size, fileoff, align, reloff, nreloc)
+    symtab = None
+    offset = 32
+    for _ in range(ncmds):
+        cmd, cmdsize = struct.unpack_from("<II", blob, offset)
+        if cmd == 0x19:  # LC_SEGMENT_64
+            nsects = struct.unpack_from("<I", blob, offset + 64)[0]
+            for i in range(nsects):
+                so = offset + 72 + i * 80
+                sectname = blob[so : so + 16].rstrip(b"\0").decode()
+                segname = blob[so + 16 : so + 32].rstrip(b"\0").decode()
+                addr, size = struct.unpack_from("<QQ", blob, so + 32)
+                fileoff, align, reloff, nreloc = struct.unpack_from("<IIII", blob, so + 48)
+                sections.append((sectname, segname, addr, size, fileoff, align, reloff, nreloc))
+        elif cmd == 0x2:  # LC_SYMTAB
+            symtab = struct.unpack_from("<IIII", blob, offset + 8)  # symoff, nsyms, stroff, strsize
+        offset += cmdsize
+
+    if symtab is None:
+        fail("Mach-O object has no symbol table")
+    symoff, nsyms, stroff, _strsize = symtab
+
+    symbols = []  # (name, n_type, n_sect, n_value)
+    for i in range(nsyms):
+        n_strx, n_type, n_sect, _n_desc, n_value = struct.unpack_from("<IBBHQ", blob, symoff + i * 16)
+        end = blob.index(b"\0", stroff + n_strx)
+        symbols.append((blob[stroff + n_strx : end].decode(), n_type, n_sect, n_value))
+
+    text = next((s for s in sections if s[0] == "__text" and s[1] == "__TEXT"), None)
+    if text is None:
+        fail("Mach-O object has no __TEXT,__text section")
+    _, _, text_addr, text_size, text_off, _, text_reloff, text_nreloc = text
+    for sectname, segname, _, size, *_rest in sections:
+        if size != 0 and (sectname, segname) != ("__text", "__TEXT") and segname != "__LD":
+            fail(f"unexpected non-empty Mach-O section {segname},{sectname} — "
+                 "stencil bodies must not create data/const sections on arm64-macho")
+
+    # Function boundaries: defined symbols in __text, sorted by address.
+    funcs = sorted(((v - text_addr, name) for name, n_type, n_sect, v in symbols
+                    if n_sect == 1 and (n_type & 0x0E) == 0x0E and name.startswith("_stencil_")),
+                   key=lambda t: t[0])
+    if not funcs:
+        fail("no stencil symbols found in Mach-O __text")
+    bounds = {}
+    for i, (start, name) in enumerate(funcs):
+        end = funcs[i + 1][0] if i + 1 < len(funcs) else text_size
+        bounds[name] = (start, end)
+
+    # Relocations: r_address is relative to the section; extern relocs index
+    # the symbol table.
+    relocs_by_func = {name: [] for _, name in funcs}
+    starts = [start for start, _ in funcs]
+    names = [name for _, name in funcs]
+    import bisect
+    for i in range(text_nreloc):
+        r_address, r_info = struct.unpack_from("<iI", blob, text_reloff + i * 8)
+        r_symbolnum = r_info & 0xFFFFFF
+        r_extern = (r_info >> 27) & 1
+        r_type = (r_info >> 28) & 0xF
+        kind = MACHO_ARM64_RELOC_KINDS.get(r_type)
+        if kind is None:
+            fail(f"unsupported Mach-O arm64 relocation type {r_type} at __text+{r_address:#x}")
+        if not r_extern:
+            fail(f"non-extern Mach-O relocation at __text+{r_address:#x} (literal pool?) — unsupported")
+        target = symbols[r_symbolnum][0]
+        func = names[bisect.bisect_right(starts, r_address) - 1]
+        start, end = bounds[func]
+        if not (start <= r_address < end):
+            fail(f"relocation at __text+{r_address:#x} outside any stencil")
+        # Mach-O prefixes C symbols with '_'.
+        plain = target.removeprefix("_")
+        if plain not in HOLE_SYMS:
+            fail(f"{func}: relocation against unexpected symbol {target!r}")
+        relocs_by_func[func].append(Hole(r_address - start, kind, HOLE_SYMS[plain], 0))
+
+    stencils = []
+    for start, name in funcs:
+        end = bounds[name][1]
+        code = blob[text_off + start : text_off + end]
+        stencil_name = name.removeprefix("_stencil_")
+        if stencil_name in SYNTHETIC:
+            stencil_name = "@" + stencil_name
+        stencils.append(StencilInfo(stencil_name, code, relocs_by_func[name]))
+    return stencils, b""
+
+
 def detect_continue_jmp_x86(stencil):
     """Trailing `movabs $_JIT_CONTINUE, %reg; jmp *%reg` (12 or 13 bytes)."""
     code = stencil.code
@@ -283,6 +398,18 @@ def detect_continue_jmp_a64(stencil):
     for hole in stencil.holes:
         if hole.sym == "Continue" and hole.kind == "A64Jump26" and hole.offset + 4 == len(stencil.code):
             stencil.continue_jmp = hole.offset
+
+
+def detect_continue_jmp_a64_got(stencil):
+    """Trailing `adrp/ldr _JIT_CONTINUE@GOT; br` (three 4-byte instructions)."""
+    size = len(stencil.code)
+    if size < 12:
+        return
+    page = any(h.sym == "Continue" and h.kind == "A64GotLoadPage21" and h.offset == size - 12 for h in stencil.holes)
+    off = any(h.sym == "Continue" and h.kind == "A64GotLoadPageOff12" and h.offset == size - 8 for h in stencil.holes)
+    br = int.from_bytes(stencil.code[size - 4 : size], "little")
+    if page and off and (br & 0xFFFFFC1F) == 0xD61F0000:
+        stencil.continue_jmp = size - 12
 
 
 def emit_inc(stencils, data_image, target_key, triple, clang_version, out_path):
@@ -343,19 +470,22 @@ def emit_inc(stencils, data_image, target_key, triple, clang_version, out_path):
 
 
 def build_target(clang, readobj, target_key, triple, clang_version):
-    if target_key == "arm64_macho":
-        fail("Mach-O extraction is not implemented yet (Phase 3)")
     with tempfile.TemporaryDirectory() as tmp:
         obj_path = Path(tmp) / "stencils.o"
         run([clang, f"--target={triple}", *CFLAGS,
              "-I", str(REPO_ROOT / "nautilus/src"),
              "-I", str(SHIM_INCLUDE),
              str(SOURCE), "-o", str(obj_path)])
-        stencils, data_image = parse_elf(readobj, obj_path)
+        if target_key.endswith("_macho"):
+            stencils, data_image = parse_macho_arm64(obj_path)
+        else:
+            stencils, data_image = parse_elf(readobj, obj_path)
 
     for stencil in stencils:
         if target_key.startswith("x86_64"):
             detect_continue_jmp_x86(stencil)
+        elif target_key.endswith("_macho"):
+            detect_continue_jmp_a64_got(stencil)
         else:
             detect_continue_jmp_a64(stencil)
 
@@ -385,9 +515,7 @@ def main():
     check_clang_version(clang)
     clang_version = run([clang, "--version"]).splitlines()[0].strip()
 
-    targets = {args.only: TARGETS[args.only]} if args.only else {
-        k: v for k, v in TARGETS.items() if k != "arm64_macho"  # Phase 3
-    }
+    targets = {args.only: TARGETS[args.only]} if args.only else TARGETS
     for target_key, triple in targets.items():
         build_target(clang, readobj, target_key, triple, clang_version)
 

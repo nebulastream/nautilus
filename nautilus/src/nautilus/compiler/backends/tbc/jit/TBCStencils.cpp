@@ -16,6 +16,9 @@ namespace gen {
 #elif defined(__aarch64__) && defined(__ELF__)
 #include "generated/stencils_aarch64_elf.inc"
 #define TBC_JIT_HAVE_STENCILS 1
+#elif defined(__aarch64__) && defined(__APPLE__) && defined(__MACH__)
+#include "generated/stencils_arm64_macho.inc"
+#define TBC_JIT_HAVE_STENCILS 1
 #endif
 } // namespace gen
 
