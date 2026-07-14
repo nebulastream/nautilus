@@ -17,6 +17,9 @@ run_fixture() {
 	expected_exit="$3"
 	job="$WORK/$(basename "$fixture" .cpp)-$backend"
 	mkdir -p "$job/in" "$job/out"
+	# Linux daemons preserve host ownership on bind mounts; the runner's
+	# non-root user must be able to write /out.
+	chmod 777 "$job/out"
 	cp "$SMOKE_DIR/$fixture" "$job/in/user_module.cpp"
 
 	docker run --rm \

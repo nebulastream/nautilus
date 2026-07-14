@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import type { CompileOptions, Backend } from '../types.js';
@@ -27,6 +27,10 @@ export async function runInSandbox(jobId: string, source: string, backend: Backe
 	const outDir = path.join(jobDir, 'out');
 	await mkdir(inDir, { recursive: true });
 	await mkdir(outDir, { recursive: true });
+	// On a stock Linux daemon the bind mount preserves host ownership, and the
+	// runner container writes /out as its non-root user — open the dir up.
+	// (Docker Desktop's mount layer is permissive, so this only bites on Linux.)
+	await chmod(outDir, 0o777);
 	await writeFile(path.join(inDir, 'user_module.cpp'), source, 'utf8');
 
 	const containerName = `pg-${jobId}`;
