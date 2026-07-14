@@ -248,10 +248,14 @@ TEST_CASE("TBC tbc.mode=auto degrades, tbc.mode=jit is strict") {
 
 	if (!jitAvailable()) {
 		// Strict mode must fail loudly instead of silently testing the
-		// interpreter.
-		auto strict = jitEngine("jit", true, true, true);
-		auto strictFn = strict.registerFunction(jitFib);
-		REQUIRE_THROWS(strictFn(1));
+		// interpreter. Depending on the engine's compilation settings the
+		// throw can surface at registration or at first call, so the whole
+		// sequence goes inside the assertion.
+		REQUIRE_THROWS([&] {
+			auto strict = jitEngine("jit", true, true, true);
+			auto strictFn = strict.registerFunction(jitFib);
+			return strictFn(1);
+		}());
 	}
 }
 
