@@ -4,12 +4,13 @@ using namespace metal;
 kernel void saxpy(
     device uchar* var_$1 [[buffer(0)]],
     device uchar* var_$2 [[buffer(1)]],
-    constant float& var_$3 [[buffer(2)]],
+    constant float& var_$3_arg [[buffer(2)]],
     uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],
     uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
+float var_$3;
 uint var_$4;
 uint var_$5;
 uint var_$6;
@@ -34,6 +35,7 @@ ulong var_$37;
 ulong var_$38;
 ulong var_$39;
 device uchar* var_$40;
+var_$3 = var_$3_arg;
 var_$4 = nautilus_blockIdx.x;
 var_$5 = nautilus_blockDim.x;
 var_$6 = var_$4*var_$5;

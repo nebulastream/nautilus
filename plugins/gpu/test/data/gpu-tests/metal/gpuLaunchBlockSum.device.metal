@@ -4,12 +4,13 @@ using namespace metal;
 kernel void blockSum(
     device uchar* var_$1 [[buffer(0)]],
     device uchar* var_$2 [[buffer(1)]],
-    constant uint& var_$3 [[buffer(2)]],
+    constant uint& var_$3_arg [[buffer(2)]],
     uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],
     uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
+uint var_$3;
 ulong var_$4;
 ulong var_$5;
 threadgroup uchar nautilus_shared_6[1024];
@@ -74,6 +75,7 @@ ulong var_$114;
 ulong var_$115;
 ulong var_$116;
 device uchar* var_$117;
+var_$3 = var_$3_arg;
 int __pc = 0;
 while (true) {
 switch (__pc) {

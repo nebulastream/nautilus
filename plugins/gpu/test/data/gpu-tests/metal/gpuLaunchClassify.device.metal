@@ -4,12 +4,13 @@ using namespace metal;
 kernel void classify(
     device uchar* var_$1 [[buffer(0)]],
     device uchar* var_$2 [[buffer(1)]],
-    constant uint& var_$3 [[buffer(2)]],
+    constant uint& var_$3_arg [[buffer(2)]],
     uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],
     uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],
     uint3 nautilus_blockDim [[threads_per_threadgroup]],
     uint3 nautilus_gridDim [[threadgroups_per_grid]]
 ) {
+uint var_$3;
 uint var_$4;
 uint var_$5;
 uint var_$6;
@@ -64,6 +65,7 @@ ulong var_$109;
 ulong var_$110;
 ulong var_$111;
 device uchar* var_$112;
+var_$3 = var_$3_arg;
 int __pc = 0;
 while (true) {
 switch (__pc) {
