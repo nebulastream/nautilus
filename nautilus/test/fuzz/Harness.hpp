@@ -117,8 +117,11 @@ inline std::vector<Config> configs() {
 	addCompiling("tbc");
 #endif
 #ifdef ENABLE_TBC_JIT
+	// tbc's copy-and-patch JIT (tbc.mode=jit, strict). It shares tbc's
+	// lowering, so the IR-pass permutations each exercise a different
+	// bytecode shape and therefore a different stencil population.
 	if (compiler::tbc::jit::jitRuntimeAvailable()) {
-		result.emplace_back("tbc-jit");
+		addCompiling("tbc-jit");
 	}
 #endif
 #ifdef ENABLE_ASMJIT_BACKEND
@@ -128,8 +131,9 @@ inline std::vector<Config> configs() {
 	// (e.g. "interpreter,tbc,tbc-jit" to bisect a finding to one backend).
 	if (const char* filter = std::getenv("NAUTILUS_FUZZ_BACKENDS")) {
 		const std::string list = std::string(",") + filter + ",";
-		std::erase_if(result,
-		              [&](const std::string& name) { return list.find("," + name + ",") == std::string::npos; });
+		std::erase_if(result, [&](const Config& config) {
+			return list.find("," + config.backend + ",") == std::string::npos;
+		});
 	}
 	return result;
 }
