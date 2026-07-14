@@ -270,8 +270,37 @@ after which the interpreter's per-instruction dispatch (indirect branch +
   template-instantiated callers selected at lowering time (signatures are
   statically known). Requires a register-only argument cap and care with the
   Apple arm64 stack-argument packing rules; would remove the last third-party
-  dependency.
+  dependency. Would speed up `CALL_EXT` in both execution modes (the JIT's
+  external-call benchmark shows dyncall marshalling dominating that path).
 - **Float-signature trampolines**: extend the escaping-function-pointer pool
   beyond integer-class signatures if a use case appears.
 - **Instruction-stream prefetch hints / handler layout experiments** once
   real query workloads are profiled.
+
+### Copy-and-patch JIT follow-ups
+
+- **Tiering measurement**: stitching is a linear pass over the bytecode, so
+  `tbc` + `tbc.mode=jit` is a candidate for *both* tiers — measure tier-0
+  latency (stitch time vs. lowering time) and the handoff against the
+  current `asmjit`/`bc` tier-0 defaults before changing any default.
+- **Profiling/debugging story for stitched code**: emit a perf map
+  (`/tmp/perf-<pid>.map`) and/or the GDB JIT interface behind an option;
+  until then stitched frames show as raw addresses and `tbc.mode=interp` is
+  the debugger.
+- **macOS execution validation**: the macos-15 CI job uses Apple clang
+  (no `preserve_none` before LLVM 19), so it only validates that the Mach-O
+  stencil table compiles and that `auto` degrades cleanly; the GOT-emulation
+  execution path needs a run under a non-Apple clang ≥ 19 on macOS before
+  it can be considered exercised.
+- **CI stencil freshness check**: regenerate the tables on a clang job and
+  `git diff --exit-code` the `.inc` files, so opcode-list changes cannot
+  silently ship stale tables (they degrade safely, but to interpreter
+  speed).
+- **Native-ABI entry stencils**: per-function entry shims with real C
+  signatures would let `hasInvocableFunctionPtr()` return true and skip the
+  `GenericInvocable` layer on the entry path; deferred because `invokeRaw`
+  is already the allocation-free hot path and per-signature marshalling is
+  asmjit-backend territory.
+- **Windows/MSVC**: out of scope (COFF extraction, different calling
+  conventions, no `musttail` guarantee); `tbc.mode=auto` degrades to the
+  interpreter there by construction.
