@@ -42,11 +42,12 @@ void CUDALoweringProvider::LoweringContext::registerGPUIntrinsics() {
 	gpuIntrinsics[sharedPtr] = [](ir::ProxyCallOperation* call, short blockIndex, gpu::RegisterFrame& frame,
 	                              std::stringstream& blockArguments, std::vector<std::stringstream>& blocks,
 	                              std::string (*getVariable)(const ir::OperationIdentifier&)) -> bool {
-		uint64_t bytes = 0;
 		auto inputs = call->getInputArguments();
-		if (!inputs.empty() && inputs[0]->getOperationType() == ir::Operation::OperationType::ConstIntOp) {
-			bytes = static_cast<uint64_t>(ir::as<ir::ConstIntOperation>(inputs[0])->getValue());
+		if (inputs.empty() || inputs[0]->getOperationType() != ir::Operation::OperationType::ConstIntOp) {
+			// Emitting a zero-length __shared__ array would silently miscompile.
+			throw NotImplementedException("nautilus_gpu_shared_alloc requires a compile-time constant byte size");
 		}
+		auto bytes = static_cast<uint64_t>(ir::as<ir::ConstIntOperation>(inputs[0])->getValue());
 		auto resultVar = getVariable(call->getIdentifier());
 		auto bufName = "nautilus_shared_" + std::to_string(call->getIdentifier().getId());
 		blockArguments << "__shared__ unsigned char " << bufName << "[" << bytes << "];\n";
