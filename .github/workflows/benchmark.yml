@@ -22,16 +22,28 @@ jobs:
     name: Run tracing benchmark
     runs-on: ubuntu-24.04
     env:
-      CC: clang
-      CXX: clang++
+      # clang >= 19 so the tbc copy-and-patch JIT benchmarks
+      # (exec_tbc_*_{interp,jit}) are runnable; they are skipped on builds
+      # that cannot execute stitched code (preserve_none needs Clang 19+).
+      CC: clang-21
+      CXX: clang++-21
     steps:
       - uses: actions/checkout@v4
       - name: get cmake
         uses: lukka/get-cmake@latest
+      - name: Install clang from LLVM apt repo
+        run: |
+          UBUNTU_CODENAME=$(lsb_release -cs)
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 clang++-21
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
-          key: ${{ github.job }}-ubuntu-24.04-clang-benchmark
+          key: ${{ github.job }}-ubuntu-24.04-clang-21-benchmark
       - name: cmake
         shell: bash
         run: |

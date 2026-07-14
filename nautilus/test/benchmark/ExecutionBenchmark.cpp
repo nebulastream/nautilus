@@ -2,6 +2,16 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include <catch2/catch_all.hpp>
+#ifdef ENABLE_TBC_JIT
+#include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
+
+namespace nautilus::compiler::tbc::jit {
+// Defined in libnautilus; gates the copy-and-patch benchmarks on builds
+// that can execute stitched code.
+bool jitRuntimeAvailable();
+} // namespace nautilus::compiler::tbc::jit
+#endif
 
 namespace nautilus::engine {
 
@@ -19,6 +29,36 @@ val<int32_t> fib(val<int32_t> n) {
 	}
 	return b;
 }
+#ifdef ENABLE_TBC_JIT
+// Call-heavy kernels for the copy-and-patch A/B: the loop kernels above never
+// leave one function, so they cannot show the cost of the JIT's frame-push
+// helper (internal CALL) or the dyncall bridge (external CALL_EXT).
+val<int64_t> tbcJitCalleeBody(val<int64_t> x, val<int64_t> y) {
+	return x * 2 + y;
+}
+static auto tbcJitBenchCallee = NautilusFunction {"tbcJitBenchCallee", tbcJitCalleeBody};
+
+val<int64_t> internalCallLoop(val<int32_t> n) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		acc = tbcJitBenchCallee(acc, val<int64_t>(1));
+	}
+	return acc;
+}
+
+int64_t tbcJitNativeAdd(int64_t a, int64_t b) {
+	return a + b;
+}
+
+val<int64_t> externalCallLoop(val<int32_t> n) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < n; i = i + 1) {
+		acc = invoke(tbcJitNativeAdd, acc, val<int64_t>(1));
+	}
+	return acc;
+}
+#endif
+
 val<int32_t> sum(val<int32_t*> array, val<int32_t> length) {
 	val<int32_t> sum = val<int32_t>(0);
 	for (val<int32_t> i = 0; i < length; i = i + 1) {
@@ -288,6 +328,42 @@ TEST_CASE("Execution Benchmark") {
 				    op.setOption("asmjit.enableSelectCmov", allOpts);
 				    func(meter, op);
 			    });
+		}
+	}
+#endif
+
+#ifdef ENABLE_TBC_JIT
+	// TBC copy-and-patch A/B: identical bytecode executed by the interpreter
+	// (strongest dispatch skin) vs stitched native code (tbc.mode=jit). The
+	// shared loop kernels isolate the dispatch-elimination win; the two call
+	// kernels bound the frame-push helper (internal CALL) and dyncall bridge
+	// (CALL_EXT) overheads that the loop kernels never exercise.
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		auto tbcJitBenchmarks = benchmarks;
+		tbcJitBenchmarks.emplace_back("internalCall", [](Catch::Benchmark::Chronometer& meter, Options& options) {
+			auto engine = engine::NautilusEngine(options);
+			auto func = engine.registerFunction(internalCallLoop);
+			meter.measure([&] { return func(10000); });
+		});
+		tbcJitBenchmarks.emplace_back("externalCall", [](Catch::Benchmark::Chronometer& meter, Options& options) {
+			auto engine = engine::NautilusEngine(options);
+			auto func = engine.registerFunction(externalCallLoop);
+			meter.measure([&] { return func(10000); });
+		});
+		for (auto& test : tbcJitBenchmarks) {
+			auto func = std::get<1>(test);
+			auto name = std::get<0>(test);
+			for (const auto& mode : {std::string("interp"), std::string("jit")}) {
+				Catch::Benchmark::Benchmark("exec_tbc_" + name + "_" + mode)
+				    .operator=([&func, mode](Catch::Benchmark::Chronometer meter) {
+					    auto op = engine::Options();
+					    op.setOption("mlir.eager_compilation", true);
+					    op.setOption("engine.backend", std::string("tbc"));
+					    op.setOption("engine.traceMode", "lazyTracing");
+					    op.setOption("tbc.mode", mode);
+					    func(meter, op);
+				    });
+			}
 		}
 	}
 #endif

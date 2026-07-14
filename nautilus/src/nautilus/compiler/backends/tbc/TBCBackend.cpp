@@ -5,7 +5,12 @@
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/config.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <chrono>
+#ifdef ENABLE_TBC_JIT
+#include "nautilus/compiler/backends/tbc/jit/TBCJit.hpp"
+#endif
 
 namespace nautilus::compiler::tbc {
 
@@ -35,6 +40,22 @@ const char* dispatchModeName(DispatchMode mode) {
 		return "switch";
 	}
 	return "unknown";
+}
+
+/// Execution mode: `interp` (default) runs the dispatch-loop interpreter;
+/// `jit` stitches copy-and-patch code and fails fast when this build cannot
+/// (so tests never silently pass on the wrong engine); `auto` uses the JIT
+/// when available and degrades to the interpreter otherwise.
+enum class ExecutionMode : uint8_t { Interp, Jit, Auto };
+
+ExecutionMode parseExecutionMode(const std::string& name) {
+	if (name == "jit") {
+		return ExecutionMode::Jit;
+	}
+	if (name == "auto") {
+		return ExecutionMode::Auto;
+	}
+	return ExecutionMode::Interp;
 }
 } // namespace
 
@@ -87,11 +108,43 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 		maxRegisters = std::max<int64_t>(maxRegisters, function.regSlots);
 	}
 
+	// Copy-and-patch JIT (tbc.mode): stitching is the LAST compile step — it
+	// patches &functions[i]/&callsites[i] into the code, so both vectors must
+	// be final. `jit` is strict (throws when this build cannot execute
+	// stitched code, so nothing silently tests the wrong engine); `auto`
+	// degrades to the interpreter.
+	std::string jitMode = "interp";
+	std::string jitSkipReason;
+	const auto mode = parseExecutionMode(options.getOptionOrDefault<std::string>("tbc.mode", "interp"));
+	if (mode != ExecutionMode::Interp) {
+#ifdef ENABLE_TBC_JIT
+		if (jit::jitRuntimeAvailable()) {
+			program->jit = jit::stitchProgram(*program, &jitSkipReason);
+		} else {
+			jitSkipReason = "jit runtime unavailable on this build (needs Clang 19+ stencil ABI support, no ASan)";
+		}
+#else
+		jitSkipReason = "built without ENABLE_TBC_JIT";
+#endif
+		if (program->jit != nullptr) {
+			jitMode = "jit";
+		} else if (mode == ExecutionMode::Jit) {
+			throw RuntimeException("tbc: tbc.mode=jit requested but " + jitSkipReason);
+		}
+	}
+
 	if (statistics != nullptr) {
 		statistics->set("tbc.instructions", totalInstructions);
 		statistics->set("tbc.codeSize.bytes", totalInstructions * static_cast<int64_t>(sizeof(Instr)));
 		statistics->set("tbc.registers.max", maxRegisters);
 		statistics->set("tbc.dispatch", std::string(dispatchModeName(program->dispatch)));
+		statistics->set("tbc.mode", jitMode);
+		if (program->jit != nullptr) {
+			statistics->set("tbc.jit.codeSize.bytes", static_cast<int64_t>(program->jit->codeBytes));
+		}
+		if (!jitSkipReason.empty()) {
+			statistics->set("tbc.jit.skipReason", jitSkipReason);
+		}
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 

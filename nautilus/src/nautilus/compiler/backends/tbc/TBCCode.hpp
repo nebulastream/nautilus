@@ -1,37 +1,15 @@
 #pragma once
 
+#include "nautilus/compiler/backends/tbc/TBCInstr.hpp"
 #include "nautilus/compiler/backends/tbc/TBCOpcodes.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace nautilus::compiler::tbc {
-
-/// Register index sentinel: "no register" (void results, unused fields).
-constexpr uint16_t kNoReg = 0xFFFF;
-
-/// One fixed-width instruction word. Fields are opcode-specific; the common
-/// convention for value ops is a=dst, b=src1, c=src2 (or c=imm16). Branch
-/// offsets are signed 32-bit relative instruction counts packed as b|c<<16
-/// (or word1.a|word1.b<<16 for 2-word fused branches).
-struct Instr {
-	uint16_t op;
-	uint16_t a;
-	uint16_t b;
-	uint16_t c;
-};
-
-static_assert(sizeof(Instr) == 8);
-
-constexpr int32_t packedOffset(const Instr& i) {
-	return static_cast<int32_t>(static_cast<uint32_t>(i.b) | (static_cast<uint32_t>(i.c) << 16));
-}
-
-constexpr int32_t packedOffsetLoHi(const Instr& i) {
-	return static_cast<int32_t>(static_cast<uint32_t>(i.a) | (static_cast<uint32_t>(i.b) << 16));
-}
 
 /// Per-call-site record. The instruction stream only carries the record index;
 /// argument registers, types, and the target live here. Used by CALL (internal,
@@ -69,6 +47,17 @@ struct TBCFunction {
 
 enum class DispatchMode : uint8_t { Tailcall, Goto, Switch };
 
+/// Stitched copy-and-patch code for a whole program (tbc.mode=jit). The
+/// concrete subclass (jit/TBCStitcher.cpp) owns the executable span; this
+/// base keeps TBCCode free of any JIT/asmjit dependency so the interpreter
+/// builds identically with ENABLE_TBC_JIT off.
+struct TBCJitCode {
+	std::vector<void*> entries; // per-function stitched entry point
+	void* epilogue = nullptr;   // entry-frame landing pad (@EPILOGUE stencil)
+	size_t codeBytes = 0;       // stitched span size (statistics)
+	virtual ~TBCJitCode() = default;
+};
+
 /// A whole compiled module: all functions plus the program-wide call-site
 /// table. Heap-allocated once and never moved afterwards: escaping internal
 /// function pointers (see TBCTrampoline.hpp) bind trampoline slots to this
@@ -84,6 +73,12 @@ struct TBCProgram {
 	std::vector<CallSite> callsites;
 	uint64_t minStackSlots = 0;
 	DispatchMode dispatch = DispatchMode::Switch;
+	/// Set when the program was stitched by the copy-and-patch JIT; execution
+	/// then enters the stitched code instead of the dispatch loop. Stitched
+	/// code patches `&functions[i]` / `&callsites[i]` into instructions, so
+	/// neither vector may be resized once this is non-null (stitching is the
+	/// last step of TBCBackend::compile).
+	std::unique_ptr<TBCJitCode> jit;
 };
 
 } // namespace nautilus::compiler::tbc

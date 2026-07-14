@@ -17,7 +17,7 @@ Learn more about Nebula Stream at https://www.nebula.stream
 The example below demonstrates Nautilus with a simplified aggregation operator,
 `ConditionalSum`. This function aggregates integer values based on a boolean mask.
 Nautilus introduce `val<>` objects to capture all executed operations in an intermediate representation during tracing.
-Depending on the execution context, it can utilize a bytecode interpreter or generate efficient MLIR or C++ code.
+Depending on the execution context, it can utilize a bytecode interpreter (optionally accelerated by a copy-and-patch JIT that stitches pre-compiled machine-code stencils), or generate efficient MLIR or C++ code.
 This enables Nautilus to trade of performance characteristics and to optimize the generated code towards the target
 hardware.
 

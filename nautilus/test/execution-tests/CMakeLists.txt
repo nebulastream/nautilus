@@ -6,6 +6,8 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         BCDispatchModeTest.cpp
         BCRegisterCoalescingTest.cpp
         TBCDispatchModeTest.cpp
+        TBCJitModeTest.cpp
+        TBCJitWhiteBoxTest.cpp
         TBCMemoryOffsetTest.cpp
         BoolExecutionTest.cpp
         CastExecutionTest.cpp
