@@ -5,9 +5,11 @@
 #include "nautilus/gpu/config.hpp"
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <unordered_map>
+#include <vector>
 
 // The CUDA *codegen* backend (ENABLE_CUDA_BACKEND) can be enabled without the
 // CUDA toolkit being installed (it only emits .cu source). The unified-memory
@@ -78,6 +80,18 @@ uint32_t nautilus_gpu_grid_dim_z() {
 
 void nautilus_gpu_sync_threads() {
 	// no-op on CPU
+}
+
+void* nautilus_gpu_shared_alloc(uint64_t bytes, uint64_t align) {
+	// CPU fallback: single-block semantics. Bump-allocate from a thread-local
+	// arena (retained for the thread's lifetime; the CPU path is for
+	// correctness, not scale). Each call site gets distinct storage.
+	thread_local std::vector<std::unique_ptr<uint8_t[]>> arena;
+	auto a = align == 0 ? 1 : align;
+	arena.emplace_back(new uint8_t[bytes + a]);
+	auto base = reinterpret_cast<uintptr_t>(arena.back().get());
+	auto aligned = (base + a - 1) & ~(static_cast<uintptr_t>(a) - 1);
+	return reinterpret_cast<void*>(aligned);
 }
 
 void nautilus_gpu_set_grid(uint32_t, uint32_t, uint32_t) {

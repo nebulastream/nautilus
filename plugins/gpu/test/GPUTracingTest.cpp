@@ -128,6 +128,7 @@ TEST_CASE("GPU Trace Test") {
 	    {"gpuLaunchVecAddBounded", details::createFunctionWrapper(gpuLaunchVecAddBounded)},
 	    {"gpuLaunchClassify", details::createFunctionWrapper(gpuLaunchClassify)},
 	    {"gpuLaunchPrefixSum", details::createFunctionWrapper(gpuLaunchPrefixSum)},
+	    {"gpuLaunchBlockSum", details::createFunctionWrapper(gpuLaunchBlockSum)},
 	};
 	runTraceTests("gpu-tests", tests);
 }

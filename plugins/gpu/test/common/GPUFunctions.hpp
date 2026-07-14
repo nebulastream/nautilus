@@ -168,4 +168,35 @@ void gpuLaunchPrefixSum(val<uint32_t*> a, val<uint32_t*> out, val<uint32_t> n) {
 	gpu::launch(prefixSumKernel, gpu::GridDim {(uint32_t) 1}, gpu::BlockDim {(uint32_t) 256}, a, out, n);
 }
 
+// Block reduction using shared memory + barriers: each block sums its 256
+// elements into out[blockIdx] via a tree reduction over a threadgroup tile.
+static auto blockSumKernel =
+    gpu::NautilusKernelFunction {"blockSum", [](gpu::Array<uint32_t> in, gpu::Array<uint32_t> out, val<uint32_t> n) {
+	                                 auto tile = gpu::sharedArray<uint32_t, 256>();
+	                                 auto tid = gpu::threadIdx_x();
+	                                 auto gid = gpu::blockIdx_x() * gpu::blockDim_x() + tid;
+	                                 val<uint32_t> v = val<uint32_t>((uint32_t) 0);
+	                                 if (gid < n) {
+		                                 v = in[gid];
+	                                 }
+	                                 tile[tid] = v;
+	                                 gpu::syncThreads();
+	                                 for (val<uint32_t> s = gpu::blockDim_x() / val<uint32_t>((uint32_t) 2);
+	                                      s > val<uint32_t>((uint32_t) 0); s = s / val<uint32_t>((uint32_t) 2)) {
+		                                 if (tid < s) {
+			                                 tile[tid] = tile[tid] + tile[tid + s];
+		                                 }
+		                                 gpu::syncThreads();
+	                                 }
+	                                 if (tid == val<uint32_t>((uint32_t) 0)) {
+		                                 val<uint32_t> total = tile[(uint32_t) 0];
+		                                 out[gpu::blockIdx_x()] = total;
+	                                 }
+                                 }};
+
+void gpuLaunchBlockSum(val<uint32_t*> in, val<uint32_t*> out, val<uint32_t> n) {
+	auto blocks = (n + val<uint32_t>((uint32_t) 255)) / val<uint32_t>((uint32_t) 256);
+	gpu::launch(blockSumKernel, gpu::GridDim {blocks}, gpu::BlockDim {(uint32_t) 256}, in, out, n);
+}
+
 } // namespace nautilus::engine

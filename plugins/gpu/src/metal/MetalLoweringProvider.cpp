@@ -11,18 +11,12 @@ namespace nautilus::compiler::metal {
 // MetalLoweringProvider
 // ============================================================================
 
-/// Post-process generated MSL device code to add 'device' address space
-/// to pointer casts in load/store operations.
-static std::string fixMetalDeviceCode(const std::string& code) {
-	std::regex ptrCastRe(R"(\(\((\w+)\*\)\()");
-	return std::regex_replace(code, ptrCastRe, "((device $1*)(");
-}
-
 MetalLoweringResult MetalLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const engine::Options& /*options*/) {
 	MetalLoweringResult result;
-	// Device code (MSL)
+	// Device code (MSL). The address-space qualifier on every pointer cast/decl
+	// is applied per function inside process() (see rewriteAddressSpaces).
 	auto deviceCtx = DeviceContext(ir);
-	result.deviceCode = fixMetalDeviceCode(deviceCtx.process().str());
+	result.deviceCode = deviceCtx.process().str();
 	// Host code (C++ with Metal API)
 	auto hostCtx = HostContext(std::move(ir));
 	result.hostCode = hostCtx.process().str();
@@ -58,6 +52,33 @@ void MetalLoweringProvider::DeviceContext::registerGPUIntrinsics() {
 	auto syncPtr = reinterpret_cast<void*>(nautilus_gpu_sync_threads);
 	gpu::registerVoidIntrinsic(gpuIntrinsics, syncPtr, "threadgroup_barrier(mem_flags::mem_threadgroup)");
 	deviceIntrinsics.insert(syncPtr);
+
+	// Block-shared memory: emit a `threadgroup` array sized by the constant byte
+	// argument and return its address. The result pointer (and everything
+	// derived from it) is retagged to the threadgroup address space by the
+	// address-space pass in process(); see analyzeThreadgroupVars().
+	auto sharedPtr = reinterpret_cast<void*>(nautilus_gpu_shared_alloc);
+	gpuIntrinsics[sharedPtr] = [](ir::ProxyCallOperation* call, short blockIndex, gpu::RegisterFrame& frame,
+	                              std::stringstream& blockArguments, std::vector<std::stringstream>& blocks,
+	                              std::string (*getVariable)(const ir::OperationIdentifier&)) -> bool {
+		uint64_t bytes = 0;
+		auto inputs = call->getInputArguments();
+		if (!inputs.empty() && inputs[0]->getOperationType() == ir::Operation::OperationType::ConstIntOp) {
+			bytes = static_cast<uint64_t>(ir::as<ir::ConstIntOperation>(inputs[0])->getValue());
+		}
+		auto resultVar = getVariable(call->getIdentifier());
+		auto bufName = "nautilus_shared_" + std::to_string(call->getIdentifier().getId());
+		blockArguments << "threadgroup uchar " << bufName << "[" << bytes << "];\n";
+		if (!frame.contains(call->getIdentifier())) {
+			// Declared as device here; rewritten to threadgroup by the
+			// address-space pass (single source of truth for the retag).
+			blockArguments << "device uchar* " << resultVar << ";\n";
+			frame.setValue(call->getIdentifier(), resultVar);
+		}
+		blocks[blockIndex] << resultVar << " = " << bufName << ";\n";
+		return true;
+	};
+	deviceIntrinsics.insert(sharedPtr);
 
 	// Launch config intrinsics are host-side only — not registered here.
 }
@@ -128,27 +149,38 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 		}
 		processBlock(&functionBasicBlock, rootFrame);
 
+		// Determine which pointer variables live in threadgroup (shared) memory
+		// so the address-space pass can retag their declarations and accesses.
+		auto tgPtrs = analyzeThreadgroupPtrs(func);
+		std::unordered_set<std::string> tgVars;
+		for (const auto* op : tgPtrs) {
+			tgVars.insert(getVariable(op->getIdentifier()));
+		}
+
+		// Build the function into a local buffer, then run the address-space
+		// rewrite over it (per function, so var names don't collide).
+		Code fnCode;
 		if (isKernel) {
-			code << "kernel void " << func.getName() << "(\n";
+			fnCode << "kernel void " << func.getName() << "(\n";
 			for (size_t i = 0; i < arguments.size(); i++) {
-				code << "    " << arguments[i] << ",\n";
+				fnCode << "    " << arguments[i] << ",\n";
 			}
-			code << "    uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],\n";
-			code << "    uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],\n";
-			code << "    uint3 nautilus_blockDim [[threads_per_threadgroup]],\n";
-			code << "    uint3 nautilus_gridDim [[threadgroups_per_grid]]\n";
+			fnCode << "    uint3 nautilus_threadIdx [[thread_position_in_threadgroup]],\n";
+			fnCode << "    uint3 nautilus_blockIdx [[threadgroup_position_in_grid]],\n";
+			fnCode << "    uint3 nautilus_blockDim [[threads_per_threadgroup]],\n";
+			fnCode << "    uint3 nautilus_gridDim [[threadgroups_per_grid]]\n";
 		} else {
-			code << getType(func.getOutputArg()) << " " << func.getName() << "(";
+			fnCode << getType(func.getOutputArg()) << " " << func.getName() << "(";
 			for (size_t i = 0; i < arguments.size(); i++) {
 				if (i != 0)
-					code << ",";
-				code << arguments[i] << " ";
+					fnCode << ",";
+				fnCode << arguments[i] << " ";
 			}
 		}
-		code << ") {\n" << blockArguments.str();
+		fnCode << ") {\n" << blockArguments.str();
 		if (blocks.size() > 1) {
 			// Multi-block: emit while(true)/switch dispatch for Metal (no goto/labels).
-			code << "int __pc = 0;\nwhile (true) {\nswitch (__pc) {\n";
+			fnCode << "int __pc = 0;\nwhile (true) {\nswitch (__pc) {\n";
 			for (size_t bi = 0; bi < blocks.size(); bi++) {
 				auto blockStr = blocks[bi].str();
 				// Strip the "Block_X:\n" label from the beginning of each block
@@ -177,9 +209,9 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 					remaining = m.suffix().str();
 				}
 				transformed += remaining;
-				code << "case " << bi << ": {\n" << transformed << "}\n";
+				fnCode << "case " << bi << ": {\n" << transformed << "}\n";
 			}
-			code << "}\n}\n"; // close switch + while
+			fnCode << "}\n}\n"; // close switch + while
 		} else {
 			// Single block: just strip the label
 			for (auto& block : blocks) {
@@ -188,10 +220,11 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 				if (nlPos != std::string::npos) {
 					blockStr = blockStr.substr(nlPos + 1);
 				}
-				code << blockStr << "\n";
+				fnCode << blockStr << "\n";
 			}
 		}
-		code << "}\n\n";
+		fnCode << "}\n\n";
+		code << rewriteAddressSpaces(fnCode.str(), tgVars);
 	};
 
 	// Emit non-root functions that are kernels (use device intrinsics)
@@ -209,6 +242,142 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 	}
 
 	return code;
+}
+
+std::unordered_set<const ir::Operation*>
+MetalLoweringProvider::DeviceContext::analyzeThreadgroupPtrs(const ir::FunctionOperation& func) {
+	using OT = ir::Operation::OperationType;
+	std::unordered_set<const ir::Operation*> tg;
+
+	// Collect all blocks reachable from the entry via terminator invocations.
+	std::vector<const ir::BasicBlock*> allBlocks;
+	std::unordered_set<const ir::BasicBlock*> seen;
+	std::vector<const ir::BasicBlock*> worklist {&func.getFunctionBasicBlock()};
+	while (!worklist.empty()) {
+		const auto* b = worklist.back();
+		worklist.pop_back();
+		if (b == nullptr || !seen.insert(b).second) {
+			continue;
+		}
+		allBlocks.push_back(b);
+		for (auto* op : b->getOperations()) {
+			if (op->getOperationType() == OT::BranchOp) {
+				worklist.push_back(ir::as<ir::BranchOperation>(op)->getNextBlockInvocation().getBlock());
+			} else if (op->getOperationType() == OT::IfOp) {
+				auto* io = ir::as<ir::IfOperation>(op);
+				worklist.push_back(io->getTrueBlockInvocation().getBlock());
+				worklist.push_back(io->getFalseBlockInvocation().getBlock());
+			}
+		}
+	}
+
+	// Seed: results of nautilus_gpu_shared_alloc proxy calls.
+	auto sharedPtr = reinterpret_cast<void*>(nautilus_gpu_shared_alloc);
+	for (const auto* b : allBlocks) {
+		for (auto* op : b->getOperations()) {
+			if (op->getOperationType() == OT::ProxyCallOp &&
+			    ir::as<ir::ProxyCallOperation>(op)->getFunctionPtr() == sharedPtr) {
+				tg.insert(op);
+			}
+		}
+	}
+
+	// Propagate to a fixpoint: a pointer-typed op whose input is threadgroup is
+	// threadgroup (pointer arithmetic, casts); block arguments inherit the space
+	// of the value passed to them by each predecessor's invocation (phis).
+	bool changed = true;
+	while (changed) {
+		changed = false;
+		auto markTarget = [&](const ir::BasicBlockInvocation& inv) {
+			auto srcArgs = inv.getArguments();
+			const auto& tgtArgs = inv.getBlock()->getArguments();
+			for (size_t i = 0; i < srcArgs.size() && i < tgtArgs.size(); i++) {
+				if (tg.contains(srcArgs[i]) && !tg.contains(tgtArgs[i])) {
+					tg.insert(tgtArgs[i]);
+					changed = true;
+				}
+			}
+		};
+		for (const auto* b : allBlocks) {
+			for (auto* op : b->getOperations()) {
+				if (op->getStamp() == Type::ptr && !tg.contains(op)) {
+					for (auto* in : op->getInputs()) {
+						if (in != nullptr && tg.contains(in)) {
+							tg.insert(op);
+							changed = true;
+							break;
+						}
+					}
+				}
+				if (op->getOperationType() == OT::BranchOp) {
+					markTarget(ir::as<ir::BranchOperation>(op)->getNextBlockInvocation());
+				} else if (op->getOperationType() == OT::IfOp) {
+					auto* io = ir::as<ir::IfOperation>(op);
+					markTarget(io->getTrueBlockInvocation());
+					markTarget(io->getFalseBlockInvocation());
+				}
+			}
+		}
+	}
+	return tg;
+}
+
+std::string MetalLoweringProvider::DeviceContext::rewriteAddressSpaces(const std::string& text,
+                                                                       const std::unordered_set<std::string>& tgVars) {
+	// Iterator-based conditional replacement that copies the gaps between matches
+	// verbatim (preserving all whitespace), so kernels with no shared memory are
+	// byte-identical to the plain device-qualified output.
+	auto replaceAll = [](const std::string& in, const std::regex& re,
+	                     const std::function<std::string(const std::smatch&)>& fn) {
+		std::string out;
+		size_t last = 0;
+		for (auto it = std::sregex_iterator(in.begin(), in.end(), re); it != std::sregex_iterator(); ++it) {
+			const auto& m = *it;
+			out += in.substr(last, static_cast<size_t>(m.position()) - last);
+			out += fn(m);
+			last = static_cast<size_t>(m.position()) + static_cast<size_t>(m.length());
+		}
+		out += in.substr(last);
+		return out;
+	};
+
+	std::string out = text;
+
+	// Block-argument phi copies `device uchar* temp_i = var_$N;` inherit the
+	// source pointer's address space (decl + initializer on one line).
+	out = replaceAll(out, std::regex(R"(device uchar\* (temp_[0-9]+) = (var_\$[0-9]+);)"), [&](const std::smatch& m) {
+		if (tgVars.contains(m[2].str())) {
+			return "threadgroup uchar* " + m[1].str() + " = " + m[2].str() + ";";
+		}
+		return m.str(0);
+	});
+
+	// Pointer declarations `device uchar* var_$N;` (kernel args end in `[[...]]`,
+	// not `;`, so they are untouched).
+	out = replaceAll(out, std::regex(R"(device uchar\* (var_\$[0-9]+);)"), [&](const std::smatch& m) {
+		if (tgVars.contains(m[1].str())) {
+			return "threadgroup uchar* " + m[1].str() + ";";
+		}
+		return m.str(0);
+	});
+
+	// Pointer-cast LHS `var_$N = (device uchar*)`.
+	out = replaceAll(out, std::regex(R"((var_\$[0-9]+) = \(device uchar\*\))"), [&](const std::smatch& m) {
+		if (tgVars.contains(m[1].str())) {
+			return m[1].str() + " = (threadgroup uchar*)";
+		}
+		return m.str(0);
+	});
+
+	// Load/store casts `((TYPE*)(ADDR))`: prefix with the address space of ADDR
+	// (threadgroup for shared pointers, device otherwise). This also gives
+	// ordinary global accesses their required `device` qualifier.
+	out = replaceAll(out, std::regex(R"(\(\((\w+)\*\)\((var_\$[0-9]+)\))"), [&](const std::smatch& m) {
+		std::string space = tgVars.contains(m[2].str()) ? "threadgroup " : "device ";
+		return "((" + space + m[1].str() + "*)(" + m[2].str() + ")";
+	});
+
+	return out;
 }
 
 void MetalLoweringProvider::DeviceContext::processOperation(ir::Operation* opt, short blockIndex,
