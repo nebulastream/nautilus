@@ -12,5 +12,6 @@ if (ENABLE_TBC_BACKEND)
             TBCInterpreter.cpp
             TBCLoweringProvider.cpp
             TBCTrampoline.cpp
+            TBCVm.cpp
     )
 endif ()

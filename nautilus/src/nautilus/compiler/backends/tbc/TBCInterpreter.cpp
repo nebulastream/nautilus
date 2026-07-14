@@ -1,9 +1,9 @@
 
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCHandlers.hpp"
+#include "nautilus/compiler/backends/tbc/TBCVm.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <algorithm>
-#include <dyncall.h>
 #include <vector>
 
 // Dispatch capability detection. The tail-call skin needs Clang's guaranteed
@@ -23,145 +23,9 @@ namespace nautilus::compiler::tbc {
 
 namespace {
 
-/// Per-thread VM state: one contiguous stack shared by all frames of all
-/// nested invocations on this thread (reentrancy through external calls that
-/// call back into TBC code just pushes further frames at `sp`).
-struct VMContext {
-	std::vector<uint64_t> storage;
-	uint64_t* sp = nullptr;
-	uint64_t* stackEnd = nullptr;
-	const TBCProgram* prog = nullptr;
-};
-
-VMContext& tlsContext() {
-	static thread_local VMContext ctx;
-	return ctx;
-}
-
-DCCallVM* tlsDyncallVM() {
-	struct Holder {
-		DCCallVM* vm = dcNewCallVM(4096);
-		~Holder() {
-			dcFree(vm);
-		}
-	};
-	static thread_local Holder holder;
-	return holder.vm;
-}
-
 /// The single instruction an entry frame "returns" to; its handler terminates
 /// the dispatch loop and yields the entry result slot.
 constexpr Instr kHalt {opIndex(Op::HALT), 0, 0, 0};
-
-uint64_t* pushFrame(VMContext* ctx, const TBCFunction& fn, uint64_t* callerFp, const Instr* returnIp, uint16_t dstReg) {
-	uint64_t* base = ctx->sp;
-	if (base + fn.frameSlots > ctx->stackEnd) {
-		throw RuntimeException("tbc: VM stack overflow (increase tbc.stackSizeKb)");
-	}
-	ctx->sp = base + fn.frameSlots;
-	base[0] = reinterpret_cast<uint64_t>(callerFp);
-	base[1] = reinterpret_cast<uint64_t>(returnIp);
-	base[2] = dstReg == kNoReg ? ~uint64_t {0} : dstReg;
-	uint64_t* fp = base + 3;
-	std::memcpy(fp, fn.initImage.data(), fn.initImage.size() * sizeof(uint64_t));
-	if (!fn.allocaRegs.empty()) {
-		auto area = reinterpret_cast<uintptr_t>(fp + fn.regSlots);
-		area = (area + 15u) & ~uintptr_t {15};
-		std::memset(reinterpret_cast<void*>(area), 0, fn.allocaBytes);
-		for (const auto& [reg, offset] : fn.allocaRegs) {
-			fp[reg] = static_cast<uint64_t>(area + offset);
-		}
-	}
-	return fp;
-}
-
-/// External call through dyncall: marshal the argument registers per the call
-/// site's signature, call, and write the (re-normalized) result. Outgoing
-/// dyncall builds the call frame dynamically without any runtime code
-/// generation, so this path is iOS-safe (unlike dyncallback thunks).
-void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg) {
-	DCCallVM* vm = tlsDyncallVM();
-	dcReset(vm);
-	for (size_t i = 0; i < site.argRegs.size(); ++i) {
-		const uint16_t r = site.argRegs[i];
-		switch (site.argTypes[i]) {
-		case Type::b:
-			dcArgBool(vm, readReg<bool>(fp, r));
-			break;
-		case Type::i8:
-		case Type::ui8:
-			dcArgChar(vm, readReg<int8_t>(fp, r));
-			break;
-		case Type::i16:
-		case Type::ui16:
-			dcArgShort(vm, readReg<int16_t>(fp, r));
-			break;
-		case Type::i32:
-		case Type::ui32:
-			dcArgInt(vm, readReg<int32_t>(fp, r));
-			break;
-		case Type::i64:
-		case Type::ui64:
-			dcArgLongLong(vm, readReg<int64_t>(fp, r));
-			break;
-		case Type::f32:
-			dcArgFloat(vm, readReg<float>(fp, r));
-			break;
-		case Type::f64:
-			dcArgDouble(vm, readReg<double>(fp, r));
-			break;
-		case Type::ptr:
-			dcArgPointer(vm, reinterpret_cast<void*>(fp[r]));
-			break;
-		default:
-			throw RuntimeException("tbc: unsupported external call argument type");
-		}
-	}
-	switch (site.returnType) {
-	case Type::v:
-		dcCallVoid(vm, target);
-		return;
-	case Type::b:
-		// Mask to the low byte: callees are only required to set the low byte
-		// of a bool return register (same rationale as bc's Dyncall::callB).
-		writeReg<bool>(fp, dstReg, (dcCallBool(vm, target) & 0xFF) != 0);
-		return;
-	case Type::i8:
-		writeReg<int8_t>(fp, dstReg, dcCallChar(vm, target));
-		return;
-	case Type::ui8:
-		writeReg<uint8_t>(fp, dstReg, static_cast<uint8_t>(dcCallChar(vm, target)));
-		return;
-	case Type::i16:
-		writeReg<int16_t>(fp, dstReg, dcCallShort(vm, target));
-		return;
-	case Type::ui16:
-		writeReg<uint16_t>(fp, dstReg, static_cast<uint16_t>(dcCallShort(vm, target)));
-		return;
-	case Type::i32:
-		writeReg<int32_t>(fp, dstReg, dcCallInt(vm, target));
-		return;
-	case Type::ui32:
-		writeReg<uint32_t>(fp, dstReg, static_cast<uint32_t>(dcCallInt(vm, target)));
-		return;
-	case Type::i64:
-		writeReg<int64_t>(fp, dstReg, dcCallLongLong(vm, target));
-		return;
-	case Type::ui64:
-		writeReg<uint64_t>(fp, dstReg, static_cast<uint64_t>(dcCallLongLong(vm, target)));
-		return;
-	case Type::f32:
-		writeReg<float>(fp, dstReg, dcCallFloat(vm, target));
-		return;
-	case Type::f64:
-		writeReg<double>(fp, dstReg, dcCallDouble(vm, target));
-		return;
-	case Type::ptr:
-		writeReg<uint64_t>(fp, dstReg, reinterpret_cast<uint64_t>(dcCallPointer(vm, target)));
-		return;
-	}
-	throw RuntimeException("tbc: unsupported external call return type");
-}
 
 /// Control transfer produced by call/return helpers, applied by each skin.
 struct Transfer {
@@ -193,14 +57,6 @@ inline Transfer enterFunction(const TBCFunction& fn, const CallSite& site, const
 inline Transfer doCall(const Instr& inst, const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	const TBCProgram& prog = *ctx->prog;
 	return enterFunction(prog.functions[inst.b], prog.callsites[inst.c], ip, fp, ctx, inst.a);
-}
-
-inline void doIndirectCall(const Instr& inst, uint64_t* fp, VMContext* ctx) {
-	// Indirect targets are always real native pointers: internal functions
-	// hand out pre-compiled trampolines (TBCTrampoline.hpp), so no
-	// internal/external discrimination is needed here.
-	const CallSite& site = ctx->prog->callsites[inst.c];
-	doExtCall(site, reinterpret_cast<void*>(fp[inst.b]), fp, inst.a);
 }
 
 // ── Skin 1: portable for(;;) switch ─────────────────────────────────────────
