@@ -17,6 +17,14 @@
 #include <utility>
 #include <vector>
 
+#ifdef ENABLE_TBC_JIT
+namespace nautilus::compiler::tbc::jit {
+// Defined in libnautilus; gates the "tbc-jit" differential peer on actual
+// runtime availability (see testing::availableBackends).
+bool jitRuntimeAvailable();
+} // namespace nautilus::compiler::tbc::jit
+#endif
+
 namespace nautilus::fuzz {
 
 /// Layers extra options on top of a config's backend defaults (empty == plain
@@ -108,9 +116,21 @@ inline std::vector<Config> configs() {
 #ifdef ENABLE_TBC_BACKEND
 	addCompiling("tbc");
 #endif
+#ifdef ENABLE_TBC_JIT
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		result.emplace_back("tbc-jit");
+	}
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	addCompiling("asmjit");
 #endif
+	// Triage aid: NAUTILUS_FUZZ_BACKENDS=<comma-list> restricts the peers
+	// (e.g. "interpreter,tbc,tbc-jit" to bisect a finding to one backend).
+	if (const char* filter = std::getenv("NAUTILUS_FUZZ_BACKENDS")) {
+		const std::string list = std::string(",") + filter + ",";
+		std::erase_if(result,
+		              [&](const std::string& name) { return list.find("," + name + ",") == std::string::npos; });
+	}
 	return result;
 }
 
@@ -118,6 +138,9 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	engine::Options options;
 	if (backend == "interpreter") {
 		options.setOption("engine.Compilation", false);
+	} else if (backend == "tbc-jit") {
+		options.setOption("engine.backend", std::string("tbc"));
+		options.setOption("tbc.mode", std::string("jit"));
 	} else {
 		options.setOption("engine.backend", backend);
 	}

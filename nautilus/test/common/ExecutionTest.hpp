@@ -7,6 +7,15 @@
 #include <string>
 #include <vector>
 
+#ifdef ENABLE_TBC_JIT
+namespace nautilus::compiler::tbc::jit {
+// Declared here (defined in libnautilus) so the test harness can gate the
+// "tbc-jit" pseudo-backend on actual runtime availability without pulling
+// internal headers into every test target.
+bool jitRuntimeAvailable();
+} // namespace nautilus::compiler::tbc::jit
+#endif
+
 namespace nautilus::testing {
 
 using OptionsTweak = std::function<void(engine::Options&)>;
@@ -38,6 +47,14 @@ inline std::vector<std::string> availableBackends(bool include_asmjit = true) {
 #ifdef ENABLE_TBC_BACKEND
 	backends.emplace_back("tbc");
 #endif
+#ifdef ENABLE_TBC_JIT
+	// Pseudo-backend: tbc with its copy-and-patch JIT mode. Strict
+	// (tbc.mode=jit throws rather than degrades), so the whole suite runs on
+	// stitched code — but only when this build can execute it.
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		backends.emplace_back("tbc-jit");
+	}
+#endif
 #ifdef ENABLE_ASMJIT_BACKEND
 	if (include_asmjit) {
 		backends.emplace_back("asmjit");
@@ -52,6 +69,9 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 	engine::Options options;
 	if (backend == "interpreter") {
 		options.setOption("engine.Compilation", false);
+	} else if (backend == "tbc-jit") {
+		options.setOption("engine.backend", std::string("tbc"));
+		options.setOption("tbc.mode", std::string("jit"));
 	} else {
 		options.setOption("engine.backend", backend);
 	}
