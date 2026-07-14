@@ -4,6 +4,7 @@
 #include "nautilus/compiler/backends/tbc/TBCOpcodes.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,6 +47,17 @@ struct TBCFunction {
 
 enum class DispatchMode : uint8_t { Tailcall, Goto, Switch };
 
+/// Stitched copy-and-patch code for a whole program (tbc.mode=jit). The
+/// concrete subclass (jit/TBCStitcher.cpp) owns the executable span; this
+/// base keeps TBCCode free of any JIT/asmjit dependency so the interpreter
+/// builds identically with ENABLE_TBC_JIT off.
+struct TBCJitCode {
+	std::vector<void*> entries; // per-function stitched entry point
+	void* epilogue = nullptr;   // entry-frame landing pad (@EPILOGUE stencil)
+	size_t codeBytes = 0;       // stitched span size (statistics)
+	virtual ~TBCJitCode() = default;
+};
+
 /// A whole compiled module: all functions plus the program-wide call-site
 /// table. Heap-allocated once and never moved afterwards: escaping internal
 /// function pointers (see TBCTrampoline.hpp) bind trampoline slots to this
@@ -61,6 +73,12 @@ struct TBCProgram {
 	std::vector<CallSite> callsites;
 	uint64_t minStackSlots = 0;
 	DispatchMode dispatch = DispatchMode::Switch;
+	/// Set when the program was stitched by the copy-and-patch JIT; execution
+	/// then enters the stitched code instead of the dispatch loop. Stitched
+	/// code patches `&functions[i]` / `&callsites[i]` into instructions, so
+	/// neither vector may be resized once this is non-null (stitching is the
+	/// last step of TBCBackend::compile).
+	std::unique_ptr<TBCJitCode> jit;
 };
 
 } // namespace nautilus::compiler::tbc

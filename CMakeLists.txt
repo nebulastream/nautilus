@@ -19,6 +19,7 @@ cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENAB
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_TBC_BACKEND "Enable the threaded bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_LIBFFI "Use libffi static-trampoline closures for the bytecode backend instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND" OFF)
+cmake_dependent_option(ENABLE_TBC_JIT "Enable the copy-and-patch JIT execution mode of the tbc backend (tbc.mode=jit)" ON "ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
 
@@ -186,7 +187,9 @@ if (ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND)
     endif ()
 endif ()
 
-if (ENABLE_ASMJIT_BACKEND)
+# asmjit is needed by the asmjit backend and by the tbc copy-and-patch JIT
+# (executable-memory management: JitAllocator/VirtMem).
+if (ENABLE_ASMJIT_BACKEND OR ENABLE_TBC_JIT)
     set(ASMJIT_STATIC ON)
     set(ASMJIT_BUILD_RELEASE ON)
     set(ASMJIT_NO_FOREIGN ON)

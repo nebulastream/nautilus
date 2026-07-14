@@ -2,7 +2,11 @@
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCHandlers.hpp"
 #include "nautilus/compiler/backends/tbc/TBCVm.hpp"
+#include "nautilus/config.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
+#ifdef ENABLE_TBC_JIT
+#include "nautilus/compiler/backends/tbc/jit/TBCJit.hpp"
+#endif
 #include <algorithm>
 #include <vector>
 
@@ -344,6 +348,14 @@ DispatchMode clampDispatchMode(DispatchMode requested) {
 }
 
 uint64_t invoke(const TBCProgram& program, uint32_t functionIndex, const uint64_t* args, size_t argCount) {
+#ifdef ENABLE_TBC_JIT
+	// A stitched program executes through its copy-and-patch code; every
+	// caller (executable, trampolines) funnels through here, so this is the
+	// single interp/jit dispatch point.
+	if (program.jit != nullptr) {
+		return jit::invokeJit(program, functionIndex, args, argCount);
+	}
+#endif
 	auto& ctx = tlsContext();
 
 	// Size (or grow) the per-thread stack. Growth is only safe while no frame
