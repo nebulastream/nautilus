@@ -203,7 +203,3 @@ The following work is related to Nautilus and influenced its design:
 * [MLIR](https://mlir.llvm.org/) --
   a novel approach to building reusable and extensible compiler infrastructure. Nautilus leverages it
   as the foundation for its high-performance compilation backend.
-
-* [MIR](https://github.com/vnmakarov/mir) --
-  a lightweight JIT compiler targeting low compilation latency. Nautilus leverages MIR as a
-  low-latency compilation backend.
