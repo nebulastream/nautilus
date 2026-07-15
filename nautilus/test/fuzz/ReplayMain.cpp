@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -44,6 +45,49 @@ std::vector<uint8_t> readFile(const char* path) {
 	return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
+/// Little-endian byte patterns of the same boundary/edge-case constants
+/// enumerated in fuzz/dictionary (issue #359): this libFuzzer-free driver's
+/// built-in corpus has no `-dict` equivalent, so `randomBuffer()` below
+/// splices a few of these directly into its otherwise-uniform-random bytes
+/// -- reproducing, deterministically, the same "make INT_MIN/-1/NaN/+-0.0/
+/// power-of-two constants reachable instead of only-by-chance" effect the
+/// dictionary gives `nautilus-fuzz`'s coverage-guided mutator. Computed
+/// once; see fuzz/dictionary's header comment for why these bytes are
+/// stable (plain `std::numeric_limits<T>` memcpy'd little-endian, exactly
+/// `ByteReader::consume<T>()`'s layout).
+const std::vector<std::vector<uint8_t>>& boundaryPatterns() {
+	static const std::vector<std::vector<uint8_t>> patterns = [] {
+		std::vector<std::vector<uint8_t>> pats;
+		auto add = [&](auto v) {
+			using T = decltype(v);
+			std::vector<uint8_t> p(sizeof(T));
+			std::memcpy(p.data(), &v, sizeof(T));
+			pats.push_back(std::move(p));
+		};
+		add(std::numeric_limits<int8_t>::min());
+		add(std::numeric_limits<int8_t>::max());
+		add(int8_t(-1));
+		add(std::numeric_limits<int16_t>::min());
+		add(std::numeric_limits<int16_t>::max());
+		add(std::numeric_limits<int32_t>::min());
+		add(std::numeric_limits<int32_t>::max());
+		add(std::numeric_limits<int64_t>::min());
+		add(std::numeric_limits<int64_t>::max());
+		add(std::numeric_limits<uint32_t>::max());
+		add(std::numeric_limits<uint64_t>::max());
+		add(0.0f);
+		add(-0.0f);
+		add(std::numeric_limits<float>::quiet_NaN());
+		add(std::numeric_limits<float>::infinity());
+		add(0.0);
+		add(-0.0);
+		add(std::numeric_limits<double>::quiet_NaN());
+		add(std::numeric_limits<double>::infinity());
+		return pats;
+	}();
+	return patterns;
+}
+
 std::vector<uint8_t> randomBuffer() {
 	// 256, not the original 96/128/160: on top of the type-select byte, the
 	// signature-shape-select byte (Harness.hpp's NUM_SIGNATURE_SHAPES menu --
@@ -61,6 +105,23 @@ std::vector<uint8_t> randomBuffer() {
 	std::vector<uint8_t> buf(len);
 	for (size_t i = 0; i < len; ++i) {
 		buf[i] = static_cast<uint8_t>(nextRand());
+	}
+	// ~1 in 4 inputs additionally get 1-3 boundary-constant byte patterns
+	// spliced in at random offsets (overwriting, not resizing, so this never
+	// changes the byte budget the rest of generation sees) -- see
+	// boundaryPatterns() above. Purely a bias on which bytes land where a
+	// Kind::Const leaf (or anything else) happens to read them from; still
+	// fully deterministic (same nextRand() stream as everything else here).
+	if (!buf.empty() && nextRand() % 4 == 0) {
+		const auto& patterns = boundaryPatterns();
+		const int injections = 1 + static_cast<int>(nextRand() % 3);
+		for (int k = 0; k < injections; ++k) {
+			const auto& pattern = patterns[nextRand() % patterns.size()];
+			const size_t offset = nextRand() % buf.size();
+			for (size_t i = 0; i < pattern.size() && offset + i < buf.size(); ++i) {
+				buf[offset + i] = pattern[i];
+			}
+		}
 	}
 	return buf;
 }
