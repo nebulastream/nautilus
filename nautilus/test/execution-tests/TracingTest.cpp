@@ -2,6 +2,7 @@
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
+#include "ExplicitControlFlowFunctions.hpp"
 #include "ExpressionFunctions.hpp"
 #include "FunctionPtrFunctions.hpp"
 #include "LoopFunctions.hpp"
@@ -729,6 +730,29 @@ TEST_CASE("Path Explosion Trace Test") {
 	    {"pathExplosion_constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 	};
 	runTraceTests("path-explosion-tests", tests);
+}
+
+TEST_CASE("Explicit Control-flow Trace Test") {
+	// Trace-level goldens for the explicit If/While/For API (nautilus/control_flow.hpp).
+	// These assert the CFG/SSA/IR the explicit constructs emit in a single trace pass,
+	// and that it is identical under both tracing contexts.
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"ifThenExplicit", details::createFunctionWrapper(ifThenExplicit)},
+	    {"ifThenElseExplicit", details::createFunctionWrapper(ifThenElseExplicit)},
+	    {"nestedIfExplicit", details::createFunctionWrapper(nestedIfExplicit)},
+	    {"chainedIfExplicit", details::createFunctionWrapper(chainedIfExplicit)},
+	    {"conditionalAbsExplicit", details::createFunctionWrapper(conditionalAbsExplicit)},
+	    {"sumForExplicit", details::createFunctionWrapper(sumForExplicit)},
+	    {"whileCountdownExplicit", details::createFunctionWrapper(whileCountdownExplicit)},
+	    {"gcdExplicit", details::createFunctionWrapper(gcdExplicit)},
+	    {"ifInsideLoopExplicit", details::createFunctionWrapper(ifInsideLoopExplicit)},
+	    {"generalForExplicit", details::createFunctionWrapper(generalForExplicit)},
+	    {"whileBreakExplicit", details::createFunctionWrapper(whileBreakExplicit)},
+	    {"forContinueExplicit", details::createFunctionWrapper(forContinueExplicit)},
+	    {"maxExplicit", details::createFunctionWrapper(maxExplicit)},
+	    {"forStrideExplicit", details::createFunctionWrapper(forStrideExplicit)},
+	};
+	runTraceTests("explicit-control-flow-tests", tests);
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {

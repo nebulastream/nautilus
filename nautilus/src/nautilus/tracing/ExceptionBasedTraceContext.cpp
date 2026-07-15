@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -348,6 +349,9 @@ void ExceptionBasedTraceContext::popStaticVal() {
 }
 
 bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {
+	// Mark that this function uses implicit native control flow so the explicit-CF
+	// guard can reject mixing the two in one function.
+	state->sawImplicitBranch = true;
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
 		// eval execution path one step
@@ -376,6 +380,79 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 	}
 	state->executionTrace.setCurrentBlock(nextBlock);
 	return result;
+}
+
+// --- Explicit control-flow primitives ---
+//
+// Implemented on the shared TraceContextBase: they only touch state->executionTrace
+// and state->symbolicExecutionContext, both of which exist for every trace mode, so
+// exception-based and lazy tracing support explicit control flow uniformly.
+//
+// Explicit control flow emits both branch bodies in a single trace pass and never
+// enqueues a symbolic execution path, so a purely-explicit function traces in one
+// iteration. Mixing with implicit native control flow (a val<bool> used in a native
+// if/for) would make the symbolic driver re-run the whole function, re-entering and
+// double-emitting these constructs. We detect that here: any iteration beyond the
+// first means an implicit branch enqueued a path, which is unsupported.
+void TraceContextBase::rejectIfMixedWithImplicitControlFlow() {
+	if (state->sawImplicitBranch) {
+		throw RuntimeException("Explicit control-flow constructs (If/While/For) cannot be mixed with implicit native "
+		                       "control flow (a native if/for/while over a val<bool>) in the same traced function. "
+		                       "Express all control flow in the function with explicit constructs instead.");
+	}
+}
+
+ExplicitCmpBlocks TraceContextBase::emitExplicitCmp(const TypedValueRef& condition, double probability) {
+	rejectIfMixedWithImplicitControlFlow();
+	return state->executionTrace.emitCmpNoRecord(condition, probability);
+}
+
+uint32_t TraceContextBase::openMergeBlock() {
+	rejectIfMixedWithImplicitControlFlow();
+	return state->executionTrace.createMergeBlock();
+}
+
+void TraceContextBase::switchToBlock(uint32_t blockId) {
+	state->executionTrace.setCurrentBlock(blockId);
+}
+
+uint32_t TraceContextBase::currentBlock() {
+	return state->executionTrace.getCurrentBlockIndex();
+}
+
+void TraceContextBase::jumpTo(uint32_t fromBlock, uint32_t targetBlock) {
+	state->executionTrace.emitJmp(fromBlock, targetBlock);
+}
+
+void TraceContextBase::pushLoopFrame(uint32_t continueTarget, uint32_t exitBlock) {
+	state->loopStack.push_back({continueTarget, exitBlock});
+}
+
+void TraceContextBase::popLoopFrame() {
+	if (state->loopStack.empty()) {
+		throw RuntimeException("popLoopFrame() with no active explicit loop");
+	}
+	state->loopStack.pop_back();
+}
+
+void TraceContextBase::breakLoop() {
+	if (state->loopStack.empty()) {
+		throw RuntimeException("Break() used outside of an explicit For/While loop");
+	}
+	auto exitBlock = state->loopStack.back().exitBlock;
+	state->executionTrace.emitJmp(state->executionTrace.getCurrentBlockIndex(), exitBlock);
+	// Continue emitting into a fresh, unreachable block so any trailing ops on the
+	// dead path (after the break) don't append past the JMP terminator.
+	state->executionTrace.setCurrentBlock(state->executionTrace.createBlock());
+}
+
+void TraceContextBase::continueLoop() {
+	if (state->loopStack.empty()) {
+		throw RuntimeException("Continue() used outside of an explicit For/While loop");
+	}
+	auto continueTarget = state->loopStack.back().continueTarget;
+	state->executionTrace.emitJmp(state->executionTrace.getCurrentBlockIndex(), continueTarget);
+	state->executionTrace.setCurrentBlock(state->executionTrace.createBlock());
 }
 
 std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<void()>& traceFunction,
