@@ -1,0 +1,12 @@
+# Replace with your domain; Caddy provisions TLS automatically.
+# For local testing use `:8443` and self-signed certs instead.
+playground.example.org {
+	reverse_proxy api:8080
+	encode gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		# Monaco + Mermaid render locally; no external origins needed.
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob:; script-src 'self' blob:"
+	}
+}

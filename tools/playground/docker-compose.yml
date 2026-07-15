@@ -1,0 +1,42 @@
+# Nautilus Playground deployment: API server (+ built-in static web app)
+# behind Caddy for TLS. The runner image must be built beforehand:
+#
+#   docker build -f tools/playground/runner/Dockerfile.runner -t nautilus-playground-runner ../..
+#   docker build -f tools/playground/server/Dockerfile -t nautilus-playground-api ../..
+#   docker compose up -d
+#
+# SECURITY NOTE: the api service mounts the Docker socket so it can spawn
+# sandboxed runner containers. Anyone who compromises the API process
+# controls the Docker daemon — prefer a rootless podman socket or a gVisor
+# runtime for the runners in hardened deployments (set SANDBOX_CMD).
+
+services:
+  api:
+    image: nautilus-playground-api
+    restart: unless-stopped
+    environment:
+      RUNNER_IMAGE: nautilus-playground-runner
+      TRUST_PROXY: "1"
+      # JOB_ROOT must be visible to the host Docker daemon under the SAME
+      # path, because runner bind-mounts are resolved by the daemon.
+      JOB_ROOT: /var/tmp/nautilus-playground-jobs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/tmp/nautilus-playground-jobs:/var/tmp/nautilus-playground-jobs
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+
+volumes:
+  caddy-data:

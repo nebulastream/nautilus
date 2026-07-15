@@ -1,5 +1,6 @@
 
 #include "MetalCompilationBackend.hpp"
+#include "../GPUCodegenOnlyExecutable.hpp"
 #include "MetalCompiler.hpp"
 #include "MetalExecutable.hpp"
 #include "MetalHostCompiler.hpp"
@@ -15,6 +16,12 @@ std::unique_ptr<Executable> MetalCompilationBackend::compile(const std::shared_p
 	auto result = MetalLoweringProvider::lower(ir, options);
 	dumpHandler.dump("after_metal_generation", ".metal", [&]() { return result.deviceCode; });
 	dumpHandler.dump("after_metal_host_generation", ".mm", [&]() { return result.hostCode; });
+
+	// Stop after code generation when requested — machines without the Metal
+	// toolchain (e.g. Linux) can still inspect the generated sources.
+	if (options.getOptionOrDefault("gpu.codegenOnly", false)) {
+		return std::make_unique<nautilus::gpu::CodegenOnlyExecutable>();
+	}
 
 	std::string identifier = "nautilus_metal_" + ir->getId();
 

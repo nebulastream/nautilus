@@ -1,0 +1,292 @@
+:root {
+	--teal-500: #3cb4a4;
+	--teal-600: #2c9486;
+	--text-900: #1c2733;
+	--text-600: #46586a;
+	--text-400: #7a8a99;
+	--line-200: #d7dee4;
+	--line-100: #e8edf1;
+	--paper: #ffffff;
+	--paper-dim: #f6f8fa;
+	--paper-raised: #fbfcfd;
+	--red-700: #a11f38;
+	--red-050: #fdf0f2;
+	--mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	margin: 0;
+	height: 100%;
+	font-size: 14px;
+	color: var(--text-900);
+	background: var(--paper-dim);
+}
+
+.app {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+/* --- unified navbar (controls are Mantine; this is just the shell) --- */
+.toolbar {
+	display: flex;
+	align-items: center;
+	padding: 9px 16px;
+	background: var(--paper);
+	border-bottom: 1px solid var(--line-200);
+	box-shadow: 0 1px 3px rgba(16, 34, 46, 0.05);
+	z-index: 20;
+}
+
+.status-pill.status-working {
+	animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	50% {
+		opacity: 0.55;
+	}
+}
+
+/* --- panes --- */
+.panes {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+}
+
+.pane {
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.editor-pane {
+	flex: 0 0 45%;
+	border-right: 1px solid var(--line-200);
+	background: var(--paper);
+}
+
+.inspector-pane {
+	flex: 1;
+	background: var(--paper);
+	overflow: hidden;
+}
+
+.editor-container {
+	flex: 1;
+	min-height: 0;
+}
+
+/* --- inspector --- */
+.placeholder {
+	padding: 40px;
+	max-width: 580px;
+	color: var(--text-600);
+	line-height: 1.6;
+}
+
+.placeholder h2 {
+	color: var(--text-900);
+	font-size: 19px;
+	margin: 0 0 14px;
+}
+
+.placeholder code {
+	font-family: var(--mono);
+	font-size: 12.5px;
+	background: var(--paper-dim);
+	border: 1px solid var(--line-100);
+	border-radius: 4px;
+	padding: 1px 5px;
+}
+
+.stage-tabs {
+	display: flex;
+	gap: 16px;
+	padding: 9px 14px;
+	border-bottom: 1px solid var(--line-200);
+	overflow-x: auto;
+	flex-wrap: wrap;
+	background: var(--paper-raised);
+}
+
+.stage-group {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	/* A group with many tabs (all optimization passes active) must break
+	   into multiple lines instead of forcing one overlong row. */
+	flex-wrap: wrap;
+	max-width: 100%;
+	row-gap: 6px;
+}
+
+.stage-group-label {
+	font-size: 10.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--text-400);
+	margin-right: 3px;
+}
+
+.stage-tab {
+	font: inherit;
+	font-size: 12.5px;
+	height: 26px;
+	padding: 0 11px;
+	border-radius: 999px;
+	border: 1px solid var(--line-200);
+	background: var(--paper);
+	color: var(--text-900);
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		background 100ms ease,
+		border-color 100ms ease;
+}
+
+.stage-tab:hover {
+	border-color: var(--teal-500);
+}
+
+.stage-tab.active {
+	background: var(--teal-500);
+	border-color: var(--teal-500);
+	color: #06231e;
+	font-weight: 600;
+}
+
+.stage-tab:focus-visible {
+	outline: 2px solid var(--teal-500);
+	outline-offset: 1px;
+}
+
+.stage-content {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.stage-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.stage-toolbar {
+	border-bottom: 1px solid var(--line-100);
+	background: var(--paper-raised);
+}
+
+/* --- diagnostics --- */
+.diagnostics {
+	border-bottom: 1px solid #f0c7cd;
+	background: var(--red-050);
+	max-height: 40%;
+	overflow: auto;
+}
+
+.diagnostics-headline {
+	font-weight: 600;
+	color: var(--red-700);
+	padding: 9px 14px 0;
+}
+
+.diagnostics-detail {
+	margin: 6px 0 0;
+	padding: 8px 14px 12px;
+	font-family: var(--mono);
+	font-size: 12px;
+	white-space: pre-wrap;
+	color: #58202e;
+}
+
+/* --- graph view --- */
+.graph-view {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.graph-controls {
+	border-bottom: 1px solid var(--line-100);
+	background: var(--paper-raised);
+}
+
+.graph-canvas {
+	flex: 1;
+	overflow: auto;
+	padding: 18px;
+}
+
+.graph-empty,
+.graph-error {
+	padding: 26px;
+	color: var(--text-600);
+}
+
+.graph-error {
+	color: var(--red-700);
+}
+
+/* --- statistics view --- */
+.stats-view {
+	flex: 1;
+	overflow: auto;
+	padding: 18px 22px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	align-items: flex-start;
+}
+
+.stats-group-title {
+	margin: 0 0 6px;
+	font-size: 10.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.07em;
+	color: var(--text-400);
+}
+
+.stats-table {
+	border-collapse: collapse;
+	font-family: var(--mono);
+	font-size: 12.5px;
+}
+
+.stats-table td {
+	padding: 3px 0;
+	border-bottom: 1px solid var(--line-100);
+	vertical-align: top;
+}
+
+.stats-table td.stats-key {
+	color: var(--text-600);
+	padding-right: 28px;
+	white-space: nowrap;
+}
+
+.stats-value {
+	color: var(--text-900);
+	text-align: right;
+	white-space: nowrap;
+}
+
+.stats-empty {
+	padding: 26px;
+	color: var(--text-600);
+}
