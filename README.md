@@ -11,9 +11,9 @@ code through one of several interchangeable backends, trading off
 compilation latency against code quality at runtime.
 
 Nautilus was developed by the DIMA group at TU Berlin and is used as the
-query compiler of [NebulaStream](https://www.nebula.stream), a data
-management system. Its design is described in a SIGMOD 2024 paper (see
-[Publication](#publication) below).
+query compiler of the data management system
+[NebulaStream](https://www.nebula.stream). Its design is described in a
+SIGMOD 2024 paper (see [Publication](#publication) below).
 
 ▶ **[Try Nautilus in your browser: no setup required](https://nautilus.grulich.me)**
 
