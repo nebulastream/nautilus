@@ -137,9 +137,25 @@ a:hover {
 		grid-template-columns: 1fr;
 	}
 
+	/* Collapse the sidebar into a compact wrapping chip row so content
+	 * starts above the fold on phones. */
 	.sidebar {
 		border-right: none;
 		border-bottom: 1px solid var(--border);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px 4px;
+		padding: 10px 12px;
+	}
+
+	.sidebar .nav-title {
+		margin: 0 6px 0 4px;
+	}
+
+	.sidebar a {
+		padding: 4px 10px;
+		border-radius: 999px;
 	}
 }
 
@@ -394,6 +410,11 @@ button.plain {
 	padding: 5px 8px;
 	font: inherit;
 	cursor: pointer;
+}
+
+/* Run-picker options are long; never let a select force horizontal scroll. */
+select {
+	max-width: 100%;
 }
 
 .mono {
