@@ -1,6 +1,6 @@
 
 #include "CUDALoweringProvider.hpp"
-#include <cassert>
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include <string>
 #include <utility>
 
@@ -76,13 +76,26 @@ std::string CUDALoweringProvider::LoweringContext::getType(const Type& stamp) {
 	case Type::ptr:
 		return "uint8_t*";
 	}
-	assert(false);
-	return "unknown";
+	throw RuntimeException(
+	    "CUDALoweringProvider: unsupported IR type stamp (value=" + std::to_string(static_cast<int>(stamp)) + ")");
 }
 
 CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContext::process() {
 	Code pipelineCode;
 	pipelineCode << "\n#include <cstdint>\n#include <cuda_runtime.h>\n\n";
+
+	// When enabled, emit a header-only helper that aborts with a useful message
+	// on any non-success CUDA error. Default is off so existing codegen
+	// reference outputs and downstream consumers stay byte-identical.
+	if (options.getOptionOrDefault<bool>("gpu.cuda.errorCheck", false)) {
+		pipelineCode << "#include <cstdio>\n"
+		             << "#include <cstdlib>\n"
+		             << "static inline void nautilus_cuda_check(cudaError_t e, const char* where) {\n"
+		             << "if (e != cudaSuccess) {\n"
+		             << "fprintf(stderr, \"[nautilus-cuda] %s: %s\\n\", where, cudaGetErrorString(e));\n"
+		             << "abort();\n"
+		             << "}\n}\n\n";
+	}
 
 	classifyKernelFunctions();
 
@@ -230,7 +243,16 @@ void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperat
 			blocks[blockIndex] << opt->getFunctionName() << "<<<dim3(" << gx << "," << gy << "," << gz << "),dim3("
 			                   << bx << "," << by << "," << bz << ")>>>(" << args.str() << ");\n";
 		}
-		blocks[blockIndex] << "cudaDeviceSynchronize();\n";
+		if (options.getOptionOrDefault<bool>("gpu.cuda.errorCheck", false)) {
+			// Check the launch itself (catches invalid configurations) and the
+			// device sync (catches asynchronous in-kernel faults).
+			blocks[blockIndex] << "nautilus_cuda_check(cudaGetLastError(),\"" << opt->getFunctionName()
+			                   << " launch\");\n";
+			blocks[blockIndex] << "nautilus_cuda_check(cudaDeviceSynchronize(),\"" << opt->getFunctionName()
+			                   << " sync\");\n";
+		} else {
+			blocks[blockIndex] << "cudaDeviceSynchronize();\n";
+		}
 		hasLaunchConfig = false; // consumed
 		return;
 	}
