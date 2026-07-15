@@ -122,8 +122,12 @@ TypeId AsmJitLoweringProvider::LoweringContext::getTypeId(Type t) {
 		return TypeId::kFloat32;
 	case Type::f64:
 		return TypeId::kFloat64;
+	case Type::v:
+		return TypeId::kVoid;
 	default:
-		return TypeId::kInt64;
+		// Fail loudly: silently defaulting to kInt64 miscompiles (wrong
+		// width/signedness) if the Type enum grows without this switch.
+		throw NotImplementedException("getTypeId: unsupported Type");
 	}
 }
 

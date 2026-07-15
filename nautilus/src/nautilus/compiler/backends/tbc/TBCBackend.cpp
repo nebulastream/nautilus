@@ -101,12 +101,20 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 		auto& function = program->functions[i];
 		TBCLoweringProvider::lower(funcOp, *program, function, loweringOptions);
 
-		if (funcOp->getName() == "execute") {
-			dumpHandler.dump("after_tbc_generation", "tbc", [&function]() { return function.toString(); });
-		}
 		totalInstructions += static_cast<int64_t>(function.code.size());
 		maxRegisters = std::max<int64_t>(maxRegisters, function.regSlots);
 	}
+
+	// Dump every module function, not just a fixed "execute" entry point
+	// (module-API functions carry user-chosen names).
+	dumpHandler.dump("after_tbc_generation", "tbc", [&program]() {
+		std::string out;
+		for (const auto& function : program->functions) {
+			out += function.toString();
+			out += "\n";
+		}
+		return out;
+	});
 
 	// Copy-and-patch JIT (tbc.mode): stitching is the LAST compile step — it
 	// patches &functions[i]/&callsites[i] into the code, so both vectors must
