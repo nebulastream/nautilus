@@ -7,7 +7,7 @@
 Write imperative C++ using `val<T>` wrapper types, and Nautilus traces the
 control flow and operations of your function, converts the trace into an
 intermediate representation (IR), optimizes it, and compiles it to efficient
-code through one of several interchangeable backends -- letting you trade off
+code through one of several interchangeable backends, trading off
 compilation latency against code quality at runtime.
 
 Nautilus was developed by the DIMA group at TU Berlin and is used as the
@@ -15,7 +15,7 @@ query compiler of [NebulaStream](https://www.nebula.stream), a data
 management system. Its design is described in a SIGMOD 2024 paper (see
 [Publication](#publication) below).
 
-▶ **[Try Nautilus in your browser -- no setup required](https://nautilus.grulich.me)**
+▶ **[Try Nautilus in your browser: no setup required](https://nautilus.grulich.me)**
 
 ## Contents
 
@@ -30,15 +30,15 @@ management system. Its design is described in a SIGMOD 2024 paper (see
 ## Why Nautilus?
 
 - **Write ordinary C++.** Loops, branches, and expressions over `val<T>`
-  values look and read like normal C++ -- no separate DSL or code-generation
+  values look and read like normal C++: no separate DSL or code-generation
   templates to learn.
 - **Trace once, compile anywhere.** A single traced function can target
   multiple backends without changes to its source:
-  - **MLIR** -- lowers through MLIR/LLVM to native machine code for maximum
+  - **MLIR**: lowers through MLIR/LLVM to native machine code for maximum
     performance.
-  - **C++** -- emits readable, compilable C++ source, useful for debugging
+  - **C++**: emits readable, compilable C++ source, useful for debugging
     and inspection.
-  - **Bytecode** -- interprets directly, optionally accelerated by a
+  - **Bytecode**: interprets directly, optionally accelerated by a
     copy-and-patch JIT that stitches together pre-compiled machine-code
     stencils, for very low compilation latency.
 - **Optimizing IR pipeline.** Traced code passes through an SSA-based IR with
@@ -97,13 +97,15 @@ int main(int, char*[]) {
 ```
 
 Want to run this without installing anything? Try it live in the
-**[Nautilus Playground](https://nautilus.grulich.me)**.
+**[Nautilus Playground](https://nautilus.grulich.me)**, a Godbolt-style web UI
+for exploring the compilation pipeline. Its source lives in
+[`tools/playground/`](tools/playground) and can be self-hosted.
 
 ## Getting Started
 
 ### Prerequisites
 
-- A C++20 compiler -- GCC 14+ or Clang 19+ (Clang 21 is used by default in CI)
+- A C++20 compiler: GCC 14+ or Clang 19+ (Clang 21 is used by default in CI)
 - CMake 3.16+
 - MLIR is downloaded automatically on first build if the MLIR backend is enabled
 
@@ -194,21 +196,21 @@ the code-generation API, which has since changed.
 
 The following work is related to Nautilus and influenced its design:
 
-* [Tidy Tuples and Flying Start](db.in.tum.de/~kersten/Tidy%20Tuples%20and%20Flying%20Start%20Fast%20Compilation%20and%20Fast%20Execution%20of%20Relational%20Queries%20in%20Umbra.pdf) --
+* [Tidy Tuples and Flying Start](db.in.tum.de/~kersten/Tidy%20Tuples%20and%20Flying%20Start%20Fast%20Compilation%20and%20Fast%20Execution%20of%20Relational%20Queries%20in%20Umbra.pdf):
   describes the low-latency query compilation approach of [Umbra](https://umbra-db.com/), one of the
   main motivations for creating Nautilus.
 
-* [Flounder](https://vldb.org/pvldb/vol14/p2691-funke.pdf) --
+* [Flounder](https://vldb.org/pvldb/vol14/p2691-funke.pdf):
   a simple low-latency JIT compiler based on [AsmJit](https://asmjit.com/), designed for query compilation.
 
-* [Build-It](https://buildit.so/) --
+* [Build-It](https://buildit.so/):
   a framework for developing Domain Specific Languages in C++ that pioneered extracting control-flow
   information from imperative C++ code.
 
-* [GraalVM](https://www.graalvm.org/) --
+* [GraalVM](https://www.graalvm.org/):
   provides a framework to implement AST interpreters that can be turned into high-performance code
   through partial evaluation.
 
-* [MLIR](https://mlir.llvm.org/) --
+* [MLIR](https://mlir.llvm.org/):
   a novel approach to building reusable and extensible compiler infrastructure. Nautilus leverages it
   as the foundation for its high-performance compilation backend.
