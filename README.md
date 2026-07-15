@@ -54,9 +54,13 @@ The example below implements a simplified aggregation operator,
 `conditionalSum`, which sums the elements of `array` where the corresponding
 entry in `mask` is `true`. Nautilus's `val<T>` types capture every operation
 performed on them during tracing, so the function body reads like plain C++
-while still producing a full execution trace.
+while still producing a full execution trace. This is the same code as
+[`example/src/DemoJit.cpp`](example/src/DemoJit.cpp), which you can build and
+run directly (see [Getting Started](#getting-started)).
 
 ```c++
+#include <cstdint>
+#include <iostream>
 #include <nautilus/Engine.hpp>
 #include <nautilus/core.hpp>
 
@@ -65,24 +69,29 @@ using namespace nautilus;
 val<int32_t> conditionalSum(val<int32_t> size, val<bool*> mask, val<int32_t*> array) {
 	val<int32_t> sum = 0;
 	for (val<int32_t> i = 0; i < size; i++) {
+		// check mask
 		if (mask[i]) {
+			// load value from array at position i
 			val<int32_t> value = array[i];
+			// add value to sum
 			sum += value;
 		}
 	}
 	return sum;
 }
 
-int main() {
+int main(int, char*[]) {
 	engine::Options options;
+	// select the compilation backend, e.g. mlir, cpp, or bc
 	options.setOption("engine.backend", "mlir");
 	auto engine = engine::NautilusEngine(options);
+	// register a function pointer to nautilus
 	auto function = engine.registerFunction(conditionalSum);
-
-	bool mask[4] = {true, true, false, true};
-	int32_t array[4] = {1, 2, 3, 4};
+	auto mask = new bool[4] {true, true, false, true};
+	auto array = new int32_t[4] {1, 2, 3, 4};
 	auto result = function(4, mask, array);
-	std::cout << "Result: " << result << std::endl; // 7
+	// result is 7
+	std::cout << "Result: " << result << std::endl;
 	return 0;
 }
 ```
