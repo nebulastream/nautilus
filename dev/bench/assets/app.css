@@ -1,0 +1,423 @@
+/* Nautilus benchmark dashboard. Theme roles follow the dataviz reference
+ * palette; dark values are their own selected steps, not an automatic flip.
+ * The viewer's toggle stamps data-theme on <html> and must win both ways. */
+
+:root {
+	color-scheme: light;
+	--page: #f9f9f7;
+	--surface: #fcfcfb;
+	--ink: #0b0b0b;
+	--ink-2: #52514e;
+	--muted: #898781;
+	--grid: #e1e0d9;
+	--baseline: #c3c2b7;
+	--border: rgba(11, 11, 11, 0.1);
+	--accent: #2a78d6;
+	--delta-good: #006300;
+	--delta-good-bg: rgba(12, 163, 12, 0.1);
+	--delta-bad: #d03b3b;
+	--delta-bad-bg: rgba(208, 59, 59, 0.1);
+	--s1: #2a78d6;
+	--s2: #008300;
+	--s3: #e87ba4;
+	--s4: #eda100;
+	--s5: #1baf7a;
+	--s6: #eb6834;
+	--s7: #4a3aa7;
+	--s8: #e34948;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:where(:not([data-theme='light'])) {
+		color-scheme: dark;
+		--page: #0d0d0d;
+		--surface: #1a1a19;
+		--ink: #ffffff;
+		--ink-2: #c3c2b7;
+		--muted: #898781;
+		--grid: #2c2c2a;
+		--baseline: #383835;
+		--border: rgba(255, 255, 255, 0.1);
+		--accent: #3987e5;
+		--delta-good: #0ca30c;
+		--delta-good-bg: rgba(12, 163, 12, 0.16);
+		--delta-bad: #e66767;
+		--delta-bad-bg: rgba(230, 103, 103, 0.16);
+		--s1: #3987e5;
+		--s2: #008300;
+		--s3: #d55181;
+		--s4: #c98500;
+		--s5: #199e70;
+		--s6: #d95926;
+		--s7: #9085e9;
+		--s8: #e66767;
+	}
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--page: #0d0d0d;
+	--surface: #1a1a19;
+	--ink: #ffffff;
+	--ink-2: #c3c2b7;
+	--muted: #898781;
+	--grid: #2c2c2a;
+	--baseline: #383835;
+	--border: rgba(255, 255, 255, 0.1);
+	--accent: #3987e5;
+	--delta-good: #0ca30c;
+	--delta-good-bg: rgba(12, 163, 12, 0.16);
+	--delta-bad: #e66767;
+	--delta-bad-bg: rgba(230, 103, 103, 0.16);
+	--s1: #3987e5;
+	--s2: #008300;
+	--s3: #d55181;
+	--s4: #c98500;
+	--s5: #199e70;
+	--s6: #d95926;
+	--s7: #9085e9;
+	--s8: #e66767;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--page);
+	color: var(--ink);
+	font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 20px;
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	position: sticky;
+	top: 0;
+	z-index: 10;
+}
+
+.topbar h1 {
+	font-size: 16px;
+	margin: 0;
+	font-weight: 650;
+}
+
+.topbar .meta {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.topbar .spacer {
+	flex: 1;
+}
+
+.layout {
+	display: grid;
+	grid-template-columns: 220px 1fr;
+	min-height: calc(100vh - 45px);
+}
+
+@media (max-width: 800px) {
+	.layout {
+		grid-template-columns: 1fr;
+	}
+
+	/* Collapse the sidebar into a compact wrapping chip row so content
+	 * starts above the fold on phones. */
+	.sidebar {
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px 4px;
+		padding: 10px 12px;
+	}
+
+	.sidebar .nav-title {
+		margin: 0 6px 0 4px;
+	}
+
+	.sidebar a {
+		padding: 4px 10px;
+		border-radius: 999px;
+	}
+}
+
+.sidebar {
+	padding: 16px 12px;
+	border-right: 1px solid var(--border);
+}
+
+.sidebar .nav-title {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+	margin: 14px 8px 4px;
+}
+
+.sidebar a {
+	display: block;
+	padding: 6px 8px;
+	border-radius: 6px;
+	color: var(--ink-2);
+}
+
+.sidebar a:hover {
+	background: var(--grid);
+	text-decoration: none;
+}
+
+.sidebar a.active {
+	background: var(--grid);
+	color: var(--ink);
+	font-weight: 600;
+}
+
+.content {
+	padding: 20px;
+	min-width: 0;
+}
+
+.content h2 {
+	margin: 0 0 4px;
+	font-size: 18px;
+}
+
+.content .subtitle {
+	color: var(--ink-2);
+	margin: 0 0 16px;
+}
+
+.toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 16px;
+}
+
+.toolbar .label {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.chip {
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--ink-2);
+	border-radius: 999px;
+	padding: 3px 12px;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.chip.on {
+	border-color: var(--accent);
+	color: var(--ink);
+	font-weight: 600;
+	background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.chart-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+	gap: 16px;
+}
+
+@media (max-width: 560px) {
+	.chart-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 14px 14px 8px;
+	min-width: 0;
+}
+
+.card.highlight {
+	outline: 2px solid var(--accent);
+}
+
+.card h3 {
+	margin: 0 0 2px;
+	font-size: 14px;
+}
+
+.card .unit-note {
+	color: var(--muted);
+	font-size: 11px;
+	margin-bottom: 6px;
+}
+
+.card .plot {
+	position: relative;
+	height: 240px;
+}
+
+.empty-state {
+	max-width: 560px;
+	margin: 60px auto;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 24px;
+}
+
+.empty-state code {
+	background: var(--grid);
+	padding: 1px 5px;
+	border-radius: 4px;
+}
+
+table.bench {
+	width: 100%;
+	border-collapse: collapse;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+	margin-bottom: 20px;
+}
+
+table.bench th {
+	text-align: left;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--muted);
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--grid);
+}
+
+table.bench td {
+	padding: 6px 12px;
+	border-bottom: 1px solid var(--grid);
+	font-variant-numeric: tabular-nums;
+}
+
+table.bench tr:last-child td {
+	border-bottom: none;
+}
+
+table.bench td.num,
+table.bench th.num {
+	text-align: right;
+}
+
+table.bench td.range {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.table-wrap {
+	overflow-x: auto;
+}
+
+.delta {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.delta.good {
+	color: var(--delta-good);
+	background: var(--delta-good-bg);
+}
+
+.delta.bad {
+	color: var(--delta-bad);
+	background: var(--delta-bad-bg);
+}
+
+.delta.flat {
+	color: var(--muted);
+}
+
+.badge {
+	display: inline-block;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--accent);
+	border: 1px solid var(--accent);
+	border-radius: 4px;
+	padding: 0 5px;
+	margin-left: 6px;
+}
+
+.run-header {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 16px;
+	margin-bottom: 20px;
+}
+
+.run-header .msg {
+	font-size: 16px;
+	font-weight: 650;
+}
+
+.run-header .meta {
+	color: var(--ink-2);
+	margin-top: 4px;
+	font-size: 13px;
+}
+
+.run-nav {
+	display: flex;
+	gap: 12px;
+	margin-top: 10px;
+	font-size: 13px;
+}
+
+.section-note {
+	color: var(--muted);
+	font-size: 12px;
+	margin: -12px 0 16px;
+}
+
+select,
+button.plain {
+	background: var(--surface);
+	color: var(--ink);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 5px 8px;
+	font: inherit;
+	cursor: pointer;
+}
+
+/* Run-picker options are long; never let a select force horizontal scroll. */
+select {
+	max-width: 100%;
+}
+
+.mono {
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	font-size: 12px;
+}
