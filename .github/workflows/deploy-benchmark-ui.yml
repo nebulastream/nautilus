@@ -1,0 +1,59 @@
+name: Deploy benchmark UI
+
+# Publishes tools/benchmark-ui onto the `pages` branch next to the benchmark
+# data written by benchmark-action/github-action-benchmark (benchmark.yml).
+# The UI reads dev/bench/data.js at runtime, so it only needs redeploying when
+# the UI itself changes — benchmark runs keep updating data.js independently.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/benchmark-ui/**'
+      - '.github/workflows/deploy-benchmark-ui.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-ui-deploy
+
+jobs:
+  deploy:
+    name: Copy UI to pages branch
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: pages
+          path: pages-branch
+      - name: Copy UI onto pages branch
+        run: |
+          mkdir -p pages-branch/dev/bench
+          rm -rf pages-branch/dev/bench/assets
+          cp -r tools/benchmark-ui/assets pages-branch/dev/bench/assets
+          cp tools/benchmark-ui/index.html pages-branch/dev/bench/index.html
+      - name: Commit and push (retry on race with benchmark data push)
+        working-directory: pages-branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Add only the UI files so a concurrent data.js update is never touched.
+          git add dev/bench/index.html dev/bench/assets
+          if git diff --cached --quiet; then
+            echo "UI unchanged, nothing to deploy"
+            exit 0
+          fi
+          git commit -m "deploy benchmark UI from ${GITHUB_SHA}"
+          for i in 1 2 3; do
+            if git push origin HEAD:pages; then
+              exit 0
+            fi
+            # benchmark.yml pushed new data.js meanwhile; disjoint paths, so
+            # the rebase cannot conflict.
+            git pull --rebase origin pages
+          done
+          exit 1

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Nautilus Benchmarks</title>
+	<link rel="stylesheet" href="./assets/app.css" />
+	<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐚</text></svg>" />
+	<script src="./assets/vendor/chart.umd.min.js"></script>
+	<!-- Written by benchmark-action/github-action-benchmark next to this page
+	     on the `pages` branch; fetched via ./fetch-data.sh for local dev. -->
+	<script src="./data.js"></script>
+</head>
+<body>
+	<header class="topbar">
+		<h1><a id="repo-link" href="#" style="color: inherit">Nautilus</a> benchmarks</h1>
+		<span class="meta" id="meta-info"></span>
+		<span class="spacer"></span>
+		<button class="plain" id="theme-toggle" type="button">◐ auto</button>
+	</header>
+	<div class="layout">
+		<nav class="sidebar" id="sidebar"></nav>
+		<main class="content" id="content"></main>
+	</div>
+	<script type="module" src="./assets/main.js"></script>
+</body>
+</html>

@@ -67,4 +67,4 @@ jobs:
           comment-always: true
           save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           gh-pages-branch: 'pages'
-          max-items-in-chart: 20
+          max-items-in-chart: 200
