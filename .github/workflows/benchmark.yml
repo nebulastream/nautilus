@@ -42,6 +42,14 @@ jobs:
           echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
           sudo apt-get update
           sudo apt-get install -y clang-21 clang++-21
+      - name: Install ccache (with retry)
+        run: |
+          for i in 1 2 3 4 5; do
+            sudo apt-get update && sudo apt-get install -y ccache && exit 0
+            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
+            sleep 15
+          done
+          exit 1
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:

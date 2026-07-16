@@ -40,6 +40,14 @@ jobs:
         with:
           path: build/mlir-*
           key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
+      - name: Install ccache (with retry)
+        run: |
+          for i in 1 2 3 4 5; do
+            sudo apt-get update && sudo apt-get install -y ccache && exit 0
+            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
+            sleep 15
+          done
+          exit 1
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
