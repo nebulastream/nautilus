@@ -29,6 +29,8 @@ jobs:
       CXX: clang++-21
     steps:
       - uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: Install clang from LLVM apt repo
