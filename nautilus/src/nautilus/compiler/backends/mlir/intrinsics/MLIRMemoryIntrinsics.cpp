@@ -26,10 +26,10 @@ bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	// Create memcpy intrinsic: llvm.memcpy(dest, src, len, isVolatile)
-	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
-	                                                            builder->getBoolAttr(false));
+	auto isVolatile = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
+	                                                   builder->getBoolAttr(false));
 
-	builder->create<::mlir::LLVM::MemcpyOp>(builder->getUnknownLoc(), dest, src, count, isVolatile);
+	::mlir::LLVM::MemcpyOp::create(*builder, builder->getUnknownLoc(), dest, src, count, isVolatile);
 
 	// memcpy returns the destination pointer
 	frame.setValue(call->getIdentifier(), dest);
@@ -45,10 +45,10 @@ bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
 
 	// Create memmove intrinsic: llvm.memmove(dest, src, len, isVolatile)
-	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
-	                                                            builder->getBoolAttr(false));
+	auto isVolatile = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
+	                                                   builder->getBoolAttr(false));
 
-	builder->create<::mlir::LLVM::MemmoveOp>(builder->getUnknownLoc(), dest, src, count, isVolatile);
+	::mlir::LLVM::MemmoveOp::create(*builder, builder->getUnknownLoc(), dest, src, count, isVolatile);
 
 	// memmove returns the destination pointer
 	frame.setValue(call->getIdentifier(), dest);
@@ -64,13 +64,13 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 	// LLVM memset intrinsic requires the value to be i8, so truncate from i32 to i8
 	auto i8Type = builder->getIntegerType(8);
-	auto truncatedValue = builder->create<::mlir::LLVM::TruncOp>(builder->getUnknownLoc(), i8Type, value);
+	auto truncatedValue = ::mlir::LLVM::TruncOp::create(*builder, builder->getUnknownLoc(), i8Type, value);
 
 	// Create memset intrinsic: llvm.memset(dest, val, len, isVolatile)
-	auto isVolatile = builder->create<::mlir::LLVM::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
-	                                                            builder->getBoolAttr(false));
+	auto isVolatile = ::mlir::LLVM::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
+	                                                   builder->getBoolAttr(false));
 
-	builder->create<::mlir::LLVM::MemsetOp>(builder->getUnknownLoc(), dest, truncatedValue, count, isVolatile);
+	::mlir::LLVM::MemsetOp::create(*builder, builder->getUnknownLoc(), dest, truncatedValue, count, isVolatile);
 
 	// memset returns the destination pointer
 	frame.setValue(call->getIdentifier(), dest);

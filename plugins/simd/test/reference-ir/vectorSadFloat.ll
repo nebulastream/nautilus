@@ -5,8 +5,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define float @execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
-  %3 = load <16 x float>, ptr %0, align 64
-  %4 = load <16 x float>, ptr %1, align 64
+  %3 = load <16 x float>, ptr %0, align 4
+  %4 = load <16 x float>, ptr %1, align 4
   %5 = fsub <16 x float> %3, %4
   %6 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %5)
   %7 = tail call reassoc float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> %6)
@@ -15,8 +15,8 @@ define float @execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define float @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1) local_unnamed_addr #0 {
-  %3 = load <16 x float>, ptr %0, align 64
-  %4 = load <16 x float>, ptr %1, align 64
+  %3 = load <16 x float>, ptr %0, align 4
+  %4 = load <16 x float>, ptr %1, align 4
   %5 = fsub <16 x float> %3, %4
   %6 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %5)
   %7 = tail call reassoc float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> %6)
@@ -27,17 +27,17 @@ define float @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1) local_unnam
 declare <16 x float> @llvm.fabs.v16f32(<16 x float>) #1
 
 ; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
-declare float @llvm.vector.reduce.fadd.v16f32(float, <16 x float>) #1
+declare float @llvm.vector.reduce.fadd.v16f32(float, <16 x float>) #2
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #3 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x float>, ptr %3, align 64
-  %8 = load <16 x float>, ptr %6, align 64
+  %7 = load <16 x float>, ptr %3, align 4
+  %8 = load <16 x float>, ptr %6, align 4
   %9 = fsub <16 x float> %7, %8
   %10 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %9)
   %11 = tail call reassoc float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> %10)
@@ -48,14 +48,14 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #3 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x float>, ptr %3, align 64
-  %8 = load <16 x float>, ptr %6, align 64
+  %7 = load <16 x float>, ptr %3, align 4
+  %8 = load <16 x float>, ptr %6, align 4
   %9 = fsub <16 x float> %7, %8
   %10 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %9)
   %11 = tail call reassoc float @llvm.vector.reduce.fadd.v16f32(float 0.000000e+00, <16 x float> %10)
@@ -67,7 +67,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
 
 attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) }
 attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
-attributes #2 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
+attributes #2 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #3 = { mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none) }
 
 !llvm.module.flags = !{!0}
 

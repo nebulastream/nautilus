@@ -46,7 +46,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br label %16
 
 16:                                               ; preds = %15, %13, %12, %10, %9, %7, %6, %4, %3, %1
-  %17 = phi i32 [ 8, %13 ], [ 7, %12 ], [ 6, %10 ], [ 5, %9 ], [ 4, %7 ], [ 3, %6 ], [ 2, %4 ], [ 1, %3 ], [ 0, %1 ], [ %spec.select, %15 ]
+  %17 = phi i32 [ 0, %1 ], [ %spec.select, %15 ], [ 8, %13 ], [ 7, %12 ], [ 6, %10 ], [ 5, %9 ], [ 4, %7 ], [ 3, %6 ], [ 2, %4 ], [ 1, %3 ]
   ret i32 %17
 }
 
@@ -93,7 +93,7 @@ define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   br label %execute.exit
 
 execute.exit:                                     ; preds = %1, %3, %4, %6, %7, %9, %10, %12, %13, %15
-  %16 = phi i32 [ 8, %13 ], [ 7, %12 ], [ 6, %10 ], [ 5, %9 ], [ 4, %7 ], [ 3, %6 ], [ 2, %4 ], [ 1, %3 ], [ 0, %1 ], [ %spec.select.i, %15 ]
+  %16 = phi i32 [ 0, %1 ], [ %spec.select.i, %15 ], [ 8, %13 ], [ 7, %12 ], [ 6, %10 ], [ 5, %9 ], [ 4, %7 ], [ 3, %6 ], [ 2, %4 ], [ 1, %3 ]
   ret i32 %16
 }
 
@@ -142,7 +142,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   br label %execute.exit
 
 execute.exit:                                     ; preds = %1, %5, %6, %8, %9, %11, %12, %14, %15, %17
-  %18 = phi i32 [ 8, %15 ], [ 7, %14 ], [ 6, %12 ], [ 5, %11 ], [ 4, %9 ], [ 3, %8 ], [ 2, %6 ], [ 1, %5 ], [ 0, %1 ], [ %spec.select.i, %17 ]
+  %18 = phi i32 [ 0, %1 ], [ %spec.select.i, %17 ], [ 8, %15 ], [ 7, %14 ], [ 6, %12 ], [ 5, %11 ], [ 4, %9 ], [ 3, %8 ], [ 2, %6 ], [ 1, %5 ]
   %19 = getelementptr i8, ptr %0, i64 8
   %20 = load ptr, ptr %19, align 8
   store i32 %18, ptr %20, align 4
@@ -194,7 +194,7 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   br label %_mlir_ciface_execute.exit
 
 _mlir_ciface_execute.exit:                        ; preds = %1, %5, %6, %8, %9, %11, %12, %14, %15, %17
-  %18 = phi i32 [ 8, %15 ], [ 7, %14 ], [ 6, %12 ], [ 5, %11 ], [ 4, %9 ], [ 3, %8 ], [ 2, %6 ], [ 1, %5 ], [ 0, %1 ], [ %spec.select.i.i, %17 ]
+  %18 = phi i32 [ 0, %1 ], [ %spec.select.i.i, %17 ], [ 8, %15 ], [ 7, %14 ], [ 6, %12 ], [ 5, %11 ], [ 4, %9 ], [ 3, %8 ], [ 2, %6 ], [ 1, %5 ]
   %19 = getelementptr i8, ptr %0, i64 8
   %20 = load ptr, ptr %19, align 8
   store i32 %18, ptr %20, align 4

@@ -14,8 +14,8 @@ public:
 		    reinterpret_cast<void*>(&nautlis_assume_stub),
 		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
 		       [[maybe_unused]] MLIRLoweringProvider::ValueFrame& frame) -> bool {
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(),
-			                                            frame.getValue(call->getInputArguments()[0]->getIdentifier()));
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(),
+			                                   frame.getValue(call->getInputArguments()[0]->getIdentifier()));
 			    return true;
 		    });
 		manager.addIntrinsic(
@@ -24,9 +24,9 @@ public:
 		       MLIRLoweringProvider::ValueFrame& frame) -> bool {
 			    auto value = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 			    auto expected = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-			    auto cmp = builder->create<::mlir::arith::CmpIOp>(builder->getUnknownLoc(),
-			                                                      ::mlir::arith::CmpIPredicate::eq, value, expected);
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), cmp);
+			    auto cmp = ::mlir::arith::CmpIOp::create(*builder, builder->getUnknownLoc(),
+			                                             ::mlir::arith::CmpIPredicate::eq, value, expected);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), cmp);
 			    return true;
 		    });
 		manager.addIntrinsic(
@@ -36,12 +36,12 @@ public:
 			    auto value = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 			    auto lo = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 			    auto hi = frame.getValue(call->getInputArguments()[2]->getIdentifier());
-			    auto geLo = builder->create<::mlir::arith::CmpIOp>(builder->getUnknownLoc(),
-			                                                       ::mlir::arith::CmpIPredicate::sge, value, lo);
-			    auto leHi = builder->create<::mlir::arith::CmpIOp>(builder->getUnknownLoc(),
-			                                                       ::mlir::arith::CmpIPredicate::sle, value, hi);
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), geLo);
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), leHi);
+			    auto geLo = ::mlir::arith::CmpIOp::create(*builder, builder->getUnknownLoc(),
+			                                              ::mlir::arith::CmpIPredicate::sge, value, lo);
+			    auto leHi = ::mlir::arith::CmpIOp::create(*builder, builder->getUnknownLoc(),
+			                                              ::mlir::arith::CmpIPredicate::sle, value, hi);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), geLo);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), leHi);
 			    return true;
 		    });
 		manager.addIntrinsic(
@@ -49,11 +49,11 @@ public:
 		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
 		       MLIRLoweringProvider::ValueFrame& frame) -> bool {
 			    auto value = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-			    auto zero = builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), value.getType(),
-			                                                           builder->getIntegerAttr(value.getType(), 0));
-			    auto cmp = builder->create<::mlir::arith::CmpIOp>(builder->getUnknownLoc(),
-			                                                      ::mlir::arith::CmpIPredicate::ne, value, zero);
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), cmp);
+			    auto zero = ::mlir::arith::ConstantOp::create(*builder, builder->getUnknownLoc(), value.getType(),
+			                                                  builder->getIntegerAttr(value.getType(), 0));
+			    auto cmp = ::mlir::arith::CmpIOp::create(*builder, builder->getUnknownLoc(),
+			                                             ::mlir::arith::CmpIPredicate::ne, value, zero);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), cmp);
 			    return true;
 		    });
 		manager.addIntrinsic(
@@ -61,12 +61,12 @@ public:
 		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
 		       [[maybe_unused]] compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) -> bool {
 			    auto constOp =
-			        builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
-			                                                   builder->getIntegerAttr(builder->getI1Type(), true));
+			        ::mlir::arith::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
+			                                          builder->getIntegerAttr(builder->getI1Type(), true));
 			    auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 			    auto align = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), constOp,
-			                                            ::mlir::LLVM::AssumeAlignTag {}, ptr, align);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), constOp,
+			                                   ::mlir::LLVM::AssumeAlignTag {}, ptr, align);
 			    return true;
 		    });
 		manager.addIntrinsic(
@@ -74,12 +74,12 @@ public:
 		    [](std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
 		       [[maybe_unused]] compiler::mlir::MLIRLoweringProvider::ValueFrame& frame) -> bool {
 			    auto constOp =
-			        builder->create<::mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getI1Type(),
-			                                                   builder->getIntegerAttr(builder->getI1Type(), true));
+			        ::mlir::arith::ConstantOp::create(*builder, builder->getUnknownLoc(), builder->getI1Type(),
+			                                          builder->getIntegerAttr(builder->getI1Type(), true));
 			    auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 			    auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-			    builder->create<::mlir::LLVM::AssumeOp>(builder->getUnknownLoc(), constOp,
-			                                            ::mlir::LLVM::AssumeSeparateStorageTag {}, ptrA, ptrB);
+			    ::mlir::LLVM::AssumeOp::create(*builder, builder->getUnknownLoc(), constOp,
+			                                   ::mlir::LLVM::AssumeSeparateStorageTag {}, ptrA, ptrB);
 			    return true;
 		    });
 	}

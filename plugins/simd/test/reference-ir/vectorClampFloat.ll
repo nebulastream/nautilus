@@ -5,23 +5,23 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly %3) local_unnamed_addr #0 {
-  %5 = load <16 x float>, ptr %0, align 64
-  %6 = load <16 x float>, ptr %1, align 64
-  %7 = load <16 x float>, ptr %2, align 64
+  %5 = load <16 x float>, ptr %0, align 4
+  %6 = load <16 x float>, ptr %1, align 4
+  %7 = load <16 x float>, ptr %2, align 4
   %8 = tail call <16 x float> @llvm.minnum.v16f32(<16 x float> %5, <16 x float> %7)
   %9 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %8, <16 x float> %6)
-  store <16 x float> %9, ptr %3, align 64
+  store <16 x float> %9, ptr %3, align 4
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr writeonly %3) local_unnamed_addr #0 {
-  %5 = load <16 x float>, ptr %0, align 64
-  %6 = load <16 x float>, ptr %1, align 64
-  %7 = load <16 x float>, ptr %2, align 64
+  %5 = load <16 x float>, ptr %0, align 4
+  %6 = load <16 x float>, ptr %1, align 4
+  %7 = load <16 x float>, ptr %2, align 4
   %8 = tail call <16 x float> @llvm.minnum.v16f32(<16 x float> %5, <16 x float> %7)
   %9 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %8, <16 x float> %6)
-  store <16 x float> %9, ptr %3, align 64
+  store <16 x float> %9, ptr %3, align 4
   ret void
 }
 
@@ -44,12 +44,12 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %10 = getelementptr i8, ptr %0, i64 24
   %11 = load ptr, ptr %10, align 8
   %12 = load ptr, ptr %11, align 8
-  %13 = load <16 x float>, ptr %3, align 64
-  %14 = load <16 x float>, ptr %6, align 64
-  %15 = load <16 x float>, ptr %9, align 64
+  %13 = load <16 x float>, ptr %3, align 4
+  %14 = load <16 x float>, ptr %6, align 4
+  %15 = load <16 x float>, ptr %9, align 4
   %16 = tail call <16 x float> @llvm.minnum.v16f32(<16 x float> %13, <16 x float> %15)
   %17 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %16, <16 x float> %14)
-  store <16 x float> %17, ptr %12, align 64
+  store <16 x float> %17, ptr %12, align 4
   ret void
 }
 
@@ -66,12 +66,12 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %10 = getelementptr i8, ptr %0, i64 24
   %11 = load ptr, ptr %10, align 8
   %12 = load ptr, ptr %11, align 8
-  %13 = load <16 x float>, ptr %3, align 64
-  %14 = load <16 x float>, ptr %6, align 64
-  %15 = load <16 x float>, ptr %9, align 64
+  %13 = load <16 x float>, ptr %3, align 4
+  %14 = load <16 x float>, ptr %6, align 4
+  %15 = load <16 x float>, ptr %9, align 4
   %16 = tail call <16 x float> @llvm.minnum.v16f32(<16 x float> %13, <16 x float> %15)
   %17 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %16, <16 x float> %14)
-  store <16 x float> %17, ptr %12, align 64
+  store <16 x float> %17, ptr %12, align 4
   ret void
 }
 

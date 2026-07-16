@@ -5,29 +5,29 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr readonly %3, ptr readonly %4, ptr writeonly %5) local_unnamed_addr #0 {
-  %7 = load <16 x float>, ptr %0, align 64
-  %8 = load <16 x float>, ptr %1, align 64
-  %9 = load <16 x float>, ptr %2, align 64
-  %10 = load <16 x float>, ptr %3, align 64
-  %11 = load <16 x float>, ptr %4, align 64
+  %7 = load <16 x float>, ptr %0, align 4
+  %8 = load <16 x float>, ptr %1, align 4
+  %9 = load <16 x float>, ptr %2, align 4
+  %10 = load <16 x float>, ptr %3, align 4
+  %11 = load <16 x float>, ptr %4, align 4
   %12 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %11, <16 x float> %7, <16 x float> %10)
   %13 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %12, <16 x float> %7, <16 x float> %9)
   %14 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %13, <16 x float> %7, <16 x float> %8)
-  store <16 x float> %14, ptr %5, align 64
+  store <16 x float> %14, ptr %5, align 4
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr readonly %3, ptr readonly %4, ptr writeonly %5) local_unnamed_addr #0 {
-  %7 = load <16 x float>, ptr %0, align 64
-  %8 = load <16 x float>, ptr %1, align 64
-  %9 = load <16 x float>, ptr %2, align 64
-  %10 = load <16 x float>, ptr %3, align 64
-  %11 = load <16 x float>, ptr %4, align 64
+  %7 = load <16 x float>, ptr %0, align 4
+  %8 = load <16 x float>, ptr %1, align 4
+  %9 = load <16 x float>, ptr %2, align 4
+  %10 = load <16 x float>, ptr %3, align 4
+  %11 = load <16 x float>, ptr %4, align 4
   %12 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %11, <16 x float> %7, <16 x float> %10)
   %13 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %12, <16 x float> %7, <16 x float> %9)
   %14 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %13, <16 x float> %7, <16 x float> %8)
-  store <16 x float> %14, ptr %5, align 64
+  store <16 x float> %14, ptr %5, align 4
   ret void
 }
 
@@ -53,15 +53,15 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %16 = getelementptr i8, ptr %0, i64 40
   %17 = load ptr, ptr %16, align 8
   %18 = load ptr, ptr %17, align 8
-  %19 = load <16 x float>, ptr %3, align 64
-  %20 = load <16 x float>, ptr %6, align 64
-  %21 = load <16 x float>, ptr %9, align 64
-  %22 = load <16 x float>, ptr %12, align 64
-  %23 = load <16 x float>, ptr %15, align 64
+  %19 = load <16 x float>, ptr %3, align 4
+  %20 = load <16 x float>, ptr %6, align 4
+  %21 = load <16 x float>, ptr %9, align 4
+  %22 = load <16 x float>, ptr %12, align 4
+  %23 = load <16 x float>, ptr %15, align 4
   %24 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %23, <16 x float> %19, <16 x float> %22)
   %25 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %24, <16 x float> %19, <16 x float> %21)
   %26 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %25, <16 x float> %19, <16 x float> %20)
-  store <16 x float> %26, ptr %18, align 64
+  store <16 x float> %26, ptr %18, align 4
   ret void
 }
 
@@ -84,15 +84,15 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %16 = getelementptr i8, ptr %0, i64 40
   %17 = load ptr, ptr %16, align 8
   %18 = load ptr, ptr %17, align 8
-  %19 = load <16 x float>, ptr %3, align 64
-  %20 = load <16 x float>, ptr %6, align 64
-  %21 = load <16 x float>, ptr %9, align 64
-  %22 = load <16 x float>, ptr %12, align 64
-  %23 = load <16 x float>, ptr %15, align 64
+  %19 = load <16 x float>, ptr %3, align 4
+  %20 = load <16 x float>, ptr %6, align 4
+  %21 = load <16 x float>, ptr %9, align 4
+  %22 = load <16 x float>, ptr %12, align 4
+  %23 = load <16 x float>, ptr %15, align 4
   %24 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %23, <16 x float> %19, <16 x float> %22)
   %25 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %24, <16 x float> %19, <16 x float> %21)
   %26 = tail call <16 x float> @llvm.fma.v16f32(<16 x float> %25, <16 x float> %19, <16 x float> %20)
-  store <16 x float> %26, ptr %18, align 64
+  store <16 x float> %26, ptr %18, align 4
   ret void
 }
 

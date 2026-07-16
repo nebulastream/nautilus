@@ -86,9 +86,9 @@ IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 	                   MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto resultTy = tyFn(*b);
-		auto op = b->create<::mlir::LLVM::LoadOp>(b->getUnknownLoc(), resultTy, ptr,
-		                                          /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
-		                                          /*isInvariant=*/false, /*isInvariantGroup=*/false, ord);
+		auto op = ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), resultTy, ptr,
+		                                       /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
+		                                       /*isInvariant=*/false, /*isInvariantGroup=*/false, ord);
 		frame.setValue(call->getIdentifier(), op);
 		return true;
 	};
@@ -99,9 +99,9 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-		b->create<::mlir::LLVM::StoreOp>(b->getUnknownLoc(), value, ptr,
-		                                 /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
-		                                 /*isInvariantGroup=*/false, ord);
+		::mlir::LLVM::StoreOp::create(*b, b->getUnknownLoc(), value, ptr,
+		                              /*alignment=*/0, /*isVolatile=*/false, /*isNonTemporal=*/false,
+		                              /*isInvariantGroup=*/false, ord);
 		return true;
 	};
 }
@@ -111,7 +111,7 @@ IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 	                    MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-		auto op = b->create<::mlir::LLVM::AtomicRMWOp>(b->getUnknownLoc(), binOp, ptr, value, ord);
+		auto op = ::mlir::LLVM::AtomicRMWOp::create(*b, b->getUnknownLoc(), binOp, ptr, value, ord);
 		frame.setValue(call->getIdentifier(), op);
 		return true;
 	};
@@ -120,7 +120,7 @@ IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
 	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* /*call*/,
 	             MLIRLoweringProvider::ValueFrame& /*frame*/) -> bool {
-		b->create<::mlir::LLVM::FenceOp>(b->getUnknownLoc(), ord);
+		::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
 		return true;
 	};
 }
