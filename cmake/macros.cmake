@@ -57,6 +57,15 @@ function(download_file url filename)
             break()
         else ()
             message(STATUS "Error occurred during download: ${ERROR_MESSAGE}")
+            # Servers (e.g. a blocking proxy) often return a small text/JSON body explaining the
+            # failure instead of the requested file; surface it since it is otherwise discarded silently.
+            if (EXISTS ${filename})
+                file(SIZE ${filename} DOWNLOADED_FILE_SIZE)
+                if (DOWNLOADED_FILE_SIZE LESS 4096)
+                    file(READ ${filename} DOWNLOAD_ERROR_BODY)
+                    message(STATUS "Server response: ${DOWNLOAD_ERROR_BODY}")
+                endif ()
+            endif ()
             message(STATUS "Retry attempt ${CURRENT_ITERATION}/${MAX_RETRIES}")
             # Remove created (incomplete) file which failed to get downloaded
             file(REMOVE ${filename})
