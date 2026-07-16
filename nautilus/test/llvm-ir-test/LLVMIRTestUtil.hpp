@@ -125,6 +125,18 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	std::string command = llvmDiff + " " + tempGenFile + " " + tempRefFile;
 	int result = std::system(command.c_str());
 
+	// On mismatch, stash the normalized generated IR outside dumpPath (which
+	// is about to be removed) so CI can upload it as an artifact -- pulling
+	// updated reference IR out of console logs is unreliable: dump.console
+	// output and llvm-diff's own subprocess stdout write to the same stream
+	// and can interleave mid-line.
+	if (result != 0) {
+		auto mismatchDir = std::filesystem::temp_directory_path() / "nautilus-llvm-ir-mismatches";
+		std::filesystem::create_directories(mismatchDir);
+		std::filesystem::copy_file(tempGenFile, mismatchDir / (functionName + ".ll"),
+		                           std::filesystem::copy_options::overwrite_existing);
+	}
+
 	std::filesystem::remove_all(dumpPath);
 
 	// llvm-diff returns 0 if files are equivalent, 1 if different
