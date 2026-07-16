@@ -31,7 +31,9 @@ SIGMOD 2024 paper (see [Publication](#publication) below).
 
 - **Write ordinary C++.** Loops, branches, and expressions over `val<T>`
   values look and read like normal C++: no separate DSL or code-generation
-  templates to learn.
+  templates to learn. Because it's just C++, you can step through and debug
+  the traced function directly with a regular debugger before it's ever
+  compiled.
 - **Trace once, compile anywhere.** A single traced function can target
   multiple backends without changes to its source:
   - **MLIR**: lowers through MLIR/LLVM to native machine code for maximum
