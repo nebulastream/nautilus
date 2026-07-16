@@ -73,6 +73,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 		                      "s/, errnomem: [^,)]+//g; "
 		                      "s/, target_mem0: [^,)]+//g; "
 		                      "s/, target_mem1: [^,)]+//g; "
+		                      "s/ nocreateundeforpoison//g; "
 		                      "s/ range\\([^)]+\\)//g; "
 		                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 		                      "/^attributes #[0-9]+ = \\{ \\}$/d"
@@ -94,6 +95,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	// - target-cpu, target-features, tune-cpu (CPU-specific)
 	// - captures(...) attribute (LLVM 19+)
 	// - errnomem, target_mem0, target_mem1 (LLVM 19+/22+ memory attribute fields)
+	// - nocreateundeforpoison (LLVM 22+ function attribute)
 	// - range(...) (LLVM 19+ range attribute)
 	// - Empty attribute groups left after stripping (invalid IR for llvm-diff)
 	std::string normCmd = "sed -E '"
@@ -104,6 +106,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	                      "s/, errnomem: [^,)]+//g; "
 	                      "s/, target_mem0: [^,)]+//g; "
 	                      "s/, target_mem1: [^,)]+//g; "
+	                      "s/ nocreateundeforpoison//g; "
 	                      "s/ range\\([^)]+\\)//g; "
 	                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 	                      "/^attributes #[0-9]+ = \\{ \\}$/d"

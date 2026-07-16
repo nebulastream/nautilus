@@ -5,19 +5,19 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @execute(ptr readonly %0, ptr readonly %1, ptr writeonly %2) local_unnamed_addr #0 {
-  %4 = load <16 x float>, ptr %0, align 64
-  %5 = load <16 x float>, ptr %1, align 64
+  %4 = load <16 x float>, ptr %0, align 4
+  %5 = load <16 x float>, ptr %1, align 4
   %6 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %4, <16 x float> %5)
-  store <16 x float> %6, ptr %2, align 64
+  store <16 x float> %6, ptr %2, align 4
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr writeonly %2) local_unnamed_addr #0 {
-  %4 = load <16 x float>, ptr %0, align 64
-  %5 = load <16 x float>, ptr %1, align 64
+  %4 = load <16 x float>, ptr %0, align 4
+  %5 = load <16 x float>, ptr %1, align 4
   %6 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %4, <16 x float> %5)
-  store <16 x float> %6, ptr %2, align 64
+  store <16 x float> %6, ptr %2, align 4
   ret void
 }
 
@@ -34,10 +34,10 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %7 = getelementptr i8, ptr %0, i64 16
   %8 = load ptr, ptr %7, align 8
   %9 = load ptr, ptr %8, align 8
-  %10 = load <16 x float>, ptr %3, align 64
-  %11 = load <16 x float>, ptr %6, align 64
+  %10 = load <16 x float>, ptr %3, align 4
+  %11 = load <16 x float>, ptr %6, align 4
   %12 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %10, <16 x float> %11)
-  store <16 x float> %12, ptr %9, align 64
+  store <16 x float> %12, ptr %9, align 4
   ret void
 }
 
@@ -51,10 +51,10 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %7 = getelementptr i8, ptr %0, i64 16
   %8 = load ptr, ptr %7, align 8
   %9 = load ptr, ptr %8, align 8
-  %10 = load <16 x float>, ptr %3, align 64
-  %11 = load <16 x float>, ptr %6, align 64
+  %10 = load <16 x float>, ptr %3, align 4
+  %11 = load <16 x float>, ptr %6, align 4
   %12 = tail call <16 x float> @llvm.maxnum.v16f32(<16 x float> %10, <16 x float> %11)
-  store <16 x float> %12, ptr %9, align 64
+  store <16 x float> %12, ptr %9, align 4
   ret void
 }
 

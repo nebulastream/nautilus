@@ -5,17 +5,17 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @execute(ptr readonly %0, ptr writeonly %1) local_unnamed_addr #0 {
-  %3 = load <16 x float>, ptr %0, align 64
+  %3 = load <16 x float>, ptr %0, align 4
   %4 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %3)
-  store <16 x float> %4, ptr %1, align 64
+  store <16 x float> %4, ptr %1, align 4
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @_mlir_ciface_execute(ptr readonly %0, ptr writeonly %1) local_unnamed_addr #0 {
-  %3 = load <16 x float>, ptr %0, align 64
+  %3 = load <16 x float>, ptr %0, align 4
   %4 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %3)
-  store <16 x float> %4, ptr %1, align 64
+  store <16 x float> %4, ptr %1, align 4
   ret void
 }
 
@@ -29,9 +29,9 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x float>, ptr %3, align 64
+  %7 = load <16 x float>, ptr %3, align 4
   %8 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %7)
-  store <16 x float> %8, ptr %6, align 64
+  store <16 x float> %8, ptr %6, align 4
   ret void
 }
 
@@ -42,9 +42,9 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %4 = getelementptr i8, ptr %0, i64 8
   %5 = load ptr, ptr %4, align 8
   %6 = load ptr, ptr %5, align 8
-  %7 = load <16 x float>, ptr %3, align 64
+  %7 = load <16 x float>, ptr %3, align 4
   %8 = tail call <16 x float> @llvm.fabs.v16f32(<16 x float> %7)
-  store <16 x float> %8, ptr %6, align 64
+  store <16 x float> %8, ptr %6, align 4
   ret void
 }
 
