@@ -71,6 +71,8 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 		                      "s/ \"tune-cpu\"=\"[^\"]+\"//g; "
 		                      "s/ captures\\([^)]*\\)//g; "
 		                      "s/, errnomem: [^,)]+//g; "
+		                      "s/, target_mem0: [^,)]+//g; "
+		                      "s/, target_mem1: [^,)]+//g; "
 		                      "s/ range\\([^)]+\\)//g; "
 		                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 		                      "/^attributes #[0-9]+ = \\{ \\}$/d"
@@ -91,7 +93,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	// Strip machine-specific attributes:
 	// - target-cpu, target-features, tune-cpu (CPU-specific)
 	// - captures(...) attribute (LLVM 19+)
-	// - errnomem (LLVM 19+ memory attribute)
+	// - errnomem, target_mem0, target_mem1 (LLVM 19+/22+ memory attribute fields)
 	// - range(...) (LLVM 19+ range attribute)
 	// - Empty attribute groups left after stripping (invalid IR for llvm-diff)
 	std::string normCmd = "sed -E '"
@@ -100,6 +102,8 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	                      "s/ \"tune-cpu\"=\"[^\"]+\"//g; "
 	                      "s/ captures\\([^)]*\\)//g; "
 	                      "s/, errnomem: [^,)]+//g; "
+	                      "s/, target_mem0: [^,)]+//g; "
+	                      "s/, target_mem1: [^,)]+//g; "
 	                      "s/ range\\([^)]+\\)//g; "
 	                      "s/ initializes\\(\\([^()]*\\)\\)//g; "
 	                      "/^attributes #[0-9]+ = \\{ \\}$/d"
@@ -111,7 +115,7 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	// Run llvm-diff to compare normalized IR files.
 	// Try versioned llvm-diff in descending order, fall back to unversioned.
 	std::string llvmDiff = "llvm-diff";
-	for (const char* candidate : {"llvm-diff-21", "llvm-diff-20", "llvm-diff-19"}) {
+	for (const char* candidate : {"llvm-diff-22", "llvm-diff-21", "llvm-diff-20", "llvm-diff-19"}) {
 		std::string check = std::string("which ") + candidate + " > /dev/null 2>&1";
 		if (std::system(check.c_str()) == 0) {
 			llvmDiff = candidate;
