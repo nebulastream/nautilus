@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/mlir-*
-          key: mlir-21.1.2-${{ runner.os }}-${{ runner.arch }}
+          key: mlir-22.1.8-${{ runner.os }}-${{ runner.arch }}
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:

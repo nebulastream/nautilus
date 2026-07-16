@@ -4,7 +4,7 @@ include(cmake/macros.cmake)
 if (NAUTILUS_DOWNLOAD_MLIR)
     execute_process(COMMAND uname -m OUTPUT_VARIABLE NES_HOST_PROCESSOR OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-    set(MLIR_VERSION 21.1.2)
+    set(MLIR_VERSION 22.1.8)
     if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         # Linux-specific stuff
         get_linux_lsb_release_information()

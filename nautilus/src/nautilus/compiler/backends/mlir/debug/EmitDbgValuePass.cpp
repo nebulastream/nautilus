@@ -214,7 +214,7 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 					} else {
 						builder.setInsertionPointToStart(block);
 					}
-					builder.create<::mlir::LLVM::DbgDeclareOp>(declLoc, alloca.getResult(), localVar, emptyExpr);
+					::mlir::LLVM::DbgDeclareOp::create(builder, declLoc, alloca.getResult(), localVar, emptyExpr);
 				}
 			}
 		});

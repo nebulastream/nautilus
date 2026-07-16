@@ -27,7 +27,7 @@ template <typename MLIROp>
 bool replaceWithUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto result = builder->create<MLIROp>(builder->getUnknownLoc(), inputArg);
+	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), inputArg);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
 }
@@ -38,7 +38,7 @@ bool replaceWithBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
                                 const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
 	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
-	auto result = builder->create<MLIROp>(builder->getUnknownLoc(), arg1, arg2);
+	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), arg1, arg2);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
 }
@@ -51,7 +51,7 @@ bool replaceWithTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto arg3 = frame.getValue(call->getInputArguments()[2]->getIdentifier());
-	auto result = builder->create<MLIROp>(builder->getUnknownLoc(), arg1, arg2, arg3);
+	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), arg1, arg2, arg3);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
 }
@@ -98,10 +98,10 @@ bool replaceWithTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 	auto integerType = ::mlir::cast<::mlir::IntegerType>(targetType);
 	if (integerType.isUnsigned()) {
-		return builder->create<::mlir::arith::FPToUIOp>(builder->getUnknownLoc(), targetType, roundedValue);
+		return ::mlir::arith::FPToUIOp::create(*builder, builder->getUnknownLoc(), targetType, roundedValue);
 	}
 
-	return builder->create<::mlir::arith::FPToSIOp>(builder->getUnknownLoc(), targetType, roundedValue);
+	return ::mlir::arith::FPToSIOp::create(*builder, builder->getUnknownLoc(), targetType, roundedValue);
 }
 
 template <typename RoundOp>
@@ -109,7 +109,7 @@ bool replaceWithIntegerRoundIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builde
                                       const compiler::ir::ProxyCallOperation* call,
                                       MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
-	auto rounded = builder->create<RoundOp>(builder->getUnknownLoc(), inputArg);
+	auto rounded = RoundOp::create(*builder, builder->getUnknownLoc(), inputArg);
 	auto result = castRoundedValue(builder, rounded, call);
 	frame.setValue(call->getIdentifier(), result);
 	return true;
