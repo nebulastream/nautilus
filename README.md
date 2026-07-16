@@ -1,6 +1,6 @@
 # Nautilus
 
-[![Build Nautilus](https://github.com/nebulastream/nautilus/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/build.yml)
+[![PR](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml)
 [![Playground](https://img.shields.io/badge/try_it-playground-blue)](https://nautilus.grulich.me)
 
 **Nautilus is a lightweight, tracing just-in-time (JIT) compiler for C++.**
@@ -41,6 +41,13 @@ SIGMOD 2024 paper (see [Publication](#publication) below).
   - **Bytecode**: interprets directly, optionally accelerated by a
     copy-and-patch JIT that stitches together pre-compiled machine-code
     stencils, for very low compilation latency.
+  - **AsmJit**: emits x86-64/AArch64 assembly directly for very fast
+    compilation with no external codegen dependency.
+- **Tiered compilation by default.** A function starts running immediately on
+  a fast tier-0 backend (AsmJit, bytecode, or the interpreter) while a
+  higher-quality tier-1 backend (typically MLIR) compiles in the background
+  and transparently takes over once ready, so callers get low latency without
+  giving up peak throughput.
 - **Optimizing IR pipeline.** Traced code passes through an SSA-based IR with
   constant propagation, dead code elimination, loop analysis, and
   control-flow simplification before reaching a backend.
