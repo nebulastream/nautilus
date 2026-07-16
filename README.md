@@ -1,6 +1,6 @@
 # Nautilus
 
-[![PR](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml)
+[![Build](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml)
 [![Playground](https://img.shields.io/badge/try_it-playground-blue)](https://nautilus.grulich.me)
 
 **Nautilus is a lightweight, tracing just-in-time (JIT) compiler for C++.**
