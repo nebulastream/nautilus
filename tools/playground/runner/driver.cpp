@@ -28,6 +28,7 @@ struct DriverArgs {
 	bool enableLICM = false;
 	bool enableLocalCSE = false;
 	bool enableStrengthReduction = false;
+	bool enableDwarf = false;
 	int maxPipelineIterations = 4;
 };
 
@@ -45,6 +46,8 @@ DriverArgs parseArgs(int argc, char** argv) {
 			args.enableLocalCSE = true;
 		} else if (arg == "--enable-strength-reduction") {
 			args.enableStrengthReduction = true;
+		} else if (arg == "--enable-dwarf") {
+			args.enableDwarf = true;
 		} else if (arg.starts_with("--max-iterations=")) {
 			args.maxPipelineIterations = std::atoi(std::string(arg.substr(17)).c_str());
 			if (args.maxPipelineIterations < 1 || args.maxPipelineIterations > 8) {
@@ -112,6 +115,10 @@ int main(int argc, char** argv) {
 	}
 	if (args.enableStrengthReduction) {
 		options.setOption("ir.enableStrengthReduction", true);
+	}
+	if (args.enableDwarf) {
+		// Only consumed by the MLIR backend; harmless (ignored) on the others.
+		options.setOption("mlir.debug.enable", true);
 	}
 
 	std::vector<playground::StatEntry> statistics;
