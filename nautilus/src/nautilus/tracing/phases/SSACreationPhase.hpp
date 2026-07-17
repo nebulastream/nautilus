@@ -64,9 +64,9 @@ private:
 		 * @param operationIndex the operation index, which accesses the ValueRef
 		 * @return true if Value Ref is defined locally.
 		 */
-		static bool isLocalValueRef(Block& block, TypedValueRef& valRef, Type ref_type, uint32_t operationIndex);
+		bool isLocalValueRef(Block& block, const TypedValueRef& valRef, uint32_t operationIndex);
 
-		void processValueRef(Block& block, TypedValueRef& type, Type ref_type, uint32_t operationIndex);
+		void processValueRef(Block& block, TypedValueRef& type, uint32_t operationIndex);
 
 		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
 
@@ -86,6 +86,12 @@ private:
 		const std::unordered_set<ValueRef>& getOrBuildDefinitions(uint32_t blockId);
 
 		/**
+		 * @brief Returns the operation index of value refs defined in the given block,
+		 * computing and caching it on first access.
+		 */
+		const std::unordered_map<ValueRef, uint32_t>& getOrBuildDefinitionIndices(uint32_t blockId);
+
+		/**
 		 * @brief Removes the assignment operations from all blocks.
 		 * Assignment operations are only required to infer SSA form.
 		 */
@@ -103,6 +109,8 @@ private:
 		// Lazy cache: maps blockId → set of value refs produced by operations in that block.
 		// Entries are built on first access rather than upfront.
 		std::unordered_map<uint32_t, std::unordered_set<ValueRef>> blockDefinitions;
+		// Lazy cache: maps blockId → operation index for each value ref produced by an operation.
+		std::unordered_map<uint32_t, std::unordered_map<ValueRef, uint32_t>> blockDefinitionIndices;
 		// Tracks (blockId, ref) pairs that have already been propagated,
 		// replacing the O(n) std::find on predBlock.arguments.
 		std::unordered_set<uint64_t> propagatedValues;

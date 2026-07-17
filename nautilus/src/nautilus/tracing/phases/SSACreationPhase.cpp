@@ -120,18 +120,15 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, TypedValueRef& ref, Type,
+bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, const TypedValueRef& ref,
                                                                 uint32_t operationIndex) {
-	// A value ref is defined in the local scope, if it is the result of an
-	// operation before the operationIndex
-	for (uint32_t i = 0; i < operationIndex; i++) {
-		auto* resOperation = block.operations[i];
-		if (resOperation->resultRef == ref) {
-			return true;
-		}
+	if (std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end()) {
+		return true;
 	}
-	// check if the operation is defined in the block arguments
-	return std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end();
+
+	const auto& definitions = getOrBuildDefinitionIndices(block.blockId);
+	const auto definition = definitions.find(ref.ref);
+	return definition != definitions.end() && definition->second < operationIndex;
 }
 
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
@@ -159,18 +156,18 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 			// process input for each variable
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					processValueRef(block, *valueRef, operation.resultType, i);
+					processValueRef(block, *valueRef, i);
 				} else if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
 					processBlockRef(block, **blockRefPtr, i);
 				} else if (auto* fcallRefPtr = std::get_if<FunctionCall*>(&input)) {
 					for (auto valueRef : (*fcallRefPtr)->arguments) {
-						processValueRef(block, valueRef, valueRef.type, i);
+						processValueRef(block, valueRef, i);
 					}
 				} else if (auto* indirectCallRefPtr = std::get_if<IndirectFunctionCall*>(&input)) {
 					IndirectFunctionCall& indirectCallRef = **indirectCallRefPtr;
-					processValueRef(block, indirectCallRef.fnPtr, indirectCallRef.fnPtr.type, i);
+					processValueRef(block, indirectCallRef.fnPtr, i);
 					for (auto& valueRef : indirectCallRef.arguments) {
-						processValueRef(block, valueRef, valueRef.type, i);
+						processValueRef(block, valueRef, i);
 					}
 				}
 			}
@@ -189,9 +186,9 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref, Type ref_type,
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref,
                                                                 uint32_t operationIndex) {
-	if (isLocalValueRef(block, ref, ref_type, operationIndex)) {
+	if (isLocalValueRef(block, ref, operationIndex)) {
 		// variable is a local ref -> don't do anything as the value is defined in
 		// the current block
 	} else {
@@ -212,6 +209,19 @@ const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::g
 		defined.insert(op->resultRef.ref);
 	}
 	return defined;
+}
+
+const std::unordered_map<ValueRef, uint32_t>&
+SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitionIndices(uint32_t blockId) {
+	auto [it, inserted] = blockDefinitionIndices.try_emplace(blockId);
+	if (inserted) {
+		const auto& operations = trace->getBlock(blockId).operations;
+		it->second.reserve(operations.size());
+		for (uint32_t index = 0; index < operations.size(); ++index) {
+			it->second.emplace(operations[index]->resultRef.ref, index);
+		}
+	}
+	return it->second;
 }
 
 void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
@@ -276,7 +286,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	// range-for iterators.
 	auto arguments = blockRef.arguments;
 	for (auto& input : arguments) {
-		processValueRef(block, input, input.type, operationIndex);
+		processValueRef(block, input, operationIndex);
 	}
 }
 
