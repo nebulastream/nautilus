@@ -2,6 +2,7 @@
 
 [![Build](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/nebulastream/nautilus/actions/workflows/pr.yml)
 [![Playground](https://img.shields.io/badge/try_it-playground-blue)](https://nautilus.grulich.me)
+[![Benchmarks](https://img.shields.io/badge/benchmarks-trends-brightgreen)](https://nebulastream.github.io/nautilus/dev/bench/#/trends/trace)
 
 **Nautilus is a lightweight, tracing just-in-time (JIT) compiler for C++.**
 Write imperative C++ using `val<T>` wrapper types, and Nautilus traces the
@@ -16,6 +17,8 @@ query compiler of the data management system
 SIGMOD 2024 paper (see [Publication](#publication) below).
 
 ▶ **[Try Nautilus in your browser: no setup required](https://nautilus.grulich.me)**
+
+📈 **[Track Nautilus benchmark trends](https://nebulastream.github.io/nautilus/dev/bench/#/trends/trace)**
 
 ## Contents
 
