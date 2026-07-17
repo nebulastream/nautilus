@@ -21,6 +21,19 @@ class ArenaPool;
 } // namespace nautilus::common
 
 namespace nautilus::engine {
+
+/**
+ * @brief Resolves the runtime address of an external function referenced by
+ * serialized IR (proxy calls and address-of operations).
+ *
+ * Serialized IR identifies external functions by their mangled symbol and
+ * human-readable name; addresses are process-specific and never serialized.
+ * When loading an IR file, each referenced function is resolved first through
+ * this callback (when provided) and then through `dlsym`. Return nullptr to
+ * fall through to `dlsym`.
+ */
+using IRSymbolResolver = std::function<void*(const std::string& symbol, const std::string& name)>;
+
 namespace details {
 
 /**
@@ -200,6 +213,37 @@ public:
 	 */
 	NautilusModule createModule(ModuleOptions overrides) const;
 
+	/**
+	 * @brief Compiles a module directly from serialized Nautilus IR text,
+	 * skipping the tracing frontend entirely.
+	 *
+	 * The text must be in the portable IR format produced by
+	 * @ref NautilusModule::serializeIR (a completed superset of the
+	 * `IRGraph::toString` grammar). External functions referenced by the IR
+	 * (proxy calls) are re-resolved in this process via @p symbolResolver
+	 * and `dlsym`.
+	 *
+	 * The returned module exposes the same functions by name as the module
+	 * that produced the IR; retrieve them with
+	 * `CompiledModule::getFunction<Signature>(name)`. Because no original
+	 * callables exist, the module cannot fall back to interpretation:
+	 * loading requires compilation to be enabled.
+	 *
+	 * @param irText serialized IR text
+	 * @param symbolResolver optional resolver for external function symbols
+	 * @return CompiledModule with all functions accessible by name
+	 * @throws RuntimeException on parse errors, unresolved symbols, or when
+	 *         compilation is disabled
+	 */
+	CompiledModule loadModuleFromIR(const std::string& irText, const IRSymbolResolver& symbolResolver = nullptr) const;
+
+	/**
+	 * @brief Reads serialized Nautilus IR from @p path and compiles it,
+	 * skipping tracing. See @ref loadModuleFromIR.
+	 */
+	CompiledModule loadModuleFromIRFile(const std::string& path,
+	                                    const IRSymbolResolver& symbolResolver = nullptr) const;
+
 	std::string getNameOfBackend() const {
 		return jit_->getName();
 	}
@@ -328,6 +372,30 @@ public:
 		}
 #endif
 	}
+
+#ifdef ENABLE_TRACING
+	/**
+	 * @brief Traces all registered functions and returns their IR in the
+	 * portable text format, without compiling a backend executable.
+	 *
+	 * The returned text can be persisted (e.g. written to a `.nautilus`
+	 * file) and later compiled directly — skipping tracing — via
+	 * @ref NautilusEngine::loadModuleFromIR. The module remains usable:
+	 * registering further functions or calling @ref compile afterwards
+	 * traces again as usual.
+	 *
+	 * @return Serialized Nautilus IR text
+	 * @throws RuntimeException when compilation is disabled or the IR
+	 *         contains process-specific state (e.g. a non-null pointer
+	 *         constant) that cannot be reconstructed in another process
+	 */
+	std::string serializeIR() {
+		if (!compiled_) {
+			throw std::runtime_error("serializeIR requires compilation to be enabled (engine.Compilation)");
+		}
+		return jit_.compileToSerializedIR(functions_, moduleOptions_);
+	}
+#endif
 
 	/**
 	 * @brief Compile all registered functions together into one compilation unit.

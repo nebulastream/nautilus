@@ -1,7 +1,7 @@
 nautilus {
-execute($1:i32) :i32 {
+execute($1:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32):
-	$2 = func_*($1) :i32
+	$2 = call @"<symbol>" "<name>"($1) :i32
 	return ($2) :i32
 }
 inner($1:i32) :i32 {
@@ -12,7 +12,7 @@ Block_0($1:i32):
 }
 outer($1:i32) :i32 {
 Block_0($1:i32):
-	$2 = func_*($1) :i32
+	$2 = call @"<symbol>" "<name>"($1) :i32
 	$3 = 5 :i32
 	$4 = $2 + $3 :i32
 	return ($4) :i32

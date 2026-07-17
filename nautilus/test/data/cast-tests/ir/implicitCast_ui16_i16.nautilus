@@ -1,5 +1,5 @@
 nautilus {
-execute($1:ui16) :i16 {
+execute($1:ui16) :i16 attrs["entry"="true"] {
 Block_0($1:ui16):
 	$2 = $1 cast_to i16 :i16
 	return ($2) :i16

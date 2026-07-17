@@ -7,6 +7,7 @@
 
 namespace nautilus::compiler::ir {
 class IRGraph;
+class Operation;
 } // namespace nautilus::compiler::ir
 
 namespace nautilus::compiler::mlir {
@@ -48,6 +49,14 @@ struct IRSourceMap {
 		// identifier in the dump — still get a non-zero !dbg and
 		// stay steppable in GDB.
 		std::unordered_map<uint32_t, std::vector<uint32_t>> blockOpLines;
+
+		// Maps each value-producing operation and block argument to the
+		// `$N` id the dump printed for it. The writer numbers values
+		// uniquely per function (unlike the stored identifiers, which the
+		// tracer reuses across blocks), so the lowering provider must
+		// translate through this map before consulting `operationLines`
+		// or naming debug variables.
+		std::unordered_map<const ir::Operation*, uint32_t> printedIds;
 	};
 
 	// The full text of the IR dump (identical to IRGraph::toString()).
@@ -61,9 +70,11 @@ struct IRSourceMap {
 };
 
 // Dumps `graph` via IRGraph::toString() and parses the result to build
-// the SSA-id to line-number map.  Relies on the stable format emitted by
-// the fmt formatters in IRGraph.cpp (`\t$N = ...` for definitions,
-// `Block_K($N:type, ...):` for block arguments, `name(args) {` for
+// the SSA-id to line-number map, keyed by the printed `$N` ids (see
+// `computePrintedValueIds` in IRSerializationUtil.hpp, which fills each
+// function's `printedIds` translation table).  Relies on the stable format
+// emitted by the IR writer (`\t$N = ...` for definitions,
+// `Block_K($N:type, ...):` for block arguments, `name(args) ... {` for
 // function headers).  If the dump format is ever changed, update the
 // parser here in lockstep.
 IRSourceMap dumpIRWithSourceMap(const ir::IRGraph& graph);

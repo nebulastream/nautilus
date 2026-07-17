@@ -1,5 +1,5 @@
 nautilus {
-execute($1:bool, $2:bool) :bool {
+execute($1:bool, $2:bool) :bool attrs["entry"="true"] {
 Block_0($1:bool, $2:bool):
 	$3 = $1 or $2 :bool
 	return ($3) :bool

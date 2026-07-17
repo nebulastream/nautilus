@@ -28,7 +28,8 @@ if (ENABLE_TRACING)
         target_link_libraries(nautilus-gpu-tracing-tests PUBLIC nautilus-gpu Catch2::Catch2WithMain)
         target_include_directories(nautilus-gpu-tracing-tests PRIVATE
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/common>
-                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/nautilus/src>)
+                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/nautilus/src>
+                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/nautilus/test/common>)
         target_compile_definitions(nautilus-gpu-tracing-tests PRIVATE GPU_TEST_DATA_FOLDER="${GPU_TEST_DATA_FOLDER}")
         catch_discover_tests(nautilus-gpu-tracing-tests EXTRA_ARGS --allow-running-no-tests)
 

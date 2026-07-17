@@ -1,5 +1,5 @@
 nautilus {
-execute($1:i64) :i64 {
+execute($1:i64) :i64 attrs["entry"="true"] {
 Block_0($1:i64):
 	$2 = 0 :i64
 	$3 = $1 * $2 :i64

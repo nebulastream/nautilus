@@ -4,6 +4,7 @@ include(Catch)
 add_executable(nautilus-ir-pass-tests
         EmptyBlockEliminationTest.cpp
         IRVerifierTest.cpp
+        IRSerializationTest.cpp
         IRPassManagerTest.cpp
         ConstantFoldingAndCopyPropagationTest.cpp
         DominatorsTest.cpp

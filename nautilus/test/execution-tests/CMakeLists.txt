@@ -17,6 +17,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp
         ModuleLifecycleTest.cpp
+        IRSerializationExecutionTest.cpp
         ModuleTest.cpp
         PostRAPeepholeTest.cpp
         TieredCompilationTest.cpp

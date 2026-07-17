@@ -11,6 +11,7 @@
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/util/IRSerializationUtil.hpp"
 #include "nautilus/logging.hpp"
 #include <iomanip>
 #include <map>
@@ -18,14 +19,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-
-namespace fmt {
-using namespace nautilus::compiler::ir;
-template <>
-struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::Operation& c, format_context& ctx) -> format_context::iterator;
-};
-} // namespace fmt
 
 namespace nautilus::compiler::ir {
 
@@ -453,7 +446,7 @@ protected:
 		default:
 			break;
 		}
-		return fmt::to_string(*op);
+		return printOperation(*op);
 	}
 	std::string getNodeTypeForOp(Operation::OperationType type) {
 		switch (type) {
@@ -606,7 +599,7 @@ protected:
 		default:
 			break;
 		}
-		return fmt::to_string(*op);
+		return printOperation(*op);
 	}
 };
 

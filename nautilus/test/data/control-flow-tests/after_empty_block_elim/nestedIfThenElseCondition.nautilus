@@ -1,30 +1,30 @@
 nautilus {
-execute($1:i32, $2:i32) :i32 {
+execute($1:i32, $2:i32) :i32 attrs["entry"="true"] {
 Block_0($1:i32, $2:i32):
 	$3 = 42 :i32
 	$4 = $1 == $3 :bool
-	if $4 ? Block_1($2) : Block_2($2) :void
+	if $4 ? Block_1($2) : Block_2($2) prob(0.5) :void
 
-Block_1($2:i32):
+Block_1($5:i32):
 	$6 = 2 :i32
-	br Block_6($2, $6) :void
+	br Block_6($5, $6) :void
 
-Block_6($2:i32, $6:i32):
-	$7 = $2 + $6 :i32
-	return ($7) :i32
+Block_6($7:i32, $8:i32):
+	$9 = $7 + $8 :i32
+	return ($9) :i32
 
-Block_2($2:i32):
-	$11 = 8 :i32
-	$12 = $2 == $11 :bool
-	if $12 ? Block_3($2) : Block_4($2) :void
+Block_2($11:i32):
+	$12 = 8 :i32
+	$13 = $11 == $12 :bool
+	if $13 ? Block_3($11) : Block_4($11) prob(0.5) :void
 
-Block_3($2:i32):
-	$14 = 2 :i32
-	br Block_6($2, $14) :void
+Block_3($14:i32):
+	$15 = 2 :i32
+	br Block_6($14, $15) :void
 
-Block_4($2:i32):
+Block_4($16:i32):
 	$17 = 2 :i32
-	$18 = $2 + $17 :i32
+	$18 = $16 + $17 :i32
 	$19 = 2 :i32
 	br Block_6($18, $19) :void
 }

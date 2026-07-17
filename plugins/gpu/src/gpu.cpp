@@ -137,7 +137,7 @@ void setBlock(val<uint32_t> x, val<uint32_t> y, val<uint32_t> z) {
 namespace {
 struct GPUPluginInit {
 	GPUPluginInit() {
-		auto* registry = nautilus::compiler::CompilationBackendRegistry::getInstance();
+		[[maybe_unused]] auto* registry = nautilus::compiler::CompilationBackendRegistry::getInstance();
 #ifdef ENABLE_CUDA_BACKEND
 		registry->registerBackend("cuda", std::make_unique<nautilus::compiler::cuda::CUDACompilationBackend>());
 #endif

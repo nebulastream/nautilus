@@ -58,6 +58,7 @@ public:
 
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
+	[[nodiscard]] const std::unordered_map<std::string, std::string>& getAttributes() const;
 
 	static bool classof(const Operation* Op);
 

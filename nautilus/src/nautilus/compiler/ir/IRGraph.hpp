@@ -16,8 +16,10 @@ namespace nautilus::compiler::ir {
 
 class FunctionOperation;
 
-/// Options that control how `IRGraph::toString` renders the graph.  Default-
-/// constructed options reproduce the historic output byte-for-byte.
+/// Options that control how `IRGraph::toString` renders the graph.
+/// Default-constructed options produce output byte-identical to
+/// `serializeIR` (see IRSerializationUtil.hpp); enabling source locations
+/// appends `; ...` comment trailers that the IR parser skips.
 struct IRPrintOptions {
 	bool showSourceLocations = false;
 	tracing::SourceLocationResolver* resolver = nullptr;

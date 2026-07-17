@@ -2,7 +2,15 @@
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/TieredCompiler.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
+#include <fstream>
+#include <sstream>
+
+#if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
+#include "nautilus/compiler/CompilationPipeline.hpp"
+#include "nautilus/compiler/ir/util/IRParser.hpp"
+#endif
 
 namespace nautilus::engine {
 
@@ -42,5 +50,34 @@ NautilusEngine::NautilusEngine(std::unique_ptr<compiler::JITCompiler> jit, const
 
 NautilusEngine::~NautilusEngine() = default;
 NautilusEngine::NautilusEngine(NautilusEngine&&) noexcept = default;
+
+CompiledModule NautilusEngine::loadModuleFromIR(const std::string& irText,
+                                                const IRSymbolResolver& symbolResolver) const {
+#if defined(ENABLE_COMPILER) && defined(ENABLE_TRACING)
+	if (!isCompiled()) {
+		throw RuntimeException("loadModuleFromIR requires compilation to be enabled (engine.Compilation): a module "
+		                       "loaded from IR has no original callables to interpret");
+	}
+	auto ir = compiler::ir::parseIR(irText, *irArenaPool_, compiler::createCompilationUnitID(), symbolResolver);
+	auto state = std::make_shared<details::ModuleState>();
+	jit_->compileIRModule(std::move(ir), options.deriveModuleOptions(), state);
+	return CompiledModule(std::move(state));
+#else
+	(void) irText;
+	(void) symbolResolver;
+	throw RuntimeException("loadModuleFromIR requires a build with ENABLE_COMPILER and ENABLE_TRACING");
+#endif
+}
+
+CompiledModule NautilusEngine::loadModuleFromIRFile(const std::string& path,
+                                                    const IRSymbolResolver& symbolResolver) const {
+	std::ifstream file(path);
+	if (!file) {
+		throw RuntimeException("Could not open IR file '" + path + "'");
+	}
+	std::stringstream content;
+	content << file.rdbuf();
+	return loadModuleFromIR(content.str(), symbolResolver);
+}
 
 } // namespace nautilus::engine

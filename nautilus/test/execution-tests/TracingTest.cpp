@@ -42,10 +42,14 @@ void setLogAddresses(bool);
 namespace nautilus::engine {
 
 /// Thin alias over the shared `testing::checkReferenceDump` helper so the
-/// existing call sites keep compiling unchanged.
+/// existing call sites keep compiling unchanged. External-function
+/// references in IR dumps are normalized to fixed placeholders because the
+/// recorded symbols depend on the build (see
+/// `testing::normalizeExternalFunctionReferences`).
 inline bool checkTestFile(std::string actual, const std::string category, const std::string group,
                           const std::string& name, const std::string& extension = ".trace") {
-	return testing::checkReferenceDump(actual, category, group, name, extension);
+	return testing::checkReferenceDump(testing::normalizeExternalFunctionReferences(std::move(actual)), category, group,
+	                                   name, extension);
 }
 
 using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,

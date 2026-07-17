@@ -1,11 +1,11 @@
 nautilus {
-execute($1:ptr) :i32 {
+execute($1:ptr) :i32 attrs["entry"="true"] {
 Block_0($1:ptr):
-	$3 = -2 :ui64
-	$5 = 4 :ui64
-	$6 = $3 * $5 :ui64
-	$7 = $1 + $6 :ptr
-	$10 = load($7) :i32
-	return ($10) :i32
+	$2 = -2 :ui64
+	$3 = 4 :ui64
+	$4 = $2 * $3 :ui64
+	$5 = $1 + $4 :ptr
+	$6 = load($5) :i32
+	return ($6) :i32
 }
 } //nautilus

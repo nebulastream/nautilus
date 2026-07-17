@@ -1,7 +1,7 @@
 nautilus {
-execute($1:bool, $2:ui32, $3:ui32) :ui32 {
+execute($1:bool, $2:ui32, $3:ui32) :ui32 attrs["entry"="true"] {
 Block_0($1:bool, $2:ui32, $3:ui32):
-	$7 :ui32
-	return ($7) :ui32
+	$4 = select $1 ? $2 : $3 :ui32
+	return ($4) :ui32
 }
 } //nautilus

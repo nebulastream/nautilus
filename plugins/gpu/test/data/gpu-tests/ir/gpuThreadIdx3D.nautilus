@@ -1,10 +1,10 @@
 nautilus {
-execute() :ui32 {
+execute() :ui32 attrs["entry"="true"] {
 Block_0():
-	$1 = func_*() :ui32
-	$2 = func_*() :ui32
+	$1 = call @"<symbol>" "<name>"() :ui32
+	$2 = call @"<symbol>" "<name>"() :ui32
 	$3 = $1 + $2 :ui32
-	$4 = func_*() :ui32
+	$4 = call @"<symbol>" "<name>"() :ui32
 	$5 = $3 + $4 :ui32
 	return ($5) :ui32
 }

@@ -7,9 +7,9 @@ Block_0($1:ui16, $2:ui16):
 	$6 = $5 cast_to ui16 :ui16
 	return ($6) :ui16
 }
-execute($1:ui16, $2:ui16) :ui16 {
+execute($1:ui16, $2:ui16) :ui16 attrs["entry"="true"] {
 Block_0($1:ui16, $2:ui16):
-	$3 = func_*($1,$2) :ui16
+	$3 = call @"<symbol>" "<name>"($1, $2) :ui16
 	return ($3) :ui16
 }
 } //nautilus

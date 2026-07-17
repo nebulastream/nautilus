@@ -1,11 +1,11 @@
 nautilus {
-execute($1:bool) :bool {
+execute($1:bool) :bool attrs["entry"="true"] {
 Block_0($1:bool):
-	if $1 ? Block_1() : Block_2() :void
+	if $1 ? Block_1() : Block_2() prob(0.5) :void
 
 Block_1():
-	$3 = true :bool
-	br Block_3($3) :void
+	$2 = true :bool
+	br Block_3($2) :void
 
 Block_3($3:bool):
 	return ($3) :bool

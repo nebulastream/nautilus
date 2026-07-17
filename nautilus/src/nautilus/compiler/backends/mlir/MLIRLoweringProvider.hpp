@@ -170,6 +170,11 @@ private:
 	void generateFunction(::mlir::func::FuncOp& mlirFunction, const ir::FunctionOperation& funcOp, ValueFrame& frame);
 	::mlir::func::FuncOp generateFunctionDefinitions(const ir::FunctionOperation& funcOp);
 
+	/// Translates @p operation to the `$N` id printed for it in the IR
+	/// dump (unique per function), falling back to the stored identifier
+	/// when no source map is active.
+	uint32_t dollarId(const ir::Operation* operation) const;
+
 	/// Build a `$N` NameLoc wrapping a FileLineColLoc at the IR dump line
 	/// of the given identifier.  Returns a plain NameLoc("arg") location
 	/// when debug info is disabled so the caller can use the result

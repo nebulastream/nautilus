@@ -73,4 +73,8 @@ std::optional<std::string> FunctionOperation::getAttribute(const std::string& ke
 	return std::nullopt;
 }
 
+const std::unordered_map<std::string, std::string>& FunctionOperation::getAttributes() const {
+	return attributes;
+}
+
 } // namespace nautilus::compiler::ir

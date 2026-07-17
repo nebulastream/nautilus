@@ -1,19 +1,19 @@
 nautilus {
-execute($1:i32, $2:i32) :i32 {
+execute($1:i32, $2:i32) :i32 allocas[(8,4)] attrs["entry"="true"] {
 Block_0($1:i32, $2:i32):
 	$3 = alloca[0] :ptr
-	func_*($3,$1,$2) :void
-	$6 = 0 :ui64
-	$8 = 1 :ui64
-	$9 = $6 * $8 :ui64
-	$10 = $3 + $9 :ptr
-	$14 = 4 :ui64
-	$16 = 1 :ui64
-	$17 = $14 * $16 :ui64
-	$18 = $3 + $17 :ptr
-	$21 = load($10) :i32
-	$22 = load($18) :i32
-	$23 = $21 + $22 :i32
-	return ($23) :i32
+	call @"<symbol>" "<name>"($3, $1, $2) :void
+	$4 = 0 :ui64
+	$5 = 1 :ui64
+	$6 = $4 * $5 :ui64
+	$7 = $3 + $6 :ptr
+	$8 = 4 :ui64
+	$9 = 1 :ui64
+	$10 = $8 * $9 :ui64
+	$11 = $3 + $10 :ptr
+	$12 = load($7) :i32
+	$13 = load($11) :i32
+	$14 = $12 + $13 :i32
+	return ($14) :i32
 }
 } //nautilus

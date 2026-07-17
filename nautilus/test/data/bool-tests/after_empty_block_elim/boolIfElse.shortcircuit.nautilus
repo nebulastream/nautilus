@@ -1,21 +1,21 @@
 nautilus {
-execute($1:bool, $2:bool) :bool {
+execute($1:bool, $2:bool) :bool attrs["entry"="true"] {
 Block_0($1:bool, $2:bool):
-	if $1 ? Block_1($2) : Block_2() :void
+	if $1 ? Block_1($2) : Block_2() prob(0.5) :void
 
-Block_1($2:bool):
-	if $2 ? Block_3() : Block_4() :void
+Block_1($3:bool):
+	if $3 ? Block_3() : Block_4() prob(0.5) :void
 
 Block_3():
-	$5 = true :bool
-	br Block_5($5) :void
+	$4 = true :bool
+	br Block_5($4) :void
 
 Block_5($5:bool):
 	return ($5) :bool
 
 Block_4():
-	$11 = false :bool
-	br Block_5($11) :void
+	$7 = false :bool
+	br Block_5($7) :void
 
 Block_2():
 	$8 = false :bool

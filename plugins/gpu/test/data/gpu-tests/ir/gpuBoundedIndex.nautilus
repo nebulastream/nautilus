@@ -1,22 +1,22 @@
 nautilus {
-execute($1:ui32) :ui32 {
+execute($1:ui32) :ui32 attrs["entry"="true"] {
 Block_0($1:ui32):
-	$2 = func_*() :ui32
-	$3 = func_*() :ui32
+	$2 = call @"<symbol>" "<name>"() :ui32
+	$3 = call @"<symbol>" "<name>"() :ui32
 	$4 = $2 * $3 :ui32
-	$5 = func_*() :ui32
+	$5 = call @"<symbol>" "<name>"() :ui32
 	$6 = $4 + $5 :ui32
 	$7 = $6 < $1 :bool
-	if $7 ? Block_1($6) : Block_2() :void
+	if $7 ? Block_1($6) : Block_2() prob(0.5) :void
 
-Block_1($6:ui32):
-	br Block_3($6) :void
+Block_1($8:ui32):
+	br Block_3($8) :void
 
-Block_3($6:ui32):
-	return ($6) :ui32
+Block_3($9:ui32):
+	return ($9) :ui32
 
 Block_2():
-	$10 = 0 :ui32
-	br Block_3($10) :void
+	$11 = 0 :ui32
+	br Block_3($11) :void
 }
 } //nautilus

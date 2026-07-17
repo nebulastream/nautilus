@@ -1,7 +1,7 @@
 nautilus {
-execute($1:f64, $2:f64) :f64 {
+execute($1:f64, $2:f64) :f64 attrs["entry"="true"] {
 Block_0($1:f64, $2:f64):
-	$3 = func_*($1,$2) :f64
+	$3 = call @"<symbol>" "<name>"($1, $2) :f64
 	return ($3) :f64
 }
 mulDouble($1:f64, $2:f64) :f64 {
