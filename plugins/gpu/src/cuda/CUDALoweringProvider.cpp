@@ -35,6 +35,30 @@ void CUDALoweringProvider::LoweringContext::registerGPUIntrinsics() {
 	gpu::registerVoidIntrinsic(gpuIntrinsics, syncPtr, "__syncthreads()");
 	deviceIntrinsics.insert(syncPtr);
 
+	// Block-shared memory: emit a __shared__ array sized by the constant byte
+	// argument and return its address (CUDA pointers carry no address space, so
+	// no further retagging is needed).
+	auto sharedPtr = reinterpret_cast<void*>(nautilus_gpu_shared_alloc);
+	gpuIntrinsics[sharedPtr] = [](ir::ProxyCallOperation* call, short blockIndex, gpu::RegisterFrame& frame,
+	                              std::stringstream& blockArguments, std::vector<std::stringstream>& blocks,
+	                              std::string (*getVariable)(const ir::OperationIdentifier&)) -> bool {
+		uint64_t bytes = 0;
+		auto inputs = call->getInputArguments();
+		if (!inputs.empty() && inputs[0]->getOperationType() == ir::Operation::OperationType::ConstIntOp) {
+			bytes = static_cast<uint64_t>(ir::as<ir::ConstIntOperation>(inputs[0])->getValue());
+		}
+		auto resultVar = getVariable(call->getIdentifier());
+		auto bufName = "nautilus_shared_" + std::to_string(call->getIdentifier().getId());
+		blockArguments << "__shared__ unsigned char " << bufName << "[" << bytes << "];\n";
+		if (!frame.contains(call->getIdentifier())) {
+			blockArguments << "uint8_t* " << resultVar << ";\n";
+			frame.setValue(call->getIdentifier(), resultVar);
+		}
+		blocks[blockIndex] << resultVar << " = " << bufName << ";\n";
+		return true;
+	};
+	deviceIntrinsics.insert(sharedPtr);
+
 	// Launch config intrinsics: host-side, do NOT mark function as kernel
 	gpu::registerLaunchConfigIntrinsic(gpuIntrinsics, reinterpret_cast<void*>(nautilus_gpu_set_grid), pendingGridX,
 	                                   pendingGridY, pendingGridZ, hasLaunchConfig);

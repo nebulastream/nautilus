@@ -47,3 +47,14 @@ if (ENABLE_TRACING)
         endif ()
     endif ()
 endif ()
+
+# Metal GPU benchmarks: execution throughput over large unified buffers and
+# one-time compilation cost. Requires a Metal device + toolchain at runtime.
+if (ENABLE_BENCHMARKS AND ENABLE_METAL_BACKEND AND APPLE)
+    add_executable(nautilus-gpu-benchmarks GPUMetalBenchmark.cpp)
+    nautilus_inline(nautilus-gpu-benchmarks)
+    target_link_libraries(nautilus-gpu-benchmarks PUBLIC nautilus-gpu Catch2::Catch2WithMain)
+    target_compile_definitions(nautilus-gpu-benchmarks PRIVATE ENABLE_METAL_EXECUTION)
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    catch_discover_tests(nautilus-gpu-benchmarks EXTRA_ARGS --allow-running-no-tests)
+endif ()

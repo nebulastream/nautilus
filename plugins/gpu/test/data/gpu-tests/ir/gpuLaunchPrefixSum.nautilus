@@ -14,42 +14,42 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 }
 prefixSum($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = func_*() :ui32
+	$4 = func_*() :ui32
+	$5 = func_*() :ui32
+	$6 = $4 * $5 :ui32
 	$7 = func_*() :ui32
-	$8 = $6 * $7 :ui32
-	$9 = func_*() :ui32
-	$10 = $8 + $9 :ui32
-	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() :void
+	$8 = $6 + $7 :ui32
+	$9 = $8 < $3 :bool
+	if $9 ? Block_1($2, $8, $1) : Block_2() :void
 
-Block_1($5:ptr, $10:ui32, $4:ptr):
-	$13 = 0 :ui32
-	$14 = 0 :ui32
-	br Block_5($5, $10, $13, $14, $4) :void
+Block_1($2:ptr, $8:ui32, $1:ptr):
+	$11 = 0 :ui32
+	$12 = 0 :ui32
+	br Block_5($2, $8, $11, $12, $1) :void
 
-Block_5($5:ptr, $10:ui32, $13:ui32, $14:ui32, $4:ptr):
-	$15 = $14 <= $10 :bool
-	if $15 ? Block_3($5, $10, $14, $13, $4) : Block_4($5, $10, $13) :void
+Block_5($2:ptr, $8:ui32, $11:ui32, $12:ui32, $1:ptr):
+	$13 = $12 <= $8 :bool
+	if $13 ? Block_3($2, $8, $12, $11, $1) : Block_4($2, $8, $11) :void
 
-Block_3($5:ptr, $10:ui32, $14:ui32, $13:ui32, $4:ptr):
-	$17 = $14 cast_to i32 :i32
-	$21 = 4 :ui64
-	$22 = $17 cast_to ui64 :ui64
-	$23 = $22 * $21 :ui64
-	$24 = $4 + $23 :ptr
-	$27 = load($24) :ui32
-	$28 = $13 + $27 :ui32
-	$29 = 1 :ui32
-	$30 = $14 + $29 :ui32
-	br Block_5($5, $10, $28, $30, $4) :void
+Block_3($2:ptr, $8:ui32, $12:ui32, $11:ui32, $1:ptr):
+	$15 = $12 cast_to i32 :i32
+	$19 = 4 :ui64
+	$20 = $15 cast_to ui64 :ui64
+	$21 = $20 * $19 :ui64
+	$22 = $1 + $21 :ptr
+	$25 = load($22) :ui32
+	$26 = $11 + $25 :ui32
+	$27 = 1 :ui32
+	$28 = $12 + $27 :ui32
+	br Block_5($2, $8, $26, $28, $1) :void
 
-Block_4($5:ptr, $10:ui32, $13:ui32):
-	$38 = $10 cast_to i32 :i32
-	$42 = 4 :ui64
-	$43 = $38 cast_to ui64 :ui64
-	$44 = $43 * $42 :ui64
-	$45 = $5 + $44 :ptr
-	store($13, $45) :void
+Block_4($2:ptr, $8:ui32, $11:ui32):
+	$36 = $8 cast_to i32 :i32
+	$40 = 4 :ui64
+	$41 = $36 cast_to ui64 :ui64
+	$42 = $41 * $40 :ui64
+	$43 = $2 + $42 :ptr
+	store($11, $43) :void
 	br Block_6() :void
 
 Block_6():

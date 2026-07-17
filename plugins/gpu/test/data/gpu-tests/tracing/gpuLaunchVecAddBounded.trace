@@ -25,52 +25,49 @@ B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
 
 VECADDBOUNDED:
 B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
-	ASSIGN	$5	$1	:ptr
-	ASSIGN	$6	$2	:ptr
-	ASSIGN	$7	$3	:ptr
+	CALL	$5	func_*()	:ui32
+	CALL	$6	func_*()	:ui32
+	MUL	$7	$5	$6	:ui32
 	CALL	$8	func_*()	:ui32
-	CALL	$9	func_*()	:ui32
-	MUL	$10	$8	$9	:ui32
-	CALL	$11	func_*()	:ui32
-	ADD	$12	$10	$11	:ui32
-	LT	$13	$12	$4	:bool
-	CMP	$14	$13	B1()	B2()	:void
+	ADD	$9	$7	$8	:ui32
+	LT	$10	$9	$4	:bool
+	CMP	$11	$10	B1()	B2()	:void
 B1()
-	CAST	$15	$12	:i32
-	ASSIGN	$16	$5	:ptr
-	ASSIGN	$17	$15	:i32
-	ASSIGN	$18	$17	:i32
-	CONST	$19	4	:ui64
-	CAST	$20	$18	:ui64
-	MUL	$21	$20	$19	:ui64
-	ADD	$22	$16	$21	:ptr
-	ASSIGN	$23	$22	:ptr
-	ASSIGN	$24	$23	:ptr
-	CAST	$25	$12	:i32
-	ASSIGN	$26	$6	:ptr
-	ASSIGN	$27	$25	:i32
-	ASSIGN	$28	$27	:i32
-	CONST	$29	4	:ui64
-	CAST	$30	$28	:ui64
-	MUL	$31	$30	$29	:ui64
-	ADD	$32	$26	$31	:ptr
-	ASSIGN	$33	$32	:ptr
-	ASSIGN	$34	$33	:ptr
-	LOAD	$35	$24	:ui32
-	LOAD	$36	$34	:ui32
-	ADD	$37	$35	$36	:ui32
-	CAST	$38	$12	:i32
-	ASSIGN	$39	$7	:ptr
-	ASSIGN	$40	$38	:i32
-	ASSIGN	$41	$40	:i32
-	CONST	$42	4	:ui64
-	CAST	$43	$41	:ui64
-	MUL	$44	$43	$42	:ui64
-	ADD	$45	$39	$44	:ptr
-	ASSIGN	$46	$45	:ptr
-	ASSIGN	$47	$46	:ptr
-	ASSIGN	$48	$37	:ui32
-	STORE	$49	$47	$48	:void
+	CAST	$12	$9	:i32
+	ASSIGN	$13	$1	:ptr
+	ASSIGN	$14	$12	:i32
+	ASSIGN	$15	$14	:i32
+	CONST	$16	4	:ui64
+	CAST	$17	$15	:ui64
+	MUL	$18	$17	$16	:ui64
+	ADD	$19	$13	$18	:ptr
+	ASSIGN	$20	$19	:ptr
+	ASSIGN	$21	$20	:ptr
+	CAST	$22	$9	:i32
+	ASSIGN	$23	$2	:ptr
+	ASSIGN	$24	$22	:i32
+	ASSIGN	$25	$24	:i32
+	CONST	$26	4	:ui64
+	CAST	$27	$25	:ui64
+	MUL	$28	$27	$26	:ui64
+	ADD	$29	$23	$28	:ptr
+	ASSIGN	$30	$29	:ptr
+	ASSIGN	$31	$30	:ptr
+	LOAD	$32	$21	:ui32
+	LOAD	$33	$31	:ui32
+	ADD	$34	$32	$33	:ui32
+	CAST	$35	$9	:i32
+	ASSIGN	$36	$3	:ptr
+	ASSIGN	$37	$35	:i32
+	ASSIGN	$38	$37	:i32
+	CONST	$39	4	:ui64
+	CAST	$40	$38	:ui64
+	MUL	$41	$40	$39	:ui64
+	ADD	$42	$36	$41	:ptr
+	ASSIGN	$43	$42	:ptr
+	ASSIGN	$44	$43	:ptr
+	ASSIGN	$45	$34	:ui32
+	STORE	$46	$44	$45	:void
 	RETURN	$0	:void
 B2()
 	RETURN	$0	:void
