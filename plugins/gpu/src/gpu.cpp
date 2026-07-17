@@ -4,6 +4,24 @@
 #include "nautilus/function.hpp"
 #include "nautilus/gpu/config.hpp"
 #include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
+
+// The CUDA *codegen* backend (ENABLE_CUDA_BACKEND) can be enabled without the
+// CUDA toolkit being installed (it only emits .cu source). The unified-memory
+// allocator, however, needs the CUDA runtime headers, so gate it on their
+// actual presence. On Apple / toolkit-less hosts this falls back to
+// page-aligned host memory suitable for Metal's newBufferWithBytesNoCopy.
+#if defined(ENABLE_CUDA_BACKEND) && __has_include(<cuda_runtime.h>)
+#define NAUTILUS_GPU_USE_CUDA_RUNTIME 1
+#include <cuda_runtime.h>
+#else
+#include <unistd.h> // getpagesize
+#endif
 
 #ifdef ENABLE_CUDA_BACKEND
 #include "cuda/CUDACompilationBackend.hpp"
@@ -64,6 +82,18 @@ void nautilus_gpu_sync_threads() {
 	// no-op on CPU
 }
 
+void* nautilus_gpu_shared_alloc(uint64_t bytes, uint64_t align) {
+	// CPU fallback: single-block semantics. Bump-allocate from a thread-local
+	// arena (retained for the thread's lifetime; the CPU path is for
+	// correctness, not scale). Each call site gets distinct storage.
+	thread_local std::vector<std::unique_ptr<uint8_t[]>> arena;
+	auto a = align == 0 ? 1 : align;
+	arena.emplace_back(new uint8_t[bytes + a]);
+	auto base = reinterpret_cast<uintptr_t>(arena.back().get());
+	auto aligned = (base + a - 1) & ~(static_cast<uintptr_t>(a) - 1);
+	return reinterpret_cast<void*>(aligned);
+}
+
 void nautilus_gpu_set_grid(uint32_t, uint32_t, uint32_t) {
 	// no-op on CPU (kernel runs as single thread regardless)
 }
@@ -73,6 +103,89 @@ void nautilus_gpu_set_block(uint32_t, uint32_t, uint32_t) {
 }
 
 } // extern "C"
+
+// ============================================================================
+// Unified-memory runtime: size table + backend allocator.
+// ============================================================================
+
+namespace {
+std::mutex g_buffer_table_mutex;
+// Maps a unified allocation's base pointer to its page-rounded byte length.
+// Populated by allocUnified/copy/wrap, consulted by the generated Metal host
+// code (via nautilus_gpu_buffer_bytes) to size the no-copy MTLBuffer.
+std::unordered_map<void*, uint64_t>& bufferTable() {
+	static std::unordered_map<void*, uint64_t> table;
+	return table;
+}
+} // namespace
+
+extern "C" {
+
+/// Returns the page-rounded byte length registered for a unified buffer base
+/// pointer. Called from generated Metal host code (address embedded as a
+/// literal). Throws if the pointer was not produced by allocUnified/copy/wrap.
+uint64_t nautilus_gpu_buffer_bytes(void* ptr) {
+	std::lock_guard<std::mutex> lock(g_buffer_table_mutex);
+	auto& table = bufferTable();
+	auto it = table.find(ptr);
+	if (it == table.end()) {
+		throw std::runtime_error("nautilus_gpu_buffer_bytes: pointer was not allocated via "
+		                         "gpu::allocUnified/copy/wrap");
+	}
+	return it->second;
+}
+
+} // extern "C"
+
+namespace nautilus::gpu::detail {
+
+size_t pageRoundUp(size_t bytes) {
+#ifdef NAUTILUS_GPU_USE_CUDA_RUNTIME
+	// CUDA managed memory has no page-alignment requirement for the kernel ABI;
+	// keep the logical size.
+	return bytes;
+#else
+	auto pg = static_cast<size_t>(getpagesize());
+	return ((bytes + pg - 1) / pg) * pg;
+#endif
+}
+
+void* allocUnifiedBytes(size_t bytes) {
+	auto rounded = pageRoundUp(bytes == 0 ? 1 : bytes);
+#ifdef NAUTILUS_GPU_USE_CUDA_RUNTIME
+	void* p = nullptr;
+	if (cudaMallocManaged(&p, rounded) != cudaSuccess) {
+		throw std::runtime_error("gpu::allocUnified: cudaMallocManaged failed");
+	}
+	return p;
+#else
+	void* p = nullptr;
+	if (posix_memalign(&p, static_cast<size_t>(getpagesize()), rounded) != 0) {
+		throw std::runtime_error("gpu::allocUnified: posix_memalign failed");
+	}
+	return p;
+#endif
+}
+
+void freeUnifiedBytes(void* ptr) {
+#ifdef NAUTILUS_GPU_USE_CUDA_RUNTIME
+	cudaFree(ptr);
+#else
+	free(ptr);
+#endif
+}
+
+void registerBuffer(void* ptr, uint64_t allocBytes) {
+	std::lock_guard<std::mutex> lock(g_buffer_table_mutex);
+	bufferTable()[ptr] = allocBytes;
+}
+
+void unregisterBuffer(void* ptr) {
+	std::lock_guard<std::mutex> lock(g_buffer_table_mutex);
+	bufferTable().erase(ptr);
+}
+
+} // namespace nautilus::gpu::detail
 
 namespace nautilus::gpu {
 

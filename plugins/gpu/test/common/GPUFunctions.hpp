@@ -64,7 +64,7 @@ void gpuVectorAdd(val<uint32_t*> a, val<uint32_t*> b, val<uint32_t*> c) {
 
 // Define a kernel as a gpu::NautilusKernelFunction
 static auto vecAddKernel =
-    gpu::NautilusKernelFunction {"vecAdd", [](val<uint32_t*> a, val<uint32_t*> b, val<uint32_t*> c) {
+    gpu::NautilusKernelFunction {"vecAdd", [](gpu::Array<uint32_t> a, gpu::Array<uint32_t> b, gpu::Array<uint32_t> c) {
 	                                 auto tid = gpu::threadIdx_x();
 	                                 c[tid] = a[tid] + b[tid];
                                  }};
@@ -87,7 +87,7 @@ void gpuLaunchVecAddDynamic(val<uint32_t*> a, val<uint32_t*> b, val<uint32_t*> c
 // SAXPY kernel: y[i] = a * x[i] + y[i]
 // A classic GPU computing benchmark (Single-precision A*X Plus Y).
 static auto saxpyKernel =
-    gpu::NautilusKernelFunction {"saxpy", [](val<float*> x, val<float*> y, val<float> a) {
+    gpu::NautilusKernelFunction {"saxpy", [](gpu::Array<float> x, gpu::Array<float> y, val<float> a) {
 	                                 auto tid = gpu::blockIdx_x() * gpu::blockDim_x() + gpu::threadIdx_x();
 	                                 y[tid] = a * x[tid] + y[tid];
                                  }};
@@ -98,11 +98,11 @@ void gpuLaunchSaxpy(val<float*> x, val<float*> y, val<float> a) {
 }
 
 // Vector scale kernel: out[i] = in[i] * scalar
-static auto vecScaleKernel =
-    gpu::NautilusKernelFunction {"vecScale", [](val<uint32_t*> in, val<uint32_t*> out, val<uint32_t> scalar) {
-	                                 auto tid = gpu::threadIdx_x();
-	                                 out[tid] = in[tid] * scalar;
-                                 }};
+static auto vecScaleKernel = gpu::NautilusKernelFunction {
+    "vecScale", [](gpu::Array<uint32_t> in, gpu::Array<uint32_t> out, val<uint32_t> scalar) {
+	    auto tid = gpu::threadIdx_x();
+	    out[tid] = in[tid] * scalar;
+    }};
 
 // Host function that launches vector scale
 void gpuLaunchVecScale(val<uint32_t*> in, val<uint32_t*> out, val<uint32_t> scalar) {
@@ -111,7 +111,7 @@ void gpuLaunchVecScale(val<uint32_t*> in, val<uint32_t*> out, val<uint32_t> scal
 
 // Bounded vector add kernel: c[i] = a[i] + b[i] with bounds check (control flow on GPU)
 static auto vecAddBoundedKernel = gpu::NautilusKernelFunction {
-    "vecAddBounded", [](val<uint32_t*> a, val<uint32_t*> b, val<uint32_t*> c, val<uint32_t> n) {
+    "vecAddBounded", [](gpu::Array<uint32_t> a, gpu::Array<uint32_t> b, gpu::Array<uint32_t> c, val<uint32_t> n) {
 	    auto tid = gpu::blockIdx_x() * gpu::blockDim_x() + gpu::threadIdx_x();
 	    if (tid < n) {
 		    c[tid] = a[tid] + b[tid];
@@ -127,7 +127,7 @@ void gpuLaunchVecAddBounded(val<uint32_t*> a, val<uint32_t*> b, val<uint32_t*> c
 // Nested if kernel: classify values into buckets and write to output
 // out[tid] = 3 if a[tid] > 200, 2 if > 100, 1 if > 0, else 0
 static auto classifyKernel =
-    gpu::NautilusKernelFunction {"classify", [](val<uint32_t*> a, val<uint32_t*> out, val<uint32_t> n) {
+    gpu::NautilusKernelFunction {"classify", [](gpu::Array<uint32_t> a, gpu::Array<uint32_t> out, val<uint32_t> n) {
 	                                 auto tid = gpu::blockIdx_x() * gpu::blockDim_x() + gpu::threadIdx_x();
 	                                 if (tid < n) {
 		                                 if (a[tid] > val<uint32_t>((uint32_t) 200)) {
@@ -153,7 +153,7 @@ void gpuLaunchClassify(val<uint32_t*> a, val<uint32_t*> out, val<uint32_t> n) {
 // Loop kernel: compute prefix sum per thread (each thread sums a[0..tid])
 // out[tid] = sum(a[0..tid])
 static auto prefixSumKernel = gpu::NautilusKernelFunction {
-    "prefixSum", [](val<uint32_t*> a, val<uint32_t*> out, val<uint32_t> n) {
+    "prefixSum", [](gpu::Array<uint32_t> a, gpu::Array<uint32_t> out, val<uint32_t> n) {
 	    auto tid = gpu::blockIdx_x() * gpu::blockDim_x() + gpu::threadIdx_x();
 	    if (tid < n) {
 		    val<uint32_t> sum = val<uint32_t>((uint32_t) 0);
@@ -166,6 +166,37 @@ static auto prefixSumKernel = gpu::NautilusKernelFunction {
 
 void gpuLaunchPrefixSum(val<uint32_t*> a, val<uint32_t*> out, val<uint32_t> n) {
 	gpu::launch(prefixSumKernel, gpu::GridDim {(uint32_t) 1}, gpu::BlockDim {(uint32_t) 256}, a, out, n);
+}
+
+// Block reduction using shared memory + barriers: each block sums its 256
+// elements into out[blockIdx] via a tree reduction over a threadgroup tile.
+static auto blockSumKernel =
+    gpu::NautilusKernelFunction {"blockSum", [](gpu::Array<uint32_t> in, gpu::Array<uint32_t> out, val<uint32_t> n) {
+	                                 auto tile = gpu::sharedArray<uint32_t, 256>();
+	                                 auto tid = gpu::threadIdx_x();
+	                                 auto gid = gpu::blockIdx_x() * gpu::blockDim_x() + tid;
+	                                 val<uint32_t> v = val<uint32_t>((uint32_t) 0);
+	                                 if (gid < n) {
+		                                 v = in[gid];
+	                                 }
+	                                 tile[tid] = v;
+	                                 gpu::syncThreads();
+	                                 for (val<uint32_t> s = gpu::blockDim_x() / val<uint32_t>((uint32_t) 2);
+	                                      s > val<uint32_t>((uint32_t) 0); s = s / val<uint32_t>((uint32_t) 2)) {
+		                                 if (tid < s) {
+			                                 tile[tid] = tile[tid] + tile[tid + s];
+		                                 }
+		                                 gpu::syncThreads();
+	                                 }
+	                                 if (tid == val<uint32_t>((uint32_t) 0)) {
+		                                 val<uint32_t> total = tile[(uint32_t) 0];
+		                                 out[gpu::blockIdx_x()] = total;
+	                                 }
+                                 }};
+
+void gpuLaunchBlockSum(val<uint32_t*> in, val<uint32_t*> out, val<uint32_t> n) {
+	auto blocks = (n + val<uint32_t>((uint32_t) 255)) / val<uint32_t>((uint32_t) 256);
+	gpu::launch(blockSumKernel, gpu::GridDim {blocks}, gpu::BlockDim {(uint32_t) 256}, in, out, n);
 }
 
 } // namespace nautilus::engine

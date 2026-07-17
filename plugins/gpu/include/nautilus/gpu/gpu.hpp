@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/function.hpp"
+#include "nautilus/gpu/array.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -64,6 +65,33 @@ val<uint32_t> gridDim_z();
 /// Block-level barrier synchronization.
 /// CPU fallback: no-op.
 void syncThreads();
+
+// ============================================================================
+// Block-shared (threadgroup / __shared__) memory
+// ============================================================================
+
+} // namespace nautilus::gpu
+
+// Internal intrinsic backing sharedArray. The device backends emit a
+// threadgroup (Metal) / __shared__ (CUDA) array of `bytes` and return its
+// address; the byte size is read from the constant argument at lowering time.
+// CPU fallback (defined in gpu.cpp) returns thread-local arena memory.
+extern "C" void* nautilus_gpu_shared_alloc(uint64_t bytes, uint64_t align);
+
+namespace nautilus::gpu {
+
+/// Returns a pointer to a block-shared array of `N` elements of type `T`,
+/// statically sized at compile time. Lowers to `threadgroup T[N]` (Metal) /
+/// `__shared__ T[N]` (CUDA); combine with syncThreads() for block-cooperative
+/// algorithms (tiled reduction, scan).
+///
+/// CPU fallback: a thread-local arena allocation (single-block semantics).
+template <class T, size_t N>
+val<T*> sharedArray() {
+	auto raw = invoke<void*, uint64_t, uint64_t>(nautilus_gpu_shared_alloc, val<uint64_t>((uint64_t) (N * sizeof(T))),
+	                                             val<uint64_t>((uint64_t) alignof(T)));
+	return static_cast<val<T*>>(raw);
+}
 
 // ============================================================================
 // Kernel launch
