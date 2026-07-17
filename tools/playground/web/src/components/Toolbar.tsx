@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Anchor, Badge, Button, Checkbox, Divider, Group, Popover, Select, Text, Tooltip } from '@mantine/core';
-import { BACKENDS, type Backend, type CompileOptions, type Example } from '../api';
+import { BACKENDS, MLIR_DEBUG_SOURCE_MODES, type Backend, type CompileOptions, type Example } from '../api';
 
 export type StatusKind = 'ready' | 'working' | 'done' | 'failed';
 
@@ -204,6 +204,25 @@ export function Toolbar({
 								disabled={backend !== 'mlir'}
 								checked={options.enableDwarf ?? false}
 								onChange={(e) => onOptionsChange({ ...options, enableDwarf: e.currentTarget.checked })}
+							/>
+						</Tooltip>
+						<Tooltip
+							label="Chooses whether DWARF line numbers point at the emitted MLIR snapshot or a Nautilus IR dump. Requires DWARF debug info."
+							maw={280}
+							multiline
+							withArrow
+						>
+							<Select
+								size="xs"
+								mt={8}
+								label="Debug source mode"
+								disabled={backend !== 'mlir' || !(options.enableDwarf ?? false)}
+								value={options.mlirDebugSourceMode ?? 'mlir'}
+								data={MLIR_DEBUG_SOURCE_MODES.map((mode) => ({ value: mode, label: mode }))}
+								onChange={(value) =>
+									value && onOptionsChange({ ...options, mlirDebugSourceMode: value as CompileOptions['mlirDebugSourceMode'] })
+								}
+								allowDeselect={false}
 							/>
 						</Tooltip>
 					</Popover.Dropdown>

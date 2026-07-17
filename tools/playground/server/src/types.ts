@@ -1,11 +1,14 @@
 export const BACKENDS = ['mlir', 'cpp', 'bc', 'tbc', 'asmjit', 'cuda', 'metal'] as const;
 export type Backend = (typeof BACKENDS)[number];
+export const MLIR_DEBUG_SOURCE_MODES = ['mlir', 'nautilus-ir'] as const;
+export type MlirDebugSourceMode = (typeof MLIR_DEBUG_SOURCE_MODES)[number];
 
 export interface CompileOptions {
 	enableLICM?: boolean;
 	enableLocalCSE?: boolean;
 	enableStrengthReduction?: boolean;
 	enableDwarf?: boolean;
+	mlirDebugSourceMode?: MlirDebugSourceMode;
 	maxPipelineIterations?: number;
 }
 
