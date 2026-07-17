@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
-import { BACKENDS } from '../types.js';
+import { BACKENDS, MLIR_DEBUG_SOURCE_MODES } from '../types.js';
 import { allowRequest } from '../rateLimit.js';
 import { cachedResult, cacheKeyFor, getJob, QueueFullError, submitJob, subscribe } from '../jobs/queue.js';
 import type { Example } from '../examples/index.js';
@@ -15,6 +15,7 @@ const compileSchema = z.object({
 			enableLocalCSE: z.boolean().optional(),
 			enableStrengthReduction: z.boolean().optional(),
 			enableDwarf: z.boolean().optional(),
+			mlirDebugSourceMode: z.enum(MLIR_DEBUG_SOURCE_MODES).optional(),
 			maxPipelineIterations: z.number().int().min(1).max(8).optional(),
 		})
 		.optional(),
@@ -93,7 +94,7 @@ export function registerRoutes(app: FastifyInstance, examples: Example[]): void 
 
 	app.get('/api/meta', async () => ({
 		backends: BACKENDS,
-		passOptions: ['enableLICM', 'enableLocalCSE', 'enableStrengthReduction', 'enableDwarf'],
+		passOptions: ['enableLICM', 'enableLocalCSE', 'enableStrengthReduction', 'enableDwarf', 'mlirDebugSourceMode'],
 		limits: {
 			sourceMaxBytes: config.sourceMaxBytes,
 			maxPipelineIterations: 8,

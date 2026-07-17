@@ -69,6 +69,9 @@ export async function runInSandbox(jobId: string, source: string, backend: Backe
 	if (options.enableDwarf) {
 		args.push('-e', 'PG_ENABLE_DWARF=1');
 	}
+	if (options.mlirDebugSourceMode !== undefined) {
+		args.push('-e', `PG_MLIR_DEBUG_SOURCE_MODE=${options.mlirDebugSourceMode}`);
+	}
 	if (options.maxPipelineIterations !== undefined) {
 		args.push('-e', `PG_MAX_ITERATIONS=${options.maxPipelineIterations}`);
 	}

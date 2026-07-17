@@ -58,6 +58,7 @@ DRIVER_ARGS="--backend=$PG_BACKEND --out=/out"
 [ "${PG_ENABLE_LOCAL_CSE:-0}" = "1" ] && DRIVER_ARGS="$DRIVER_ARGS --enable-local-cse"
 [ "${PG_ENABLE_STRENGTH_REDUCTION:-0}" = "1" ] && DRIVER_ARGS="$DRIVER_ARGS --enable-strength-reduction"
 [ "${PG_ENABLE_DWARF:-0}" = "1" ] && DRIVER_ARGS="$DRIVER_ARGS --enable-dwarf"
+[ -n "${PG_MLIR_DEBUG_SOURCE_MODE:-}" ] && DRIVER_ARGS="$DRIVER_ARGS --mlir-debug-source-mode=$PG_MLIR_DEBUG_SOURCE_MODE"
 [ -n "${PG_MAX_ITERATIONS:-}" ] && DRIVER_ARGS="$DRIVER_ARGS --max-iterations=$PG_MAX_ITERATIONS"
 
 # shellcheck disable=SC2086
