@@ -14,6 +14,11 @@ write a Nautilus module (real `val<T>` C++ code with multiple functions), hit
 - and the **final backend code**: MLIR + LLVM IR, generated C, bytecode,
   tiered bytecode, or AsmJit assembly.
 
+The "Passes & debug" menu also has an opt-in **DWARF debug info** toggle
+(MLIR backend only, maps to the engine's `mlir.debug.enable` option) so the
+MLIR/LLVM IR stages show the `!dbg`/`llvm.dbg.value` annotations the backend
+emits when debug info is on.
+
 Nautilus itself needs **zero changes** — everything is driven through the
 engine's existing options (`dump.all`, `ir.dumpAfterEachPass`,
 `engine.backend`, …).

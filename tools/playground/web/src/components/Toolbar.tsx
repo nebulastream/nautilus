@@ -159,7 +159,7 @@ export function Toolbar({
 				<Popover position="bottom-start" shadow="md" width={260}>
 					<Popover.Target>
 						<Button size="xs" variant="default">
-							Passes
+							Passes & debug
 						</Button>
 					</Popover.Target>
 					<Popover.Dropdown>
@@ -182,10 +182,30 @@ export function Toolbar({
 						/>
 						<Checkbox
 							size="xs"
+							mb={6}
 							label="Strength reduction"
 							checked={options.enableStrengthReduction ?? false}
 							onChange={(e) => onOptionsChange({ ...options, enableStrengthReduction: e.currentTarget.checked })}
 						/>
+						<Divider my={8} />
+						<Text size="xs" c="dimmed" mb={8}>
+							Debug info
+						</Text>
+						<Tooltip
+							label="Emits DWARF debug info (line tables, GDB JIT registration) and clamps the LLVM codegen level to keep it accurate. MLIR backend only."
+							maw={280}
+							multiline
+							withArrow
+							disabled={backend === 'mlir'}
+						>
+							<Checkbox
+								size="xs"
+								label="Emit DWARF debug info"
+								disabled={backend !== 'mlir'}
+								checked={options.enableDwarf ?? false}
+								onChange={(e) => onOptionsChange({ ...options, enableDwarf: e.currentTarget.checked })}
+							/>
+						</Tooltip>
 					</Popover.Dropdown>
 				</Popover>
 

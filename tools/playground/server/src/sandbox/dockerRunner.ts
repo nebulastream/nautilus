@@ -66,6 +66,9 @@ export async function runInSandbox(jobId: string, source: string, backend: Backe
 	if (options.enableStrengthReduction) {
 		args.push('-e', 'PG_ENABLE_STRENGTH_REDUCTION=1');
 	}
+	if (options.enableDwarf) {
+		args.push('-e', 'PG_ENABLE_DWARF=1');
+	}
 	if (options.maxPipelineIterations !== undefined) {
 		args.push('-e', `PG_MAX_ITERATIONS=${options.maxPipelineIterations}`);
 	}

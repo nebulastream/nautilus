@@ -7,6 +7,7 @@ export interface CompileOptions {
 	enableLICM?: boolean;
 	enableLocalCSE?: boolean;
 	enableStrengthReduction?: boolean;
+	enableDwarf?: boolean;
 	maxPipelineIterations?: number;
 }
 

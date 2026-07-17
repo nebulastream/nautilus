@@ -14,6 +14,7 @@ const compileSchema = z.object({
 			enableLICM: z.boolean().optional(),
 			enableLocalCSE: z.boolean().optional(),
 			enableStrengthReduction: z.boolean().optional(),
+			enableDwarf: z.boolean().optional(),
 			maxPipelineIterations: z.number().int().min(1).max(8).optional(),
 		})
 		.optional(),
@@ -92,7 +93,7 @@ export function registerRoutes(app: FastifyInstance, examples: Example[]): void 
 
 	app.get('/api/meta', async () => ({
 		backends: BACKENDS,
-		passOptions: ['enableLICM', 'enableLocalCSE', 'enableStrengthReduction'],
+		passOptions: ['enableLICM', 'enableLocalCSE', 'enableStrengthReduction', 'enableDwarf'],
 		limits: {
 			sourceMaxBytes: config.sourceMaxBytes,
 			maxPipelineIterations: 8,
