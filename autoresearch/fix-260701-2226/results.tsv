@@ -1,0 +1,13 @@
+# metric_direction: lower_is_better
+iteration	timestamp	error_type	error_fixed	commit	metric	delta	guard	status	description
+0	22:31	baseline	-	-	0	-	-	baseline	survey 1500 inputs, interpreter+mlir+bc, 0 findings at HEAD
+1	22:35	miscompile	discovered asmjit|u32	-	1	+1	-	widen	enable asmjit+cpp backends in differential net; 1 finding/300 inputs
+2	22:50	extension	-	fbe1c56a	4	+3	-	keep	val<bool> logical ops LAnd/LOr/LNot; 4 findings/600 all asmjit|u32 bucket
+3	23:10	miscompile	asmjit A64 narrow-width invariant	56730dbf	0	-4	pass	keep	narrowToStamp after add/sub/mul/shift/mvn + returns; 0/800 survey; ctest 208/209 (1 flaky unrelated)
+4	23:35	extension	-	28020ed4	1	-	pass	keep	invoke() Call nodes + survey finding persistence; found asmjit|i16 narrow-return bug (1/800)
+5	23:40	miscompile	asmjit narrow call returns (x64+A64)	919e8925	1	0	pass	keep	narrowToStamp after ProxyCall/IndirectCall returns; new mlir|i16 finding appeared (1/1000)
+6	00:15	extension-infra	-	28020ed4	1	-	pass	keep	survey finding-save + NAUTILUS_FUZZ_DUMP; captured mlir|i16 repro (addr-dependent, 5/6 runs)
+7	00:45	miscompile	mlir narrow call args missing signext/zeroext	e0bb4c72	0	-1	pass	keep	ABI arg-extension attrs on external decls; replay 0/10 fail; survey 0/1500; ctest 209/209
+8	01:00	extension	-	14724157	0	0	-	keep	StaticLoop trace-time unrolled loops via static_val; 0 findings/1200
+9	01:40	miscompile	bc merge-param identifier collision	d4cb9632	0	-1	pass	keep	getResultRegister returns pre-bound merge register; minimized 234B->3-block repro; survey 0/2000; ctest 209/209
+10	02:00	final	-	-	0	0	pass	complete	final sweep: survey 4000 + corpus 2000, 0 findings across all 5 backends

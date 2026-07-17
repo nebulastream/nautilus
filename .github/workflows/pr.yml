@@ -32,16 +32,16 @@ jobs:
             cxx: 'clang++-19'
             flags: ''
           - os: 'ubuntu-24.04'
-            cc: 'clang-21'
-            cxx: 'clang++-21'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: ''
           - os: 'ubuntu-24.04'
-            cc: 'clang-21'
-            cxx: 'clang++-21'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: '-DENABLE_SHORT_CIRCUIT_BOOL=ON'
           - os: 'ubuntu-24.04'
-            cc: 'clang-21'
-            cxx: 'clang++-21'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: '-DENABLE_GPU_PLUGIN=ON'
           - os: 'macos-15'
             cc: 'clang'
@@ -52,12 +52,12 @@ jobs:
             cxx: 'g++-14'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
           - os: 'ubuntu-24.04'
-            cc: 'clang-21'
-            cxx: 'clang++-21'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: '-DENABLE_ADDRESS_SANITIZER=ON'
           - os: 'ubuntu-24.04-arm'
-            cc: 'clang-21'
-            cxx: 'clang++-21'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: '-DENABLE_GPU_PLUGIN=ON'
     env:
       CC: ${{ matrix.cc }}
@@ -120,7 +120,7 @@ jobs:
         run: |
           ctest --test-dir build/plugins/simd/test --output-on-failure
       - name: test inlining plugin
-        if: startsWith(matrix.cc, 'clang-19') || startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-21')
+        if: startsWith(matrix.cc, 'clang-19') || startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-22')
         shell: bash
         run: |
           ctest --test-dir build/plugins/inlining/test --output-on-failure
@@ -229,10 +229,10 @@ jobs:
           echo "$out" | grep -q "conditionalSumHinted = 7"
   fuzz-replay-smoke:
     runs-on: ubuntu-24.04
-    name: Fuzzer replay smoke corpus (clang-21)
+    name: Fuzzer replay smoke corpus (clang-22)
     env:
-      CC: clang-21
-      CXX: clang++-21
+      CC: clang-22
+      CXX: clang++-22
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -257,15 +257,15 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-fuzz-replay-smoke
-      - name: Install clang 21
+      - name: Install clang 22
         run: |
           UBUNTU_CODENAME=$(lsb_release -cs)
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release software-properties-common
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
-          sudo apt-get install -y clang-21 clang++-21
+          sudo apt-get install -y clang-22 clang++-22
       - name: cmake
         shell: bash
         run: |
@@ -285,10 +285,10 @@ jobs:
           ./build/nautilus/test/fuzz/nautilus-fuzz-replay
   llvm-ir-test:
     runs-on: ubuntu-24.04
-    name: LLVM IR Test (clang-21)
+    name: LLVM IR Test (clang-22)
     env:
-      CC: clang-21
-      CXX: clang++-21
+      CC: clang-22
+      CXX: clang++-22
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -308,17 +308,17 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-llvm-ir-test
-      - name: Install clang 21 and llvm-diff-21
+      - name: Install clang 22 and llvm-diff-22
         run: |
           UBUNTU_CODENAME=$(lsb_release -cs)
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release software-properties-common
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
-          sudo apt-get install -y clang-21 clang++-21 llvm-21
+          sudo apt-get install -y clang-22 clang++-22 llvm-22
           # Create symlinks for llvm-diff
-          sudo ln -sf /usr/bin/llvm-diff-21 /usr/local/bin/llvm-diff-19
+          sudo ln -sf /usr/bin/llvm-diff-22 /usr/local/bin/llvm-diff-19
       - name: Cache MLIR binaries
         uses: actions/cache@v4
         with:

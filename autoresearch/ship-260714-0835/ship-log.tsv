@@ -1,0 +1,13 @@
+phase	action	result
+identify	ship type = deployment, target tools/playground @ fc113f43 → root@192.168.178.32	ok
+inventory	compose assumes Caddy+domain; adapted to direct port publish; runner+api images required	ok
+checklist	generated (see checklist.md)	ok
+prepare	host probe: PVE 9.2.3 / Debian 13 / no docker; installed docker.io 26.1.5	ok
+prepare	git archive fc113f43 (3.7 MB) → /opt/nautilus-playground/src	ok
+ship	runner image build (-j4 cap)	ok (~5 min)
+ship	api image build	FAIL: npm spawn EACCES → AppArmor 4.x unix-socket mediation; fixed docker-default profile → ok
+ship	api container start	ok (2nd attempt --init after zombie PID + dockerd restart)
+verify	runner sandbox	FAIL: /out unwritable for non-root runner → chmod 0o777 fix in dockerRunner.ts → ok
+verify	E2E compile via LAN (01_add_mul, mlir)	ok: done, 8 stages, 1.17 s
+verify	smoke suite all backends	ok: all passed
+log	autoresearch/ship-260714-0835	ok

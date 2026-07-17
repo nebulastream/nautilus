@@ -1,0 +1,6 @@
+# metric_direction: lower_is_better
+iteration	timestamp	error_type	error_fixed	commit	metric	delta	guard	status	description
+0	08:18	baseline	-	-	0	-	pass	baseline	survey 4000 + corpus 2000 clean at d4cb9632
+1	08:55	extension	-	ce22ad8b	0	0	-	keep	Loop2/LoopBreak/WhileLoop loop shapes; 0 findings/1500
+2	08:55	extension	-	1ef02487	0	0	-	keep	LoopIndexOuter nested-frame access; 0 findings/2500
+3	10:05	final	-	-	0	0	pass	complete	final sweep: survey 5000 + corpus 2000, 0 findings; ctest 209/209

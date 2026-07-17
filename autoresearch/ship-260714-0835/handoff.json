@@ -1,0 +1,24 @@
+{
+  "version": "2.1.0",
+  "source": "ship",
+  "timestamp": "2026-07-14T08:40:00+02:00",
+  "status": "COMPLETE",
+  "findings": [
+    {
+      "severity": "blocker-fixed",
+      "summary": "Debian 13 AppArmor 4.1 denies unix stream socket creation under docker-default; installed corrected profile at /etc/apparmor.d/docker-default on the host"
+    },
+    {
+      "severity": "blocker-fixed",
+      "summary": "dockerRunner.ts job out/ dir not writable by non-root runner user on stock Linux daemons; chmod 0o777 fix applied to working tree (uncommitted) and deployed"
+    },
+    {
+      "severity": "warning",
+      "summary": "run_smoke.sh had the same out-dir permission bug; fixed in working tree (uncommitted)"
+    },
+    {
+      "severity": "info",
+      "summary": "Docker installed directly on the Proxmox node per user request; ~5.5 GB RAM headroom with VMs running"
+    }
+  ]
+}

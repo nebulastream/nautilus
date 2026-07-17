@@ -1,0 +1,13 @@
+{
+  "version": "2.1.0",
+  "source": "fix",
+  "timestamp": "2026-07-02T01:50:00+02:00",
+  "status": "COMPLETE",
+  "results_tsv": "autoresearch/fix-260701-2226/results.tsv",
+  "findings": [],
+  "config": {
+    "target": "build-mlir-check/nautilus/test/fuzz/nautilus-fuzz-replay --survey N (differential findings count)",
+    "scope": "nautilus/test/fuzz/**, nautilus/src/nautilus/compiler/backends/**, nautilus/test/common/**, nautilus/test/execution-tests/**",
+    "guard": "ctest --test-dir nautilus (build-mlir-check, 209 tests)"
+  }
+}

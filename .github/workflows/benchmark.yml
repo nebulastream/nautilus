@@ -25,8 +25,8 @@ jobs:
       # clang >= 19 so the tbc copy-and-patch JIT benchmarks
       # (exec_tbc_*_{interp,jit}) are runnable; they are skipped on builds
       # that cannot execute stitched code (preserve_none needs Clang 19+).
-      CC: clang-21
-      CXX: clang++-21
+      CC: clang-22
+      CXX: clang++-22
     steps:
       - uses: actions/checkout@v4
       - name: Force apt to use IPv4
@@ -39,9 +39,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release software-properties-common
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
           sudo apt-get update
-          sudo apt-get install -y clang-21 clang++-21
+          sudo apt-get install -y clang-22 clang++-22
       - name: Install ccache (with retry)
         run: |
           for i in 1 2 3 4 5; do
@@ -53,7 +53,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
-          key: ${{ github.job }}-ubuntu-24.04-clang-21-benchmark
+          key: ${{ github.job }}-ubuntu-24.04-clang-22-benchmark
       - name: cmake
         shell: bash
         run: |
