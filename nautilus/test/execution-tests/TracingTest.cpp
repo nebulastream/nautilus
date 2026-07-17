@@ -26,6 +26,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cstdio>
 #include <cstdlib>
@@ -337,6 +338,21 @@ TEST_CASE("Static Trace Test") {
 	    {"staticEnumerateWeightedSum", details::createFunctionWrapper(staticEnumerateWeightedSum)},
 	    {"staticEnumerateSum", details::createFunctionWrapper(staticEnumerateSum)}};
 	runTraceTests("static-loop-tests", tests);
+}
+
+TEST_CASE("SSA creation handles a 4k static square sum") {
+	auto function = details::createFunctionWrapper(staticSquareSum<4000>);
+	common::Arena arena;
+	std::shared_ptr<tracing::ExecutionTrace> trace =
+	    tracing::ExceptionBasedTraceContext::trace(function, engine::Options(), arena);
+
+	auto after_ssa = tracing::SSACreationPhase().apply(std::move(trace));
+	const auto verification = tracing::VerifySSA(*after_ssa);
+	REQUIRE(verification.valid);
+	for (const auto* block : after_ssa->getBlocks()) {
+		REQUIRE(std::none_of(block->operations.begin(), block->operations.end(),
+		                     [](const auto* operation) { return operation->op == tracing::Op::ASSIGN; }));
+	}
 }
 
 TEST_CASE("Value Trace Test") {

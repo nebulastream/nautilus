@@ -790,6 +790,10 @@ void staticLoopExecutionTest(engine::NautilusEngine& engine) {
 		auto f = engine.registerFunction(staticLoop);
 		REQUIRE(f() == 101);
 	}
+	SECTION("staticSquareSum4000") {
+		auto function = engine.registerFunction(staticSquareSum<4000>);
+		REQUIRE(function() == 21325334000LL);
+	}
 	SECTION("staticLoopWithIf") {
 		auto f = engine.registerFunction(staticLoopWithIf);
 		REQUIRE(f(-100) == 0); // always <= 5: pure +10 each iter

@@ -104,6 +104,41 @@ TEST_CASE("SSA Creation Benchmark") {
 	}
 }
 
+TEST_CASE("SSA Creation Static Loop Scaling Benchmark") {
+	auto function1000 = details::createFunctionWrapper(staticSquareSum<1000>);
+	common::Arena arena1000;
+	std::shared_ptr<tracing::ExecutionTrace> trace1000 =
+	    tracing::ExceptionBasedTraceContext::trace(function1000, engine::Options(), arena1000);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum1000").operator=([&trace1000](Catch::Benchmark::Chronometer meter) {
+		meter.measure([&trace1000] {
+			auto phase = tracing::SSACreationPhase();
+			return phase.apply(trace1000);
+		});
+	});
+
+	auto function2000 = details::createFunctionWrapper(staticSquareSum<2000>);
+	common::Arena arena2000;
+	std::shared_ptr<tracing::ExecutionTrace> trace2000 =
+	    tracing::ExceptionBasedTraceContext::trace(function2000, engine::Options(), arena2000);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum2000").operator=([&trace2000](Catch::Benchmark::Chronometer meter) {
+		meter.measure([&trace2000] {
+			auto phase = tracing::SSACreationPhase();
+			return phase.apply(trace2000);
+		});
+	});
+
+	auto function4000 = details::createFunctionWrapper(staticSquareSum<4000>);
+	common::Arena arena4000;
+	std::shared_ptr<tracing::ExecutionTrace> trace4000 =
+	    tracing::ExceptionBasedTraceContext::trace(function4000, engine::Options(), arena4000);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum4000").operator=([&trace4000](Catch::Benchmark::Chronometer meter) {
+		meter.measure([&trace4000] {
+			auto phase = tracing::SSACreationPhase();
+			return phase.apply(trace4000);
+		});
+	});
+}
+
 TEST_CASE("IR Creation Benchmark") {
 	// Route both the trace arena and every IRGraph's arena through a single
 	// ArenaPool.  The first sample pays the usual heap allocation; subsequent
