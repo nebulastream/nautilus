@@ -104,6 +104,71 @@ TEST_CASE("SSA Creation Benchmark") {
 	}
 }
 
+TEST_CASE("SSA Creation Static Loop Scaling Benchmark") {
+	auto function1000 = details::createFunctionWrapper(staticSquareSum<1000>);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum1000")
+	    .operator=([&function1000](Catch::Benchmark::Chronometer meter) {
+		    std::vector<common::ArenaPool::Handle> arenas;
+		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+		    arenas.reserve(meter.runs());
+		    traces.reserve(meter.runs());
+
+		    for (int index = 0; index < meter.runs(); ++index) {
+			    auto arena = common::ArenaPool::makeStandalone();
+			    traces.emplace_back(
+			        tracing::ExceptionBasedTraceContext::trace(function1000, engine::Options(), *arena));
+			    arenas.emplace_back(std::move(arena));
+		    }
+
+		    meter.measure([&traces](int index) {
+			    auto phase = tracing::SSACreationPhase();
+			    return phase.apply(traces[index]);
+		    });
+	    });
+
+	auto function2000 = details::createFunctionWrapper(staticSquareSum<2000>);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum2000")
+	    .operator=([&function2000](Catch::Benchmark::Chronometer meter) {
+		    std::vector<common::ArenaPool::Handle> arenas;
+		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+		    arenas.reserve(meter.runs());
+		    traces.reserve(meter.runs());
+
+		    for (int index = 0; index < meter.runs(); ++index) {
+			    auto arena = common::ArenaPool::makeStandalone();
+			    traces.emplace_back(
+			        tracing::ExceptionBasedTraceContext::trace(function2000, engine::Options(), *arena));
+			    arenas.emplace_back(std::move(arena));
+		    }
+
+		    meter.measure([&traces](int index) {
+			    auto phase = tracing::SSACreationPhase();
+			    return phase.apply(traces[index]);
+		    });
+	    });
+
+	auto function4000 = details::createFunctionWrapper(staticSquareSum<4000>);
+	Catch::Benchmark::Benchmark("ssa_staticSquareSum4000")
+	    .operator=([&function4000](Catch::Benchmark::Chronometer meter) {
+		    std::vector<common::ArenaPool::Handle> arenas;
+		    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+		    arenas.reserve(meter.runs());
+		    traces.reserve(meter.runs());
+
+		    for (int index = 0; index < meter.runs(); ++index) {
+			    auto arena = common::ArenaPool::makeStandalone();
+			    traces.emplace_back(
+			        tracing::ExceptionBasedTraceContext::trace(function4000, engine::Options(), *arena));
+			    arenas.emplace_back(std::move(arena));
+		    }
+
+		    meter.measure([&traces](int index) {
+			    auto phase = tracing::SSACreationPhase();
+			    return phase.apply(traces[index]);
+		    });
+	    });
+}
+
 TEST_CASE("IR Creation Benchmark") {
 	// Route both the trace arena and every IRGraph's arena through a single
 	// ArenaPool.  The first sample pays the usual heap allocation; subsequent

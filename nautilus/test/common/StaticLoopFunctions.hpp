@@ -13,6 +13,15 @@ val<int32_t> staticLoop() {
 	return agg;
 }
 
+template <int COUNT>
+val<int64_t> staticSquareSum() {
+	val<int64_t> sum = 0;
+	for (static_val<int> i = 0; i < COUNT; i++) {
+		sum = sum + val<int64_t>(i) * val<int64_t>(i);
+	}
+	return sum;
+}
+
 val<int32_t> staticLoopWithIf(val<int32_t> agg) {
 	for (static_val<int> start = 0; start < 10; start = start + 1) {
 		if (agg > 5) {
