@@ -23,9 +23,9 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$11 = func_*() :ui32
 	$12 = $10 + $11 :ui32
 	$13 = $12 < $4 :bool
-	if $13 ? Block_1($3, $12, $2, $1) : Block_2() :void
+	if $13 ? Block_1($12, $1, $2, $3) : Block_2() :void
 
-Block_1($7:ptr, $12:ui32, $6:ptr, $5:ptr):
+Block_1($12:ui32, $5:ptr, $6:ptr, $7:ptr):
 	$15 = $12 cast_to i32 :i32
 	$19 = 4 :ui64
 	$20 = $15 cast_to ui64 :ui64

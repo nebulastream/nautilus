@@ -47,11 +47,11 @@ var_$10 = var_$8+var_$9;
 var_$11 = var_$10 < var_$3;
 if (var_$11){
 {
-device uchar* temp_0 = var_$2;
-uint temp_1 = var_$10;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$2;
 device uchar* temp_2 = var_$1;
-var_$5 = temp_0;
-var_$10 = temp_1;
+var_$10 = temp_0;
+var_$5 = temp_1;
 var_$4 = temp_2;
 }
 __pc = 1; continue;
@@ -64,14 +64,14 @@ case 1: {
 var_$13 = (uint)0;
 var_$14 = (uint)0;
 {
-device uchar* temp_0 = var_$5;
+uint temp_0 = var_$13;
 uint temp_1 = var_$10;
-uint temp_2 = var_$13;
+device uchar* temp_2 = var_$5;
 uint temp_3 = var_$14;
 device uchar* temp_4 = var_$4;
-var_$5 = temp_0;
+var_$13 = temp_0;
 var_$10 = temp_1;
-var_$13 = temp_2;
+var_$5 = temp_2;
 var_$14 = temp_3;
 var_$4 = temp_4;
 }
@@ -81,26 +81,26 @@ case 2: {
 var_$15 = var_$14 <= var_$10;
 if (var_$15){
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
 uint temp_2 = var_$14;
-uint temp_3 = var_$13;
-device uchar* temp_4 = var_$4;
-var_$5 = temp_0;
-var_$10 = temp_1;
+device uchar* temp_3 = var_$4;
+uint temp_4 = var_$13;
+var_$10 = temp_0;
+var_$5 = temp_1;
 var_$14 = temp_2;
-var_$13 = temp_3;
-var_$4 = temp_4;
+var_$4 = temp_3;
+var_$13 = temp_4;
 }
 __pc = 3; continue;
 }else{
 {
-device uchar* temp_0 = var_$5;
+uint temp_0 = var_$13;
 uint temp_1 = var_$10;
-uint temp_2 = var_$13;
-var_$5 = temp_0;
+device uchar* temp_2 = var_$5;
+var_$13 = temp_0;
 var_$10 = temp_1;
-var_$13 = temp_2;
+var_$5 = temp_2;
 }
 __pc = 4; continue;}
 }
@@ -115,14 +115,14 @@ var_$28 = var_$13+var_$27;
 var_$29 = (uint)1;
 var_$30 = var_$14+var_$29;
 {
-device uchar* temp_0 = var_$5;
+uint temp_0 = var_$28;
 uint temp_1 = var_$10;
-uint temp_2 = var_$28;
+device uchar* temp_2 = var_$5;
 uint temp_3 = var_$30;
 device uchar* temp_4 = var_$4;
-var_$5 = temp_0;
+var_$13 = temp_0;
 var_$10 = temp_1;
-var_$13 = temp_2;
+var_$5 = temp_2;
 var_$14 = temp_3;
 var_$4 = temp_4;
 }

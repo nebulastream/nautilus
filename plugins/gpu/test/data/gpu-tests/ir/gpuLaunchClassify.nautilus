@@ -7,9 +7,9 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$9 = func_*() :ui32
 	$10 = $8 + $9 :ui32
 	$11 = $10 < $3 :bool
-	if $11 ? Block_1($2, $10, $1) : Block_2() :void
+	if $11 ? Block_1($10, $2, $1) : Block_2() :void
 
-Block_1($5:ptr, $10:ui32, $4:ptr):
+Block_1($10:ui32, $5:ptr, $4:ptr):
 	$13 = $10 cast_to i32 :i32
 	$17 = 4 :ui64
 	$18 = $13 cast_to ui64 :ui64
@@ -18,9 +18,9 @@ Block_1($5:ptr, $10:ui32, $4:ptr):
 	$23 = 200 :ui32
 	$24 = load($20) :ui32
 	$25 = $24 > $23 :bool
-	if $25 ? Block_3($5, $10) : Block_4($5, $10, $4) :void
+	if $25 ? Block_3($10, $5) : Block_4($10, $5, $4) :void
 
-Block_3($5:ptr, $10:ui32):
+Block_3($10:ui32, $5:ptr):
 	$27 = 3 :ui32
 	$28 = $10 cast_to i32 :i32
 	$32 = 4 :ui64
@@ -33,7 +33,7 @@ Block_3($5:ptr, $10:ui32):
 Block_9():
 	return :void
 
-Block_4($5:ptr, $10:ui32, $4:ptr):
+Block_4($10:ui32, $5:ptr, $4:ptr):
 	$46 = $10 cast_to i32 :i32
 	$50 = 4 :ui64
 	$51 = $46 cast_to ui64 :ui64
@@ -42,9 +42,9 @@ Block_4($5:ptr, $10:ui32, $4:ptr):
 	$56 = 100 :ui32
 	$57 = load($53) :ui32
 	$58 = $57 > $56 :bool
-	if $58 ? Block_5($5, $10) : Block_6($5, $10, $4) :void
+	if $58 ? Block_5($10, $5) : Block_6($10, $5, $4) :void
 
-Block_5($5:ptr, $10:ui32):
+Block_5($10:ui32, $5:ptr):
 	$60 = 2 :ui32
 	$61 = $10 cast_to i32 :i32
 	$65 = 4 :ui64
@@ -54,7 +54,7 @@ Block_5($5:ptr, $10:ui32):
 	store($60, $68) :void
 	br Block_9() :void
 
-Block_6($5:ptr, $10:ui32, $4:ptr):
+Block_6($10:ui32, $5:ptr, $4:ptr):
 	$76 = $10 cast_to i32 :i32
 	$80 = 4 :ui64
 	$81 = $76 cast_to ui64 :ui64
@@ -63,9 +63,9 @@ Block_6($5:ptr, $10:ui32, $4:ptr):
 	$86 = 0 :ui32
 	$87 = load($83) :ui32
 	$88 = $87 > $86 :bool
-	if $88 ? Block_7($5, $10) : Block_8($5, $10) :void
+	if $88 ? Block_7($10, $5) : Block_8($10, $5) :void
 
-Block_7($5:ptr, $10:ui32):
+Block_7($10:ui32, $5:ptr):
 	$90 = 1 :ui32
 	$91 = $10 cast_to i32 :i32
 	$95 = 4 :ui64
@@ -75,7 +75,7 @@ Block_7($5:ptr, $10:ui32):
 	store($90, $98) :void
 	br Block_9() :void
 
-Block_8($5:ptr, $10:ui32):
+Block_8($10:ui32, $5:ptr):
 	$106 = 0 :ui32
 	$107 = $10 cast_to i32 :i32
 	$111 = 4 :ui64
