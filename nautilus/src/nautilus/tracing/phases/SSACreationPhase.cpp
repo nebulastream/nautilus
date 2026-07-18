@@ -1,6 +1,8 @@
 
 #include "fmt/core.h"
 #include <algorithm>
+#include <cassert>
+#include <limits>
 #include <nautilus/exceptions/RuntimeException.hpp>
 #include <nautilus/tracing/ExecutionTrace.hpp>
 #include <nautilus/tracing/TraceOperation.hpp>
@@ -104,6 +106,31 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 
 	// Merging all potential return blocks into a single (new) return block
 	auto& returnBlock = getReturnBlock();
+	const auto numberOfValueRefs = static_cast<size_t>(trace->lastValueRef) + 1;
+	auto& arena = trace->getArena();
+	auto* availabilityStorage =
+	    static_cast<uint32_t*>(arena.allocate(numberOfValueRefs * sizeof(uint32_t), alignof(uint32_t)));
+	std::fill_n(availabilityStorage, numberOfValueRefs, 0U);
+	availableInBlock = {availabilityStorage, numberOfValueRefs};
+
+	size_t maximumNumberOfDefinitions = 0;
+	for (const auto* block : trace->getBlocks()) {
+		maximumNumberOfDefinitions += block->operations.size();
+	}
+	auto* definitionStorage =
+	    static_cast<ValueRef*>(arena.allocate(maximumNumberOfDefinitions * sizeof(ValueRef), alignof(ValueRef)));
+	definitions = {definitionStorage, maximumNumberOfDefinitions};
+
+	const auto numberOfBlocks = trace->getBlocks().size();
+	auto* definitionRangeStorage = static_cast<DefinitionRange*>(
+	    arena.allocate(numberOfBlocks * sizeof(DefinitionRange), alignof(DefinitionRange)));
+	definitionRanges = {definitionRangeStorage, numberOfBlocks};
+	constexpr auto notIndexed = std::numeric_limits<size_t>::max();
+	size_t offset = 0;
+	for (const auto* block : trace->getBlocks()) {
+		definitionRanges[block->blockId] = {offset, notIndexed};
+		offset += block->operations.size();
+	}
 	processBlock(returnBlock);
 	// Eliminate all assign operations. We only needed them to create the SSA
 	// from.
@@ -120,23 +147,13 @@ std::shared_ptr<ExecutionTrace> SSACreationPhase::SSACreationPhaseContext::proce
 	return std::move(trace);
 }
 
-bool SSACreationPhase::SSACreationPhaseContext::isLocalValueRef(Block& block, const TypedValueRef& ref,
-                                                                uint32_t operationIndex) {
-	if (std::find(block.arguments.begin(), block.arguments.end(), ref) != block.arguments.end()) {
-		return true;
-	}
-
-	const auto& definitions = getOrBuildDefinitionIndices(block.blockId);
-	const auto definition = definitions.find(ref.ref);
-	return definition != definitions.end() && definition->second < operationIndex;
-}
-
 void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) {
 	// Single-pass traversal from the return block through predecessors.
 	// Each block is visited exactly once. Non-local value references are
 	// eagerly propagated upward through the predecessor chain by
 	// propagateValue, eliminating the need to re-process any block.
-	// blockDefinitions entries are built lazily on first access.
+	// Operations within each block are scanned forward so the availability
+	// table directly represents definitions that precede the current use.
 	std::vector<uint32_t> worklist;
 	worklist.push_back(startBlock.blockId);
 
@@ -149,27 +166,36 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 		}
 
 		auto& block = trace->getBlock(blockId);
+		const auto blockStamp = block.blockId + 1;
+		for (const auto& argument : block.arguments) {
+			assert(argument.ref < availableInBlock.size());
+			availableInBlock[argument.ref] = blockStamp;
+		}
 
 		// Process the inputs of all operations in the current block
-		for (int64_t i = block.operations.size() - 1; i >= 0; i--) {
-			auto& operation = *block.operations[i];
+		for (auto* operationPtr : block.operations) {
+			auto& operation = *operationPtr;
 			// process input for each variable
 			for (auto& input : operation.input) {
 				if (auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					processValueRef(block, *valueRef, i);
+					processValueRef(block, *valueRef);
 				} else if (auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
-					processBlockRef(block, **blockRefPtr, i);
+					processBlockRef(block, **blockRefPtr);
 				} else if (auto* fcallRefPtr = std::get_if<FunctionCall*>(&input)) {
 					for (auto valueRef : (*fcallRefPtr)->arguments) {
-						processValueRef(block, valueRef, i);
+						processValueRef(block, valueRef);
 					}
 				} else if (auto* indirectCallRefPtr = std::get_if<IndirectFunctionCall*>(&input)) {
 					IndirectFunctionCall& indirectCallRef = **indirectCallRefPtr;
-					processValueRef(block, indirectCallRef.fnPtr, i);
+					processValueRef(block, indirectCallRef.fnPtr);
 					for (auto& valueRef : indirectCallRef.arguments) {
-						processValueRef(block, valueRef, i);
+						processValueRef(block, valueRef);
 					}
 				}
+			}
+			if (operation.resultRef.ref != 0) {
+				assert(operation.resultRef.ref < availableInBlock.size());
+				availableInBlock[operation.resultRef.ref] = blockStamp;
 			}
 		}
 
@@ -186,42 +212,38 @@ void SSACreationPhase::SSACreationPhaseContext::processBlock(Block& startBlock) 
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref,
-                                                                uint32_t operationIndex) {
-	if (isLocalValueRef(block, ref, operationIndex)) {
-		// variable is a local ref -> don't do anything as the value is defined in
-		// the current block
-	} else {
-		// The valueRef references a different block. Eagerly propagate it upward
-		// through the predecessor chain so every block that needs to pass this
-		// value receives it without requiring the main loop to revisit any block.
-		propagateValue(block, ref);
+void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, TypedValueRef& ref) {
+	assert(ref.ref < availableInBlock.size());
+	const auto blockStamp = block.blockId + 1;
+	if (availableInBlock[ref.ref] == blockStamp) {
+		return;
 	}
+
+	// The valueRef references a different block. Eagerly propagate it upward
+	// through the predecessor chain so every block that needs to pass this
+	// value receives it without requiring the main loop to revisit any block.
+	propagateValue(block, ref);
+	availableInBlock[ref.ref] = blockStamp;
 }
 
-const std::unordered_set<ValueRef>& SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitions(uint32_t blockId) {
-	auto it = blockDefinitions.find(blockId);
-	if (it != blockDefinitions.end()) {
-		return it->second;
-	}
-	auto& defined = blockDefinitions[blockId];
-	for (auto* op : trace->getBlock(blockId).operations) {
-		defined.insert(op->resultRef.ref);
-	}
-	return defined;
-}
-
-const std::unordered_map<ValueRef, uint32_t>&
-SSACreationPhase::SSACreationPhaseContext::getOrBuildDefinitionIndices(uint32_t blockId) {
-	auto [it, inserted] = blockDefinitionIndices.try_emplace(blockId);
-	if (inserted) {
-		const auto& operations = trace->getBlock(blockId).operations;
-		it->second.reserve(operations.size());
-		for (uint32_t index = 0; index < operations.size(); ++index) {
-			it->second.emplace(operations[index]->resultRef.ref, index);
+bool SSACreationPhase::SSACreationPhaseContext::isDefinedInBlock(uint32_t blockId, ValueRef ref) {
+	assert(blockId < definitionRanges.size());
+	auto& range = definitionRanges[blockId];
+	constexpr auto notIndexed = std::numeric_limits<size_t>::max();
+	if (range.count == notIndexed) {
+		auto output = definitions.begin() + range.offset;
+		for (const auto* operation : trace->getBlock(blockId).operations) {
+			if (operation->resultRef.ref != 0) {
+				*output = operation->resultRef.ref;
+				++output;
+			}
 		}
+		auto first = definitions.begin() + range.offset;
+		std::sort(first, output);
+		range.count = static_cast<size_t>(std::unique(first, output) - first);
 	}
-	return it->second;
+	const auto blockDefinitions = definitions.subspan(range.offset, range.count);
+	return std::binary_search(blockDefinitions.begin(), blockDefinitions.end(), ref);
 }
 
 void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, TypedValueRef ref) {
@@ -257,7 +279,7 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 			// If the value is defined by an operation in the predecessor, it is
 			// locally available there and no further propagation is needed.
-			if (getOrBuildDefinitions(predecessor).contains(ref.ref)) {
+			if (isDefinedInBlock(predecessor, ref.ref)) {
 				continue;
 			}
 
@@ -277,8 +299,7 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 	}
 }
 
-void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef,
-                                                                uint32_t operationIndex) {
+void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, BlockRef& blockRef) {
 	// a block ref has a set of arguments, which are handled the same as all other
 	// value references.
 	// Snapshot the argument list: processValueRef may append to blockRef.arguments
@@ -286,7 +307,7 @@ void SSACreationPhase::SSACreationPhaseContext::processBlockRef(Block& block, Bl
 	// range-for iterators.
 	auto arguments = blockRef.arguments;
 	for (auto& input : arguments) {
-		processValueRef(block, input, operationIndex);
+		processValueRef(block, input);
 	}
 }
 

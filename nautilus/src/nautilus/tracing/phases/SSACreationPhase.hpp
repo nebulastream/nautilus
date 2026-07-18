@@ -2,8 +2,9 @@
 #pragma once
 
 #include "nautilus/tracing/TraceOperation.hpp"
+#include <cstddef>
 #include <memory>
-#include <unordered_map>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -49,6 +50,11 @@ private:
 		std::shared_ptr<ExecutionTrace> process();
 
 	private:
+		struct DefinitionRange {
+			size_t offset;
+			size_t count;
+		};
+
 		/**
 		 * @brief Converts a single basic block to SSA form
 		 * @param block reference to the basic block
@@ -56,19 +62,9 @@ private:
 		void processBlock(Block& block);
 		Block& getReturnBlock();
 
-		/**
-		 * @brief Checks if an ValueRef is defined in a specific block by an argument or an operation before the current
-		 * operationIndex
-		 * @param block reference to the current basic block
-		 * @param valRef reference to the the value ref we are looking fore
-		 * @param operationIndex the operation index, which accesses the ValueRef
-		 * @return true if Value Ref is defined locally.
-		 */
-		bool isLocalValueRef(Block& block, const TypedValueRef& valRef, uint32_t operationIndex);
+		void processValueRef(Block& block, TypedValueRef& type);
 
-		void processValueRef(Block& block, TypedValueRef& type, uint32_t operationIndex);
-
-		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
+		void processBlockRef(Block& block, BlockRef& blockRef);
 
 		/**
 		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.
@@ -79,17 +75,7 @@ private:
 		 */
 		void propagateValue(Block& block, TypedValueRef ref);
 
-		/**
-		 * @brief Returns the set of value refs defined by operations in the given block,
-		 * computing and caching it on first access.
-		 */
-		const std::unordered_set<ValueRef>& getOrBuildDefinitions(uint32_t blockId);
-
-		/**
-		 * @brief Returns the operation index of value refs defined in the given block,
-		 * computing and caching it on first access.
-		 */
-		const std::unordered_map<ValueRef, uint32_t>& getOrBuildDefinitionIndices(uint32_t blockId);
+		bool isDefinedInBlock(uint32_t blockId, ValueRef ref);
 
 		/**
 		 * @brief Removes the assignment operations from all blocks.
@@ -106,11 +92,13 @@ private:
 		std::shared_ptr<ExecutionTrace> trace;
 		// O(1) block-visit tracking; the iterative version never erases, so unordered_set is safe.
 		std::unordered_set<uint32_t> processedBlocks;
-		// Lazy cache: maps blockId → set of value refs produced by operations in that block.
-		// Entries are built on first access rather than upfront.
-		std::unordered_map<uint32_t, std::unordered_set<ValueRef>> blockDefinitions;
-		// Lazy cache: maps blockId → operation index for each value ref produced by an operation.
-		std::unordered_map<uint32_t, std::unordered_map<ValueRef, uint32_t>> blockDefinitionIndices;
+		// Arena-backed table indexed by ValueRef. A blockId + 1 stamp indicates
+		// that the value is available at the current point in that block.
+		std::span<uint32_t> availableInBlock;
+		// Lazy arena-backed definition index. Each block owns a pre-sized slice;
+		// its result refs are copied, sorted, and deduplicated on first lookup.
+		std::span<DefinitionRange> definitionRanges;
+		std::span<ValueRef> definitions;
 		// Tracks (blockId, ref) pairs that have already been propagated,
 		// replacing the O(n) std::find on predBlock.arguments.
 		std::unordered_set<uint64_t> propagatedValues;

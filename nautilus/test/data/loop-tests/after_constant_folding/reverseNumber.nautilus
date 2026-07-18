@@ -3,9 +3,9 @@ execute($1:i32) :i32 {
 Block_0($1:i32):
 	$2 = 0 :i32
 	$3 = 10 :i32
-	br Block_3($1, $2, $3) :void
+	br Block_3($2, $3, $1) :void
 
-Block_3($1:i32, $2:i32, $3:i32):
+Block_3($2:i32, $3:i32, $1:i32):
 	$4 = $2 * $3 :i32
 	$5 = 10 :i32
 	$6 = $1 % $5 :i32
@@ -14,11 +14,11 @@ Block_3($1:i32, $2:i32, $3:i32):
 	$9 = $1 / $8 :i32
 	$10 = 0 :i32
 	$11 = $9 > $10 :bool
-	if $11 ? Block_1($9, $7) : Block_2($7) :void
+	if $11 ? Block_1($7, $9) : Block_2($7) :void
 
-Block_1($1:i32, $2:i32):
+Block_1($2:i32, $1:i32):
 	$13 = 10 :i32
-	br Block_3($1, $2, $13) :void
+	br Block_3($2, $13, $1) :void
 
 Block_2($2:i32):
 	return ($2) :i32

@@ -86,20 +86,22 @@ TEST_CASE("SSA Creation Benchmark") {
 			continue;
 		}
 
-		// Route the per-sample trace arena through a single ArenaPool so
-		// chunk memory is recycled across samples.
-		common::ArenaPool pool;
-		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func, &pool](Catch::Benchmark::Chronometer meter) {
-			auto arena = pool.acquire();
-			std::shared_ptr<tracing::ExecutionTrace> trace =
-			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *arena);
-			meter.measure([&] {
-				auto ssaCreationPhase = tracing::SSACreationPhase();
-				return ssaCreationPhase.apply(trace);
+		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
+			std::vector<common::ArenaPool::Handle> arenas;
+			std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+			arenas.reserve(meter.runs());
+			traces.reserve(meter.runs());
+
+			for (int index = 0; index < meter.runs(); ++index) {
+				auto arena = common::ArenaPool::makeStandalone();
+				traces.emplace_back(tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *arena));
+				arenas.emplace_back(std::move(arena));
+			}
+
+			meter.measure([&traces](int index) {
+				auto phase = tracing::SSACreationPhase();
+				return phase.apply(traces[index]);
 			});
-			// Drop the trace before the arena handle is recycled into the
-			// pool at the end of this sample.
-			trace.reset();
 		});
 	}
 }
