@@ -152,8 +152,8 @@ void SSACreationPhase::SSACreationPhaseContext::process() {
 	assignmentDefinitionRanges = {definitionRangeStorage, numberOfBlocks};
 	for (const auto* block : trace.getBlocks()) {
 		if (block->blockId >= numberOfBlocks) {
-			throw RuntimeException(fmt::format("Invalid trace: block id {} is outside the {}-block trace.", block->blockId,
-			                                   numberOfBlocks));
+			throw RuntimeException(fmt::format("Invalid trace: block id {} is outside the {}-block trace.",
+			                                   block->blockId, numberOfBlocks));
 		}
 		assignmentDefinitionRanges[block->blockId] = {nullptr, NOT_INDEXED};
 	}
@@ -242,7 +242,8 @@ void SSACreationPhase::SSACreationPhaseContext::processValueRef(Block& block, Ty
 
 bool SSACreationPhase::SSACreationPhaseContext::isDefinedInBlock(uint32_t blockId, ValueRef ref) {
 	if (blockId >= assignmentDefinitionRanges.size()) {
-		throw RuntimeException(fmt::format("Invalid trace: definition lookup for block id {} is out of range.", blockId));
+		throw RuntimeException(
+		    fmt::format("Invalid trace: definition lookup for block id {} is out of range.", blockId));
 	}
 	validateValueRef(ref);
 	indexDefinitions(blockId);
@@ -260,14 +261,14 @@ void SSACreationPhase::SSACreationPhaseContext::indexDefinitions(uint32_t blockI
 	}
 
 	auto& block = trace.getBlock(blockId);
-	const auto assignmentCount = static_cast<size_t>(
-	    std::count_if(block.operations.begin(), block.operations.end(), [](const auto* operation) {
+	const auto assignmentCount =
+	    static_cast<size_t>(std::count_if(block.operations.begin(), block.operations.end(), [](const auto* operation) {
 		    return operation->op == Op::ASSIGN && operation->resultRef.ref != 0;
 	    }));
-	range.data = assignmentCount == 0
-	                 ? nullptr
-	                 : static_cast<ValueRef*>(
-	                       trace.getArena().allocate(assignmentCount * sizeof(ValueRef), alignof(ValueRef)));
+	range.data =
+	    assignmentCount == 0
+	        ? nullptr
+	        : static_cast<ValueRef*>(trace.getArena().allocate(assignmentCount * sizeof(ValueRef), alignof(ValueRef)));
 	auto* output = range.data;
 	for (const auto* operation : block.operations) {
 		const auto ref = operation->resultRef.ref;
@@ -321,7 +322,8 @@ void SSACreationPhase::SSACreationPhaseContext::propagateValue(Block& block, Typ
 
 		for (auto& predecessor : curBlock.predecessors) {
 			if (predecessor >= processedBlocks.size()) {
-				throw RuntimeException(fmt::format("Invalid trace: predecessor block id {} is out of range.", predecessor));
+				throw RuntimeException(
+				    fmt::format("Invalid trace: predecessor block id {} is out of range.", predecessor));
 			}
 			auto& predBlock = trace.getBlock(predecessor);
 			if (predBlock.operations.empty()) {

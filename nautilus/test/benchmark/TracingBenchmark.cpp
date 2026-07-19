@@ -102,27 +102,25 @@ TEST_CASE("SSA Creation Benchmark") {
 
 TEST_CASE("SSA Creation Module Benchmark") {
 	for (auto& [name, func] : tests) {
-		Catch::Benchmark::Benchmark("ssa_module_" + name)
-		    .operator=([&func](Catch::Benchmark::Chronometer meter) {
-			    std::vector<common::ArenaPool::Handle> arenas;
-			    std::vector<std::shared_ptr<tracing::TraceModule>> modules;
-			    arenas.reserve(meter.runs());
-			    modules.reserve(meter.runs());
+		Catch::Benchmark::Benchmark("ssa_module_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
+			std::vector<common::ArenaPool::Handle> arenas;
+			std::vector<std::shared_ptr<tracing::TraceModule>> modules;
+			arenas.reserve(meter.runs());
+			modules.reserve(meter.runs());
 
-			    for (int index = 0; index < meter.runs(); ++index) {
-				    auto arena = common::ArenaPool::makeStandalone();
-				    std::list<compiler::CompilableFunction> functions;
-				    functions.emplace_back("execute", func);
-				    modules.emplace_back(
-				        tracing::ExceptionBasedTraceContext::Trace(functions, engine::Options(), *arena));
-				    arenas.emplace_back(std::move(arena));
-			    }
+			for (int index = 0; index < meter.runs(); ++index) {
+				auto arena = common::ArenaPool::makeStandalone();
+				std::list<compiler::CompilableFunction> functions;
+				functions.emplace_back("execute", func);
+				modules.emplace_back(tracing::ExceptionBasedTraceContext::Trace(functions, engine::Options(), *arena));
+				arenas.emplace_back(std::move(arena));
+			}
 
-			    meter.measure([&modules](int index) {
-				    auto phase = tracing::SSACreationPhase();
-				    return phase.apply(modules[index]);
-			    });
-		    });
+			meter.measure([&modules](int index) {
+				auto phase = tracing::SSACreationPhase();
+				return phase.apply(modules[index]);
+			});
+		});
 	}
 }
 
@@ -145,8 +143,8 @@ TEST_CASE("SSA Creation Live-In Scaling Benchmark") {
 				    }
 				    auto& root = trace->getBlock(0);
 				    const auto useBlockId = trace->createBlock();
-				    root.addOperation(tracing::makeTraceOp(
-				        *arena, tracing::Op::JMP, arena->create<tracing::BlockRef>(useBlockId)));
+				    root.addOperation(
+				        tracing::makeTraceOp(*arena, tracing::Op::JMP, arena->create<tracing::BlockRef>(useBlockId)));
 				    trace->getBlock(useBlockId).predecessors.emplace_back(root.blockId);
 				    trace->setCurrentBlock(useBlockId);
 				    auto* call = arena->create<tracing::FunctionCall>(tracing::FunctionCall {

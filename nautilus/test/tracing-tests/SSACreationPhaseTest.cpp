@@ -23,11 +23,8 @@ TEST_CASE("SSA creation propagates many live-in values without duplicates", "[SS
 	useBlock.predecessors.emplace_back(root.blockId);
 	trace->setCurrentBlock(useBlockId);
 
-	auto* call = arena.create<FunctionCall>(FunctionCall {.functionName = "consume",
-	                                                     .mangledName = "consume",
-	                                                     .ptr = nullptr,
-	                                                     .arguments = arguments,
-	                                                     .fnAttrs = {}});
+	auto* call = arena.create<FunctionCall>(FunctionCall {
+	    .functionName = "consume", .mangledName = "consume", .ptr = nullptr, .arguments = arguments, .fnAttrs = {}});
 	auto snapshot = Snapshot();
 	auto callOp = Op::CALL;
 	auto resultType = Type::i64;

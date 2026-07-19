@@ -8,12 +8,11 @@ namespace {
 
 void addReturn(ExecutionTrace& trace, Block& block, TypedValueRef ref) {
 	auto snapshot = Snapshot();
-	block.addOperation(
-	    makeTraceOp(trace.getArena(), snapshot, Op::RETURN, ref.type, TypedValueRef(0, Type::v), ref));
+	block.addOperation(makeTraceOp(trace.getArena(), snapshot, Op::RETURN, ref.type, TypedValueRef(0, Type::v), ref));
 }
 
 void addIndirectCall(ExecutionTrace& trace, Block& block, TypedValueRef fnPtr, std::vector<TypedValueRef> arguments,
-	                 TypedValueRef result) {
+                     TypedValueRef result) {
 	auto* call = trace.getArena().create<IndirectFunctionCall>(
 	    IndirectFunctionCall {.fnPtr = fnPtr, .arguments = std::move(arguments), .fnAttrs = {}});
 	auto snapshot = Snapshot();
