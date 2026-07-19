@@ -4,6 +4,7 @@ include(Catch)
 add_executable(nautilus-tracing-unit-tests
         AliveVariableHashTest.cpp
         ArenaTest.cpp
+        SSAVerifierTest.cpp
 )
 
 target_link_libraries(nautilus-tracing-unit-tests PRIVATE nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
