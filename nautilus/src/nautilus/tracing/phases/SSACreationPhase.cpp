@@ -251,6 +251,9 @@ bool SSACreationPhase::SSACreationPhaseContext::isDefinedInBlock(uint32_t blockI
 		return true;
 	}
 	const auto& range = assignmentDefinitionRanges[blockId];
+	if (range.count == 0) {
+		return false;
+	}
 	return std::binary_search(range.data, range.data + range.count, ref);
 }
 

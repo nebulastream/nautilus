@@ -21,7 +21,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 		const auto& block = *blockPtr;
 		// Collect the set of value refs defined in this block:
 		// block arguments + operation results (in order)
-		std::unordered_set<uint32_t> definedRefs;
+		std::unordered_set<ValueRef> definedRefs;
 
 		// Block arguments are defined at the start of the block
 		for (const auto& arg : block.arguments) {

@@ -21,6 +21,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
+#include <list>
 
 namespace nautilus::engine {
 
