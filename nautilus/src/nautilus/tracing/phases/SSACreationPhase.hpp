@@ -42,16 +42,16 @@ private:
 	 */
 	class SSACreationPhaseContext {
 	public:
-		explicit SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace);
+		explicit SSACreationPhaseContext(ExecutionTrace& trace);
 
 		/*
 		 * Starts the conversion of the trace to SSA from
 		 */
-		std::shared_ptr<ExecutionTrace> process();
+		void process();
 
 	private:
-		struct DefinitionRange {
-			size_t offset;
+		struct AssignmentDefinitionRange {
+			ValueRef* data;
 			size_t count;
 		};
 
@@ -62,9 +62,7 @@ private:
 		void processBlock(Block& block);
 		Block& getReturnBlock();
 
-		void processValueRef(Block& block, TypedValueRef& type);
-
-		void processBlockRef(Block& block, BlockRef& blockRef);
+		void processValueRef(Block& block, TypedValueRef ref);
 
 		/**
 		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.
@@ -74,8 +72,11 @@ private:
 		 * @param ref the value reference to propagate
 		 */
 		void propagateValue(Block& block, TypedValueRef ref);
+		void initializePropagation();
 
 		bool isDefinedInBlock(uint32_t blockId, ValueRef ref);
+		void indexDefinitions(uint32_t blockId);
+		void validateValueRef(ValueRef ref) const;
 
 		/**
 		 * @brief Removes the assignment operations from all blocks.
@@ -83,25 +84,22 @@ private:
 		 */
 		void removeAssignOperations();
 
-		/**
-		 * @brief In this step we finalise the block arguments of all blocks and create unique variances of them.
-		 */
-		void makeBlockArgumentsUnique();
-
 	private:
-		std::shared_ptr<ExecutionTrace> trace;
-		// O(1) block-visit tracking; the iterative version never erases, so unordered_set is safe.
-		std::unordered_set<uint32_t> processedBlocks;
-		// Arena-backed table indexed by ValueRef. A blockId + 1 stamp indicates
-		// that the value is available at the current point in that block.
+		ExecutionTrace& trace;
+		// Arena-backed O(1) block-visit tracking.
+		std::span<uint8_t> processedBlocks;
+		// Arena-backed table indexed by ValueRef. The entry is the block where
+		// the value is available at the current point, or NO_BLOCK.
 		std::span<uint32_t> availableInBlock;
-		// Lazy arena-backed definition index. Each block owns a pre-sized slice;
-		// its result refs are copied, sorted, and deduplicated on first lookup.
-		std::span<DefinitionRange> definitionRanges;
-		std::span<ValueRef> definitions;
+		// Non-ASSIGN operation ids are globally unique, so their defining block
+		// is recorded directly. ASSIGN may redefine an id in several blocks and
+		// therefore uses a compact, lazily built per-block index.
+		std::span<uint32_t> uniqueDefinitionBlock;
+		std::span<AssignmentDefinitionRange> assignmentDefinitionRanges;
 		// Tracks (blockId, ref) pairs that have already been propagated,
 		// replacing the O(n) std::find on predBlock.arguments.
 		std::unordered_set<uint64_t> propagatedValues;
+		bool propagationInitialized = false;
 		// Reused across propagateValue calls to avoid repeated heap allocation.
 		std::vector<uint32_t> propWorklist;
 	};
