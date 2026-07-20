@@ -11,6 +11,7 @@
 ## Global Constraints
 
 - Score all 14 `completing_trace_*` workloads using the geometric mean of candidate-to-baseline median latency ratios.
+- Require the final 95% upper bound from 20,000 paired A/B-round bootstrap resamples with seed `20260720` below `1.0`.
 - Reject any candidate whose per-workload median ratio exceeds `1.10`.
 - Keep existing trace fixtures, generated IR, and public tracing behavior unchanged.
 - Do not add a tracing mode, stack copying, context switching, or broad compiler/backend changes.
@@ -30,6 +31,7 @@
 **Interfaces:**
 - Produces: `parse_catch_output(text: str) -> dict[str, float]`, with values normalized to nanoseconds.
 - Produces: `summarize(baseline_runs: list[dict[str, float]], candidate_runs: list[dict[str, float]], max_regression_pct: float) -> Comparison`.
+- Produces: `bootstrap_geomean_upper_bound(..., confidence: float = 0.95, resamples: int = 20000, seed: int = 20260720) -> float`.
 - Produces: CLI command `lazy_trace_bench.py compare` that rebuilds the candidate, alternates independent A/B runs, writes JSON details, prints only the geometric-mean ratio on stdout, and exits nonzero on parse/run failure, a workload ratio over the configured ceiling, or a failed required aggregate threshold.
 
 - [ ] **Step 1: Write parser and scoring tests**
@@ -81,6 +83,12 @@ completing_trace_loop 5 1 6 ms
 	def test_summarize_reports_ratio_above_ceiling(self):
 		result = MODULE.summarize([{"a": 100.0}], [{"a": 111.0}], max_regression_pct=10.0)
 		self.assertEqual(result.regressions, {"a": 1.11})
+
+	def test_bootstrap_upper_bound_resamples_paired_rounds(self):
+		baseline = [{"a": 100.0, "b": 200.0}] * 3
+		candidate = [{"a": 80.0, "b": 160.0}, {"a": 100.0, "b": 200.0}, {"a": 120.0, "b": 240.0}]
+		upper = MODULE.bootstrap_geomean_upper_bound(baseline, candidate, resamples=1000, seed=7)
+		self.assertAlmostEqual(upper, 1.2)
 ```
 
 - [ ] **Step 2: Run tests and verify RED**
@@ -91,7 +99,8 @@ Run:
 python3 -m unittest autoresearch/orchestrator-260720-1326/test_lazy_trace_bench.py -v
 ```
 
-Expected: import fails because `lazy_trace_bench.py` does not exist.
+Expected on initial execution: import fails because `lazy_trace_bench.py` does not exist. When extending the harness
+with the confidence gate, the new bootstrap test fails with `AttributeError` before that function is added.
 
 - [ ] **Step 3: Implement parser and summary model**
 
@@ -167,7 +176,12 @@ Use `subprocess.run([...], capture_output=True, text=True, check=True)` without 
 ]
 ```
 
-Alternate order by round (`baseline,candidate` on even rounds and `candidate,baseline` on odd rounds), retry each failed process once, save every stdout/stderr pair, and write `latest-comparison.json`. Print `f"{comparison.geomean_ratio:.9f}"` to stdout. Return exit 2 for a run/parse failure, exit 3 for per-workload regressions, and exit 4 when `--require-ratio-below` is present but not met.
+Alternate order by round (`baseline,candidate` on even rounds and `candidate,baseline` on odd rounds), retry each
+failed process once, save every stdout/stderr pair, and write `latest-comparison.json`. Print
+`f"{comparison.geomean_ratio:.9f}"` to stdout and report the deterministic 95% upper bootstrap bound on stderr and in
+the JSON details. Return exit 2 for a run/parse failure, exit 3 for per-workload regressions, exit 4 when
+`--require-ratio-below` is present but not met, and exit 5 when `--require-upper-ci-below` is present but the bootstrap
+bound is not below it.
 
 - [ ] **Step 5: Run harness tests and verify GREEN**
 
@@ -259,7 +273,8 @@ printf '0\t%s\t%s\t%s\t0.0\tpass\t0\tbaseline\timmutable A/B baseline\n' \
 
 - [ ] **Step 1: Verify the performance test is RED for the unchanged candidate**
 
-Run the pinned predicate before changing production code. Expected: exit 4 because an unchanged candidate cannot reliably satisfy a strict ratio below `1.0`; preserve its raw output as the RED evidence.
+Run the pinned predicate before changing production code. Expected: exit 5 because the unchanged candidate's 95%
+upper bootstrap bound is not below `1.0`; preserve its raw output as the RED evidence.
 
 - [ ] **Step 2: Evaluate the prioritized hypothesis queue one at a time**
 
@@ -327,7 +342,8 @@ Expected: every configured test passes.
 
 - [ ] **Step 3: Run the held-out predicate**
 
-Run the pinned command with nine alternating A/B rounds and ten samples. Expected: exit 0, numeric ratio below `1.0`, all 14 workloads present, and no workload ratio above `1.10`.
+Run the pinned command with nine alternating A/B rounds and ten samples. Expected: exit 0, numeric ratio below `1.0`,
+95% upper bootstrap bound below `1.0`, all 14 workloads present, and no workload ratio above `1.10`.
 
 - [ ] **Step 4: Analyze the iteration ledger**
 

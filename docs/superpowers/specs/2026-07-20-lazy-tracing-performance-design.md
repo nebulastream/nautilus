@@ -8,7 +8,7 @@ trace semantics and preventing material workload-specific regressions.
 Success requires both conditions:
 
 1. The geometric mean of candidate-to-baseline latency ratios across all 14 `completing_trace_*` workloads is below
-   `1.0`.
+   `1.0`, and the 95% upper bootstrap bound for that aggregate is also below `1.0`.
 2. No individual workload has a candidate-to-baseline median latency ratio above `1.10`.
 
 The work stops after local verification. It does not push, publish, deploy, or open a pull request.
@@ -98,7 +98,9 @@ the experiment as a crash and reverts it.
 
 After the loop converges, repeat the comparison with nine fresh A/B process rounds and ten Catch2 samples per workload.
 The final run uses new Catch2 seeds and raw output files that were not used to choose experiments. It applies the same
-geometric-mean and 10% per-workload rules.
+geometric-mean and 10% per-workload rules. It also performs 20,000 paired bootstrap resamples of the nine A/B round
+indices with seed `20260720`; each resample recomputes the per-workload medians and their geometric mean. The
+95th-percentile resampled aggregate must be below `1.0`.
 
 The pinned success predicate is:
 
@@ -107,11 +109,11 @@ python3 autoresearch/orchestrator-260720-1326/lazy_trace_bench.py compare \
   --baseline autoresearch/orchestrator-260720-1326/baseline/nautilus-benchmarks \
   --candidate build-perf/nautilus/test/benchmark/nautilus-benchmarks \
   --rounds 9 --samples 10 --max-regression-pct 10 \
-  --require-ratio-below 1.0
+  --require-ratio-below 1.0 --require-upper-ci-below 1.0
 ```
 
 The comparison command rebuilds the candidate before measuring it. It succeeds only when it prints a numeric ratio
-below `1.0` and every workload ratio is at most `1.10`.
+below `1.0`, the 95% upper bootstrap bound is below `1.0`, and every workload ratio is at most `1.10`.
 
 ## Autoresearch Loop
 
