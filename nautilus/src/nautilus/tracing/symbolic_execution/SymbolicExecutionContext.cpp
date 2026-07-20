@@ -86,10 +86,6 @@ RecordResult SymbolicExecutionContext::followNoThrow() {
 	return {get<0>(operation), false};
 }
 
-SymbolicExecutionContext::MODE SymbolicExecutionContext::getCurrentMode() const {
-	return this->currentMode;
-}
-
 bool SymbolicExecutionContext::follow() {
 	assert(getCurrentMode() == MODE::FOLLOW);
 	if (currentOperation >= currentExecutionPath.getSize() - 1) {
