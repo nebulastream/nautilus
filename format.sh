@@ -86,8 +86,12 @@ then
     #   last char as decimal ascii is 10 (i.e. is newline) OR append newline
     git ls-files \
       | grep --invert-match "^third_party" \
-      | grep --invert-match -e "\.png$" -e "\.zip$" \
-      | xargs --max-procs="$NPROC" -I {} sh -c '[ "$(tail -c 1 {} | wc -l | tr -d "[:space:]")" = "1" ] || printf "\n" >> {}'
+      | grep --invert-match -e "\.bin$" -e "\.png$" -e "\.zip$" \
+      | xargs --max-args=10 --max-procs="$NPROC" sh -c '
+          for file do
+              [ "$(tail -c 1 "$file" | wc -l | tr -d "[:space:]")" = "1" ] || printf "\n" >> "$file"
+          done
+        ' sh
 
 else
     # clang-format
