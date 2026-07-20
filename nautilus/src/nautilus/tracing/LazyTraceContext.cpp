@@ -91,11 +91,11 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.emplaceOperationWithResult(tag, op, type, constValue);
+		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.emplaceOperationWithResult(tag, op, type, constValue);
+		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
 	}
 }
 
@@ -123,7 +123,7 @@ TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, index);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
 }
 
@@ -184,7 +184,7 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
@@ -198,7 +198,7 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, indirectCall);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 
@@ -224,7 +224,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
@@ -249,7 +249,7 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = {},
 		                                                                        .fnAttrs = {}});
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
@@ -316,7 +316,7 @@ TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const Typ
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, left, right);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
 	});
 }
 
@@ -325,7 +325,7 @@ TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const Type
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, input);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
 	});
 }
 
@@ -335,7 +335,7 @@ TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const Ty
 		return dummyRef_;
 	}
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, first, second, third);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
 	});
 }
 
