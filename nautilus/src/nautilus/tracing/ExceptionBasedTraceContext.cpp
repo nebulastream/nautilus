@@ -107,11 +107,11 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
 		auto* originalRef = state->executionTrace.getBlocks()[ref.blockIndex]->operations[ref.operationIndex];
-		auto resultRef = state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		auto resultRef = state->executionTrace.emplaceOperationWithResult(tag, op, type, constValue);
 		state->executionTrace.addAssignmentOperation(tag, originalRef->resultRef, resultRef, resultRef.type);
 		return originalRef->resultRef;
 	} else {
-		return state->executionTrace.addOperationWithResult(tag, op, type, {constValue});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, type, constValue);
 	}
 }
 
@@ -135,7 +135,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, index);
 	});
 }
 
@@ -189,7 +189,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
 	});
 }
 
@@ -200,7 +200,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, indirectCall);
 	});
 }
 
@@ -223,7 +223,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
 	});
 }
 
@@ -245,7 +245,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = {},
 		                                                                        .fnAttrs = {}});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, functionArguments);
 	});
 }
 
@@ -305,20 +305,20 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 TypedValueRef& ExceptionBasedTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
                                                          const TypedValueRef& right) {
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {left, right});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, left, right);
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {input});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, input);
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
                                                           const TypedValueRef& second, const TypedValueRef& third) {
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {first, second, third});
+		return state->executionTrace.emplaceOperationWithResult(tag, op, resultType, first, second, third);
 	});
 }
 

@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -135,6 +136,30 @@ public:
 	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
 	                                      std::initializer_list<InputVariant> inputs);
+
+	/**
+	 * @brief Adds an operation while constructing its operands directly in Arena storage.
+	 *
+	 * Unlike addOperationWithResult(), this avoids the temporary initializer_list and the
+	 * resulting InputVariant copies on the tracing hot path.
+	 */
+	template <typename... Inputs>
+	    requires(std::constructible_from<InputVariant, Inputs &&> && ...)
+	TypedValueRef& emplaceOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType, Inputs&&... inputs) {
+		if (blocks.empty()) {
+			createBlock();
+		}
+
+		auto& operations = blocks[currentBlockIndex]->operations;
+		auto* traceOperation =
+		    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType),
+		                std::forward<Inputs>(inputs)...);
+		operations.push_back(traceOperation);
+
+		auto operationIdentifier = getNextOperationIdentifier();
+		addTag(snapshot, operationIdentifier);
+		return traceOperation->resultRef;
+	}
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
