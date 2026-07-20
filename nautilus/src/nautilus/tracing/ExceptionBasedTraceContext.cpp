@@ -34,14 +34,14 @@ TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionCon
 }
 
 bool ExceptionBasedTraceContext::isActive() const {
-	return state != nullptr;
+	return state.has_value();
 }
 
 ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& tagRecorder,
                                                                    ExecutionTrace& executionTrace,
                                                                    SymbolicExecutionContext& symbolicExecutionContext,
                                                                    const engine::Options& options) {
-	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	traceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	setActiveTracer(&traceContext);
 	return &traceContext;
 }
@@ -471,7 +471,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		auto rootAddress = __builtin_return_address(0);
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 		SymbolicExecutionContext symbolicExecutionContext;
-		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		state.emplace(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;
 
 		while (symbolicExecutionContext.shouldContinue()) {

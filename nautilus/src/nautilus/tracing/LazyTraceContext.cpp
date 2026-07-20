@@ -25,8 +25,7 @@ static thread_local LazyTraceContext completingTraceContext;
 LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
                                                SymbolicExecutionContext& symbolicExecutionContext,
                                                const engine::Options& options) {
-	completingTraceContext.state =
-	    std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	completingTraceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	completingTraceContext.paused_ = false;
 	setActiveTracer(&completingTraceContext);
 	return &completingTraceContext;
@@ -479,7 +478,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		auto rootAddress = __builtin_return_address(0);
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 		SymbolicExecutionContext symbolicExecutionContext;
-		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		state.emplace(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;
 
 		while (symbolicExecutionContext.shouldContinue()) {
