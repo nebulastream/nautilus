@@ -55,9 +55,7 @@ public:
 	 */
 	uint64_t getIterations() const;
 
-	[[nodiscard]] MODE getCurrentMode() const noexcept {
-		return currentMode;
-	}
+	MODE getCurrentMode() const;
 
 	/**
 	 * @brief Records a new cmp operation. Throws TraceTerminationException on SecondVisit.
