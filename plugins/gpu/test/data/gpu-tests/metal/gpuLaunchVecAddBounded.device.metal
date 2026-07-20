@@ -17,9 +17,9 @@ uint var_$10;
 uint var_$11;
 uint var_$12;
 bool var_$13;
-device uchar* var_$7;
-device uchar* var_$6;
 device uchar* var_$5;
+device uchar* var_$6;
+device uchar* var_$7;
 int var_$15;
 ulong var_$19;
 ulong var_$20;
@@ -50,14 +50,14 @@ var_$12 = var_$10+var_$11;
 var_$13 = var_$12 < var_$4;
 if (var_$13){
 {
-device uchar* temp_0 = var_$3;
-uint temp_1 = var_$12;
+uint temp_0 = var_$12;
+device uchar* temp_1 = var_$1;
 device uchar* temp_2 = var_$2;
-device uchar* temp_3 = var_$1;
-var_$7 = temp_0;
-var_$12 = temp_1;
+device uchar* temp_3 = var_$3;
+var_$12 = temp_0;
+var_$5 = temp_1;
 var_$6 = temp_2;
-var_$5 = temp_3;
+var_$7 = temp_3;
 }
 __pc = 1; continue;
 }else{

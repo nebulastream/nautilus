@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -48,6 +49,23 @@ namespace nautilus::common {
  */
 class Arena {
 public:
+	class Checkpoint {
+		friend class Arena;
+
+	private:
+		Checkpoint(const Arena* arena, std::byte* current, std::byte* currentEnd, std::size_t currentChunkIndex,
+		           std::size_t destructorCount) noexcept
+		    : arena(arena), current(current), currentEnd(currentEnd), currentChunkIndex(currentChunkIndex),
+		      destructorCount(destructorCount) {
+		}
+
+		const Arena* arena;
+		std::byte* current;
+		std::byte* currentEnd;
+		std::size_t currentChunkIndex;
+		std::size_t destructorCount;
+	};
+
 	/// Size of the inline buffer embedded in every Arena instance.
 	static constexpr std::size_t INLINE_BUFFER_SIZE = 4 * 1024;
 
@@ -89,6 +107,37 @@ public:
 		}
 		current = reinterpret_cast<std::byte*>(aligned + size);
 		return reinterpret_cast<void*>(aligned);
+	}
+
+	/**
+	 * @brief Captures the current bump position and destructor depth.
+	 *
+	 * Memory allocated after the checkpoint can be reclaimed with @ref rewind.
+	 * Heap chunks acquired after the checkpoint remain owned by the arena and are
+	 * reused by subsequent allocations.
+	 */
+	[[nodiscard]] Checkpoint checkpoint() const noexcept {
+		return Checkpoint(this, current, currentEnd, currentChunkIndex, dtors.size());
+	}
+
+	/**
+	 * @brief Destroys objects and reclaims bump storage allocated after @p checkpoint.
+	 *
+	 * The checkpoint must have been created by this arena and must not predate an
+	 * earlier rewind that invalidated its destructor depth.
+	 */
+	void rewind(const Checkpoint& checkpoint) noexcept {
+		if (checkpoint.arena != this || checkpoint.destructorCount > dtors.size()) {
+			std::terminate();
+		}
+		for (auto index = dtors.size(); index > checkpoint.destructorCount; --index) {
+			auto& entry = dtors[index - 1];
+			entry.dtor(entry.obj);
+		}
+		dtors.resize(checkpoint.destructorCount);
+		current = checkpoint.current;
+		currentEnd = checkpoint.currentEnd;
+		currentChunkIndex = checkpoint.currentChunkIndex;
 	}
 
 	/**

@@ -340,13 +340,21 @@ TEST_CASE("Static Trace Test") {
 	runTraceTests("static-loop-tests", tests);
 }
 
-TEST_CASE("SSA creation handles a 4k static square sum") {
+TEST_CASE("SSA creation reclaims scratch storage for a 4k static square sum") {
 	auto function = details::createFunctionWrapper(staticSquareSum<4000>);
 	common::Arena arena;
 	std::shared_ptr<tracing::ExecutionTrace> trace =
 	    tracing::ExceptionBasedTraceContext::trace(function, engine::Options(), arena);
+	// Exhaust the current arena chunk so SSA's locality scratch allocation must
+	// grow the trace arena rather than fitting in unused tail space.
+	arena.allocate(common::Arena::MAX_CHUNK_SIZE, alignof(std::max_align_t));
+	const auto scratch_start = arena.checkpoint();
 
 	auto after_ssa = tracing::SSACreationPhase().apply(std::move(trace));
+	auto* allocation_after_ssa = arena.allocate(256, alignof(std::max_align_t));
+	arena.rewind(scratch_start);
+	auto* allocation_at_scratch_start = arena.allocate(256, alignof(std::max_align_t));
+	REQUIRE(allocation_after_ssa == allocation_at_scratch_start);
 	const auto verification = tracing::VerifySSA(*after_ssa);
 	REQUIRE(verification.valid);
 	for (const auto* block : after_ssa->getBlocks()) {

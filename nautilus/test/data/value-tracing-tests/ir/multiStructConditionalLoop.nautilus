@@ -13,9 +13,9 @@ Block_1($1:i32):
 
 Block_5($7:i64, $8:i32, $1:i32):
 	$9 = $8 < $1 :bool
-	if $9 ? Block_3($1, $8, $7) : Block_4($7) :void
+	if $9 ? Block_3($1, $7, $8) : Block_4($7) :void
 
-Block_3($1:i32, $8:i32, $7:i64):
+Block_3($1:i32, $7:i64, $8:i32):
 	$11 = alloca[0] :ptr
 	$12 = 7 :i64
 	$15 = 8 :ui64

@@ -21,6 +21,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include <catch2/catch_all.hpp>
+#include <list>
 
 namespace nautilus::engine {
 
@@ -80,28 +81,99 @@ TEST_CASE("SSA Creation Benchmark") {
 		auto func = std::get<1>(test);
 		auto name = std::get<0>(test);
 
-		// skip nestedIf/chainedIf: SSA creation crashes on these due to a
-		// pre-existing bug in multi-return block handling (see getReturnBlock).
-		if (name == "nestedIf10" || name == "nestedIf100" || name == "chainedIf10" || name == "chainedIf100") {
-			continue;
-		}
+		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
+			std::vector<common::ArenaPool::Handle> arenas;
+			std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+			arenas.reserve(meter.runs());
+			traces.reserve(meter.runs());
 
-		// Route the per-sample trace arena through a single ArenaPool so
-		// chunk memory is recycled across samples.
-		common::ArenaPool pool;
-		Catch::Benchmark::Benchmark("ssa_" + name).operator=([&func, &pool](Catch::Benchmark::Chronometer meter) {
-			auto arena = pool.acquire();
-			std::shared_ptr<tracing::ExecutionTrace> trace =
-			    tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *arena);
-			meter.measure([&] {
-				auto ssaCreationPhase = tracing::SSACreationPhase();
-				return ssaCreationPhase.apply(trace);
+			for (int index = 0; index < meter.runs(); ++index) {
+				auto arena = common::ArenaPool::makeStandalone();
+				traces.emplace_back(tracing::ExceptionBasedTraceContext::trace(func, engine::Options(), *arena));
+				arenas.emplace_back(std::move(arena));
+			}
+
+			meter.measure([&traces](int index) {
+				auto phase = tracing::SSACreationPhase();
+				return phase.apply(traces[index]);
 			});
-			// Drop the trace before the arena handle is recycled into the
-			// pool at the end of this sample.
-			trace.reset();
 		});
 	}
+}
+
+TEST_CASE("SSA Creation Module Benchmark") {
+	for (auto& [name, func] : tests) {
+		Catch::Benchmark::Benchmark("ssa_module_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
+			std::vector<common::ArenaPool::Handle> arenas;
+			std::vector<std::shared_ptr<tracing::TraceModule>> modules;
+			arenas.reserve(meter.runs());
+			modules.reserve(meter.runs());
+
+			for (int index = 0; index < meter.runs(); ++index) {
+				auto arena = common::ArenaPool::makeStandalone();
+				std::list<compiler::CompilableFunction> functions;
+				functions.emplace_back("execute", func);
+				modules.emplace_back(tracing::ExceptionBasedTraceContext::Trace(functions, engine::Options(), *arena));
+				arenas.emplace_back(std::move(arena));
+			}
+
+			meter.measure([&modules](int index) {
+				auto phase = tracing::SSACreationPhase();
+				return phase.apply(modules[index]);
+			});
+		});
+	}
+}
+
+TEST_CASE("SSA Creation Live-In Scaling Benchmark") {
+	auto registerBenchmark = [](size_t valueCount) {
+		Catch::Benchmark::Benchmark("ssa_liveIn" + std::to_string(valueCount))
+		    .operator=([valueCount](Catch::Benchmark::Chronometer meter) {
+			    std::vector<common::ArenaPool::Handle> arenas;
+			    std::vector<std::shared_ptr<tracing::ExecutionTrace>> traces;
+			    arenas.reserve(meter.runs());
+			    traces.reserve(meter.runs());
+
+			    for (int run = 0; run < meter.runs(); ++run) {
+				    auto arena = common::ArenaPool::makeStandalone();
+				    auto trace = std::make_shared<tracing::ExecutionTrace>(*arena);
+				    std::vector<tracing::TypedValueRef> arguments;
+				    arguments.reserve(valueCount);
+				    for (size_t index = 0; index < valueCount; ++index) {
+					    arguments.push_back(trace->setArgument(Type::i64, index));
+				    }
+				    auto& root = trace->getBlock(0);
+				    const auto useBlockId = trace->createBlock();
+				    root.addOperation(
+				        tracing::makeTraceOp(*arena, tracing::Op::JMP, arena->create<tracing::BlockRef>(useBlockId)));
+				    trace->getBlock(useBlockId).predecessors.emplace_back(root.blockId);
+				    trace->setCurrentBlock(useBlockId);
+				    auto* call = arena->create<tracing::FunctionCall>(tracing::FunctionCall {
+				        .functionName = "consume",
+				        .mangledName = "consume",
+				        .ptr = nullptr,
+				        .arguments = std::move(arguments),
+				        .fnAttrs = {},
+				    });
+				    auto snapshot = tracing::Snapshot();
+				    auto callOp = tracing::Op::CALL;
+				    auto resultType = Type::i64;
+				    const auto result = trace->addOperationWithResult(snapshot, callOp, resultType, {call});
+				    trace->addReturn(snapshot, resultType, result);
+				    traces.emplace_back(std::move(trace));
+				    arenas.emplace_back(std::move(arena));
+			    }
+
+			    meter.measure([&traces](int index) {
+				    auto phase = tracing::SSACreationPhase();
+				    return phase.apply(traces[index]);
+			    });
+		    });
+	};
+
+	registerBenchmark(16);
+	registerBenchmark(64);
+	registerBenchmark(256);
 }
 
 TEST_CASE("SSA Creation Static Loop Scaling Benchmark") {

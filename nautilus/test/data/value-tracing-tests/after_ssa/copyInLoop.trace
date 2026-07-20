@@ -10,7 +10,7 @@ B0($1:i32)
 	CONST	$15	0	:i32
 	CONST	$16	0	:i32
 	JMP	$0	B3($15,$16,$1,$2)	:void
-B1($1:i32,$16:i32,$15:i32,$2:ptr)
+B1($1:i32,$2:ptr,$15:i32,$16:i32)
 	ALLOCA	$19	:ptr
 	CONST	$20	8	:ui64
 	CALL	$21	func_*($19,$2,$20)	:ptr
@@ -27,5 +27,5 @@ B2($15:i32)
 	RETURN	$0	$15	:i32
 B3($15:i32,$16:i32,$1:i32,$2:ptr) ControlFlowMerge
 	LT	$17	$16	$1	:bool
-	CMP	$18	$17	B1($1,$16,$15,$2)	B2($15)	:void
+	CMP	$18	$17	B1($1,$2,$15,$16)	B2($15)	:void
 

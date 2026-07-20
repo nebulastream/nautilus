@@ -91,6 +91,52 @@ using InputVariant = std::variant<TypedValueRef, None, ConstantLiteral, BlockRef
 static_assert(std::is_trivially_destructible_v<InputVariant>,
               "InputVariant must stay trivially destructible so TraceOperation input arrays need no dtor sweep");
 
+/** Visits every value reference nested in an input without exposing its storage. */
+template <typename Callback>
+void forEachValueRef(const InputVariant& input, Callback&& callback) {
+	if (const auto* value_ref = std::get_if<TypedValueRef>(&input)) {
+		callback(*value_ref);
+	} else if (const auto* block_ref = std::get_if<BlockRef*>(&input); block_ref != nullptr && *block_ref != nullptr) {
+		// The callback may append block arguments elsewhere. Snapshot the count and
+		// pass values by copy so vector reallocation cannot invalidate this walk.
+		const auto argument_count = (*block_ref)->arguments.size();
+		for (size_t i = 0; i < argument_count; ++i) {
+			const auto argument = (*block_ref)->arguments[i];
+			callback(argument);
+		}
+	} else if (const auto* call = std::get_if<FunctionCall*>(&input); call != nullptr && *call != nullptr) {
+		for (const auto argument : (*call)->arguments) {
+			callback(argument);
+		}
+	} else if (const auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
+		callback((*call)->fnPtr);
+		for (const auto argument : (*call)->arguments) {
+			callback(argument);
+		}
+	}
+}
+
+/** Visits every mutable value reference nested in an input. */
+template <typename Callback>
+void forEachMutableValueRef(InputVariant& input, Callback&& callback) {
+	if (auto* value_ref = std::get_if<TypedValueRef>(&input)) {
+		callback(*value_ref);
+	} else if (auto* block_ref = std::get_if<BlockRef*>(&input); block_ref != nullptr && *block_ref != nullptr) {
+		for (auto& argument : (*block_ref)->arguments) {
+			callback(argument);
+		}
+	} else if (auto* call = std::get_if<FunctionCall*>(&input); call != nullptr && *call != nullptr) {
+		for (auto& argument : (*call)->arguments) {
+			callback(argument);
+		}
+	} else if (auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
+		callback((*call)->fnPtr);
+		for (auto& argument : (*call)->arguments) {
+			callback(argument);
+		}
+	}
+}
+
 /**
  * @brief Represents an individual operation in a trace.
  *

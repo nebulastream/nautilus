@@ -12,7 +12,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 	result.valid = true;
 
 	// Build a map from blockId to index for quick lookup
-	std::unordered_map<uint16_t, size_t> blockIdToIndex;
+	std::unordered_map<uint32_t, size_t> blockIdToIndex;
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
 		blockIdToIndex[trace.blocks[i]->blockId] = i;
 	}
@@ -21,9 +21,7 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 		const auto& block = *blockPtr;
 		// Collect the set of value refs defined in this block:
 		// block arguments + operation results (in order)
-		std::unordered_set<uint16_t> definedRefs;
-		// Track definitions for duplicate detection
-		std::unordered_set<uint16_t> opDefinedRefs;
+		std::unordered_set<ValueRef> definedRefs;
 
 		// Block arguments are defined at the start of the block
 		for (const auto& arg : block.arguments) {
@@ -69,35 +67,24 @@ SSAVerificationResult VerifySSA(const ExecutionTrace& trace) {
 					    fmt::format("B{} op {}: BlockRef to B{} passes {} arguments but target has {}", block.blockId,
 					                opIdx, blockRef.block, blockRef.arguments.size(), targetBlock.arguments.size()));
 				}
-				// Check each argument ref is defined in the current block
-				for (const auto& arg : blockRef.arguments) {
-					checkRef(arg, "BlockRef argument");
-				}
 			};
 
 			for (const auto& input : operation.input) {
-				if (const auto* valueRef = std::get_if<TypedValueRef>(&input)) {
-					checkRef(*valueRef, "input");
-				} else if (const auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
+				if (const auto* blockRefPtr = std::get_if<BlockRef*>(&input)) {
 					checkBlockRef(**blockRefPtr);
-				} else if (const auto* fcallPtr = std::get_if<FunctionCall*>(&input)) {
-					for (const auto& arg : (*fcallPtr)->arguments) {
-						checkRef(arg, "function call argument");
-					}
 				}
-				// None, ConstantLiteral, BranchProbability need no ref checks
+				forEachValueRef(input, [&](const TypedValueRef& ref) { checkRef(ref, "input"); });
 			}
 
 			// After processing the operation, add its result to defined refs
 			// (only if it produces a value, i.e. ref != 0)
 			if (operation.resultRef.ref != 0) {
 				// Check 5: No duplicate value definitions
-				if (opDefinedRefs.contains(operation.resultRef.ref)) {
+				if (definedRefs.contains(operation.resultRef.ref)) {
 					result.valid = false;
 					result.errors.push_back(fmt::format("B{} op {}: duplicate definition of ${}", block.blockId, opIdx,
 					                                    operation.resultRef.ref));
 				}
-				opDefinedRefs.insert(operation.resultRef.ref);
 				definedRefs.insert(operation.resultRef.ref);
 			}
 		}

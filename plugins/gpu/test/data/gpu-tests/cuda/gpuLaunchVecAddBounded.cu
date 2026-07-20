@@ -9,9 +9,9 @@ uint32_t var_$10;
 uint32_t var_$11;
 uint32_t var_$12;
 bool var_$13;
-uint8_t* var_$7;
-uint8_t* var_$6;
 uint8_t* var_$5;
+uint8_t* var_$6;
+uint8_t* var_$7;
 int32_t var_$15;
 uint64_t var_$19;
 uint64_t var_$20;
@@ -39,14 +39,14 @@ var_$12 = var_$10+var_$11;
 var_$13 = var_$12 < var_$4;
 if (var_$13){
 {
-uint8_t* temp_0 = var_$3;
-uint32_t temp_1 = var_$12;
+uint32_t temp_0 = var_$12;
+uint8_t* temp_1 = var_$1;
 uint8_t* temp_2 = var_$2;
-uint8_t* temp_3 = var_$1;
-var_$7 = temp_0;
-var_$12 = temp_1;
+uint8_t* temp_3 = var_$3;
+var_$12 = temp_0;
+var_$5 = temp_1;
 var_$6 = temp_2;
-var_$5 = temp_3;
+var_$7 = temp_3;
 }
 goto Block_1;
 }else{

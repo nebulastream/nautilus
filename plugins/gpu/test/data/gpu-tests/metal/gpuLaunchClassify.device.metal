@@ -78,11 +78,11 @@ var_$10 = var_$8+var_$9;
 var_$11 = var_$10 < var_$3;
 if (var_$11){
 {
-device uchar* temp_0 = var_$2;
-uint temp_1 = var_$10;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$2;
 device uchar* temp_2 = var_$1;
-var_$5 = temp_0;
-var_$10 = temp_1;
+var_$10 = temp_0;
+var_$5 = temp_1;
 var_$4 = temp_2;
 }
 __pc = 1; continue;
@@ -102,19 +102,19 @@ var_$24 = *((device uint*)(var_$20));
 var_$25 = var_$24 > var_$23;
 if (var_$25){
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
-var_$5 = temp_0;
-var_$10 = temp_1;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
+var_$10 = temp_0;
+var_$5 = temp_1;
 }
 __pc = 2; continue;
 }else{
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
 device uchar* temp_2 = var_$4;
-var_$5 = temp_0;
-var_$10 = temp_1;
+var_$10 = temp_0;
+var_$5 = temp_1;
 var_$4 = temp_2;
 }
 __pc = 4; continue;}
@@ -145,19 +145,19 @@ var_$57 = *((device uint*)(var_$53));
 var_$58 = var_$57 > var_$56;
 if (var_$58){
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
-var_$5 = temp_0;
-var_$10 = temp_1;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
+var_$10 = temp_0;
+var_$5 = temp_1;
 }
 __pc = 5; continue;
 }else{
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
 device uchar* temp_2 = var_$4;
-var_$5 = temp_0;
-var_$10 = temp_1;
+var_$10 = temp_0;
+var_$5 = temp_1;
 var_$4 = temp_2;
 }
 __pc = 6; continue;}
@@ -185,18 +185,18 @@ var_$87 = *((device uint*)(var_$83));
 var_$88 = var_$87 > var_$86;
 if (var_$88){
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
-var_$5 = temp_0;
-var_$10 = temp_1;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
+var_$10 = temp_0;
+var_$5 = temp_1;
 }
 __pc = 7; continue;
 }else{
 {
-device uchar* temp_0 = var_$5;
-uint temp_1 = var_$10;
-var_$5 = temp_0;
-var_$10 = temp_1;
+uint temp_0 = var_$10;
+device uchar* temp_1 = var_$5;
+var_$10 = temp_0;
+var_$5 = temp_1;
 }
 __pc = 8; continue;}
 }

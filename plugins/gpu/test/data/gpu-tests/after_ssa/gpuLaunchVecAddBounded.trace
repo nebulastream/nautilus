@@ -22,8 +22,8 @@ B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
 	CALL	$11	func_*()	:ui32
 	ADD	$12	$10	$11	:ui32
 	LT	$13	$12	$4	:bool
-	CMP	$14	$13	B1($3,$12,$2,$1)	B2()	:void
-B1($7:ptr,$12:ui32,$6:ptr,$5:ptr)
+	CMP	$14	$13	B1($12,$1,$2,$3)	B2()	:void
+B1($12:ui32,$5:ptr,$6:ptr,$7:ptr)
 	CAST	$15	$12	:i32
 	CONST	$19	4	:ui64
 	CAST	$20	$15	:ui64

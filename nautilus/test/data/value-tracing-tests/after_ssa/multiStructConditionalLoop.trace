@@ -10,7 +10,7 @@ B1($1:i32)
 	JMP	$0	B5($7,$8,$1)	:void
 B2($2:i64)
 	JMP	$0	B6($2)	:void
-B3($1:i32,$8:i32,$7:i64)
+B3($1:i32,$7:i64,$8:i32)
 	ALLOCA	$11	:ptr
 	CONST	$12	7	:i64
 	CONST	$15	8	:ui64
@@ -44,7 +44,7 @@ B4($7:i64)
 	JMP	$0	B6($7)	:void
 B5($7:i64,$8:i32,$1:i32) ControlFlowMerge
 	LT	$9	$8	$1	:bool
-	CMP	$10	$9	B3($1,$8,$7)	B4($7)	:void
+	CMP	$10	$9	B3($1,$7,$8)	B4($7)	:void
 B6($2:i64)
 	RETURN	$0	$2	:i64
 

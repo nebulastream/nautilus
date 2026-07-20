@@ -2,8 +2,9 @@
 #pragma once
 
 #include "nautilus/tracing/TraceOperation.hpp"
+#include <cstddef>
 #include <memory>
-#include <unordered_map>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -41,14 +42,19 @@ private:
 	 */
 	class SSACreationPhaseContext {
 	public:
-		explicit SSACreationPhaseContext(std::shared_ptr<ExecutionTrace> trace);
+		explicit SSACreationPhaseContext(ExecutionTrace& trace);
 
 		/*
 		 * Starts the conversion of the trace to SSA from
 		 */
-		std::shared_ptr<ExecutionTrace> process();
+		void process();
 
 	private:
+		struct AssignmentDefinitionRange {
+			ValueRef* data;
+			size_t count;
+		};
+
 		/**
 		 * @brief Converts a single basic block to SSA form
 		 * @param block reference to the basic block
@@ -56,19 +62,7 @@ private:
 		void processBlock(Block& block);
 		Block& getReturnBlock();
 
-		/**
-		 * @brief Checks if an ValueRef is defined in a specific block by an argument or an operation before the current
-		 * operationIndex
-		 * @param block reference to the current basic block
-		 * @param valRef reference to the the value ref we are looking fore
-		 * @param operationIndex the operation index, which accesses the ValueRef
-		 * @return true if Value Ref is defined locally.
-		 */
-		bool isLocalValueRef(Block& block, const TypedValueRef& valRef, uint32_t operationIndex);
-
-		void processValueRef(Block& block, TypedValueRef& type, uint32_t operationIndex);
-
-		void processBlockRef(Block& block, BlockRef& blockRef, uint32_t operationIndex);
+		void processValueRef(Block& block, TypedValueRef ref);
 
 		/**
 		 * @brief Eagerly propagates a non-local value reference upward through predecessor blocks.
@@ -78,18 +72,11 @@ private:
 		 * @param ref the value reference to propagate
 		 */
 		void propagateValue(Block& block, TypedValueRef ref);
+		void initializePropagation();
 
-		/**
-		 * @brief Returns the set of value refs defined by operations in the given block,
-		 * computing and caching it on first access.
-		 */
-		const std::unordered_set<ValueRef>& getOrBuildDefinitions(uint32_t blockId);
-
-		/**
-		 * @brief Returns the operation index of value refs defined in the given block,
-		 * computing and caching it on first access.
-		 */
-		const std::unordered_map<ValueRef, uint32_t>& getOrBuildDefinitionIndices(uint32_t blockId);
+		bool isDefinedInBlock(uint32_t blockId, ValueRef ref);
+		void indexDefinitions(uint32_t blockId);
+		void validateValueRef(ValueRef ref) const;
 
 		/**
 		 * @brief Removes the assignment operations from all blocks.
@@ -97,23 +84,22 @@ private:
 		 */
 		void removeAssignOperations();
 
-		/**
-		 * @brief In this step we finalise the block arguments of all blocks and create unique variances of them.
-		 */
-		void makeBlockArgumentsUnique();
-
 	private:
-		std::shared_ptr<ExecutionTrace> trace;
-		// O(1) block-visit tracking; the iterative version never erases, so unordered_set is safe.
-		std::unordered_set<uint32_t> processedBlocks;
-		// Lazy cache: maps blockId → set of value refs produced by operations in that block.
-		// Entries are built on first access rather than upfront.
-		std::unordered_map<uint32_t, std::unordered_set<ValueRef>> blockDefinitions;
-		// Lazy cache: maps blockId → operation index for each value ref produced by an operation.
-		std::unordered_map<uint32_t, std::unordered_map<ValueRef, uint32_t>> blockDefinitionIndices;
+		ExecutionTrace& trace;
+		// Arena-backed O(1) block-visit tracking.
+		std::span<uint8_t> processedBlocks;
+		// Arena-backed table indexed by ValueRef. The entry is the block where
+		// the value is available at the current point, or NO_BLOCK.
+		std::span<uint32_t> availableInBlock;
+		// Non-ASSIGN operation ids are globally unique, so their defining block
+		// is recorded directly. ASSIGN may redefine an id in several blocks and
+		// therefore uses a compact, lazily built per-block index.
+		std::span<uint32_t> uniqueDefinitionBlock;
+		std::span<AssignmentDefinitionRange> assignmentDefinitionRanges;
 		// Tracks (blockId, ref) pairs that have already been propagated,
 		// replacing the O(n) std::find on predBlock.arguments.
 		std::unordered_set<uint64_t> propagatedValues;
+		bool propagationInitialized = false;
 		// Reused across propagateValue calls to avoid repeated heap allocation.
 		std::vector<uint32_t> propWorklist;
 	};
