@@ -84,10 +84,12 @@ then
     #   ignore third_party code
     #   remove filenames indicating non-text content
     #   last char as decimal ascii is 10 (i.e. is newline) OR append newline
-    git ls-files \
-      | grep --invert-match "^third_party" \
-      | grep --invert-match -e "\.bin$" -e "\.png$" -e "\.zip$" \
-      | xargs --max-args=10 --max-procs="$NPROC" sh -c '
+    git ls-files -z -- \
+        ':(exclude)third_party/**' \
+        ':(exclude)**/*.bin' \
+        ':(exclude)**/*.png' \
+        ':(exclude)**/*.zip' \
+      | xargs -0 --max-args=10 --max-procs="$NPROC" sh -c '
           for file do
               [ "$(tail -c 1 "$file" | wc -l | tr -d "[:space:]")" = "1" ] || printf "\n" >> "$file"
           done
@@ -108,10 +110,12 @@ else
     #   remove filenames indicating non-text content
     #   take last char of the files, count lines and chars,
     #   fail if not equal (i.e. not every char is a newline)
-    git ls-files \
-      | grep --invert-match "^third_party" \
-      | grep --invert-match -e "\.png$" -e "\.zip$" \
-      | xargs --max-args=10 --max-procs="$NPROC" tail -qc 1  | wc -cl \
+    git ls-files -z -- \
+        ':(exclude)third_party/**' \
+        ':(exclude)**/*.bin' \
+        ':(exclude)**/*.png' \
+        ':(exclude)**/*.zip' \
+      | xargs -0 --max-args=10 --max-procs="$NPROC" tail -qc 1  | wc -cl \
       | awk '$1 != $2 { print $2-$1, "missing newline(s) at EOF. Please run \"format.sh -i\" to fix"; exit 1 }' \
       || FAIL=1
 fi
