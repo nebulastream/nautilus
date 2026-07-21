@@ -159,8 +159,7 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 		return originalOp->resultRef;
 	}
 	if (!trace.checkTag(tag)) {
-		// A local-tag collision (same-pass revisit): defer to the existing
-		// control-flow-merge machinery, unchanged from before this fix.
+		// Defer any remaining repeated tag to the control-flow-merge machinery.
 		paused_ = true;
 		return dummyRef_;
 	}
@@ -278,14 +277,9 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 	// everything traced afterwards (issue #382). This mirrors how traceCopy
 	// already reconciles instead of merging when a repeated call site's
 	// *source* legitimately differs (issue #95/#384).
-	const operation_identifier* existing = nullptr;
 	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
-		existing = &it->second;
-	} else if (auto localIt = trace.localTagMap.find(tag); localIt != trace.localTagMap.end()) {
-		existing = &localIt->second;
-	}
-	if (existing != nullptr) {
-		auto* existingOp = trace.getBlocks()[existing->blockIndex]->operations[existing->operationIndex];
+		auto& existing = it->second;
+		auto* existingOp = trace.getBlocks()[existing.blockIndex]->operations[existing.operationIndex];
 		if (existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref) {
 			trace.addAssignmentOperation(tag, target, source, resultType);
 			return;

@@ -168,8 +168,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 		return originalOp->resultRef;
 	}
 	if (!trace.checkTag(tag)) {
-		// A local-tag collision (same-pass revisit): defer to the existing
-		// control-flow-merge machinery, unchanged from before this fix.
+		// Defer any remaining repeated tag to the control-flow-merge machinery.
 		throw TraceTerminationException();
 	}
 	auto resultRef = trace.getNextValueRef();
@@ -274,14 +273,9 @@ void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, co
 	// *source* legitimately differs (issue #95/#384). Same defect and same
 	// fix as LazyTraceContext::traceAssignment -- this tracer keeps its own
 	// copy of the mechanism.
-	const operation_identifier* existing = nullptr;
 	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
-		existing = &it->second;
-	} else if (auto localIt = trace.localTagMap.find(tag); localIt != trace.localTagMap.end()) {
-		existing = &localIt->second;
-	}
-	if (existing != nullptr) {
-		auto* existingOp = trace.getBlocks()[existing->blockIndex]->operations[existing->operationIndex];
+		auto& existing = it->second;
+		auto* existingOp = trace.getBlocks()[existing.blockIndex]->operations[existing.operationIndex];
 		if (existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref) {
 			trace.addAssignmentOperation(tag, target, source, resultType);
 			return;

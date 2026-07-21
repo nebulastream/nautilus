@@ -86,7 +86,6 @@ ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(
 	// vector in the tracing hot path.
 	blocks.reserve(8);
 	globalTagMap.reserve(128);
-	localTagMap.reserve(128);
 	createBlock();
 }
 
@@ -143,13 +142,6 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 		return false;
 	}
 
-	// check if we visited the same operation in this execution -> loop
-	auto localTagIter = localTagMap.find(snapshot);
-	if (localTagIter != localTagMap.end()) {
-		auto& ref = localTagIter->second;
-		processControlFlowMerge(ref);
-		return false;
-	}
 	return true;
 }
 
@@ -291,7 +283,7 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 		auto opType = sourceOperation->op;
 		auto opTag = sourceOperation->tag;
 		auto operationReference = mergeBlock.addOperation(sourceOperation);
-		// update in global and local tag map
+		// Update the tag map after moving the operation.
 
 		if (opType == RETURN) {
 			for (auto& returnRef : returnRefs) {
@@ -301,7 +293,6 @@ Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 			}
 		} else {
 			globalTagMap[opTag] = operationReference;
-			localTagMap[opTag] = operationReference;
 		}
 	}
 
@@ -362,8 +353,6 @@ operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 void ExecutionTrace::resetExecution() {
 	currentBlockIndex = 0;
 	currentOperationIndex = 0;
-	globalTagMap.merge(localTagMap);
-	localTagMap.clear();
 }
 
 const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
@@ -372,7 +361,6 @@ const std::vector<TypedValueRef>& ExecutionTrace::getArguments() {
 
 void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier) {
 	globalTagMap[snapshot] = identifier;
-	localTagMap[snapshot] = identifier;
 }
 
 AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
