@@ -6,7 +6,7 @@
 namespace nautilus::tracing {
 
 SymbolicExecutionContext::SymbolicExecutionContext() {
-	tagMap.reserve(64);
+	tagMap.reserve(128);
 }
 
 bool SymbolicExecutionContext::record(const Snapshot& tag) {

@@ -85,8 +85,8 @@ ExecutionTrace::ExecutionTrace(Arena& arena) : arena(&arena), currentBlockIndex(
 	// initial capacity eliminates the first few reallocations of the pointer
 	// vector in the tracing hot path.
 	blocks.reserve(8);
-	globalTagMap.reserve(64);
-	localTagMap.reserve(64);
+	globalTagMap.reserve(128);
+	localTagMap.reserve(128);
 	createBlock();
 }
 
