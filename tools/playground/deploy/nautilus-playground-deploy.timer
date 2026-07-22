@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Nautilus Playground upstream main every four hours
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=4h
+RandomizedDelaySec=10min
+Persistent=true
+Unit=nautilus-playground-deploy.service
+
+[Install]
+WantedBy=timers.target

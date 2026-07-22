@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy Nautilus Playground from upstream main
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nautilus-playground-deploy

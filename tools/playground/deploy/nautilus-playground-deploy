@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly GIT_URL='https://github.com/nebulastream/nautilus.git'
+readonly SOURCE_DIR='/opt/nautilus-playground-src'
+readonly STATE_DIR='/etc/nautilus-playground'
+readonly REVISION_FILE="$STATE_DIR/deployed-revision"
+readonly LOCK_FILE='/run/lock/nautilus-playground-deploy.lock'
+readonly CANDIDATE='nautilus-playground-candidate'
+readonly BACKUP='nautilus-playground-backup'
+
+exec 9>"$LOCK_FILE"
+flock -n 9 || { echo 'another deployment is already running'; exit 0; }
+mkdir -p "$STATE_DIR"
+
+cleanup_candidate() {
+	docker rm -f "$CANDIDATE" >/dev/null 2>&1 || true
+}
+trap cleanup_candidate EXIT
+
+if [[ ! -d "$SOURCE_DIR/.git" ]]; then
+	git clone --depth 1 --branch main "$GIT_URL" "$SOURCE_DIR"
+fi
+git -C "$SOURCE_DIR" fetch --depth 1 origin main
+readonly REVISION="$(git -C "$SOURCE_DIR" rev-parse origin/main)"
+if [[ -f "$REVISION_FILE" && "$(<"$REVISION_FILE")" == "$REVISION" ]]; then
+	echo "already deployed: $REVISION"
+	exit 0
+fi
+git -C "$SOURCE_DIR" checkout --detach --force "$REVISION"
+
+readonly RUNNER_IMAGE="nautilus-playground-runner:$REVISION"
+readonly API_IMAGE="nautilus-playground-api:$REVISION"
+
+docker build -f "$SOURCE_DIR/tools/playground/runner/Dockerfile.runner" -t "$RUNNER_IMAGE" "$SOURCE_DIR"
+docker build -f "$SOURCE_DIR/tools/playground/server/Dockerfile" -t "$API_IMAGE" "$SOURCE_DIR"
+
+for port in $(seq 18081 18120); do
+	if ! ss -ltn "( sport = :$port )" | grep -q LISTEN; then
+		readonly CANDIDATE_PORT="$port"
+		break
+	fi
+done
+: "${CANDIDATE_PORT:?no free candidate port}"
+
+docker run -d --name "$CANDIDATE" --restart no -p "127.0.0.1:$CANDIDATE_PORT:8080" \
+	-e "RUNNER_IMAGE=$RUNNER_IMAGE" -e TRUST_PROXY=1 -e JOB_ROOT=/var/tmp/nautilus-playground-jobs \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v /var/tmp/nautilus-playground-jobs:/var/tmp/nautilus-playground-jobs \
+	"$API_IMAGE" >/dev/null
+
+for attempt in $(seq 1 30); do
+	if curl --fail --silent --show-error "http://127.0.0.1:$CANDIDATE_PORT/api/meta" >/dev/null; then
+		break
+	fi
+	sleep 1
+done
+curl --fail --silent --show-error "http://127.0.0.1:$CANDIDATE_PORT/api/meta" >/dev/null
+
+docker rm -f "$BACKUP" >/dev/null 2>&1 || true
+docker stop nautilus-playground >/dev/null
+docker rename nautilus-playground "$BACKUP"
+
+if ! docker run -d --name nautilus-playground --restart unless-stopped -p 8080:8080 \
+	-e "RUNNER_IMAGE=$RUNNER_IMAGE" -e TRUST_PROXY=1 -e JOB_ROOT=/var/tmp/nautilus-playground-jobs \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v /var/tmp/nautilus-playground-jobs:/var/tmp/nautilus-playground-jobs \
+	"$API_IMAGE" >/dev/null; then
+	docker rename "$BACKUP" nautilus-playground
+	docker start nautilus-playground >/dev/null
+	exit 1
+fi
+
+if ! curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
+	"http://127.0.0.1:8080/api/meta" >/dev/null; then
+	docker rm -f nautilus-playground >/dev/null
+	docker rename "$BACKUP" nautilus-playground
+	docker start nautilus-playground >/dev/null
+	exit 1
+fi
+
+docker rm "$BACKUP" >/dev/null
+printf '%s\n' "$REVISION" >"$REVISION_FILE"
+docker image tag "$RUNNER_IMAGE" nautilus-playground-runner:latest
+docker image tag "$API_IMAGE" nautilus-playground-api:latest
+echo "deployed $REVISION"
