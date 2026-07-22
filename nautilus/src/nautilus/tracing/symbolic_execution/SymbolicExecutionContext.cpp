@@ -5,6 +5,10 @@
 
 namespace nautilus::tracing {
 
+SymbolicExecutionContext::SymbolicExecutionContext() {
+	tagMap.reserve(128);
+}
+
 bool SymbolicExecutionContext::record(const Snapshot& tag) {
 	// special case if we are currently in the follow mode, we switch to record
 	// and change the last decision in this execution path.

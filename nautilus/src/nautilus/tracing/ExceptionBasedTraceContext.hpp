@@ -15,6 +15,7 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -161,7 +162,7 @@ public:
 
 /**
  * @brief State that requires initialization for tracing operations.
- * This is allocated when tracing begins and freed when it ends.
+ * This is initialized in the trace context when tracing begins and reset when it ends.
  * Holds references to stack-allocated objects.
  */
 struct TraceState {
@@ -190,9 +191,9 @@ public:
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
 protected:
-	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext)
-	// nullptr when not tracing, set during initialize()
-	std::unique_ptr<TraceState> state;
+	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext).
+	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
+	std::optional<TraceState> state;
 
 	std::unordered_map<void*, std::string> mangledNameCache;
 };

@@ -26,6 +26,8 @@ struct RecordResult {
  */
 class SymbolicExecutionContext {
 public:
+	SymbolicExecutionContext();
+
 	// The number of iterations we want to spend maximally to explore executions.
 	static const uint64_t MAX_ITERATIONS = 100000;
 

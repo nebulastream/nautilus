@@ -34,14 +34,14 @@ TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionCon
 }
 
 bool ExceptionBasedTraceContext::isActive() const {
-	return state != nullptr;
+	return state.has_value();
 }
 
 ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& tagRecorder,
                                                                    ExecutionTrace& executionTrace,
                                                                    SymbolicExecutionContext& symbolicExecutionContext,
                                                                    const engine::Options& options) {
-	traceContext.state = std::make_unique<TraceState>(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	traceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	setActiveTracer(&traceContext);
 	return &traceContext;
 }
@@ -168,8 +168,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 		return originalOp->resultRef;
 	}
 	if (!trace.checkTag(tag)) {
-		// A local-tag collision (same-pass revisit): defer to the existing
-		// control-flow-merge machinery, unchanged from before this fix.
+		// Defer any remaining repeated tag to the control-flow-merge machinery.
 		throw TraceTerminationException();
 	}
 	auto resultRef = trace.getNextValueRef();
@@ -274,14 +273,9 @@ void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, co
 	// *source* legitimately differs (issue #95/#384). Same defect and same
 	// fix as LazyTraceContext::traceAssignment -- this tracer keeps its own
 	// copy of the mechanism.
-	const operation_identifier* existing = nullptr;
 	if (auto it = trace.globalTagMap.find(tag); it != trace.globalTagMap.end()) {
-		existing = &it->second;
-	} else if (auto localIt = trace.localTagMap.find(tag); localIt != trace.localTagMap.end()) {
-		existing = &localIt->second;
-	}
-	if (existing != nullptr) {
-		auto* existingOp = trace.getBlocks()[existing->blockIndex]->operations[existing->operationIndex];
+		auto& existing = it->second;
+		auto* existingOp = trace.getBlocks()[existing.blockIndex]->operations[existing.operationIndex];
 		if (existingOp->op != ASSIGN || existingOp->resultRef.ref != target.ref) {
 			trace.addAssignmentOperation(tag, target, source, resultType);
 			return;
@@ -471,7 +465,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		auto rootAddress = __builtin_return_address(0);
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
 		SymbolicExecutionContext symbolicExecutionContext;
-		state = std::make_unique<TraceState>(tr, executionTrace, symbolicExecutionContext, options);
+		state.emplace(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;
 
 		while (symbolicExecutionContext.shouldContinue()) {
