@@ -28,8 +28,8 @@ jobs:
             cxx: 'g++-14'
             flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
           - os: 'ubuntu-24.04'
-            cc: 'clang-19'
-            cxx: 'clang++-19'
+            cc: 'clang-22'
+            cxx: 'clang++-22'
             flags: ''
           - os: 'ubuntu-24.04'
             cc: 'clang-21'
@@ -120,7 +120,7 @@ jobs:
         run: |
           ctest --test-dir build/plugins/simd/test --output-on-failure
       - name: test inlining plugin
-        if: startsWith(matrix.cc, 'clang-19') || startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-21')
+        if: startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-21') || startsWith(matrix.cc, 'clang-22')
         shell: bash
         run: |
           ctest --test-dir build/plugins/inlining/test --output-on-failure
