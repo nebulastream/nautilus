@@ -1,0 +1,13 @@
+include(CTest)
+include(Catch)
+add_executable(nautilus-int128-tests Int128ExecutionTest.cpp)
+target_link_libraries(nautilus-int128-tests PRIVATE nautilus-int128 Catch2::Catch2WithMain nautilus-sanitizer-suppressions)
+target_include_directories(nautilus-int128-tests PRIVATE ${nautilus_SOURCE_DIR}/nautilus/test/common)
+catch_discover_tests(nautilus-int128-tests EXTRA_ARGS --allow-running-no-tests)
+
+if (ENABLE_FUZZING)
+    add_executable(nautilus-int128-fuzz fuzz/Int128Fuzz.cpp)
+    target_link_libraries(nautilus-int128-fuzz PRIVATE nautilus-int128)
+    target_compile_options(nautilus-int128-fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(nautilus-int128-fuzz PRIVATE -fsanitize=fuzzer)
+endif ()

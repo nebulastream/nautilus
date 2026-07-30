@@ -44,6 +44,7 @@ option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 option(ENABLE_GPU_PLUGIN "Enable the GPU plugin (CUDA + Metal backends)" OFF)
 option(ENABLE_BUILTIN_PLUGIN "Enable the compiler builtins plugin (memory prefetch)" ON)
 option(ENABLE_PROFILING_PLUGIN "Enable the in-process hardware performance monitoring plugin (perf counters + sampling)" ON)
+option(ENABLE_INT128_PLUGIN "Enable the 128-bit integer plugin" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -281,8 +282,10 @@ endif ()
 if (ENABLE_PROFILING_PLUGIN)
     add_subdirectory(plugins/profiling)
 endif ()
+if (ENABLE_INT128_PLUGIN)
+    add_subdirectory(plugins/int128)
+endif ()
 add_make_format()
-
 
 
 
