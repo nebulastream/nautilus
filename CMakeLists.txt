@@ -37,6 +37,7 @@ option(ENABLE_STD_PLUGIN "Enable the standard library wrapper plugin" ON)
 option(ENABLE_SPECIALIZATION_PLUGIN "Enable the code specialization hint plugin (profile + assume)" ON)
 option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 option(ENABLE_GPU_PLUGIN "Enable the GPU plugin (CUDA + Metal backends)" OFF)
+option(ENABLE_INT128_PLUGIN "Enable the 128-bit integer plugin" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -226,8 +227,10 @@ endif ()
 if (ENABLE_GPU_PLUGIN)
     add_subdirectory(plugins/gpu)
 endif ()
+if (ENABLE_INT128_PLUGIN)
+    add_subdirectory(plugins/int128)
+endif ()
 add_make_format()
-
 
 
 
