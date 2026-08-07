@@ -2,9 +2,10 @@
 
 ## Status
 
-Approved, reviewed design. This document specifies how Nautilus destroys fully constructed `val<T>` class values
-when a runtime call, indirect call, or nested Nautilus call throws. A terminal Nautilus IR pass creates one shared
-logical exception region per function; backends implement only the transport into and out of that region.
+Approved design, updated for written review. This document specifies how Nautilus destroys fully constructed
+`val<T>` class values when a runtime call, indirect call, or nested Nautilus call throws. A terminal Nautilus IR pass
+creates one shared logical exception region per function; backends implement only the transport into and out of that
+region.
 
 ## 1. Objective
 
@@ -27,10 +28,13 @@ Nautilus functions do not gain `try` or `catch` syntax. This feature provides cl
 
 The feature enters the compilation pipeline in five stages:
 
-1. `val<T>` tracing records destructor metadata and cleanup effects.
-2. Trace-to-IR conversion preserves that metadata on existing operations.
-3. The existing Nautilus IR optimization pipeline runs normally.
-4. A terminal backend-neutral pass computes active cleanup state and attaches an immutable logical exception region.
+1. `val<T>` tracing registers destructor metadata and updates a tracer-owned ordered active-cleanup state.
+2. Trace snapshots include the current cleanup-state identity, and potentially throwing calls retain that state as
+   their logical unwind state.
+3. Trace-to-IR conversion copies cleanup-state metadata only onto call operations; the existing Nautilus IR
+   optimization pipeline then runs normally.
+4. A terminal backend-neutral finalizer collects surviving potentially throwing calls, deduplicates their logical
+   cleanup pads, and attaches an immutable exception region.
 5. The selected backend materializes native exception handling or captured propagation from that shared region.
 
 The exception region is generated only after normal Nautilus IR optimization. The ordinary Nautilus CFG therefore
@@ -65,45 +69,34 @@ shape.
 The trace-side `AllocaSpec` and IR-side `AllocaSpec` must carry equivalent information. Trace-to-IR conversion copies
 the complete table onto `FunctionOperation`.
 
-### 3.2 Cleanup effects
+### 3.2 Interned cleanup states
 
-An existing operation can carry one cleanup-state transition:
+The tracer owns the current ordered sequence of fully constructed allocations with non-trivial destructors:
 
 ```cpp
-enum class CleanupEffectKind {
-	ActivateAfterSuccess,
-	DeactivateBeforeCall,
-};
+using CleanupStateId = uint32_t;
 
-struct CleanupEffect {
-	CleanupEffectKind kind;
-	AllocaIndex alloca;
+struct CleanupState {
+	std::vector<AllocaIndex> active;
 };
 ```
 
-This is semantic metadata, not an executable operation.
+States are interned in `ExecutionTrace`. Equal ordered sequences receive the same `CleanupStateId`; the empty state
+has a canonical ID. Activation appends an allocation. Deactivation removes a specific `AllocaIndex` while preserving
+the relative order of all remaining allocations. The representation is therefore an ordered active list rather than
+a strict stack, which is required for move assignment.
 
-Construction is represented as:
+Trace-to-IR conversion copies the interned state table onto `FunctionOperation`. A direct or indirect call may carry
+an optional `CleanupStateId` into optimized Nautilus IR; the ID is meaningful only relative to that function's table.
 
-```text
-$1 = alloca[0]
-call construct($1)       cleanup: activate[0] after success
-```
+`Snapshot` contains the current `CleanupStateId` as an exact identity component in addition to the existing tag and
+static/alive-value hash. Two executions reaching the same source tag with different cleanup states do not merge:
+the tracer records path-specific copies until the states become equal again. This permits one source call site to
+produce multiple trace and IR call operations with different cleanup pads.
 
-The allocation is absent from the constructor call's unwind state. It becomes active only on the normal
-continuation. A throwing constructor therefore never destroys the object whose construction failed.
-
-Destruction is represented as:
-
-```text
-call destruct($1)        cleanup: deactivate[0] before call
-```
-
-The object is removed before its destructor is called. A throwing destructor cannot recursively schedule itself for
-cleanup.
-
-For a trivially constructed but non-trivially destructible type, activation is attached to `AllocaOperation`, because
-there is no constructor call.
+Only call operations retain cleanup-state metadata after trace-to-IR conversion. A call marked `noUnwind`, or a call
+whose cleanup state is empty, does not reference a cleanup pad. Other Nautilus IR operations carry no lifetime
+effects or cleanup-state transitions.
 
 ## 4. Tracing integration
 
@@ -131,22 +124,47 @@ The concrete API may use references or a lightweight internal result type, but t
 
 ### 4.2 Construction and destruction
 
-`val<ValueType>` uses an internal invoke path that accepts a cleanup effect. Non-trivial construction attaches
-`ActivateAfterSuccess`; destruction attaches `DeactivateBeforeCall`. Ordinary public `invoke()` remains unchanged for
-callers that do not manage `val<T>` storage.
+`TracingInterface` exposes guarded activation and deactivation hooks for `val<ValueType>`. They mutate only the
+tracer-owned state and do not emit trace operations:
 
-The tracer records the cleanup effect on the same `TraceOperation` as the call. Trace-to-IR conversion copies it to
-the resulting `ProxyCallOperation`, `IndirectCallOperation`, or internal-call representation.
+```cpp
+void activateCleanup(AllocaIndex alloca);
+void deactivateCleanup(AllocaIndex alloca);
+```
+
+Construction records the constructor call while the allocation is absent, then activates it only after the traced
+call returns normally:
+
+```text
+$1 = alloca[0]
+call construct($1)       snapshot state excludes 0
+activateCleanup(0)
+```
+
+A throwing constructor therefore never destroys the object whose construction failed. For a trivially constructed
+but non-trivially destructible type, activation runs immediately after `traceAlloca` returns.
+
+Destruction deactivates the allocation before recording its destructor call:
+
+```text
+deactivateCleanup(0)
+call destruct($1)        snapshot state excludes 0
+```
+
+A throwing destructor cannot recursively schedule itself for cleanup. The hooks continue maintaining existing
+lifetimes while lazy tracing is passive and while exception-based tracing unwinds an internal trace-termination
+exception. Each tracing iteration resets the current state to empty and reconstructs it by replaying the same C++
+lifetime hooks.
 
 ### 4.3 Moves
 
 The cleanup handle follows the underlying allocation:
 
-- Move construction transfers the pointer and handle; the moved-from object emits no cleanup effect or destructor.
+- Move construction transfers the pointer and handle; the moved-from object emits no deactivation or destructor.
 - Move assignment first deactivates and destroys the destination's old allocation, then transfers the source handle.
 - Deactivation removes a specific `AllocaIndex`, not necessarily the newest entry. This is required when move
   assignment destroys an older object while a newer source object remains active.
-- The transferred allocation remains active; moving ownership does not create a second activation.
+- The transferred allocation remains active; moving ownership does not change the tracer state.
 
 ## 5. Automatic `noexcept` inference
 
@@ -188,18 +206,14 @@ Backend intrinsic replacements must be `noUnwind` in the initial implementation.
 lowered as an ordinary call or rejected with a backend diagnostic; it cannot consume an exceptional call-site record
 and then erase the physical call.
 
-## 6. Terminal exception-region preparation pass
+## 6. Terminal exception-region finalization pass
 
-Add `ExceptionCleanupPreparationPass` as the final pass over the optimized `IRGraph`. It computes cleanup state,
-deduplicates logical cleanup pads, and attaches an immutable region to each `FunctionOperation`:
+`ExceptionCleanupPreparationPass` remains the final pass over the optimized `IRGraph`, but it no longer performs
+lifetime dataflow. Its responsibility is to collect live call metadata, canonicalize pads, and attach an immutable
+region to each `FunctionOperation`:
 
 ```cpp
-using CleanupStateId = uint32_t;
 using CleanupPadId = uint32_t;
-
-struct CleanupState {
-	std::vector<AllocaIndex> active;
-};
 
 struct CleanupPad {
 	CleanupPadId id;
@@ -217,48 +231,46 @@ struct FunctionExceptionRegion {
 };
 ```
 
-`CleanupPad::active` is stored in activation order and executed in reverse order. Calls with identical ordered active
-states share a pad. A potentially throwing call is present in `call_sites` even when `cleanup` is absent, because a
-captured-propagation backend must still prevent the exception from crossing its generated frame.
+The pass visits only surviving `ProxyCallOperation` and `IndirectCallOperation` nodes. For every potentially throwing
+call it creates one `ExceptionalCallSite`. If the call references a non-empty trace cleanup state, the pass looks up
+that ordered allocation sequence on `FunctionOperation`, interns it into a dense `CleanupPadId`, and associates the
+pad with the call. Calls with identical ordered states share a pad.
+
+Calls removed by CFG optimization contribute neither call sites nor pads. This is why finalization remains terminal
+even though active-lifetime computation has moved into tracing. A potentially throwing call remains in `call_sites`
+when `cleanup` is absent, because a captured-propagation backend must still prevent the exception from crossing its
+generated frame.
 
 The region is an exceptional side table, not part of `FunctionOperation::getBasicBlocks()`. Ordinary dominance,
 predecessor, loop, and block-rewriting utilities therefore remain unchanged.
 
-### 6.1 Transfer rules
+### 6.1 Trace specialization and convergence
 
-The entry state is empty.
+The entry cleanup state is empty. Each activation or deactivation interns the new ordered state and updates the
+current `CleanupStateId`. `recordSnapshot()` includes that ID in `Snapshot` equality and hashing.
 
-For `DeactivateBeforeCall`, remove the referenced allocation before recording the call's unwind state. Removal is by
-allocation index and preserves the relative order of all remaining entries.
+If two paths reach the same source operation with states `[A]` and `[B]`, they remain distinct trace paths:
 
-For any potentially throwing call, record the current state and create an exceptional call-site entry. Associate a
-cleanup pad only when that state is non-empty.
+```text
+left:  call throwing()  cleanup [A]
+right: call throwing()  cleanup [B]
+```
 
-For `ActivateAfterSuccess`, append the referenced allocation only to the normal successor state. The unwind state
-remains unchanged.
+The call is copied into both trace/IR paths. Subsequent operations remain specialized while the states differ, and
+normal trace merging resumes once both paths reach the same ordered state. `FOLLOW` mode verifies that the replayed
+current state equals the cleanup state stored in the operation's snapshot.
 
-Calls marked `noUnwind` do not need an unwind-state entry, but their cleanup effects still update the normal state.
-This matters for `noexcept` constructors.
+A loop backedge must eventually reproduce the cleanup state recorded for the loop header. A changing state must not
+cause unbounded trace specialization; the tracer reports cleanup-state drift with the loop/source tag instead.
+Normal returns require the empty cleanup state.
 
-### 6.2 CFG invariants
+### 6.2 Propagation and cleanup eligibility
 
-Every predecessor of a merge block must produce the same ordered cleanup sequence. C++ lexical scopes should make
-valid traces satisfy this naturally. A mismatch indicates an unbalanced traced lifetime and is a compilation error.
-
-A loop backedge must produce the same state expected at the loop header. Objects constructed and destroyed inside an
-iteration are therefore balanced before the next iteration unless a future feature explicitly models a loop-carried
-owner.
-
-Normal returns must have an empty active-cleanup state. A future ownership-escape representation may relax this for
-supported struct return-by-value cases; this feature does not infer escapes implicitly.
-
-### 6.3 Propagation and cleanup eligibility
-
-The pass and backend use separate predicates:
+The finalizer and backend use separate predicates:
 
 ```cpp
 mayThrow = !call.attributes.noUnwind;
-needsCleanupPad = mayThrow && !active.empty();
+needsCleanupPad = mayThrow && call.cleanupState != emptyCleanupState;
 needsCapture = mayThrow && backend.exceptionPropagationMode() == CapturedHostRethrow;
 ```
 
@@ -273,13 +285,6 @@ Consequences:
 On a native-unwind backend, a call with no active destructor remains an ordinary call and unwinds through the
 generated frame normally. On a captured-propagation backend, the same call still uses a catching thunk and immediate
 pending-exception check, but branches directly to exceptional function exit rather than to a cleanup pad.
-
-### 6.4 Static-lifetime restriction
-
-Every call site must have one statically known ordered active state. If CFG predecessors disagree at a merge, the pass
-rejects the function with a diagnostic. Conditionally constructed objects that remain alive across a merge require
-runtime lifetime flags and are outside the initial feature. Branch-local objects that are destroyed before the merge
-remain supported.
 
 ## 7. Native-unwind lowering
 
@@ -405,7 +410,7 @@ exit when the call site has no pad. The pad invokes active destructors in revers
 ABI-compatible default result from the generated function.
 
 A destructor throwing while a primary exception is pending terminates the process. A destructor that throws on the
-normal path becomes the primary pending exception after its own `DeactivateBeforeCall` effect has been applied; outer
+normal path becomes the primary pending exception after the allocation has been removed from the tracer state; outer
 objects are still cleaned.
 
 Nested generated Nautilus calls share the current exception frame. A nested callee returns with the flag set, and its
@@ -438,13 +443,16 @@ has straight Nautilus IR:
 ```text
 entry:
     struct = ALLOCA[0]
-    CALL construct(struct)              activate[0] after success
-    CALL writeStructOrThrow(struct, 42)
+    CALL construct(struct)
+    CALL writeStructOrThrow(struct, 42) cleanup_state[0]
     value = LOAD struct.value
     STORE output, value
-    CALL destruct(struct)               deactivate[0] before call
+    CALL destruct(struct)
     RETURN
 ```
+
+The activation after `construct` and deactivation before `destruct` are tracing-time state changes and are not
+Nautilus IR instructions or operation effects.
 
 Native LLVM lowering is conceptually:
 
@@ -471,19 +479,19 @@ The load and output store do not execute when the runtime call throws.
 
 ## 10. Verification
 
-The IR verifier and cleanup analysis enforce:
+The tracer, finalizer, and IR verifier enforce:
 
-- every cleanup effect references an existing `AllocaSpec`;
-- only an allocation with a destructor may be activated;
+- only an existing `AllocaSpec` with a destructor may be activated;
 - an allocation cannot be activated twice without deactivation;
 - deactivation requires the allocation to be active;
-- CFG predecessors agree on the complete ordered cleanup state;
-- loop backedges preserve the loop-header cleanup state;
+- trace snapshots with different ordered cleanup states remain specialized rather than merging;
+- `FOLLOW` mode reproduces the cleanup state recorded in each source operation's snapshot;
+- loop backedges reproduce the loop-header cleanup state instead of specializing without bound;
 - normal returns do not retain active local cleanups;
-- destructor descriptors accept the allocation pointer and return `void`;
-- cleanup-state IDs consumed by lowering exist in the function plan;
-- every potentially throwing call occurs exactly once in the exception region;
-- every cleanup-pad allocation is active at each call site referencing the pad;
+- destructor descriptors accept the allocation pointer and are `noUnwind`;
+- cleanup-state IDs referenced by calls exist in the function state table;
+- every cleanup-pad allocation references an existing destructible `AllocaSpec`;
+- every potentially throwing call occurs exactly once in the finalized exception region;
 - a captured call result is not consumed before its pending-exception check;
 - `noUnwind` calls never receive an exceptional successor.
 
@@ -491,14 +499,14 @@ Diagnostics identify the function, block, operation, and allocation index.
 
 ## 11. Optimization interaction
 
-Cleanup effects travel with their owning operation:
-
-- block merging preserves operation order and therefore cleanup-effect order;
-- branch folding removes effects in deleted branches;
-- calls carrying cleanup effects remain side-effecting and cannot be eliminated or commoned;
-- an allocation with a registered destructor is not dead merely because its stored value is unused;
-- exception-region preparation runs once after the final Nautilus CFG mutation;
-- the immutable exception region does not re-enter Nautilus optimization;
+- Cleanup-state transitions finish during tracing and do not participate in Nautilus IR optimization.
+- Potentially throwing calls retain an immutable `CleanupStateId`; existing call side-effect rules prevent their
+  elimination or commoning.
+- Branch and unreachable-block folding may delete calls. Terminal exception-region finalization therefore collects
+  only call operations that remain in the final CFG and drops unused cleanup states.
+- An allocation referenced by a surviving cleanup state is not dead merely because its normal-path value is unused.
+- Exception-region finalization runs once after the final Nautilus CFG mutation.
+- The immutable exception region does not re-enter Nautilus optimization.
 - LLVM may optimize native cleanup CFG while preserving LLVM EH semantics.
 
 ## 12. Testing
@@ -508,21 +516,26 @@ Cleanup effects travel with their owning operation:
 - Infer `noUnwind` from a `noexcept` runtime function pointer.
 - Infer `noUnwind` from a `noexcept` Nautilus lambda or functor.
 - Require explicit attributes for `std::function`.
-- Record activation after successful construction.
-- Record deactivation before destruction.
+- Activate cleanup state only after successful construction.
+- Deactivate cleanup state before recording destruction.
 - Transfer one cleanup handle during move construction.
 - Remove and transfer the correct allocations during move assignment.
+- Include exact `CleanupStateId` in snapshot equality and hashing.
+- Produce path-specific copies of the same source call while cleanup states differ.
+- Merge subsequent trace operations once the cleanup states converge.
+- Reject loop cleanup-state drift without unbounded specialization.
 
-### 12.2 Cleanup-analysis tests
+### 12.2 Exception-region finalization tests
 
 - One active object.
 - Multiple objects with reverse cleanup order.
 - A throwing constructor excludes the object under construction.
 - A throwing destructor excludes itself but includes outer objects.
-- Branch-local values agree at merges.
-- Loop-local values are balanced at backedges.
+- Path-specific call copies retain distinct cleanup states.
+- Calls with equal cleanup states share a finalized pad.
 - Non-LIFO deactivation caused by move assignment.
-- Invalid merge state produces a precise diagnostic.
+- Calls deleted by CFG optimization do not leave call sites or pads.
+- Invalid state IDs and alloca references produce precise diagnostics.
 
 ### 12.3 MLIR/LLVM reference tests
 
