@@ -154,6 +154,7 @@ TEST_CASE("SSA Creation Live-In Scaling Benchmark") {
 				        .ptr = nullptr,
 				        .arguments = std::move(arguments),
 				        .fnAttrs = {},
+				        .exceptionCapture = std::nullopt,
 				    });
 				    auto snapshot = tracing::Snapshot();
 				    auto callOp = tracing::Op::CALL;

@@ -188,7 +188,8 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initia
 }
 
 TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-                                                      std::initializer_list<InputVariant> inputs) {
+                                                      std::initializer_list<InputVariant> inputs,
+                                                      std::optional<CleanupEffect> cleanupEffect) {
 	if (blocks.empty()) {
 		createBlock();
 	}
@@ -196,6 +197,7 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	to->cleanupEffect = cleanupEffect;
 	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
@@ -363,9 +365,9 @@ void ExecutionTrace::addTag(Snapshot& snapshot, operation_identifier& identifier
 	globalTagMap[snapshot] = identifier;
 }
 
-AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align) {
+AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align, std::optional<DestructorSpec> destructor) {
 	auto index = static_cast<AllocaIndex>(allocaSpecs.size());
-	allocaSpecs.push_back({size, align});
+	allocaSpecs.emplace_back(size, align, std::move(destructor));
 	return index;
 }
 

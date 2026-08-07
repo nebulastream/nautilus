@@ -7,8 +7,10 @@
 #include <cmath>
 #include <iomanip>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -43,6 +45,8 @@ private:
 		std::shared_ptr<ir::IRGraph> ir;
 		std::unordered_map<ir::BlockIdentifier, std::string> activeBlocks;
 		std::unordered_set<std::string> functionNames;
+		std::unordered_map<const ir::Operation*, std::optional<ir::CleanupPadId>> exceptionCallSites;
+		bool emitsCleanupPads = false;
 		std::string returnType;
 		/// Variable names for the current function's alloca slots, indexed by
 		/// AllocaOperation::getIndex().  Populated in process()'s function
@@ -82,6 +86,7 @@ private:
 		void visitCast(ir::CastOperation* opt, short block, RegisterFrame& frame);
 		void visitSelect(ir::SelectOperation* opt, short block, RegisterFrame& frame);
 		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* opt, short block, RegisterFrame& frame);
+		void emitCleanupSelector(const ir::Operation* operation, short block);
 
 		static std::string getVariable(const ir::OperationIdentifier& id);
 

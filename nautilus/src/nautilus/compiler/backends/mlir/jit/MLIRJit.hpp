@@ -29,6 +29,12 @@ public:
 	struct Options {
 		llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
 		llvm::function_ref<llvm::Error(llvm::Module*)> transformer = nullptr;
+		/// Use LLJIT's JITLink-based object layer, which installs the native
+		/// exception-frame registration required for unwinding through JIT code.
+		bool enableCppExceptions = false;
+		/// Register JITLink debug objects with the host debugger. Used instead
+		/// of legacy JITEventListener on the JITLink object layer.
+		bool enableDebuggerSupport = false;
 		// Listeners attached to the object-linking layer before the module is
 		// materialized. Supports custom profiling (VTune, perf maps, in-process
 		// callbacks) which upstream mlir::ExecutionEngine disallows.

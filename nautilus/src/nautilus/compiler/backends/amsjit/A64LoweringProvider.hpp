@@ -95,6 +95,8 @@ private:
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
 		/// function to keep stale entries from leaking across functions.
 		std::vector<AsmReg> functionAllocaSlots_;
+		const ir::FunctionOperation* currentFunction_ = nullptr;
+		std::unordered_map<const ir::Operation*, std::optional<ir::CleanupPadId>> exceptionalCallSites_;
 
 		static ::asmjit::TypeId getTypeId(Type t);
 		static bool isFloatType(Type t);
@@ -169,6 +171,8 @@ private:
 		void visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
 		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
 		void visitCast(ir::CastOperation* op, RegisterFrame& frame);
+		::asmjit::a64::Gp emitExceptionFrame();
+		void emitExceptionalExit(const ir::Operation* call, ::asmjit::a64::Gp exceptionFrame);
 	};
 };
 

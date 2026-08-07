@@ -154,6 +154,13 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 	if (targetFunction == nullptr) {
 		targetFunction = functionOperations.front();
 	}
+	currentFunction = targetFunction;
+	exceptionalCallSites.clear();
+	if (targetFunction->hasExceptionRegion()) {
+		for (const auto& site : targetFunction->getExceptionRegion().callSites) {
+			exceptionalCallSites.emplace(site.call, site.cleanup);
+		}
+	}
 
 	RegisterFrame rootFrame;
 	const auto& functionBasicBlock = targetFunction->getFunctionBasicBlock();
@@ -172,8 +179,10 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 	// per-call-site alloca path: the table order is fixed by tracing, not
 	// by where the AllocaOperation lives in the CFG.
 	functionAllocaSlots.clear();
+	functionCleanupDestructors.clear();
 	const auto& allocaSpecs = targetFunction->getAllocaSpecs();
 	functionAllocaSlots.reserve(allocaSpecs.size());
+	functionCleanupDestructors.reserve(allocaSpecs.size());
 	for (const auto& spec : allocaSpecs) {
 		auto slotRegister = registerProvider.allocPinnedRegister();
 		allocateRegister(slotRegister);
@@ -182,6 +191,14 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		program.allocaRegisterMap.emplace_back(slotRegister, bufferIndex);
 		defaultRegisterFile[slotRegister] = reinterpret_cast<int64_t>(program.allocaBuffers.back().data());
 		functionAllocaSlots.emplace_back(slotRegister);
+		if (spec.destructor.has_value()) {
+			auto destructorRegister = registerProvider.allocPinnedRegister();
+			allocateRegister(destructorRegister);
+			defaultRegisterFile[destructorRegister] = reinterpret_cast<int64_t>(spec.destructor->functionPtr);
+			functionCleanupDestructors.emplace_back(destructorRegister);
+		} else {
+			functionCleanupDestructors.emplace_back(-1);
+		}
 	}
 	// Linear register allocator: compute global static use counts once
 	// over the entire reachable CFG. During lowering, each visitXxx hook
@@ -1480,9 +1497,25 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
                                                             RegisterFrame& frame) {
 	auto& code = program.blocks[block].code;
 	auto arguments = opt->getInputArguments();
+	const auto exceptional = exceptionalCallSites.contains(opt);
+	const auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
 
 	// 1. reset dyncall stack
 	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
+	short callTargetRegister = funcPtrRegister;
+	if (exceptional) {
+		if (!opt->getExceptionCapture().has_value()) {
+			throw RuntimeException("BC fallback requires a typed exception-capture thunk for an indirect call");
+		}
+		auto frameRegister = registerProvider.allocRegister();
+		allocateRegister(frameRegister);
+		code.emplace_back(ByteCode::LOAD_EXCEPTION_FRAME, -1, -1, frameRegister);
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, frameRegister, -1, -1);
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcPtrRegister, -1, -1);
+		callTargetRegister = registerProvider.allocPinnedRegister();
+		allocateRegister(callTargetRegister);
+		defaultRegisterFile[callTargetRegister] = reinterpret_cast<int64_t>(opt->getExceptionCapture()->functionPtr);
+	}
 
 	// 2. set dyncall arguments. Capture each argument's register *and*
 	// decrement its remaining-use counter — the DYNCALL_arg_* bytecode
@@ -1586,16 +1619,16 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 	}
 
 	// The function pointer SSA value is already in the register frame.
-	auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
 	useValue(opt->getFunctionPtrOperand()->getIdentifier(), frame);
 
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), resultRegister);
-		code.emplace_back(bc, funcPtrRegister, -1, resultRegister);
+		code.emplace_back(bc, callTargetRegister, -1, resultRegister);
 	} else {
-		code.emplace_back(bc, funcPtrRegister, -1, -1);
+		code.emplace_back(bc, callTargetRegister, -1, -1);
 	}
+	emitExceptionalExit(opt, block);
 }
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
@@ -1604,9 +1637,32 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	// NES_DEBUG("CREATE " << opt->toString() << " : " <<
 	// opt->getStamp()->toString())
 	auto arguments = opt->getInputArguments();
+	const auto exceptional = exceptionalCallSites.contains(opt);
+	const auto internal = internalFunctionPtrs.find(opt->getFunctionName());
 
 	// 1. reset dyncall stack
 	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
+
+	// The physical target and (for captured external calls) the noexcept
+	// signature-specific catching thunk live in pinned constant registers.
+	auto targetRegister = registerProvider.allocPinnedRegister();
+	allocateRegister(targetRegister);
+	defaultRegisterFile[targetRegister] =
+	    reinterpret_cast<int64_t>(internal != internalFunctionPtrs.end() ? internal->second : opt->getFunctionPtr());
+	auto callTargetRegister = targetRegister;
+	if (exceptional && internal == internalFunctionPtrs.end()) {
+		if (!opt->getExceptionCapture().has_value()) {
+			throw RuntimeException("BC fallback requires a typed exception-capture thunk for an external call");
+		}
+		auto frameRegister = registerProvider.allocRegister();
+		allocateRegister(frameRegister);
+		code.emplace_back(ByteCode::LOAD_EXCEPTION_FRAME, -1, -1, frameRegister);
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, frameRegister, -1, -1);
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, targetRegister, -1, -1);
+		callTargetRegister = registerProvider.allocPinnedRegister();
+		allocateRegister(callTargetRegister);
+		defaultRegisterFile[callTargetRegister] = reinterpret_cast<int64_t>(opt->getExceptionCapture()->functionPtr);
+	}
 
 	// 2. set dyncall arguments
 	for (auto& arg : arguments) {
@@ -1705,26 +1761,30 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 	}
 
-	// The function pointer lives in the default register file and is
-	// read on every call site, potentially across loop iterations —
-	// pin to keep reuse from clobbering it.
-	auto funcInfoRegister = registerProvider.allocPinnedRegister();
-	allocateRegister(funcInfoRegister);
-	// For internal NautilusFunction calls, use the pre-compiled callback pointer
-	auto it = internalFunctionPtrs.find(opt->getFunctionName());
-	if (it != internalFunctionPtrs.end()) {
-		defaultRegisterFile[funcInfoRegister] = (int64_t) it->second;
-	} else {
-		defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
-	}
-
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), resultRegister);
-		code.emplace_back(bc, funcInfoRegister, -1, resultRegister);
+		code.emplace_back(bc, callTargetRegister, -1, resultRegister);
 	} else {
-		code.emplace_back(bc, funcInfoRegister, -1, -1);
+		code.emplace_back(bc, callTargetRegister, -1, -1);
 	}
+	emitExceptionalExit(opt, block);
+}
+
+void BCLoweringProvider::LoweringContext::emitExceptionalExit(const ir::Operation* call, short block) {
+	const auto site = exceptionalCallSites.find(call);
+	if (site == exceptionalCallSites.end()) {
+		return;
+	}
+	auto& code = program.blocks[block].code;
+	if (site->second.has_value()) {
+		const auto& pad = currentFunction->getExceptionRegion().pads.at(*site->second);
+		for (auto position = pad.active.rbegin(); position != pad.active.rend(); ++position) {
+			code.emplace_back(ByteCode::CLEANUP_IF_PENDING, functionAllocaSlots.at(*position),
+			                  functionCleanupDestructors.at(*position), -1);
+		}
+	}
+	code.emplace_back(ByteCode::RETURN_IF_PENDING, -1, -1, -1);
 }
 
 void BCLoweringProvider::LoweringContext::visitNot(ir::NotOperation* negateOperation, short block,

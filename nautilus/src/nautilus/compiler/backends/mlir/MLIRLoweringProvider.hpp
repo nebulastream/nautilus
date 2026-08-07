@@ -121,6 +121,10 @@ private:
 	/// slot up here. Cleared at the top of every function so indices from a
 	/// previous function don't bleed through.
 	std::vector<::mlir::Value> functionAllocaSlots_;
+	/// Physical call operations that require an exceptional edge, keyed by
+	/// their originating Nautilus operation. Calls with an empty cleanup state
+	/// stay ordinary calls because no Nautilus cleanup pad is required.
+	std::unordered_map<const ir::Operation*, ir::CleanupPadId> exceptionCleanupPads_;
 	// Line of the current function's header in the IR dump.  Used as
 	// the `!dbg` location of the prologue (allocas, function-parameter
 	// stores) so GDB treats it as a single source line at function
@@ -240,7 +244,9 @@ private:
 	                                                 const ::mlir::Type& resultType,
 	                                                 const std::vector<::mlir::Type>& argTypes,
 	                                                 const std::vector<Type>& argStamps,
-	                                                 const FunctionAttributes& fnAttrs);
+	                                                 const FunctionAttributes& fnAttrs, bool allowNameOverride = true);
+
+	void markExceptionCleanupPad(::mlir::Operation* loweredCall, const ir::Operation* sourceCall);
 
 	/**
 	 * @brief Generates a Name(d)Loc(ation) that is attached to the operation.

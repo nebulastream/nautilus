@@ -7,11 +7,13 @@
 #include "nautilus/compiler/backends/mlir/MLIRExecutable.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
+#include "nautilus/compiler/backends/mlir/MaterializeCppExceptionHandlingPass.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <llvm/ExecutionEngine/JITEventListener.h>
@@ -117,6 +119,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo)) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
+	if (::mlir::failed(materializeCppExceptionHandling(*mlirModule, *ir))) {
+		throw RuntimeException("Could not materialize C++ exception handling in the LLVM dialect.");
+	}
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("mlir.pipeline.ms", pipelineStart);
 	}
@@ -132,12 +137,21 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// compiled execute function.
 	const auto jitStart = std::chrono::steady_clock::now();
 
-	// Compose event listeners: user-provided plus, when debug is enabled
-	// with auto-register, LLVM's GDB JIT interface listener.  The GDB
-	// listener is a stateless process-wide singleton so repeated calls
-	// are cheap and safe.
+	const auto enableCppExceptions = std::ranges::any_of(ir->getFunctionOperations(), [](const auto* function) {
+		return function != nullptr && function->hasExceptionRegion() &&
+		       !function->getExceptionRegion().callSites.empty();
+	});
+	const bool enableJitLinkDebugger = enableCppExceptions && debugInfo.enable && debugInfo.autoRegisterGdbListener;
+
+	// Legacy JITEventListener attaches only to RTDyld. Exception-capable
+	// modules use JITLink, whose native debugger plugin replaces the built-in
+	// GDB listener. Arbitrary user listeners cannot be adapted across layers.
 	std::vector<llvm::JITEventListener*> eventListeners = options.getMLIRJitEventListeners();
-	if (debugInfo.enable && debugInfo.autoRegisterGdbListener) {
+	if (enableCppExceptions && !eventListeners.empty()) {
+		throw RuntimeException(
+		    "MLIR C++ exception propagation uses JITLink, which cannot notify legacy JITEventListener instances");
+	}
+	if (!enableCppExceptions && debugInfo.enable && debugInfo.autoRegisterGdbListener) {
 		if (auto* gdb = llvm::JITEventListener::createGDBRegistrationListener()) {
 			eventListeners.push_back(gdb);
 		}
@@ -150,9 +164,9 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// spills every SSA value and confuses LLVM's DWARF asmprinter when
 	// dbg.value operands live on the stack rather than in registers.
 	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
-	auto engine =
-	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                  loweringProvider->getJitProxyTargetAddresses(), eventListeners, jitCodeGenLevel);
+	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                            loweringProvider->getJitProxyTargetAddresses(), eventListeners,
+	                                            jitCodeGenLevel, enableCppExceptions, enableJitLinkDebugger);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

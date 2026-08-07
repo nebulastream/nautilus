@@ -74,6 +74,7 @@ HOLE_SYMS = {
     "tbcJitPushFrame": "HelperPushFrame",
     "tbcJitExtCall": "HelperExtCall",
     "tbcJitIndCall": "HelperIndCall",
+    "tbcJitCheckException": "HelperCheckException",
 }
 
 # Mach-O arm64 relocation type -> HoleKind enumerator. Apple codegen routes

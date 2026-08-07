@@ -63,6 +63,11 @@ inline Transfer doCall(const Instr& inst, const Instr* ip, uint64_t* fp, VMConte
 	return enterFunction(prog.functions[inst.b], prog.callsites[inst.c], ip, fp, ctx, inst.a);
 }
 
+inline Transfer doExceptionalReturn(uint64_t* fp, VMContext* ctx) {
+	constexpr Instr returnVoid {opIndex(Op::RET), kNoReg, 0, 0};
+	return doReturn(returnVoid, fp, ctx);
+}
+
 // ── Skin 1: portable for(;;) switch ─────────────────────────────────────────
 
 uint64_t runSwitch(const Instr* ip, uint64_t* fp, VMContext* ctx) {
@@ -114,6 +119,17 @@ uint64_t runSwitch(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 			doIndirectCall(inst, fp, ctx);
 			++ip;
 			break;
+		case Op::CHECK_EXCEPTION: {
+			const auto& site = ctx->prog->callsites[inst.a];
+			if (cleanupCapturedException(site, fp)) {
+				const auto transfer = doExceptionalReturn(fp, ctx);
+				ip = transfer.ip;
+				fp = transfer.fp;
+			} else {
+				++ip;
+			}
+			break;
+		}
 		case Op::HALT:
 			return fp[0];
 		default:
@@ -197,6 +213,17 @@ L_CALL_EXT: {
 L_CALL_IND: {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
+	TBC_NEXT();
+}
+L_CHECK_EXCEPTION: {
+	const auto& site = ctx->prog->callsites[ip->a];
+	if (cleanupCapturedException(site, fp)) {
+		const auto transfer = doExceptionalReturn(fp, ctx);
+		ip = transfer.ip;
+		fp = transfer.fp;
+	} else {
+		++ip;
+	}
 	TBC_NEXT();
 }
 L_HALT:
@@ -292,6 +319,17 @@ static uint64_t TBC_PRESERVE_NONE th_CALL_EXT(const Instr* ip, uint64_t* fp, VMC
 static uint64_t TBC_PRESERVE_NONE th_CALL_IND(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
+	TBC_TAIL_NEXT();
+}
+static uint64_t TBC_PRESERVE_NONE th_CHECK_EXCEPTION(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+	const auto& site = ctx->prog->callsites[ip->a];
+	if (cleanupCapturedException(site, fp)) {
+		const auto transfer = doExceptionalReturn(fp, ctx);
+		ip = transfer.ip;
+		fp = transfer.fp;
+	} else {
+		++ip;
+	}
 	TBC_TAIL_NEXT();
 }
 static uint64_t TBC_PRESERVE_NONE th_HALT(const Instr*, uint64_t* fp, VMContext*) {

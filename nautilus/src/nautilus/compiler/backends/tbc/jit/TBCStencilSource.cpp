@@ -75,12 +75,13 @@ uint64_t* tbcJitPushFrame(VMContextPrefix* ctx, const void* callee, const void* 
                           void* nativeReturnAddress, uint64_t dstRegRaw);
 uint64_t tbcJitExtCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw);
 uint64_t tbcJitIndCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw, void* target);
+uint64_t tbcJitCheckException(VMContextPrefix* ctx, const void* site, uint64_t* fp);
 }
 
-#define OFF_A ((uint64_t) (uintptr_t) & _JIT_A)
-#define OFF_B ((uint64_t) (uintptr_t) & _JIT_B)
-#define OFF_C ((uint64_t) (uintptr_t) & _JIT_C)
-#define OFF_D ((uint64_t) (uintptr_t) & _JIT_D)
+#define OFF_A ((uint64_t) (uintptr_t) &_JIT_A)
+#define OFF_B ((uint64_t) (uintptr_t) &_JIT_B)
+#define OFF_C ((uint64_t) (uintptr_t) &_JIT_C)
+#define OFF_D ((uint64_t) (uintptr_t) &_JIT_D)
 
 #define TAIL_NEXT() [[clang::musttail]] return ((JitHandler) & _JIT_CONTINUE)(fp, ctx)
 #define TAIL_TARGET() [[clang::musttail]] return ((JitHandler) & _JIT_TARGET)(fp, ctx)
@@ -399,6 +400,21 @@ extern "C" uint64_t STENCIL_CC stencil_CALL_IND(uint64_t* fp, VMContextPrefix* c
 		TAIL_UNWIND();
 	}
 	TAIL_NEXT();
+}
+
+extern "C" uint64_t STENCIL_CC stencil_CHECK_EXCEPTION(uint64_t* fp, VMContextPrefix* ctx) {
+	if (tbcJitCheckException(ctx, &_JIT_SITE, fp) != 0) {
+		TAIL_NEXT();
+	}
+	uint64_t* base = fp - 3;
+	auto* callerFp = reinterpret_cast<uint64_t*>(base[0]);
+	const uint64_t returnAddress = base[1];
+	const uint64_t dst = base[2];
+	if (dst != ~uint64_t {0}) {
+		callerFp[dst] = 0;
+	}
+	ctx->sp = base;
+	[[clang::musttail]] return (reinterpret_cast<JitHandler>(returnAddress))(callerFp, ctx);
 }
 
 // ── Per-program synthetic stencils ──────────────────────────────────────────

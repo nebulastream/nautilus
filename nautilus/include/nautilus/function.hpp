@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nautilus/common/ExceptionCapture.hpp"
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -19,19 +21,62 @@ class CallableRuntimeFunction {
 public:
 	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...)) : fnptr(fnptr) {
 	}
+	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...) noexcept)
+	    : fnAttrs {.noUnwind = true}, fnptr(fnptr) {
+	}
 
 	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...), const FunctionAttributes fnAttrs)
 	    : fnAttrs(fnAttrs), fnptr(fnptr) {
+	}
+	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...) noexcept, FunctionAttributes fnAttrs)
+	    : fnAttrs(withNoUnwind(fnAttrs)), fnptr(fnptr) {
 	}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
+		return call(std::nullopt, std::forward<FunctionArgumentsRaw>(args)...);
+	}
+
+	template <typename... FunctionArgumentsRaw>
+	    requires(!std::is_void_v<R>)
+	auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
+		return call(cleanupEffect, std::forward<FunctionArgumentsRaw>(args)...);
+	}
+
+	template <typename... FunctionArgumentsRaw>
+	    requires std::is_void_v<R>
+	void operator()(FunctionArgumentsRaw&&... args) {
+		call(std::nullopt, std::forward<FunctionArgumentsRaw>(args)...);
+	}
+
+	template <typename... FunctionArgumentsRaw>
+	    requires std::is_void_v<R>
+	void invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
+		call(cleanupEffect, std::forward<FunctionArgumentsRaw>(args)...);
+	}
+
+	template <is_integral... FunctionArgumentsRaw>
+	auto invoke(FunctionArgumentsRaw&&... args) {
+		return (*this)(std::forward<FunctionArgumentsRaw>(args)...);
+	}
+
+private:
+	static FunctionAttributes withNoUnwind(FunctionAttributes attributes) {
+		attributes.noUnwind = true;
+		return attributes;
+	}
+
+	template <typename... FunctionArgumentsRaw>
+	    requires(!std::is_void_v<R>)
+	auto call(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			                                    functionArgumentReferences, fnAttrs);
+			auto resultRef = tracing::traceCall(
+			    reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(), functionArgumentReferences,
+			    fnAttrs, cleanupEffect,
+			    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, FunctionArguments...>())});
 			return val<R>(resultRef);
 		}
 #endif
@@ -41,23 +86,19 @@ public:
 
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
-	void operator()(FunctionArgumentsRaw&&... args) {
+	void call(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
+			tracing::traceCall(
+			    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs, cleanupEffect,
+			    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, FunctionArguments...>())});
 			return;
 		}
 #endif
 		(fnptr(details::RawValueResolver<FunctionArguments>::getRawValue(std::forward<FunctionArgumentsRaw>(args))...));
 	}
 
-	template <is_integral... FunctionArgumentsRaw>
-	auto invoke(FunctionArgumentsRaw&&... args) {
-		return (*this)(std::forward<FunctionArgumentsRaw>(args)...);
-	}
-
-private:
 	FunctionAttributes fnAttrs;
 	R (*fnptr)(FunctionArguments...);
 };
@@ -66,6 +107,12 @@ private:
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
+}
+
+template <typename Function, typename... ValueArguments>
+    requires std::is_function_v<std::remove_reference_t<Function>>
+auto invoke(Function&& fn, ValueArguments&&... args) {
+	return CallableRuntimeFunction(std::addressof(fn))(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
@@ -86,6 +133,12 @@ auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), 
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
+template <typename Function, typename... ValueArguments>
+    requires std::is_function_v<std::remove_reference_t<Function>>
+auto invoke(const FunctionAttributes fnAttrs, Function&& fn, ValueArguments&&... args) {
+	return CallableRuntimeFunction(std::addressof(fn), fnAttrs)(std::forward<ValueArguments>(args)...);
+}
+
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
 	auto fnptr = func.template target<R(FunctionArguments...)>();
@@ -102,6 +155,29 @@ template <typename R, typename... FunctionArguments>
 auto function(R (*fnptr)(FunctionArguments...)) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
 }
+
+template <typename R, typename... FunctionArguments>
+auto function(R (*fnptr)(FunctionArguments...) noexcept) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
+}
+
+namespace details {
+
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, R (*fnptr)(FunctionArguments...),
+                             ValueArguments&&... args) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr).invokeWithCleanupEffect(
+	    cleanupEffect, std::forward<ValueArguments>(args)...);
+}
+
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, R (*fnptr)(FunctionArguments...) noexcept,
+                             ValueArguments&&... args) {
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr).invokeWithCleanupEffect(
+	    cleanupEffect, std::forward<ValueArguments>(args)...);
+}
+
+} // namespace details
 
 class MemberFuncWrapper {};
 

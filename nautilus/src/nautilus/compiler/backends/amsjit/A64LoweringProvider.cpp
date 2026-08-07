@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/common/ExceptionCapture.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
@@ -248,6 +249,13 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
+		currentFunction_ = funcOp;
+		exceptionalCallSites_.clear();
+		if (funcOp->hasExceptionRegion()) {
+			for (const auto& site : funcOp->getExceptionRegion().callSites) {
+				exceptionalCallSites_.emplace(site.call, site.cleanup);
+			}
+		}
 
 		// Materialise the function's alloca table into one stack slot per
 		// entry in the prologue.  visitAlloca() then just looks the slot up
@@ -829,6 +837,73 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 
 // ── External function calls ───────────────────────────────────────────────────
 
+::asmjit::a64::Gp AsmJitLoweringProvider::LoweringContext::emitExceptionFrame() {
+	FuncSignature sig;
+	sig.setRet(getTypeId(Type::ptr));
+	auto target = cc.newGpx();
+	cc.mov(target, reinterpret_cast<uint64_t>(&currentExceptionFrame));
+	InvokeNode* invoke = nullptr;
+	cc.invoke(&invoke, target, sig);
+	auto result = cc.newGpx();
+	invoke->setRet(0, result);
+	return result;
+}
+
+void AsmJitLoweringProvider::LoweringContext::emitExceptionalExit(const ir::Operation* call, Gp exceptionFrame) {
+	const auto exceptional = exceptionalCallSites_.find(call);
+	if (exceptional == exceptionalCallSites_.end()) {
+		return;
+	}
+	FuncSignature pendingSignature;
+	pendingSignature.setRet(getTypeId(Type::b));
+	pendingSignature.addArg(getTypeId(Type::ptr));
+	auto pendingTarget = cc.newGpx();
+	cc.mov(pendingTarget, reinterpret_cast<uint64_t>(&hasPendingException));
+	InvokeNode* pendingInvoke = nullptr;
+	cc.invoke(&pendingInvoke, pendingTarget, pendingSignature);
+	pendingInvoke->setArg(0, exceptionFrame);
+	auto pending = cc.newGpx();
+	pendingInvoke->setRet(0, pending);
+
+	auto continuation = cc.newLabel();
+	cc.cmp(pending, Imm(0));
+	cc.b(arm::CondCode::kEQ, continuation);
+	if (exceptional->second.has_value()) {
+		const auto& pad = currentFunction_->getExceptionRegion().pads.at(*exceptional->second);
+		for (auto position = pad.active.rbegin(); position != pad.active.rend(); ++position) {
+			FuncSignature destructorSignature;
+			destructorSignature.setRet(TypeId::kVoid);
+			destructorSignature.addArg(getTypeId(Type::ptr));
+			auto destructorTarget = cc.newGpx();
+			cc.mov(destructorTarget, reinterpret_cast<uint64_t>(
+			                             currentFunction_->getAllocaSpecs().at(*position).destructor->functionPtr));
+			InvokeNode* destructorInvoke = nullptr;
+			cc.invoke(&destructorInvoke, destructorTarget, destructorSignature);
+			destructorInvoke->setArg(0, toGp(functionAllocaSlots_.at(*position)));
+		}
+	}
+	if (currentFunction_->getOutputArg() == Type::v) {
+		cc.ret();
+	} else if (currentFunction_->getOutputArg() == Type::f32) {
+		auto zeroBits = cc.newUInt32();
+		cc.mov(zeroBits, 0);
+		auto zero = toVec(allocReg(Type::f32));
+		cc.fmov(zero, zeroBits);
+		cc.ret(zero);
+	} else if (currentFunction_->getOutputArg() == Type::f64) {
+		auto zeroBits = cc.newUInt64();
+		cc.mov(zeroBits, 0);
+		auto zero = toVec(allocReg(Type::f64));
+		cc.fmov(zero, zeroBits);
+		cc.ret(zero);
+	} else {
+		auto zero = cc.newGpx();
+		cc.mov(zero, 0);
+		cc.ret(zero);
+	}
+	cc.bind(continuation);
+}
+
 void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
 	// Check the intrinsic manager first. A registered handler can fully
 	// replace the scalar function-call lowering with native NEON instructions
@@ -837,12 +912,27 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	if (auto intrinsic = intrinsicManager_.getIntrinsic(op->getFunctionPtr())) {
 		IntrinsicCallContext ctx {cc, op, frame};
 		if ((*intrinsic)(ctx)) {
+			if (exceptionalCallSites_.contains(op)) {
+				throw RuntimeException("AsmJit cannot replace a potentially throwing call with an intrinsic");
+			}
 			return;
 		}
 	}
 
+	const auto internal = funcNodes_.find(op->getFunctionName());
+	const auto exceptional = exceptionalCallSites_.contains(op);
+	const auto capturedExternal = exceptional && internal == funcNodes_.end();
+	if (capturedExternal && !op->getExceptionCapture().has_value()) {
+		throw RuntimeException("AsmJit fallback requires a typed exception-capture thunk for an external call");
+	}
+	auto exceptionFrame = exceptional ? emitExceptionFrame() : Gp {};
+
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (capturedExternal) {
+		sig.addArg(getTypeId(Type::ptr));
+		sig.addArg(getTypeId(Type::ptr));
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -850,25 +940,36 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// ARM64 blr requires a register operand — labels and immediates are not
 	// valid operands.  Materialize the target address into a GP register.
 	InvokeNode* invokeNode = nullptr;
-	auto it = funcNodes_.find(op->getFunctionName());
-	if (it != funcNodes_.end()) {
+	Gp originalTarget;
+	if (internal != funcNodes_.end()) {
 		// Internal JIT function: load label address via adr, then indirect call.
 		auto tmp = cc.newGpx();
-		cc.adr(tmp, it->second->label());
+		cc.adr(tmp, internal->second->label());
 		cc.invoke(&invokeNode, tmp, sig);
 	} else {
 		// External function: load raw pointer into register, then indirect call.
+		if (capturedExternal) {
+			originalTarget = cc.newGpx();
+			cc.mov(originalTarget, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
+		}
 		auto tmp = cc.newGpx();
-		cc.mov(tmp, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
+		cc.mov(tmp, reinterpret_cast<uint64_t>(capturedExternal ? op->getExceptionCapture()->functionPtr
+		                                                        : op->getFunctionPtr()));
 		cc.invoke(&invokeNode, tmp, sig);
 	}
 
+	size_t argumentOffset = 0;
+	if (capturedExternal) {
+		invokeNode->setArg(0, exceptionFrame);
+		invokeNode->setArg(1, originalTarget);
+		argumentOffset = 2;
+	}
 	for (size_t i = 0; i < op->getInputArguments().size(); i++) {
 		auto argReg = frame.getValue(op->getInputArguments()[i]->getIdentifier());
 		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+			invokeNode->setArg(i + argumentOffset, toVec(argReg));
 		else
-			invokeNode->setArg(i, toGp(argReg));
+			invokeNode->setArg(i + argumentOffset, toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -885,11 +986,23 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 		}
 		bindResult(op->getIdentifier(), result, frame);
 	}
+	if (exceptional) {
+		emitExceptionalExit(op, exceptionFrame);
+	}
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
+	const auto exceptional = exceptionalCallSites_.contains(op);
+	if (exceptional && !op->getExceptionCapture().has_value()) {
+		throw RuntimeException("AsmJit fallback requires a typed exception-capture thunk for an indirect call");
+	}
+	auto exceptionFrame = exceptional ? emitExceptionFrame() : Gp {};
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (exceptional) {
+		sig.addArg(getTypeId(Type::ptr));
+		sig.addArg(getTypeId(Type::ptr));
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -897,15 +1010,23 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	auto fnPtrGp = toGp(frame.getValue(op->getFunctionPtrOperand()->getIdentifier()));
 
 	InvokeNode* invokeNode = nullptr;
-	cc.invoke(&invokeNode, fnPtrGp.x(), sig);
+	if (exceptional) {
+		auto captureTarget = cc.newGpx();
+		cc.mov(captureTarget, reinterpret_cast<uint64_t>(op->getExceptionCapture()->functionPtr));
+		cc.invoke(&invokeNode, captureTarget, sig);
+		invokeNode->setArg(0, exceptionFrame);
+		invokeNode->setArg(1, fnPtrGp);
+	} else {
+		cc.invoke(&invokeNode, fnPtrGp.x(), sig);
+	}
 
 	const auto inputArgs = op->getInputArguments();
 	for (size_t i = 0; i < inputArgs.size(); i++) {
 		auto argReg = frame.getValue(inputArgs[i]->getIdentifier());
 		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+			invokeNode->setArg(i + (exceptional ? 2 : 0), toVec(argReg));
 		else
-			invokeNode->setArg(i, toGp(argReg));
+			invokeNode->setArg(i + (exceptional ? 2 : 0), toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -919,6 +1040,9 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 			narrowToStamp(toGp(result), op->getStamp());
 		}
 		bindResult(op->getIdentifier(), result, frame);
+	}
+	if (exceptional) {
+		emitExceptionalExit(op, exceptionFrame);
 	}
 }
 

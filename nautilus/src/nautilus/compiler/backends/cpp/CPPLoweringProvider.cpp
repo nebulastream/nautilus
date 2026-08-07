@@ -83,6 +83,14 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		functions.clear();
 		functionNames.clear();
 		functionAllocaSlots.clear();
+		exceptionCallSites.clear();
+		emitsCleanupPads =
+		    functionOperation.hasExceptionRegion() && !functionOperation.getExceptionRegion().pads.empty();
+		if (functionOperation.hasExceptionRegion()) {
+			for (const auto& site : functionOperation.getExceptionRegion().callSites) {
+				exceptionCallSites.emplace(site.call, site.cleanup);
+			}
+		}
 
 		// Materialise the function's alloca table into one stack buffer per
 		// entry, declared once in the variable-declarations section.
@@ -98,6 +106,10 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 			blockArguments << "alignas(" << std::max<size_t>(spec.align, 1) << ") uint8_t " << bufVar << "["
 			               << spec.size << "];\n";
 			functionAllocaSlots.emplace_back(std::move(bufVar));
+			if (emitsCleanupPads && spec.destructor.has_value()) {
+				functions << "auto cleanup_dtor_" << i << " = reinterpret_cast<void (*)(void*) noexcept>("
+				          << reinterpret_cast<uintptr_t>(spec.destructor->functionPtr) << ");\n";
+			}
 		}
 
 		RegisterFrame rootFrame;
@@ -129,9 +141,26 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 			pipelineCode << functions.str();
 		}
 		pipelineCode << "//basic blocks\n";
+		if (emitsCleanupPads) {
+			pipelineCode << "uint32_t cleanup_pad = UINT32_MAX;\n";
+			pipelineCode << "try {\n";
+		}
 		for (auto& block : blocks) {
 			pipelineCode << block.str();
 			pipelineCode << "\n";
+		}
+		if (emitsCleanupPads) {
+			pipelineCode << "} catch (...) {\n";
+			pipelineCode << "switch (cleanup_pad) {\n";
+			for (const auto& pad : functionOperation.getExceptionRegion().pads) {
+				pipelineCode << "case " << pad.id << ":\n";
+				for (auto position = pad.active.rbegin(); position != pad.active.rend(); ++position) {
+					pipelineCode << "cleanup_dtor_" << *position << "(alloca_buf_" << *position << ");\n";
+				}
+				pipelineCode << "break;\n";
+			}
+			pipelineCode << "default: break;\n";
+			pipelineCode << "}\nthrow;\n}\n";
 		}
 		pipelineCode << "}\n\n";
 	};
@@ -404,6 +433,7 @@ void CPPLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* retu
 
 void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
                                                           RegisterFrame& frame) {
+	emitCleanupSelector(opt, blockIndex);
 
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
@@ -445,6 +475,7 @@ void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation
 
 void CPPLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* opt, short blockIndex,
                                                              RegisterFrame& frame) {
+	emitCleanupSelector(opt, blockIndex);
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
 	std::stringstream args;
@@ -566,6 +597,21 @@ void CPPLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAd
 			functionNames.emplace(funcAddrOp->getFunctionSymbol());
 		}
 		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << funcAddrOp->getFunctionSymbol() << ";\n";
+	}
+}
+
+void CPPLoweringProvider::LoweringContext::emitCleanupSelector(const ir::Operation* operation, short blockIndex) {
+	if (!emitsCleanupPads) {
+		return;
+	}
+	auto position = exceptionCallSites.find(operation);
+	if (position == exceptionCallSites.end()) {
+		return;
+	}
+	if (!position->second.has_value()) {
+		blocks[blockIndex] << "cleanup_pad = UINT32_MAX;\n";
+	} else {
+		blocks[blockIndex] << "cleanup_pad = " << *position->second << ";\n";
 	}
 }
 

@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
+#include "nautilus/compiler/backends/mlir/MaterializeCppExceptionHandlingPass.hpp"
 #include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
@@ -402,11 +403,9 @@ void setFuncAttributes(mlir::func::FuncOp funcOp, const FunctionAttributes& fnAt
 		funcOp->setDiscardableAttr("passthrough", mlir::ArrayAttr::get(ctx, passthrough));
 }
 
-mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::string& name, void* functionPtr,
-                                                                     const mlir::Type& resultType,
-                                                                     const std::vector<mlir::Type>& argTypes,
-                                                                     const std::vector<Type>& argStamps,
-                                                                     const FunctionAttributes& fnAttrs) {
+mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(
+    const std::string& name, void* functionPtr, const mlir::Type& resultType, const std::vector<mlir::Type>& argTypes,
+    const std::vector<Type>& argStamps, const FunctionAttributes& fnAttrs, bool allowNameOverride) {
 	// The InsertionGuard saves the current insertion point (IP) and restores it
 	// after scope is left.
 	mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
@@ -418,7 +417,7 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	// plugin returns the hex-formatted pointer so the JIT-time inliner can
 	// match it against registered bitcode).
 	std::string functionName = name;
-	if (options->getOptionOrDefault("mlir.inline_invoke_calls", false)) {
+	if (allowNameOverride && options->getOptionOrDefault("mlir.inline_invoke_calls", false)) {
 		if (const auto& hook = getLLVMBackendHooks().proxyCallNameOverride) {
 			if (auto overridden = hook(functionPtr)) {
 				functionName = *overridden;
@@ -473,6 +472,12 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	}
 	jitProxyFunctionTargetAddresses.push_back(functionPtr);
 	return mlir::SymbolRefAttr::get(context, functionName);
+}
+
+void MLIRLoweringProvider::markExceptionCleanupPad(mlir::Operation* loweredCall, const ir::Operation* sourceCall) {
+	if (const auto position = exceptionCleanupPads_.find(sourceCall); position != exceptionCleanupPads_.end()) {
+		loweredCall->setDiscardableAttr(CLEANUP_PAD_ATTR, builder->getI32IntegerAttr(position->second));
+	}
 }
 
 //==---------------------------------==//
@@ -678,6 +683,14 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	inductionVars.clear();
 	debugAllocas_.clear();
 	functionAllocaSlots_.clear();
+	exceptionCleanupPads_.clear();
+	if (functionOp.hasExceptionRegion()) {
+		for (const auto& site : functionOp.getExceptionRegion().callSites) {
+			if (site.cleanup.has_value()) {
+				exceptionCleanupPads_.emplace(site.call, *site.cleanup);
+			}
+		}
+	}
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
@@ -707,11 +720,20 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 		auto ptrTy = LLVM::LLVMPointerType::get(context);
 		auto i64Ty = IntegerType::get(context, 64);
 		functionAllocaSlots_.reserve(allocaSpecs.size());
-		for (const auto& spec : allocaSpecs) {
+		for (size_t index = 0; index < allocaSpecs.size(); ++index) {
+			const auto& spec = allocaSpecs[index];
+			if (spec.destructor.has_value()) {
+				const auto symbol = cleanupDestructorSymbol(spec.destructor->functionPtr);
+				if (!theModule.lookupSymbol<mlir::func::FuncOp>(symbol)) {
+					insertExternalFunction(symbol, spec.destructor->functionPtr, LLVM::LLVMVoidType::get(context),
+					                       {ptrTy}, {Type::ptr}, spec.destructor->attributes, false);
+				}
+			}
 			Value sizeVal = LLVM::ConstantOp::create(*builder, getNameLoc("location"), i64Ty,
 			                                         builder->getI64IntegerAttr(spec.size));
 			auto align = static_cast<uint32_t>(std::max<size_t>(spec.align, 1));
 			auto slot = LLVM::AllocaOp::create(*builder, getNameLoc("location"), ptrTy, i8Type, sizeVal, align);
+			slot->setDiscardableAttr(ALLOCA_INDEX_ATTR, builder->getI32IntegerAttr(index));
 			functionAllocaSlots_.emplace_back(slot);
 		}
 	}
@@ -908,6 +930,10 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 		}
 		const auto& intrinsicFunction = *intrinsic;
 		if (intrinsicFunction(builder, proxyCallOp, frame)) {
+			if (exceptionCleanupPads_.contains(proxyCallOp)) {
+				throw RuntimeException("A potentially throwing proxy call with active cleanups cannot be lowered as an "
+				                       "MLIR intrinsic");
+			}
 			return;
 		}
 	}
@@ -936,9 +962,11 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 		// Function already exists in func dialect - use func::CallOp
 		if (proxyCallOp->getStamp() != Type::v) {
 			auto res = mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+			markExceptionCleanupPad(res, proxyCallOp);
 			bind(frame, proxyCallOp, res.getResult(0));
 		} else {
-			mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+			auto call = mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+			markExceptionCleanupPad(call, proxyCallOp);
 		}
 		return;
 	}
@@ -957,9 +985,11 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);
 	if (proxyCallOp->getStamp() != Type::v) {
 		auto res = mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+		markExceptionCleanupPad(res, proxyCallOp);
 		bind(frame, proxyCallOp, res.getResult(0));
 	} else {
-		mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+		auto call = mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
+		markExceptionCleanupPad(call, proxyCallOp);
 	}
 }
 
@@ -977,9 +1007,11 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	auto fnType = mlir::LLVM::LLVMFunctionType::get(resultMLIRType, argTypes);
 	if (indirectCallOp->getStamp() != Type::v) {
 		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
+		markExceptionCleanupPad(res, indirectCallOp);
 		bind(frame, indirectCallOp, res.getResult());
 	} else {
-		mlir::LLVM::CallOp::create(*builder, builder->getUnknownLoc(), fnType, allOperands);
+		auto call = mlir::LLVM::CallOp::create(*builder, builder->getUnknownLoc(), fnType, allOperands);
+		markExceptionCleanupPad(call, indirectCallOp);
 	}
 }
 

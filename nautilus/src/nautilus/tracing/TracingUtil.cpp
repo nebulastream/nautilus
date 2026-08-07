@@ -100,13 +100,16 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
 }
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs) {
-	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
+                         FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect,
+                         std::optional<ExceptionCaptureSpec> exceptionCapture) {
+	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs, cleanupEffect, exceptionCapture);
 }
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
-	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+                                 std::optional<CleanupEffect> cleanupEffect,
+                                 std::optional<ExceptionCaptureSpec> exceptionCapture) {
+	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, cleanupEffect, exceptionCapture);
 }
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
@@ -119,8 +122,9 @@ TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* defini
 	return activeTracer->traceNautilusFunctionPtr(definition, std::move(fwrapper));
 }
 
-TypedValueRef& traceAlloca(size_t size, size_t align) {
-	return activeTracer->traceAlloca(size, align);
+TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca, void* destructorFunction,
+                           FunctionAttributes destructorAttrs, bool activateAfterAlloca) {
+	return activeTracer->traceAlloca(size, align, alloca, destructorFunction, destructorAttrs, activateAfterAlloca);
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& op) {
@@ -144,8 +148,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

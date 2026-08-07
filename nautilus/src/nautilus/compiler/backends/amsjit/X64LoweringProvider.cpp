@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/common/ExceptionCapture.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/compiler/ir/Usages.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -375,6 +376,13 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
+		currentFunction_ = funcOp;
+		exceptionalCallSites_.clear();
+		if (funcOp->hasExceptionRegion()) {
+			for (const auto& site : funcOp->getExceptionRegion().callSites) {
+				exceptionalCallSites_.emplace(site.call, site.cleanup);
+			}
+		}
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -1352,6 +1360,65 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 
 // ── External function calls ───────────────────────────────────────────────────
 
+::asmjit::x86::Gp AsmJitLoweringProvider::LoweringContext::emitExceptionFrame() {
+	FuncSignature sig;
+	sig.setRet(getTypeId(Type::ptr));
+	InvokeNode* invoke = nullptr;
+	cc.invoke(&invoke, reinterpret_cast<uint64_t>(&currentExceptionFrame), sig);
+	auto result = cc.newIntPtr();
+	invoke->setRet(0, result);
+	return result;
+}
+
+void AsmJitLoweringProvider::LoweringContext::emitExceptionalExit(const ir::Operation* call, Gp exceptionFrame) {
+	const auto exceptional = exceptionalCallSites_.find(call);
+	if (exceptional == exceptionalCallSites_.end()) {
+		return;
+	}
+	FuncSignature pendingSignature;
+	pendingSignature.setRet(getTypeId(Type::b));
+	pendingSignature.addArg(getTypeId(Type::ptr));
+	InvokeNode* pendingInvoke = nullptr;
+	cc.invoke(&pendingInvoke, reinterpret_cast<uint64_t>(&hasPendingException), pendingSignature);
+	pendingInvoke->setArg(0, exceptionFrame);
+	auto pending = cc.newUInt8();
+	pendingInvoke->setRet(0, pending);
+
+	auto continuation = cc.newLabel();
+	cc.test(pending, pending);
+	cc.jz(continuation);
+	if (exceptional->second.has_value()) {
+		const auto& pad = currentFunction_->getExceptionRegion().pads.at(*exceptional->second);
+		for (auto position = pad.active.rbegin(); position != pad.active.rend(); ++position) {
+			FuncSignature destructorSignature;
+			destructorSignature.setRet(TypeId::kVoid);
+			destructorSignature.addArg(getTypeId(Type::ptr));
+			InvokeNode* destructorInvoke = nullptr;
+			cc.invoke(
+			    &destructorInvoke,
+			    reinterpret_cast<uint64_t>(currentFunction_->getAllocaSpecs().at(*position).destructor->functionPtr),
+			    destructorSignature);
+			destructorInvoke->setArg(0, toGp(functionAllocaSlots_.at(*position)));
+		}
+	}
+	if (currentFunction_->getOutputArg() == Type::v) {
+		cc.ret();
+	} else if (currentFunction_->getOutputArg() == Type::f32) {
+		auto zero = cc.newXmmSs();
+		cc.xorps(zero, zero);
+		cc.ret(zero);
+	} else if (currentFunction_->getOutputArg() == Type::f64) {
+		auto zero = cc.newXmmSd();
+		cc.xorpd(zero, zero);
+		cc.ret(zero);
+	} else {
+		auto zero = cc.newIntPtr();
+		cc.xor_(zero, zero);
+		cc.ret(zero);
+	}
+	cc.bind(continuation);
+}
+
 void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
 	// Check the intrinsic manager first. A registered handler can fully
 	// replace the scalar function-call lowering with native instructions
@@ -1367,13 +1434,28 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 		}
 		IntrinsicCallContext ctx {cc, op, frame};
 		if ((*intrinsic)(ctx)) {
+			if (exceptionalCallSites_.contains(op)) {
+				throw RuntimeException("AsmJit cannot replace a potentially throwing call with an intrinsic");
+			}
 			return;
 		}
 	}
 
+	const auto internal = funcNodes_.find(op->getFunctionName());
+	const auto exceptional = exceptionalCallSites_.contains(op);
+	const auto capturedExternal = exceptional && internal == funcNodes_.end();
+	if (capturedExternal && !op->getExceptionCapture().has_value()) {
+		throw RuntimeException("AsmJit fallback requires a typed exception-capture thunk for an external call");
+	}
+	auto exceptionFrame = exceptional ? emitExceptionFrame() : Gp {};
+
 	// Build the callee's signature dynamically from the IR's type information.
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (capturedExternal) {
+		sig.addArg(getTypeId(Type::ptr));
+		sig.addArg(getTypeId(Type::ptr));
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -1388,20 +1470,33 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	}
 
 	InvokeNode* invokeNode = nullptr;
-	auto it = funcNodes_.find(op->getFunctionName());
-	if (it != funcNodes_.end()) {
+	Gp originalTarget;
+	if (internal != funcNodes_.end()) {
 		// Forward reference via AsmJit label — resolved at finalize() time.
-		cc.invoke(&invokeNode, it->second->label(), sig);
+		cc.invoke(&invokeNode, internal->second->label(), sig);
 	} else {
 		// External function (not a Nautilus IR function): call by raw address.
-		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(op->getFunctionPtr()), sig);
+		if (capturedExternal) {
+			originalTarget = cc.newIntPtr();
+			cc.mov(originalTarget, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
+		}
+		cc.invoke(&invokeNode,
+		          reinterpret_cast<uint64_t>(capturedExternal ? op->getExceptionCapture()->functionPtr
+		                                                      : op->getFunctionPtr()),
+		          sig);
 	}
 
+	size_t argumentOffset = 0;
+	if (capturedExternal) {
+		invokeNode->setArg(0, exceptionFrame);
+		invokeNode->setArg(1, originalTarget);
+		argumentOffset = 2;
+	}
 	for (size_t i = 0; i < argRegs.size(); i++) {
 		if (std::holds_alternative<Xmm>(argRegs[i]))
-			invokeNode->setArg(i, toXmm(argRegs[i]));
+			invokeNode->setArg(i + argumentOffset, toXmm(argRegs[i]));
 		else
-			invokeNode->setArg(i, toGp(argRegs[i]));
+			invokeNode->setArg(i + argumentOffset, toGp(argRegs[i]));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -1418,12 +1513,24 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 		}
 		bindResult(op->getIdentifier(), result, frame);
 	}
+	if (exceptional) {
+		emitExceptionalExit(op, exceptionFrame);
+	}
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
+	const auto exceptional = exceptionalCallSites_.contains(op);
+	if (exceptional && !op->getExceptionCapture().has_value()) {
+		throw RuntimeException("AsmJit fallback requires a typed exception-capture thunk for an indirect call");
+	}
+	auto exceptionFrame = exceptional ? emitExceptionFrame() : Gp {};
 	// Build callee signature from IR type information.
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (exceptional) {
+		sig.addArg(getTypeId(Type::ptr));
+		sig.addArg(getTypeId(Type::ptr));
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -1441,13 +1548,19 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	}
 
 	InvokeNode* invokeNode = nullptr;
-	cc.invoke(&invokeNode, fnPtrGp, sig);
+	if (exceptional) {
+		cc.invoke(&invokeNode, reinterpret_cast<uint64_t>(op->getExceptionCapture()->functionPtr), sig);
+		invokeNode->setArg(0, exceptionFrame);
+		invokeNode->setArg(1, fnPtrGp);
+	} else {
+		cc.invoke(&invokeNode, fnPtrGp, sig);
+	}
 
 	for (size_t i = 0; i < argRegs.size(); i++) {
 		if (std::holds_alternative<Xmm>(argRegs[i]))
-			invokeNode->setArg(i, toXmm(argRegs[i]));
+			invokeNode->setArg(i + (exceptional ? 2 : 0), toXmm(argRegs[i]));
 		else
-			invokeNode->setArg(i, toGp(argRegs[i]));
+			invokeNode->setArg(i + (exceptional ? 2 : 0), toGp(argRegs[i]));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -1461,6 +1574,9 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 			narrowToStamp(toGp(result), op->getStamp());
 		}
 		bindResult(op->getIdentifier(), result, frame);
+	}
+	if (exceptional) {
+		emitExceptionalExit(op, exceptionFrame);
 	}
 }
 

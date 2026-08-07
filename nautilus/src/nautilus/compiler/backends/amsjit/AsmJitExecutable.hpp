@@ -23,6 +23,9 @@ public:
 
 	void* getInvocableFunctionPtr(const std::string& member) override;
 	bool hasInvocableFunctionPtr() override;
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
+		return ExceptionPropagationMode::CapturedHostRethrow;
+	}
 
 private:
 	std::unique_ptr<::asmjit::JitRuntime> runtime_;

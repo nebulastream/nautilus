@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
+#include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -89,14 +90,21 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	// We avoid constructing llvm::orc::TMOwningSimpleCompiler directly because
 	// LLVM is compiled with -fno-rtti and exporting RTTI for its polymorphic
 	// types across TU boundaries would require us to match.
-	auto jitOrErr = llvm::orc::LLJITBuilder()
-	                    .setJITTargetMachineBuilder(std::move(*tmBuilderOrError))
-	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
-	                    .create();
+	llvm::orc::LLJITBuilder jitBuilder;
+	jitBuilder.setJITTargetMachineBuilder(std::move(*tmBuilderOrError));
+	if (!options.enableCppExceptions) {
+		jitBuilder.setObjectLinkingLayerCreator(objectLinkingLayerCreator);
+	}
+	auto jitOrErr = jitBuilder.create();
 	if (!jitOrErr) {
 		return jitOrErr.takeError();
 	}
 	auto jit = std::move(*jitOrErr);
+	if (options.enableDebuggerSupport) {
+		if (auto err = llvm::orc::enableDebuggerSupport(*jit)) {
+			return std::move(err);
+		}
+	}
 
 	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));
 	if (options.transformer) {

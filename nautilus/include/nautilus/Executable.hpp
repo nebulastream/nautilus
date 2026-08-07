@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ExceptionCapture.hpp"
 #include <any>
 #include <cstdint>
 #include <cstring>
@@ -13,6 +14,11 @@
 #include <vector>
 
 namespace nautilus::compiler {
+
+enum class ExceptionPropagationMode {
+	NativeUnwind,
+	CapturedHostRethrow,
+};
 
 class CompilationStatistics;
 
@@ -60,12 +66,16 @@ public:
 	class Invocable {
 		using FunctionType = R(Args...);
 		std::variant<FunctionType*, std::unique_ptr<GenericInvocable>> func;
+		ExceptionPropagationMode exceptionMode_;
 
 	public:
-		explicit Invocable(void* fptr) : func(reinterpret_cast<FunctionType*>(fptr)) {
+		explicit Invocable(void* fptr, ExceptionPropagationMode exceptionMode = ExceptionPropagationMode::NativeUnwind)
+		    : func(reinterpret_cast<FunctionType*>(fptr)), exceptionMode_(exceptionMode) {
 		}
 
-		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : func(std::move(generic)) {
+		explicit Invocable(std::unique_ptr<GenericInvocable> generic,
+		                   ExceptionPropagationMode exceptionMode = ExceptionPropagationMode::NativeUnwind)
+		    : func(std::move(generic)), exceptionMode_(exceptionMode) {
 		}
 
 		template <typename T>
@@ -222,7 +232,8 @@ public:
 		 * @param arguments
 		 * @return returns the result of the function if any
 		 */
-		R operator()(Args... arguments) {
+	private:
+		R invokeUnchecked(Args... arguments) {
 			if (std::holds_alternative<FunctionType*>(func)) {
 				auto fptr = std::get<FunctionType*>(func);
 				if constexpr (!std::is_void_v<R>) {
@@ -256,6 +267,22 @@ public:
 				}
 			}
 		}
+
+	public:
+		R operator()(Args... arguments) {
+			if (exceptionMode_ == ExceptionPropagationMode::NativeUnwind) {
+				return invokeUnchecked(std::forward<Args>(arguments)...);
+			}
+			ExceptionFrameGuard frame;
+			if constexpr (std::is_void_v<R>) {
+				invokeUnchecked(std::forward<Args>(arguments)...);
+				frame.rethrowPending();
+			} else {
+				auto result = invokeUnchecked(std::forward<Args>(arguments)...);
+				frame.rethrowPending();
+				return result;
+			}
+		}
 	};
 
 	/**
@@ -268,9 +295,9 @@ public:
 	template <typename R, typename... Args>
 	auto getInvocableMember(const std::string& member) {
 		if (hasInvocableFunctionPtr()) {
-			return Invocable<R, Args...>(getInvocableFunctionPtr(member));
+			return Invocable<R, Args...>(getInvocableFunctionPtr(member), getExceptionPropagationMode());
 		} else {
-			return Invocable<R, Args...>(getGenericInvocable(member));
+			return Invocable<R, Args...>(getGenericInvocable(member), getExceptionPropagationMode());
 		}
 	}
 
@@ -288,6 +315,10 @@ public:
 	 * @return bool
 	 */
 	virtual bool hasInvocableFunctionPtr() = 0;
+
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
+		return ExceptionPropagationMode::NativeUnwind;
+	}
 
 	/**
 	 * @brief Returns an generic invocable function

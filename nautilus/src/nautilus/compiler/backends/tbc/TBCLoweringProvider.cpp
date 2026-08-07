@@ -229,6 +229,11 @@ public:
 
 	void process() {
 		RegisterFrame rootFrame;
+		if (func->hasExceptionRegion()) {
+			for (const auto& site : func->getExceptionRegion().callSites) {
+				exceptionalCallSites.emplace(site.call, site.cleanup);
+			}
+		}
 		const auto& functionBasicBlock = func->getFunctionBasicBlock();
 		// argTypes/returnType were pre-filled by the backend (they must be
 		// available before this function is lowered, e.g. for trampolines).
@@ -290,6 +295,7 @@ private:
 	/// the IR keeps the strict block-argument threading discipline.
 	std::unordered_set<ir::OperationIdentifier> crossBlockIds;
 	std::vector<uint16_t> functionAllocaSlots;
+	std::unordered_map<const ir::Operation*, std::optional<ir::CleanupPadId>> exceptionalCallSites;
 	// Where a small-constant's standalone MOV_imm landed (block, codeIndex);
 	// consulted when the constant is later folded into an immediate to see if
 	// the MOV_imm became dead.
@@ -954,6 +960,23 @@ private:
 		return site;
 	}
 
+	void configureExceptionalCall(const ir::Operation* operation, CallSite& site, void* captureFunction) {
+		const auto exceptional = exceptionalCallSites.find(operation);
+		if (exceptional == exceptionalCallSites.end()) {
+			return;
+		}
+		site.exceptional = true;
+		site.captureFunction = captureFunction;
+		if (!exceptional->second.has_value()) {
+			return;
+		}
+		const auto& pad = func->getExceptionRegion().pads.at(*exceptional->second);
+		for (auto position = pad.active.rbegin(); position != pad.active.rend(); ++position) {
+			const auto& destructor = func->getAllocaSpecs().at(*position).destructor;
+			site.exceptionCleanup.emplace_back(functionAllocaSlots.at(*position), destructor->functionPtr);
+		}
+	}
+
 	void visitProxyCall(ir::ProxyCallOperation* opt, int block, RegisterFrame& frame) {
 		auto site = buildCallSite(opt->getInputArguments(), opt->getStamp(), frame);
 
@@ -968,13 +991,25 @@ private:
 		const auto it = program.functionIndex.find(opt->getFunctionName());
 		if (it != program.functionIndex.end()) {
 			site.internalFnIdx = it->second;
+			configureExceptionalCall(opt, site, nullptr);
 			const auto siteIdx = addCallSite(std::move(site));
 			emit(block, Op::CALL, dst, static_cast<uint16_t>(it->second), siteIdx);
+			if (exceptionalCallSites.contains(opt)) {
+				emit(block, Op::CHECK_EXCEPTION, siteIdx);
+			}
 			return;
 		}
 		site.target = opt->getFunctionPtr();
+		if (exceptionalCallSites.contains(opt) && !opt->getExceptionCapture().has_value()) {
+			throw RuntimeException("TBC fallback requires a typed exception-capture thunk for an external call");
+		}
+		configureExceptionalCall(
+		    opt, site, opt->getExceptionCapture().has_value() ? opt->getExceptionCapture()->functionPtr : nullptr);
 		const auto siteIdx = addCallSite(std::move(site));
 		emit(block, Op::CALL_EXT, dst, siteIdx);
+		if (exceptionalCallSites.contains(opt)) {
+			emit(block, Op::CHECK_EXCEPTION, siteIdx);
+		}
 	}
 
 	void visitIndirectCall(ir::IndirectCallOperation* opt, int block, RegisterFrame& frame) {
@@ -987,8 +1022,16 @@ private:
 			dst = getResultRegister(opt, frame);
 			frame.setValue(opt->getIdentifier(), dst);
 		}
+		if (exceptionalCallSites.contains(opt) && !opt->getExceptionCapture().has_value()) {
+			throw RuntimeException("TBC fallback requires a typed exception-capture thunk for an indirect call");
+		}
+		configureExceptionalCall(
+		    opt, site, opt->getExceptionCapture().has_value() ? opt->getExceptionCapture()->functionPtr : nullptr);
 		const auto siteIdx = addCallSite(std::move(site));
 		emit(block, Op::CALL_IND, dst, functionReg, siteIdx);
+		if (exceptionalCallSites.contains(opt)) {
+			emit(block, Op::CHECK_EXCEPTION, siteIdx);
+		}
 	}
 
 	void visitFunctionAddressOf(ir::FunctionAddressOfOperation* opt, int block, RegisterFrame& frame) {

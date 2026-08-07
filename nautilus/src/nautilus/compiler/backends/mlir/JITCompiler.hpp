@@ -26,6 +26,7 @@ public:
 	                 const std::vector<std::string>& jitProxyFunctionSymbols,
 	                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
 	                 const std::vector<llvm::JITEventListener*>& eventListeners,
-	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive);
+	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive,
+	                 bool enableCppExceptions = false, bool enableDebuggerSupport = false);
 };
 } // namespace nautilus::compiler::mlir

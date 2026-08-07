@@ -118,13 +118,37 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
+TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
+                                             void* destructorFunction, FunctionAttributes destructorAttrs,
+                                             bool activateAfterAlloca) {
+	if (paused_) {
+		alloca.reset();
+		return dummyRef_;
+	}
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
-		auto index = state->executionTrace.addAllocaSpec(size, align);
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
-	});
+	if (isFollowing()) {
+		alloca = std::get<AllocaIndex>(state->executionTrace.getCurrentOperation().input.front());
+		return follow(op);
+	}
+	auto tag = recordSnapshot();
+	if (!state->executionTrace.checkTag(tag)) {
+		paused_ = true;
+		alloca.reset();
+		return dummyRef_;
+	}
+	std::optional<DestructorSpec> destructor;
+	const auto hasDestructor = destructorFunction != nullptr;
+	if (hasDestructor) {
+		auto mangledName = getMangledName(destructorFunction);
+		destructor.emplace(destructorFunction, getFunctionName(destructorFunction, mangledName), destructorAttrs);
+	}
+	alloca = state->executionTrace.addAllocaSpec(size, align, std::move(destructor));
+	std::optional<CleanupEffect> cleanupEffect;
+	if (activateAfterAlloca && hasDestructor) {
+		cleanupEffect.emplace(CleanupEffectKind::ActivateAfterSuccess, *alloca);
+	}
+	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca}, cleanupEffect);
 }
 
 TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -169,7 +193,8 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
                                            const std::vector<tracing::TypedValueRef>& arguments,
-                                           FunctionAttributes fnAttrs) {
+                                           FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect,
+                                           std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -182,22 +207,25 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 		                                                                        .mangledName = mangledName,
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .exceptionCapture = exceptionCapture});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments}, cleanupEffect);
 	});
 }
 
 TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                    const std::vector<tracing::TypedValueRef>& arguments,
-                                                   FunctionAttributes fnAttrs) {
+                                                   FunctionAttributes fnAttrs,
+                                                   std::optional<CleanupEffect> cleanupEffect,
+                                                   std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
-		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
+		    .fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs, .exceptionCapture = exceptionCapture});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall}, cleanupEffect);
 	});
 }
 
@@ -222,7 +250,8 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .exceptionCapture = std::nullopt});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -247,7 +276,8 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = {},
-		                                                                        .fnAttrs = {}});
+		                                                                        .fnAttrs = {},
+		                                                                        .exceptionCapture = std::nullopt});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }

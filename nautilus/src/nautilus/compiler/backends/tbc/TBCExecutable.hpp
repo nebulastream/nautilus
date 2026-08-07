@@ -21,6 +21,9 @@ public:
 
 	[[nodiscard]] void* getInvocableFunctionPtr(const std::string& member) override;
 	bool hasInvocableFunctionPtr() override;
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
+		return ExceptionPropagationMode::CapturedHostRethrow;
+	}
 	std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string& member) override;
 
 private:

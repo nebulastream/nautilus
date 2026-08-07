@@ -120,7 +120,7 @@ std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionCont
 	std::vector<compiler::ir::AllocaSpec> specs;
 	specs.reserve(trace->allocaSpecs.size());
 	for (const auto& spec : trace->allocaSpecs) {
-		specs.push_back({spec.size, spec.align});
+		specs.emplace_back(spec.size, spec.align, spec.destructor);
 	}
 	return specs;
 }
@@ -434,7 +434,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs);
+	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, operation.cleanupEffect,
+	    functionCallTarget.exceptionCapture);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -451,7 +452,8 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
-	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs);
+	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs,
+	    operation.cleanupEffect, indirectCall.exceptionCapture);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}
@@ -511,8 +513,8 @@ void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& fr
                                                                   TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	AllocaIndex index = std::get<AllocaIndex>(operation.input[0]);
-	auto allocaOperation =
-	    currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier, index);
+	auto allocaOperation = currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier,
+	                                                                         index, operation.cleanupEffect);
 	frame.setValue(resultIdentifier, allocaOperation);
 }
 

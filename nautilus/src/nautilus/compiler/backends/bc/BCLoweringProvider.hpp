@@ -153,6 +153,9 @@ private:
 		/// corresponding allocaBuffers slot; visitAlloca resolves an index
 		/// here rather than allocating a buffer per call site.
 		std::vector<short> functionAllocaSlots;
+		std::vector<short> functionCleanupDestructors;
+		std::unordered_map<const ir::Operation*, std::optional<ir::CleanupPadId>> exceptionalCallSites;
+		const ir::FunctionOperation* currentFunction = nullptr;
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
@@ -195,6 +198,7 @@ private:
 		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
 
 		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void emitExceptionalExit(const ir::Operation* call, short block);
 
 		short getResultRegister(ir::Operation* opt, RegisterFrame& frame);
 

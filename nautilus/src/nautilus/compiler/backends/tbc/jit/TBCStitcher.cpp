@@ -54,6 +54,7 @@ constexpr uint16_t kOpRet = opIndex(Op::RET);
 constexpr uint16_t kOpCall = opIndex(Op::CALL);
 constexpr uint16_t kOpCallExt = opIndex(Op::CALL_EXT);
 constexpr uint16_t kOpCallInd = opIndex(Op::CALL_IND);
+constexpr uint16_t kOpCheckException = opIndex(Op::CHECK_EXCEPTION);
 constexpr uint16_t kFusedFirst = opIndex(Op::CJMP_EQ_i32);
 constexpr uint16_t kFusedLast = opIndex(Op::CJMP_GE_i64);
 
@@ -105,7 +106,7 @@ struct Layout {
 	std::vector<std::vector<uint32_t>> wordOffs; // [fn][wordIdx] -> span offset (branch targets)
 	uint32_t epilogueOff = 0;
 	uint32_t unwindOff = 0;
-	uint32_t thunkOff[3] = {0, 0, 0}; // aarch64 helper-call range thunks
+	uint32_t thunkOff[4] = {0, 0, 0, 0}; // aarch64 helper-call range thunks
 	uint32_t dataOff = 0;
 	uint32_t gotOff = 0; // emulated-GOT region base (Mach-O; 0 slots elsewhere)
 	uint32_t totalSize = 0;
@@ -341,6 +342,8 @@ private:
 			return reinterpret_cast<uint64_t>(&tbcJitExtCall);
 		case HoleSym::HelperIndCall:
 			return reinterpret_cast<uint64_t>(&tbcJitIndCall);
+		case HoleSym::HelperCheckException:
+			return reinterpret_cast<uint64_t>(&tbcJitCheckException);
 		default:
 			throw RuntimeException("tbc-jit: not a helper hole");
 		}
@@ -354,6 +357,8 @@ private:
 			return lay.thunkOff[1];
 		case HoleSym::HelperIndCall:
 			return lay.thunkOff[2];
+		case HoleSym::HelperCheckException:
+			return lay.thunkOff[3];
 		default:
 			throw RuntimeException("tbc-jit: not a helper hole");
 		}
@@ -386,7 +391,7 @@ private:
 		case HoleSym::A:
 			// Raw destination-register field for the call family (consumed by
 			// the helpers); frame byte offset everywhere else.
-			if (op == kOpCall || op == kOpCallExt || op == kOpCallInd) {
+			if (op == kOpCall || op == kOpCallExt || op == kOpCallInd || op == kOpCheckException) {
 				return inst.a;
 			}
 			return uint64_t {inst.a} * 8;
@@ -409,7 +414,8 @@ private:
 			}
 			return base + lay.wordOffs[inst.b][0];
 		case HoleSym::Site:
-			return reinterpret_cast<uint64_t>(&program.callsites[op == kOpCallExt ? inst.b : inst.c]);
+			return reinterpret_cast<uint64_t>(
+			    &program.callsites[op == kOpCallExt ? inst.b : (op == kOpCheckException ? inst.a : inst.c)]);
 		case HoleSym::Func:
 			return reinterpret_cast<uint64_t>(&program.functions[inst.b]);
 		case HoleSym::Unwind:
@@ -417,6 +423,7 @@ private:
 		case HoleSym::HelperPushFrame:
 		case HoleSym::HelperExtCall:
 		case HoleSym::HelperIndCall:
+		case HoleSym::HelperCheckException:
 			return helperAddress(hole.sym);
 		case HoleSym::Data:
 			return base + lay.dataOff + static_cast<uint64_t>(hole.addend);
@@ -547,6 +554,7 @@ private:
 			emitThunk(buffer + lay.thunkOff[0], reinterpret_cast<uint64_t>(&tbcJitPushFrame));
 			emitThunk(buffer + lay.thunkOff[1], reinterpret_cast<uint64_t>(&tbcJitExtCall));
 			emitThunk(buffer + lay.thunkOff[2], reinterpret_cast<uint64_t>(&tbcJitIndCall));
+			emitThunk(buffer + lay.thunkOff[3], reinterpret_cast<uint64_t>(&tbcJitCheckException));
 		}
 		if (stencils.dataSize != 0) {
 			std::memcpy(buffer + lay.dataOff, stencils.data, stencils.dataSize);

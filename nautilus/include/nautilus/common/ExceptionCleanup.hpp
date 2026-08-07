@@ -26,4 +26,8 @@ struct DestructorSpec {
 	FunctionAttributes attributes;
 };
 
+struct ExceptionCaptureSpec {
+	void* functionPtr;
+};
+
 } // namespace nautilus

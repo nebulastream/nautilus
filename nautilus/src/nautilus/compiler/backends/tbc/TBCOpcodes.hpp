@@ -149,6 +149,7 @@ namespace nautilus::compiler::tbc {
 //   CALL     a=dst (kNoReg for void), b=function idx, c=callsite  (1 word)
 //   CALL_EXT a=dst, b=callsite idx                                (1 word)
 //   CALL_IND a=dst, b=function-pointer register, c=callsite idx   (1 word)
+//   CHECK_EXCEPTION a=callsite idx                                (1 word)
 //   HALT     terminates the dispatch loop of an entry frame       (1 word)
 //   TRAP     never emitted; throws on dispatch (encoding bugs)    (1 word)
 #define TBC_CONTROL_SIMPLE_LIST(X)                                                                                     \
@@ -159,6 +160,7 @@ namespace nautilus::compiler::tbc {
 	X(CALL)                                                                                                            \
 	X(CALL_EXT)                                                                                                        \
 	X(CALL_IND)                                                                                                        \
+	X(CHECK_EXCEPTION)                                                                                                 \
 	X(HALT)                                                                                                            \
 	X(TRAP)
 

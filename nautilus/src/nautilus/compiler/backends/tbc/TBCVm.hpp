@@ -72,4 +72,8 @@ void doExtCall(const CallSite& site, void* target, uint64_t* fp, uint16_t dstReg
 /// so no internal/external discrimination is needed.
 void doIndirectCall(const Instr& inst, uint64_t* fp, VMContext* ctx);
 
+/// Runs this call site's logical cleanup pad when the current public
+/// exception frame contains a captured exception.
+bool cleanupCapturedException(const CallSite& site, uint64_t* fp) noexcept;
+
 } // namespace nautilus::compiler::tbc

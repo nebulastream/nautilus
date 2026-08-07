@@ -14,10 +14,11 @@ ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& 
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
                                        Type resultType, const FunctionAttributes fnAttrs,
-                                       std::optional<CleanupEffect> cleanupEffect)
+                                       std::optional<CleanupEffect> cleanupEffect,
+                                       std::optional<ExceptionCaptureSpec> exceptionCapture)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
       mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs),
-      cleanupEffect(std::move(cleanupEffect)) {
+      cleanupEffect(std::move(cleanupEffect)), exceptionCapture(std::move(exceptionCapture)) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -49,6 +50,10 @@ const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 
 const std::optional<CleanupEffect>& ProxyCallOperation::getCleanupEffect() const {
 	return cleanupEffect;
+}
+
+const std::optional<ExceptionCaptureSpec>& ProxyCallOperation::getExceptionCapture() const {
+	return exceptionCapture;
 }
 
 bool ProxyCallOperation::classof(const Operation* op) {

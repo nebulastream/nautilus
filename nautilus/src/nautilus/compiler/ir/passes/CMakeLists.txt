@@ -15,5 +15,6 @@ add_source_files(nautilus
         BlockMergingPass.cpp
         BlockArgumentPruningPass.cpp
         LocalCSEPass.cpp
-        LoopInvariantCodeMotionPass.cpp
+		LoopInvariantCodeMotionPass.cpp
+		ExceptionCleanupPreparationPass.cpp
 )

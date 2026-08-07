@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/tracing/Snapshot.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
@@ -23,18 +24,17 @@ namespace nautilus::tracing {
 class None {};
 using BranchProbability = double;
 
-/// Index into ExecutionTrace::allocaSpecs identifying which alloca slot this
-/// trace operation refers to.  Each Op::ALLOCA carries one of these as its
-/// only input; the backing (size, align) pair is held centrally on the trace
-/// so backends can iterate the full table when emitting the function prologue.
-using AllocaIndex = uint32_t;
-
 /// Per-function alloca-table entry.  Recorded at trace time, copied onto the
 /// resulting FunctionOperation, then materialised as one real alloca per entry
 /// in each backend's function prologue.
 struct AllocaSpec {
+	explicit AllocaSpec(size_t size, size_t align, std::optional<DestructorSpec> destructor = std::nullopt)
+	    : size(size), align(align), destructor(std::move(destructor)) {
+	}
+
 	size_t size;
 	size_t align;
+	std::optional<DestructorSpec> destructor;
 };
 
 /**
@@ -56,6 +56,7 @@ struct FunctionCall {
 	void* ptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt;
 };
 
 /// Represents an indirect call through a runtime function pointer value.
@@ -63,6 +64,7 @@ struct IndirectFunctionCall {
 	TypedValueRef fnPtr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt;
 };
 
 struct BlockRef {
@@ -178,6 +180,7 @@ public:
 	Op op;
 	Type resultType;
 	TypedValueRef resultRef;
+	std::optional<CleanupEffect> cleanupEffect;
 	/// View over the Arena-allocated input array.  The storage is adjacent to
 	/// (and has the same lifetime as) this TraceOperation.
 	std::span<InputVariant> input;

@@ -324,6 +324,9 @@ enum class ByteCode : short {
 	DYNCALL_call_ptr,
 	DYNCALL_call_f,
 	DYNCALL_call_d,
+	LOAD_EXCEPTION_FRAME,
+	CLEANUP_IF_PENDING,
+	RETURN_IF_PENDING,
 	// band
 	BAND_i8,
 	BAND_i16,

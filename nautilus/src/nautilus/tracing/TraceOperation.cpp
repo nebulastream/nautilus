@@ -48,7 +48,9 @@ TraceOperation* cloneTraceOp(common::Arena& arena, const TraceOperation& source)
 	}
 	std::span<InputVariant> span(buffer, source.input.size());
 	Snapshot copiedTag = source.tag;
-	return arena.create<TraceOperation>(copiedTag, source.op, source.resultType, source.resultRef, span);
+	auto* clone = arena.create<TraceOperation>(copiedTag, source.op, source.resultType, source.resultRef, span);
+	clone->cleanupEffect = source.cleanupEffect;
+	return clone;
 }
 
 } // namespace nautilus::tracing

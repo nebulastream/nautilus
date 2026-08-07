@@ -130,13 +130,31 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 	}
 }
 
-TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align) {
+TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
+                                                       void* destructorFunction, FunctionAttributes destructorAttrs,
+                                                       bool activateAfterAlloca) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
-		auto index = state->executionTrace.addAllocaSpec(size, align);
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
-	});
+	if (isFollowing()) {
+		alloca = std::get<AllocaIndex>(state->executionTrace.getCurrentOperation().input.front());
+		return follow(op);
+	}
+	auto tag = recordSnapshot();
+	if (!state->executionTrace.checkTag(tag)) {
+		throw TraceTerminationException();
+	}
+	std::optional<DestructorSpec> destructor;
+	const auto hasDestructor = destructorFunction != nullptr;
+	if (hasDestructor) {
+		auto mangledName = getMangledName(destructorFunction);
+		destructor.emplace(destructorFunction, getFunctionName(destructorFunction, mangledName), destructorAttrs);
+	}
+	alloca = state->executionTrace.addAllocaSpec(size, align, std::move(destructor));
+	std::optional<CleanupEffect> cleanupEffect;
+	if (activateAfterAlloca && hasDestructor) {
+		cleanupEffect.emplace(CleanupEffectKind::ActivateAfterSuccess, *alloca);
+	}
+	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca}, cleanupEffect);
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -177,7 +195,9 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
                                                      const std::vector<tracing::TypedValueRef>& arguments,
-                                                     FunctionAttributes fnAttrs) {
+                                                     FunctionAttributes fnAttrs,
+                                                     std::optional<CleanupEffect> cleanupEffect,
+                                                     std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
@@ -187,19 +207,22 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 		                                                                        .mangledName = mangledName,
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .exceptionCapture = exceptionCapture});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments}, cleanupEffect);
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                              const std::vector<tracing::TypedValueRef>& arguments,
-                                                             FunctionAttributes fnAttrs) {
+                                                             FunctionAttributes fnAttrs,
+                                                             std::optional<CleanupEffect> cleanupEffect,
+                                                             std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
-		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
+		    .fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs, .exceptionCapture = exceptionCapture});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall}, cleanupEffect);
 	});
 }
 
@@ -221,7 +244,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .exceptionCapture = std::nullopt});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -243,7 +267,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = {},
-		                                                                        .fnAttrs = {}});
+		                                                                        .fnAttrs = {},
+		                                                                        .exceptionCapture = std::nullopt});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }

@@ -134,7 +134,8 @@ public:
 	 * @return TypedValueRef& Reference to the resulting value
 	 */
 	TypedValueRef& addOperationWithResult(Snapshot& snapshot, Op& operation, Type& resultType,
-	                                      std::initializer_list<InputVariant> inputs);
+	                                      std::initializer_list<InputVariant> inputs,
+	                                      std::optional<CleanupEffect> cleanupEffect = std::nullopt);
 
 	/**
 	 * @brief Adds a comparison operation to the trace with branch probability
@@ -315,7 +316,7 @@ public:
 	/// only fires for genuinely new alloca sites — re-traces that hit an
 	/// existing tag short-circuit through control-flow merging and never
 	/// invoke the lambda.
-	AllocaIndex addAllocaSpec(size_t size, size_t align);
+	AllocaIndex addAllocaSpec(size_t size, size_t align, std::optional<DestructorSpec> destructor = std::nullopt);
 
 	/**
 	 * @brief Gets the next available operation identifier

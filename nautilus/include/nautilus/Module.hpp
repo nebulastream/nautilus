@@ -84,7 +84,8 @@ class ModuleFunction<R(Args...)> {
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
 		if (state_->executable) {
-			if (state_->executable->hasInvocableFunctionPtr()) {
+			if (state_->executable->hasInvocableFunctionPtr() &&
+			    state_->executable->getExceptionPropagationMode() == compiler::ExceptionPropagationMode::NativeUnwind) {
 				auto* fptr = reinterpret_cast<R (*)(Args...)>(state_->executable->getInvocableFunctionPtr(name_));
 				cache_->impl = fptr;
 			} else {

@@ -25,6 +25,7 @@
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionCleanupPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
@@ -211,6 +212,12 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}
+
+	// Lifetime state must be derived from the final CFG. Keep this outside the
+	// optimization fixed-point group and run it even when optimizations are
+	// disabled, because every backend consumes the resulting exception region.
+	ir::ExceptionCleanupPreparationPass().apply(*ir);
+	dumpHandler.dump("after_exception_cleanup", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("frontend.totalMs", frontendStart);

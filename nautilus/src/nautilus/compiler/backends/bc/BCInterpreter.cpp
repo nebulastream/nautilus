@@ -1,11 +1,16 @@
 
 #include <cassert>
+#include <nautilus/common/ExceptionCapture.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/Dyncall.hpp>
 #include <sstream>
 #include <utility>
 
 namespace nautilus::compiler::bc {
+namespace {
+struct PendingExceptionExit {};
+} // namespace
+
 void regMov(const OpCode& c, RegisterFile& regs) {
 	regs[c.output] = regs[c.reg1];
 }
@@ -105,6 +110,24 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
 	auto returnValue = Dyncall::getVM().callD(address);
 	writeReg<double>(regs, op.output, returnValue);
+}
+
+void loadExceptionFrame(const OpCode& op, RegisterFile& regs) {
+	writeReg<void*>(regs, op.output, currentExceptionFrame());
+}
+
+void cleanupIfPending(const OpCode& op, RegisterFile& regs) {
+	if (!hasPendingException(currentExceptionFrame())) {
+		return;
+	}
+	auto destructor = reinterpret_cast<void (*)(void*) noexcept>(readReg<void*>(regs, op.reg2));
+	destructor(readReg<void*>(regs, op.reg1));
+}
+
+void returnIfPending(const OpCode&, RegisterFile&) {
+	if (hasPendingException(currentExceptionFrame())) {
+		throw PendingExceptionExit {};
+	}
 }
 
 // Single source of truth mapping every ByteCode to its handler, listed in the
@@ -383,6 +406,9 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	X(DYNCALL_call_ptr, dyncallCallPtr)                                                                                \
 	X(DYNCALL_call_f, dyncallCallf)                                                                                    \
 	X(DYNCALL_call_d, dyncallCalld)                                                                                    \
+	X(LOAD_EXCEPTION_FRAME, loadExceptionFrame)                                                                        \
+	X(CLEANUP_IF_PENDING, cleanupIfPending)                                                                            \
+	X(RETURN_IF_PENDING, returnIfPending)                                                                              \
 	/* bitwise: band */                                                                                                \
 	X(BAND_i8, bitwiseAnd<int8_t>)                                                                                     \
 	X(BAND_i16, bitwiseAnd<int16_t>)                                                                                   \
@@ -677,7 +703,11 @@ int64_t BCInterpreter::invokeImpl(const std::vector<Type>& argTypes, Reader read
 		reader(regs, code.arguments[i], argTypes[i], i);
 	}
 
-	return execute(regs);
+	try {
+		return execute(regs);
+	} catch (const PendingExceptionExit&) {
+		return 0;
+	}
 }
 
 #ifdef NAUTILUS_BC_LIBFFI

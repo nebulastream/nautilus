@@ -37,7 +37,8 @@ public:
 
 	TypedValueRef& registerFunctionArgument(Type type, size_t index) override;
 	TypedValueRef& traceConstant(Type type, const ConstantLiteral& value) override;
-	TypedValueRef& traceAlloca(size_t size, size_t align) override;
+	TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca, void* destructorFunction,
+	                           FunctionAttributes destructorAttrs, bool activateAfterAlloca) override;
 	TypedValueRef& traceCopy(const TypedValueRef& ref) override;
 	TypedValueRef& traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
 	                             const TypedValueRef& right) override;
@@ -47,10 +48,12 @@ public:
 	void traceReturnOperation(Type type, const TypedValueRef& ref) override;
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs) override;
+	                         FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect = std::nullopt,
+	                         std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) override;
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-	                                 const std::vector<tracing::TypedValueRef>& arguments,
-	                                 FunctionAttributes fnAttrs) override;
+	                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+	                                 std::optional<CleanupEffect> cleanupEffect = std::nullopt,
+	                                 std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) override;
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
 	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;

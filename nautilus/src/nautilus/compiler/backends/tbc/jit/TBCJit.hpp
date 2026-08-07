@@ -41,4 +41,5 @@ uint64_t tbcJitExtCall(nautilus::compiler::tbc::VMContext* ctx, const void* site
                        uint64_t dstRegRaw) noexcept;
 uint64_t tbcJitIndCall(nautilus::compiler::tbc::VMContext* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw,
                        void* target) noexcept;
+uint64_t tbcJitCheckException(nautilus::compiler::tbc::VMContext* ctx, const void* site, uint64_t* fp) noexcept;
 }

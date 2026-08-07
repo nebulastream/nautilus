@@ -1,7 +1,9 @@
 
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
+#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/passes/Dominators.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
 #include <algorithm>
@@ -43,6 +45,92 @@ bool identifierIsSignificant(Operation::OperationType opType) {
 		return false;
 	default:
 		return true;
+	}
+}
+
+bool isPotentiallyThrowingCall(const Operation& operation) {
+	using OT = Operation::OperationType;
+	if (operation.getOperationType() == OT::ProxyCallOp) {
+		return !static_cast<const ProxyCallOperation&>(operation).getFunctionAttributes().noUnwind;
+	}
+	if (operation.getOperationType() == OT::IndirectCallOp) {
+		return !static_cast<const IndirectCallOperation&>(operation).getFunctionAttributes().noUnwind;
+	}
+	return false;
+}
+
+void verifyExceptionCleanup(VerificationResult& result, const FunctionOperation& function,
+                            const std::unordered_set<const Operation*>& definedOperations,
+                            const std::unordered_map<const Operation*, const BasicBlock*>& operationBlocks) {
+	const auto& allocas = function.getAllocaSpecs();
+	for (size_t index = 0; index < allocas.size(); ++index) {
+		if (!allocas[index].destructor.has_value()) {
+			continue;
+		}
+		const auto& destructor = *allocas[index].destructor;
+		if (destructor.functionPtr == nullptr) {
+			addError(result, &function, nullptr,
+			         fmt::format("alloca {} has a null cleanup-destructor function", index));
+		}
+		if (!destructor.attributes.noUnwind) {
+			addError(result, &function, nullptr,
+			         fmt::format("alloca {} cleanup destructor is not marked noUnwind", index));
+		}
+	}
+
+	if (!function.hasExceptionRegion()) {
+		return;
+	}
+	const auto& region = function.getExceptionRegion();
+	if (region.callSites.empty()) {
+		addError(result, &function, nullptr, "exception region has no potentially throwing call sites");
+	}
+	for (size_t index = 0; index < region.pads.size(); ++index) {
+		const auto& pad = region.pads[index];
+		if (pad.id != index) {
+			addError(result, &function, nullptr,
+			         fmt::format("cleanup pad at index {} has non-canonical id {}", index, pad.id));
+		}
+		std::unordered_set<AllocaIndex> seenAllocas;
+		for (auto alloca : pad.active) {
+			if (alloca >= allocas.size()) {
+				addError(result, &function, nullptr,
+				         fmt::format("cleanup pad {} references out-of-range alloca {}", pad.id, alloca));
+			} else if (!allocas[alloca].destructor.has_value()) {
+				addError(result, &function, nullptr,
+				         fmt::format("cleanup pad {} references alloca {} without a destructor", pad.id, alloca));
+			}
+			if (!seenAllocas.insert(alloca).second) {
+				addError(result, &function, nullptr,
+				         fmt::format("cleanup pad {} contains duplicate alloca {}", pad.id, alloca));
+			}
+		}
+	}
+
+	std::unordered_set<const Operation*> seenCalls;
+	for (const auto& site : region.callSites) {
+		const auto blockPosition = operationBlocks.find(site.call);
+		const auto* block = blockPosition == operationBlocks.end() ? nullptr : blockPosition->second;
+		if (site.call == nullptr || !definedOperations.contains(site.call)) {
+			addError(result, &function, block, "exception call site points outside the function");
+			continue;
+		}
+		if (!seenCalls.insert(site.call).second) {
+			addError(result, &function, block, "potentially throwing call appears more than once in exception region");
+		}
+		if (!isPotentiallyThrowingCall(*site.call)) {
+			addError(result, &function, block, "exception call site is not a potentially throwing call");
+		}
+		if (site.cleanup.has_value() && *site.cleanup >= region.pads.size()) {
+			addError(result, &function, block,
+			         fmt::format("exception call site references out-of-range cleanup pad {}", *site.cleanup));
+		}
+	}
+	for (const auto* operation : definedOperations) {
+		if (isPotentiallyThrowingCall(*operation) && !seenCalls.contains(operation)) {
+			addError(result, &function, operationBlocks.at(operation),
+			         "potentially throwing call is missing from exception region");
+		}
 	}
 }
 
@@ -356,17 +444,21 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 	// to anything else is stale, e.g. an operation a pass replaced and
 	// removed without rewiring its consumers (issue #327).
 	std::unordered_set<const Operation*> definedOps;
+	std::unordered_map<const Operation*, const BasicBlock*> operationBlocks;
 	for (const auto* block : blocks) {
 		if (block == nullptr) {
 			continue;
 		}
 		for (const auto* op : block->getOperations()) {
 			definedOps.insert(op);
+			operationBlocks.emplace(op, block);
 		}
 		for (const auto* arg : block->getArguments()) {
 			definedOps.insert(arg);
+			operationBlocks.emplace(arg, block);
 		}
 	}
+	verifyExceptionCleanup(r, fn, definedOps, operationBlocks);
 	const auto checkInputs = [&](const BasicBlock* block, const Operation* op, const char* what) {
 		for (const auto* input : op->getInputs()) {
 			if (input == nullptr) {

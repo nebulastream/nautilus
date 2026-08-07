@@ -144,11 +144,14 @@ public:
 			auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);
 			auto argRefs = getArgumentReferences(std::forward<ValueArgs>(args)...);
 			if constexpr (std::is_void_v<R>) {
-				tracing::traceIndirectCall(fnPtrRef, Type::v, argRefs, {});
+				tracing::traceIndirectCall(
+				    fnPtrRef, Type::v, argRefs, {}, std::nullopt,
+				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return;
 			} else {
-				auto& resultRef =
-				    tracing::traceIndirectCall(fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {});
+				auto& resultRef = tracing::traceIndirectCall(
+				    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {}, std::nullopt,
+				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return val<R>(resultRef);
 			}
 		}

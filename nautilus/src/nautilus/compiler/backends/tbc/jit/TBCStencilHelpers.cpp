@@ -57,4 +57,9 @@ extern "C" uint64_t tbcJitIndCall(VMContext* ctx, const void* site, uint64_t* fp
 	}
 }
 
+extern "C" uint64_t tbcJitCheckException(VMContext*, const void* site, uint64_t* fp) noexcept {
+	const auto& callSite = *static_cast<const CallSite*>(site);
+	return cleanupCapturedException(callSite, fp) ? 0 : 1;
+}
+
 } // namespace nautilus::compiler::tbc

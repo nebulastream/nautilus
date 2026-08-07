@@ -16,11 +16,14 @@ namespace nautilus::compiler::tbc {
 /// interpreter-native), CALL_EXT (external via dyncall), and CALL_IND (register
 /// target, internal or external).
 struct CallSite {
-	void* target = nullptr;       // external function pointer (CALL_EXT)
-	uint32_t internalFnIdx = ~0u; // callee index (CALL)
+	void* target = nullptr;          // external function pointer (CALL_EXT)
+	void* captureFunction = nullptr; // noexcept typed wrapper for fallback EH
+	uint32_t internalFnIdx = ~0u;    // callee index (CALL)
 	Type returnType = Type::v;
-	std::vector<Type> argTypes;    // callee signature, for dyncall marshaling
-	std::vector<uint16_t> argRegs; // caller registers holding the arguments
+	std::vector<Type> argTypes;                               // callee signature, for dyncall marshaling
+	std::vector<uint16_t> argRegs;                            // caller registers holding the arguments
+	std::vector<std::pair<uint16_t, void*>> exceptionCleanup; // execution order
+	bool exceptional = false;
 };
 
 /// One lowered function: a flat instruction stream plus its frame metadata.
