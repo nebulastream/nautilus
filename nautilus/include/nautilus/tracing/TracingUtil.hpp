@@ -49,8 +49,9 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
                               const TypedValueRef& third);
 
 TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
-                           void* destructorFunction = nullptr, FunctionAttributes destructorAttrs = {},
-                           bool activateAfterAlloca = false);
+                           void* destructorFunction = nullptr, FunctionAttributes destructorAttrs = {});
+void activateCleanup(AllocaIndex alloca);
+void deactivateCleanup(AllocaIndex alloca);
 
 /// Traces a boolean branch with an associated taken-probability hint.
 bool traceBool(const TypedValueRef& value, double probability);
@@ -67,12 +68,11 @@ void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, T
 TypedValueRef traceCopy(const TypedValueRef& ref);
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect = std::nullopt,
+                         FunctionAttributes fnAttrs,
                          std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt);
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
-                                 std::optional<CleanupEffect> cleanupEffect = std::nullopt,
                                  std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt);
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,

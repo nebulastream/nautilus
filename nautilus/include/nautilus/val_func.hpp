@@ -145,12 +145,12 @@ public:
 			auto argRefs = getArgumentReferences(std::forward<ValueArgs>(args)...);
 			if constexpr (std::is_void_v<R>) {
 				tracing::traceIndirectCall(
-				    fnPtrRef, Type::v, argRefs, {}, std::nullopt,
+				    fnPtrRef, Type::v, argRefs, {},
 				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return;
 			} else {
 				auto& resultRef = tracing::traceIndirectCall(
-				    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {}, std::nullopt,
+				    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {},
 				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return val<R>(resultRef);
 			}

@@ -189,11 +189,18 @@ public:
 
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
+	void activateCleanup(AllocaIndex alloca) override;
+	void deactivateCleanup(AllocaIndex alloca) override;
 
 protected:
+	void resetCleanupState();
+	void validateCleanupStateAtIterationEnd() const;
+
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext).
 	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
 	std::optional<TraceState> state;
+	std::vector<AllocaIndex> activeCleanups;
+	CleanupStateId currentCleanupState = EMPTY_CLEANUP_STATE;
 
 	std::unordered_map<void*, std::string> mangledNameCache;
 };
@@ -248,18 +255,17 @@ public:
 	TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first, const TypedValueRef& second,
 	                              const TypedValueRef& third) override;
 	TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca, void* destructorFunction,
-	                           FunctionAttributes destructorAttrs, bool activateAfterAlloca) override;
+	                           FunctionAttributes destructorAttrs) override;
 	void traceReturnOperation(Type type, const TypedValueRef& ref) override;
 
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-	                         FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect = std::nullopt,
+	                         FunctionAttributes fnAttrs,
 	                         std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) override;
 
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
-	                                 std::optional<CleanupEffect> cleanupEffect = std::nullopt,
 	                                 std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) override;
 
 	bool traceBool(const TypedValueRef& value, double probability) override;

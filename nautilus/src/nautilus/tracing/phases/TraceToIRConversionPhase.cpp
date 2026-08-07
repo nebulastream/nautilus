@@ -95,7 +95,7 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 	std::unordered_map<std::string, std::string> attributes = {{"entry", "true"}};
 	auto* functionOperation = ir->getArena().create<FunctionOperation>(
 	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType,
-	    collectAllocaSpecs(), std::move(attributes));
+	    collectAllocaSpecs(), std::move(attributes), collectCleanupStates());
 	ir->addFunctionOperation(functionOperation);
 	return ir;
 }
@@ -113,7 +113,11 @@ FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunctio
 	// Create and return the function operation
 	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
 	                                                std::vector<std::string> {}, returnType, collectAllocaSpecs(),
-	                                                attributes);
+	                                                attributes, collectCleanupStates());
+}
+
+std::vector<CleanupState> TraceToIRConversionPhase::IRConversionContext::collectCleanupStates() const {
+	return trace->cleanupStates;
 }
 
 std::vector<compiler::ir::AllocaSpec> TraceToIRConversionPhase::IRConversionContext::collectAllocaSpecs() const {
@@ -432,10 +436,15 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto cleanupState = std::optional<CleanupStateId> {};
+	const auto snapshotCleanupState = operation.tag.getCleanupStateId();
+	if (!functionCallTarget.fnAttrs.noUnwind && snapshotCleanupState != EMPTY_CLEANUP_STATE) {
+		cleanupState = snapshotCleanupState;
+	}
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, operation.cleanupEffect,
-	    functionCallTarget.exceptionCapture);
+	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, functionCallTarget.exceptionCapture,
+	    cleanupState);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -451,9 +460,14 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	}
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto cleanupState = std::optional<CleanupStateId> {};
+	const auto snapshotCleanupState = operation.tag.getCleanupStateId();
+	if (!indirectCall.fnAttrs.noUnwind && snapshotCleanupState != EMPTY_CLEANUP_STATE) {
+		cleanupState = snapshotCleanupState;
+	}
 	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
 	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs,
-	    operation.cleanupEffect, indirectCall.exceptionCapture);
+	    indirectCall.exceptionCapture, cleanupState);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}
@@ -513,8 +527,8 @@ void TraceToIRConversionPhase::IRConversionContext::processAlloca(ValueFrame& fr
                                                                   TraceOperation& operation) {
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	AllocaIndex index = std::get<AllocaIndex>(operation.input[0]);
-	auto allocaOperation = currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier,
-	                                                                         index, operation.cleanupEffect);
+	auto allocaOperation =
+	    currentBlock->addTaggedOperation<AllocaOperation>(operation.tag.getTag(), resultIdentifier, index);
 	frame.setValue(resultIdentifier, allocaOperation);
 }
 

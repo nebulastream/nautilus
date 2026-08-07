@@ -41,8 +41,13 @@ public:
 	/// Each call appends a fresh entry to the function's alloca table on the
 	/// execution trace; the returned ref points to that entry's index.
 	virtual TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
-	                                   void* destructorFunction, FunctionAttributes destructorAttrs,
-	                                   bool activateAfterAlloca) = 0;
+	                                   void* destructorFunction, FunctionAttributes destructorAttrs) = 0;
+
+	/// Marks a destructible alloca as fully constructed on the normal trace path.
+	virtual void activateCleanup(AllocaIndex alloca) = 0;
+
+	/// Removes a destructible alloca before tracing its normal-path destructor call.
+	virtual void deactivateCleanup(AllocaIndex alloca) = 0;
 
 	/// Trace a copy of an existing traced value.
 	virtual TypedValueRef& traceCopy(const TypedValueRef& ref) = 0;
@@ -67,13 +72,11 @@ public:
 	/// Trace a runtime function call.
 	virtual TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs,
-	                                 std::optional<CleanupEffect> cleanupEffect = std::nullopt,
 	                                 std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) = 0;
 
 	/// Trace a call through a runtime function pointer value (indirect call).
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                         const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs,
-	                                         std::optional<CleanupEffect> cleanupEffect = std::nullopt,
 	                                         std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt) = 0;
 
 	/// Trace a call to a nested Nautilus function. Registers the function for later tracing.

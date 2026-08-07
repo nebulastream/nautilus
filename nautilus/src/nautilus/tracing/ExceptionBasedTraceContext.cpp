@@ -3,11 +3,13 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cxxabi.h>
@@ -52,6 +54,7 @@ void ExceptionBasedTraceContext::resume() {
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
+	resetCleanupState();
 
 	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
 	// as it needs to persist across trace iterations
@@ -67,6 +70,11 @@ bool ExceptionBasedTraceContext::isFollowing() {
 
 TypedValueRef& ExceptionBasedTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
+	if (currentOperation.tag.getCleanupStateId() != currentCleanupState) {
+		throw RuntimeException("Cleanup state drift while following trace: recorded state " +
+		                       std::to_string(currentOperation.tag.getCleanupStateId()) + ", current state " +
+		                       std::to_string(currentCleanupState));
+	}
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
@@ -131,8 +139,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
-                                                       void* destructorFunction, FunctionAttributes destructorAttrs,
-                                                       bool activateAfterAlloca) {
+                                                       void* destructorFunction, FunctionAttributes destructorAttrs) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
 	if (isFollowing()) {
@@ -150,11 +157,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceAlloca(size_t size, size_t align
 		destructor.emplace(destructorFunction, getFunctionName(destructorFunction, mangledName), destructorAttrs);
 	}
 	alloca = state->executionTrace.addAllocaSpec(size, align, std::move(destructor));
-	std::optional<CleanupEffect> cleanupEffect;
-	if (activateAfterAlloca && hasDestructor) {
-		cleanupEffect.emplace(CleanupEffectKind::ActivateAfterSuccess, *alloca);
-	}
-	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca}, cleanupEffect);
+	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -196,7 +199,6 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType,
                                                      const std::vector<tracing::TypedValueRef>& arguments,
                                                      FunctionAttributes fnAttrs,
-                                                     std::optional<CleanupEffect> cleanupEffect,
                                                      std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
@@ -209,20 +211,19 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs,
 		                                                                        .exceptionCapture = exceptionCapture});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments}, cleanupEffect);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                              const std::vector<tracing::TypedValueRef>& arguments,
                                                              FunctionAttributes fnAttrs,
-                                                             std::optional<CleanupEffect> cleanupEffect,
                                                              std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
 		    .fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs, .exceptionCapture = exceptionCapture});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall}, cleanupEffect);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 
@@ -436,6 +437,7 @@ std::unique_ptr<ExecutionTrace> ExceptionBasedTraceContext::trace(std::function<
 		// After each iteration, the static variable stack must be empty.
 		// All static_val destructors should have fired via normal return or stack unwinding.
 		assert(traceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
+		tc->validateCleanupStateAtIterationEnd();
 	}
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
@@ -505,6 +507,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 			} catch (const TraceTerminationException& ex) {
 			}
 			assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+			validateCleanupStateAtIterationEnd();
 		}
 
 		state.reset();
@@ -585,7 +588,40 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), EMPTY_CLEANUP_STATE};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), currentCleanupState};
+}
+
+void TraceContextBase::activateCleanup(AllocaIndex alloca) {
+	const auto& allocas = state->executionTrace.allocaSpecs;
+	if (alloca >= allocas.size() || !allocas[alloca].destructor.has_value()) {
+		throw RuntimeException("Cannot activate invalid cleanup alloca " + std::to_string(alloca));
+	}
+	if (std::find(activeCleanups.begin(), activeCleanups.end(), alloca) != activeCleanups.end()) {
+		throw RuntimeException("Cannot activate already-active cleanup alloca " + std::to_string(alloca));
+	}
+	activeCleanups.push_back(alloca);
+	currentCleanupState = state->executionTrace.internCleanupState(activeCleanups);
+}
+
+void TraceContextBase::deactivateCleanup(AllocaIndex alloca) {
+	const auto position = std::find(activeCleanups.begin(), activeCleanups.end(), alloca);
+	if (position == activeCleanups.end()) {
+		throw RuntimeException("Cannot deactivate inactive cleanup alloca " + std::to_string(alloca));
+	}
+	activeCleanups.erase(position);
+	currentCleanupState = state->executionTrace.internCleanupState(activeCleanups);
+}
+
+void TraceContextBase::resetCleanupState() {
+	activeCleanups.clear();
+	currentCleanupState = EMPTY_CLEANUP_STATE;
+}
+
+void TraceContextBase::validateCleanupStateAtIterationEnd() const {
+	if (!activeCleanups.empty()) {
+		throw RuntimeException("Tracing iteration returned with active cleanup alloca " +
+		                       std::to_string(activeCleanups.back()));
+	}
 }
 
 } // namespace nautilus::tracing

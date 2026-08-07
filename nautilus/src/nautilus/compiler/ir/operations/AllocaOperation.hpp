@@ -17,18 +17,15 @@ namespace nautilus::compiler::ir {
 /// site receives its own entry.
 class AllocaOperation : public Operation {
 public:
-	AllocaOperation(common::Arena& arena, OperationIdentifier id, uint32_t allocaIndex,
-	                std::optional<CleanupEffect> cleanupEffect = std::nullopt);
+	AllocaOperation(common::Arena& arena, OperationIdentifier id, uint32_t allocaIndex);
 
 	~AllocaOperation() = default;
 
 	uint32_t getIndex() const;
-	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
 
 	static bool classof(const Operation* op);
 
 private:
 	uint32_t allocaIndex;
-	std::optional<CleanupEffect> cleanupEffect;
 };
 } // namespace nautilus::compiler::ir

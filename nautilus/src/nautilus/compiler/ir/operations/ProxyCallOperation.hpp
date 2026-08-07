@@ -10,13 +10,13 @@ namespace nautilus::compiler::ir {
 class ProxyCallOperation : public Operation {
 public:
 	ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-	                   Type resultType, std::optional<CleanupEffect> cleanupEffect = std::nullopt);
+	                   Type resultType, std::optional<CleanupStateId> cleanupState = std::nullopt);
 
 	ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
 	                   void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
 	                   Type resultType, FunctionAttributes fnAttrs,
-	                   std::optional<CleanupEffect> cleanupEffect = std::nullopt,
-	                   std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt);
+	                   std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt,
+	                   std::optional<CleanupStateId> cleanupState = std::nullopt);
 
 	~ProxyCallOperation() = default;
 
@@ -29,7 +29,7 @@ public:
 	void* getFunctionPtr();
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
-	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
+	[[nodiscard]] const std::optional<CleanupStateId>& getCleanupState() const;
 	[[nodiscard]] const std::optional<ExceptionCaptureSpec>& getExceptionCapture() const;
 
 	static bool classof(const Operation* op);
@@ -39,7 +39,7 @@ private:
 	const std::string functionName;
 	void* functionPtr;
 	FunctionAttributes fnAttrs;
-	std::optional<CleanupEffect> cleanupEffect;
 	std::optional<ExceptionCaptureSpec> exceptionCapture;
+	std::optional<CleanupStateId> cleanupState;
 };
 } // namespace nautilus::compiler::ir

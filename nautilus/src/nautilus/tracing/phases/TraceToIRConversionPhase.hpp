@@ -128,6 +128,7 @@ private:
 		/// the IR-side `AllocaSpec` shape so it can be embedded on the
 		/// FunctionOperation.
 		std::vector<compiler::ir::AllocaSpec> collectAllocaSpecs() const;
+		std::vector<CleanupState> collectCleanupStates() const;
 
 		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation,
 		                          const BlockRef& val);

@@ -17,18 +17,6 @@ struct CleanupState {
 	bool operator==(const CleanupState&) const = default;
 };
 
-enum class CleanupEffectKind : uint8_t {
-	ActivateAfterSuccess,
-	DeactivateBeforeCall,
-};
-
-struct CleanupEffect {
-	CleanupEffectKind kind;
-	AllocaIndex alloca;
-
-	constexpr bool operator==(const CleanupEffect&) const = default;
-};
-
 struct DestructorSpec {
 	void* functionPtr;
 	std::string functionName;

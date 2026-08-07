@@ -1,7 +1,6 @@
 #pragma once
 
 #include "nautilus/common/ExceptionCapture.hpp"
-#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -35,25 +34,13 @@ public:
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
 	auto operator()(FunctionArgumentsRaw&&... args) {
-		return call(std::nullopt, std::forward<FunctionArgumentsRaw>(args)...);
-	}
-
-	template <typename... FunctionArgumentsRaw>
-	    requires(!std::is_void_v<R>)
-	auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
-		return call(cleanupEffect, std::forward<FunctionArgumentsRaw>(args)...);
+		return call(std::forward<FunctionArgumentsRaw>(args)...);
 	}
 
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
 	void operator()(FunctionArgumentsRaw&&... args) {
-		call(std::nullopt, std::forward<FunctionArgumentsRaw>(args)...);
-	}
-
-	template <typename... FunctionArgumentsRaw>
-	    requires std::is_void_v<R>
-	void invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
-		call(cleanupEffect, std::forward<FunctionArgumentsRaw>(args)...);
+		call(std::forward<FunctionArgumentsRaw>(args)...);
 	}
 
 	template <is_integral... FunctionArgumentsRaw>
@@ -69,13 +56,13 @@ private:
 
 	template <typename... FunctionArgumentsRaw>
 	    requires(!std::is_void_v<R>)
-	auto call(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
+	auto call(FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
 			auto resultRef = tracing::traceCall(
 			    reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(), functionArgumentReferences,
-			    fnAttrs, cleanupEffect,
+			    fnAttrs,
 			    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, FunctionArguments...>())});
 			return val<R>(resultRef);
 		}
@@ -86,12 +73,12 @@ private:
 
 	template <typename... FunctionArgumentsRaw>
 	    requires std::is_void_v<R>
-	void call(std::optional<CleanupEffect> cleanupEffect, FunctionArgumentsRaw&&... args) {
+	void call(FunctionArgumentsRaw&&... args) {
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
 			tracing::traceCall(
-			    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs, cleanupEffect,
+			    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
 			    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, FunctionArguments...>())});
 			return;
 		}
@@ -160,24 +147,6 @@ template <typename R, typename... FunctionArguments>
 auto function(R (*fnptr)(FunctionArguments...) noexcept) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
 }
-
-namespace details {
-
-template <typename R, typename... FunctionArguments, typename... ValueArguments>
-auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, R (*fnptr)(FunctionArguments...),
-                             ValueArguments&&... args) {
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr).invokeWithCleanupEffect(
-	    cleanupEffect, std::forward<ValueArguments>(args)...);
-}
-
-template <typename R, typename... FunctionArguments, typename... ValueArguments>
-auto invokeWithCleanupEffect(std::optional<CleanupEffect> cleanupEffect, R (*fnptr)(FunctionArguments...) noexcept,
-                             ValueArguments&&... args) {
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr).invokeWithCleanupEffect(
-	    cleanupEffect, std::forward<ValueArguments>(args)...);
-}
-
-} // namespace details
 
 class MemberFuncWrapper {};
 

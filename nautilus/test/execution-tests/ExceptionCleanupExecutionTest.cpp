@@ -121,117 +121,23 @@ TEST_CASE("indirect throwing calls clean active values") {
 	});
 }
 
-TEST_CASE("generated C++ unwinds active struct values in reverse order") {
-	auto engine = makeEngine("cpp");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
+TEST_CASE("all compiled backends unwind active struct values in reverse order") {
+	forEachBackendWithTraceMode([](auto& engine) {
+		auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
+		destructionOrder.clear();
 
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (const std::exception& exception) {
-		FAIL("unexpected std::exception: " << exception.what());
-	} catch (...) {
-		FAIL("unexpected non-standard exception");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
+		try {
+			(void) function(42);
+			FAIL("expected exception");
+		} catch (const std::runtime_error& exception) {
+			REQUIRE(std::string(exception.what()) == "runtime failure 42");
+		} catch (const std::exception& exception) {
+			FAIL("unexpected std::exception: " << exception.what());
+		} catch (...) {
+			FAIL("unexpected non-standard exception");
+		}
+		REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
+	});
 }
-
-#ifdef ENABLE_MLIR_BACKEND
-TEST_CASE("MLIR unwinds active struct values in reverse order") {
-	auto engine = makeEngine("mlir");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
-
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (const std::exception& exception) {
-		FAIL("unexpected std::exception: " << exception.what());
-	} catch (...) {
-		FAIL("unexpected non-standard exception");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
-}
-#endif
-
-#ifdef ENABLE_BC_BACKEND
-TEST_CASE("BC captures exceptions and cleans active struct values") {
-	auto engine = makeEngine("bc");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
-
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (...) {
-		FAIL("unexpected exception type");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
-}
-#endif
-
-#ifdef ENABLE_ASMJIT_BACKEND
-TEST_CASE("AsmJit captures exceptions and cleans active struct values") {
-	auto engine = makeEngine("asmjit");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
-
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (...) {
-		FAIL("unexpected exception type");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
-}
-#endif
-
-#ifdef ENABLE_TBC_BACKEND
-TEST_CASE("TBC captures exceptions and cleans active struct values") {
-	auto engine = makeEngine("tbc");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
-
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (...) {
-		FAIL("unexpected exception type");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
-}
-#endif
-
-#ifdef ENABLE_TBC_JIT
-TEST_CASE("TBC JIT captures exceptions and cleans active struct values") {
-	if (!compiler::tbc::jit::jitRuntimeAvailable()) {
-		SKIP("TBC JIT runtime is unavailable");
-	}
-	auto engine = makeEngine("tbc-jit");
-	auto function = engine.registerFunction(cleanupTwoValuesThenThrow);
-	destructionOrder.clear();
-
-	try {
-		(void) function(42);
-		FAIL("expected exception");
-	} catch (const std::runtime_error& exception) {
-		REQUIRE(std::string(exception.what()) == "runtime failure 42");
-	} catch (...) {
-		FAIL("unexpected exception type");
-	}
-	REQUIRE(destructionOrder == std::vector<int32_t> {2, 1});
-}
-#endif
 
 } // namespace nautilus::testing

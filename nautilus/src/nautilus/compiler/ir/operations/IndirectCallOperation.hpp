@@ -18,8 +18,8 @@ class IndirectCallOperation : public Operation {
 public:
 	IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier, Operation* functionPtrOperand,
 	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs,
-	                      std::optional<CleanupEffect> cleanupEffect = std::nullopt,
-	                      std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt);
+	                      std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt,
+	                      std::optional<CleanupStateId> cleanupState = std::nullopt);
 
 	~IndirectCallOperation() = default;
 
@@ -30,15 +30,15 @@ public:
 	std::span<Operation* const> getInputArguments() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
-	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
+	[[nodiscard]] const std::optional<CleanupStateId>& getCleanupState() const;
 	[[nodiscard]] const std::optional<ExceptionCaptureSpec>& getExceptionCapture() const;
 
 	static bool classof(const Operation* op);
 
 private:
 	FunctionAttributes fnAttrs;
-	std::optional<CleanupEffect> cleanupEffect;
 	std::optional<ExceptionCaptureSpec> exceptionCapture;
+	std::optional<CleanupStateId> cleanupState;
 };
 
 } // namespace nautilus::compiler::ir

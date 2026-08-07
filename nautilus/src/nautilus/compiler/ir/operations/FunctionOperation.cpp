@@ -9,10 +9,12 @@ namespace nautilus::compiler::ir {
 FunctionOperation::FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
                                      std::vector<Type> inputArgs, std::vector<std::string> inputArgNames,
                                      Type outputArg, std::vector<AllocaSpec> allocaSpecs,
-                                     std::unordered_map<std::string, std::string> attributes)
+                                     std::unordered_map<std::string, std::string> attributes,
+                                     std::vector<CleanupState> cleanupStates)
     : Operation(OperationType::FunctionOp, outputArg), name(std::move(name)),
       functionBasicBlocks(std::move(functionBasicBlocks)), inputArgs(std::move(inputArgs)),
-      inputArgNames(std::move(inputArgNames)), allocaSpecs(std::move(allocaSpecs)), attributes(std::move(attributes)) {
+      inputArgNames(std::move(inputArgNames)), allocaSpecs(std::move(allocaSpecs)),
+      cleanupStates(std::move(cleanupStates)), attributes(std::move(attributes)) {
 }
 
 const std::string& FunctionOperation::getName() const {
@@ -45,6 +47,10 @@ const std::vector<std::string>& FunctionOperation::getInputArgNames() const {
 
 const std::vector<AllocaSpec>& FunctionOperation::getAllocaSpecs() const {
 	return allocaSpecs;
+}
+
+const std::vector<CleanupState>& FunctionOperation::getCleanupStates() const {
+	return cleanupStates;
 }
 
 bool FunctionOperation::hasExceptionRegion() const {

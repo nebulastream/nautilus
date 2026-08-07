@@ -180,7 +180,6 @@ public:
 	Op op;
 	Type resultType;
 	TypedValueRef resultRef;
-	std::optional<CleanupEffect> cleanupEffect;
 	/// View over the Arena-allocated input array.  The storage is adjacent to
 	/// (and has the same lifetime as) this TraceOperation.
 	std::span<InputVariant> input;

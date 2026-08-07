@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -34,6 +35,7 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
+	resetCleanupState();
 	paused_ = false;
 }
 
@@ -50,6 +52,11 @@ bool LazyTraceContext::isFollowing() {
 
 TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
+	if (currentOperation.tag.getCleanupStateId() != currentCleanupState) {
+		throw RuntimeException("Cleanup state drift while following trace: recorded state " +
+		                       std::to_string(currentOperation.tag.getCleanupStateId()) + ", current state " +
+		                       std::to_string(currentCleanupState));
+	}
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
 	assert(currentOperation.op == op);
@@ -119,8 +126,7 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 }
 
 TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca,
-                                             void* destructorFunction, FunctionAttributes destructorAttrs,
-                                             bool activateAfterAlloca) {
+                                             void* destructorFunction, FunctionAttributes destructorAttrs) {
 	if (paused_) {
 		alloca.reset();
 		return dummyRef_;
@@ -144,11 +150,7 @@ TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align, std::opt
 		destructor.emplace(destructorFunction, getFunctionName(destructorFunction, mangledName), destructorAttrs);
 	}
 	alloca = state->executionTrace.addAllocaSpec(size, align, std::move(destructor));
-	std::optional<CleanupEffect> cleanupEffect;
-	if (activateAfterAlloca && hasDestructor) {
-		cleanupEffect.emplace(CleanupEffectKind::ActivateAfterSuccess, *alloca);
-	}
-	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca}, cleanupEffect);
+	return state->executionTrace.addOperationWithResult(tag, op, resultType, {*alloca});
 }
 
 TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
@@ -193,7 +195,7 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 
 TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
                                            const std::vector<tracing::TypedValueRef>& arguments,
-                                           FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect,
+                                           FunctionAttributes fnAttrs,
                                            std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	if (paused_) {
 		return dummyRef_;
@@ -209,14 +211,13 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs,
 		                                                                        .exceptionCapture = exceptionCapture});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments}, cleanupEffect);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
 TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                    const std::vector<tracing::TypedValueRef>& arguments,
                                                    FunctionAttributes fnAttrs,
-                                                   std::optional<CleanupEffect> cleanupEffect,
                                                    std::optional<ExceptionCaptureSpec> exceptionCapture) {
 	if (paused_) {
 		return dummyRef_;
@@ -225,7 +226,7 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
 		    .fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs, .exceptionCapture = exceptionCapture});
-		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall}, cleanupEffect);
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
 
@@ -448,6 +449,7 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 		// After each iteration, the static variable stack must be empty.
 		// Since the function completes normally, all destructors fire in order.
 		assert(completingTraceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
+		tc->validateCleanupStateAtIterationEnd();
 	}
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
@@ -514,6 +516,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 			resume();
 			wrapperFunc();
 			assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+			validateCleanupStateAtIterationEnd();
 		}
 
 		state.reset();
@@ -569,7 +572,7 @@ std::string LazyTraceContext::formatStaticVars() const {
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), EMPTY_CLEANUP_STATE};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), currentCleanupState};
 }
 
 } // namespace nautilus::tracing

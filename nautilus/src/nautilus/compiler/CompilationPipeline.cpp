@@ -213,9 +213,10 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}
 
-	// Lifetime state must be derived from the final CFG. Keep this outside the
-	// optimization fixed-point group and run it even when optimizations are
-	// disabled, because every backend consumes the resulting exception region.
+	// Resolve the trace-recorded call cleanup states only after ordinary IR
+	// optimization has removed unreachable calls. Keep this outside the
+	// fixed-point group and run it even when optimizations are disabled, because
+	// every backend consumes the resulting exception region.
 	ir::ExceptionCleanupPreparationPass().apply(*ir);
 	dumpHandler.dump("after_exception_cleanup", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 

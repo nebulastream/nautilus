@@ -100,16 +100,14 @@ TypedValueRef& traceTernaryOp(Op op, Type resultType, const TypedValueRef& first
 }
 
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
-                         FunctionAttributes fnAttrs, std::optional<CleanupEffect> cleanupEffect,
-                         std::optional<ExceptionCaptureSpec> exceptionCapture) {
-	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs, cleanupEffect, exceptionCapture);
+                         FunctionAttributes fnAttrs, std::optional<ExceptionCaptureSpec> exceptionCapture) {
+	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs, exceptionCapture);
 }
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
-                                 std::optional<CleanupEffect> cleanupEffect,
                                  std::optional<ExceptionCaptureSpec> exceptionCapture) {
-	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, cleanupEffect, exceptionCapture);
+	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, exceptionCapture);
 }
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
@@ -123,8 +121,20 @@ TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* defini
 }
 
 TypedValueRef& traceAlloca(size_t size, size_t align, std::optional<AllocaIndex>& alloca, void* destructorFunction,
-                           FunctionAttributes destructorAttrs, bool activateAfterAlloca) {
-	return activeTracer->traceAlloca(size, align, alloca, destructorFunction, destructorAttrs, activateAfterAlloca);
+                           FunctionAttributes destructorAttrs) {
+	return activeTracer->traceAlloca(size, align, alloca, destructorFunction, destructorAttrs);
+}
+
+void activateCleanup(AllocaIndex alloca) {
+	if (activeTracer) {
+		activeTracer->activateCleanup(alloca);
+	}
+}
+
+void deactivateCleanup(AllocaIndex alloca) {
+	if (activeTracer) {
+		activeTracer->deactivateCleanup(alloca);
+	}
 }
 
 std::ostream& operator<<(std::ostream& os, const Op& op) {

@@ -5,20 +5,20 @@
 namespace nautilus::compiler::ir {
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier,
                                        std::span<Operation* const> inputArguments, Type resultType,
-                                       std::optional<CleanupEffect> cleanupEffect)
+                                       std::optional<CleanupStateId> cleanupState)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
-      cleanupEffect(std::move(cleanupEffect)) {
+      cleanupState(std::move(cleanupState)) {
 }
 
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol,
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
                                        Type resultType, const FunctionAttributes fnAttrs,
-                                       std::optional<CleanupEffect> cleanupEffect,
-                                       std::optional<ExceptionCaptureSpec> exceptionCapture)
+                                       std::optional<ExceptionCaptureSpec> exceptionCapture,
+                                       std::optional<CleanupStateId> cleanupState)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
       mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs),
-      cleanupEffect(std::move(cleanupEffect)), exceptionCapture(std::move(exceptionCapture)) {
+      exceptionCapture(std::move(exceptionCapture)), cleanupState(std::move(cleanupState)) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -48,8 +48,8 @@ const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
 }
 
-const std::optional<CleanupEffect>& ProxyCallOperation::getCleanupEffect() const {
-	return cleanupEffect;
+const std::optional<CleanupStateId>& ProxyCallOperation::getCleanupState() const {
+	return cleanupState;
 }
 
 const std::optional<ExceptionCaptureSpec>& ProxyCallOperation::getExceptionCapture() const {

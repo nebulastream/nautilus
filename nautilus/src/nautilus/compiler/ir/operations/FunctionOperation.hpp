@@ -30,7 +30,8 @@ public:
 	explicit FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
 	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg,
 	                           std::vector<AllocaSpec> allocaSpecs = {},
-	                           std::unordered_map<std::string, std::string> attributes = {});
+	                           std::unordered_map<std::string, std::string> attributes = {},
+	                           std::vector<CleanupState> cleanupStates = {});
 
 	~FunctionOperation() = default;
 
@@ -63,6 +64,7 @@ public:
 	/// stack allocation site observed during tracing; AllocaOperation nodes
 	/// in this function's body reference entries by index.
 	[[nodiscard]] const std::vector<AllocaSpec>& getAllocaSpecs() const;
+	[[nodiscard]] const std::vector<CleanupState>& getCleanupStates() const;
 
 	[[nodiscard]] bool hasExceptionRegion() const;
 	[[nodiscard]] const FunctionExceptionRegion& getExceptionRegion() const;
@@ -80,6 +82,7 @@ private:
 	std::vector<Type> inputArgs;
 	std::vector<std::string> inputArgNames;
 	std::vector<AllocaSpec> allocaSpecs;
+	std::vector<CleanupState> cleanupStates;
 	std::optional<FunctionExceptionRegion> exceptionRegion;
 	std::unordered_map<std::string, std::string> attributes;
 };

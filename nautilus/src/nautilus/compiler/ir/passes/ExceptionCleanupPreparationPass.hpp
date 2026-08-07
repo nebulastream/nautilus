@@ -5,11 +5,13 @@
 namespace nautilus::compiler::ir {
 
 /**
- * Computes the static destructor state at every potentially throwing call.
+ * Resolves the trace-recorded destructor state at every potentially throwing call.
  *
  * The result is attached to each FunctionOperation as a side-table and does
  * not alter the ordinary CFG. Backends materialize the logical pads only
- * after all normal IR optimization has completed.
+ * after all normal IR optimization has completed. Lifetime transitions are
+ * intentionally absent from the ordinary IR: exact state identity is part of
+ * tracing and only calls retain a state reference.
  */
 class ExceptionCleanupPreparationPass : public IRPass {
 public:

@@ -139,11 +139,11 @@ using unwrap_val_t = typename unwrap_val<std::remove_cvref_t<T>>::type;
 
 template <typename ValueType>
 val<ValueType*> nautilus_alloca(std::optional<AllocaIndex>& alloca, void* destructorFunction,
-                                FunctionAttributes destructorAttrs, bool activateAfterAlloca) {
+                                FunctionAttributes destructorAttrs) {
 #ifdef ENABLE_TRACING
 	if (tracing::inTracer()) {
-		auto valueRef = tracing::traceAlloca(sizeof(ValueType), alignof(ValueType), alloca, destructorFunction,
-		                                     destructorAttrs, activateAfterAlloca);
+		auto valueRef =
+		    tracing::traceAlloca(sizeof(ValueType), alignof(ValueType), alloca, destructorFunction, destructorAttrs);
 		return val<ValueType*>(valueRef);
 	}
 #endif
@@ -238,14 +238,24 @@ private:
 		return reinterpret_cast<void*>(cleanup_destruct);
 	}
 
-	std::optional<CleanupEffect> cleanupEffect(CleanupEffectKind kind) const {
-		if constexpr (std::is_trivially_destructible_v<ValueType>) {
-			return std::nullopt;
+	void activate_cleanup() {
+#ifdef ENABLE_TRACING
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			if (alloca_.has_value()) {
+				tracing::activateCleanup(*alloca_);
+			}
 		}
-		if (!alloca_.has_value()) {
-			return std::nullopt;
+#endif
+	}
+
+	void deactivate_cleanup() {
+#ifdef ENABLE_TRACING
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			if (alloca_.has_value()) {
+				tracing::deactivateCleanup(*alloca_);
+			}
 		}
-		return CleanupEffect {kind, *alloca_};
+#endif
 	}
 
 	// If a forwarded constructor throws during direct execution, the val
@@ -269,8 +279,8 @@ private:
 			return;
 		}
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
-			details::invokeWithCleanupEffect(cleanupEffect(CleanupEffectKind::DeactivateBeforeCall), destruct,
-			                                 value_ptr);
+			deactivate_cleanup();
+			invoke(destruct, value_ptr);
 		}
 		// Pair the aligned operator new in nautilus_alloca's interpreter
 		// fallback with an aligned operator delete; without the
@@ -289,37 +299,35 @@ public:
 	// Default-constructs the object on the traced stack.
 	// For trivially-default-constructible types the ctor call is elided.
 	val()
-	    : value_ptr(details::nautilus_alloca<ValueType>(
-	          alloca_, cleanupDestructorFunction(), cleanupDestructorAttributes(),
-	          !std::is_trivially_destructible_v<ValueType> && std::is_trivially_default_constructible_v<ValueType>)) {
+	    : value_ptr(details::nautilus_alloca<ValueType>(alloca_, cleanupDestructorFunction(),
+	                                                    cleanupDestructorAttributes())) {
 		if constexpr (!std::is_trivially_default_constructible_v<ValueType>) {
 			try {
-				details::invokeWithCleanupEffect(cleanupEffect(CleanupEffectKind::ActivateAfterSuccess),
-				                                 val<ValueType>::construct, value_ptr);
+				invoke(val<ValueType>::construct, value_ptr);
 			} catch (...) {
 				release_unconstructed_storage();
 				throw;
 			}
 		}
+		activate_cleanup();
 	}
 
 	// Copy-constructs from another val<ValueType>.
 	// Trivially-copyable types use a traced memcpy; others use copy_construct via invoke().
 	val(const val<ValueType>& other)
-	    : value_ptr(details::nautilus_alloca<ValueType>(
-	          alloca_, cleanupDestructorFunction(), cleanupDestructorAttributes(),
-	          !std::is_trivially_destructible_v<ValueType> && std::is_trivially_copyable_v<ValueType>)) {
+	    : value_ptr(details::nautilus_alloca<ValueType>(alloca_, cleanupDestructorFunction(),
+	                                                    cleanupDestructorAttributes())) {
 		if constexpr (std::is_trivially_copyable_v<ValueType>) {
 			nautilus::memcpy(value_ptr, other.value_ptr, sizeof(ValueType));
 		} else {
 			try {
-				details::invokeWithCleanupEffect(cleanupEffect(CleanupEffectKind::ActivateAfterSuccess), copy_construct,
-				                                 value_ptr, other.value_ptr);
+				invoke(copy_construct, value_ptr, other.value_ptr);
 			} catch (...) {
 				release_unconstructed_storage();
 				throw;
 			}
 		}
+		activate_cleanup();
 	}
 
 	// Move-constructs from another val<ValueType>.
@@ -351,15 +359,14 @@ public:
 	             !(sizeof...(ValArgs) == 1 && (std::same_as<std::remove_cvref_t<ValArgs>, val<ValueType>> || ...)))
 	val(ValArgs&&... args)
 	    : value_ptr(details::nautilus_alloca<ValueType>(alloca_, cleanupDestructorFunction(),
-	                                                    cleanupDestructorAttributes(), false)) {
+	                                                    cleanupDestructorAttributes())) {
 		try {
-			details::invokeWithCleanupEffect(cleanupEffect(CleanupEffectKind::ActivateAfterSuccess),
-			                                 construct_with<details::unwrap_val_t<ValArgs>...>, value_ptr,
-			                                 std::forward<ValArgs>(args)...);
+			invoke(construct_with<details::unwrap_val_t<ValArgs>...>, value_ptr, std::forward<ValArgs>(args)...);
 		} catch (...) {
 			release_unconstructed_storage();
 			throw;
 		}
+		activate_cleanup();
 	}
 
 	// Copy-assigns from another val<ValueType>.
