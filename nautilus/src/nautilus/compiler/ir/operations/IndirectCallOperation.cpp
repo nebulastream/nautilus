@@ -21,8 +21,10 @@ std::span<Operation*> buildIndirectCallInputs(common::Arena& arena, Operation* f
 
 IndirectCallOperation::IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier,
                                              Operation* functionPtrOperand, std::span<Operation* const> inputArguments,
-                                             Type resultType, FunctionAttributes fnAttrs)
-    : Operation(Operation::OperationType::IndirectCallOp, identifier, resultType), fnAttrs(std::move(fnAttrs)) {
+                                             Type resultType, FunctionAttributes fnAttrs,
+                                             std::optional<CleanupEffect> cleanupEffect)
+    : Operation(Operation::OperationType::IndirectCallOp, identifier, resultType), fnAttrs(std::move(fnAttrs)),
+      cleanupEffect(std::move(cleanupEffect)) {
 	// inputs[0] = function pointer operand; inputs[1..] = call arguments
 	this->inputs = buildIndirectCallInputs(arena, functionPtrOperand, inputArguments);
 }
@@ -37,6 +39,10 @@ std::span<Operation* const> IndirectCallOperation::getInputArguments() const {
 
 const FunctionAttributes& IndirectCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
+}
+
+const std::optional<CleanupEffect>& IndirectCallOperation::getCleanupEffect() const {
+	return cleanupEffect;
 }
 
 bool IndirectCallOperation::classof(const Operation* op) {

@@ -47,6 +47,23 @@ const std::vector<AllocaSpec>& FunctionOperation::getAllocaSpecs() const {
 	return allocaSpecs;
 }
 
+bool FunctionOperation::hasExceptionRegion() const {
+	return exceptionRegion.has_value();
+}
+
+const FunctionExceptionRegion& FunctionOperation::getExceptionRegion() const {
+	assert(exceptionRegion.has_value() && "function has no prepared exception region");
+	return *exceptionRegion;
+}
+
+void FunctionOperation::setExceptionRegion(FunctionExceptionRegion region) {
+	exceptionRegion = std::move(region);
+}
+
+void FunctionOperation::clearExceptionRegion() {
+	exceptionRegion.reset();
+}
+
 BasicBlock* FunctionOperation::getEntryBlock() const {
 	return functionBasicBlocks.empty() ? nullptr : functionBasicBlocks.front();
 }

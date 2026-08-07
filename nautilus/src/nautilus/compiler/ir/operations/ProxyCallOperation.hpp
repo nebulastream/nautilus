@@ -1,6 +1,7 @@
 
-#include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -9,11 +10,12 @@ namespace nautilus::compiler::ir {
 class ProxyCallOperation : public Operation {
 public:
 	ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-	                   Type resultType);
+	                   Type resultType, std::optional<CleanupEffect> cleanupEffect = std::nullopt);
 
 	ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
 	                   void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-	                   Type resultType, FunctionAttributes fnAttrs);
+	                   Type resultType, FunctionAttributes fnAttrs,
+	                   std::optional<CleanupEffect> cleanupEffect = std::nullopt);
 
 	~ProxyCallOperation() = default;
 
@@ -26,6 +28,7 @@ public:
 	void* getFunctionPtr();
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
+	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
 
 	static bool classof(const Operation* op);
 
@@ -34,5 +37,6 @@ private:
 	const std::string functionName;
 	void* functionPtr;
 	FunctionAttributes fnAttrs;
+	std::optional<CleanupEffect> cleanupEffect;
 };
 } // namespace nautilus::compiler::ir

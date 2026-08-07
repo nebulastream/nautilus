@@ -1,8 +1,9 @@
 
 #pragma once
 
-#include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -16,7 +17,8 @@ namespace nautilus::compiler::ir {
 class IndirectCallOperation : public Operation {
 public:
 	IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier, Operation* functionPtrOperand,
-	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs);
+	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs,
+	                      std::optional<CleanupEffect> cleanupEffect = std::nullopt);
 
 	~IndirectCallOperation() = default;
 
@@ -27,11 +29,13 @@ public:
 	std::span<Operation* const> getInputArguments() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
+	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
 
 	static bool classof(const Operation* op);
 
 private:
 	FunctionAttributes fnAttrs;
+	std::optional<CleanupEffect> cleanupEffect;
 };
 
 } // namespace nautilus::compiler::ir

@@ -1,8 +1,10 @@
 #pragma once
 
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace nautilus::compiler::ir {
 /// Pointer to a stack slot in the enclosing function's alloca table.
@@ -15,15 +17,18 @@ namespace nautilus::compiler::ir {
 /// site receives its own entry.
 class AllocaOperation : public Operation {
 public:
-	AllocaOperation(common::Arena& arena, OperationIdentifier id, uint32_t allocaIndex);
+	AllocaOperation(common::Arena& arena, OperationIdentifier id, uint32_t allocaIndex,
+	                std::optional<CleanupEffect> cleanupEffect = std::nullopt);
 
 	~AllocaOperation() = default;
 
 	uint32_t getIndex() const;
+	[[nodiscard]] const std::optional<CleanupEffect>& getCleanupEffect() const;
 
 	static bool classof(const Operation* op);
 
 private:
 	uint32_t allocaIndex;
+	std::optional<CleanupEffect> cleanupEffect;
 };
 } // namespace nautilus::compiler::ir

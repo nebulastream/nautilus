@@ -1,11 +1,14 @@
 
 #pragma once
 
+#include "nautilus/common/ExceptionCleanup.hpp"
+#include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include <cstddef>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 
 namespace nautilus::compiler::ir {
 
@@ -13,8 +16,13 @@ namespace nautilus::compiler::ir {
 /// IR references one of these by index; backends emit the real `alloca`
 /// instruction (or equivalent) once per entry in the function prologue.
 struct AllocaSpec {
+	AllocaSpec(size_t size, size_t align, std::optional<DestructorSpec> destructor = std::nullopt)
+	    : size(size), align(align), destructor(std::move(destructor)) {
+	}
+
 	size_t size;
 	size_t align;
+	std::optional<DestructorSpec> destructor;
 };
 
 class FunctionOperation : public Operation {
@@ -56,6 +64,11 @@ public:
 	/// in this function's body reference entries by index.
 	[[nodiscard]] const std::vector<AllocaSpec>& getAllocaSpecs() const;
 
+	[[nodiscard]] bool hasExceptionRegion() const;
+	[[nodiscard]] const FunctionExceptionRegion& getExceptionRegion() const;
+	void setExceptionRegion(FunctionExceptionRegion region);
+	void clearExceptionRegion();
+
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
 
@@ -67,6 +80,7 @@ private:
 	std::vector<Type> inputArgs;
 	std::vector<std::string> inputArgNames;
 	std::vector<AllocaSpec> allocaSpecs;
+	std::optional<FunctionExceptionRegion> exceptionRegion;
 	std::unordered_map<std::string, std::string> attributes;
 };
 } // namespace nautilus::compiler::ir

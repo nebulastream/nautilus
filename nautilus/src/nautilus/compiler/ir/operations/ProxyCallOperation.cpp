@@ -4,16 +4,20 @@
 
 namespace nautilus::compiler::ir {
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier,
-                                       std::span<Operation* const> inputArguments, Type resultType)
-    : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments) {
+                                       std::span<Operation* const> inputArguments, Type resultType,
+                                       std::optional<CleanupEffect> cleanupEffect)
+    : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
+      cleanupEffect(std::move(cleanupEffect)) {
 }
 
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol,
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-                                       Type resultType, const FunctionAttributes fnAttrs)
+                                       Type resultType, const FunctionAttributes fnAttrs,
+                                       std::optional<CleanupEffect> cleanupEffect)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
-      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs) {
+      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs),
+      cleanupEffect(std::move(cleanupEffect)) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -41,6 +45,10 @@ void* ProxyCallOperation::getFunctionPtr() {
 
 const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
+}
+
+const std::optional<CleanupEffect>& ProxyCallOperation::getCleanupEffect() const {
+	return cleanupEffect;
 }
 
 bool ProxyCallOperation::classof(const Operation* op) {
