@@ -2,8 +2,9 @@
 
 ## Status
 
-Approved design. This document specifies how Nautilus destroys fully constructed `val<T>` class values when a
-runtime call, indirect call, or nested Nautilus call throws.
+Approved, reviewed design. This document specifies how Nautilus destroys fully constructed `val<T>` class values
+when a runtime call, indirect call, or nested Nautilus call throws. A terminal Nautilus IR pass creates one shared
+logical exception region per function; backends implement only the transport into and out of that region.
 
 ## 1. Objective
 
@@ -29,11 +30,13 @@ The feature enters the compilation pipeline in five stages:
 1. `val<T>` tracing records destructor metadata and cleanup effects.
 2. Trace-to-IR conversion preserves that metadata on existing operations.
 3. The existing Nautilus IR optimization pipeline runs normally.
-4. A backend-neutral analysis computes the active cleanup state at each call.
-5. The selected backend materializes native exception handling or the portable fallback.
+4. A terminal backend-neutral pass computes active cleanup state and attaches an immutable logical exception region.
+5. The selected backend materializes native exception handling or captured propagation from that shared region.
 
-Cleanup CFG is generated only after normal Nautilus IR optimization. The Nautilus optimizer therefore continues to
-see straight-line calls and does not need to model LLVM exception terminators.
+The exception region is generated only after normal Nautilus IR optimization. The ordinary Nautilus CFG therefore
+continues to contain straight-line calls and does not model LLVM exception terminators or hidden exceptional
+predecessors. No CFG-mutating Nautilus pass may run after exception-region preparation without first invalidating and
+recomputing the region.
 
 ## 3. Cleanup representation
 
@@ -170,24 +173,56 @@ Inference applies to:
 
 An explicit `noUnwind=true` remains a trusted user contract. `willReturn` and `noUnwind` remain independent.
 
-## 6. Cleanup-state analysis
+The internal construction and destruction wrappers preserve the corresponding type trait in their declarations:
 
-Add a backend-neutral, read-only analysis over the final optimized `IRGraph`:
+```cpp
+static void construct(ValueType*) noexcept(std::is_nothrow_default_constructible_v<ValueType>);
+static void destruct(ValueType*) noexcept(std::is_nothrow_destructible_v<ValueType>);
+
+template <typename... Args>
+static void construct_with(ValueType*, Args...)
+    noexcept(std::is_nothrow_constructible_v<ValueType, Args...>);
+```
+
+Backend intrinsic replacements must be `noUnwind` in the initial implementation. A potentially throwing intrinsic is
+lowered as an ordinary call or rejected with a backend diagnostic; it cannot consume an exceptional call-site record
+and then erase the physical call.
+
+## 6. Terminal exception-region preparation pass
+
+Add `ExceptionCleanupPreparationPass` as the final pass over the optimized `IRGraph`. It computes cleanup state,
+deduplicates logical cleanup pads, and attaches an immutable region to each `FunctionOperation`:
 
 ```cpp
 using CleanupStateId = uint32_t;
+using CleanupPadId = uint32_t;
 
 struct CleanupState {
 	std::vector<AllocaIndex> active;
 };
 
-struct FunctionCleanupPlan {
-	std::vector<CleanupState> states;
-	std::unordered_map<const Operation*, CleanupStateId> unwind_state;
+struct CleanupPad {
+	CleanupPadId id;
+	std::vector<AllocaIndex> active;
+};
+
+struct ExceptionalCallSite {
+	const Operation* call;
+	std::optional<CleanupPadId> cleanup;
+};
+
+struct FunctionExceptionRegion {
+	std::vector<CleanupPad> pads;
+	std::vector<ExceptionalCallSite> call_sites;
 };
 ```
 
-The plan is an analysis result. It does not mutate the Nautilus CFG.
+`CleanupPad::active` is stored in activation order and executed in reverse order. Calls with identical ordered active
+states share a pad. A potentially throwing call is present in `call_sites` even when `cleanup` is absent, because a
+captured-propagation backend must still prevent the exception from crossing its generated frame.
+
+The region is an exceptional side table, not part of `FunctionOperation::getBasicBlocks()`. Ordinary dominance,
+predecessor, loop, and block-rewriting utilities therefore remain unchanged.
 
 ### 6.1 Transfer rules
 
@@ -196,7 +231,8 @@ The entry state is empty.
 For `DeactivateBeforeCall`, remove the referenced allocation before recording the call's unwind state. Removal is by
 allocation index and preserves the relative order of all remaining entries.
 
-For any potentially throwing call, record the current state as its unwind state.
+For any potentially throwing call, record the current state and create an exceptional call-site entry. Associate a
+cleanup pad only when that state is non-empty.
 
 For `ActivateAfterSuccess`, append the referenced allocation only to the normal successor state. The unwind state
 remains unchanged.
@@ -216,12 +252,14 @@ owner.
 Normal returns must have an empty active-cleanup state. A future ownership-escape representation may relax this for
 supported struct return-by-value cases; this feature does not infer escapes implicitly.
 
-### 6.3 Landing-pad eligibility
+### 6.3 Propagation and cleanup eligibility
 
-A native landing pad is required at a call exactly when:
+The pass and backend use separate predicates:
 
 ```cpp
-!call.attributes.noUnwind && !cleanup_plan.unwindState(call).active.empty()
+mayThrow = !call.attributes.noUnwind;
+needsCleanupPad = mayThrow && !active.empty();
+needsCapture = mayThrow && backend.exceptionPropagationMode() == CapturedHostRethrow;
 ```
 
 Consequences:
@@ -232,12 +270,36 @@ Consequences:
 - a constructor's unwind state excludes the object under construction;
 - a destructor's unwind state excludes that object but includes remaining outer objects.
 
-## 7. Native MLIR/LLVM lowering
+On a native-unwind backend, a call with no active destructor remains an ordinary call and unwinds through the
+generated frame normally. On a captured-propagation backend, the same call still uses a catching thunk and immediate
+pending-exception check, but branches directly to exceptional function exit rather than to a cleanup pad.
 
-### 7.1 Lowering position
+### 6.4 Static-lifetime restriction
 
-The initial MLIR lowering continues to emit ordinary calls. Calls selected by the cleanup plan receive private
-call-site and cleanup-state attributes.
+Every call site must have one statically known ordered active state. If CFG predecessors disagree at a merge, the pass
+rejects the function with a diagnostic. Conditionally constructed objects that remain alive across a merge require
+runtime lifetime flags and are outside the initial feature. Branch-local objects that are destroyed before the merge
+remain supported.
+
+## 7. Native-unwind lowering
+
+Backends expose their transport capability explicitly:
+
+```cpp
+enum class ExceptionPropagationMode {
+	NativeUnwind,
+	CapturedHostRethrow,
+};
+```
+
+MLIR/LLVM and generated C++ use `NativeUnwind`. TBC JIT and AsmJit use `CapturedHostRethrow` until their generated
+frames have registered unwind metadata. Interpreters may use native propagation only when no exception crosses a
+foreign-call or generated callback frame.
+
+### 7.1 MLIR/LLVM lowering
+
+The initial MLIR lowering continues to emit ordinary calls. Calls selected by the shared exception region receive
+private call-site and cleanup-pad attributes.
 
 After Func-to-LLVM conversion, a new `MaterializeCppExceptionHandlingPass` rewrites the marked `LLVM::CallOp`s. If
 Func-to-LLVM does not preserve the private attributes, Nautilus supplies a conversion pattern that copies them. The
@@ -246,7 +308,7 @@ pass runs before MLIR-to-LLVM-IR translation and LLVM optimization.
 This placement ensures that `LLVM::InvokeOp`, `LLVM::LandingpadOp`, and `LLVM::ResumeOp` are created in LLVM dialect
 without exposing them to Nautilus IR passes.
 
-### 7.2 Call rewriting
+### 7.2 MLIR call rewriting
 
 A marked call becomes an invoke with a unique normal continuation:
 
@@ -259,7 +321,7 @@ A marked call becomes an invoke with a unique normal continuation:
 Only calls that actually need cleanup split an MLIR/LLVM block. One straight Nautilus block may therefore map to
 multiple LLVM blocks.
 
-### 7.3 Cleanup blocks
+### 7.3 MLIR cleanup blocks
 
 Calls with identical ordered cleanup states share one cleanup block. The first implementation deduplicates complete
 states; suffix-sharing can be added later if code size warrants it.
@@ -287,20 +349,26 @@ unwind edge that the runtime cannot traverse.
 
 MLIR/LLVM targets requiring a different EH model use the portable fallback until a target-specific emitter exists.
 
-### 7.5 Throwing cleanup destructors
+### 7.5 Generated C++ lowering
+
+The C++ backend emits native `try`/`catch (...)` dispatch using the same logical pads. After a pad destroys its active
+objects, it uses `throw;` to preserve the original exception. The generated source must not synthesize a replacement
+exception.
+
+### 7.6 Throwing cleanup destructors
 
 A destructor marked `noUnwind` is emitted as an ordinary cleanup call. A potentially throwing destructor executed
 while another exception is active uses an invoke whose unwind destination terminates the process, matching C++
 double-exception behavior.
 
-## 8. Portable fallback
+## 8. Captured host-rethrow transport
 
 AsmJit, bytecode/TBC, and unsupported MLIR targets must not unwind C++ exceptions through generated frames without
 suitable unwind metadata.
 
 ### 8.1 Runtime exception frames
 
-A typed public invocation pushes a thread-local exception frame:
+A typed public invocation for an executable using `CapturedHostRethrow` pushes a thread-local exception frame:
 
 ```cpp
 struct ExceptionFrame {
@@ -309,7 +377,8 @@ struct ExceptionFrame {
 };
 ```
 
-The structure is a TLS stack so nested and reentrant compiled calls remain isolated.
+The structure is a TLS stack so nested and reentrant compiled calls remain isolated. A pending primary exception is
+never overwritten. Cleanup-destructor failure terminates instead of storing a second exception.
 
 ### 8.2 Captured calls
 
@@ -320,16 +389,20 @@ template <typename R, typename... Args>
 R invokeCatching(ExceptionFrame* frame, R (*target)(Args...), Args... args) noexcept;
 ```
 
-The thunk calls the real target, catches `...`, stores `std::current_exception()`, and returns an ABI-compatible zero
-or default value. Generated code checks the pending flag immediately after the call.
+The thunk directly calls the real C++ target, catches `...`, stores `std::current_exception()`, and returns an
+ABI-compatible zero or default value. The target must be invoked inside this typed C++ thunk: wrapping libffi,
+dyncall, or another C foreign-call layer is insufficient because the exception would already have crossed frames
+that are not guaranteed to support C++ unwinding. Generated code checks the pending flag immediately after the call
+and before consuming the sentinel result.
 
 Every potentially throwing call is captured on fallback backends, even when its cleanup state is empty, because the
 exception must not cross the generated frame. Calls marked `noUnwind` remain direct and unchecked.
 
 ### 8.3 Exceptional cleanup and exit
 
-If the pending flag is set, generated code branches to the cleanup block for the call's state. The block invokes
-active destructors in reverse order and then returns an ABI-compatible default result from the generated function.
+If the pending flag is set, generated code branches to the call site's logical cleanup pad, or directly to exceptional
+exit when the call site has no pad. The pad invokes active destructors in reverse order and then returns an
+ABI-compatible default result from the generated function.
 
 A destructor throwing while a primary exception is pending terminates the process. A destructor that throws on the
 normal path becomes the primary pending exception after its own `DeactivateBeforeCall` effect has been applied; outer
@@ -340,11 +413,12 @@ generated caller observes the flag immediately after the call and performs its o
 
 ### 8.4 Safe rethrow boundary
 
-`Executable::Invocable` owns the outer exception-frame guard. After the generated function returns, it rethrows a
-pending exception from ordinary C++ code.
+`Executable::Invocable` owns the outer exception-frame guard when the executable reports `CapturedHostRethrow`.
+After the generated function returns, it rethrows a pending exception from ordinary C++ code.
 
 `ModuleFunction` must route compiled calls through this exception-aware wrapper instead of caching and directly
-calling a raw backend pointer whenever the executable requires the fallback.
+calling a raw backend pointer whenever the executable reports `CapturedHostRethrow`. Nested generated calls share the
+current frame and check it immediately after their callee returns.
 
 The typed Engine and `CompiledModule` invocation APIs guarantee fallback propagation. Direct use of the low-level
 `getInvocableFunctionPtr()` is outside this guarantee because it bypasses the safe rethrow boundary.
@@ -408,6 +482,9 @@ The IR verifier and cleanup analysis enforce:
 - normal returns do not retain active local cleanups;
 - destructor descriptors accept the allocation pointer and return `void`;
 - cleanup-state IDs consumed by lowering exist in the function plan;
+- every potentially throwing call occurs exactly once in the exception region;
+- every cleanup-pad allocation is active at each call site referencing the pad;
+- a captured call result is not consumed before its pending-exception check;
 - `noUnwind` calls never receive an exceptional successor.
 
 Diagnostics identify the function, block, operation, and allocation index.
@@ -420,8 +497,8 @@ Cleanup effects travel with their owning operation:
 - branch folding removes effects in deleted branches;
 - calls carrying cleanup effects remain side-effecting and cannot be eliminated or commoned;
 - an allocation with a registered destructor is not dead merely because its stored value is unused;
-- cleanup analysis runs after every Nautilus CFG mutation;
-- backend-generated cleanup blocks do not re-enter Nautilus optimization;
+- exception-region preparation runs once after the final Nautilus CFG mutation;
+- the immutable exception region does not re-enter Nautilus optimization;
 - LLVM may optimize native cleanup CFG while preserving LLVM EH semantics.
 
 ## 12. Testing
@@ -472,6 +549,11 @@ For every enabled backend:
 - loop-local and branch-local objects are cleaned correctly;
 - `noexcept` calls use the direct path;
 - nested and reentrant calls isolate exception frames.
+- a throwing fallback call with no active destructor propagates without creating a cleanup pad;
+- captured call results are not observed on their exceptional continuation;
+- concurrent invocations do not share pending exceptions;
+- intrinsic replacements are `noUnwind` or remain physical calls;
+- typed invocation uses the host-rethrow boundary while raw-pointer behavior remains explicitly unsupported.
 
 A subprocess or death test verifies that a destructor throwing during cleanup of an active exception terminates.
 

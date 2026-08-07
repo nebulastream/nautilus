@@ -11,5 +11,6 @@ Testing/
 .claude/settings.local.json
 .DS_Store
 /.superpowers/
+/.worktrees/
 /docs/superpowers/
 /.worktrees/
