@@ -311,6 +311,12 @@ public:
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
 
+	/// Interned ordered active-cleanup states. Index zero is always the empty state.
+	std::vector<CleanupState> cleanupStates {CleanupState {}};
+
+	CleanupStateId internCleanupState(std::vector<AllocaIndex> active);
+	[[nodiscard]] const CleanupState& getCleanupState(CleanupStateId id) const;
+
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it
 	/// only fires for genuinely new alloca sites — re-traces that hit an

@@ -69,6 +69,28 @@ TEST_CASE("Tracing infers noUnwind from exact noexcept function pointers") {
 	REQUIRE_FALSE(mayThrow->fnAttrs.noUnwind);
 }
 
+TEST_CASE("execution traces intern ordered cleanup states") {
+	common::Arena arena;
+	ExecutionTrace trace(arena);
+
+	REQUIRE(trace.getCleanupState(EMPTY_CLEANUP_STATE).active.empty());
+	const auto first = trace.internCleanupState({0, 1});
+	const auto repeated = trace.internCleanupState({0, 1});
+	const auto reordered = trace.internCleanupState({1, 0});
+
+	REQUIRE(first == repeated);
+	REQUIRE(first != reordered);
+	REQUIRE(trace.getCleanupState(first).active == std::vector<AllocaIndex> {0, 1});
+}
+
+TEST_CASE("snapshot identity includes exact cleanup state") {
+	Snapshot empty(nullptr, 7, CleanupStateId {0});
+	Snapshot active(nullptr, 7, CleanupStateId {1});
+
+	REQUIRE(empty != active);
+	REQUIRE(std::hash<Snapshot> {}(empty) != std::hash<Snapshot> {}(active));
+}
+
 TEST_CASE("Tracing records construction activation and destruction deactivation") {
 	common::Arena arena;
 	auto module = trace(

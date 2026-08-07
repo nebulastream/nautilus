@@ -569,7 +569,7 @@ std::string LazyTraceContext::formatStaticVars() const {
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), EMPTY_CLEANUP_STATE};
 }
 
 } // namespace nautilus::tracing

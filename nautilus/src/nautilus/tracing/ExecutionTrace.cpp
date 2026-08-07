@@ -371,6 +371,24 @@ AllocaIndex ExecutionTrace::addAllocaSpec(size_t size, size_t align, std::option
 	return index;
 }
 
+CleanupStateId ExecutionTrace::internCleanupState(std::vector<AllocaIndex> active) {
+	const auto position = std::find_if(cleanupStates.begin(), cleanupStates.end(),
+	                                   [&](const CleanupState& state) { return state.active == active; });
+	if (position != cleanupStates.end()) {
+		return static_cast<CleanupStateId>(std::distance(cleanupStates.begin(), position));
+	}
+	const auto id = static_cast<CleanupStateId>(cleanupStates.size());
+	cleanupStates.push_back(CleanupState {std::move(active)});
+	return id;
+}
+
+const CleanupState& ExecutionTrace::getCleanupState(CleanupStateId id) const {
+	if (id >= cleanupStates.size()) {
+		throw RuntimeException("Cleanup state index out of bounds: " + std::to_string(id));
+	}
+	return cleanupStates[id];
+}
+
 } // namespace nautilus::tracing
 
 namespace fmt {

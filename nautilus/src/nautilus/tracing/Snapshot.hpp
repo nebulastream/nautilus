@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
 #include <cinttypes>
 
@@ -7,7 +8,7 @@ namespace nautilus::tracing {
 
 struct Snapshot {
 public:
-	Snapshot(Tag* tag, uint64_t staticValueHash);
+	Snapshot(Tag* tag, uint64_t staticValueHash, CleanupStateId cleanupStateId = EMPTY_CLEANUP_STATE);
 
 	Snapshot();
 
@@ -23,10 +24,15 @@ public:
 		return tag;
 	}
 
+	[[nodiscard]] CleanupStateId getCleanupStateId() const {
+		return cleanupStateId;
+	}
+
 private:
 	friend std::hash<Snapshot>;
 	uint64_t staticValueHash;
 	Tag* tag;
+	CleanupStateId cleanupStateId;
 };
 } // namespace nautilus::tracing
 

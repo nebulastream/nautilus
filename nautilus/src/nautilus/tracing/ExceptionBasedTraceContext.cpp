@@ -585,7 +585,7 @@ uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), EMPTY_CLEANUP_STATE};
 }
 
 } // namespace nautilus::tracing
