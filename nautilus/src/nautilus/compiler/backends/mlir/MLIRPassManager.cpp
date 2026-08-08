@@ -36,7 +36,7 @@ std::unique_ptr<mlir::Pass> getMLIROptimizationPass(MLIRPassManager::Optimizatio
 
 int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp>& module,
                                                 const std::vector<OptimizationPass>& optimizationPasses,
-                                                const DebugInfoOptions& debugInfo) {
+                                                const DebugInfoOptions& debugInfo, bool deferInlining) {
 	mlir::PassManager passManager(module->getContext());
 
 	const bool debugEnabled = debugInfo.enable;
@@ -45,7 +45,7 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// MLIR's inliner rewrites locations into inlinedAt chains and the
 	// interaction with a non-MLIR source file is not yet validated, so we
 	// skip the inliner in that mode to keep stepping predictable.
-	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
+	const bool skipInliner = deferInlining || (debugEnabled && debugInfo.sourceMode == "nautilus-ir");
 
 	if (!skipInliner) {
 		if (!optimizationPasses.empty()) {

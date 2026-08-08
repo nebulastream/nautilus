@@ -116,7 +116,13 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// 2.b Take the MLIR module from the MLIRLoweringProvider and apply lowering
 	// and optimization passes.
 	const auto pipelineStart = std::chrono::steady_clock::now();
-	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo)) {
+	// Cleanup-pad IDs are local to each Nautilus function. Keep those function
+	// boundaries until the calls have become LLVM invokes with real unwind
+	// destinations; the LLVM optimizer can then inline and compose the EH regions.
+	const auto hasExceptionCleanupPads = std::ranges::any_of(ir->getFunctionOperations(), [](const auto* function) {
+		return function != nullptr && function->hasExceptionRegion() && !function->getExceptionRegion().pads.empty();
+	});
+	if (mlir::MLIRPassManager::lowerAndOptimizeMLIRModule(mlirModule, {}, debugInfo, hasExceptionCleanupPads)) {
 		throw RuntimeException("Could not lower and optimize MLIR module.");
 	}
 	if (::mlir::failed(materializeCppExceptionHandling(*mlirModule, *ir))) {

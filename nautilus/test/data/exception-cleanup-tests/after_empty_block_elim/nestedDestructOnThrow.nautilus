@@ -1,0 +1,20 @@
+nautilus {
+execute($1:i32) :i32 {
+cleanup_states: [0=[], 1=[0]]
+Block_0($1:i32):
+	$2 = alloca[0] :ptr
+	func_*($2) :void
+	$4 = func_*($1) [cleanup=1] :i32
+	func_*($2) :void
+	return ($4) :i32
+}
+nestedCleanupGoldenTarget($1:i32) :i32 {
+cleanup_states: [0=[], 1=[0]]
+Block_0($1:i32):
+	$2 = alloca[0] :ptr
+	func_*($2) :void
+	func_*($1) [cleanup=1] :void
+	func_*($2) :void
+	return ($1) :i32
+}
+} //nautilus

@@ -16,9 +16,10 @@ public:
 	// `debugInfo.enable` is true, inserts the
 	// Nautilus debug-info passes (location snapshot for mlir source
 	// mode, DIScopeForLLVMFuncOp to materialize a DISubprogram on every
-	// llvm.func).  Returns non-zero on pass-pipeline failure.
+	// llvm.func). `deferInlining` preserves function-local metadata until
+	// after conversion to the LLVM dialect. Returns non-zero on failure.
 	static int lowerAndOptimizeMLIRModule(::mlir::OwningOpRef<::mlir::ModuleOp>& module,
 	                                      const std::vector<OptimizationPass>& optimizationPasses,
-	                                      const DebugInfoOptions& debugInfo = {});
+	                                      const DebugInfoOptions& debugInfo = {}, bool deferInlining = false);
 };
 } // namespace nautilus::compiler::mlir

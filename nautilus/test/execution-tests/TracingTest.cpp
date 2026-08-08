@@ -75,6 +75,19 @@ void cleanupGoldenTrace() {
 	invoke(cleanupGoldenTarget, val<int32_t> {7});
 }
 
+val<int32_t> nestedCleanupGoldenTarget(val<int32_t> value) {
+	val<CleanupGoldenValue> inner;
+	invoke(cleanupGoldenTarget, value);
+	return value;
+}
+
+auto nestedCleanupGoldenFunction = NautilusFunction {"nestedCleanupGoldenTarget", nestedCleanupGoldenTarget};
+
+val<int32_t> nestedCleanupGoldenTrace(val<int32_t> value) {
+	val<CleanupGoldenValue> outer;
+	return nestedCleanupGoldenFunction(value);
+}
+
 } // namespace
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
@@ -301,7 +314,8 @@ TEST_CASE("Runtime Call Trace Test") {
 
 TEST_CASE("Exception Cleanup Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
-	    {"destructOnThrow", details::createFunctionWrapper(cleanupGoldenTrace)}};
+	    {"destructOnThrow", details::createFunctionWrapper(cleanupGoldenTrace)},
+	    {"nestedDestructOnThrow", details::createFunctionWrapper(nestedCleanupGoldenTrace)}};
 	runTraceTests("exception-cleanup-tests", tests);
 }
 

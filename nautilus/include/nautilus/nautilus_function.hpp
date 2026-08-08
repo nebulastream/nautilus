@@ -125,16 +125,18 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<Args>(args)...);
+			constexpr auto functionAttributes =
+			    FunctionAttributes {.noUnwind = std::is_nothrow_invocable_v<F&, Args...>};
 
 			if constexpr (std::is_void_v<std::invoke_result_t<F&, Args...>>) {
 				tracing::traceNautilusCall(&definition_, fwrapper, Type::v, functionArgumentReferences,
-				                           FunctionAttributes {});
+				                           functionAttributes);
 				return;
 			} else {
 				using R = std::invoke_result_t<F&, Args...>;
 				auto resultRef = tracing::traceNautilusCall(&definition_, fwrapper,
 				                                            tracing::TypeResolver<typename R::raw_type>::to_type(),
-				                                            functionArgumentReferences, FunctionAttributes {});
+				                                            functionArgumentReferences, functionAttributes);
 				return R(resultRef);
 			}
 		}

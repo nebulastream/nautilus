@@ -3,8 +3,10 @@
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionCleanupPreparationPass.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/options.hpp"
 #include "nautilus/static.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
@@ -13,6 +15,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/val_std.hpp"
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <list>
 #include <optional>
@@ -29,6 +32,19 @@ void mayThrowTarget(int32_t) {
 
 void destroyTrackedValue(void*) noexcept {
 }
+
+val<int32_t> nestedNoThrowTarget(val<int32_t> value) noexcept {
+	return value + 1;
+}
+
+val<int32_t> nestedMayThrowTarget(val<int32_t> value) {
+	return value + 2;
+}
+
+auto nestedNoThrow = NautilusFunction {"nestedNoThrow", nestedNoThrowTarget};
+auto nestedMayThrow = NautilusFunction {"nestedMayThrow", nestedMayThrowTarget};
+auto nestedErasedNoThrow =
+    NautilusFunction {"nestedErasedNoThrow", std::function<val<int32_t>(val<int32_t>)> {nestedNoThrowTarget}};
 
 struct TrackedValue {
 	TrackedValue() noexcept : value(42) {
@@ -75,6 +91,16 @@ std::vector<const TraceOperation*> callsTo(const ExecutionTrace& trace, void* ta
 	return result;
 }
 
+std::vector<const TraceOperation*> callsNamed(const ExecutionTrace& trace, const std::string& name) {
+	auto result = std::vector<const TraceOperation*> {};
+	for (const auto* operation : calls(trace)) {
+		if (std::get<FunctionCall*>(operation->input.front())->functionName == name) {
+			result.push_back(operation);
+		}
+	}
+	return result;
+}
+
 } // namespace
 
 TEST_CASE("Tracing infers noUnwind from exact noexcept function pointers") {
@@ -92,6 +118,91 @@ TEST_CASE("Tracing infers noUnwind from exact noexcept function pointers") {
 	const auto* mayThrow = std::get<FunctionCall*>(tracedCalls[1]->input.front());
 	REQUIRE(noThrow->fnAttrs.noUnwind);
 	REQUIRE_FALSE(mayThrow->fnAttrs.noUnwind);
+}
+
+TEST_CASE("Nested Nautilus calls infer noUnwind from exact callable types") {
+	auto run = []<typename TraceContext>() {
+		common::Arena arena;
+		auto tracedModule = traceWith<TraceContext>(
+		    [] {
+			    {
+				    val<TrackedValue> value;
+				    [[maybe_unused]] auto noThrowResult = nestedNoThrow(val<int32_t> {7});
+				    [[maybe_unused]] auto mayThrowResult = nestedMayThrow(val<int32_t> {7});
+				    [[maybe_unused]] auto erasedResult = nestedErasedNoThrow(val<int32_t> {7});
+			    }
+			    tracing::traceReturnOperation(Type::v, {});
+		    },
+		    arena);
+
+		const auto* trace = tracedModule->getFunction("execute");
+		const auto noThrowCalls = callsNamed(*trace, "nestedNoThrow");
+		const auto mayThrowCalls = callsNamed(*trace, "nestedMayThrow");
+		const auto erasedCalls = callsNamed(*trace, "nestedErasedNoThrow");
+		REQUIRE(noThrowCalls.size() == 1);
+		REQUIRE(mayThrowCalls.size() == 1);
+		REQUIRE(erasedCalls.size() == 1);
+		REQUIRE(std::get<FunctionCall*>(noThrowCalls.front()->input.front())->fnAttrs.noUnwind);
+		REQUIRE_FALSE(std::get<FunctionCall*>(mayThrowCalls.front()->input.front())->fnAttrs.noUnwind);
+		REQUIRE_FALSE(std::get<FunctionCall*>(erasedCalls.front()->input.front())->fnAttrs.noUnwind);
+		REQUIRE(noThrowCalls.front()->tag.getCleanupStateId() == mayThrowCalls.front()->tag.getCleanupStateId());
+		REQUIRE(noThrowCalls.front()->tag.getCleanupStateId() != EMPTY_CLEANUP_STATE);
+
+		auto module = std::shared_ptr<TraceModule>(std::move(tracedModule));
+		auto afterSsa = SSACreationPhase().apply(std::move(module));
+		auto ir = TraceToIRConversionPhase().apply(afterSsa, "nested-exception-cleanup");
+		const auto* function = ir->getFunctionOperation("execute");
+		REQUIRE(function != nullptr);
+
+		const compiler::ir::ProxyCallOperation* noThrowCall = nullptr;
+		const compiler::ir::ProxyCallOperation* mayThrowCall = nullptr;
+		const compiler::ir::ProxyCallOperation* erasedCall = nullptr;
+		for (const auto* block : function->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (operation->getOperationType() != compiler::ir::Operation::OperationType::ProxyCallOp) {
+					continue;
+				}
+				const auto* call = static_cast<const compiler::ir::ProxyCallOperation*>(operation);
+				if (call->getFunctionName() == "nestedNoThrow") {
+					noThrowCall = call;
+				} else if (call->getFunctionName() == "nestedMayThrow") {
+					mayThrowCall = call;
+				} else if (call->getFunctionName() == "nestedErasedNoThrow") {
+					erasedCall = call;
+				}
+			}
+		}
+
+		REQUIRE(noThrowCall != nullptr);
+		REQUIRE(mayThrowCall != nullptr);
+		REQUIRE(erasedCall != nullptr);
+		REQUIRE(noThrowCall->getFunctionAttributes().noUnwind);
+		REQUIRE_FALSE(noThrowCall->getCleanupState().has_value());
+		REQUIRE_FALSE(mayThrowCall->getFunctionAttributes().noUnwind);
+		REQUIRE(mayThrowCall->getCleanupState().has_value());
+		REQUIRE_FALSE(erasedCall->getFunctionAttributes().noUnwind);
+		REQUIRE(erasedCall->getCleanupState().has_value());
+
+		compiler::ir::ExceptionCleanupPreparationPass().apply(*ir);
+		REQUIRE(function->hasExceptionRegion());
+		const auto& exceptionRegion = function->getExceptionRegion();
+		REQUIRE(exceptionRegion.pads.size() == 1);
+		REQUIRE(exceptionRegion.callSites.size() == 2);
+		auto isExceptionalCall = [&](const auto* call) {
+			return std::ranges::any_of(exceptionRegion.callSites,
+			                           [&](const auto& callSite) { return callSite.call == call; });
+		};
+		REQUIRE_FALSE(isExceptionalCall(noThrowCall));
+		REQUIRE(isExceptionalCall(mayThrowCall));
+		REQUIRE(isExceptionalCall(erasedCall));
+	};
+
+	SECTION("exception-based tracer") {
+		run.template operator()<ExceptionBasedTraceContext>();
+	}
+	SECTION("lazy tracer") {
+		run.template operator()<LazyTraceContext>();
+	}
 }
 
 TEST_CASE("execution traces intern ordered cleanup states") {

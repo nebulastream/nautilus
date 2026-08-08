@@ -11,12 +11,17 @@ val<int> add(val<int> a, val<int> b) {
 	return a + b;
 }
 
+val<int> addNoexcept(val<int> a, val<int> b) noexcept {
+	return a + b;
+}
+
 void call_void(val<int*> a, val<int> b) {
 	*a = *a + b;
 }
 
 static auto nautilusVoid = NautilusFunction {"call_void", call_void};
 static auto nautilusAdd = NautilusFunction {"call_add", add};
+static auto nautilusAddNoexcept = NautilusFunction {"call_add_noexcept", addNoexcept};
 
 TEST_CASE("Function Test") {
 	val<int> a = 10;
@@ -60,6 +65,11 @@ TEST_CASE("getFuncPtr Test") {
 	// The function pointer should be callable and produce correct results
 	auto result = funcPtr(val<int>(3), val<int>(4));
 	REQUIRE(result == 7);
+}
+
+TEST_CASE("getFuncPtr supports exact noexcept function pointers") {
+	auto funcPtr = nautilusAddNoexcept.getFuncPtr();
+	REQUIRE(funcPtr(val<int>(3), val<int>(4)) == 7);
 }
 
 } // namespace nautilus
