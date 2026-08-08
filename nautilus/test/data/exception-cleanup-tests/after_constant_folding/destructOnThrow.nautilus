@@ -1,0 +1,12 @@
+nautilus {
+execute() :void {
+cleanup_states: [0=[], 1=[0]]
+Block_0():
+	$1 = alloca[0] :ptr
+	func_*($1) :void
+	$3 = 7 :i32
+	func_*($3) [cleanup=1] :void
+	func_*($1) :void
+	return :void
+}
+} //nautilus

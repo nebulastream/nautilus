@@ -408,6 +408,41 @@ struct formatter<nautilus::tracing::TraceOperation> : formatter<std::string_view
 auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracing::ExecutionTrace& trace,
                                                           fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
+	auto hasExceptionalCleanupCall = false;
+	for (const auto* block : trace.blocks) {
+		for (const auto* operation : block->operations) {
+			if (operation->op != nautilus::tracing::Op::CALL ||
+			    operation->tag.getCleanupStateId() == nautilus::EMPTY_CLEANUP_STATE) {
+				continue;
+			}
+			const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation->input.front());
+			hasExceptionalCleanupCall = !call->fnAttrs.noUnwind;
+			if (hasExceptionalCleanupCall) {
+				break;
+			}
+		}
+		if (hasExceptionalCleanupCall) {
+			break;
+		}
+	}
+	if (hasExceptionalCleanupCall) {
+		fmt::format_to(out, "cleanup_states: [");
+		for (size_t stateIndex = 0; stateIndex < trace.cleanupStates.size(); ++stateIndex) {
+			if (stateIndex != 0) {
+				fmt::format_to(out, ", ");
+			}
+			fmt::format_to(out, "{}=[", stateIndex);
+			const auto& active = trace.cleanupStates[stateIndex].active;
+			for (size_t activeIndex = 0; activeIndex < active.size(); ++activeIndex) {
+				if (activeIndex != 0) {
+					fmt::format_to(out, ",");
+				}
+				fmt::format_to(out, "{}", active[activeIndex]);
+			}
+			fmt::format_to(out, "]");
+		}
+		fmt::format_to(out, "]\n");
+	}
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}
@@ -501,6 +536,13 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 			fmt::format_to(out, "{}\t", **fCallPtr);
 		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
 			fmt::format_to(out, "{}", *constant);
+		}
+	}
+	if (operation.op == nautilus::tracing::Op::CALL &&
+	    operation.tag.getCleanupStateId() != nautilus::EMPTY_CLEANUP_STATE) {
+		const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation.input.front());
+		if (!call->fnAttrs.noUnwind) {
+			fmt::format_to(out, "[cleanup={}]", operation.tag.getCleanupStateId());
 		}
 	}
 	fmt::format_to(out, ":{}", toString(operation.resultType));

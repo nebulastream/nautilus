@@ -26,6 +26,7 @@
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
+#include "nautilus/val_std.hpp"
 #include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cstdio>
@@ -55,6 +56,26 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
 };
+
+namespace {
+
+void cleanupGoldenTarget(int32_t) {
+}
+
+struct CleanupGoldenValue {
+	CleanupGoldenValue() noexcept = default;
+	~CleanupGoldenValue() noexcept {
+	}
+
+	int32_t value = 42;
+};
+
+void cleanupGoldenTrace() {
+	val<CleanupGoldenValue> value;
+	invoke(cleanupGoldenTarget, val<int32_t> {7});
+}
+
+} // namespace
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
@@ -276,6 +297,12 @@ TEST_CASE("Runtime Call Trace Test") {
 	    {"voidFuncCall", details::createFunctionWrapper(voidFuncCall)},
 	    {"callTwoFunctions", details::createFunctionWrapper(callTwoFunctions)}};
 	runTraceTests("runtime-call-tests", tests);
+}
+
+TEST_CASE("Exception Cleanup Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"destructOnThrow", details::createFunctionWrapper(cleanupGoldenTrace)}};
+	runTraceTests("exception-cleanup-tests", tests);
 }
 
 TEST_CASE("Enum Trace Test") {

@@ -12,6 +12,7 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
@@ -224,6 +225,9 @@ struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::st
 			fmt::format_to(out, "{}", args[i]->getIdentifier());
 		}
 		fmt::format_to(out, ")");
+		if (op.getCleanupState().has_value()) {
+			fmt::format_to(out, " [cleanup={}]", *op.getCleanupState());
+		}
 		return out;
 	}
 };
@@ -295,6 +299,14 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	case OpType::ProxyCallOp:
 		fmt::format_to(out, "{}", *nautilus::compiler::ir::cast<ProxyCallOperation>(&op));
 		break;
+	case OpType::IndirectCallOp: {
+		const auto* call = nautilus::compiler::ir::cast<IndirectCallOperation>(&op);
+		fmt::format_to(out, "{}", op.getIdentifier());
+		if (call->getCleanupState().has_value()) {
+			fmt::format_to(out, " [cleanup={}]", *call->getCleanupState());
+		}
+		break;
+	}
 	case OpType::CastOp: {
 		const auto* castOp = nautilus::compiler::ir::cast<CastOperation>(&op);
 		fmt::format_to(out, "{} = {} cast_to {}", op.getIdentifier(), castOp->getInput()->getIdentifier(),
@@ -410,6 +422,41 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 			}
 		}
 		fmt::format_to(out, ") :{} {{", toString(func.getOutputArg()));
+		const auto& cleanupStates = func.getCleanupStates();
+		auto hasExceptionalCleanupCall = false;
+		for (const auto* block : func.getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (const auto* call = dyn_cast<ProxyCallOperation>(operation)) {
+					hasExceptionalCleanupCall = call->getCleanupState().has_value();
+				} else if (const auto* call = dyn_cast<IndirectCallOperation>(operation)) {
+					hasExceptionalCleanupCall = call->getCleanupState().has_value();
+				}
+				if (hasExceptionalCleanupCall) {
+					break;
+				}
+			}
+			if (hasExceptionalCleanupCall) {
+				break;
+			}
+		}
+		if (hasExceptionalCleanupCall) {
+			fmt::format_to(out, "\ncleanup_states: [");
+			for (size_t stateIndex = 0; stateIndex < cleanupStates.size(); ++stateIndex) {
+				if (stateIndex != 0) {
+					fmt::format_to(out, ", ");
+				}
+				fmt::format_to(out, "{}=[", stateIndex);
+				const auto& active = cleanupStates[stateIndex].active;
+				for (size_t activeIndex = 0; activeIndex < active.size(); ++activeIndex) {
+					if (activeIndex != 0) {
+						fmt::format_to(out, ",");
+					}
+					fmt::format_to(out, "{}", active[activeIndex]);
+				}
+				fmt::format_to(out, "]");
+			}
+			fmt::format_to(out, "]");
+		}
 		for (const auto* block : func.getBasicBlocks()) {
 			fmt::format_to(out, "{}", *block);
 		}
