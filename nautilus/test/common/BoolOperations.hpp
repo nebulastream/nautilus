@@ -140,25 +140,25 @@ val<bool> boolProbabilityTest(val<bool> x) {
 // we first stash a non-zero pointer into the register file via another
 // invoke before producing the final bool result.
 
-inline bool returnsFalseRuntime() {
+inline bool returnsFalseRuntime() noexcept {
 	return false;
 }
 
-inline bool returnsTrueRuntime() {
+inline bool returnsTrueRuntime() noexcept {
 	return true;
 }
 
-inline void* returnsDirtyPointerRuntime() {
+inline void* returnsDirtyPointerRuntime() noexcept {
 	static int sentinel = 0xCAFEBABE;
 	return &sentinel;
 }
 
-inline void* returnsOtherDirtyPointerRuntime() {
+inline void* returnsOtherDirtyPointerRuntime() noexcept {
 	static long other[2] = {0x1234567, 0x89ABCDE};
 	return &other;
 }
 
-inline bool comparePointersEqualRuntime(void* a, void* b) {
+inline bool comparePointersEqualRuntime(void* a, void* b) noexcept {
 	return a == b;
 }
 
@@ -195,28 +195,28 @@ val<bool> invokePointerCmpFalse() {
 // as a wrong value (especially for zero / negative values where the
 // upper bits matter for sign- or zero-extension).
 
-inline int8_t returnsI8(int8_t v) {
+inline int8_t returnsI8(int8_t v) noexcept {
 	return v;
 }
-inline int16_t returnsI16(int16_t v) {
+inline int16_t returnsI16(int16_t v) noexcept {
 	return v;
 }
-inline int32_t returnsI32(int32_t v) {
+inline int32_t returnsI32(int32_t v) noexcept {
 	return v;
 }
-inline int64_t returnsI64(int64_t v) {
+inline int64_t returnsI64(int64_t v) noexcept {
 	return v;
 }
-inline uint8_t returnsU8(uint8_t v) {
+inline uint8_t returnsU8(uint8_t v) noexcept {
 	return v;
 }
-inline uint16_t returnsU16(uint16_t v) {
+inline uint16_t returnsU16(uint16_t v) noexcept {
 	return v;
 }
-inline uint32_t returnsU32(uint32_t v) {
+inline uint32_t returnsU32(uint32_t v) noexcept {
 	return v;
 }
-inline uint64_t returnsU64(uint64_t v) {
+inline uint64_t returnsU64(uint64_t v) noexcept {
 	return v;
 }
 
@@ -319,11 +319,11 @@ struct ListNode {
 	ListNode* next;
 };
 
-inline int32_t listNodeValue(ListNode* n) {
+inline int32_t listNodeValue(ListNode* n) noexcept {
 	return n->value;
 }
 
-inline ListNode* listNodeNext(ListNode* n) {
+inline ListNode* listNodeNext(ListNode* n) noexcept {
 	return n->next;
 }
 
@@ -351,21 +351,21 @@ val<int32_t> sumLinkedList(val<ListNode*> head) {
 
 inline int64_t shortCircuitSideEffectCounter = 0;
 
-inline bool incrementCounterAndReturnTrue() {
+inline bool incrementCounterAndReturnTrue() noexcept {
 	shortCircuitSideEffectCounter++;
 	return true;
 }
 
-inline bool incrementCounterAndReturnFalse() {
+inline bool incrementCounterAndReturnFalse() noexcept {
 	shortCircuitSideEffectCounter++;
 	return false;
 }
 
-inline int32_t divideTenBy(int32_t x) {
+inline int32_t divideTenBy(int32_t x) noexcept {
 	return 10 / x;
 }
 
-inline int32_t loadInt(int32_t* p) {
+inline int32_t loadInt(int32_t* p) noexcept {
 	return *p;
 }
 

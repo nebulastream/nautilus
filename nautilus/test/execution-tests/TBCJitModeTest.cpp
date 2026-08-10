@@ -109,7 +109,7 @@ val<int64_t> jitVoidCaller(val<int64_t*> p) {
 }
 
 // External calls (CALL_EXT opcode via the dyncall helper).
-int64_t nativeMix(int32_t a, int64_t b, double c) {
+int64_t nativeMix(int32_t a, int64_t b, double c) noexcept {
 	return a + b + static_cast<int64_t>(c * 10);
 }
 
