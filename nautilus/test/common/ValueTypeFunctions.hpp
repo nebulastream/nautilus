@@ -18,7 +18,7 @@ struct Test {
 	int32_t b;
 };
 
-void addFunc(Test* res, int32_t a, int32_t b) {
+void addFunc(Test* res, int32_t a, int32_t b) noexcept {
 	res->a = a + b;
 }
 
@@ -27,9 +27,9 @@ void addFunc(Test* res, int32_t a, int32_t b) {
 struct TestWithCtor {
 	int32_t a;
 	int32_t b;
-	TestWithCtor() : a(0), b(0) {
+	TestWithCtor() noexcept : a(0), b(0) {
 	}
-	TestWithCtor(int32_t a, int32_t b) : a(a), b(b) {
+	TestWithCtor(int32_t a, int32_t b) noexcept : a(a), b(b) {
 	}
 };
 
@@ -38,11 +38,11 @@ struct TestWithCtor {
 // is_trivially_copyable    = false  → copies use copy_construct / copy_assign via invoke().
 struct TestWithDtor {
 	int32_t value;
-	TestWithDtor() : value(0) {
+	TestWithDtor() noexcept : value(0) {
 	}
-	TestWithDtor(const TestWithDtor&) = default;
-	TestWithDtor& operator=(const TestWithDtor&) = default;
-	~TestWithDtor() {
+	TestWithDtor(const TestWithDtor&) noexcept = default;
+	TestWithDtor& operator=(const TestWithDtor&) noexcept = default;
+	~TestWithDtor() noexcept {
 	}
 };
 
@@ -562,18 +562,18 @@ struct Large {
 	int64_t data[8];
 }; // 64 bytes
 
-void fillSmall(Small* s) {
+void fillSmall(Small* s) noexcept {
 	s->a = 42;
 	s->b = 10;
 }
 
-void fillLarge(Large* l) {
+void fillLarge(Large* l) noexcept {
 	for (int i = 0; i < 8; i++) {
 		l->data[i] = i + 1;
 	}
 }
 
-int64_t sumLarge(Large* l) {
+int64_t sumLarge(Large* l) noexcept {
 	int64_t sum = 0;
 	for (int i = 0; i < 8; i++) {
 		sum += l->data[i];

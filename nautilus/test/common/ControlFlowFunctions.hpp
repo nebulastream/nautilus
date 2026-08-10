@@ -305,7 +305,7 @@ val<int32_t> multipleReturns(val<int32_t> value) {
 	return value + value + 1;
 }
 
-int32_t returnValue(int32_t value) {
+int32_t returnValue(int32_t value) noexcept {
 	return value;
 }
 
@@ -385,7 +385,7 @@ val<float> issue384_traceFollowDesync(val<float*> mem, val<float> p0) {
 	return acc;
 }
 
-uint32_t issue382_sum3(uint32_t a, uint32_t b, uint32_t c) {
+uint32_t issue382_sum3(uint32_t a, uint32_t b, uint32_t c) noexcept {
 	return a + b + c;
 }
 
