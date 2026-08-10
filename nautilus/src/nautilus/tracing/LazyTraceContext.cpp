@@ -34,6 +34,7 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 void LazyTraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
+	activeDestructors.clear();
 	paused_ = false;
 }
 
@@ -182,7 +183,29 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 		                                                                        .mangledName = mangledName,
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = {}});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& LazyTraceContext::traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                                                const std::vector<tracing::TypedValueRef>& arguments,
+                                                                FunctionAttributes fnAttrs) {
+	if (paused_) {
+		return dummyRef_;
+	}
+	auto mangledName = getMangledName(fptn);
+	auto functionName = getFunctionName(fptn, mangledName);
+	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = mangledName,
+		                                                                        .ptr = fptn,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = activeDestructors});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -222,7 +245,8 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -247,7 +271,8 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = {},
-		                                                                        .fnAttrs = {}});
+		                                                                        .fnAttrs = {},
+		                                                                        .destructors = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }

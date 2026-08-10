@@ -932,7 +932,8 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	}
 
 	// Try to find an existing function declaration (prefer func dialect)
-	if (auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName)) {
+	if (auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);
+	    func && !proxyCallOp->requiresExceptionHandling()) {
 		// Function already exists in func dialect - use func::CallOp
 		if (proxyCallOp->getStamp() != Type::v) {
 			auto res = mlir::func::CallOp::create(*builder, getNameLoc("funcCall"), func, functionArgs);
@@ -949,9 +950,72 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	for (const auto& arg : proxyCallOp->getInputArguments()) {
 		argStamps.push_back(arg->getStamp());
 	}
-	insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
-	                       getMLIRType(proxyCallOp->getInputArguments()), argStamps,
-	                       proxyCallOp->getFunctionAttributes());
+	if (!theModule.lookupSymbol<mlir::func::FuncOp>(functionName)) {
+		insertExternalFunction(functionName, proxyCallOp->getFunctionPtr(), getMLIRType(proxyCallOp->getStamp()),
+		                       getMLIRType(proxyCallOp->getInputArguments()), argStamps,
+		                       proxyCallOp->getFunctionAttributes());
+	}
+
+	if (proxyCallOp->requiresExceptionHandling()) {
+		const auto location = getNameLoc("invoke");
+		auto callee = mlir::FlatSymbolRefAttr::get(context, functionName);
+		auto* currentBlock = builder->getInsertionBlock();
+		auto* region = currentBlock->getParent();
+		auto* normalBlock = new mlir::Block();
+		auto* unwindBlock = new mlir::Block();
+		region->getBlocks().insert(std::next(mlir::Region::iterator(currentBlock)), normalBlock);
+		region->push_back(unwindBlock);
+
+		llvm::SmallVector<mlir::Type> resultTypes;
+		if (proxyCallOp->getStamp() != Type::v) {
+			resultTypes.push_back(getMLIRType(proxyCallOp->getStamp()));
+		}
+		auto invoke = mlir::LLVM::InvokeOp::create(*builder, location, resultTypes, callee, functionArgs, normalBlock,
+		                                           mlir::ValueRange {}, unwindBlock, mlir::ValueRange {});
+
+		// The Itanium C++ ABI represents the active exception as {ptr, i32}.
+		// The landing pad is cleanup-only: destructors run in reverse construction
+		// order and llvm.resume continues unwinding to the native caller.
+		builder->setInsertionPointToStart(unwindBlock);
+		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
+		auto selectorType = builder->getI32Type();
+		auto exceptionType = mlir::LLVM::LLVMStructType::getLiteral(context, {ptrType, selectorType});
+		auto landingPad =
+		    mlir::LLVM::LandingpadOp::create(*builder, location, exceptionType, true, mlir::ValueRange {});
+
+		for (auto it = proxyCallOp->getDestructors().rbegin(); it != proxyCallOp->getDestructors().rend(); ++it) {
+			FunctionAttributes destructorAttrs;
+			destructorAttrs.noUnwind = true;
+			auto destructorSymbol = mlir::FlatSymbolRefAttr::get(context, it->functionName);
+			if (!theModule.lookupSymbol<mlir::func::FuncOp>(it->functionName)) {
+				destructorSymbol = insertExternalFunction(it->functionName, it->functionPtr, getMLIRType(Type::v),
+				                                          {ptrType}, {Type::ptr}, destructorAttrs);
+			}
+			auto address = resolveOperand(it->address, frame);
+			mlir::func::CallOp::create(*builder, location, destructorSymbol, mlir::TypeRange {},
+			                           mlir::ValueRange {address});
+		}
+		mlir::LLVM::ResumeOp::create(*builder, location, landingPad.getResult());
+
+		// convert-func-to-llvm forwards this discardable attribute onto the
+		// resulting llvm.func. Declare the ABI personality directly in the LLVM
+		// dialect so the final module has a typed symbol to reference.
+		auto parentFunction = currentBlock->getParentOp();
+		parentFunction->setDiscardableAttr("personality",
+		                                   mlir::FlatSymbolRefAttr::get(context, "__gxx_personality_v0"));
+		if (!theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>("__gxx_personality_v0")) {
+			mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
+			builder->restoreInsertionPoint(*globalInsertPoint);
+			auto personalityType = mlir::LLVM::LLVMFunctionType::get(builder->getI32Type(), {}, true);
+			mlir::LLVM::LLVMFuncOp::create(*builder, theModule.getLoc(), "__gxx_personality_v0", personalityType);
+		}
+
+		builder->setInsertionPointToStart(normalBlock);
+		if (proxyCallOp->getStamp() != Type::v) {
+			bind(frame, proxyCallOp, invoke.getResult());
+		}
+		return;
+	}
 
 	// Now lookup the function we just created and call it using func::CallOp
 	auto func = theModule.lookupSymbol<mlir::func::FuncOp>(functionName);

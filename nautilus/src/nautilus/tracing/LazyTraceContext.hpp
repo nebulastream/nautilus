@@ -48,6 +48,9 @@ public:
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+	                                              const std::vector<tracing::TypedValueRef>& arguments,
+	                                              FunctionAttributes fnAttrs) override;
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                 const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;

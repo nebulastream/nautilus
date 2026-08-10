@@ -182,19 +182,40 @@ private:
 	// that the resource is released exactly once.
 	bool moved_ = false;
 
-	static void construct(ValueType* ptr) {
+	static void construct(ValueType* ptr) noexcept(std::is_nothrow_default_constructible_v<ValueType>) {
 		new (ptr) ValueType();
 	}
 
-	static void destruct(ValueType* ptr) {
+	static void destruct(ValueType* ptr) noexcept {
 		ptr->~ValueType();
 	}
 
-	static void copy_construct(ValueType* dst, ValueType* src) {
+	void register_destructor() {
+#ifdef ENABLE_TRACING
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			if (tracing::inTracer()) {
+				tracing::registerDestructor(value_ptr.getState(), reinterpret_cast<void*>(destruct));
+			}
+		}
+#endif
+	}
+
+	void unregister_destructor() {
+#ifdef ENABLE_TRACING
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			if (tracing::inTracer()) {
+				tracing::unregisterDestructor(value_ptr.getState());
+			}
+		}
+#endif
+	}
+
+	static void copy_construct(ValueType* dst,
+	                           ValueType* src) noexcept(std::is_nothrow_copy_constructible_v<ValueType>) {
 		new (dst) ValueType(*src);
 	}
 
-	static void copy_assign(ValueType* dst, ValueType* src) {
+	static void copy_assign(ValueType* dst, ValueType* src) noexcept(std::is_nothrow_copy_assignable_v<ValueType>) {
 		*dst = *src;
 	}
 
@@ -202,7 +223,8 @@ private:
 	// A concrete instantiation (e.g. construct_with<int32_t, float>) is a plain function
 	// pointer that invoke() can trace as a regular runtime call.
 	template <typename... RawArgs>
-	static void construct_with(ValueType* ptr, RawArgs... args) {
+	static void construct_with(ValueType* ptr,
+	                           RawArgs... args) noexcept(std::is_nothrow_constructible_v<ValueType, RawArgs...>) {
 		new (ptr) ValueType(args...);
 	}
 
@@ -214,6 +236,7 @@ private:
 			return;
 		}
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			unregister_destructor();
 			invoke(destruct, value_ptr);
 		}
 		// Pair the aligned operator new in nautilus_alloca's interpreter
@@ -236,6 +259,7 @@ public:
 		if constexpr (!std::is_trivially_default_constructible_v<ValueType>) {
 			invoke(val<ValueType>::construct, value_ptr);
 		}
+		register_destructor();
 	}
 
 	// Copy-constructs from another val<ValueType>.
@@ -246,6 +270,7 @@ public:
 		} else {
 			invoke(copy_construct, value_ptr, other.value_ptr);
 		}
+		register_destructor();
 	}
 
 	// Move-constructs from another val<ValueType>.
@@ -256,7 +281,9 @@ public:
 	// The source is left in a moved-from state and its destructor becomes a no-op.
 #ifdef ENABLE_TRACING
 	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value, other.value_ptr.getState()) {
+		other.unregister_destructor();
 		other.moved_ = true;
+		register_destructor();
 	}
 #else
 	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value) {
@@ -273,7 +300,10 @@ public:
 	    requires(sizeof...(ValArgs) > 0 &&
 	             !(sizeof...(ValArgs) == 1 && (std::same_as<std::remove_cvref_t<ValArgs>, val<ValueType>> || ...)))
 	val(ValArgs&&... args) : value_ptr(details::nautilus_alloca<ValueType>()) {
-		invoke(construct_with<details::unwrap_val_t<ValArgs>...>, value_ptr, std::forward<ValArgs>(args)...);
+		FunctionAttributes attrs;
+		attrs.noUnwind = std::is_nothrow_constructible_v<ValueType, details::unwrap_val_t<ValArgs>...>;
+		invoke(attrs, construct_with<details::unwrap_val_t<ValArgs>...>, value_ptr, std::forward<ValArgs>(args)...);
+		register_destructor();
 	}
 
 	// Copy-assigns from another val<ValueType>.
