@@ -67,6 +67,13 @@ TypedValueRef traceCopy(const TypedValueRef& ref);
 TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                          FunctionAttributes fnAttrs);
 
+TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                              const std::vector<tracing::TypedValueRef>& arguments,
+                                              FunctionAttributes fnAttrs);
+
+void registerDestructor(const TypedValueRef& address, void* destructor);
+void unregisterDestructor(const TypedValueRef& address);
+
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs);
 

@@ -248,6 +248,7 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 		return;
 	};
 	case Op::CALL:
+	case Op::CALL_WITH_EXCEPTION_HANDLING:
 		processCall(frame, currentIrBlock, operation);
 		return;
 	case Op::INDIRECT_CALL:
@@ -432,9 +433,20 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto destructors = std::vector<ProxyCallOperation::Destructor> {};
+	destructors.reserve(functionCallTarget.destructors.size());
+	for (const auto& destructor : functionCallTarget.destructors) {
+		destructors.push_back(ProxyCallOperation::Destructor {
+		    .address = frame.getValue(createValueIdentifier(destructor.address)),
+		    .functionSymbol = destructor.mangledName,
+		    .functionName = destructor.functionName,
+		    .functionPtr = destructor.ptr,
+		});
+	}
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs);
+	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, std::move(destructors),
+	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}

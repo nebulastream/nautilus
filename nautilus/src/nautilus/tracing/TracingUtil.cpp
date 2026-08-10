@@ -104,6 +104,20 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                              const std::vector<tracing::TypedValueRef>& arguments,
+                                              FunctionAttributes fnAttrs) {
+	return activeTracer->traceCallWithExceptionHandling(fptn, resultType, arguments, fnAttrs);
+}
+
+void registerDestructor(const TypedValueRef& address, void* destructor) {
+	activeTracer->registerDestructor(address, destructor);
+}
+
+void unregisterDestructor(const TypedValueRef& address) {
+	activeTracer->unregisterDestructor(address);
+}
+
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
 	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
@@ -144,8 +158,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

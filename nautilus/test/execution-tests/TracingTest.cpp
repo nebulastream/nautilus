@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 
 namespace nautilus::log::options {
 
@@ -55,6 +56,30 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
 };
+
+struct GoldenExceptionCleanup {
+	~GoldenExceptionCleanup() noexcept {
+	}
+};
+
+void goldenThrowWithoutCleanup() {
+	throw std::runtime_error("golden exception without cleanup");
+}
+
+void goldenThrowWithCleanup(GoldenExceptionCleanup*) {
+	throw std::runtime_error("golden exception with cleanup");
+}
+
+val<int32_t> exceptionCallWithoutCleanup() {
+	invoke(goldenThrowWithoutCleanup);
+	return 42;
+}
+
+val<int32_t> exceptionCallWithCleanup() {
+	val<GoldenExceptionCleanup> cleanup;
+	invoke(goldenThrowWithCleanup, &cleanup);
+	return 42;
+}
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
@@ -136,6 +161,36 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 						REQUIRE(checkTestFile(ir2.get()->toString(), category, "after_empty_block_elim", name,
 						                      ".nautilus"));
 					}
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("Exception handling call trace golden") {
+	nautilus::log::options::setLogAddresses(false);
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"withoutCleanup", details::createFunctionWrapper(exceptionCallWithoutCleanup)},
+	    {"withCleanup", details::createFunctionWrapper(exceptionCallWithCleanup)},
+	};
+
+	for (const auto& [ctxName, traceFn] : traceContexts) {
+		DYNAMIC_SECTION(ctxName) {
+			for (const auto& [name, function] : tests) {
+				DYNAMIC_SECTION(name) {
+					common::Arena arena;
+					std::list<compiler::CompilableFunction> functions;
+					functions.emplace_back("execute", function);
+					auto trace = traceFn(functions, engine::Options {}, arena);
+					auto traceDump = trace->toString();
+					traceDump.pop_back();
+					REQUIRE(checkTestFile(traceDump, "exception-handling-tests", "tracing", name));
+
+					auto afterSsa =
+					    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace)));
+					auto afterSsaDump = afterSsa->toString();
+					afterSsaDump.pop_back();
+					REQUIRE(checkTestFile(afterSsaDump, "exception-handling-tests", "after_ssa", name));
 				}
 			}
 		}

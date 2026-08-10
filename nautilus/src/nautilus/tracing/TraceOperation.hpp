@@ -46,6 +46,13 @@ struct AllocaSpec {
  * or deallocated while the trace or executable is in use.
  */
 struct FunctionCall {
+	struct Destructor {
+		TypedValueRef address;
+		std::string functionName;
+		std::string mangledName;
+		void* ptr;
+	};
+
 	std::string functionName;
 	std::string mangledName;
 	/**
@@ -56,6 +63,7 @@ struct FunctionCall {
 	void* ptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::vector<Destructor> destructors;
 };
 
 /// Represents an indirect call through a runtime function pointer value.
@@ -108,6 +116,9 @@ void forEachValueRef(const InputVariant& input, Callback&& callback) {
 		for (const auto argument : (*call)->arguments) {
 			callback(argument);
 		}
+		for (const auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
+		}
 	} else if (const auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
 		callback((*call)->fnPtr);
 		for (const auto argument : (*call)->arguments) {
@@ -128,6 +139,9 @@ void forEachMutableValueRef(InputVariant& input, Callback&& callback) {
 	} else if (auto* call = std::get_if<FunctionCall*>(&input); call != nullptr && *call != nullptr) {
 		for (auto& argument : (*call)->arguments) {
 			callback(argument);
+		}
+		for (auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
 		}
 	} else if (auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
 		callback((*call)->fnPtr);
