@@ -65,6 +65,16 @@ public:
 	virtual TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) = 0;
 
+	/// Trace a potentially throwing runtime call together with the destructors
+	/// that are live at this point in the traced function.
+	virtual TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+	                                                      const std::vector<TypedValueRef>& arguments,
+	                                                      FunctionAttributes fnAttrs) = 0;
+
+	/// Maintain the host-side cleanup stack used to annotate throwing calls.
+	virtual void registerDestructor(const TypedValueRef& address, void* destructor) = 0;
+	virtual void unregisterDestructor(const TypedValueRef& address) = 0;
+
 	/// Trace a call through a runtime function pointer value (indirect call).
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
 	                                         const std::vector<TypedValueRef>& arguments,

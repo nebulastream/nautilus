@@ -460,6 +460,21 @@ struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> 
 			fmt::format_to(out, "{}", call.arguments[i]);
 		}
 		fmt::format_to(out, ")");
+		if (!call.destructors.empty()) {
+			fmt::format_to(out, " unwind[");
+			for (size_t i = call.destructors.size(); i > 0; --i) {
+				if (i != call.destructors.size()) {
+					fmt::format_to(out, ",");
+				}
+				const auto& destructor = call.destructors[i - 1];
+				if (nautilus::log::options::getLogAddresses()) {
+					fmt::format_to(out, "{}({})", destructor.functionName, destructor.address);
+				} else {
+					fmt::format_to(out, "dtor_*({})", destructor.address);
+				}
+			}
+			fmt::format_to(out, "]");
+		}
 		return out;
 	}
 };
