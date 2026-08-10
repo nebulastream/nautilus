@@ -85,7 +85,7 @@ CrossType<T> toCrossNative(T v) {
 /// any state besides its arguments, so replaying the same fuzzer input
 /// always reproduces the same result.
 template <typename T>
-T calleeMix(T a, T b) {
+T calleeMix(T a, T b) noexcept {
 	if constexpr (std::is_floating_point_v<T>) {
 		return a * T(0.5) + b;
 	} else if constexpr (std::is_same_v<T, bool>) {
@@ -100,7 +100,7 @@ T calleeMix(T a, T b) {
 }
 
 template <typename T>
-T calleeMin(T a, T b) {
+T calleeMin(T a, T b) noexcept {
 	// NaN-safe by identity: `NaN < b` is false, so b is returned. Both the
 	// oracle and the compiled kernel run this same code, so the results match
 	// by construction whatever the operands are.
@@ -112,7 +112,7 @@ T calleeMin(T a, T b) {
 /// through a real call (does the backend correctly produce/return a constant
 /// via the ABI's return register(s)?).
 template <typename T>
-T calleeConstSeven() {
+T calleeConstSeven() noexcept {
 	if constexpr (std::is_floating_point_v<T>) {
 		return T(7.5);
 	} else {
@@ -122,7 +122,7 @@ T calleeConstSeven() {
 
 /// Arity-1 callee.
 template <typename T>
-T calleeUnary(T x) {
+T calleeUnary(T x) noexcept {
 	if constexpr (std::is_floating_point_v<T>) {
 		return -x + T(1.5);
 	} else if constexpr (std::is_same_v<T, bool>) {
@@ -139,7 +139,7 @@ T calleeUnary(T x) {
 /// arguments on ABIs that run out of argument registers before the third
 /// same-typed parameter.
 template <typename T>
-T calleeSum3(T a, T b, T c) {
+T calleeSum3(T a, T b, T c) noexcept {
 	if constexpr (std::is_floating_point_v<T>) {
 		return a + b + c;
 	} else if constexpr (std::is_same_v<T, bool>) {
@@ -161,7 +161,7 @@ T calleeSum3(T a, T b, T c) {
 /// leg is clamped here with the same shared convertClamped used everywhere
 /// else in this fuzzer for a float->int narrowing.
 template <typename T>
-T calleeMixedTypes(T a, CrossType<T> b) {
+T calleeMixedTypes(T a, CrossType<T> b) noexcept {
 	if constexpr (std::is_floating_point_v<T>) {
 		// b : int32_t -- widening it to T is always safe, no clamp needed.
 		return a + static_cast<T>(b) * T(0.25);
@@ -186,7 +186,7 @@ T calleeMixedTypes(T a, CrossType<T> b) {
 /// always defined by IEEE 754 (may produce +-inf for out-of-range
 /// magnitudes, never UB).
 template <typename T>
-NarrowType<T> calleeNarrowReturn(T a, T b) {
+NarrowType<T> calleeNarrowReturn(T a, T b) noexcept {
 	using N = NarrowType<T>;
 	if constexpr (std::is_floating_point_v<T>) {
 		return static_cast<N>(a) + static_cast<N>(b);
@@ -211,7 +211,7 @@ NarrowType<T> calleeNarrowReturn(T a, T b) {
 /// evaluates to the value it just wrote rather than to anything the
 /// underlying write "returns".
 template <typename T>
-void calleeVoidNoop(T a, T b) {
+void calleeVoidNoop(T a, T b) noexcept {
 	(void) a;
 	(void) b;
 }
@@ -224,7 +224,7 @@ void calleeVoidNoop(T a, T b) {
 /// under test, not just the return value. Always safe: `p` is always an
 /// in-bounds pointer into the shared buffer (generatePtrNode's invariant).
 template <typename T>
-T calleePtrSwap(T* p, T v) {
+T calleePtrSwap(T* p, T v) noexcept {
 	const T old = *p;
 	*p = v;
 	return old;
