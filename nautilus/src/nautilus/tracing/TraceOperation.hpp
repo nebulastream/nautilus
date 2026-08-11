@@ -56,6 +56,7 @@ struct FunctionCall {
 	void* ptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	CallKind kind = CallKind::Regular;
 	std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt;
 };
 
@@ -64,6 +65,7 @@ struct IndirectFunctionCall {
 	TypedValueRef fnPtr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	CallKind kind = CallKind::Regular;
 	std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt;
 };
 

@@ -158,8 +158,8 @@ struct formatter<nautilus::compiler::ir::Operation> : formatter<std::string_view
 
 template <>
 struct formatter<nautilus::compiler::ir::OperationIdentifier> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::OperationIdentifier& op,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::OperationIdentifier& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", op.getId());
 		return out;
@@ -177,8 +177,8 @@ struct formatter<nautilus::compiler::ir::BlockIdentifier> : formatter<std::strin
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlockInvocation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlockInvocation& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "Block_{}(", op.getBlock()->getIdentifier());
 		const auto args = op.getArguments();
@@ -205,12 +205,15 @@ struct formatter<nautilus::compiler::ir::IfOperation> : formatter<std::string_vi
 
 template <>
 struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 
 		if (op.getStamp() != nautilus::Type::v) {
 			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
+		}
+		if (op.getCallKind() == nautilus::CallKind::WithExceptionHandling) {
+			fmt::format_to(out, "CALL_WITH_EXCEPTION_HANDLING ");
 		}
 		if (nautilus::log::options::getLogAddresses()) {
 			fmt::format_to(out, "{}(", op.getFunctionName());
@@ -226,7 +229,7 @@ struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::st
 		}
 		fmt::format_to(out, ")");
 		if (op.getCleanupState().has_value()) {
-			fmt::format_to(out, " [cleanup={}]", *op.getCleanupState());
+			fmt::format_to(out, " cleanup_state[{}]", *op.getCleanupState());
 		}
 		return out;
 	}
@@ -301,9 +304,25 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		break;
 	case OpType::IndirectCallOp: {
 		const auto* call = nautilus::compiler::ir::cast<IndirectCallOperation>(&op);
-		fmt::format_to(out, "{}", op.getIdentifier());
-		if (call->getCleanupState().has_value()) {
-			fmt::format_to(out, " [cleanup={}]", *call->getCleanupState());
+		if (call->getCallKind() == nautilus::CallKind::Regular) {
+			fmt::format_to(out, "{}", op.getIdentifier());
+		} else {
+			if (op.getStamp() != nautilus::Type::v) {
+				fmt::format_to(out, "{} = ", op.getIdentifier());
+			}
+			fmt::format_to(out, "INDIRECT_CALL_WITH_EXCEPTION_HANDLING {}(",
+			               call->getFunctionPtrOperand()->getIdentifier());
+			const auto arguments = call->getInputArguments();
+			for (size_t i = 0; i < arguments.size(); ++i) {
+				if (i != 0) {
+					fmt::format_to(out, ",");
+				}
+				fmt::format_to(out, "{}", arguments[i]->getIdentifier());
+			}
+			fmt::format_to(out, ")");
+			if (call->getCleanupState().has_value()) {
+				fmt::format_to(out, " cleanup_state[{}]", *call->getCleanupState());
+			}
 		}
 		break;
 	}
@@ -370,8 +389,8 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 
 template <>
 struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlock& block,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "\nBlock_{}(", block.getIdentifier());
 		const auto& args = block.getArguments();
@@ -392,8 +411,8 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 
 template <>
 struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::FunctionOperation& func,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "{}(", func.getName());
 		// The trace-to-IR conversion leaves `inputArgs`/`inputArgNames` empty;

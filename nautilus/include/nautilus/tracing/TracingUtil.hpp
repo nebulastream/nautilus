@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <iosfwd>
+#include <optional>
 #include <vector>
 
 namespace nautilus {

@@ -97,7 +97,8 @@ std::set<std::filesystem::path> currentDumpDirectories() {
 	return result;
 }
 
-std::string readNewDump(const std::set<std::filesystem::path>& previous, const std::string& fileName) {
+std::string readNewDump(const std::set<std::filesystem::path>& previous, const std::string& fileName,
+                        const std::string& marker = "nestedCleanupThenThrow") {
 	const auto root = std::filesystem::temp_directory_path() / "dump";
 	if (!std::filesystem::exists(root)) {
 		return {};
@@ -113,7 +114,7 @@ std::string readNewDump(const std::set<std::filesystem::path>& previous, const s
 			std::ifstream stream(entry.path());
 			auto content = std::stringstream {};
 			content << stream.rdbuf();
-			if (content.str().find("nestedCleanupThenThrow") != std::string::npos) {
+			if (content.str().find(marker) != std::string::npos) {
 				return content.str();
 			}
 		}
@@ -253,6 +254,22 @@ TEST_CASE("nested Nautilus frames unwind their active struct values") {
 }
 
 #ifdef ENABLE_MLIR_BACKEND
+TEST_CASE("MLIR keeps potentially throwing calls without cleanup as calls") {
+	const auto previousDumps = currentDumpDirectories();
+	auto engine =
+	    makeEngine("mlir", [](engine::Options& options) { options.setOption("dump.before_llvm_optimization", true); });
+	auto function = engine.registerFunction(throwWithoutCleanup);
+	REQUIRE_THROWS_AS((void) function(7), std::runtime_error);
+
+	const auto llvm = readNewDump(previousDumps, "before_llvm_optimization.ll", "throwRuntime");
+	REQUIRE_FALSE(llvm.empty());
+	const auto execute = llvmFunctionBody(llvm, "execute");
+	const auto throwingCall = lineContaining(execute, "throwRuntime");
+	REQUIRE(throwingCall.find("call") != std::string::npos);
+	REQUIRE(throwingCall.find("invoke") == std::string::npos);
+	REQUIRE(execute.find("landingpad") == std::string::npos);
+}
+
 TEST_CASE("MLIR materializes nested cleanup frames before LLVM inlining") {
 	const auto previousDumps = currentDumpDirectories();
 	auto engine = makeEngine("mlir", [](engine::Options& options) {

@@ -78,6 +78,64 @@ void verifyExceptionCleanup(VerificationResult& result, const FunctionOperation&
 		}
 	}
 
+	for (const auto* operation : definedOperations) {
+		auto kind = CallKind::Regular;
+		FunctionAttributes attributes;
+		const std::optional<CleanupStateId>* cleanupState = nullptr;
+		if (operation->getOperationType() == Operation::OperationType::ProxyCallOp) {
+			const auto& call = static_cast<const ProxyCallOperation&>(*operation);
+			kind = call.getCallKind();
+			attributes = call.getFunctionAttributes();
+			cleanupState = &call.getCleanupState();
+		} else if (operation->getOperationType() == Operation::OperationType::IndirectCallOp) {
+			const auto& call = static_cast<const IndirectCallOperation&>(*operation);
+			kind = call.getCallKind();
+			attributes = call.getFunctionAttributes();
+			cleanupState = &call.getCleanupState();
+		} else {
+			continue;
+		}
+
+		const auto* block = operationBlocks.at(operation);
+		if (kind != CallKind::Regular && kind != CallKind::WithExceptionHandling) {
+			addError(result, &function, block, "call has an unknown CallKind");
+			continue;
+		}
+		if (kind == CallKind::Regular) {
+			if (cleanupState->has_value()) {
+				addError(result, &function, block, "Regular call carries a cleanup-state ID");
+			}
+			continue;
+		}
+
+		if (attributes.noUnwind) {
+			addError(result, &function, block, "WithExceptionHandling call is marked noUnwind");
+		}
+		if (!cleanupState->has_value()) {
+			addError(result, &function, block, "WithExceptionHandling call has no cleanup-state ID");
+			continue;
+		}
+		const auto stateId = **cleanupState;
+		if (stateId >= function.getCleanupStates().size()) {
+			addError(result, &function, block,
+			         fmt::format("WithExceptionHandling call references out-of-range cleanup state {}", stateId));
+			continue;
+		}
+		const auto& state = function.getCleanupStates()[stateId];
+		if (state.active.empty()) {
+			addError(result, &function, block, "WithExceptionHandling call references an empty cleanup state");
+		}
+		for (const auto alloca : state.active) {
+			if (alloca >= allocas.size()) {
+				addError(result, &function, block,
+				         fmt::format("cleanup state {} references out-of-range alloca {}", stateId, alloca));
+			} else if (!allocas[alloca].destructor.has_value()) {
+				addError(result, &function, block,
+				         fmt::format("cleanup state {} references alloca {} without a destructor", stateId, alloca));
+			}
+		}
+	}
+
 	if (!function.hasExceptionRegion()) {
 		return;
 	}
@@ -124,6 +182,32 @@ void verifyExceptionCleanup(VerificationResult& result, const FunctionOperation&
 		if (site.cleanup.has_value() && *site.cleanup >= region.pads.size()) {
 			addError(result, &function, block,
 			         fmt::format("exception call site references out-of-range cleanup pad {}", *site.cleanup));
+		}
+
+		auto kind = CallKind::Regular;
+		const std::optional<CleanupStateId>* cleanupState = nullptr;
+		if (site.call->getOperationType() == Operation::OperationType::ProxyCallOp) {
+			const auto& call = static_cast<const ProxyCallOperation&>(*site.call);
+			kind = call.getCallKind();
+			cleanupState = &call.getCleanupState();
+		} else if (site.call->getOperationType() == Operation::OperationType::IndirectCallOp) {
+			const auto& call = static_cast<const IndirectCallOperation&>(*site.call);
+			kind = call.getCallKind();
+			cleanupState = &call.getCleanupState();
+		} else {
+			continue;
+		}
+		if (kind == CallKind::Regular && site.cleanup.has_value()) {
+			addError(result, &function, block, "Regular call site references a cleanup pad");
+		} else if (kind == CallKind::WithExceptionHandling) {
+			if (!site.cleanup.has_value()) {
+				addError(result, &function, block, "WithExceptionHandling call site has no cleanup pad");
+			} else if (*site.cleanup < region.pads.size() && cleanupState->has_value() &&
+			           **cleanupState < function.getCleanupStates().size() &&
+			           region.pads[*site.cleanup].active != function.getCleanupStates()[**cleanupState].active) {
+				addError(result, &function, block,
+				         "WithExceptionHandling call site's cleanup pad disagrees with its cleanup state");
+			}
 		}
 	}
 	for (const auto* operation : definedOperations) {

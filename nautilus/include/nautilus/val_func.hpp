@@ -36,10 +36,12 @@ namespace nautilus {
 ///   - Member function pointers (R (C::*)(Args...)) have a different ABI;
 ///     use memberFunc() in function.hpp.
 
-template <typename R, typename... Args>
-class val<R (*)(Args...)> : public val_base {
+namespace details {
+
+template <typename Derived, typename R, bool IsNoexcept, typename... Args>
+class FunctionPointerVal : public val_base {
 public:
-	using raw_type = R (*)(Args...);
+	using raw_type = std::conditional_t<IsNoexcept, R (*)(Args...) noexcept, R (*)(Args...)>;
 	using basic_type = raw_type;
 	using return_type = R;
 
@@ -48,7 +50,7 @@ public:
 	}
 
 	[[nodiscard]] TypeId getTypeId() const override {
-		return typeIdOf<val<R (*)(Args...)>>();
+		return typeIdOf<Derived>();
 	}
 
 #ifdef ENABLE_TRACING
@@ -57,22 +59,22 @@ public:
 	}
 #endif
 
-	val() : ptr(static_cast<void*>(nullptr)) {
+	FunctionPointerVal() : ptr(static_cast<void*>(nullptr)) {
 	}
 
-	val(raw_type fnptr) : ptr(reinterpret_cast<void*>(fnptr)) {
+	FunctionPointerVal(raw_type fnptr) : ptr(reinterpret_cast<void*>(fnptr)) {
 	}
 
-	val(std::nullptr_t) : ptr(static_cast<void*>(nullptr)) {
+	FunctionPointerVal(std::nullptr_t) : ptr(static_cast<void*>(nullptr)) {
 	}
 
-	val(const val& other) : ptr(other.ptr) {
+	FunctionPointerVal(const FunctionPointerVal& other) : ptr(other.ptr) {
 	}
 
-	val(val&& other) : ptr(std::move(other.ptr)) {
+	FunctionPointerVal(FunctionPointerVal&& other) : ptr(std::move(other.ptr)) {
 	}
 
-	val& operator=(const val& other) {
+	FunctionPointerVal& operator=(const FunctionPointerVal& other) {
 		ptr = other.ptr;
 		return *this;
 	}
@@ -80,16 +82,16 @@ public:
 #ifdef ENABLE_TRACING
 	// Constructors used by val<void*>::operator val<OtherType>() when casting
 	// an opaque void* back to a typed function pointer val.
-	val(raw_type fnptr, tracing::TypedValueRef tc) : ptr(reinterpret_cast<void*>(fnptr), tc) {
+	FunctionPointerVal(raw_type fnptr, tracing::TypedValueRef tc) : ptr(reinterpret_cast<void*>(fnptr), tc) {
 	}
 
-	val(raw_type fnptr, const tracing::TypedValueRefHolder& tc)
+	FunctionPointerVal(raw_type fnptr, const tracing::TypedValueRefHolder& tc)
 	    : ptr(reinterpret_cast<void*>(fnptr), static_cast<tracing::TypedValueRef>(tc)) {
 	}
 
 	// Constructor used by createTraceableArgument() in Engine.hpp: receives a
 	// traced function argument reference with no known concrete address yet.
-	explicit val(tracing::TypedValueRef tc) : ptr(tc) {
+	explicit FunctionPointerVal(tracing::TypedValueRef tc) : ptr(tc) {
 	}
 #endif
 
@@ -109,20 +111,20 @@ public:
 
 	// ---- Equality ----
 
-	val<bool> operator==(const val& other) const {
-		return ptr == other.ptr;
+	friend val<bool> operator==(const Derived& left, const Derived& right) {
+		return left.ptr == right.ptr;
 	}
 
-	val<bool> operator==(std::nullptr_t) const {
-		return ptr == nullptr;
+	friend val<bool> operator==(const Derived& left, std::nullptr_t) {
+		return left.ptr == nullptr;
 	}
 
-	val<bool> operator!=(const val& other) const {
-		return ptr != other.ptr;
+	friend val<bool> operator!=(const Derived& left, const Derived& right) {
+		return left.ptr != right.ptr;
 	}
 
-	val<bool> operator!=(std::nullptr_t) const {
-		return ptr != nullptr;
+	friend val<bool> operator!=(const Derived& left, std::nullptr_t) {
+		return left.ptr != nullptr;
 	}
 
 	// ---- Conversion to val<void*> ----
@@ -143,14 +145,15 @@ public:
 		if (tracing::inTracer()) {
 			auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);
 			auto argRefs = getArgumentReferences(std::forward<ValueArgs>(args)...);
+			auto attributes = FunctionAttributes {.noUnwind = IsNoexcept};
 			if constexpr (std::is_void_v<R>) {
 				tracing::traceIndirectCall(
-				    fnPtrRef, Type::v, argRefs, {},
+				    fnPtrRef, Type::v, argRefs, attributes,
 				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return;
 			} else {
 				auto& resultRef = tracing::traceIndirectCall(
-				    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {},
+				    fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, attributes,
 				    ExceptionCaptureSpec {reinterpret_cast<void*>(exceptionCaptureFunction<R, Args...>())});
 				return val<R>(resultRef);
 			}
@@ -166,9 +169,21 @@ public:
 
 private:
 	val<void*> ptr;
+};
 
-	template <typename>
-	friend struct details::RawValueResolver;
+} // namespace details
+
+template <typename R, typename... Args>
+class val<R (*)(Args...)> : public details::FunctionPointerVal<val<R (*)(Args...)>, R, false, Args...> {
+public:
+	using details::FunctionPointerVal<val<R (*)(Args...)>, R, false, Args...>::FunctionPointerVal;
+};
+
+template <typename R, typename... Args>
+class val<R (*)(Args...) noexcept>
+    : public details::FunctionPointerVal<val<R (*)(Args...) noexcept>, R, true, Args...> {
+public:
+	using details::FunctionPointerVal<val<R (*)(Args...) noexcept>, R, true, Args...>::FunctionPointerVal;
 };
 
 // ---- Free helper ----
@@ -178,6 +193,11 @@ private:
 template <typename R, typename... Args>
 val<R (*)(Args...)> make_fn_val(R (*fnptr)(Args...)) {
 	return val<R (*)(Args...)>(fnptr);
+}
+
+template <typename R, typename... Args>
+val<R (*)(Args...) noexcept> make_fn_val(R (*fnptr)(Args...) noexcept) {
+	return val<R (*)(Args...) noexcept>(fnptr);
 }
 
 } // namespace nautilus
@@ -192,8 +212,19 @@ namespace nautilus::details {
 /// function pointer parameter.
 template <typename R, typename... Args>
 struct RawValueResolver<R (*)(Args...)> {
-	static R (*getRawValue(const val<R (*)(Args...)>& v))(Args...) {
-		return reinterpret_cast<R (*)(Args...)>(RawValueResolver<void*>::getRawValue(static_cast<val<void*>>(v)));
+	using raw_type = R (*)(Args...);
+
+	static raw_type getRawValue(const val<raw_type>& v) {
+		return reinterpret_cast<raw_type>(RawValueResolver<void*>::getRawValue(static_cast<val<void*>>(v)));
+	}
+};
+
+template <typename R, typename... Args>
+struct RawValueResolver<R (*)(Args...) noexcept> {
+	using raw_type = R (*)(Args...) noexcept;
+
+	static raw_type getRawValue(const val<raw_type>& v) {
+		return reinterpret_cast<raw_type>(RawValueResolver<void*>::getRawValue(static_cast<val<void*>>(v)));
 	}
 };
 

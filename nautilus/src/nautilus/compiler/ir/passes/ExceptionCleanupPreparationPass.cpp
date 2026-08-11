@@ -22,6 +22,7 @@ namespace {
 
 struct CallCleanupState {
 	bool mayThrow;
+	CallKind kind;
 	std::optional<CleanupStateId> state;
 };
 
@@ -29,11 +30,11 @@ std::optional<CallCleanupState> getCallCleanupState(const Operation& operation) 
 	switch (operation.getOperationType()) {
 	case Operation::OperationType::ProxyCallOp: {
 		const auto& call = static_cast<const ProxyCallOperation&>(operation);
-		return CallCleanupState {!call.getFunctionAttributes().noUnwind, call.getCleanupState()};
+		return CallCleanupState {!call.getFunctionAttributes().noUnwind, call.getCallKind(), call.getCleanupState()};
 	}
 	case Operation::OperationType::IndirectCallOp: {
 		const auto& call = static_cast<const IndirectCallOperation&>(operation);
-		return CallCleanupState {!call.getFunctionAttributes().noUnwind, call.getCleanupState()};
+		return CallCleanupState {!call.getFunctionAttributes().noUnwind, call.getCallKind(), call.getCleanupState()};
 	}
 	default:
 		return std::nullopt;
@@ -60,6 +61,11 @@ const CleanupState& resolveCleanupState(const FunctionOperation& function, const
 			     "cleanup state " + std::to_string(stateId) + " references alloca " + std::to_string(alloca) +
 			         " without a destructor");
 		}
+		if (!function.getAllocaSpecs()[alloca].destructor->attributes.noUnwind) {
+			fail(function, block, operation,
+			     "cleanup state " + std::to_string(stateId) + " references alloca " + std::to_string(alloca) +
+			         " whose destructor is not marked noUnwind");
+		}
 		if (!seen.insert(alloca).second) {
 			fail(function, block, operation,
 			     "cleanup state " + std::to_string(stateId) + " contains duplicate alloca " + std::to_string(alloca));
@@ -84,18 +90,34 @@ FunctionExceptionRegion prepareFunction(const FunctionOperation& function) {
 	for (const auto* block : function.getBasicBlocks()) {
 		for (const auto* operation : block->getOperations()) {
 			const auto callState = getCallCleanupState(*operation);
-			if (!callState.has_value() || !callState->mayThrow) {
+			if (!callState.has_value()) {
+				continue;
+			}
+			if (callState->kind != CallKind::Regular && callState->kind != CallKind::WithExceptionHandling) {
+				fail(function, *block, *operation, "call has an unknown CallKind");
+			}
+
+			if (callState->kind == CallKind::Regular) {
+				if (callState->state.has_value()) {
+					fail(function, *block, *operation, "Regular call carries a cleanup-state ID");
+				}
+				if (callState->mayThrow) {
+					region.callSites.push_back(ExceptionalCallSite {operation, std::nullopt});
+				}
 				continue;
 			}
 
-			std::optional<CleanupPadId> cleanup;
-			if (callState->state.has_value()) {
-				const auto& state = resolveCleanupState(function, *block, *operation, *callState->state);
-				if (!state.active.empty()) {
-					cleanup = internPad(region, state);
-				}
+			if (!callState->mayThrow) {
+				fail(function, *block, *operation, "WithExceptionHandling call is marked noUnwind");
 			}
-			region.callSites.push_back(ExceptionalCallSite {operation, cleanup});
+			if (!callState->state.has_value()) {
+				fail(function, *block, *operation, "WithExceptionHandling call has no cleanup-state ID");
+			}
+			const auto& state = resolveCleanupState(function, *block, *operation, *callState->state);
+			if (state.active.empty()) {
+				fail(function, *block, *operation, "WithExceptionHandling call references an empty cleanup state");
+			}
+			region.callSites.push_back(ExceptionalCallSite {operation, internPad(region, state)});
 		}
 	}
 	return region;

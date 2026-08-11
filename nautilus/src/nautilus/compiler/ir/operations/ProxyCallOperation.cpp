@@ -4,21 +4,21 @@
 
 namespace nautilus::compiler::ir {
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier,
-                                       std::span<Operation* const> inputArguments, Type resultType,
+                                       std::span<Operation* const> inputArguments, Type resultType, CallKind callKind,
                                        std::optional<CleanupStateId> cleanupState)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
-      cleanupState(std::move(cleanupState)) {
+      callKind(callKind), cleanupState(std::move(cleanupState)) {
 }
 
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol,
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-                                       Type resultType, const FunctionAttributes fnAttrs,
+                                       Type resultType, const FunctionAttributes fnAttrs, CallKind callKind,
                                        std::optional<ExceptionCaptureSpec> exceptionCapture,
                                        std::optional<CleanupStateId> cleanupState)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
       mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs),
-      exceptionCapture(std::move(exceptionCapture)), cleanupState(std::move(cleanupState)) {
+      callKind(callKind), exceptionCapture(std::move(exceptionCapture)), cleanupState(std::move(cleanupState)) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -46,6 +46,10 @@ void* ProxyCallOperation::getFunctionPtr() {
 
 const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
+}
+
+CallKind ProxyCallOperation::getCallKind() const {
+	return callKind;
 }
 
 const std::optional<CleanupStateId>& ProxyCallOperation::getCleanupState() const {

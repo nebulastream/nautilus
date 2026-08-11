@@ -5,7 +5,7 @@ Block_0():
 	$1 = alloca[0] :ptr
 	func_*($1) :void
 	$3 = 7 :i32
-	func_*($3) [cleanup=1] :void
+	CALL_WITH_EXCEPTION_HANDLING func_*($3) cleanup_state[1] :void
 	func_*($1) :void
 	return :void
 }

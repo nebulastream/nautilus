@@ -8,6 +8,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace nautilus {

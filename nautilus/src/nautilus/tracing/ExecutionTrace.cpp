@@ -411,12 +411,13 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	auto hasExceptionalCleanupCall = false;
 	for (const auto* block : trace.blocks) {
 		for (const auto* operation : block->operations) {
-			if (operation->op != nautilus::tracing::Op::CALL ||
-			    operation->tag.getCleanupStateId() == nautilus::EMPTY_CLEANUP_STATE) {
-				continue;
+			if (operation->op == nautilus::tracing::Op::CALL) {
+				const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation->input.front());
+				hasExceptionalCleanupCall = call->kind == nautilus::CallKind::WithExceptionHandling;
+			} else if (operation->op == nautilus::tracing::Op::INDIRECT_CALL) {
+				const auto* call = std::get<nautilus::tracing::IndirectFunctionCall*>(operation->input.front());
+				hasExceptionalCleanupCall = call->kind == nautilus::CallKind::WithExceptionHandling;
 			}
-			const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation->input.front());
-			hasExceptionalCleanupCall = !call->fnAttrs.noUnwind;
 			if (hasExceptionalCleanupCall) {
 				break;
 			}
@@ -518,6 +519,23 @@ struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> 
 };
 
 template <>
+struct formatter<nautilus::tracing::IndirectFunctionCall> : formatter<std::string_view> {
+	static auto format(const nautilus::tracing::IndirectFunctionCall& call, format_context& ctx)
+	    -> format_context::iterator {
+		auto out = ctx.out();
+		fmt::format_to(out, "{}(", call.fnPtr);
+		for (size_t i = 0; i < call.arguments.size(); i++) {
+			if (i != 0) {
+				fmt::format_to(out, ",");
+			}
+			fmt::format_to(out, "{}", call.arguments[i]);
+		}
+		fmt::format_to(out, ")");
+		return out;
+	}
+};
+
+template <>
 struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 	auto format(nautilus::ConstantLiteral c, format_context& ctx) const -> format_context::iterator;
 };
@@ -525,7 +543,19 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracing::TraceOperation& operation,
                                                           format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
-	fmt::format_to(out, "\t{}\t", toString(operation.op));
+	auto operationName = toString(operation.op);
+	if (operation.op == nautilus::tracing::Op::CALL) {
+		const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation.input.front());
+		if (call->kind == nautilus::CallKind::WithExceptionHandling) {
+			operationName = "CALL_WITH_EXCEPTION_HANDLING";
+		}
+	} else if (operation.op == nautilus::tracing::Op::INDIRECT_CALL) {
+		const auto* call = std::get<nautilus::tracing::IndirectFunctionCall*>(operation.input.front());
+		if (call->kind == nautilus::CallKind::WithExceptionHandling) {
+			operationName = "INDIRECT_CALL_WITH_EXCEPTION_HANDLING";
+		}
+	}
+	fmt::format_to(out, "\t{}\t", operationName);
 	fmt::format_to(out, "{}\t", operation.resultRef);
 	for (const auto& opInput : operation.input) {
 		if (auto inputRef = std::get_if<nautilus::tracing::TypedValueRef>(&opInput)) {
@@ -534,15 +564,23 @@ auto formatter<nautilus::tracing::TraceOperation>::format(const nautilus::tracin
 			fmt::format_to(out, "{}\t", **blockRefPtr);
 		} else if (auto fCallPtr = std::get_if<nautilus::tracing::FunctionCall*>(&opInput)) {
 			fmt::format_to(out, "{}\t", **fCallPtr);
+		} else if (auto indirectCallPtr = std::get_if<nautilus::tracing::IndirectFunctionCall*>(&opInput)) {
+			if ((*indirectCallPtr)->kind == nautilus::CallKind::WithExceptionHandling) {
+				fmt::format_to(out, "{}\t", **indirectCallPtr);
+			}
 		} else if (auto constant = std::get_if<nautilus::ConstantLiteral>(&opInput)) {
 			fmt::format_to(out, "{}", *constant);
 		}
 	}
-	if (operation.op == nautilus::tracing::Op::CALL &&
-	    operation.tag.getCleanupStateId() != nautilus::EMPTY_CLEANUP_STATE) {
+	if (operation.op == nautilus::tracing::Op::CALL) {
 		const auto* call = std::get<nautilus::tracing::FunctionCall*>(operation.input.front());
-		if (!call->fnAttrs.noUnwind) {
-			fmt::format_to(out, "[cleanup={}]", operation.tag.getCleanupStateId());
+		if (call->kind == nautilus::CallKind::WithExceptionHandling) {
+			fmt::format_to(out, "cleanup_state[{}]", operation.tag.getCleanupStateId());
+		}
+	} else if (operation.op == nautilus::tracing::Op::INDIRECT_CALL) {
+		const auto* call = std::get<nautilus::tracing::IndirectFunctionCall*>(operation.input.front());
+		if (call->kind == nautilus::CallKind::WithExceptionHandling) {
+			fmt::format_to(out, "cleanup_state[{}]", operation.tag.getCleanupStateId());
 		}
 	}
 	fmt::format_to(out, ":{}", toString(operation.resultType));

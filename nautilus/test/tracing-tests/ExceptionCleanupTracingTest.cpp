@@ -2,6 +2,7 @@
 #include "nautilus/common/ExceptionCleanup.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionCleanupPreparationPass.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
@@ -101,6 +102,18 @@ std::vector<const TraceOperation*> callsNamed(const ExecutionTrace& trace, const
 	return result;
 }
 
+std::vector<const TraceOperation*> indirectCalls(const ExecutionTrace& trace) {
+	auto result = std::vector<const TraceOperation*> {};
+	for (const auto* block : trace.blocks) {
+		for (const auto* operation : block->operations) {
+			if (operation->op == Op::INDIRECT_CALL) {
+				result.push_back(operation);
+			}
+		}
+	}
+	return result;
+}
+
 } // namespace
 
 TEST_CASE("Tracing infers noUnwind from exact noexcept function pointers") {
@@ -118,6 +131,8 @@ TEST_CASE("Tracing infers noUnwind from exact noexcept function pointers") {
 	const auto* mayThrow = std::get<FunctionCall*>(tracedCalls[1]->input.front());
 	REQUIRE(noThrow->fnAttrs.noUnwind);
 	REQUIRE_FALSE(mayThrow->fnAttrs.noUnwind);
+	REQUIRE(noThrow->kind == CallKind::Regular);
+	REQUIRE(mayThrow->kind == CallKind::Regular);
 }
 
 TEST_CASE("Nested Nautilus calls infer noUnwind from exact callable types") {
@@ -142,9 +157,15 @@ TEST_CASE("Nested Nautilus calls infer noUnwind from exact callable types") {
 		REQUIRE(noThrowCalls.size() == 1);
 		REQUIRE(mayThrowCalls.size() == 1);
 		REQUIRE(erasedCalls.size() == 1);
-		REQUIRE(std::get<FunctionCall*>(noThrowCalls.front()->input.front())->fnAttrs.noUnwind);
-		REQUIRE_FALSE(std::get<FunctionCall*>(mayThrowCalls.front()->input.front())->fnAttrs.noUnwind);
-		REQUIRE_FALSE(std::get<FunctionCall*>(erasedCalls.front()->input.front())->fnAttrs.noUnwind);
+		const auto* noThrowTraceCall = std::get<FunctionCall*>(noThrowCalls.front()->input.front());
+		const auto* mayThrowTraceCall = std::get<FunctionCall*>(mayThrowCalls.front()->input.front());
+		const auto* erasedTraceCall = std::get<FunctionCall*>(erasedCalls.front()->input.front());
+		REQUIRE(noThrowTraceCall->fnAttrs.noUnwind);
+		REQUIRE_FALSE(mayThrowTraceCall->fnAttrs.noUnwind);
+		REQUIRE_FALSE(erasedTraceCall->fnAttrs.noUnwind);
+		REQUIRE(noThrowTraceCall->kind == CallKind::Regular);
+		REQUIRE(mayThrowTraceCall->kind == CallKind::WithExceptionHandling);
+		REQUIRE(erasedTraceCall->kind == CallKind::WithExceptionHandling);
 		REQUIRE(noThrowCalls.front()->tag.getCleanupStateId() == mayThrowCalls.front()->tag.getCleanupStateId());
 		REQUIRE(noThrowCalls.front()->tag.getCleanupStateId() != EMPTY_CLEANUP_STATE);
 
@@ -177,10 +198,13 @@ TEST_CASE("Nested Nautilus calls infer noUnwind from exact callable types") {
 		REQUIRE(mayThrowCall != nullptr);
 		REQUIRE(erasedCall != nullptr);
 		REQUIRE(noThrowCall->getFunctionAttributes().noUnwind);
+		REQUIRE(noThrowCall->getCallKind() == CallKind::Regular);
 		REQUIRE_FALSE(noThrowCall->getCleanupState().has_value());
 		REQUIRE_FALSE(mayThrowCall->getFunctionAttributes().noUnwind);
+		REQUIRE(mayThrowCall->getCallKind() == CallKind::WithExceptionHandling);
 		REQUIRE(mayThrowCall->getCleanupState().has_value());
 		REQUIRE_FALSE(erasedCall->getFunctionAttributes().noUnwind);
+		REQUIRE(erasedCall->getCallKind() == CallKind::WithExceptionHandling);
 		REQUIRE(erasedCall->getCleanupState().has_value());
 
 		compiler::ir::ExceptionCleanupPreparationPass().apply(*ir);
@@ -338,6 +362,110 @@ TEST_CASE("Tracing records construction activation and destruction deactivation"
 	const auto active = tracedCalls[1]->tag.getCleanupStateId();
 	REQUIRE(executionTrace->getCleanupState(active).active == std::vector<AllocaIndex> {0});
 	REQUIRE(tracedCalls[2]->tag.getCleanupStateId() == EMPTY_CLEANUP_STATE);
+	REQUIRE(std::get<FunctionCall*>(tracedCalls[0]->input.front())->kind == CallKind::Regular);
+	REQUIRE(std::get<FunctionCall*>(tracedCalls[1]->input.front())->kind == CallKind::WithExceptionHandling);
+	REQUIRE(std::get<FunctionCall*>(tracedCalls[2]->input.front())->kind == CallKind::Regular);
+	REQUIRE(executionTrace->toString().find("CALL_WITH_EXCEPTION_HANDLING") != std::string::npos);
+}
+
+TEST_CASE("Tracing classifies indirect calls from active cleanup state") {
+	auto run = []<typename TraceContext>() {
+		common::Arena arena;
+		auto module = traceWith<TraceContext>(
+		    [] {
+			    auto target = val<void (*)(int32_t)> {mayThrowTarget};
+			    target(val<int32_t> {1});
+			    {
+				    val<TrackedValue> value;
+				    target(val<int32_t> {2});
+			    }
+			    tracing::traceReturnOperation(Type::v, {});
+		    },
+		    arena);
+		const auto* executionTrace = module->getFunction("execute");
+		const auto tracedCalls = indirectCalls(*executionTrace);
+
+		REQUIRE(tracedCalls.size() == 2);
+		REQUIRE(std::get<IndirectFunctionCall*>(tracedCalls[0]->input.front())->kind == CallKind::Regular);
+		REQUIRE(std::get<IndirectFunctionCall*>(tracedCalls[1]->input.front())->kind ==
+		        CallKind::WithExceptionHandling);
+		REQUIRE(executionTrace->toString().find("INDIRECT_CALL_WITH_EXCEPTION_HANDLING") != std::string::npos);
+
+		auto sharedModule = std::shared_ptr<TraceModule>(std::move(module));
+		auto afterSsa = SSACreationPhase().apply(std::move(sharedModule));
+		auto ir = TraceToIRConversionPhase().apply(afterSsa, "indirect-exception-cleanup");
+		const auto* function = ir->getFunctionOperation("execute");
+		auto irCalls = std::vector<const compiler::ir::IndirectCallOperation*> {};
+		for (const auto* block : function->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (operation->getOperationType() == compiler::ir::Operation::OperationType::IndirectCallOp) {
+					irCalls.push_back(static_cast<const compiler::ir::IndirectCallOperation*>(operation));
+				}
+			}
+		}
+		REQUIRE(irCalls.size() == 2);
+		REQUIRE(irCalls[0]->getCallKind() == CallKind::Regular);
+		REQUIRE_FALSE(irCalls[0]->getCleanupState().has_value());
+		REQUIRE(irCalls[1]->getCallKind() == CallKind::WithExceptionHandling);
+		REQUIRE(irCalls[1]->getCleanupState().has_value());
+		REQUIRE(ir->toString().find("INDIRECT_CALL_WITH_EXCEPTION_HANDLING") != std::string::npos);
+	};
+
+	SECTION("exception-based tracer") {
+		run.template operator()<ExceptionBasedTraceContext>();
+	}
+	SECTION("lazy tracer") {
+		run.template operator()<LazyTraceContext>();
+	}
+}
+
+TEST_CASE("Tracing infers noUnwind from typed indirect noexcept calls") {
+	auto run = []<typename TraceContext>() {
+		common::Arena arena;
+		auto module = traceWith<TraceContext>(
+		    [] {
+			    val<TrackedValue> value;
+			    auto target = val<void (*)(int32_t) noexcept> {noThrowTarget};
+			    target(val<int32_t> {1});
+			    tracing::traceReturnOperation(Type::v, {});
+		    },
+		    arena);
+		const auto* executionTrace = module->getFunction("execute");
+		const auto tracedCalls = indirectCalls(*executionTrace);
+
+		REQUIRE(tracedCalls.size() == 1);
+		const auto* tracedCall = std::get<IndirectFunctionCall*>(tracedCalls.front()->input.front());
+		REQUIRE(tracedCall->fnAttrs.noUnwind);
+		REQUIRE(tracedCall->kind == CallKind::Regular);
+		REQUIRE(tracedCalls.front()->tag.getCleanupStateId() != EMPTY_CLEANUP_STATE);
+
+		auto sharedModule = std::shared_ptr<TraceModule>(std::move(module));
+		auto afterSsa = SSACreationPhase().apply(std::move(sharedModule));
+		auto ir = TraceToIRConversionPhase().apply(afterSsa, "indirect-noexcept-cleanup");
+		const auto* function = ir->getFunctionOperation("execute");
+		const compiler::ir::IndirectCallOperation* irCall = nullptr;
+		for (const auto* block : function->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (operation->getOperationType() == compiler::ir::Operation::OperationType::IndirectCallOp) {
+					irCall = static_cast<const compiler::ir::IndirectCallOperation*>(operation);
+				}
+			}
+		}
+		REQUIRE(irCall != nullptr);
+		REQUIRE(irCall->getFunctionAttributes().noUnwind);
+		REQUIRE(irCall->getCallKind() == CallKind::Regular);
+		REQUIRE_FALSE(irCall->getCleanupState().has_value());
+
+		compiler::ir::ExceptionCleanupPreparationPass().apply(*ir);
+		REQUIRE_FALSE(function->hasExceptionRegion());
+	};
+
+	SECTION("exception-based tracer") {
+		run.template operator()<ExceptionBasedTraceContext>();
+	}
+	SECTION("lazy tracer") {
+		run.template operator()<LazyTraceContext>();
+	}
 }
 
 TEST_CASE("Trace-to-IR conversion preserves exception cleanup metadata") {
@@ -375,10 +503,14 @@ TEST_CASE("Trace-to-IR conversion preserves exception cleanup metadata") {
 
 	REQUIRE(alloca != nullptr);
 	REQUIRE(irCalls.size() == 3);
+	REQUIRE(irCalls[0]->getCallKind() == CallKind::Regular);
 	REQUIRE_FALSE(irCalls[0]->getCleanupState().has_value());
+	REQUIRE(irCalls[1]->getCallKind() == CallKind::WithExceptionHandling);
 	REQUIRE(irCalls[1]->getCleanupState().has_value());
 	REQUIRE(function->getCleanupStates().at(*irCalls[1]->getCleanupState()).active == std::vector<AllocaIndex> {0});
+	REQUIRE(irCalls[2]->getCallKind() == CallKind::Regular);
 	REQUIRE_FALSE(irCalls[2]->getCleanupState().has_value());
+	REQUIRE(ir->toString().find("CALL_WITH_EXCEPTION_HANDLING") != std::string::npos);
 }
 
 } // namespace nautilus::tracing

@@ -38,10 +38,12 @@ LinearFunction createLinearFunction(std::vector<AllocaSpec> allocas, std::vector
 }
 
 ProxyCallOperation* addCall(BasicBlock& block, OperationIdentifier id, FunctionAttributes attributes = {},
-                            std::optional<CleanupStateId> cleanupState = std::nullopt) {
+                            std::optional<CleanupStateId> cleanupState = std::nullopt,
+                            std::optional<CallKind> callKind = std::nullopt) {
+	const auto kind = callKind.value_or(classifyCallKind(attributes, cleanupState.value_or(EMPTY_CLEANUP_STATE)));
 	return block.addOperation<ProxyCallOperation>("mayThrow", "mayThrow", reinterpret_cast<void*>(&mayThrow), id,
-	                                              std::span<Operation* const> {}, Type::v, attributes, std::nullopt,
-	                                              cleanupState);
+	                                              std::span<Operation* const> {}, Type::v, attributes, kind,
+	                                              std::nullopt, cleanupState);
 }
 } // namespace
 
@@ -82,7 +84,7 @@ TEST_CASE("Exception cleanup preparation shares exact cleanup pads") {
 	addCall(*fixture.entry, OperationIdentifier {2}, {}, CleanupStateId {1});
 	auto* firstThrow = addCall(*fixture.entry, OperationIdentifier {3}, {}, CleanupStateId {2});
 	auto* secondThrow = addCall(*fixture.entry, OperationIdentifier {4}, {}, CleanupStateId {2});
-	addCall(*fixture.entry, OperationIdentifier {5}, {.noUnwind = true}, CleanupStateId {2});
+	addCall(*fixture.entry, OperationIdentifier {5}, {.noUnwind = true});
 	auto* thirdThrow = addCall(*fixture.entry, OperationIdentifier {6}, {}, CleanupStateId {3});
 	fixture.entry->addOperation<ReturnOperation>();
 
@@ -118,7 +120,7 @@ TEST_CASE("Exception cleanup preparation keeps may-throw calls without active de
 TEST_CASE("Exception cleanup preparation ignores noexcept calls") {
 	DestructorSpec destructor {reinterpret_cast<void*>(&destroyTestValue), "destroyTestValue", {.noUnwind = true}};
 	auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}, CleanupState {{0}}});
-	addCall(*fixture.entry, OperationIdentifier {1}, {.noUnwind = true}, CleanupStateId {1});
+	addCall(*fixture.entry, OperationIdentifier {1}, {.noUnwind = true});
 	fixture.entry->addOperation<ReturnOperation>();
 
 	REQUIRE_FALSE(ExceptionCleanupPreparationPass().apply(*fixture.ir));
@@ -154,6 +156,64 @@ TEST_CASE("Exception cleanup preparation rejects malformed cleanup states") {
 		addCall(*fixture.entry, OperationIdentifier {1}, {}, CleanupStateId {1});
 		REQUIRE_THROWS_AS(ExceptionCleanupPreparationPass().apply(*fixture.ir), RuntimeException);
 	}
+}
+
+TEST_CASE("Exception cleanup preparation rejects invalid call-kind combinations") {
+	DestructorSpec destructor {reinterpret_cast<void*>(&destroyTestValue), "destroyTestValue", {.noUnwind = true}};
+
+	SECTION("exception handling call marked noexcept") {
+		auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}, CleanupState {{0}}});
+		addCall(*fixture.entry, OperationIdentifier {1}, {.noUnwind = true}, CleanupStateId {1},
+		        CallKind::WithExceptionHandling);
+		REQUIRE_THROWS_AS(ExceptionCleanupPreparationPass().apply(*fixture.ir), RuntimeException);
+	}
+
+	SECTION("exception handling call without cleanup state") {
+		auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}});
+		addCall(*fixture.entry, OperationIdentifier {1}, {}, std::nullopt, CallKind::WithExceptionHandling);
+		REQUIRE_THROWS_AS(ExceptionCleanupPreparationPass().apply(*fixture.ir), RuntimeException);
+	}
+
+	SECTION("exception handling call with empty cleanup state") {
+		auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}});
+		addCall(*fixture.entry, OperationIdentifier {1}, {}, EMPTY_CLEANUP_STATE, CallKind::WithExceptionHandling);
+		REQUIRE_THROWS_AS(ExceptionCleanupPreparationPass().apply(*fixture.ir), RuntimeException);
+	}
+
+	SECTION("regular call with cleanup state") {
+		auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}, CleanupState {{0}}});
+		addCall(*fixture.entry, OperationIdentifier {1}, {}, CleanupStateId {1}, CallKind::Regular);
+		REQUIRE_THROWS_AS(ExceptionCleanupPreparationPass().apply(*fixture.ir), RuntimeException);
+	}
+}
+
+TEST_CASE("IR verifier rejects invalid call-kind combinations") {
+	DestructorSpec destructor {reinterpret_cast<void*>(&destroyTestValue), "destroyTestValue", {.noUnwind = true}};
+	auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}, CleanupState {{0}}});
+	addCall(*fixture.entry, OperationIdentifier {1}, {}, CleanupStateId {1}, CallKind::Regular);
+	addCall(*fixture.entry, OperationIdentifier {2}, {}, std::nullopt, CallKind::WithExceptionHandling);
+	addCall(*fixture.entry, OperationIdentifier {3}, {.noUnwind = true}, CleanupStateId {1},
+	        CallKind::WithExceptionHandling);
+	fixture.entry->addOperation<ReturnOperation>();
+
+	const auto result = IRVerifier::verify(*fixture.ir);
+	REQUIRE_FALSE(result.ok());
+	REQUIRE(result.errors.size() >= 3);
+}
+
+TEST_CASE("IR verifier rejects exception-region pads that disagree with call kinds") {
+	DestructorSpec destructor {reinterpret_cast<void*>(&destroyTestValue), "destroyTestValue", {.noUnwind = true}};
+	auto fixture = createLinearFunction({AllocaSpec {8, 8, destructor}}, {CleanupState {}, CleanupState {{0}}});
+	auto* regular = addCall(*fixture.entry, OperationIdentifier {1});
+	auto* withCleanup = addCall(*fixture.entry, OperationIdentifier {2}, {}, CleanupStateId {1});
+	fixture.entry->addOperation<ReturnOperation>();
+	fixture.function->setExceptionRegion(FunctionExceptionRegion {
+	    {CleanupPad {0, {0}}},
+	    {ExceptionalCallSite {regular, CleanupPadId {0}}, ExceptionalCallSite {withCleanup, std::nullopt}}});
+
+	const auto result = IRVerifier::verify(*fixture.ir);
+	REQUIRE_FALSE(result.ok());
+	REQUIRE(result.errors.size() >= 2);
 }
 
 TEST_CASE("IR verifier rejects malformed exception cleanup regions") {

@@ -438,13 +438,13 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto cleanupState = std::optional<CleanupStateId> {};
 	const auto snapshotCleanupState = operation.tag.getCleanupStateId();
-	if (!functionCallTarget.fnAttrs.noUnwind && snapshotCleanupState != EMPTY_CLEANUP_STATE) {
+	if (functionCallTarget.kind == CallKind::WithExceptionHandling) {
 		cleanupState = snapshotCleanupState;
 	}
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, functionCallTarget.exceptionCapture,
-	    cleanupState);
+	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, functionCallTarget.kind,
+	    functionCallTarget.exceptionCapture, cleanupState);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -462,12 +462,12 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
 	auto cleanupState = std::optional<CleanupStateId> {};
 	const auto snapshotCleanupState = operation.tag.getCleanupStateId();
-	if (!indirectCall.fnAttrs.noUnwind && snapshotCleanupState != EMPTY_CLEANUP_STATE) {
+	if (indirectCall.kind == CallKind::WithExceptionHandling) {
 		cleanupState = snapshotCleanupState;
 	}
 	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
 	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs,
-	    indirectCall.exceptionCapture, cleanupState);
+	    indirectCall.kind, indirectCall.exceptionCapture, cleanupState);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}

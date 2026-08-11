@@ -18,6 +18,7 @@ class IndirectCallOperation : public Operation {
 public:
 	IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier, Operation* functionPtrOperand,
 	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs,
+	                      CallKind callKind = CallKind::Regular,
 	                      std::optional<ExceptionCaptureSpec> exceptionCapture = std::nullopt,
 	                      std::optional<CleanupStateId> cleanupState = std::nullopt);
 
@@ -30,6 +31,7 @@ public:
 	std::span<Operation* const> getInputArguments() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
+	[[nodiscard]] CallKind getCallKind() const;
 	[[nodiscard]] const std::optional<CleanupStateId>& getCleanupState() const;
 	[[nodiscard]] const std::optional<ExceptionCaptureSpec>& getExceptionCapture() const;
 
@@ -37,6 +39,7 @@ public:
 
 private:
 	FunctionAttributes fnAttrs;
+	CallKind callKind;
 	std::optional<ExceptionCaptureSpec> exceptionCapture;
 	std::optional<CleanupStateId> cleanupState;
 };

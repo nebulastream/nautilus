@@ -204,13 +204,14 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* functionArguments =
-		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
-		                                                                        .mangledName = mangledName,
-		                                                                        .ptr = fptn,
-		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs,
-		                                                                        .exceptionCapture = exceptionCapture});
+		auto* functionArguments = state->executionTrace.getArena().create<FunctionCall>(
+		    FunctionCall {.functionName = functionName,
+		                  .mangledName = mangledName,
+		                  .ptr = fptn,
+		                  .arguments = arguments,
+		                  .fnAttrs = fnAttrs,
+		                  .kind = classifyCallKind(fnAttrs, tag.getCleanupStateId()),
+		                  .exceptionCapture = exceptionCapture});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -224,8 +225,12 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 	}
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
-		    .fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs, .exceptionCapture = exceptionCapture});
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
+		    IndirectFunctionCall {.fnPtr = fnPtrRef,
+		                          .arguments = arguments,
+		                          .fnAttrs = fnAttrs,
+		                          .kind = classifyCallKind(fnAttrs, tag.getCleanupStateId()),
+		                          .exceptionCapture = exceptionCapture});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
@@ -246,13 +251,14 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 	}
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* functionArguments =
-		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
-		                                                                        .mangledName = functionName,
-		                                                                        .ptr = (void*) definition,
-		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs,
-		                                                                        .exceptionCapture = std::nullopt});
+		auto* functionArguments = state->executionTrace.getArena().create<FunctionCall>(
+		    FunctionCall {.functionName = functionName,
+		                  .mangledName = functionName,
+		                  .ptr = (void*) definition,
+		                  .arguments = arguments,
+		                  .fnAttrs = fnAttrs,
+		                  .kind = classifyCallKind(fnAttrs, tag.getCleanupStateId()),
+		                  .exceptionCapture = std::nullopt});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
