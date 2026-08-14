@@ -31,7 +31,7 @@ public:
 
 	const std::string& getFunctionSymbol() const;
 	const std::string& getFunctionName() const;
-	void* getFunctionPtr();
+	void* getFunctionPtr() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 	[[nodiscard]] const std::vector<Destructor>& getDestructors() const;

@@ -19,7 +19,7 @@ B0($1:i32)
 B1()
 	ALLOCA	$19	:ptr
 	CONST	$20	8	:ui64
-	CALL	$21	func_*($19,$2,$20)	:ptr
+	CALL_WITH_EXCEPTION_HANDLING	$21	func_*($19,$2,$20)	:ptr
 	ASSIGN	$22	$19	:ptr
 	CONST	$23	0	:ui64
 	ASSIGN	$24	$23	:ui64

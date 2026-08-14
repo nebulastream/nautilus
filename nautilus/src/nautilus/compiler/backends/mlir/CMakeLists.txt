@@ -30,8 +30,8 @@ if (ENABLE_MLIR_BACKEND)
             MLIRFuncAllExtensions
             # LLVM libs for our direct LLJIT build.
             LLVMOrcJIT
+            LLVMOrcDebugging
             LLVMExecutionEngine
-            LLVMRuntimeDyld                         # SectionMemoryManager
             ${nautilus_llvm_native_libs}
             # Dialects
             MLIRMathToLLVM
@@ -55,4 +55,3 @@ if (ENABLE_MLIR_BACKEND)
             LLVMBackendHooks.cpp
     )
 endif ()
-

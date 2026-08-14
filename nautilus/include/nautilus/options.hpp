@@ -5,14 +5,6 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
-#include <vector>
-
-// Forward-declared so the Nautilus public header does not pull in LLVM.
-// Only the MLIR backend dereferences these pointers; if MLIR is disabled,
-// the list simply stays empty.
-namespace llvm {
-class JITEventListener;
-} // namespace llvm
 
 namespace nautilus::engine {
 
@@ -30,7 +22,7 @@ class ModuleOptions;
  * module via @ref ModuleOptions, which a module inherits from the engine and
  * may override. The remaining options (`engine.backend`,
  * `engine.tier0/tier1.backend`, `engine.tiered.backgroundPromotion`,
- * `engine.compilation`, and the JIT event listeners) configure the
+ * `engine.compilation`) configure the
  * engine-owned, built-once compiler and are therefore not overridable per
  * module.
  */
@@ -54,21 +46,8 @@ public:
 		return defaultValue;
 	}
 
-	// Register a JITEventListener to attach to the MLIR backend's JIT.
-	// The caller retains ownership; the listener must outlive every
-	// Executable produced by an Engine configured with this Options.
-	void addMLIRJitEventListener(llvm::JITEventListener* listener) {
-		if (listener != nullptr) {
-			mlir_jit_event_listeners_.push_back(listener);
-		}
-	}
-
-	const std::vector<llvm::JITEventListener*>& getMLIRJitEventListeners() const {
-		return mlir_jit_event_listeners_;
-	}
-
 	/**
-	 * @brief Apply every option value (and JIT listener) set in @p other on
+	 * @brief Apply every option value set in @p other on
 	 * top of this one; values present in @p other win.
 	 *
 	 * Used to layer per-module overrides on top of the engine-wide defaults.
@@ -77,14 +56,11 @@ public:
 		for (const auto& entry : other.options) {
 			options[entry.first] = entry.second;
 		}
-		for (auto* listener : other.mlir_jit_event_listeners_) {
-			addMLIRJitEventListener(listener);
-		}
 	}
 
 	/**
 	 * @brief Derive a ModuleOptions seeded with all of this engine's option
-	 * values (and JIT listeners).
+	 * values.
 	 *
 	 * A module starts from these inherited values and may override the
 	 * per-compile subset before compiling. Overriding an engine-only option
@@ -95,7 +71,6 @@ public:
 
 private:
 	std::unordered_map<std::string, OptionValue> options;
-	std::vector<llvm::JITEventListener*> mlir_jit_event_listeners_;
 };
 
 /**
@@ -105,7 +80,7 @@ private:
  * its values from the engine (see @ref EngineOptions::deriveModuleOptions) and
  * the caller may override the per-compile subset via setOption() or by passing
  * an instance to NautilusEngine::createModule(). It derives from EngineOptions
- * purely so it reuses the same value/listener storage and so every existing
+ * purely so it reuses the same value storage and so every existing
  * consumer that accepts a `const Options&` transparently accepts module
  * options.
  */

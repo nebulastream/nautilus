@@ -17,6 +17,10 @@ static int32_t negHelper(int32_t x) {
 	return -x;
 }
 
+static int32_t addNoexceptHelper(int32_t x, int32_t y) noexcept {
+	return x + y;
+}
+
 using BinFn = int32_t (*)(int32_t, int32_t);
 using UnaryFn = int32_t (*)(int32_t);
 
@@ -147,6 +151,20 @@ TEST_CASE("FunctionPtr Val Test") {
 		auto fn = make_fn_val(+[](int32_t x, int32_t y) { return x - y; });
 		val<int32_t> result = fn(val<int32_t>(10), val<int32_t>(3));
 		REQUIRE(result == 7);
+	}
+
+	SECTION("noexcept function pointer") {
+		val<decltype(&addNoexceptHelper)> fn(addNoexceptHelper);
+		val<int32_t> result = fn(val<int32_t>(6), val<int32_t>(7));
+		REQUIRE(result == 13);
+		REQUIRE(details::RawValueResolver<decltype(&addNoexceptHelper)>::getRawValue(fn) == addNoexceptHelper);
+	}
+
+	SECTION("make_fn_val preserves noexcept function pointer type") {
+		auto fn = make_fn_val(addNoexceptHelper);
+		STATIC_REQUIRE(std::is_same_v<typename decltype(fn)::raw_type, decltype(&addNoexceptHelper)>);
+		val<int32_t> result = fn(val<int32_t>(10), val<int32_t>(3));
+		REQUIRE(result == 13);
 	}
 
 	SECTION("different signatures - unary function") {

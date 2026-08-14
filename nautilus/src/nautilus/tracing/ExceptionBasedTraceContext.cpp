@@ -233,8 +233,12 @@ TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef
                                                              FunctionAttributes fnAttrs) {
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
-		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
+		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(IndirectFunctionCall {
+		    .fnPtr = fnPtrRef,
+		    .arguments = arguments,
+		    .fnAttrs = fnAttrs,
+		    .destructors = fnAttrs.noUnwind ? std::vector<FunctionCall::Destructor> {} : activeDestructors,
+		    .exceptionHandling = !fnAttrs.noUnwind});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
 }
@@ -250,15 +254,15 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 		log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
 		           functionsToTrace.size());
 	}
-	auto op = Op::CALL;
+	auto op = fnAttrs.noUnwind ? Op::CALL : Op::CALL_WITH_EXCEPTION_HANDLING;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
-		auto* functionArguments =
-		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
-		                                                                        .mangledName = functionName,
-		                                                                        .ptr = (void*) definition,
-		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs,
-		                                                                        .destructors = {}});
+		auto* functionArguments = state->executionTrace.getArena().create<FunctionCall>(FunctionCall {
+		    .functionName = functionName,
+		    .mangledName = functionName,
+		    .ptr = (void*) definition,
+		    .arguments = arguments,
+		    .fnAttrs = fnAttrs,
+		    .destructors = fnAttrs.noUnwind ? std::vector<FunctionCall::Destructor> {} : activeDestructors});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }

@@ -9,7 +9,7 @@ B0()
 	STORE	$13	$7	$10	:void
 	ALLOCA	$14	:ptr
 	CONST	$15	8	:ui64
-	CALL	$16	func_*($14,$1,$15)	:ptr
+	CALL_WITH_EXCEPTION_HANDLING	$16	func_*($14,$1,$15)	:ptr
 	CONST	$18	0	:ui64
 	CONST	$20	1	:ui64
 	MUL	$21	$18	$20	:ui64

@@ -1,10 +1,10 @@
 
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
+#include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/Triple.h>
@@ -23,8 +23,7 @@ llvm::Error makeStringError(const llvm::Twine& message) {
 
 } // namespace
 
-MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, llvm::orc::RTDyldObjectLinkingLayer* objectLayer)
-    : jit_(std::move(jit)), objectLayer_(objectLayer) {
+MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit) : jit_(std::move(jit)) {
 }
 
 MLIRJit::~MLIRJit() = default;
@@ -56,47 +55,20 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	detail::packFunctionArguments(llvmModule.get());
 
 	const auto dataLayout = llvmModule->getDataLayout();
-	const auto targetTriple = llvmModule->getTargetTriple();
-
-	// Stash the layer pointer from inside the object-layer creator so we can
-	// reach it after LLJIT construction for addEventListener().
-	llvm::orc::RTDyldObjectLinkingLayer* rawLayer = nullptr;
-
-	auto objectLinkingLayerCreator =
-	    [&rawLayer, &options,
-	     &targetTriple](llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
-		auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-		    session, [](const llvm::MemoryBuffer&) { return std::make_unique<llvm::SectionMemoryManager>(); });
-
-		for (auto* listener : options.eventListeners) {
-			if (listener != nullptr) {
-				layer->registerJITEventListener(*listener);
-			}
-		}
-
-		// COFF binaries (Windows) need special handling for exported symbol
-		// visibility. Mirrors upstream mlir::ExecutionEngine.
-		if (targetTriple.isOSBinFormatCOFF()) {
-			layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
-			layer->setAutoClaimResponsibilityForObjectSymbols(true);
-		}
-
-		rawLayer = layer.get();
-		return layer;
-	};
-
 	// Let LLJIT build its own ConcurrentIRCompiler from the JITTargetMachineBuilder.
 	// We avoid constructing llvm::orc::TMOwningSimpleCompiler directly because
 	// LLVM is compiled with -fno-rtti and exporting RTTI for its polymorphic
 	// types across TU boundaries would require us to match.
-	auto jitOrErr = llvm::orc::LLJITBuilder()
-	                    .setJITTargetMachineBuilder(std::move(*tmBuilderOrError))
-	                    .setObjectLinkingLayerCreator(objectLinkingLayerCreator)
-	                    .create();
+	auto jitOrErr = llvm::orc::LLJITBuilder().setJITTargetMachineBuilder(std::move(*tmBuilderOrError)).create();
 	if (!jitOrErr) {
 		return jitOrErr.takeError();
 	}
 	auto jit = std::move(*jitOrErr);
+	if (options.enableDebuggerSupport) {
+		if (auto err = llvm::orc::enableDebuggerSupport(*jit)) {
+			return std::move(err);
+		}
+	}
 
 	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));
 	if (options.transformer) {
@@ -137,7 +109,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 	}
 
-	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), rawLayer));
+	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit)));
 }
 
 void MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {
@@ -163,12 +135,6 @@ llvm::Expected<void (*)(void**)> MLIRJit::lookupPacked(llvm::StringRef name) {
 		return result.takeError();
 	}
 	return reinterpret_cast<void (*)(void**)>(*result);
-}
-
-void MLIRJit::addEventListener(llvm::JITEventListener* listener) {
-	if (listener != nullptr && objectLayer_ != nullptr) {
-		objectLayer_->registerJITEventListener(*listener);
-	}
 }
 
 } // namespace nautilus::compiler::mlir

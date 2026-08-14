@@ -71,6 +71,8 @@ struct IndirectFunctionCall {
 	TypedValueRef fnPtr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::vector<FunctionCall::Destructor> destructors;
+	bool exceptionHandling = false;
 };
 
 struct BlockRef {
@@ -124,6 +126,9 @@ void forEachValueRef(const InputVariant& input, Callback&& callback) {
 		for (const auto argument : (*call)->arguments) {
 			callback(argument);
 		}
+		for (const auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
+		}
 	}
 }
 
@@ -147,6 +152,9 @@ void forEachMutableValueRef(InputVariant& input, Callback&& callback) {
 		callback((*call)->fnPtr);
 		for (auto& argument : (*call)->arguments) {
 			callback(argument);
+		}
+		for (auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
 		}
 	}
 }

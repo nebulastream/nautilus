@@ -1039,6 +1039,61 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	}
 	auto resultMLIRType = getMLIRType(indirectCallOp->getStamp());
 	auto fnType = mlir::LLVM::LLVMFunctionType::get(resultMLIRType, argTypes);
+	if (indirectCallOp->requiresExceptionHandling()) {
+		const auto location = getNameLoc("indirectInvoke");
+		auto* currentBlock = builder->getInsertionBlock();
+		auto* region = currentBlock->getParent();
+		auto* normalBlock = new mlir::Block();
+		auto* unwindBlock = new mlir::Block();
+		region->getBlocks().insert(std::next(mlir::Region::iterator(currentBlock)), normalBlock);
+		region->push_back(unwindBlock);
+
+		llvm::SmallVector<mlir::Type> resultTypes;
+		if (indirectCallOp->getStamp() != Type::v) {
+			resultTypes.push_back(resultMLIRType);
+		}
+		auto invoke = mlir::LLVM::InvokeOp::create(
+		    *builder, location, resultTypes, mlir::TypeAttr {}, mlir::FlatSymbolRefAttr {}, allOperands,
+		    mlir::ArrayAttr {}, mlir::ArrayAttr {}, mlir::ValueRange {}, mlir::ValueRange {},
+		    mlir::DenseI32ArrayAttr {}, mlir::LLVM::cconv::CConv::C, llvm::ArrayRef<mlir::ValueRange> {},
+		    mlir::ArrayAttr {}, normalBlock, unwindBlock);
+
+		builder->setInsertionPointToStart(unwindBlock);
+		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
+		auto selectorType = builder->getI32Type();
+		auto exceptionType = mlir::LLVM::LLVMStructType::getLiteral(context, {ptrType, selectorType});
+		auto landingPad =
+		    mlir::LLVM::LandingpadOp::create(*builder, location, exceptionType, true, mlir::ValueRange {});
+		for (auto it = indirectCallOp->getDestructors().rbegin(); it != indirectCallOp->getDestructors().rend(); ++it) {
+			FunctionAttributes destructorAttrs;
+			destructorAttrs.noUnwind = true;
+			auto destructorSymbol = mlir::FlatSymbolRefAttr::get(context, it->functionName);
+			if (!theModule.lookupSymbol<mlir::func::FuncOp>(it->functionName)) {
+				destructorSymbol = insertExternalFunction(it->functionName, it->functionPtr, getMLIRType(Type::v),
+				                                          {ptrType}, {Type::ptr}, destructorAttrs);
+			}
+			auto address = resolveOperand(it->address, frame);
+			mlir::func::CallOp::create(*builder, location, destructorSymbol, mlir::TypeRange {},
+			                           mlir::ValueRange {address});
+		}
+		mlir::LLVM::ResumeOp::create(*builder, location, landingPad.getResult());
+
+		auto parentFunction = currentBlock->getParentOp();
+		parentFunction->setDiscardableAttr("personality",
+		                                   mlir::FlatSymbolRefAttr::get(context, "__gxx_personality_v0"));
+		if (!theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>("__gxx_personality_v0")) {
+			mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
+			builder->restoreInsertionPoint(*globalInsertPoint);
+			auto personalityType = mlir::LLVM::LLVMFunctionType::get(builder->getI32Type(), {}, true);
+			mlir::LLVM::LLVMFuncOp::create(*builder, theModule.getLoc(), "__gxx_personality_v0", personalityType);
+		}
+
+		builder->setInsertionPointToStart(normalBlock);
+		if (indirectCallOp->getStamp() != Type::v) {
+			bind(frame, indirectCallOp, invoke.getResult());
+		}
+		return;
+	}
 	if (indirectCallOp->getStamp() != Type::v) {
 		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
 		bind(frame, indirectCallOp, res.getResult());

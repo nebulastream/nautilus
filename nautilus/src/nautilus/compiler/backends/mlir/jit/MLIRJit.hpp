@@ -1,11 +1,9 @@
 #pragma once
 
 #include <llvm/ADT/STLFunctionalExtras.h>
-#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/Mangling.h>
-#include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/Support/Error.h>
@@ -18,21 +16,15 @@ namespace nautilus::compiler::mlir {
 /**
  * Nautilus-owned JIT engine for a single compiled MLIR module.
  *
- * Replaces mlir::ExecutionEngine so we control the pieces that upstream
- * hides behind a private LLJIT member: in particular, arbitrary
- * JITEventListener attachment against the object-linking layer (upstream
- * exposes only a boolean for the built-in perf/gdb listeners) and direct
- * access to the underlying LLJIT for extension use.
+ * Replaces mlir::ExecutionEngine so Nautilus retains direct access to the
+ * underlying LLJIT for extension use.
  */
 class MLIRJit {
 public:
 	struct Options {
 		llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
 		llvm::function_ref<llvm::Error(llvm::Module*)> transformer = nullptr;
-		// Listeners attached to the object-linking layer before the module is
-		// materialized. Supports custom profiling (VTune, perf maps, in-process
-		// callbacks) which upstream mlir::ExecutionEngine disallows.
-		std::vector<llvm::JITEventListener*> eventListeners;
+		bool enableDebuggerSupport = false;
 	};
 
 	~MLIRJit();
@@ -56,14 +48,11 @@ public:
 	llvm::orc::ExecutionSession& getExecutionSession() {
 		return jit_->getExecutionSession();
 	}
-	// Attach a listener after construction. The listener must outlive this JIT.
-	void addEventListener(llvm::JITEventListener* listener);
 
 private:
-	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, llvm::orc::RTDyldObjectLinkingLayer* objectLayer);
+	explicit MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit);
 
 	std::unique_ptr<llvm::orc::LLJIT> jit_;
-	llvm::orc::RTDyldObjectLinkingLayer* objectLayer_ = nullptr;
 };
 
 } // namespace nautilus::compiler::mlir

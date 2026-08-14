@@ -31,10 +31,8 @@ struct DebugInfoOptions {
 	// with older GDBs; LLVM's modern default is 5.
 	int dwarfVersion = 4;
 
-	// When true, the backend automatically attaches
-	// llvm::JITEventListener::createGDBRegistrationListener() to the OrcJIT.
-	// Turn off if you want to manage the listener list yourself via
-	// engine::Options::addMLIRJitEventListener().
+	// When true, the backend registers generated JITLink objects with the
+	// host debugger.
 	bool autoRegisterGdbListener = true;
 };
 

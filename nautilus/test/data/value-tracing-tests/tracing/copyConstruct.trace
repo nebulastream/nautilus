@@ -27,7 +27,7 @@ B0()
 	STORE	$25	$21	$24	:void
 	ALLOCA	$26	:ptr
 	CONST	$27	8	:ui64
-	CALL	$28	func_*($26,$1,$27)	:ptr
+	CALL_WITH_EXCEPTION_HANDLING	$28	func_*($26,$1,$27)	:ptr
 	ASSIGN	$29	$26	:ptr
 	CONST	$30	0	:ui64
 	ASSIGN	$31	$30	:ui64

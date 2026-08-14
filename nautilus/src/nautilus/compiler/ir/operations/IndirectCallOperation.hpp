@@ -15,8 +15,16 @@ namespace nautilus::compiler::ir {
 /// first element of inputs[] — followed by the call arguments.
 class IndirectCallOperation : public Operation {
 public:
+	struct Destructor {
+		Operation* address;
+		std::string functionSymbol;
+		std::string functionName;
+		void* functionPtr;
+	};
+
 	IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier, Operation* functionPtrOperand,
-	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs);
+	                      std::span<Operation* const> inputArguments, Type resultType, FunctionAttributes fnAttrs,
+	                      std::vector<Destructor> destructors = {}, bool exceptionHandling = false);
 
 	~IndirectCallOperation() = default;
 
@@ -27,11 +35,15 @@ public:
 	std::span<Operation* const> getInputArguments() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
+	[[nodiscard]] const std::vector<Destructor>& getDestructors() const;
+	[[nodiscard]] bool requiresExceptionHandling() const;
 
 	static bool classof(const Operation* op);
 
 private:
 	FunctionAttributes fnAttrs;
+	std::vector<Destructor> destructors;
+	bool exceptionHandling;
 };
 
 } // namespace nautilus::compiler::ir

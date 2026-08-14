@@ -37,7 +37,7 @@ const std::string& ProxyCallOperation::getFunctionSymbol() const {
 	return mangedFunctionSymbol;
 }
 
-void* ProxyCallOperation::getFunctionPtr() {
+void* ProxyCallOperation::getFunctionPtr() const {
 	return functionPtr;
 }
 
