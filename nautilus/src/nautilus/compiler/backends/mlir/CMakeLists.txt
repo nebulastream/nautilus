@@ -31,7 +31,7 @@ if (ENABLE_MLIR_BACKEND)
             # LLVM libs for our direct LLJIT build.
             LLVMOrcJIT
             LLVMExecutionEngine
-            LLVMRuntimeDyld                         # SectionMemoryManager
+            LLVMJITLink                            # JITLink-based object linking
             ${nautilus_llvm_native_libs}
             # Dialects
             MLIRMathToLLVM

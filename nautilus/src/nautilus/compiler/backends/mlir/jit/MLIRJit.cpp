@@ -1,10 +1,9 @@
-
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
+#include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/Triple.h>
@@ -23,8 +22,7 @@ llvm::Error makeStringError(const llvm::Twine& message) {
 
 } // namespace
 
-MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, llvm::orc::RTDyldObjectLinkingLayer* objectLayer)
-    : jit_(std::move(jit)), objectLayer_(objectLayer) {
+MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit) : jit_(std::move(jit)) {
 }
 
 MLIRJit::~MLIRJit() = default;
@@ -55,24 +53,14 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 
 	detail::packFunctionArguments(llvmModule.get());
 
-	const auto dataLayout = llvmModule->getDataLayout();
-	const auto targetTriple = llvmModule->getTargetTriple();
-
-	// Stash the layer pointer from inside the object-layer creator so we can
-	// reach it after LLJIT construction for addEventListener().
-	llvm::orc::RTDyldObjectLinkingLayer* rawLayer = nullptr;
-
+	// Instantiate a JITLink-based object linking layer. Only machine code with
+	// reliable exception-handling unwind info (personality + LSDA) is linked;
+	// the legacy RuntimeDyld layer cannot relocate these and causes crashes or
+	// misordered cleanups when exceptions cross JIT frames.
 	auto objectLinkingLayerCreator =
-	    [&rawLayer, &options,
-	     &targetTriple](llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
-		auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-		    session, [](const llvm::MemoryBuffer&) { return std::make_unique<llvm::SectionMemoryManager>(); });
-
-		for (auto* listener : options.eventListeners) {
-			if (listener != nullptr) {
-				layer->registerJITEventListener(*listener);
-			}
-		}
+	    [&targetTriple = llvmModule->getTargetTriple()](
+	        llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
+		auto layer = std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
 
 		// COFF binaries (Windows) need special handling for exported symbol
 		// visibility. Mirrors upstream mlir::ExecutionEngine.
@@ -81,7 +69,6 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 			layer->setAutoClaimResponsibilityForObjectSymbols(true);
 		}
 
-		rawLayer = layer.get();
 		return layer;
 	};
 
@@ -120,7 +107,8 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
-	auto generatorOrErr = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(dataLayout.getGlobalPrefix());
+	auto generatorOrErr =
+	    llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(jit->getDataLayout().getGlobalPrefix());
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
@@ -137,7 +125,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 	}
 
-	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), rawLayer));
+	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit)));
 }
 
 void MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {
@@ -163,12 +151,6 @@ llvm::Expected<void (*)(void**)> MLIRJit::lookupPacked(llvm::StringRef name) {
 		return result.takeError();
 	}
 	return reinterpret_cast<void (*)(void**)>(*result);
-}
-
-void MLIRJit::addEventListener(llvm::JITEventListener* listener) {
-	if (listener != nullptr && objectLayer_ != nullptr) {
-		objectLayer_->registerJITEventListener(*listener);
-	}
 }
 
 } // namespace nautilus::compiler::mlir

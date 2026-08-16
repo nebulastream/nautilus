@@ -14,7 +14,6 @@
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include <chrono>
 #include <fstream>
-#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/Support/TargetSelect.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -132,17 +131,6 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// compiled execute function.
 	const auto jitStart = std::chrono::steady_clock::now();
 
-	// Compose event listeners: user-provided plus, when debug is enabled
-	// with auto-register, LLVM's GDB JIT interface listener.  The GDB
-	// listener is a stateless process-wide singleton so repeated calls
-	// are cheap and safe.
-	std::vector<llvm::JITEventListener*> eventListeners = options.getMLIRJitEventListeners();
-	if (debugInfo.enable && debugInfo.autoRegisterGdbListener) {
-		if (auto* gdb = llvm::JITEventListener::createGDBRegistrationListener()) {
-			eventListeners.push_back(gdb);
-		}
-	}
-
 	// With debug info active the IR optimizer is clamped to -O0; match
 	// that in the JIT's MC layer at -O1-equivalent (`Less`) so the
 	// register allocator does not fold distinct $N SSA values into the
@@ -150,9 +138,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// spills every SSA value and confuses LLVM's DWARF asmprinter when
 	// dbg.value operands live on the stack rather than in registers.
 	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
-	auto engine =
-	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                  loweringProvider->getJitProxyTargetAddresses(), eventListeners, jitCodeGenLevel);
+	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
