@@ -1,17 +1,14 @@
 #pragma once
 
 #include <llvm/ADT/STLFunctionalExtras.h>
-#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/Mangling.h>
-#include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/Support/Error.h>
 #include <memory>
 #include <mlir/IR/BuiltinOps.h>
-#include <vector>
 
 namespace nautilus::compiler::mlir {
 
@@ -19,20 +16,20 @@ namespace nautilus::compiler::mlir {
  * Nautilus-owned JIT engine for a single compiled MLIR module.
  *
  * Replaces mlir::ExecutionEngine so we control the pieces that upstream
- * hides behind a private LLJIT member: in particular, arbitrary
- * JITEventListener attachment against the object-linking layer (upstream
- * exposes only a boolean for the built-in perf/gdb listeners) and direct
- * access to the underlying LLJIT for extension use.
+ * hides behind a private LLJIT member: in particular, direct access to the
+ * underlying LLJIT for extension use.
+ *
+ * The object linking layer is JITLink-based (ObjectLinkingLayer) rather than
+ * the legacy RuntimeDyld. JITLink is required for correct exception-handling
+ * unwind info relocations (personality & LSDA / .eh_frame entries), without
+ * which C++ exceptions that propagate through JIT-compiled frames crash or
+ * run cleanups in the wrong order.
  */
 class MLIRJit {
 public:
 	struct Options {
 		llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
 		llvm::function_ref<llvm::Error(llvm::Module*)> transformer = nullptr;
-		// Listeners attached to the object-linking layer before the module is
-		// materialized. Supports custom profiling (VTune, perf maps, in-process
-		// callbacks) which upstream mlir::ExecutionEngine disallows.
-		std::vector<llvm::JITEventListener*> eventListeners;
 	};
 
 	~MLIRJit();
@@ -48,22 +45,19 @@ public:
 	llvm::Expected<void*> lookup(llvm::StringRef name);
 	llvm::Expected<void (*)(void**)> lookupPacked(llvm::StringRef name);
 
-	// Escape hatches. Upstream mlir::ExecutionEngine refuses to expose these;
-	// the reason for this class's existence is that they are public here.
+	// Escape hatch. Upstream mlir::ExecutionEngine refuses to expose its
+	// LLJIT; the reason for this class's existence is that it is public here.
 	llvm::orc::LLJIT& getLLJIT() {
 		return *jit_;
 	}
 	llvm::orc::ExecutionSession& getExecutionSession() {
 		return jit_->getExecutionSession();
 	}
-	// Attach a listener after construction. The listener must outlive this JIT.
-	void addEventListener(llvm::JITEventListener* listener);
 
 private:
-	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, llvm::orc::RTDyldObjectLinkingLayer* objectLayer);
+	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit);
 
 	std::unique_ptr<llvm::orc::LLJIT> jit_;
-	llvm::orc::RTDyldObjectLinkingLayer* objectLayer_ = nullptr;
 };
 
 } // namespace nautilus::compiler::mlir

@@ -30,12 +30,6 @@ struct DebugInfoOptions {
 	// DWARF version emitted as an LLVM module flag.  4 is most compatible
 	// with older GDBs; LLVM's modern default is 5.
 	int dwarfVersion = 4;
-
-	// When true, the backend automatically attaches
-	// llvm::JITEventListener::createGDBRegistrationListener() to the OrcJIT.
-	// Turn off if you want to manage the listener list yourself via
-	// engine::Options::addMLIRJitEventListener().
-	bool autoRegisterGdbListener = true;
 };
 
 // Build a DebugInfoOptions from the string-keyed engine::Options.

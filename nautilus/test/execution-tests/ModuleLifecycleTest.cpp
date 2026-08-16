@@ -6,10 +6,6 @@
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 
-#if defined(ENABLE_MLIR_BACKEND)
-#include "MLIRJitEventListenerTestFixture.hpp"
-#endif
-
 namespace nautilus::engine {
 
 namespace {
@@ -69,43 +65,6 @@ TEST_CASE("Per-module option overrides on a shared engine") {
 	auto compiledB = moduleB.compile();
 	REQUIRE(compiledB.getFunction<int64_t(int64_t, int64_t)>("execute")(1, 2) == 3);
 }
-
-#if defined(ENABLE_MLIR_BACKEND)
-
-// With the MLIR backend, a JIT event listener lets us observe that every
-// object loaded for a dropped module is also freed: the freed count converges
-// to the loaded count once all modules have been destroyed, proving JIT memory
-// is reclaimed per module while the engine lives on.
-TEST_CASE("MLIR: dropped modules free their JIT objects on a shared engine") {
-	nautilus::testing::CountingJITEventListenerHandle handle;
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.addMLIRJitEventListener(handle.listener());
-
-	NautilusEngine engine(options);
-
-	constexpr int iterations = 50;
-	for (int i = 0; i < iterations; ++i) {
-		auto module = engine.createModule();
-		module.registerFunction("execute", lifecycleAddOne);
-		auto compiled = module.compile();
-		REQUIRE(compiled.getFunction<int32_t(int32_t)>("execute")(i) == i + 1);
-	}
-
-	// Every loaded object belongs to a module that has now been dropped, so all
-	// of them must have been freed.
-	REQUIRE(handle.numObjectsLoaded() > 0);
-	REQUIRE(handle.numObjectsFreed() == handle.numObjectsLoaded());
-
-	// The engine is still usable after all modules were freed.
-	auto module = engine.createModule();
-	module.registerFunction("execute", lifecycleAddOne);
-	auto compiled = module.compile();
-	REQUIRE(compiled.getFunction<int32_t(int32_t)>("execute")(100) == 101);
-}
-
-#endif // ENABLE_MLIR_BACKEND
 
 } // namespace nautilus::engine
 

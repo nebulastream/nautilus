@@ -43,7 +43,6 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	opts.sourceFile = options.getOptionOrDefault<std::string>("mlir.debug.source_file", "");
 	opts.producer = options.getOptionOrDefault<std::string>("mlir.debug.producer", "Nautilus JIT");
 	opts.dwarfVersion = options.getOptionOrDefault("mlir.debug.dwarf_version", 4);
-	opts.autoRegisterGdbListener = options.getOptionOrDefault("mlir.debug.auto_register_gdb", true);
 
 	if (opts.enable && opts.sourceFile.empty()) {
 		const std::string ext = (opts.sourceMode == "nautilus-ir") ? "ir" : "mlir";

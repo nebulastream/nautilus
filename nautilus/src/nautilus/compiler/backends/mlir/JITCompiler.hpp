@@ -2,7 +2,6 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
-#include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/CodeGen.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -25,7 +24,6 @@ public:
 	                 llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
 	                 const std::vector<std::string>& jitProxyFunctionSymbols,
 	                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
-	                 const std::vector<llvm::JITEventListener*>& eventListeners,
 	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive);
 };
 } // namespace nautilus::compiler::mlir

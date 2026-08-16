@@ -14,7 +14,6 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
                                                        llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
                                                        const std::vector<std::string>& jitProxyFunctionSymbols,
                                                        const std::vector<void*>& jitProxyFunctionTargetAddresses,
-                                                       const std::vector<llvm::JITEventListener*>& eventListeners,
                                                        llvm::CodeGenOptLevel codeGenOptLevel) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
@@ -25,7 +24,6 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
 	MLIRJit::Options jitOptions;
 	jitOptions.codeGenOptLevel = codeGenOptLevel;
 	jitOptions.transformer = optPipeline;
-	jitOptions.eventListeners = eventListeners;
 
 	auto maybeJit = MLIRJit::create(*mlirModule, jitOptions);
 	assert(maybeJit && "failed to construct an execution engine");
