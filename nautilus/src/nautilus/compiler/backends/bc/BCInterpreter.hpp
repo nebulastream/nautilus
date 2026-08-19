@@ -150,6 +150,10 @@ public:
 
 	bool hasInvocableFunctionPtr() override;
 
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
+		return ExceptionPropagationMode::CapturedHostRethrow;
+	}
+
 private:
 	std::unordered_map<std::string, void*> functionPtrs_;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackData_;

@@ -1,4 +1,5 @@
 #pragma once
+#include "nautilus/common/ExceptionPropagation.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
 #include "nautilus/options.hpp"
 #include <map>
@@ -31,6 +32,10 @@ public:
 	virtual std::unique_ptr<Executable> compile(const std::shared_ptr<ir::IRGraph>& ir, const DumpHandler& dumpHandler,
 	                                            const engine::Options& options,
 	                                            CompilationStatistics* statistics = nullptr) const = 0;
+
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
+		return ExceptionPropagationMode::NativeUnwind;
+	}
 
 	virtual ~CompilationBackend();
 };

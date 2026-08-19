@@ -1,9 +1,13 @@
 
 #include "nautilus/compiler/backends/amsjit/A64LoweringProvider.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/compiler/DumpHandler.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
+#include "nautilus/compiler/ir/Usages.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <stdexcept>
 
@@ -248,6 +252,9 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		blockLabels.clear();
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
+		currentFunction_ = funcOp;
+		padLabels_.clear();
+		exceptionalExitLabel_.reset();
 
 		// Materialise the function's alloca table into one stack slot per
 		// entry in the prologue.  visitAlloca() then just looks the slot up
@@ -298,6 +305,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		}
 
 		processBlock(&funcBlock, rootFrame);
+		lowerExceptionPads(rootFrame);
 		cc.endFunc();
 	}
 
@@ -841,8 +849,19 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 		}
 	}
 
+	// Internal Nautilus functions (resolved via a JIT label, whose function
+	// pointer is not a callable address) are never capture sites; only external
+	// calls need the capture thunk (mirrors X64's visitProxyCall).
+	auto it = funcNodes_.find(op->getFunctionName());
+	const bool isInternal = it != funcNodes_.end();
+	const bool needsCapture = !isInternal && callNeedsCapture(op);
+	const bool needsCheck = callNeedsCapture(op);
+
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (needsCapture) {
+		sig.addArg(TypeId::kUIntPtr); // raw target as the thunk's first argument
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -850,15 +869,29 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// ARM64 blr requires a register operand — labels and immediates are not
 	// valid operands.  Materialize the target address into a GP register.
 	InvokeNode* invokeNode = nullptr;
-	auto it = funcNodes_.find(op->getFunctionName());
 	if (it != funcNodes_.end()) {
 		// Internal JIT function: load label address via adr, then indirect call.
 		auto tmp = cc.newGpx();
 		cc.adr(tmp, it->second->label());
 		cc.invoke(&invokeNode, tmp, sig);
+	} else if (needsCapture) {
+		// Captured-exception call site: invoke the captureThrowingCall<R,
+		// Args...> thunk — a real C++ frame — instead of the raw target, so
+		// an exception is caught before it crosses the unwind-table-less JIT
+		// frame. The raw target becomes the thunk's first argument.
+		void* thunk = resolveCaptureThunk(op);
+		// Emit the raw-target `mov` BEFORE invoking the thunk: AsmJit cannot
+		// hoist a def that appears after the invoke into its argument register.
+		auto targetReg = cc.newIntPtr();
+		cc.mov(targetReg, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
+		auto tmp = cc.newIntPtr();
+		cc.mov(tmp, reinterpret_cast<uint64_t>(thunk));
+		cc.invoke(&invokeNode, tmp, sig);
+		// Argument 0: the raw target pointer (compiled as a constant).
+		invokeNode->setArg(0, targetReg);
 	} else {
 		// External function: load raw pointer into register, then indirect call.
-		auto tmp = cc.newGpx();
+		auto tmp = cc.newIntPtr();
 		cc.mov(tmp, reinterpret_cast<uint64_t>(op->getFunctionPtr()));
 		cc.invoke(&invokeNode, tmp, sig);
 	}
@@ -866,9 +899,9 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	for (size_t i = 0; i < op->getInputArguments().size(); i++) {
 		auto argReg = frame.getValue(op->getInputArguments()[i]->getIdentifier());
 		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+			invokeNode->setArg(i + (needsCapture ? 1 : 0), toVec(argReg));
 		else
-			invokeNode->setArg(i, toGp(argReg));
+			invokeNode->setArg(i + (needsCapture ? 1 : 0), toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -885,11 +918,20 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 		}
 		bindResult(op->getIdentifier(), result, frame);
 	}
+
+	if (needsCheck) {
+		emitCheckPendingException(op);
+	}
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
+	const bool needsCapture = callNeedsCapture(op);
+
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
+	if (needsCapture) {
+		sig.addArg(TypeId::kUIntPtr); // raw target as the thunk's first argument
+	}
 	for (auto* arg : op->getInputArguments()) {
 		sig.addArg(getTypeId(arg->getStamp()));
 	}
@@ -897,15 +939,26 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	auto fnPtrGp = toGp(frame.getValue(op->getFunctionPtrOperand()->getIdentifier()));
 
 	InvokeNode* invokeNode = nullptr;
-	cc.invoke(&invokeNode, fnPtrGp.x(), sig);
+	if (needsCapture) {
+		// Captured-exception call site: route through the capture thunk, with
+		// the runtime function pointer as its first argument (see visitProxyCall).
+		void* thunk = resolveCaptureThunk(op);
+		auto tmp = cc.newIntPtr();
+		cc.mov(tmp, reinterpret_cast<uint64_t>(thunk));
+		cc.invoke(&invokeNode, tmp, sig);
+		// Argument 0: the raw target (the runtime function-pointer register).
+		invokeNode->setArg(0, fnPtrGp.x());
+	} else {
+		cc.invoke(&invokeNode, fnPtrGp.x(), sig);
+	}
 
 	const auto inputArgs = op->getInputArguments();
 	for (size_t i = 0; i < inputArgs.size(); i++) {
 		auto argReg = frame.getValue(inputArgs[i]->getIdentifier());
 		if (std::holds_alternative<Vec>(argReg))
-			invokeNode->setArg(i, toVec(argReg));
+			invokeNode->setArg(i + (needsCapture ? 1 : 0), toVec(argReg));
 		else
-			invokeNode->setArg(i, toGp(argReg));
+			invokeNode->setArg(i + (needsCapture ? 1 : 0), toGp(argReg));
 	}
 
 	if (op->getStamp() != Type::v) {
@@ -919,6 +972,10 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 			narrowToStamp(toGp(result), op->getStamp());
 		}
 		bindResult(op->getIdentifier(), result, frame);
+	}
+
+	if (needsCapture) {
+		emitCheckPendingException(op);
 	}
 }
 
@@ -1039,6 +1096,119 @@ void AsmJitLoweringProvider::LoweringContext::visitCast(ir::CastOperation* op, R
 		cc.fcvt(toVec(result), toVec(src));
 	}
 	bindResult(op->getIdentifier(), result, frame);
+}
+
+// ── Captured-exception transport ─────────────────────────────────────────────
+// Potentially-throwing calls are routed through captureThrowingCall<R, Args...>
+// (a real C++ frame) and followed by a pending-exception check that branches to
+// the call's landing pad. Pads and the exceptional exit are emitted after the
+// main CFG, mirroring the X64/BC/TBC/CPP captured backends.
+
+bool AsmJitLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operation* call) const {
+	if (currentFunction_ == nullptr) {
+		return false;
+	}
+	CapturedExceptionTransport transport(*currentFunction_);
+	return transport.callNeedsCapture(call);
+}
+
+const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCall(const ir::Operation* call) const {
+	if (currentFunction_ == nullptr) {
+		return nullptr;
+	}
+	CapturedExceptionTransport transport(*currentFunction_);
+	return transport.getPadForCall(call);
+}
+
+void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
+	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
+		return proxy->getCaptureFunc();
+	}
+	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
+		return indirect->getCaptureFunc();
+	}
+	throw NotImplementedException("asmjit/a64: captured-exception call has no recorded capture wrapper");
+}
+
+void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call) {
+	const auto* pad = getPadForCall(call);
+	const Label target = pad != nullptr ? getPadLabel(pad) : getExceptionalExitLabel();
+
+	// frame = currentExceptionFrame()
+	FuncSignature frameSig;
+	frameSig.setRet(TypeId::kUIntPtr);
+	InvokeNode* frameInvoke = nullptr;
+	auto frameFn = cc.newIntPtr();
+	cc.mov(frameFn, reinterpret_cast<uint64_t>(&currentExceptionFrame));
+	cc.invoke(&frameInvoke, frameFn, frameSig);
+	auto frameReg = cc.newIntPtr();
+	frameInvoke->setRet(0, frameReg);
+
+	// Load the pending field and branch to the pad when it is non-null. The
+	// TLS frame is always non-null inside a JIT-invoked function (the
+	// Invocable wrapper pushes it), so no null check is needed here.
+	auto pendingReg = cc.newIntPtr();
+	cc.ldr(pendingReg, a64::ptr(frameReg, static_cast<int32_t>(offsetof(ExceptionFrame, pending))));
+	cc.cbnz(pendingReg, target);
+}
+
+::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(const ir::LandingPadBlock* pad) {
+	auto it = padLabels_.find(pad);
+	if (it != padLabels_.end()) {
+		return it->second;
+	}
+	auto label = cc.newLabel();
+	padLabels_[pad] = label;
+	return label;
+}
+
+::asmjit::Label AsmJitLoweringProvider::LoweringContext::getExceptionalExitLabel() {
+	if (!exceptionalExitLabel_.isValid()) {
+		exceptionalExitLabel_ = cc.newLabel();
+	}
+	return exceptionalExitLabel_;
+}
+
+void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& frame) {
+	if (currentFunction_ == nullptr || !currentFunction_->exceptionRegion.has_value() ||
+	    currentFunction_->exceptionRegion->callSites.empty()) {
+		return;
+	}
+
+	const auto& pads = currentFunction_->exceptionRegion->pads;
+	for (const auto& pad : pads) {
+		cc.bind(getPadLabel(&pad));
+		// Pads contain only destructor ProxyCallOperations (all noUnwind), so
+		// lowering them through the normal dispatch emits plain external calls
+		// with no re-entrant capture.
+		for (auto* op : pad.block->getOperations()) {
+			dispatch(op, frame);
+		}
+		cc.b(getExceptionalExitLabel());
+	}
+
+	// Exceptional exit: return the ABI default for the function's return type.
+	cc.bind(getExceptionalExitLabel());
+	emitDefaultReturn(currentFunction_->getOutputArg());
+}
+
+void AsmJitLoweringProvider::LoweringContext::emitDefaultReturn(Type retType) {
+	if (retType == Type::v) {
+		cc.ret();
+	} else if (retType == Type::f32 || retType == Type::f64) {
+		// Zero the float return register. A64 only encodes `fmov Sd, Wn` /
+		// `fmov Dd, Xn`, so the GP source width must match the FP width.
+		auto vec = retType == Type::f32 ? cc.newVecS() : cc.newVecD();
+		auto tmp = retType == Type::f32 ? cc.newUInt32() : cc.newUInt64();
+		cc.mov(tmp, 0);
+		cc.fmov(vec, tmp);
+		cc.ret(vec);
+	} else {
+		// Integers, bools, and pointers: return 0 (false / nullptr).
+		auto reg = cc.newInt64();
+		cc.mov(reg, 0);
+		cc.ret(reg);
+	}
 }
 
 } // namespace nautilus::compiler::asmjit

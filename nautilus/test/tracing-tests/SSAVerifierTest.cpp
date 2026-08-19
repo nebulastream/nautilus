@@ -14,7 +14,7 @@ void addReturn(ExecutionTrace& trace, Block& block, TypedValueRef ref) {
 void addIndirectCall(ExecutionTrace& trace, Block& block, TypedValueRef fnPtr, std::vector<TypedValueRef> arguments,
                      TypedValueRef result) {
 	auto* call = trace.getArena().create<IndirectFunctionCall>(
-	    IndirectFunctionCall {.fnPtr = fnPtr, .arguments = std::move(arguments), .fnAttrs = {}});
+	    IndirectFunctionCall {.fnPtr = fnPtr, .arguments = std::move(arguments), .fnAttrs = {}, .destructors = {}});
 	auto snapshot = Snapshot();
 	block.addOperation(makeTraceOp(trace.getArena(), snapshot, Op::INDIRECT_CALL, result.type, result, call));
 	addReturn(trace, block, result);

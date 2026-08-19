@@ -1,9 +1,9 @@
 EXECUTE:
 B0($1:ui32)
-	CALL	$2	func_*()	:ui32
-	CALL	$3	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$2	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$3	func_*()	:ui32
 	MUL	$4	$2	$3	:ui32
-	CALL	$5	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$5	func_*()	:ui32
 	ADD	$6	$4	$5	:ui32
 	LT	$7	$6	$1	:bool
 	CMP	$8	$7	B1($6)	B2()	:void

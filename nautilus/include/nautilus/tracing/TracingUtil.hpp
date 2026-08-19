@@ -69,17 +69,27 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 
 TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
                                               const std::vector<tracing::TypedValueRef>& arguments,
-                                              FunctionAttributes fnAttrs);
+                                              FunctionAttributes fnAttrs, void* captureFunc = nullptr);
 
 void registerDestructor(const TypedValueRef& address, void* destructor);
 void unregisterDestructor(const TypedValueRef& address);
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs);
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+                                 void* captureFunc = nullptr);
+
+TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs, void* captureFunc = nullptr);
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
                                  Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                  FunctionAttributes fnAttrs);
+
+TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
+                                                      std::function<void()> fwrapper, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs);
 
 TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper);
 

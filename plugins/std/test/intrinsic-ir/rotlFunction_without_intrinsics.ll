@@ -3,19 +3,22 @@ source_filename = "LLVMDialectModule"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+; Function Attrs: nounwind
 define zeroext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = tail call i32 @runtimeFunc0(i32 %0, i32 %1)
   ret i32 %3
 }
 
+; Function Attrs: nounwind
 define zeroext i32 @_mlir_ciface_execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = tail call i32 @runtimeFunc0(i32 %0, i32 %1)
   ret i32 %3
 }
 
-; Function Attrs: memory(readwrite)
+; Function Attrs: nounwind memory(readwrite)
 declare i32 @runtimeFunc0(i32, i32) local_unnamed_addr #1
 
+; Function Attrs: nounwind
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
@@ -29,6 +32,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
   ret void
 }
 
+; Function Attrs: nounwind
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
@@ -42,7 +46,8 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
   ret void
 }
 
-attributes #1 = { memory(readwrite) }
+attributes #0 = { nounwind }
+attributes #1 = { nounwind memory(readwrite) }
 
 !llvm.module.flags = !{!0}
 

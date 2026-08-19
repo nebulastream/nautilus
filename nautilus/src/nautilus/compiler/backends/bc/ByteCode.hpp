@@ -398,9 +398,13 @@ enum class ByteCode : short {
 	JMP,  // unconditional jump: reg1 = target block index
 	CJMP, // conditional jump:   reg1 = condition reg, reg2 = true block, reg3 = false block
 	RET,  // return:             reg1 = result reg (< 0 for void)
-	      // Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
-	      // reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
-	      // after the plain terminators so earlier opcode values never shift.
+	      // Exception-transport check (captured host rethrow): reg1 = target block index.
+	      // If hasPendingException(), jump to reg1; else fall through. Handled by the
+	      // dispatch loops like a terminator-style pseudo-opcode, not via OpTable.
+	CHECK_PENDING_EXCEPTION,
+// Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
+// reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
+// after the plain terminators so earlier opcode values never shift.
 #define NAUTILUS_BC_FUSED_ENUM_ENTRY(fused, src, ctype, cmp) fused,
 	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_ENUM_ENTRY)
 #undef NAUTILUS_BC_FUSED_ENUM_ENTRY

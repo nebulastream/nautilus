@@ -56,54 +56,125 @@ void dyncallArgPtr(const OpCode& op, RegisterFile& regs) {
 
 void dyncallCallV(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<void*>(regs, op.reg1);
-	Dyncall::getVM().callVoid(value);
+	try {
+		Dyncall::getVM().callVoid(value);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 }
 
 void dyncallCallB(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callB(address);
+	bool returnValue = false;
+	try {
+		returnValue = Dyncall::getVM().callB(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<bool>(regs, op.output, returnValue);
 }
 
 void dyncallCallI8(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI8(address);
+	int8_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI8(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<int8_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI16(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI16(address);
+	int16_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI16(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<int16_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI32(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI32(address);
+	int32_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI32(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<int32_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI64(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI64(address);
+	int64_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI64(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<int64_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallPtr(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callPtr(address);
+	void* returnValue = nullptr;
+	try {
+		returnValue = Dyncall::getVM().callPtr(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<void*>(regs, op.output, returnValue);
 }
 
 void dyncallCallf(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callF(address);
+	float returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callF(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<float>(regs, op.output, returnValue);
 }
 
 void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callD(address);
+	double returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callD(address);
+	} catch (...) {
+		auto* frame = currentExceptionFrame();
+		if (frame && !frame->pending) {
+			frame->pending = std::current_exception();
+		}
+	}
 	writeReg<double>(regs, op.output, returnValue);
 }
 
@@ -793,8 +864,20 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		// run, so this branch is perfectly predicted; it picks between the legacy
 		// indirect-call table and the inlined switch (which avoids a non-inlined
 		// call per instruction and lets the compiler keep the register base hot).
+		// CHECK_PENDING_EXCEPTION is a control-flow pseudo-opcode handled inline:
+		// when the captured-exception transport has a pending exception it jumps
+		// to the block in reg1 (the landing pad), otherwise it falls through.
+		bool jumped = false;
 		if (useSwitch) {
 			for (const auto& c : currentBlock->code) {
+				if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+					if (hasPendingException()) {
+						currentBlock = &code.blocks[c.reg1];
+						jumped = true;
+						break;
+					}
+					continue;
+				}
 				switch (c.op) {
 #define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
 	case ByteCode::name:                                                                                               \
@@ -808,6 +891,7 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 				case ByteCode::JMP:
 				case ByteCode::CJMP:
 				case ByteCode::RET:
+				case ByteCode::CHECK_PENDING_EXCEPTION:
 #define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
 					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
 #undef NAUTILUS_BC_FUSED_SWITCH
@@ -819,8 +903,19 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 			}
 		} else {
 			for (const auto& c : currentBlock->code) {
+				if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+					if (hasPendingException()) {
+						currentBlock = &code.blocks[c.reg1];
+						jumped = true;
+						break;
+					}
+					continue;
+				}
 				OpTable[(int16_t) c.op](c, regs);
 			}
+		}
+		if (jumped) {
+			continue;
 		}
 		// handle terminator
 		if (const auto* res = std::get_if<BranchOp>(&currentBlock->terminatorOp)) {
@@ -864,7 +959,7 @@ int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
 #undef NAUTILUS_BC_LABEL
 	        && L_JMP,
-	    &&L_CJMP, &&L_RET,
+	    &&L_CJMP, &&L_RET, &&L_CHECK_PENDING_EXCEPTION,
 	// Fused compare+branch labels, in the same order they were appended to the enum.
 #define NAUTILUS_BC_FUSED_LABEL(fused, src, ctype, cmp) &&L_##fused,
 	    NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_LABEL)
@@ -905,6 +1000,14 @@ L_RET:
 		return 0;
 	}
 	return regs[ip->reg1];
+
+L_CHECK_PENDING_EXCEPTION:
+	if (hasPendingException()) {
+		ip = base + blockStart_[ip->reg1];
+	} else {
+		++ip;
+	}
+	NAUTILUS_BC_NEXT();
 
 	// Fused compare+branch handlers (Step 5): read both operands, compare, and jump
 	// to the true/false block in one step. reg1 = left, reg2 = right, output = true

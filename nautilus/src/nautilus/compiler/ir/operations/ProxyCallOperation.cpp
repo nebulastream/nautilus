@@ -12,10 +12,11 @@ ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& 
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
                                        Type resultType, const FunctionAttributes fnAttrs,
-                                       std::vector<Destructor> destructors, bool exceptionHandling)
+                                       std::vector<Destructor> destructors, bool exceptionHandling, void* captureFunc)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
-      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs),
-      destructors(std::move(destructors)), exceptionHandling(exceptionHandling) {
+      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr),
+      captureFunc(captureFunc), fnAttrs(fnAttrs), destructors(std::move(destructors)),
+      exceptionHandling(exceptionHandling) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -39,6 +40,10 @@ const std::string& ProxyCallOperation::getFunctionSymbol() const {
 
 void* ProxyCallOperation::getFunctionPtr() {
 	return functionPtr;
+}
+
+void* ProxyCallOperation::getCaptureFunc() const {
+	return captureFunc;
 }
 
 const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {

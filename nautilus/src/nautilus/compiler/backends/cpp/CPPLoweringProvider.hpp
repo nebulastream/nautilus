@@ -4,6 +4,7 @@
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -49,10 +50,22 @@ private:
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
 		/// function so indices from a previous function don't bleed through.
 		std::vector<std::string> functionAllocaSlots;
+		/// The FunctionOperation currently being lowered (set in process() before
+		/// dispatching its blocks). Provides access to the function's
+		/// exception-region side table from the per-call visit hooks.
+		const ir::FunctionOperation* currentFunction_ = nullptr;
 
 		std::string process(const ir::BasicBlock*, RegisterFrame& frame);
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
+
+		/// Lowers an exception-region landing pad (a BasicBlock holding destructor
+		/// ProxyCallOperations) into the block stream under @p label.
+		void processPad(const ir::BasicBlock* block, const std::string& label, RegisterFrame& frame);
+
+		/// Maps a landing pad to its generated label ("cleanup_pad_N"), or
+		/// "exceptional_exit" when @p pad is null.
+		std::string getPadLabel(const ir::LandingPadBlock* pad);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitAdd(ir::AddOperation* opt, short block, RegisterFrame& frame);

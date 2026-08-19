@@ -17,42 +17,42 @@ namespace nautilus {
 // can hook independently.
 
 // ---- atomic_load ----
-val<int32_t> atomic_load_seqcst(val<std::atomic<int32_t>*> obj);
-val<int32_t> atomic_load_acquire(val<std::atomic<int32_t>*> obj);
-val<int32_t> atomic_load_relaxed(val<std::atomic<int32_t>*> obj);
-val<int64_t> atomic_load_seqcst(val<std::atomic<int64_t>*> obj);
-val<int64_t> atomic_load_acquire(val<std::atomic<int64_t>*> obj);
-val<int64_t> atomic_load_relaxed(val<std::atomic<int64_t>*> obj);
-val<uint32_t> atomic_load_seqcst(val<std::atomic<uint32_t>*> obj);
-val<uint32_t> atomic_load_acquire(val<std::atomic<uint32_t>*> obj);
-val<uint32_t> atomic_load_relaxed(val<std::atomic<uint32_t>*> obj);
-val<uint64_t> atomic_load_seqcst(val<std::atomic<uint64_t>*> obj);
-val<uint64_t> atomic_load_acquire(val<std::atomic<uint64_t>*> obj);
-val<uint64_t> atomic_load_relaxed(val<std::atomic<uint64_t>*> obj);
+val<int32_t> atomic_load_seqcst(val<std::atomic<int32_t>*> obj) noexcept;
+val<int32_t> atomic_load_acquire(val<std::atomic<int32_t>*> obj) noexcept;
+val<int32_t> atomic_load_relaxed(val<std::atomic<int32_t>*> obj) noexcept;
+val<int64_t> atomic_load_seqcst(val<std::atomic<int64_t>*> obj) noexcept;
+val<int64_t> atomic_load_acquire(val<std::atomic<int64_t>*> obj) noexcept;
+val<int64_t> atomic_load_relaxed(val<std::atomic<int64_t>*> obj) noexcept;
+val<uint32_t> atomic_load_seqcst(val<std::atomic<uint32_t>*> obj) noexcept;
+val<uint32_t> atomic_load_acquire(val<std::atomic<uint32_t>*> obj) noexcept;
+val<uint32_t> atomic_load_relaxed(val<std::atomic<uint32_t>*> obj) noexcept;
+val<uint64_t> atomic_load_seqcst(val<std::atomic<uint64_t>*> obj) noexcept;
+val<uint64_t> atomic_load_acquire(val<std::atomic<uint64_t>*> obj) noexcept;
+val<uint64_t> atomic_load_relaxed(val<std::atomic<uint64_t>*> obj) noexcept;
 
 // ---- atomic_store ----
-void atomic_store_seqcst(val<std::atomic<int32_t>*> obj, val<int32_t> v);
-void atomic_store_release(val<std::atomic<int32_t>*> obj, val<int32_t> v);
-void atomic_store_relaxed(val<std::atomic<int32_t>*> obj, val<int32_t> v);
-void atomic_store_seqcst(val<std::atomic<int64_t>*> obj, val<int64_t> v);
-void atomic_store_release(val<std::atomic<int64_t>*> obj, val<int64_t> v);
-void atomic_store_relaxed(val<std::atomic<int64_t>*> obj, val<int64_t> v);
-void atomic_store_seqcst(val<std::atomic<uint32_t>*> obj, val<uint32_t> v);
-void atomic_store_release(val<std::atomic<uint32_t>*> obj, val<uint32_t> v);
-void atomic_store_relaxed(val<std::atomic<uint32_t>*> obj, val<uint32_t> v);
-void atomic_store_seqcst(val<std::atomic<uint64_t>*> obj, val<uint64_t> v);
-void atomic_store_release(val<std::atomic<uint64_t>*> obj, val<uint64_t> v);
-void atomic_store_relaxed(val<std::atomic<uint64_t>*> obj, val<uint64_t> v);
+void atomic_store_seqcst(val<std::atomic<int32_t>*> obj, val<int32_t> v) noexcept;
+void atomic_store_release(val<std::atomic<int32_t>*> obj, val<int32_t> v) noexcept;
+void atomic_store_relaxed(val<std::atomic<int32_t>*> obj, val<int32_t> v) noexcept;
+void atomic_store_seqcst(val<std::atomic<int64_t>*> obj, val<int64_t> v) noexcept;
+void atomic_store_release(val<std::atomic<int64_t>*> obj, val<int64_t> v) noexcept;
+void atomic_store_relaxed(val<std::atomic<int64_t>*> obj, val<int64_t> v) noexcept;
+void atomic_store_seqcst(val<std::atomic<uint32_t>*> obj, val<uint32_t> v) noexcept;
+void atomic_store_release(val<std::atomic<uint32_t>*> obj, val<uint32_t> v) noexcept;
+void atomic_store_relaxed(val<std::atomic<uint32_t>*> obj, val<uint32_t> v) noexcept;
+void atomic_store_seqcst(val<std::atomic<uint64_t>*> obj, val<uint64_t> v) noexcept;
+void atomic_store_release(val<std::atomic<uint64_t>*> obj, val<uint64_t> v) noexcept;
+void atomic_store_relaxed(val<std::atomic<uint64_t>*> obj, val<uint64_t> v) noexcept;
 
 #define NAUTILUS_ATOMIC_RMW_DECL(name)                                                                                 \
-	val<int32_t> name##_seqcst(val<std::atomic<int32_t>*> obj, val<int32_t> v);                                        \
-	val<int32_t> name##_relaxed(val<std::atomic<int32_t>*> obj, val<int32_t> v);                                       \
-	val<int64_t> name##_seqcst(val<std::atomic<int64_t>*> obj, val<int64_t> v);                                        \
-	val<int64_t> name##_relaxed(val<std::atomic<int64_t>*> obj, val<int64_t> v);                                       \
-	val<uint32_t> name##_seqcst(val<std::atomic<uint32_t>*> obj, val<uint32_t> v);                                     \
-	val<uint32_t> name##_relaxed(val<std::atomic<uint32_t>*> obj, val<uint32_t> v);                                    \
-	val<uint64_t> name##_seqcst(val<std::atomic<uint64_t>*> obj, val<uint64_t> v);                                     \
-	val<uint64_t> name##_relaxed(val<std::atomic<uint64_t>*> obj, val<uint64_t> v);
+	val<int32_t> name##_seqcst(val<std::atomic<int32_t>*> obj, val<int32_t> v) noexcept;                               \
+	val<int32_t> name##_relaxed(val<std::atomic<int32_t>*> obj, val<int32_t> v) noexcept;                              \
+	val<int64_t> name##_seqcst(val<std::atomic<int64_t>*> obj, val<int64_t> v) noexcept;                               \
+	val<int64_t> name##_relaxed(val<std::atomic<int64_t>*> obj, val<int64_t> v) noexcept;                              \
+	val<uint32_t> name##_seqcst(val<std::atomic<uint32_t>*> obj, val<uint32_t> v) noexcept;                            \
+	val<uint32_t> name##_relaxed(val<std::atomic<uint32_t>*> obj, val<uint32_t> v) noexcept;                           \
+	val<uint64_t> name##_seqcst(val<std::atomic<uint64_t>*> obj, val<uint64_t> v) noexcept;                            \
+	val<uint64_t> name##_relaxed(val<std::atomic<uint64_t>*> obj, val<uint64_t> v) noexcept;
 
 NAUTILUS_ATOMIC_RMW_DECL(atomic_exchange)
 NAUTILUS_ATOMIC_RMW_DECL(atomic_fetch_add)
@@ -63,12 +63,14 @@ NAUTILUS_ATOMIC_RMW_DECL(atomic_fetch_xor)
 #undef NAUTILUS_ATOMIC_RMW_DECL
 
 // ---- atomic_compare_exchange_strong (runtime only — not lowered to LLVM cmpxchg) ----
-val<bool> atomic_compare_exchange_strong(val<std::atomic<int32_t>*> obj, val<int32_t*> expected, val<int32_t> desired);
-val<bool> atomic_compare_exchange_strong(val<std::atomic<int64_t>*> obj, val<int64_t*> expected, val<int64_t> desired);
+val<bool> atomic_compare_exchange_strong(val<std::atomic<int32_t>*> obj, val<int32_t*> expected,
+                                         val<int32_t> desired) noexcept;
+val<bool> atomic_compare_exchange_strong(val<std::atomic<int64_t>*> obj, val<int64_t*> expected,
+                                         val<int64_t> desired) noexcept;
 val<bool> atomic_compare_exchange_strong(val<std::atomic<uint32_t>*> obj, val<uint32_t*> expected,
-                                         val<uint32_t> desired);
+                                         val<uint32_t> desired) noexcept;
 val<bool> atomic_compare_exchange_strong(val<std::atomic<uint64_t>*> obj, val<uint64_t*> expected,
-                                         val<uint64_t> desired);
+                                         val<uint64_t> desired) noexcept;
 
 // =====================================================================================
 // Atomic operations directly on a val<T*> — treat the pointed-to memory as atomic
@@ -78,25 +80,25 @@ val<bool> atomic_compare_exchange_strong(val<std::atomic<uint64_t>*> obj, val<ui
 // =====================================================================================
 
 #define NAUTILUS_ATOMIC_REF_DECL(T)                                                                                    \
-	val<T> atomic_ref_load_seqcst(val<T*> ptr);                                                                        \
-	val<T> atomic_ref_load_acquire(val<T*> ptr);                                                                       \
-	val<T> atomic_ref_load_relaxed(val<T*> ptr);                                                                       \
-	void atomic_ref_store_seqcst(val<T*> ptr, val<T> v);                                                               \
-	void atomic_ref_store_release(val<T*> ptr, val<T> v);                                                              \
-	void atomic_ref_store_relaxed(val<T*> ptr, val<T> v);                                                              \
-	val<T> atomic_ref_exchange_seqcst(val<T*> ptr, val<T> v);                                                          \
-	val<T> atomic_ref_exchange_relaxed(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_add_seqcst(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_add_relaxed(val<T*> ptr, val<T> v);                                                        \
-	val<T> atomic_ref_fetch_sub_seqcst(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_sub_relaxed(val<T*> ptr, val<T> v);                                                        \
-	val<T> atomic_ref_fetch_and_seqcst(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_and_relaxed(val<T*> ptr, val<T> v);                                                        \
-	val<T> atomic_ref_fetch_or_seqcst(val<T*> ptr, val<T> v);                                                          \
-	val<T> atomic_ref_fetch_or_relaxed(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_xor_seqcst(val<T*> ptr, val<T> v);                                                         \
-	val<T> atomic_ref_fetch_xor_relaxed(val<T*> ptr, val<T> v);                                                        \
-	val<bool> atomic_ref_compare_exchange_strong(val<T*> ptr, val<T*> expected, val<T> desired);
+	val<T> atomic_ref_load_seqcst(val<T*> ptr) noexcept;                                                               \
+	val<T> atomic_ref_load_acquire(val<T*> ptr) noexcept;                                                              \
+	val<T> atomic_ref_load_relaxed(val<T*> ptr) noexcept;                                                              \
+	void atomic_ref_store_seqcst(val<T*> ptr, val<T> v) noexcept;                                                      \
+	void atomic_ref_store_release(val<T*> ptr, val<T> v) noexcept;                                                     \
+	void atomic_ref_store_relaxed(val<T*> ptr, val<T> v) noexcept;                                                     \
+	val<T> atomic_ref_exchange_seqcst(val<T*> ptr, val<T> v) noexcept;                                                 \
+	val<T> atomic_ref_exchange_relaxed(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_add_seqcst(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_add_relaxed(val<T*> ptr, val<T> v) noexcept;                                               \
+	val<T> atomic_ref_fetch_sub_seqcst(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_sub_relaxed(val<T*> ptr, val<T> v) noexcept;                                               \
+	val<T> atomic_ref_fetch_and_seqcst(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_and_relaxed(val<T*> ptr, val<T> v) noexcept;                                               \
+	val<T> atomic_ref_fetch_or_seqcst(val<T*> ptr, val<T> v) noexcept;                                                 \
+	val<T> atomic_ref_fetch_or_relaxed(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_xor_seqcst(val<T*> ptr, val<T> v) noexcept;                                                \
+	val<T> atomic_ref_fetch_xor_relaxed(val<T*> ptr, val<T> v) noexcept;                                               \
+	val<bool> atomic_ref_compare_exchange_strong(val<T*> ptr, val<T*> expected, val<T> desired) noexcept;
 NAUTILUS_ATOMIC_REF_DECL(int32_t)
 NAUTILUS_ATOMIC_REF_DECL(int64_t)
 NAUTILUS_ATOMIC_REF_DECL(uint32_t)
@@ -105,7 +107,7 @@ NAUTILUS_ATOMIC_REF_DECL(uint64_t)
 
 // Ordering-templated dispatchers operating directly on a val<T*>.
 template <std::memory_order Order = std::memory_order_seq_cst, class T>
-val<T> atomic_load(val<T*> ptr) {
+val<T> atomic_load(val<T*> ptr) noexcept {
 	if constexpr (Order == std::memory_order_relaxed) {
 		return atomic_ref_load_relaxed(ptr);
 	} else if constexpr (Order == std::memory_order_acquire || Order == std::memory_order_consume) {
@@ -116,7 +118,7 @@ val<T> atomic_load(val<T*> ptr) {
 }
 
 template <std::memory_order Order = std::memory_order_seq_cst, class T>
-void atomic_store(val<T*> ptr, val<T> desired) {
+void atomic_store(val<T*> ptr, val<T> desired) noexcept {
 	if constexpr (Order == std::memory_order_relaxed) {
 		atomic_ref_store_relaxed(ptr, desired);
 	} else if constexpr (Order == std::memory_order_release) {
@@ -128,7 +130,7 @@ void atomic_store(val<T*> ptr, val<T> desired) {
 
 #define NAUTILUS_ATOMIC_REF_RMW_TEMPLATE(name)                                                                         \
 	template <std::memory_order Order = std::memory_order_seq_cst, class T>                                            \
-	val<T> atomic_##name(val<T*> ptr, val<T> arg) {                                                                    \
+	val<T> atomic_##name(val<T*> ptr, val<T> arg) noexcept {                                                           \
 		if constexpr (Order == std::memory_order_relaxed) {                                                            \
 			return atomic_ref_##name##_relaxed(ptr, arg);                                                              \
 		} else {                                                                                                       \
@@ -145,21 +147,21 @@ NAUTILUS_ATOMIC_REF_RMW_TEMPLATE(fetch_xor)
 #undef NAUTILUS_ATOMIC_REF_RMW_TEMPLATE
 
 template <class T>
-val<bool> atomic_compare_exchange_strong(val<T*> ptr, val<T*> expected, val<T> desired) {
+val<bool> atomic_compare_exchange_strong(val<T*> ptr, val<T*> expected, val<T> desired) noexcept {
 	return atomic_ref_compare_exchange_strong(ptr, expected, desired);
 }
 
 // ---- atomic_thread_fence ----
-void atomic_thread_fence_seqcst();
-void atomic_thread_fence_acquire();
-void atomic_thread_fence_release();
-void atomic_thread_fence_acq_rel();
-void atomic_thread_fence_relaxed();
+void atomic_thread_fence_seqcst() noexcept;
+void atomic_thread_fence_acquire() noexcept;
+void atomic_thread_fence_release() noexcept;
+void atomic_thread_fence_acq_rel() noexcept;
+void atomic_thread_fence_relaxed() noexcept;
 
 // Convenience: ordering-templated dispatchers (default seq_cst). The body is a static
 // dispatch on the order so call sites read like `atomic_load<acquire>(p)`.
 template <std::memory_order Order = std::memory_order_seq_cst, class T>
-val<T> atomic_load(val<std::atomic<T>*> obj) {
+val<T> atomic_load(val<std::atomic<T>*> obj) noexcept {
 	if constexpr (Order == std::memory_order_relaxed) {
 		return atomic_load_relaxed(obj);
 	} else if constexpr (Order == std::memory_order_acquire || Order == std::memory_order_consume) {
@@ -170,7 +172,7 @@ val<T> atomic_load(val<std::atomic<T>*> obj) {
 }
 
 template <std::memory_order Order = std::memory_order_seq_cst, class T>
-void atomic_store(val<std::atomic<T>*> obj, val<T> desired) {
+void atomic_store(val<std::atomic<T>*> obj, val<T> desired) noexcept {
 	if constexpr (Order == std::memory_order_relaxed) {
 		atomic_store_relaxed(obj, desired);
 	} else if constexpr (Order == std::memory_order_release) {
@@ -182,7 +184,7 @@ void atomic_store(val<std::atomic<T>*> obj, val<T> desired) {
 
 #define NAUTILUS_ATOMIC_RMW_TEMPLATE(name)                                                                             \
 	template <std::memory_order Order = std::memory_order_seq_cst, class T>                                            \
-	val<T> name(val<std::atomic<T>*> obj, val<T> arg) {                                                                \
+	val<T> name(val<std::atomic<T>*> obj, val<T> arg) noexcept {                                                       \
 		if constexpr (Order == std::memory_order_relaxed) {                                                            \
 			return name##_relaxed(obj, arg);                                                                           \
 		} else {                                                                                                       \
@@ -199,7 +201,7 @@ NAUTILUS_ATOMIC_RMW_TEMPLATE(atomic_fetch_xor)
 #undef NAUTILUS_ATOMIC_RMW_TEMPLATE
 
 template <std::memory_order Order = std::memory_order_seq_cst>
-void atomic_thread_fence() {
+void atomic_thread_fence() noexcept {
 	if constexpr (Order == std::memory_order_relaxed) {
 		atomic_thread_fence_relaxed();
 	} else if constexpr (Order == std::memory_order_acquire || Order == std::memory_order_consume) {
@@ -247,7 +249,7 @@ public:
 			return;
 		}
 		invoke(
-		    +[](base_type* p) {
+		    +[](base_type* p) noexcept {
 			    if (p != nullptr) {
 				    delete p;
 			    }
@@ -255,51 +257,51 @@ public:
 		    data_ptr);
 	}
 
-	val<base_type*> get() const {
+	val<base_type*> get() const noexcept {
 		return data_ptr;
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> load() const {
+	val<T> load() const noexcept {
 		return atomic_load<Order, T>(data_ptr);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	void store(val<T> v) {
+	void store(val<T> v) noexcept {
 		atomic_store<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> exchange(val<T> v) {
+	val<T> exchange(val<T> v) noexcept {
 		return atomic_exchange<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> fetch_add(val<T> v) {
+	val<T> fetch_add(val<T> v) noexcept {
 		return atomic_fetch_add<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> fetch_sub(val<T> v) {
+	val<T> fetch_sub(val<T> v) noexcept {
 		return atomic_fetch_sub<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> fetch_and(val<T> v) {
+	val<T> fetch_and(val<T> v) noexcept {
 		return atomic_fetch_and<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> fetch_or(val<T> v) {
+	val<T> fetch_or(val<T> v) noexcept {
 		return atomic_fetch_or<Order, T>(data_ptr, v);
 	}
 
 	template <std::memory_order Order = std::memory_order_seq_cst>
-	val<T> fetch_xor(val<T> v) {
+	val<T> fetch_xor(val<T> v) noexcept {
 		return atomic_fetch_xor<Order, T>(data_ptr, v);
 	}
 
-	val<bool> compare_exchange_strong(val<T*> expected, val<T> desired) {
+	val<bool> compare_exchange_strong(val<T*> expected, val<T> desired) noexcept {
 		return atomic_compare_exchange_strong(data_ptr, expected, desired);
 	}
 

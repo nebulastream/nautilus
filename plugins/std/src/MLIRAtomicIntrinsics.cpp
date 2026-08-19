@@ -14,42 +14,42 @@
 extern "C" {
 
 #define NAUTILUS_DECL_PER_TYPE(T)                                                                                      \
-	T nautilus_atomic_load_##T##_seqcst(std::atomic<T>*);                                                              \
-	T nautilus_atomic_load_##T##_acquire(std::atomic<T>*);                                                             \
-	T nautilus_atomic_load_##T##_relaxed(std::atomic<T>*);                                                             \
-	void nautilus_atomic_store_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	void nautilus_atomic_store_##T##_release(std::atomic<T>*, T);                                                      \
-	void nautilus_atomic_store_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_exchange_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	T nautilus_atomic_exchange_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_add_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_add_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_sub_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_sub_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_and_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_and_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_or_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	T nautilus_atomic_fetch_or_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_xor_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_xor_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_ref_load_##T##_seqcst(T*);                                                                       \
-	T nautilus_atomic_ref_load_##T##_acquire(T*);                                                                      \
-	T nautilus_atomic_ref_load_##T##_relaxed(T*);                                                                      \
-	void nautilus_atomic_ref_store_##T##_seqcst(T*, T);                                                                \
-	void nautilus_atomic_ref_store_##T##_release(T*, T);                                                               \
-	void nautilus_atomic_ref_store_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_exchange_##T##_seqcst(T*, T);                                                                \
-	T nautilus_atomic_ref_exchange_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_add_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_add_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_sub_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_sub_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_and_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_and_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_or_##T##_seqcst(T*, T);                                                                \
-	T nautilus_atomic_ref_fetch_or_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_xor_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_xor_##T##_relaxed(T*, T);
+	T nautilus_atomic_load_##T##_seqcst(std::atomic<T>*) noexcept;                                                     \
+	T nautilus_atomic_load_##T##_acquire(std::atomic<T>*) noexcept;                                                    \
+	T nautilus_atomic_load_##T##_relaxed(std::atomic<T>*) noexcept;                                                    \
+	void nautilus_atomic_store_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	void nautilus_atomic_store_##T##_release(std::atomic<T>*, T) noexcept;                                             \
+	void nautilus_atomic_store_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_exchange_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	T nautilus_atomic_exchange_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_add_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_add_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_sub_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_sub_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_and_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_and_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_or_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	T nautilus_atomic_fetch_or_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_xor_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_xor_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_ref_load_##T##_seqcst(T*) noexcept;                                                              \
+	T nautilus_atomic_ref_load_##T##_acquire(T*) noexcept;                                                             \
+	T nautilus_atomic_ref_load_##T##_relaxed(T*) noexcept;                                                             \
+	void nautilus_atomic_ref_store_##T##_seqcst(T*, T) noexcept;                                                       \
+	void nautilus_atomic_ref_store_##T##_release(T*, T) noexcept;                                                      \
+	void nautilus_atomic_ref_store_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_exchange_##T##_seqcst(T*, T) noexcept;                                                       \
+	T nautilus_atomic_ref_exchange_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_add_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_add_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_sub_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_sub_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_and_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_and_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_or_##T##_seqcst(T*, T) noexcept;                                                       \
+	T nautilus_atomic_ref_fetch_or_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_xor_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_xor_##T##_relaxed(T*, T) noexcept;
 
 NAUTILUS_DECL_PER_TYPE(int32_t)
 NAUTILUS_DECL_PER_TYPE(int64_t)
@@ -57,11 +57,11 @@ NAUTILUS_DECL_PER_TYPE(uint32_t)
 NAUTILUS_DECL_PER_TYPE(uint64_t)
 #undef NAUTILUS_DECL_PER_TYPE
 
-void nautilus_atomic_thread_fence_seqcst();
-void nautilus_atomic_thread_fence_acquire();
-void nautilus_atomic_thread_fence_release();
-void nautilus_atomic_thread_fence_acq_rel();
-void nautilus_atomic_thread_fence_relaxed();
+void nautilus_atomic_thread_fence_seqcst() noexcept;
+void nautilus_atomic_thread_fence_acquire() noexcept;
+void nautilus_atomic_thread_fence_release() noexcept;
+void nautilus_atomic_thread_fence_acq_rel() noexcept;
+void nautilus_atomic_thread_fence_relaxed() noexcept;
 
 } // extern "C"
 

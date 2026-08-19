@@ -21,7 +21,7 @@ public:
 	ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
 	                   void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
 	                   Type resultType, FunctionAttributes fnAttrs, std::vector<Destructor> destructors = {},
-	                   bool exceptionHandling = false);
+	                   bool exceptionHandling = false, void* captureFunc = nullptr);
 
 	~ProxyCallOperation() = default;
 
@@ -32,6 +32,9 @@ public:
 	const std::string& getFunctionSymbol() const;
 	const std::string& getFunctionName() const;
 	void* getFunctionPtr();
+	/// Capture wrapper (`captureThrowingCall<R, Args...>`) for a potentially
+	/// throwing call, or nullptr for `noUnwind` calls.
+	void* getCaptureFunc() const;
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 	[[nodiscard]] const std::vector<Destructor>& getDestructors() const;
@@ -43,6 +46,7 @@ private:
 	const std::string mangedFunctionSymbol;
 	const std::string functionName;
 	void* functionPtr;
+	void* captureFunc;
 	FunctionAttributes fnAttrs;
 	std::vector<Destructor> destructors;
 	bool exceptionHandling = false;

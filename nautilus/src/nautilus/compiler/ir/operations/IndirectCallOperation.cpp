@@ -27,6 +27,16 @@ IndirectCallOperation::IndirectCallOperation(common::Arena& arena, OperationIden
 	this->inputs = buildIndirectCallInputs(arena, functionPtrOperand, inputArguments);
 }
 
+IndirectCallOperation::IndirectCallOperation(common::Arena& arena, OperationIdentifier identifier,
+                                             Operation* functionPtrOperand, std::span<Operation* const> inputArguments,
+                                             Type resultType, FunctionAttributes fnAttrs,
+                                             std::vector<Destructor> destructors, bool exceptionHandling,
+                                             void* captureFunc)
+    : Operation(Operation::OperationType::IndirectCallOp, identifier, resultType), fnAttrs(std::move(fnAttrs)),
+      destructors(std::move(destructors)), captureFunc(captureFunc), exceptionHandling(exceptionHandling) {
+	this->inputs = buildIndirectCallInputs(arena, functionPtrOperand, inputArguments);
+}
+
 Operation* IndirectCallOperation::getFunctionPtrOperand() const {
 	return inputs[0];
 }
@@ -37,6 +47,18 @@ std::span<Operation* const> IndirectCallOperation::getInputArguments() const {
 
 const FunctionAttributes& IndirectCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
+}
+
+const std::vector<IndirectCallOperation::Destructor>& IndirectCallOperation::getDestructors() const {
+	return destructors;
+}
+
+bool IndirectCallOperation::requiresExceptionHandling() const {
+	return exceptionHandling;
+}
+
+void* IndirectCallOperation::getCaptureFunc() const {
+	return captureFunc;
 }
 
 bool IndirectCallOperation::classof(const Operation* op) {

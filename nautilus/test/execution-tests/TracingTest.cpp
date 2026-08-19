@@ -2,6 +2,7 @@
 #include "CastFunctions.hpp"
 #include "ControlFlowFunctions.hpp"
 #include "EnumFunction.hpp"
+#include "ExceptionFunctions.hpp"
 #include "ExpressionFunctions.hpp"
 #include "FunctionPtrFunctions.hpp"
 #include "LoopFunctions.hpp"
@@ -18,6 +19,7 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
@@ -57,29 +59,13 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
 };
 
-struct GoldenExceptionCleanup {
-	~GoldenExceptionCleanup() noexcept {
-	}
-};
-
-void goldenThrowWithoutCleanup() {
-	throw std::runtime_error("golden exception without cleanup");
-}
-
-void goldenThrowWithCleanup(GoldenExceptionCleanup*) {
-	throw std::runtime_error("golden exception with cleanup");
-}
-
-val<int32_t> exceptionCallWithoutCleanup() {
-	invoke(goldenThrowWithoutCleanup);
-	return 42;
-}
-
-val<int32_t> exceptionCallWithCleanup() {
-	val<GoldenExceptionCleanup> cleanup;
-	invoke(goldenThrowWithCleanup, &cleanup);
-	return 42;
-}
+// Exception-handling trace fixtures live in the shared common header so the
+// LLVM IR suite reuses the exact same functions.
+using nautilus::testing::exceptionCallWithCleanup;
+using nautilus::testing::exceptionCallWithoutCleanup;
+using nautilus::testing::goldenThrowWithCleanup;
+using nautilus::testing::goldenThrowWithoutCleanup;
+using nautilus::testing::GoldenExceptionCleanup;
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
@@ -191,6 +177,22 @@ TEST_CASE("Exception handling call trace golden") {
 					auto afterSsaDump = afterSsa->toString();
 					afterSsaDump.pop_back();
 					REQUIRE(checkTestFile(afterSsaDump, "exception-handling-tests", "after_ssa", name));
+
+					DYNAMIC_SECTION("after_region_pass") {
+						common::Arena arena2;
+						std::list<compiler::CompilableFunction> functions2;
+						functions2.emplace_back("execute", function);
+						auto trace2 = traceFn(functions2, engine::Options {}, arena2);
+						auto afterSsa2 =
+						    tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(trace2)));
+						auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSsa2));
+						engine::Options passOpts;
+						compiler::ir::IRPassManager passManager(passOpts);
+						passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
+						passManager.run(*ir);
+						REQUIRE(
+						    checkTestFile(ir->toString(), "exception-tests", "after_region_pass", name, ".nautilus"));
+					}
 				}
 			}
 		}

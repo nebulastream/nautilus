@@ -3,6 +3,7 @@
 
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include <cstddef>
 #include <optional>
 #include <unordered_map>
@@ -58,6 +59,11 @@ public:
 
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
+
+	/// Exception-region side table, populated by
+	/// ExceptionRegionPreparationPass (terminal pass). Empty until that pass
+	/// runs; `std::nullopt` means the pass has not yet visited this function.
+	std::optional<FunctionExceptionRegion> exceptionRegion;
 
 	static bool classof(const Operation* Op);
 

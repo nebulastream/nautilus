@@ -8,34 +8,34 @@
 
 // Declare extern "C" wrapper functions from bit.cpp
 extern "C" {
-uint8_t countl_zero_u8_impl(uint8_t x);
-uint16_t countl_zero_u16_impl(uint16_t x);
-uint32_t countl_zero_u32_impl(uint32_t x);
-uint64_t countl_zero_u64_impl(uint64_t x);
+uint8_t countl_zero_u8_impl(uint8_t) noexcept;
+uint16_t countl_zero_u16_impl(uint16_t) noexcept;
+uint32_t countl_zero_u32_impl(uint32_t) noexcept;
+uint64_t countl_zero_u64_impl(uint64_t) noexcept;
 
-uint8_t countr_zero_u8_impl(uint8_t x);
-uint16_t countr_zero_u16_impl(uint16_t x);
-uint32_t countr_zero_u32_impl(uint32_t x);
-uint64_t countr_zero_u64_impl(uint64_t x);
+uint8_t countr_zero_u8_impl(uint8_t) noexcept;
+uint16_t countr_zero_u16_impl(uint16_t) noexcept;
+uint32_t countr_zero_u32_impl(uint32_t) noexcept;
+uint64_t countr_zero_u64_impl(uint64_t) noexcept;
 
-uint8_t popcount_u8_impl(uint8_t x);
-uint16_t popcount_u16_impl(uint16_t x);
-uint32_t popcount_u32_impl(uint32_t x);
-uint64_t popcount_u64_impl(uint64_t x);
+uint8_t popcount_u8_impl(uint8_t) noexcept;
+uint16_t popcount_u16_impl(uint16_t) noexcept;
+uint32_t popcount_u32_impl(uint32_t) noexcept;
+uint64_t popcount_u64_impl(uint64_t) noexcept;
 
-uint8_t rotl_u8_impl(uint8_t x, uint8_t s);
-uint16_t rotl_u16_impl(uint16_t x, uint16_t s);
-uint32_t rotl_u32_impl(uint32_t x, uint32_t s);
-uint64_t rotl_u64_impl(uint64_t x, uint64_t s);
+uint8_t rotl_u8_impl(uint8_t, uint8_t) noexcept;
+uint16_t rotl_u16_impl(uint16_t, uint16_t) noexcept;
+uint32_t rotl_u32_impl(uint32_t, uint32_t) noexcept;
+uint64_t rotl_u64_impl(uint64_t, uint64_t) noexcept;
 
-uint8_t rotr_u8_impl(uint8_t x, uint8_t s);
-uint16_t rotr_u16_impl(uint16_t x, uint16_t s);
-uint32_t rotr_u32_impl(uint32_t x, uint32_t s);
-uint64_t rotr_u64_impl(uint64_t x, uint64_t s);
+uint8_t rotr_u8_impl(uint8_t, uint8_t) noexcept;
+uint16_t rotr_u16_impl(uint16_t, uint16_t) noexcept;
+uint32_t rotr_u32_impl(uint32_t, uint32_t) noexcept;
+uint64_t rotr_u64_impl(uint64_t, uint64_t) noexcept;
 
-uint16_t byteswap_u16_impl(uint16_t x);
-uint32_t byteswap_u32_impl(uint32_t x);
-uint64_t byteswap_u64_impl(uint64_t x);
+uint16_t byteswap_u16_impl(uint16_t) noexcept;
+uint32_t byteswap_u32_impl(uint32_t) noexcept;
+uint64_t byteswap_u64_impl(uint64_t) noexcept;
 }
 
 namespace nautilus::compiler::mlir {
