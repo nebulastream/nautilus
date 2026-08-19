@@ -83,6 +83,11 @@ endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_WARNINGS "${CMAKE_CXX_WARNINGS} -Wpedantic-macros -Werror=integer-overflow -Werror=return-type -Werror=return-stack-address  -Werror=writable-strings")
+    # clang-22 flags Catch2's __COUNTER__ (used in the TEST_CASE macro) as a C2y
+    # extension; silence it under -Werror on clang 22+.
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 22)
+        set(CMAKE_CXX_WARNINGS "${CMAKE_CXX_WARNINGS} -Wno-c2y-extensions")
+    endif ()
 else ()
     set(CMAKE_CXX_WARNINGS "${CMAKE_CXX_WARNINGS} -Woverflow -Werror=return-type -Werror=return-local-addr  -Werror=write-strings -Wno-error=stringop-overflow")
 endif ()
