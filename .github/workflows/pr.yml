@@ -87,6 +87,11 @@ jobs:
         uses: egor-tensin/setup-clang@v2
         with:
           version: ${{ env.CC_VERSION }}
+      - name: Install LLVM dev for the inlining plugin
+        if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
+        uses: ./.github/actions/install-llvm-dev
+        with:
+          llvm-version: ${{ env.CC_VERSION }}
       - name: cmake
         shell: bash
         run: |
@@ -233,6 +238,10 @@ jobs:
         uses: egor-tensin/setup-clang@v2
         with:
           version: "21"
+      - name: Install LLVM dev for the inlining plugin
+        uses: ./.github/actions/install-llvm-dev
+        with:
+          llvm-version: "21"
       - name: cmake
         shell: bash
         run: |

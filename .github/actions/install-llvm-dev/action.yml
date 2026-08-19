@@ -1,0 +1,29 @@
+name: Install LLVM dev (for the inlining plugin)
+description: >-
+  Install llvm-<ver>-dev so the inlining plugin's find_package(LLVM) finds the
+  CMake config matching the installed clang. egor-tensin/setup-clang installs
+  clang/llvm with --no-install-recommends, which skips the -dev package that
+  ships LLVMConfig.cmake. Ubuntu-only; apt is timeout-bounded and retried.
+
+inputs:
+  llvm-version:
+    description: LLVM/clang version, e.g. 19 or 21.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install llvm-${{ inputs.llvm-version }}-dev
+      shell: bash
+      run: |
+        LLVM_VERSION="${{ inputs.llvm-version }}"
+        APTOPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60"
+        for i in 1 2 3 4 5; do
+          if timeout 300 sudo apt-get install -y ${APTOPTS} llvm-${LLVM_VERSION}-dev; then
+            test -f "/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/llvm/LLVMConfig.cmake"
+            exit 0
+          fi
+          echo "apt install llvm-${LLVM_VERSION}-dev failed (attempt $i/5), retrying in 15s..."
+          sleep 15
+        done
+        exit 1
