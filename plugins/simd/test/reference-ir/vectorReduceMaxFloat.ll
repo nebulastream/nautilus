@@ -5,14 +5,14 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define float @execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load <16 x float>, ptr %0, align 64
+  %2 = load <16 x float>, ptr %0, align 4
   %3 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %2)
   ret float %3
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
 define float @_mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
-  %2 = load <16 x float>, ptr %0, align 64
+  %2 = load <16 x float>, ptr %0, align 4
   %3 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %2)
   ret float %3
 }
@@ -24,7 +24,7 @@ declare float @llvm.vector.reduce.fmax.v16f32(<16 x float>) #1
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
-  %4 = load <16 x float>, ptr %3, align 64
+  %4 = load <16 x float>, ptr %3, align 4
   %5 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %4)
   %6 = getelementptr i8, ptr %0, i64 8
   %7 = load ptr, ptr %6, align 8
@@ -36,7 +36,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
-  %4 = load <16 x float>, ptr %3, align 64
+  %4 = load <16 x float>, ptr %3, align 4
   %5 = tail call nnan float @llvm.vector.reduce.fmax.v16f32(<16 x float> %4)
   %6 = getelementptr i8, ptr %0, i64 8
   %7 = load ptr, ptr %6, align 8

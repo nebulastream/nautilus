@@ -18,7 +18,7 @@ define signext i32 @_mlir_ciface_conditionalHelper(i32 %0) local_unnamed_addr #0
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp sgt i32 %0, 10
-  %3 = add nuw i32 %0, 100
+  %3 = add i32 %0, 100
   %spec.select = select i1 %2, i32 %3, i32 %0
   ret i32 %spec.select
 }
@@ -26,7 +26,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp sgt i32 %0, 10
-  %3 = add nuw i32 %0, 100
+  %3 = add i32 %0, 100
   %spec.select.i = select i1 %2, i32 %3, i32 %0
   ret i32 %spec.select.i
 }
@@ -58,7 +58,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp sgt i32 %3, 10
-  %5 = add nuw i32 %3, 100
+  %5 = add i32 %3, 100
   %spec.select.i = select i1 %4, i32 %5, i32 %3
   %6 = getelementptr i8, ptr %0, i64 8
   %7 = load ptr, ptr %6, align 8
@@ -71,7 +71,7 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp sgt i32 %3, 10
-  %5 = add nuw i32 %3, 100
+  %5 = add i32 %3, 100
   %spec.select.i.i = select i1 %4, i32 %5, i32 %3
   %6 = getelementptr i8, ptr %0, i64 8
   %7 = load ptr, ptr %6, align 8
