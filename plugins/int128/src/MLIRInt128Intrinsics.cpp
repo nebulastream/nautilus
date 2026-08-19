@@ -1,5 +1,6 @@
 #include "MLIRInt128Intrinsics.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <nautilus/int128.hpp>
 
@@ -11,6 +12,27 @@ using Frame = MLIRLoweringProvider::ValueFrame;
 ::mlir::Value load(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, unsigned index) {
 	auto ptr = frame.getValue(call->getInputArguments()[index]->getIdentifier());
 	return ::mlir::LLVM::LoadOp::create(*b, b->getUnknownLoc(), b->getIntegerType(128), ptr);
+}
+
+/// Returns the integer value of `value` if it is a compile-time constant
+/// (either `arith.constant` or `llvm.mlir.constant`), else std::nullopt.
+std::optional<::mlir::APInt> constantInteger(::mlir::Value value) {
+	auto* op = value.getDefiningOp();
+	if (op == nullptr) {
+		return std::nullopt;
+	}
+	::mlir::Attribute attr;
+	if (auto arithConst = ::mlir::dyn_cast<::mlir::arith::ConstantOp>(op)) {
+		attr = arithConst.getValue();
+	} else if (auto llvmConst = ::mlir::dyn_cast<::mlir::LLVM::ConstantOp>(op)) {
+		attr = llvmConst.getValue();
+	} else {
+		return std::nullopt;
+	}
+	if (auto integerAttr = ::mlir::dyn_cast<::mlir::IntegerAttr>(attr)) {
+		return integerAttr.getValue();
+	}
+	return std::nullopt;
 }
 
 void save(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame, ::mlir::Value value) {
@@ -36,7 +58,10 @@ bool negate(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& fram
 
 bool bitNot(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame) {
 	auto i128 = b->getIntegerType(128);
-	auto ones = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, b->getIntegerAttr(i128, -1));
+	// True 128-bit all-ones. `getIntegerAttr(i128, -1)` would build a 64-bit
+	// -1 and zero-extend it, flipping only the low 64 bits.
+	auto onesAttr = ::mlir::IntegerAttr::get(i128, ::mlir::APInt::getAllOnes(128));
+	auto ones = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, onesAttr);
 	save(b, call, frame, ::mlir::LLVM::XOrOp::create(*b, b->getUnknownLoc(), load(b, call, frame, 0), ones));
 	return true;
 }
@@ -45,6 +70,29 @@ bool make(std::unique_ptr<::mlir::OpBuilder>& b, const Call* call, Frame& frame)
 	auto i128 = b->getIntegerType(128);
 	auto low = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto high = frame.getValue(call->getInputArguments()[1]->getIdentifier());
+
+	// When both halves are compile-time constants, fold them into a single
+	// i128 constant instead of emitting the zext/sext/shl/or chain. This lets
+	// the MLIR pipeline constant-fold whole int128 expressions instead of
+	// treating them as runtime `make` calls. `int128_make_impl(low, high)`
+	// builds (uint128)(uint64)high << 64 | (uint64)low, so `low` zero-extends
+	// and `high` sign-extends.
+	if (auto lowConst = constantInteger(low)) {
+		if (auto highConst = constantInteger(high)) {
+			auto low128 = lowConst->zext(128);
+			auto high128 = highConst->sext(128);
+			high128 <<= 64;
+			high128 |= low128;
+			auto attr = ::mlir::IntegerAttr::get(i128, high128);
+			auto folded = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, attr);
+			// Store the folded constant into the usual boxed alloca so the
+			// frame value stays a pointer (other int128 intrinsics load from
+			// it). LLVM's mem2reg + constant propagation then folds it.
+			save(b, call, frame, folded);
+			return true;
+		}
+	}
+
 	auto lo = ::mlir::LLVM::ZExtOp::create(*b, b->getUnknownLoc(), i128, low);
 	::mlir::Value hi = ::mlir::LLVM::SExtOp::create(*b, b->getUnknownLoc(), i128, high);
 	auto shift = ::mlir::LLVM::ConstantOp::create(*b, b->getUnknownLoc(), i128, b->getIntegerAttr(i128, 64));
