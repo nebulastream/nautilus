@@ -2,10 +2,12 @@ name: Install LLVM/Clang
 description: >-
   Install a clang/LLVM toolchain from apt.llvm.org for Ubuntu runners without
   letting apt hang. Only the needed packages are installed:
-  clang-<ver>, clang++-<ver>, llvm-<ver> (provides llvm-diff), and
-  llvm-<ver>-dev (provides LLVMConfig.cmake for the inlining plugin). Every apt
-  call is bounded by a hard timeout plus Acquire::Retries and the whole step is
-  retried, so a hung apt-get update can never stall a job.
+  clang-<ver>, clang++-<ver>, llvm-<ver> (provides llvm-diff),
+  llvm-<ver>-dev (provides LLVMConfig.cmake for the inlining plugin) and
+  libclang-rt-<ver>-dev (the sanitizer runtimes needed by -fsanitize=address
+  builds). Every apt call is bounded by a hard timeout plus Acquire::Retries
+  and the whole step is retried, so a hung apt-get update can never stall a
+  job.
 
 inputs:
   llvm-version:
@@ -31,7 +33,8 @@ runs:
             && timeout 180 sudo apt-get update ${APTOPTS} \
             && timeout 300 sudo apt-get install -y --no-install-recommends \
                  clang-${LLVM_VERSION} clang++-${LLVM_VERSION} \
-                 llvm-${LLVM_VERSION} llvm-${LLVM_VERSION}-dev ${APTOPTS}; then
+                 llvm-${LLVM_VERSION} llvm-${LLVM_VERSION}-dev \
+                 libclang-rt-${LLVM_VERSION}-dev ${APTOPTS}; then
             clang++-${LLVM_VERSION} --version | head -1
             exit 0
           fi
