@@ -6,15 +6,15 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 42
-  %spec.select = select i1 %2, i32 44, i32 43
-  ret i32 %spec.select
+  %3 = select i1 %2, i32 44, i32 43
+  ret i32 %3
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 42
-  %spec.select.i = select i1 %2, i32 44, i32 43
-  ret i32 %spec.select.i
+  %3 = select i1 %2, i32 44, i32 43
+  ret i32 %3
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
@@ -22,10 +22,10 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp eq i32 %3, 42
-  %spec.select.i = select i1 %4, i32 44, i32 43
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %spec.select.i, ptr %6, align 4
+  %5 = select i1 %4, i32 44, i32 43
+  %6 = getelementptr i8, ptr %0, i64 8
+  %7 = load ptr, ptr %6, align 8
+  store i32 %5, ptr %7, align 4
   ret void
 }
 
@@ -34,10 +34,10 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
   %4 = icmp eq i32 %3, 42
-  %spec.select.i.i = select i1 %4, i32 44, i32 43
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %spec.select.i.i, ptr %6, align 4
+  %5 = select i1 %4, i32 44, i32 43
+  %6 = getelementptr i8, ptr %0, i64 8
+  %7 = load ptr, ptr %6, align 8
+  store i32 %5, ptr %7, align 4
   ret void
 }
 

@@ -8,8 +8,8 @@ define signext i32 @execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = icmp eq i32 %0, 8
   %4 = icmp eq i32 %1, 1
   %5 = and i1 %3, %4
-  %spec.select = select i1 %5, i32 15, i32 1
-  ret i32 %spec.select
+  %6 = select i1 %5, i32 15, i32 1
+  ret i32 %6
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
@@ -17,8 +17,8 @@ define signext i32 @_mlir_ciface_execute(i32 %0, i32 %1) local_unnamed_addr #0 {
   %3 = icmp eq i32 %0, 8
   %4 = icmp eq i32 %1, 1
   %5 = and i1 %3, %4
-  %spec.select.i = select i1 %5, i32 15, i32 1
-  ret i32 %spec.select.i
+  %6 = select i1 %5, i32 15, i32 1
+  ret i32 %6
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
@@ -31,10 +31,10 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %7 = icmp eq i32 %3, 8
   %8 = icmp eq i32 %6, 1
   %9 = and i1 %7, %8
-  %spec.select.i = select i1 %9, i32 15, i32 1
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %spec.select.i, ptr %11, align 4
+  %10 = select i1 %9, i32 15, i32 1
+  %11 = getelementptr i8, ptr %0, i64 16
+  %12 = load ptr, ptr %11, align 8
+  store i32 %10, ptr %12, align 4
   ret void
 }
 
@@ -48,10 +48,10 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %7 = icmp eq i32 %3, 8
   %8 = icmp eq i32 %6, 1
   %9 = and i1 %7, %8
-  %spec.select.i.i = select i1 %9, i32 15, i32 1
-  %10 = getelementptr i8, ptr %0, i64 16
-  %11 = load ptr, ptr %10, align 8
-  store i32 %spec.select.i.i, ptr %11, align 4
+  %10 = select i1 %9, i32 15, i32 1
+  %11 = getelementptr i8, ptr %0, i64 16
+  %12 = load ptr, ptr %11, align 8
+  store i32 %10, ptr %12, align 4
   ret void
 }
 

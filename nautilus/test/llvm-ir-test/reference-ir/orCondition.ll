@@ -5,33 +5,33 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %switch.selectcmp.case1 = icmp eq i32 %0, 8
-  %switch.selectcmp.case2 = icmp eq i32 %0, 1
-  %switch.selectcmp = or i1 %switch.selectcmp.case1, %switch.selectcmp.case2
-  %2 = select i1 %switch.selectcmp, i32 15, i32 1
-  ret i32 %2
+  %2 = icmp eq i32 %0, 8
+  %3 = icmp eq i32 %0, 1
+  %4 = or i1 %2, %3
+  %5 = select i1 %4, i32 15, i32 1
+  ret i32 %5
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
 define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
-  %switch.selectcmp.case1.i = icmp eq i32 %0, 8
-  %switch.selectcmp.case2.i = icmp eq i32 %0, 1
-  %switch.selectcmp.i = or i1 %switch.selectcmp.case1.i, %switch.selectcmp.case2.i
-  %2 = select i1 %switch.selectcmp.i, i32 15, i32 1
-  ret i32 %2
+  %2 = icmp eq i32 %0, 8
+  %3 = icmp eq i32 %0, 1
+  %4 = or i1 %2, %3
+  %5 = select i1 %4, i32 15, i32 1
+  ret i32 %5
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(readwrite, inaccessiblemem: none)
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
-  %switch.selectcmp.case1.i = icmp eq i32 %3, 8
-  %switch.selectcmp.case2.i = icmp eq i32 %3, 1
-  %switch.selectcmp.i = or i1 %switch.selectcmp.case1.i, %switch.selectcmp.case2.i
-  %4 = select i1 %switch.selectcmp.i, i32 15, i32 1
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %4, ptr %6, align 4
+  %4 = icmp eq i32 %3, 8
+  %5 = icmp eq i32 %3, 1
+  %6 = or i1 %4, %5
+  %7 = select i1 %6, i32 15, i32 1
+  %8 = getelementptr i8, ptr %0, i64 8
+  %9 = load ptr, ptr %8, align 8
+  store i32 %7, ptr %9, align 4
   ret void
 }
 
@@ -39,13 +39,13 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
-  %switch.selectcmp.case1.i.i = icmp eq i32 %3, 8
-  %switch.selectcmp.case2.i.i = icmp eq i32 %3, 1
-  %switch.selectcmp.i.i = or i1 %switch.selectcmp.case1.i.i, %switch.selectcmp.case2.i.i
-  %4 = select i1 %switch.selectcmp.i.i, i32 15, i32 1
-  %5 = getelementptr i8, ptr %0, i64 8
-  %6 = load ptr, ptr %5, align 8
-  store i32 %4, ptr %6, align 4
+  %4 = icmp eq i32 %3, 8
+  %5 = icmp eq i32 %3, 1
+  %6 = or i1 %4, %5
+  %7 = select i1 %6, i32 15, i32 1
+  %8 = getelementptr i8, ptr %0, i64 8
+  %9 = load ptr, ptr %8, align 8
+  store i32 %7, ptr %9, align 4
   ret void
 }
 

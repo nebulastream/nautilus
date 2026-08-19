@@ -18,7 +18,7 @@ define ptr @_mlir_ciface_execute(ptr returned writeonly %0, ptr readonly %1, i64
 ; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite)
 declare void @llvm.memmove.p0.p0.i64(ptr writeonly, ptr readonly, i64, i1 immarg) #1
 
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn
+; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(readwrite)
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
@@ -35,7 +35,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   ret void
 }
 
-; Function Attrs: mustprogress nofree norecurse nounwind willreturn
+; Function Attrs: mustprogress nofree norecurse nounwind willreturn memory(readwrite)
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
@@ -54,7 +54,7 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
 
 attributes #0 = { mustprogress nofree norecurse nounwind willreturn memory(argmem: readwrite, inaccessiblemem: readwrite) }
 attributes #1 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
-attributes #2 = { mustprogress nofree norecurse nounwind willreturn }
+attributes #2 = { mustprogress nofree norecurse nounwind willreturn memory(readwrite) }
 
 !llvm.module.flags = !{!0}
 

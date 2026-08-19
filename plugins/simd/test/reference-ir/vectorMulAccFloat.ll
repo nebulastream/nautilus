@@ -5,27 +5,27 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr readonly %3, ptr writeonly %4) local_unnamed_addr #0 {
-  %6 = load <16 x float>, ptr %0, align 64
-  %7 = load <16 x float>, ptr %1, align 64
+  %6 = load <16 x float>, ptr %0, align 4
+  %7 = load <16 x float>, ptr %1, align 4
   %8 = fmul <16 x float> %6, %7
-  %9 = load <16 x float>, ptr %2, align 64
-  %10 = load <16 x float>, ptr %3, align 64
+  %9 = load <16 x float>, ptr %2, align 4
+  %10 = load <16 x float>, ptr %3, align 4
   %11 = fmul <16 x float> %9, %10
   %12 = fadd <16 x float> %8, %11
-  store <16 x float> %12, ptr %4, align 64
+  store <16 x float> %12, ptr %4, align 4
   ret void
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: readwrite)
 define void @_mlir_ciface_execute(ptr readonly %0, ptr readonly %1, ptr readonly %2, ptr readonly %3, ptr writeonly %4) local_unnamed_addr #0 {
-  %6 = load <16 x float>, ptr %0, align 64
-  %7 = load <16 x float>, ptr %1, align 64
+  %6 = load <16 x float>, ptr %0, align 4
+  %7 = load <16 x float>, ptr %1, align 4
   %8 = fmul <16 x float> %6, %7
-  %9 = load <16 x float>, ptr %2, align 64
-  %10 = load <16 x float>, ptr %3, align 64
+  %9 = load <16 x float>, ptr %2, align 4
+  %10 = load <16 x float>, ptr %3, align 4
   %11 = fmul <16 x float> %9, %10
   %12 = fadd <16 x float> %8, %11
-  store <16 x float> %12, ptr %4, align 64
+  store <16 x float> %12, ptr %4, align 4
   ret void
 }
 
@@ -45,14 +45,14 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %13 = getelementptr i8, ptr %0, i64 32
   %14 = load ptr, ptr %13, align 8
   %15 = load ptr, ptr %14, align 8
-  %16 = load <16 x float>, ptr %3, align 64
-  %17 = load <16 x float>, ptr %6, align 64
+  %16 = load <16 x float>, ptr %3, align 4
+  %17 = load <16 x float>, ptr %6, align 4
   %18 = fmul <16 x float> %16, %17
-  %19 = load <16 x float>, ptr %9, align 64
-  %20 = load <16 x float>, ptr %12, align 64
+  %19 = load <16 x float>, ptr %9, align 4
+  %20 = load <16 x float>, ptr %12, align 4
   %21 = fmul <16 x float> %19, %20
   %22 = fadd <16 x float> %18, %21
-  store <16 x float> %22, ptr %15, align 64
+  store <16 x float> %22, ptr %15, align 4
   ret void
 }
 
@@ -72,14 +72,14 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %13 = getelementptr i8, ptr %0, i64 32
   %14 = load ptr, ptr %13, align 8
   %15 = load ptr, ptr %14, align 8
-  %16 = load <16 x float>, ptr %3, align 64
-  %17 = load <16 x float>, ptr %6, align 64
+  %16 = load <16 x float>, ptr %3, align 4
+  %17 = load <16 x float>, ptr %6, align 4
   %18 = fmul <16 x float> %16, %17
-  %19 = load <16 x float>, ptr %9, align 64
-  %20 = load <16 x float>, ptr %12, align 64
+  %19 = load <16 x float>, ptr %9, align 4
+  %20 = load <16 x float>, ptr %12, align 4
   %21 = fmul <16 x float> %19, %20
   %22 = fadd <16 x float> %18, %21
-  store <16 x float> %22, ptr %15, align 64
+  store <16 x float> %22, ptr %15, align 4
   ret void
 }
 

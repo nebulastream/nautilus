@@ -44,6 +44,12 @@ void testLLVMIR(const std::string& functionName, Func func, bool enableIntrinsic
 	options.setOption("dump.path", dumpPath);
 	options.setOption("engine.normalizeFunctionNames", true);
 	options.setOption("mlir.enableIntrinsics", enableIntrinsics);
+	// Pin a fixed target CPU (and drop the host feature set) so the LLVM loop
+	// vectorizer and other TTI-driven transforms produce the same IR on every
+	// machine. detectHost() would otherwise make the generated IR depend on
+	// whether the runner happens to have AVX-512 (see LLVMIROptimizer.cpp),
+	// making these reference tests flaky across heterogeneous CI runners.
+	options.setOption("mlir.targetCpu", "x86-64");
 
 	if (extraOptions) {
 		extraOptions(options);

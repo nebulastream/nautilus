@@ -18,7 +18,7 @@ define signext i32 @_mlir_ciface_execute(i1 %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: nofree memory(read)
-declare i32 @runtimeFunc0(i1) local_unnamed_addr #1
+declare i32 @runtimeFunc0(i1 zeroext) local_unnamed_addr #1
 
 ; Function Attrs: nofree memory(readwrite, inaccessiblemem: read)
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {

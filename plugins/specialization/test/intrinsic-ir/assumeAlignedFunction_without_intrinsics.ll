@@ -3,14 +3,12 @@ source_filename = "LLVMDialectModule"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
-; Function Attrs: memory(readwrite)
 define signext i32 @execute(ptr %0) local_unnamed_addr #0 {
   tail call void @runtimeFunc0(ptr %0, i8 16)
   %2 = load i32, ptr %0, align 4
   ret i32 %2
 }
 
-; Function Attrs: memory(readwrite)
 define signext i32 @_mlir_ciface_execute(ptr %0) local_unnamed_addr #0 {
   tail call void @runtimeFunc0(ptr %0, i8 16)
   %2 = load i32, ptr %0, align 4
@@ -18,9 +16,9 @@ define signext i32 @_mlir_ciface_execute(ptr %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: memory(readwrite)
-declare void @runtimeFunc0(ptr, i8) local_unnamed_addr #1
+declare void @runtimeFunc0(ptr, i8 signext) local_unnamed_addr #1
 
-define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   tail call void @runtimeFunc0(ptr %3, i8 16)
@@ -31,7 +29,7 @@ define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #2 {
   ret void
 }
 
-define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
+define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load ptr, ptr %2, align 8
   tail call void @runtimeFunc0(ptr %3, i8 16)
@@ -42,7 +40,6 @@ define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #2 {
   ret void
 }
 
-attributes #0 = { memory(readwrite) }
 attributes #1 = { memory(readwrite) }
 
 !llvm.module.flags = !{!0}

@@ -5,8 +5,8 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
-  %.not2 = icmp slt i32 %0, 2
-  br i1 %.not2, label %._crit_edge, label %.lr.ph
+  %.not1 = icmp slt i32 %0, 2
+  br i1 %.not1, label %._crit_edge, label %.lr.ph
 
 .lr.ph:                                           ; preds = %1, %.lr.ph
   %2 = phi i32 [ %4, %.lr.ph ], [ 0, %1 ]
@@ -24,8 +24,8 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
 
 ; Function Attrs: nofree norecurse nosync nounwind memory(none)
 define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
-  %.not2.i = icmp slt i32 %0, 2
-  br i1 %.not2.i, label %execute.exit, label %.lr.ph.i
+  %.not1.i = icmp slt i32 %0, 2
+  br i1 %.not1.i, label %execute.exit, label %.lr.ph.i
 
 .lr.ph.i:                                         ; preds = %1, %.lr.ph.i
   %2 = phi i32 [ %4, %.lr.ph.i ], [ 0, %1 ]
@@ -45,8 +45,8 @@ execute.exit:                                     ; preds = %.lr.ph.i, %1
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
-  %.not2.i = icmp slt i32 %3, 2
-  br i1 %.not2.i, label %execute.exit, label %.lr.ph.i
+  %.not1.i = icmp slt i32 %3, 2
+  br i1 %.not1.i, label %execute.exit, label %.lr.ph.i
 
 .lr.ph.i:                                         ; preds = %1, %.lr.ph.i
   %4 = phi i32 [ %6, %.lr.ph.i ], [ 0, %1 ]
@@ -69,8 +69,8 @@ execute.exit:                                     ; preds = %.lr.ph.i, %1
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #1 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
-  %.not2.i.i = icmp slt i32 %3, 2
-  br i1 %.not2.i.i, label %_mlir_ciface_execute.exit, label %.lr.ph.i.i
+  %.not1.i.i = icmp slt i32 %3, 2
+  br i1 %.not1.i.i, label %_mlir_ciface_execute.exit, label %.lr.ph.i.i
 
 .lr.ph.i.i:                                       ; preds = %1, %.lr.ph.i.i
   %4 = phi i32 [ %6, %.lr.ph.i.i ], [ 0, %1 ]
