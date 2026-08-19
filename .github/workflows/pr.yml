@@ -75,30 +75,18 @@ jobs:
         with:
           path: build/mlir-*
           key: mlir-22.1.8-${{ runner.os }}-${{ runner.arch }}
-      - name: Install ccache (with retry)
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          for i in 1 2 3 4 5; do
-            sudo apt-get update && sudo apt-get install -y ccache && exit 0
-            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
-            sleep 15
-          done
-          exit 1
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.cc }}-${{ hashFiles('**/CMakeLists.txt') }}
-      - name: Install clang from LLVM apt repo
+      - name: Derive clang version
         if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
-        run: |
-          CLANG_VERSION=$(echo "${{ matrix.cc }}" | sed 's/clang-//')
-          UBUNTU_CODENAME=$(lsb_release -cs)
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg lsb-release software-properties-common
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-${CLANG_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm-${CLANG_VERSION}.list
-          sudo apt-get update
-          sudo apt-get install -y clang-${CLANG_VERSION} clang++-${CLANG_VERSION}
+        run: echo "CC_VERSION=$(echo '${{ matrix.cc }}' | sed 's/clang-//')" >> "$GITHUB_ENV"
+      - name: Install clang + LLVM
+        if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: ${{ env.CC_VERSION }}
       - name: cmake
         shell: bash
         run: |
@@ -147,14 +135,6 @@ jobs:
         with:
           path: example/build/mlir-*
           key: mlir-22.1.8-${{ runner.os }}-${{ runner.arch }}-example
-      - name: Install ccache (with retry)
-        run: |
-          for i in 1 2 3 4 5; do
-            sudo apt-get update && sudo apt-get install -y ccache && exit 0
-            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
-            sleep 15
-          done
-          exit 1
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
@@ -245,27 +225,14 @@ jobs:
         with:
           path: build/mlir-*
           key: mlir-22.1.8-${{ runner.os }}-${{ runner.arch }}
-      - name: Install ccache (with retry)
-        run: |
-          for i in 1 2 3 4 5; do
-            sudo apt-get update && sudo apt-get install -y ccache && exit 0
-            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
-            sleep 15
-          done
-          exit 1
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-fuzz-replay-smoke
-      - name: Install clang 21
-        run: |
-          UBUNTU_CODENAME=$(lsb_release -cs)
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg lsb-release software-properties-common
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-          sudo apt-get update
-          sudo apt-get install -y clang-21 clang++-21
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "21"
       - name: cmake
         shell: bash
         run: |
@@ -296,29 +263,19 @@ jobs:
         run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
       - name: get cmake
         uses: lukka/get-cmake@latest
-      - name: Install ccache (with retry)
-        run: |
-          for i in 1 2 3 4 5; do
-            sudo apt-get update && sudo apt-get install -y ccache && exit 0
-            echo "apt-get install ccache failed (attempt $i/5), retrying in 15s..."
-            sleep 15
-          done
-          exit 1
       - name: get ccache
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-llvm-ir-test
-      - name: Install clang 22 and llvm-diff-22
+      - name: Install clang + LLVM 22
+        uses: ./.github/actions/install-llvm
+        with:
+          llvm-version: "22"
+      - name: Expose llvm-diff-22 under the fallback name
         run: |
-          UBUNTU_CODENAME=$(lsb_release -cs)
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg lsb-release software-properties-common
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/${UBUNTU_CODENAME}/ llvm-toolchain-${UBUNTU_CODENAME}-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
-          sudo apt-get update
-          sudo apt-get install -y clang-22 clang++-22 llvm-22
-          # Create symlinks for llvm-diff (LLVM 22 matches the bundled MLIR 22.1.8
-          # IR, which llvm-diff-21 cannot parse)
+          # llvm-diff-22 matches the LLVM 22 IR the bundled MLIR (22.1.8) emits,
+          # which llvm-diff-21 cannot parse. Also expose it under the older name
+          # the test utility probes as a fallback.
           sudo ln -sf /usr/bin/llvm-diff-22 /usr/local/bin/llvm-diff-19
       - name: Cache MLIR binaries
         uses: actions/cache@v4
