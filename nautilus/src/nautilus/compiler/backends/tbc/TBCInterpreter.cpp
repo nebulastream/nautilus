@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/compiler/backends/tbc/TBCHandlers.hpp"
 #include "nautilus/compiler/backends/tbc/TBCVm.hpp"
 #include "nautilus/config.hpp"
@@ -114,6 +115,9 @@ uint64_t runSwitch(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 			doIndirectCall(inst, fp, ctx);
 			++ip;
 			break;
+		case Op::CHECK_PENDING:
+			ip = hasPendingException() ? ip + packedOffset(inst) : ip + 1;
+			break;
 		case Op::HALT:
 			return fp[0];
 		default:
@@ -197,6 +201,10 @@ L_CALL_EXT: {
 L_CALL_IND: {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
+	TBC_NEXT();
+}
+L_CHECK_PENDING: {
+	ip = hasPendingException() ? ip + packedOffset(*ip) : ip + 1;
 	TBC_NEXT();
 }
 L_HALT:
@@ -292,6 +300,10 @@ static uint64_t TBC_PRESERVE_NONE th_CALL_EXT(const Instr* ip, uint64_t* fp, VMC
 static uint64_t TBC_PRESERVE_NONE th_CALL_IND(const Instr* ip, uint64_t* fp, VMContext* ctx) {
 	doIndirectCall(*ip, fp, ctx);
 	++ip;
+	TBC_TAIL_NEXT();
+}
+static uint64_t TBC_PRESERVE_NONE th_CHECK_PENDING(const Instr* ip, uint64_t* fp, VMContext* ctx) {
+	ip = hasPendingException() ? ip + packedOffset(*ip) : ip + 1;
 	TBC_TAIL_NEXT();
 }
 static uint64_t TBC_PRESERVE_NONE th_HALT(const Instr*, uint64_t* fp, VMContext*) {

@@ -99,7 +99,7 @@ public:
 	/// LeakSanitizer in CI when reassigning a default-constructed vector.
 	val<std::vector<T, Allocator>>& operator=(val<std::vector<T, Allocator>>& other) {
 		invoke(
-		    +[](base_type* old_ptr) -> void {
+		    +[](base_type* old_ptr) noexcept -> void {
 			    if (old_ptr != nullptr) {
 				    delete old_ptr;
 			    }
@@ -157,11 +157,9 @@ public:
 
 	auto at(val<size_type> pos) {
 		if constexpr (std::is_class_v<T>) {
-			return invoke(
-			    +[](base_type* ptr, size_type p) -> T* { return &ptr->at(p); }, data_ptr, pos);
+			return invoke(+[](base_type* ptr, size_type p) -> T* { return &ptr->at(p); }, data_ptr, pos);
 		} else {
-			return invoke(
-			    +[](base_type* ptr, size_type p) -> T { return ptr->at(p); }, data_ptr, pos);
+			return invoke(+[](base_type* ptr, size_type p) -> T { return ptr->at(p); }, data_ptr, pos);
 		}
 	}
 
@@ -189,71 +187,60 @@ public:
 	}
 
 	val<size_type> max_size() const {
-		return invoke(
-		    +[](base_type* ptr) -> size_type { return ptr->max_size(); }, data_ptr);
+		return invoke(+[](base_type* ptr) noexcept -> size_type { return ptr->max_size(); }, data_ptr);
 	}
 
 	void reserve(val<size_type> new_cap) {
-		invoke(
-		    +[](base_type* ptr, size_type cap) -> void { ptr->reserve(cap); }, data_ptr, new_cap);
+		invoke(+[](base_type* ptr, size_type cap) -> void { ptr->reserve(cap); }, data_ptr, new_cap);
 	}
 
 	void shrink_to_fit() {
-		invoke(
-		    +[](base_type* ptr) -> void { ptr->shrink_to_fit(); }, data_ptr);
+		invoke(+[](base_type* ptr) -> void { ptr->shrink_to_fit(); }, data_ptr);
 	}
 
 	// Modifiers
 
 	void clear() {
-		invoke(
-		    +[](base_type* ptr) -> void { ptr->clear(); }, data_ptr);
+		invoke(+[](base_type* ptr) noexcept -> void { ptr->clear(); }, data_ptr);
 	}
 
 	void push_back(val<T> value)
 	    requires(!std::is_class_v<T>)
 	{
-		invoke(
-		    +[](base_type* ptr, T v) -> void { ptr->push_back(v); }, data_ptr, value);
+		invoke(+[](base_type* ptr, T v) -> void { ptr->push_back(v); }, data_ptr, value);
 	}
 
 	void push_back(val<T*> value_ptr)
 	    requires(std::is_class_v<T>)
 	{
-		invoke(
-		    +[](base_type* ptr, T* v) -> void { ptr->push_back(*v); }, data_ptr, value_ptr);
+		invoke(+[](base_type* ptr, T* v) -> void { ptr->push_back(*v); }, data_ptr, value_ptr);
 	}
 
 	void pop_back() {
-		invoke(
-		    +[](base_type* ptr) -> void { ptr->pop_back(); }, data_ptr);
+		invoke(+[](base_type* ptr) noexcept -> void { ptr->pop_back(); }, data_ptr);
 	}
 
 	void resize(val<size_type> count) {
-		invoke(
-		    +[](base_type* ptr, size_type c) -> void { ptr->resize(c); }, data_ptr, count);
+		invoke(+[](base_type* ptr, size_type c) -> void { ptr->resize(c); }, data_ptr, count);
 	}
 
 	void resize(val<size_type> count, val<T> value)
 	    requires(!std::is_class_v<T>)
 	{
-		invoke(
-		    +[](base_type* ptr, size_type c, T v) -> void { ptr->resize(c, v); }, data_ptr, count, value);
+		invoke(+[](base_type* ptr, size_type c, T v) -> void { ptr->resize(c, v); }, data_ptr, count, value);
 	}
 
 	void swap(val<std::vector<T, Allocator>>& other) {
-		invoke(
-		    +[](base_type* a, base_type* b) -> void { a->swap(*b); }, data_ptr, other.data_ptr);
+		invoke(+[](base_type* a, base_type* b) noexcept -> void { a->swap(*b); }, data_ptr, other.data_ptr);
 	}
 
 	val<bool> equals(val<std::vector<T, Allocator>>& other) {
-		return invoke(
-		    +[](base_type* a, base_type* b) -> bool { return *a == *b; }, data_ptr, other.data_ptr);
+		return invoke(+[](base_type* a, base_type* b) -> bool { return *a == *b; }, data_ptr, other.data_ptr);
 	}
 
 	~val() {
 		invoke(
-		    +[](base_type* ptr) -> void {
+		    +[](base_type* ptr) noexcept -> void {
 			    if (ptr != nullptr) {
 				    delete ptr;
 			    }

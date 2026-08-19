@@ -67,24 +67,47 @@ public:
 
 	/// Trace a potentially throwing runtime call together with the destructors
 	/// that are live at this point in the traced function.
+	/// @param captureFunc address of a `captureThrowingCall<R, Args...>`
+	///                    instantiation for the call's signature, or nullptr for
+	///                    `noUnwind` calls.
 	virtual TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
 	                                                      const std::vector<TypedValueRef>& arguments,
-	                                                      FunctionAttributes fnAttrs) = 0;
+	                                                      FunctionAttributes fnAttrs, void* captureFunc = nullptr) = 0;
 
 	/// Maintain the host-side cleanup stack used to annotate throwing calls.
 	virtual void registerDestructor(const TypedValueRef& address, void* destructor) = 0;
 	virtual void unregisterDestructor(const TypedValueRef& address) = 0;
 
 	/// Trace a call through a runtime function pointer value (indirect call).
+	/// @param captureFunc address of a `captureThrowingCall<R, Args...>`
+	///                    instantiation for the call's signature, or nullptr for
+	///                    `noUnwind` calls.
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-	                                         const std::vector<TypedValueRef>& arguments,
-	                                         FunctionAttributes fnAttrs) = 0;
+	                                         const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+	                                         void* captureFunc = nullptr) = 0;
+
+	/// Trace a potentially throwing indirect call together with the destructors
+	/// that are live at this point in the traced function.
+	/// @param captureFunc address of a `captureThrowingCall<R, Args...>`
+	///                    instantiation for the call's signature, or nullptr for
+	///                    `noUnwind` calls.
+	virtual TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+	                                                              const std::vector<TypedValueRef>& arguments,
+	                                                              FunctionAttributes fnAttrs,
+	                                                              void* captureFunc = nullptr) = 0;
 
 	/// Trace a call to a nested Nautilus function. Registers the function for later tracing.
 	virtual TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition,
 	                                         std::function<void()> fwrapper, Type resultType,
 	                                         const std::vector<TypedValueRef>& arguments,
 	                                         FunctionAttributes fnAttrs) = 0;
+
+	/// Trace a potentially throwing call to a nested Nautilus function together with
+	/// the destructors that are live at this point in the traced function.
+	virtual TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
+	                                                              std::function<void()> fwrapper, Type resultType,
+	                                                              const std::vector<TypedValueRef>& arguments,
+	                                                              FunctionAttributes fnAttrs) = 0;
 
 	/// Get the address of a Nautilus function as a function pointer value.
 	/// Registers the function for later tracing and returns a ptr-typed value.

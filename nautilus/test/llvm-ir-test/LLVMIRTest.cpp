@@ -13,6 +13,7 @@
 #include "../common/CastFunctions.hpp"
 #include "../common/ControlFlowFunctions.hpp"
 #include "../common/EnumFunction.hpp"
+#include "../common/ExceptionFunctions.hpp"
 #include "../common/ExpressionFunctions.hpp"
 #include "../common/LoopFunctions.hpp"
 #include "../common/NautilusFunction.hpp"
@@ -786,6 +787,31 @@ TEST_CASE("LLVM IR Test: nautilusFunctionRecursiveStyle", "[functions][nested]")
 
 TEST_CASE("LLVM IR Test: nautilusFunctionComplex", "[functions][nested]") {
 	testLLVMIR("nautilusFunctionComplex", nautilusFunctionComplex);
+}
+
+// ============================================================================
+// Exception Handling Tests
+// ============================================================================
+
+using nautilus::testing::exceptionCallNoexceptWithCleanup;
+using nautilus::testing::exceptionCallWithCleanup;
+using nautilus::testing::exceptionCallWithoutCleanup;
+using nautilus::testing::exceptionCallWithTwoCleanups;
+
+TEST_CASE("LLVM IR Test: exceptionCallWithoutCleanup", "[exception-handling]") {
+	testLLVMIR("exceptionCallWithoutCleanup", exceptionCallWithoutCleanup);
+}
+
+TEST_CASE("LLVM IR Test: exceptionCallWithCleanup", "[exception-handling]") {
+	testLLVMIR("exceptionCallWithCleanup", exceptionCallWithCleanup);
+}
+
+TEST_CASE("LLVM IR Test: exceptionCallWithTwoCleanups", "[exception-handling]") {
+	testLLVMIR("exceptionCallWithTwoCleanups", exceptionCallWithTwoCleanups);
+}
+
+TEST_CASE("LLVM IR Test: exceptionCallNoexceptWithCleanup", "[exception-handling]") {
+	testLLVMIR("exceptionCallNoexceptWithCleanup", exceptionCallNoexceptWithCleanup);
 }
 
 } // namespace nautilus::engine

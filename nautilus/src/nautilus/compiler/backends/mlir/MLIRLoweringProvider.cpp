@@ -678,6 +678,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	inductionVars.clear();
 	debugAllocas_.clear();
 	functionAllocaSlots_.clear();
+	currentFunction_ = &functionOp;
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
@@ -956,7 +957,22 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 		                       proxyCallOp->getFunctionAttributes());
 	}
 
-	if (proxyCallOp->requiresExceptionHandling()) {
+	// A potentially-throwing call with no active destructors (pad == nullptr)
+	// has nothing to clean up on unwind, so it lowers to a plain call: the
+	// exception propagates natively through this unwindable frame. Only calls
+	// with a landing pad need the invoke/landingpad and the personality
+	// function.
+	const ir::LandingPadBlock* pad = nullptr;
+	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
+		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
+			if (cs.call == proxyCallOp) {
+				pad = cs.pad;
+				break;
+			}
+		}
+	}
+
+	if (proxyCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
 		const auto location = getNameLoc("invoke");
 		auto callee = mlir::FlatSymbolRefAttr::get(context, functionName);
 		auto* currentBlock = builder->getInsertionBlock();
@@ -983,18 +999,8 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 		auto landingPad =
 		    mlir::LLVM::LandingpadOp::create(*builder, location, exceptionType, true, mlir::ValueRange {});
 
-		for (auto it = proxyCallOp->getDestructors().rbegin(); it != proxyCallOp->getDestructors().rend(); ++it) {
-			FunctionAttributes destructorAttrs;
-			destructorAttrs.noUnwind = true;
-			auto destructorSymbol = mlir::FlatSymbolRefAttr::get(context, it->functionName);
-			if (!theModule.lookupSymbol<mlir::func::FuncOp>(it->functionName)) {
-				destructorSymbol = insertExternalFunction(it->functionName, it->functionPtr, getMLIRType(Type::v),
-				                                          {ptrType}, {Type::ptr}, destructorAttrs);
-			}
-			auto address = resolveOperand(it->address, frame);
-			mlir::func::CallOp::create(*builder, location, destructorSymbol, mlir::TypeRange {},
-			                           mlir::ValueRange {address});
-		}
+		generateMLIR(pad->block, frame);
+
 		mlir::LLVM::ResumeOp::create(*builder, location, landingPad.getResult());
 
 		// convert-func-to-llvm forwards this discardable attribute onto the
@@ -1029,16 +1035,94 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 
 void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame) {
 	auto calleePtr = resolveOperand(indirectCallOp->getFunctionPtrOperand(), frame);
-	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
-	std::vector<mlir::Value> allOperands;
-	allOperands.push_back(calleePtr);
+	std::vector<mlir::Value> callArgs;
 	std::vector<mlir::Type> argTypes;
 	for (const auto& arg : indirectCallOp->getInputArguments()) {
-		allOperands.push_back(resolveOperand(arg, frame));
+		callArgs.push_back(resolveOperand(arg, frame));
 		argTypes.push_back(getMLIRType(arg->getStamp()));
 	}
 	auto resultMLIRType = getMLIRType(indirectCallOp->getStamp());
 	auto fnType = mlir::LLVM::LLVMFunctionType::get(resultMLIRType, argTypes);
+
+	// See visitProxyCall: only calls with an actual landing pad (live
+	// destructors) need the invoke/landingpad machinery; pad-less calls fall
+	// through to the plain LLVM call below and the exception propagates
+	// natively through this unwindable frame.
+	const ir::LandingPadBlock* pad = nullptr;
+	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
+		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
+			if (cs.call == indirectCallOp) {
+				pad = cs.pad;
+				break;
+			}
+		}
+	}
+
+	if (indirectCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
+		auto* currentBlock = builder->getInsertionBlock();
+		auto* region = currentBlock->getParent();
+		auto* normalBlock = new mlir::Block();
+		auto* unwindBlock = new mlir::Block();
+		region->getBlocks().insert(std::next(mlir::Region::iterator(currentBlock)), normalBlock);
+		region->push_back(unwindBlock);
+
+		llvm::SmallVector<mlir::Type> resultTypes;
+		if (indirectCallOp->getStamp() != Type::v) {
+			resultTypes.push_back(resultMLIRType);
+		}
+
+		// For indirect calls the function-pointer value must be in the
+		// callee_operands segment, not forwarded as a FlatSymbolRefAttr.
+		llvm::SmallVector<mlir::Value> calleeOperands;
+		calleeOperands.push_back(calleePtr);
+		calleeOperands.append(callArgs.begin(), callArgs.end());
+
+		auto invoke = mlir::LLVM::InvokeOp::create(*builder, getNameLoc("indirectInvoke"), resultTypes,
+		                                           /*var_callee_type=*/mlir::TypeAttr {},
+		                                           /*callee=*/mlir::FlatSymbolRefAttr {}, calleeOperands,
+		                                           /*arg_attrs=*/mlir::ArrayAttr {},
+		                                           /*res_attrs=*/mlir::ArrayAttr {},
+		                                           /*normalDestOperands=*/mlir::ValueRange {},
+		                                           /*unwindDestOperands=*/mlir::ValueRange {},
+		                                           /*branch_weights=*/mlir::DenseI32ArrayAttr {},
+		                                           /*CConv=*/mlir::LLVM::CConvAttr {},
+		                                           /*op_bundle_operands=*/llvm::ArrayRef<mlir::ValueRange> {},
+		                                           /*op_bundle_tags=*/mlir::ArrayAttr {}, normalBlock, unwindBlock);
+
+		builder->setInsertionPointToStart(unwindBlock);
+		auto ptrType = mlir::LLVM::LLVMPointerType::get(context);
+		auto selectorType = builder->getI32Type();
+		auto exceptionType = mlir::LLVM::LLVMStructType::getLiteral(context, {ptrType, selectorType});
+		auto landingPad = mlir::LLVM::LandingpadOp::create(*builder, getNameLoc("indirectInvoke"), exceptionType, true,
+		                                                   mlir::ValueRange {});
+
+		generateMLIR(pad->block, frame);
+
+		mlir::LLVM::ResumeOp::create(*builder, getNameLoc("indirectInvoke"), landingPad.getResult());
+
+		auto parentFunction = currentBlock->getParentOp();
+		parentFunction->setDiscardableAttr("personality",
+		                                   mlir::FlatSymbolRefAttr::get(context, "__gxx_personality_v0"));
+		if (!theModule.lookupSymbol<mlir::LLVM::LLVMFuncOp>("__gxx_personality_v0")) {
+			mlir::PatternRewriter::InsertionGuard insertGuard(*builder);
+			builder->restoreInsertionPoint(*globalInsertPoint);
+			auto personalityType = mlir::LLVM::LLVMFunctionType::get(builder->getI32Type(), {}, true);
+			mlir::LLVM::LLVMFuncOp::create(*builder, theModule.getLoc(), "__gxx_personality_v0", personalityType);
+		}
+
+		builder->setInsertionPointToStart(normalBlock);
+		if (indirectCallOp->getStamp() != Type::v) {
+			bind(frame, indirectCallOp, invoke.getResult());
+		}
+		return;
+	}
+
+	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
+	std::vector<mlir::Value> allOperands;
+	allOperands.push_back(calleePtr);
+	for (const auto& arg : indirectCallOp->getInputArguments()) {
+		allOperands.push_back(resolveOperand(arg, frame));
+	}
 	if (indirectCallOp->getStamp() != Type::v) {
 		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
 		bind(frame, indirectCallOp, res.getResult());

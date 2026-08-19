@@ -8,15 +8,15 @@ namespace nautilus {
  * @param x floating-point
  * @return Absolute of x.
  */
-val<float> abs(val<float> x);
-val<double> abs(val<double> x);
-val<int8_t> abs(val<int8_t> x);
-val<int16_t> abs(val<int16_t> x);
-val<int32_t> abs(val<int32_t> x);
-val<int64_t> abs(val<int64_t> x);
-val<float> fabs(val<float> x);
-val<double> fabs(val<double> x);
-val<float> fabsf(val<float> x);
+val<float> abs(val<float> x) noexcept;
+val<double> abs(val<double> x) noexcept;
+val<int8_t> abs(val<int8_t> x) noexcept;
+val<int16_t> abs(val<int16_t> x) noexcept;
+val<int32_t> abs(val<int32_t> x) noexcept;
+val<int64_t> abs(val<int64_t> x) noexcept;
+val<float> fabs(val<float> x) noexcept;
+val<double> fabs(val<double> x) noexcept;
+val<float> fabsf(val<float> x) noexcept;
 
 /**
  * @brief Computes the floating-point remainder of x/y.
@@ -25,9 +25,9 @@ val<float> fabsf(val<float> x);
  * @param y Denominator.
  * @return Remainder of x/y.
  */
-val<float> fmod(val<float> x, val<float> y);
-val<float> fmodf(val<float> x, val<float> y);
-val<double> fmod(val<double> x, val<double> y);
+val<float> fmod(val<float> x, val<float> y) noexcept;
+val<float> fmodf(val<float> x, val<float> y) noexcept;
+val<double> fmod(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Computes the floating-point remainder of x/y (same as fmod).
@@ -36,9 +36,9 @@ val<double> fmod(val<double> x, val<double> y);
  * @param y Denominator.
  * @return Remainder of x/y.
  */
-val<float> remainder(val<float> x, val<float> y);
-val<float> remainderf(val<float> x, val<float> y);
-val<double> remainder(val<double> x, val<double> y);
+val<float> remainder(val<float> x, val<float> y) noexcept;
+val<float> remainderf(val<float> x, val<float> y) noexcept;
+val<double> remainder(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Computes the remainder of the division operation x/y.
@@ -48,9 +48,9 @@ val<double> remainder(val<double> x, val<double> y);
  * @param quo Pointer to store the quotient.
  * @return Remainder of x/y.
  */
-val<float> remquo(val<float> x, val<float> y, val<int*> quo);
-val<float> remquof(val<float> x, val<float> y, val<int*> quo);
-val<double> remquo(val<double> x, val<double> y, val<int*> quo);
+val<float> remquo(val<float> x, val<float> y, val<int*> quo) noexcept;
+val<float> remquof(val<float> x, val<float> y, val<int*> quo) noexcept;
+val<double> remquo(val<double> x, val<double> y, val<int*> quo) noexcept;
 
 /**
  * @brief Computes x * y + z as if to infinite precision and rounded only once
@@ -61,9 +61,9 @@ val<double> remquo(val<double> x, val<double> y, val<int*> quo);
  * @param z floating-point
  * @return x * y + z
  */
-val<float> fma(val<float> x, val<float> y, val<float> z);
-val<double> fma(val<double> x, val<double> y, val<double> z);
-val<float> fmaf(val<float> x, val<float> y, val<float> z);
+val<float> fma(val<float> x, val<float> y, val<float> z) noexcept;
+val<double> fma(val<double> x, val<double> y, val<double> z) noexcept;
+val<float> fmaf(val<float> x, val<float> y, val<float> z) noexcept;
 
 /**
  * @brief Computes the larger of two floating point arguments, treating NaNs as
@@ -74,9 +74,9 @@ val<float> fmaf(val<float> x, val<float> y, val<float> z);
  * @param y floating-point
  * @return larger of two floating-point values
  */
-val<float> fmax(val<float> x, val<float> y);
-val<double> fmax(val<double> x, val<double> y);
-val<float> fmaxf(val<float> x, val<float> y);
+val<float> fmax(val<float> x, val<float> y) noexcept;
+val<double> fmax(val<double> x, val<double> y) noexcept;
+val<float> fmaxf(val<float> x, val<float> y) noexcept;
 
 /**
  * @brief Computes the smaller of two floating point arguments, treating NaNs as
@@ -87,9 +87,9 @@ val<float> fmaxf(val<float> x, val<float> y);
  * @param y floating-point
  * @return smaller of two floating-point values
  */
-val<float> fmin(val<float> x, val<float> y);
-val<double> fmin(val<double> x, val<double> y);
-val<float> fminf(val<float> x, val<float> y);
+val<float> fmin(val<float> x, val<float> y) noexcept;
+val<double> fmin(val<double> x, val<double> y) noexcept;
+val<float> fminf(val<float> x, val<float> y) noexcept;
 
 /**
  * @brief Computes he positive difference between x and y, that is, if x > y,
@@ -99,9 +99,9 @@ val<float> fminf(val<float> x, val<float> y);
  * @param y floating-point
  * @return smaller of two floating-point values
  */
-val<float> fdim(val<float> x, val<float> y);
-val<double> fdim(val<double> x, val<double> y);
-val<float> fdimf(val<float> x, val<float> y);
+val<float> fdim(val<float> x, val<float> y) noexcept;
+val<double> fdim(val<double> x, val<double> y) noexcept;
+val<float> fdimf(val<float> x, val<float> y) noexcept;
 
 /**
  * @brief Generates a quiet NaN (Not-a-Number).
@@ -110,12 +110,12 @@ val<float> fdimf(val<float> x, val<float> y);
  * values.
  * @return Quiet NaN.
  */
-val<float> nanf(val<const char*> tagp);
-val<double> nan(val<const char*> tagp);
+val<float> nanf(val<const char*> tagp) noexcept;
+val<double> nan(val<const char*> tagp) noexcept;
 
 // Linear interpolation
-val<float> lerp(val<float> a, val<float> b, val<float> c);
-val<double> lerp(val<double> a, val<double> b, val<double> c);
+val<float> lerp(val<float> a, val<float> b, val<float> c) noexcept;
+val<double> lerp(val<double> a, val<double> b, val<double> c) noexcept;
 
 // Exponential and logarithmic functions
 
@@ -125,9 +125,9 @@ val<double> lerp(val<double> a, val<double> b, val<double> c);
  * @param x Value.
  * @return Exponential of x.
  */
-val<float> exp(val<float> x);
-val<double> exp(val<double> x);
-val<float> expf(val<float> x);
+val<float> exp(val<float> x) noexcept;
+val<double> exp(val<double> x) noexcept;
+val<float> expf(val<float> x) noexcept;
 
 /**
  * @brief Computes the returns 2 raised to the given power.
@@ -135,9 +135,9 @@ val<float> expf(val<float> x);
  * @param x Value.
  * @return returns 2 raised to the given power.
  */
-val<float> exp2(val<float> x);
-val<double> exp2(val<double> x);
-val<float> exp2f(val<float> x);
+val<float> exp2(val<float> x) noexcept;
+val<double> exp2(val<double> x) noexcept;
+val<float> exp2f(val<float> x) noexcept;
 
 /**
  * @brief Computes the e (Euler's number, 2.7182818...) raised to the given
@@ -146,9 +146,9 @@ val<float> exp2f(val<float> x);
  * @param num floating-point .
  * @return returns e raised to the given power, minus one.
  */
-val<float> expm1(val<float> num);
-val<double> expm1(val<double> num);
-val<float> expm1f(val<float> num);
+val<float> expm1(val<float> num) noexcept;
+val<double> expm1(val<double> num) noexcept;
+val<float> expm1f(val<float> num) noexcept;
 
 /**
  * @brief Computes the natural logarithm of x.
@@ -156,9 +156,9 @@ val<float> expm1f(val<float> num);
  * @param x Value.
  * @return Natural logarithm of x.
  */
-val<float> log(val<float> x);
-val<double> log(val<double> x);
-val<float> logf(val<float> x);
+val<float> log(val<float> x) noexcept;
+val<double> log(val<double> x) noexcept;
+val<float> logf(val<float> x) noexcept;
 
 /**
  * @brief Computes the base-10 logarithm of x.
@@ -166,10 +166,10 @@ val<float> logf(val<float> x);
  * @param x Value.
  * @return Base-10 logarithm of x.
  */
-val<float> log10(val<float> x);
-val<double> log10(val<double> x);
+val<float> log10(val<float> x) noexcept;
+val<double> log10(val<double> x) noexcept;
 #if defined(_LIBCPP_VERSION)
-val<float> log10f(val<float> x);
+val<float> log10f(val<float> x) noexcept;
 #endif
 /**
  * @brief Computes the base-2 logarithm of x.
@@ -177,8 +177,8 @@ val<float> log10f(val<float> x);
  * @param x Value.
  * @return Base-2 logarithm of x.
  */
-val<float> log2(val<float> x);
-val<double> log2(val<double> x);
+val<float> log2(val<float> x) noexcept;
+val<double> log2(val<double> x) noexcept;
 
 /**
  * @brief natural logarithm (to base e) of 1 plus the given number (ln(1+x))
@@ -186,9 +186,9 @@ val<double> log2(val<double> x);
  * @param x Value.
  * @return natural logarithm
  */
-val<float> log1p(val<float> x);
-val<double> log1p(val<double> x);
-val<float> log1pf(val<float> x);
+val<float> log1p(val<float> x) noexcept;
+val<double> log1p(val<double> x) noexcept;
+val<float> log1pf(val<float> x) noexcept;
 
 // Power functions
 
@@ -199,9 +199,9 @@ val<float> log1pf(val<float> x);
  * @param y Exponent.
  * @return x^y.
  */
-val<float> pow(val<float> x, val<float> y);
-val<double> pow(val<double> x, val<double> y);
-val<float> powf(val<float> x, val<float> y);
+val<float> pow(val<float> x, val<float> y) noexcept;
+val<double> pow(val<double> x, val<double> y) noexcept;
+val<float> powf(val<float> x, val<float> y) noexcept;
 
 /**
  * @brief Computes the square root of x.
@@ -209,9 +209,9 @@ val<float> powf(val<float> x, val<float> y);
  * @param x Value.
  * @return Square root of x.
  */
-val<float> sqrt(val<float> x);
-val<double> sqrt(val<double> x);
-val<float> sqrtf(val<float> x);
+val<float> sqrt(val<float> x) noexcept;
+val<double> sqrt(val<double> x) noexcept;
+val<float> sqrtf(val<float> x) noexcept;
 
 /**
  * @brief Computes the cube root of x.
@@ -219,9 +219,9 @@ val<float> sqrtf(val<float> x);
  * @param x Value.
  * @return Cube root of x.
  */
-val<float> cbrt(val<float> x);
-val<double> cbrt(val<double> x);
-val<float> cbrtf(val<float> x);
+val<float> cbrt(val<float> x) noexcept;
+val<double> cbrt(val<double> x) noexcept;
+val<float> cbrtf(val<float> x) noexcept;
 
 /**
  * @brief Computes the Euclidean distance between the points (x, 0) and (0, y).
@@ -230,9 +230,9 @@ val<float> cbrtf(val<float> x);
  * @param y Second value.
  * @return sqrt(x^2 + y^2).
  */
-val<float> hypot(val<float> x, val<float> y);
-val<double> hypot(val<double> x, val<double> y);
-val<float> hypotf(val<float> x, val<float> y);
+val<float> hypot(val<float> x, val<float> y) noexcept;
+val<double> hypot(val<double> x, val<double> y) noexcept;
+val<float> hypotf(val<float> x, val<float> y) noexcept;
 
 // Trigonometric functions
 
@@ -242,9 +242,9 @@ val<float> hypotf(val<float> x, val<float> y);
  * @param x Angle in radians.
  * @return Sine of x.
  */
-val<float> sin(val<float> x);
-val<double> sin(val<double> x);
-val<float> sinf(val<float> x);
+val<float> sin(val<float> x) noexcept;
+val<double> sin(val<double> x) noexcept;
+val<float> sinf(val<float> x) noexcept;
 
 /**
  * @brief Computes the cosine of x.
@@ -252,9 +252,9 @@ val<float> sinf(val<float> x);
  * @param x Angle in radians.
  * @return Cosine of x.
  */
-val<float> cos(val<float> x);
-val<double> cos(val<double> x);
-val<float> cosf(val<float> x);
+val<float> cos(val<float> x) noexcept;
+val<double> cos(val<double> x) noexcept;
+val<float> cosf(val<float> x) noexcept;
 
 /**
  * @brief Computes the tangent of x.
@@ -262,9 +262,9 @@ val<float> cosf(val<float> x);
  * @param x Angle in radians.
  * @return Tangent of x.
  */
-val<float> tan(val<float> x);
-val<double> tan(val<double> x);
-val<float> tanf(val<float> x);
+val<float> tan(val<float> x) noexcept;
+val<double> tan(val<double> x) noexcept;
+val<float> tanf(val<float> x) noexcept;
 
 /**
  * @brief Computes the arc sine of x.
@@ -272,9 +272,9 @@ val<float> tanf(val<float> x);
  * @param x Value.
  * @return Arc sine of x in radians.
  */
-val<float> asin(val<float> x);
-val<double> asin(val<double> x);
-val<float> asinf(val<float> x);
+val<float> asin(val<float> x) noexcept;
+val<double> asin(val<double> x) noexcept;
+val<float> asinf(val<float> x) noexcept;
 
 /**
  * @brief Computes the arc cosine of x.
@@ -282,9 +282,9 @@ val<float> asinf(val<float> x);
  * @param x Value.
  * @return Arc cosine of x in radians.
  */
-val<float> acos(val<float> x);
-val<double> acos(val<double> x);
-val<float> acosf(val<float> x);
+val<float> acos(val<float> x) noexcept;
+val<double> acos(val<double> x) noexcept;
+val<float> acosf(val<float> x) noexcept;
 
 /**
  * @brief Computes the arc tangent of x.
@@ -292,9 +292,9 @@ val<float> acosf(val<float> x);
  * @param x Value.
  * @return Arc tangent of x in radians.
  */
-val<float> atan(val<float> x);
-val<double> atan(val<double> x);
-val<float> atanf(val<float> x);
+val<float> atan(val<float> x) noexcept;
+val<double> atan(val<double> x) noexcept;
+val<float> atanf(val<float> x) noexcept;
 
 /**
  * @brief Computes the arc tangent of y/x.
@@ -303,9 +303,9 @@ val<float> atanf(val<float> x);
  * @param x x-coordinate.
  * @return Arc tangent of y/x in radians.
  */
-val<float> atan2(val<float> y, val<float> x);
-val<double> atan2(val<double> y, val<double> x);
-val<float> atan2f(val<float> y, val<float> x);
+val<float> atan2(val<float> y, val<float> x) noexcept;
+val<double> atan2(val<double> y, val<double> x) noexcept;
+val<float> atan2f(val<float> y, val<float> x) noexcept;
 
 // Hyperbolic functions
 
@@ -315,9 +315,9 @@ val<float> atan2f(val<float> y, val<float> x);
  * @param x Value.
  * @return Hyperbolic sine of x.
  */
-val<float> sinh(val<float> x);
-val<double> sinh(val<double> x);
-val<float> sinhf(val<float> x);
+val<float> sinh(val<float> x) noexcept;
+val<double> sinh(val<double> x) noexcept;
+val<float> sinhf(val<float> x) noexcept;
 
 /**
  * @brief Computes the hyperbolic cosine of x.
@@ -325,9 +325,9 @@ val<float> sinhf(val<float> x);
  * @param x Value.
  * @return Hyperbolic cosine of x.
  */
-val<float> cosh(val<float> x);
-val<double> cosh(val<double> x);
-val<float> coshf(val<float> x);
+val<float> cosh(val<float> x) noexcept;
+val<double> cosh(val<double> x) noexcept;
+val<float> coshf(val<float> x) noexcept;
 
 /**
  * @brief Computes the hyperbolic tangent of x.
@@ -335,9 +335,9 @@ val<float> coshf(val<float> x);
  * @param x Value.
  * @return Hyperbolic tangent of x.
  */
-val<float> tanh(val<float> x);
-val<double> tanh(val<double> x);
-val<float> tanhf(val<float> x);
+val<float> tanh(val<float> x) noexcept;
+val<double> tanh(val<double> x) noexcept;
+val<float> tanhf(val<float> x) noexcept;
 
 /**
  * @brief Computes the hyperbolic arc sine of x.
@@ -345,9 +345,9 @@ val<float> tanhf(val<float> x);
  * @param x Value.
  * @return Hyperbolic arc sine of x.
  */
-val<float> asinh(val<float> x);
-val<double> asinh(val<double> x);
-val<float> asinhf(val<float> x);
+val<float> asinh(val<float> x) noexcept;
+val<double> asinh(val<double> x) noexcept;
+val<float> asinhf(val<float> x) noexcept;
 
 /**
  * @brief Computes the hyperbolic arc cosine of x.
@@ -355,9 +355,9 @@ val<float> asinhf(val<float> x);
  * @param x Value.
  * @return Hyperbolic arc cosine of x.
  */
-val<float> acosh(val<float> x);
-val<double> acosh(val<double> x);
-val<float> acoshf(val<float> x);
+val<float> acosh(val<float> x) noexcept;
+val<double> acosh(val<double> x) noexcept;
+val<float> acoshf(val<float> x) noexcept;
 
 /**
  * @brief Computes the hyperbolic arc tangent of x.
@@ -365,9 +365,9 @@ val<float> acoshf(val<float> x);
  * @param x Value.
  * @return Hyperbolic arc tangent of x.
  */
-val<float> atanh(val<float> x);
-val<double> atanh(val<double> x);
-val<float> atanhf(val<float> x);
+val<float> atanh(val<float> x) noexcept;
+val<double> atanh(val<double> x) noexcept;
+val<float> atanhf(val<float> x) noexcept;
 
 // Error and gamma functions
 
@@ -377,9 +377,9 @@ val<float> atanhf(val<float> x);
  * @param x Value.
  * @return Error function of x.
  */
-val<float> erf(val<float> x);
-val<double> erf(val<double> x);
-val<float> erff(val<float> x);
+val<float> erf(val<float> x) noexcept;
+val<double> erf(val<double> x) noexcept;
+val<float> erff(val<float> x) noexcept;
 
 /**
  * @brief Computes the complementary error function of x.
@@ -387,9 +387,9 @@ val<float> erff(val<float> x);
  * @param x Value.
  * @return Complementary error function of x.
  */
-val<float> erfc(val<float> x);
-val<double> erfc(val<double> x);
-val<float> erfcf(val<float> x);
+val<float> erfc(val<float> x) noexcept;
+val<double> erfc(val<double> x) noexcept;
+val<float> erfcf(val<float> x) noexcept;
 
 /**
  * @brief Computes the gamma function of x.
@@ -397,9 +397,9 @@ val<float> erfcf(val<float> x);
  * @param x Value.
  * @return Gamma function of x.
  */
-val<float> tgamma(val<float> x);
-val<double> tgamma(val<double> x);
-val<float> tgammaf(val<float> x);
+val<float> tgamma(val<float> x) noexcept;
+val<double> tgamma(val<double> x) noexcept;
+val<float> tgammaf(val<float> x) noexcept;
 
 /**
  * @brief Computes the natural logarithm of the absolute value of the gamma
@@ -408,9 +408,9 @@ val<float> tgammaf(val<float> x);
  * @param x Value.
  * @return Natural logarithm of the absolute value of the gamma function of x.
  */
-val<float> lgamma(val<float> x);
-val<double> lgamma(val<double> x);
-val<float> lgammaf(val<float> x);
+val<float> lgamma(val<float> x) noexcept;
+val<double> lgamma(val<double> x) noexcept;
+val<float> lgammaf(val<float> x) noexcept;
 
 // Rounding and remainder functions
 
@@ -420,9 +420,9 @@ val<float> lgammaf(val<float> x);
  * @param x Value.
  * @return Smallest integer not less than x.
  */
-val<float> ceil(val<float> x);
-val<double> ceil(val<double> x);
-val<float> ceilf(val<float> x);
+val<float> ceil(val<float> x) noexcept;
+val<double> ceil(val<double> x) noexcept;
+val<float> ceilf(val<float> x) noexcept;
 
 /**
  * @brief Computes the largest integer value not greater than x.
@@ -430,9 +430,9 @@ val<float> ceilf(val<float> x);
  * @param x Value.
  * @return Largest integer not greater than x.
  */
-val<float> floor(val<float> x);
-val<double> floor(val<double> x);
-val<float> floorf(val<float> x);
+val<float> floor(val<float> x) noexcept;
+val<double> floor(val<double> x) noexcept;
+val<float> floorf(val<float> x) noexcept;
 
 /**
  * @brief Computes the nearest integer not greater in magnitude than x.
@@ -440,9 +440,9 @@ val<float> floorf(val<float> x);
  * @param x Value.
  * @return Nearest integer not greater in magnitude than x.
  */
-val<float> trunc(val<float> x);
-val<double> trunc(val<double> x);
-val<float> truncf(val<float> x);
+val<float> trunc(val<float> x) noexcept;
+val<double> trunc(val<double> x) noexcept;
+val<float> truncf(val<float> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer.
@@ -450,9 +450,9 @@ val<float> truncf(val<float> x);
  * @param x Value.
  * @return Nearest integer to x.
  */
-val<float> round(val<float> x);
-val<double> round(val<double> x);
-val<float> roundf(val<float> x);
+val<float> round(val<float> x) noexcept;
+val<double> round(val<double> x) noexcept;
+val<float> roundf(val<float> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer and returns it as a long integer.
@@ -460,9 +460,9 @@ val<float> roundf(val<float> x);
  * @param x Value.
  * @return Nearest integer to x as long.
  */
-val<long> lround(val<float> x);
-val<long> lround(val<double> x);
-val<long> lroundf(val<float> x);
+val<long> lround(val<float> x) noexcept;
+val<long> lround(val<double> x) noexcept;
+val<long> lroundf(val<float> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer and returns it as a long long integer.
@@ -470,13 +470,13 @@ val<long> lroundf(val<float> x);
  * @param x Value.
  * @return Nearest integer to x as long long.
  */
-val<long long> llround(val<float> x);
-val<long long> llround(val<double> x);
-val<long long> llroundf(val<float> x);
+val<long long> llround(val<float> x) noexcept;
+val<long long> llround(val<double> x) noexcept;
+val<long long> llroundf(val<float> x) noexcept;
 
-val<float> nearbyint(val<float> x);
-val<double> nearbyint(val<double> x);
-val<float> nearbyintf(val<float> x);
+val<float> nearbyint(val<float> x) noexcept;
+val<double> nearbyint(val<double> x) noexcept;
+val<float> nearbyintf(val<float> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer value according to the current
@@ -485,9 +485,9 @@ val<float> nearbyintf(val<float> x);
  * @param x Value.
  * @return Rounded value.
  */
-val<float> rint(val<float> x);
-val<float> rintf(val<float> x);
-val<double> rint(val<double> x);
+val<float> rint(val<float> x) noexcept;
+val<float> rintf(val<float> x) noexcept;
+val<double> rint(val<double> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer value according to the current
@@ -496,9 +496,9 @@ val<double> rint(val<double> x);
  * @param x Value.
  * @return Rounded value as long.
  */
-val<long> lrint(val<float> x);
-val<long> lrint(val<double> x);
-val<long> lrintf(val<float> x);
+val<long> lrint(val<float> x) noexcept;
+val<long> lrint(val<double> x) noexcept;
+val<long> lrintf(val<float> x) noexcept;
 
 /**
  * @brief Rounds x to the nearest integer value according to the current
@@ -507,9 +507,9 @@ val<long> lrintf(val<float> x);
  * @param x Value.
  * @return Rounded value as long long.
  */
-val<long long> llrint(val<float> x);
-val<long long> llrint(val<double> x);
-val<long long> llrintf(val<float> x);
+val<long long> llrint(val<float> x) noexcept;
+val<long long> llrint(val<double> x) noexcept;
+val<long long> llrintf(val<float> x) noexcept;
 
 // Floating-point manipulation functions
 /**
@@ -520,9 +520,9 @@ val<long long> llrintf(val<float> x);
  * @param exp Pointer to an integer to store the exponent.
  * @return Fractional part of x.
  */
-val<float> frexp(val<float> x, val<int*> exp);
-val<float> frexpf(val<float> x, val<int*> exp);
-val<double> frexp(val<double> x, val<int*> exp);
+val<float> frexp(val<float> x, val<int*> exp) noexcept;
+val<float> frexpf(val<float> x, val<int*> exp) noexcept;
+val<double> frexp(val<double> x, val<int*> exp) noexcept;
 
 /**
  * @brief Multiplies a floating point number by an integral power of 2.
@@ -531,9 +531,9 @@ val<double> frexp(val<double> x, val<int*> exp);
  * @param exp Exponent.
  * @return x * 2^exp.
  */
-val<float> ldexp(val<float> x, val<int> exp);
-val<float> ldexpf(val<float> x, val<int> exp);
-val<double> ldexp(val<double> x, val<int> exp);
+val<float> ldexp(val<float> x, val<int> exp) noexcept;
+val<float> ldexpf(val<float> x, val<int> exp) noexcept;
+val<double> ldexp(val<double> x, val<int> exp) noexcept;
 
 /**
  * @brief Breaks the floating point number x into an integral and a fractional
@@ -543,9 +543,9 @@ val<double> ldexp(val<double> x, val<int> exp);
  * @param intpart Pointer to store the integral part.
  * @return Fractional part of x.
  */
-val<float> modf(val<float> x, val<float*> intpart);
-val<float> modff(val<float> x, val<float*> intpart);
-val<double> modf(val<double> x, val<double*> intpart);
+val<float> modf(val<float> x, val<float*> intpart) noexcept;
+val<float> modff(val<float> x, val<float*> intpart) noexcept;
+val<double> modf(val<double> x, val<double*> intpart) noexcept;
 
 /**
  * @brief Scales x by 2 raised to the power of exp.
@@ -554,9 +554,9 @@ val<double> modf(val<double> x, val<double*> intpart);
  * @param exp Exponent.
  * @return x * 2^exp.
  */
-val<float> scalbn(val<float> x, val<int> exp);
-val<float> scalbnf(val<float> x, val<int> exp);
-val<double> scalbn(val<double> x, val<int> exp);
+val<float> scalbn(val<float> x, val<int> exp) noexcept;
+val<float> scalbnf(val<float> x, val<int> exp) noexcept;
+val<double> scalbn(val<double> x, val<int> exp) noexcept;
 
 /**
  * @brief Scales x by 2 raised to the power of exp (more efficient than scalbn).
@@ -565,9 +565,9 @@ val<double> scalbn(val<double> x, val<int> exp);
  * @param exp Exponent.
  * @return x * 2^exp.
  */
-val<double> scalbln(val<double> x, val<long> exp);
-val<float> scalblnf(val<float> x, val<long> exp);
-val<float> scalbln(val<float> x, val<long> exp);
+val<double> scalbln(val<double> x, val<long> exp) noexcept;
+val<float> scalblnf(val<float> x, val<long> exp) noexcept;
+val<float> scalbln(val<float> x, val<long> exp) noexcept;
 
 /**
  * @brief extracts exponent of the number
@@ -575,9 +575,9 @@ val<float> scalbln(val<float> x, val<long> exp);
  * @param x Value.
  * @return  exponent of the number
  */
-val<int> ilogb(val<double> x);
-val<int> ilogbf(val<float> x);
-val<int> ilogb(val<float> x);
+val<int> ilogb(val<double> x) noexcept;
+val<int> ilogbf(val<float> x) noexcept;
+val<int> ilogb(val<float> x) noexcept;
 
 /**
  * @brief extracts exponent of the number
@@ -586,9 +586,9 @@ val<int> ilogb(val<float> x);
  * @param exp Exponent.
  * @return  exponent of the number
  */
-val<double> logb(val<double> x);
-val<float> logbf(val<float>);
-val<float> logb(val<float> x);
+val<double> logb(val<double> x) noexcept;
+val<float> logbf(val<float>) noexcept;
+val<float> logb(val<float> x) noexcept;
 
 /**
  * @brief next representable floating-point value towards the given value
@@ -596,12 +596,12 @@ val<float> logb(val<float> x);
  * @param x Value.
  * @return  next representable floating-point value towards the given value
  */
-val<float> nextafter(val<float> from, val<float> to);
-val<double> nextafter(val<double> from, val<double> to);
-val<float> nextafterf(val<float> from, val<float> to);
-val<float> nexttoward(val<float> from, val<float> to);
-val<double> nexttoward(val<double> from, val<double> to);
-val<float> nexttowardf(val<float> from, val<float> to);
+val<float> nextafter(val<float> from, val<float> to) noexcept;
+val<double> nextafter(val<double> from, val<double> to) noexcept;
+val<float> nextafterf(val<float> from, val<float> to) noexcept;
+val<float> nexttoward(val<float> from, val<float> to) noexcept;
+val<double> nexttoward(val<double> from, val<double> to) noexcept;
+val<float> nexttowardf(val<float> from, val<float> to) noexcept;
 
 /**
  * @brief Returns a value with the magnitude of x and the sign of y.
@@ -610,9 +610,9 @@ val<float> nexttowardf(val<float> from, val<float> to);
  * @param y Sign value.
  * @return Value with magnitude of x and sign of y.
  */
-val<float> copysign(val<float> x, val<float> y);
-val<double> copysign(val<double> x, val<double> y);
-val<float> copysignf(val<float> x, val<float> y);
+val<float> copysign(val<float> x, val<float> y) noexcept;
+val<double> copysign(val<double> x, val<double> y) noexcept;
+val<float> copysignf(val<float> x, val<float> y) noexcept;
 
 // Classification functions
 
@@ -622,7 +622,7 @@ val<float> copysignf(val<float> x, val<float> y);
  * @param x Value.
  * @return Classification macro value.
  */
-val<int> fpclassify(val<double> x);
+val<int> fpclassify(val<double> x) noexcept;
 
 /**
  * @brief Determines if x is a finite value.
@@ -630,7 +630,7 @@ val<int> fpclassify(val<double> x);
  * @param x Value.
  * @return Non-zero if x is finite, otherwise 0.
  */
-val<bool> isfinite(val<double> x);
+val<bool> isfinite(val<double> x) noexcept;
 
 /**
  * @brief Determines if x is an infinity value.
@@ -638,7 +638,7 @@ val<bool> isfinite(val<double> x);
  * @param x Value.
  * @return Non-zero if x is infinity, otherwise 0.
  */
-val<bool> isinf(val<double> x);
+val<bool> isinf(val<double> x) noexcept;
 
 /**
  * @brief Determines if x is a NaN (Not-a-Number) value.
@@ -646,7 +646,7 @@ val<bool> isinf(val<double> x);
  * @param x Value.
  * @return Non-zero if x is NaN, otherwise 0.
  */
-val<bool> isnan(val<double> x);
+val<bool> isnan(val<double> x) noexcept;
 
 /**
  * @brief Determines if x is a normal value.
@@ -654,7 +654,7 @@ val<bool> isnan(val<double> x);
  * @param x Value.
  * @return Non-zero if x is normal, otherwise 0.
  */
-val<bool> isnormal(val<double> x);
+val<bool> isnormal(val<double> x) noexcept;
 
 /**
  * @brief Determines if the sign of x is negative.
@@ -662,7 +662,7 @@ val<bool> isnormal(val<double> x);
  * @param x Value.
  * @return Non-zero if the sign of x is negative, otherwise 0.
  */
-val<bool> signbit(val<double> x);
+val<bool> signbit(val<double> x) noexcept;
 
 // Comparison functions
 
@@ -673,7 +673,7 @@ val<bool> signbit(val<double> x);
  * @param y Second value.
  * @return Non-zero if x > y, otherwise 0.
  */
-val<bool> isgreater(val<double> x, val<double> y);
+val<bool> isgreater(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Determines if x is greater than or equal to y.
@@ -682,7 +682,7 @@ val<bool> isgreater(val<double> x, val<double> y);
  * @param y Second value.
  * @return Non-zero if x >= y, otherwise 0.
  */
-val<bool> isgreaterequal(val<double> x, val<double> y);
+val<bool> isgreaterequal(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Determines if x is less than y.
@@ -691,7 +691,7 @@ val<bool> isgreaterequal(val<double> x, val<double> y);
  * @param y Second value.
  * @return Non-zero if x < y, otherwise 0.
  */
-val<bool> isless(val<double> x, val<double> y);
+val<bool> isless(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Determines if x is less than or equal to y.
@@ -700,7 +700,7 @@ val<bool> isless(val<double> x, val<double> y);
  * @param y Second value.
  * @return Non-zero if x <= y, otherwise 0.
  */
-val<bool> islessequal(val<double> x, val<double> y);
+val<bool> islessequal(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Determines if x is less than y or y is less than x.
@@ -709,7 +709,7 @@ val<bool> islessequal(val<double> x, val<double> y);
  * @param y Second value.
  * @return Non-zero if x < y or y < x, otherwise 0.
  */
-val<bool> islessgreater(val<double> x, val<double> y);
+val<bool> islessgreater(val<double> x, val<double> y) noexcept;
 
 /**
  * @brief Determines if either x or y is NaN.
@@ -718,7 +718,7 @@ val<bool> islessgreater(val<double> x, val<double> y);
  * @param y Second value.
  * @return Non-zero if either x or y is NaN, otherwise 0.
  */
-val<bool> isunordered(val<double> x, val<double> y);
+val<bool> isunordered(val<double> x, val<double> y) noexcept;
 
 // Mathematical special functions
 #ifdef __STDCPP_MATH_SPEC_FUNCS__
@@ -729,9 +729,9 @@ val<bool> isunordered(val<double> x, val<double> y);
  * @param y Second side.
  * @return Length of the hypotenuse.
  */
-val<float> assoc_laguerre(val<unsigned int> n, val<unsigned int> m, val<float> x);
-val<float> assoc_laguerref(val<unsigned int> n, val<unsigned int> m, val<float> x);
-val<double> assoc_laguerre(val<unsigned int> n, val<unsigned int> m, val<double> x);
+val<float> assoc_laguerre(val<unsigned int> n, val<unsigned int> m, val<float> x) noexcept;
+val<float> assoc_laguerref(val<unsigned int> n, val<unsigned int> m, val<float> x) noexcept;
+val<double> assoc_laguerre(val<unsigned int> n, val<unsigned int> m, val<double> x) noexcept;
 
 /**
  * @brief Computes the associated Legendre functions.
@@ -740,9 +740,9 @@ val<double> assoc_laguerre(val<unsigned int> n, val<unsigned int> m, val<double>
  * @param y Second side.
  * @return Length of the hypotenuse.
  */
-val<float> assoc_legendre(val<uint8_t> n, val<uint8_t> m, val<float> x);
-val<float> assoc_legendref(val<uint8_t> n, val<uint8_t> m, val<float> x);
-val<double> assoc_legendre(val<uint8_t> n, val<uint8_t> m, val<double> x);
+val<float> assoc_legendre(val<uint8_t> n, val<uint8_t> m, val<float> x) noexcept;
+val<float> assoc_legendref(val<uint8_t> n, val<uint8_t> m, val<float> x) noexcept;
+val<double> assoc_legendre(val<uint8_t> n, val<uint8_t> m, val<double> x) noexcept;
 
 /**
  * @brief Computes the beta function
@@ -751,9 +751,9 @@ val<double> assoc_legendre(val<uint8_t> n, val<uint8_t> m, val<double> x);
  * @param y Second side.
  * @return beta function
  */
-val<float> betaf(val<float> n, val<float> m);
-val<double> beta(val<double> n, val<double> m);
-val<float> beta(val<float> n, val<float> m);
+val<float> betaf(val<float> n, val<float> m) noexcept;
+val<double> beta(val<double> n, val<double> m) noexcept;
+val<float> beta(val<float> n, val<float> m) noexcept;
 
 /**
  * @brief complete elliptic integral of the first kind
@@ -761,9 +761,9 @@ val<float> beta(val<float> n, val<float> m);
  * @param k
  * @return comp_ellint_1
  */
-val<float> comp_ellint_1(val<float> k);
-val<double> comp_ellint_1(val<double> k);
-val<float> comp_ellint_1f(val<float> k);
+val<float> comp_ellint_1(val<float> k) noexcept;
+val<double> comp_ellint_1(val<double> k) noexcept;
+val<float> comp_ellint_1f(val<float> k) noexcept;
 
 /**
  * @brief complete elliptic integral of the second kind
@@ -771,9 +771,9 @@ val<float> comp_ellint_1f(val<float> k);
  * @param k
  * @return comp_ellint_2
  */
-val<float> comp_ellint_2(val<float> k);
-val<double> comp_ellint_2(val<double> k);
-val<float> comp_ellint_2f(val<float> k);
+val<float> comp_ellint_2(val<float> k) noexcept;
+val<double> comp_ellint_2(val<double> k) noexcept;
+val<float> comp_ellint_2f(val<float> k) noexcept;
 
 /**
  * @brief complete elliptic integral of the third kind
@@ -781,9 +781,9 @@ val<float> comp_ellint_2f(val<float> k);
  * @param k
  * @return comp_ellint_3
  */
-val<float> comp_ellint_3(val<float> k);
-val<double> comp_ellint_3(val<double> k);
-val<float> comp_ellint_3f(val<float> k);
+val<float> comp_ellint_3(val<float> k) noexcept;
+val<double> comp_ellint_3(val<double> k) noexcept;
+val<float> comp_ellint_3f(val<float> k) noexcept;
 
 /**
  * @brief regular modified cylindrical Bessel functions
@@ -791,9 +791,9 @@ val<float> comp_ellint_3f(val<float> k);
  * @param k
  * @return comp_ellint_3
  */
-val<float> cyl_bessel_i(val<float> nu, val<float> x);
-val<double> cyl_bessel_i(val<double> nu, val<double> x);
-val<float> cyl_bessel_if(val<float> nu, val<float> x);
+val<float> cyl_bessel_i(val<float> nu, val<float> x) noexcept;
+val<double> cyl_bessel_i(val<double> nu, val<double> x) noexcept;
+val<float> cyl_bessel_if(val<float> nu, val<float> x) noexcept;
 
 /**
  * @brief Computes the cylindrical Bessel function of the first kind of nu and x
@@ -801,9 +801,9 @@ val<float> cyl_bessel_if(val<float> nu, val<float> x);
  * @param k
  * @return cyl_bessel_j
  */
-val<float> cyl_bessel_j(val<float> nu, val<float> x);
-val<double> cyl_bessel_j(val<double> nu, val<double> x);
-val<float> cyl_bessel_jf(val<float> nu, val<float> x);
+val<float> cyl_bessel_j(val<float> nu, val<float> x) noexcept;
+val<double> cyl_bessel_j(val<double> nu, val<double> x) noexcept;
+val<float> cyl_bessel_jf(val<float> nu, val<float> x) noexcept;
 
 /**
  * @brief Computes the irregular modified cylindrical Bessel function (also
@@ -812,9 +812,9 @@ val<float> cyl_bessel_jf(val<float> nu, val<float> x);
  * @param k
  * @return cyl_bessel_k
  */
-val<float> cyl_bessel_k(val<float> nu, val<float> x);
-val<double> cyl_bessel_k(val<double> nu, val<double> x);
-val<float> cyl_bessel_kf(val<float> nu, val<float> x);
+val<float> cyl_bessel_k(val<float> nu, val<float> x) noexcept;
+val<double> cyl_bessel_k(val<double> nu, val<double> x) noexcept;
+val<float> cyl_bessel_kf(val<float> nu, val<float> x) noexcept;
 
 /**
  * @brief Computes the cylindrical Neumann function (also known as Bessel
@@ -823,9 +823,9 @@ val<float> cyl_bessel_kf(val<float> nu, val<float> x);
  * @param k
  * @return cyl_neumann
  */
-val<float> cyl_neumann(val<float> nu, val<float> x);
-val<double> cyl_neumann(val<double> nu, val<double> x);
-val<float> cyl_neumannf(val<float> nu, val<float> x);
+val<float> cyl_neumann(val<float> nu, val<float> x) noexcept;
+val<double> cyl_neumann(val<double> nu, val<double> x) noexcept;
+val<float> cyl_neumannf(val<float> nu, val<float> x) noexcept;
 
 /**
  * @brief Computes the incomplete elliptic integral of the first kind of k and
@@ -836,9 +836,9 @@ val<float> cyl_neumannf(val<float> nu, val<float> x);
  * radians)
  * @return ellint_1f
  */
-val<float> ellint_1(val<float> k, val<float> phi);
-val<double> ellint_1(val<double> k, val<double> phi);
-val<float> ellint_1f(val<float> k, val<float> phi);
+val<float> ellint_1(val<float> k, val<float> phi) noexcept;
+val<double> ellint_1(val<double> k, val<double> phi) noexcept;
+val<float> ellint_1f(val<float> k, val<float> phi) noexcept;
 
 /**
  * @brief Computes the incomplete elliptic integral of the second kind of k and
@@ -849,9 +849,9 @@ val<float> ellint_1f(val<float> k, val<float> phi);
  * radians)
  * @return ellint_2f
  */
-val<float> ellint_2(val<float> k, val<float> phi);
-val<double> ellint_2(val<double> k, val<double> phi);
-val<float> ellint_2f(val<float> k, val<float> phi);
+val<float> ellint_2(val<float> k, val<float> phi) noexcept;
+val<double> ellint_2(val<double> k, val<double> phi) noexcept;
+val<float> ellint_2f(val<float> k, val<float> phi) noexcept;
 
 /**
  * @brief Computes the incomplete elliptic integral of the third kind of k and
@@ -862,9 +862,9 @@ val<float> ellint_2f(val<float> k, val<float> phi);
  * radians)
  * @return ellint_3
  */
-val<float> ellint_3(val<float> k, val<float> phi);
-val<double> ellint_3(val<double> k, val<double> phi);
-val<float> expintf(val<float> k, val<float> phi);
+val<float> ellint_3(val<float> k, val<float> phi) noexcept;
+val<double> ellint_3(val<double> k, val<double> phi) noexcept;
+val<float> expintf(val<float> k, val<float> phi) noexcept;
 
 /**
  * @brief Computes the Exponential integral of num.
@@ -872,9 +872,9 @@ val<float> expintf(val<float> k, val<float> phi);
  * @param num floating-point or integer value
  * @return expint
  */
-val<float> expint(val<float> k);
-val<double> expint(val<double> k);
-val<float> ellint_f(val<float> k);
+val<float> expint(val<float> k) noexcept;
+val<double> expint(val<double> k) noexcept;
+val<float> ellint_f(val<float> k) noexcept;
 
 /**
  * @brief Computes the (physicist's) Hermite polynomials of the degree n and
@@ -883,9 +883,9 @@ val<float> ellint_f(val<float> k);
  * @param num floating-point or integer value
  * @return hermite
  */
-val<float> hermite(val<unsigned int> k, val<float> x);
-val<double> hermite(val<unsigned int> k, val<double> x);
-val<float> hermitef(val<unsigned int> k, val<float> x);
+val<float> hermite(val<unsigned int> k, val<float> x) noexcept;
+val<double> hermite(val<unsigned int> k, val<double> x) noexcept;
+val<float> hermitef(val<unsigned int> k, val<float> x) noexcept;
 
 /**
  * @brief Computes the unassociated Legendre polynomials of the degree n and
@@ -895,9 +895,9 @@ val<float> hermitef(val<unsigned int> k, val<float> x);
  * @param x	the argument, a floating-point or integer value
  * @return legendre
  */
-val<float> legendre(val<unsigned int> n, val<float> x);
-val<double> legendre(val<unsigned int> n, val<double> x);
-val<float> legendref(val<unsigned int> n, val<float> x);
+val<float> legendre(val<unsigned int> n, val<float> x) noexcept;
+val<double> legendre(val<unsigned int> n, val<double> x) noexcept;
+val<float> legendref(val<unsigned int> n, val<float> x) noexcept;
 
 /**
  * @brief Computes the non-associated Laguerre polynomials of the degree n and
@@ -907,9 +907,9 @@ val<float> legendref(val<unsigned int> n, val<float> x);
  * @param x	the argument, a floating-point or integer value
  * @return laguerre
  */
-val<float> laguerre(val<unsigned int> n, val<float> x);
-val<double> laguerre(val<unsigned int> n, val<double> x);
-val<float> laguerref(val<unsigned int> n, val<float> x);
+val<float> laguerre(val<unsigned int> n, val<float> x) noexcept;
+val<double> laguerre(val<unsigned int> n, val<double> x) noexcept;
+val<float> laguerref(val<unsigned int> n, val<float> x) noexcept;
 
 /**
  * @brief Computes the Riemann zeta function of num
@@ -917,9 +917,9 @@ val<float> laguerref(val<unsigned int> n, val<float> x);
  * @param num floating-point or value
  * @return riemann_zeta
  */
-val<float> riemann_zeta(val<float> num);
-val<double> riemann_zeta(val<double> num);
-val<float> riemann_zetaf(val<float> num);
+val<float> riemann_zeta(val<float> num) noexcept;
+val<double> riemann_zeta(val<double> num) noexcept;
+val<float> riemann_zetaf(val<float> num) noexcept;
 
 /**
  * @brief Computes the Riemann zeta function of num
@@ -927,9 +927,9 @@ val<float> riemann_zetaf(val<float> num);
  * @param n	the order of the function
  * @return x the argument of the function
  */
-val<float> sph_bessel(val<unsigned int> n, val<float> x);
-val<double> sph_bessel(val<unsigned int> n, val<double> x);
-val<float> sph_besself(val<unsigned int> n, val<float> x);
+val<float> sph_bessel(val<unsigned int> n, val<float> x) noexcept;
+val<double> sph_bessel(val<unsigned int> n, val<double> x) noexcept;
+val<float> sph_besself(val<unsigned int> n, val<float> x) noexcept;
 
 /**
  * @brief Computes the spherical associated Legendre function of degree l, order
@@ -939,9 +939,9 @@ val<float> sph_besself(val<unsigned int> n, val<float> x);
  * @param m order
  * @param theta polar angle, measured in radians
  */
-val<float> sph_legendre(val<unsigned int> l, val<unsigned int> m, val<float> theta);
-val<double> sph_legendre(val<unsigned int> l, val<unsigned int> m, val<double> theta);
-val<float> sph_legendref(val<unsigned int> l, val<unsigned int> m, val<float> theta);
+val<float> sph_legendre(val<unsigned int> l, val<unsigned int> m, val<float> theta) noexcept;
+val<double> sph_legendre(val<unsigned int> l, val<unsigned int> m, val<double> theta) noexcept;
+val<float> sph_legendref(val<unsigned int> l, val<unsigned int> m, val<float> theta) noexcept;
 
 /**
  * @brief Computes the spherical Bessel function of the second kind, also known
@@ -950,9 +950,9 @@ val<float> sph_legendref(val<unsigned int> l, val<unsigned int> m, val<float> th
  * @param n the order of the function
  * @param x the argument of the function
  */
-val<float> sph_neumann(val<unsigned int> n, val<float> x);
-val<double> sph_neumann(val<unsigned int> n, val<double> x);
-val<float> sph_neumannf(val<unsigned int> n, val<float> x);
+val<float> sph_neumann(val<unsigned int> n, val<float> x) noexcept;
+val<double> sph_neumann(val<unsigned int> n, val<double> x) noexcept;
+val<float> sph_neumannf(val<unsigned int> n, val<float> x) noexcept;
 #endif
 
 } // namespace nautilus

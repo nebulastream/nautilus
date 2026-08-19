@@ -12,6 +12,7 @@ endif ()
 
 
 add_source_files(nautilus
+        CapturedExceptionTransport.cpp
         CompilationBackend.cpp
         Executable.cpp
 )

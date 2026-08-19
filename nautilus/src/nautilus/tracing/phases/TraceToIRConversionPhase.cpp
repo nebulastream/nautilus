@@ -252,6 +252,7 @@ void TraceToIRConversionPhase::IRConversionContext::processOperation(ValueFrame&
 		processCall(frame, currentIrBlock, operation);
 		return;
 	case Op::INDIRECT_CALL:
+	case Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING:
 		processIndirectCall(frame, currentIrBlock, operation);
 		return;
 	case LSH:
@@ -446,7 +447,7 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
 	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, std::move(destructors),
-	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING);
+	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING, functionCallTarget.captureFunc);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
@@ -462,8 +463,19 @@ void TraceToIRConversionPhase::IRConversionContext::processIndirectCall(ValueFra
 	}
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	auto destructors = std::vector<IndirectCallOperation::Destructor> {};
+	destructors.reserve(indirectCall.destructors.size());
+	for (const auto& destructor : indirectCall.destructors) {
+		destructors.push_back(IndirectCallOperation::Destructor {
+		    .address = frame.getValue(createValueIdentifier(destructor.address)),
+		    .functionSymbol = destructor.mangledName,
+		    .functionName = destructor.functionName,
+		    .functionPtr = destructor.ptr,
+		});
+	}
 	auto indirectCallOp = currentBlock->addTaggedOperation<IndirectCallOperation>(
-	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs);
+	    operation.tag.getTag(), resultIdentifier, fnPtrOperand, inputArguments, resultType, indirectCall.fnAttrs,
+	    std::move(destructors), operation.op == Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING, indirectCall.captureFunc);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, indirectCallOp);
 	}

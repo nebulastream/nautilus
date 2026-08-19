@@ -1,0 +1,16 @@
+nautilus {
+execute() :i32 {
+Block_0():
+	$1 = alloca[0] :ptr
+	func_*($1) :void
+	func_*($1) :void
+	$5 = 42 :i32
+	func_*($1) :void
+	return ($5) :i32
+exception_region:
+	pad_0:
+		func_*($1) :void
+	call_sites:
+		$4 -> pad_0
+}
+} //nautilus

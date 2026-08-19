@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -34,9 +35,10 @@ public:
 			    fnAttrs.noUnwind
 			        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
 			                             functionArgumentReferences, fnAttrs)
-			        : tracing::traceCallWithExceptionHandling(reinterpret_cast<void*>(fnptr),
-			                                                  tracing::TypeResolver<R>::to_type(),
-			                                                  functionArgumentReferences, fnAttrs);
+			        : tracing::traceCallWithExceptionHandling(
+			              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+			              functionArgumentReferences, fnAttrs,
+			              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
 			return val<R>(resultRef);
 		}
 #endif
@@ -53,8 +55,9 @@ public:
 			if (fnAttrs.noUnwind) {
 				tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
 			} else {
-				tracing::traceCallWithExceptionHandling(reinterpret_cast<void*>(fnptr), Type::v,
-				                                        functionArgumentReferences, fnAttrs);
+				tracing::traceCallWithExceptionHandling(
+				    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
+				    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
 			}
 			return;
 		}

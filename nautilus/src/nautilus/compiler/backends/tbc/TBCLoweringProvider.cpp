@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/tbc/TBCTrampoline.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
@@ -8,6 +9,7 @@
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <cassert>
 #include <cstring>
+#include <map>
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
@@ -261,6 +263,8 @@ public:
 		}
 		processBlock(&functionBasicBlock, rootFrame);
 
+		lowerExceptionPads(rootFrame);
+
 		finalize();
 	}
 
@@ -298,6 +302,18 @@ private:
 	// consulted by a directly-following LOAD/STORE to detect a fusable
 	// `ptr + const` address computation.
 	std::unordered_map<ir::OperationIdentifier, std::pair<uint32_t, uint32_t>> ptrAddSites;
+
+	// Emitted CHECK_PENDING instructions awaiting their target block. The
+	// instruction word is a placeholder until the landing pads and the
+	// exceptional-exit block have been lowered (their block indices are only
+	// known after the main CFG); the offset is patched during finalize().
+	struct CheckPendingSite {
+		int block = -1;
+		uint32_t codeIndex = 0;
+		int targetBlock = -1;
+		const ir::LandingPadBlock* pad = nullptr;
+	};
+	std::vector<CheckPendingSite> checkPendingSites;
 
 	void emit(int block, Op op, uint16_t a, uint16_t b = 0, uint16_t c = 0) {
 		blocks[block].code.push_back(Instr {opIndex(op), a, b, c});
@@ -954,6 +970,44 @@ private:
 		return site;
 	}
 
+	/// Returns true if @p call is a captured-exception call site (i.e. it needs
+	/// the capture thunk and a pending-exception check after the call).
+	bool callNeedsCapture(const ir::Operation* call) const {
+		if (func == nullptr) {
+			return false;
+		}
+		CapturedExceptionTransport transport(*func);
+		return transport.callNeedsCapture(call);
+	}
+
+	/// If @p call is a captured-exception call site, append a CHECK_PENDING
+	/// instruction (placeholder target recorded in checkPendingSites) after the
+	/// call. No-op otherwise.
+	void emitCheckPending(const ir::Operation* call, int block) {
+		if (!callNeedsCapture(call)) {
+			return;
+		}
+		CapturedExceptionTransport transport(*func);
+		const auto* pad = transport.getPadForCall(call);
+		const uint32_t codeIndex = static_cast<uint32_t>(blocks[block].code.size());
+		checkPendingSites.push_back({block, codeIndex, -1, pad});
+		emit(block, Op::CHECK_PENDING, 0, 0, 0);
+	}
+
+	/// For a captured-exception call, return the recorded
+	/// `captureThrowingCall<R, Args...>` wrapper for the call's signature. The
+	/// wrapper is generated at the typed invoke() site and threaded through the
+	/// trace into the IR; backends simply read it.
+	void* resolveCaptureThunk(const ir::Operation* call) {
+		if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
+			return proxy->getCaptureFunc();
+		}
+		if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
+			return indirect->getCaptureFunc();
+		}
+		return nullptr;
+	}
+
 	void visitProxyCall(ir::ProxyCallOperation* opt, int block, RegisterFrame& frame) {
 		auto site = buildCallSite(opt->getInputArguments(), opt->getStamp(), frame);
 
@@ -970,6 +1024,24 @@ private:
 			site.internalFnIdx = it->second;
 			const auto siteIdx = addCallSite(std::move(site));
 			emit(block, Op::CALL, dst, static_cast<uint16_t>(it->second), siteIdx);
+			emitCheckPending(opt, block);
+			return;
+		}
+
+		// External call. For a captured-exception call site, invoke the
+		// captureThrowingCall<R, Args...> thunk — a real C++ frame — instead of
+		// the raw target, so an exception is caught before it crosses dyncall's
+		// assembly trampoline. The raw target becomes the thunk's first argument
+		// (a pinned constant slot) and the thunk itself is the callee.
+		if (callNeedsCapture(opt)) {
+			void* thunk = resolveCaptureThunk(opt);
+			const uint16_t targetReg = constSlot(reinterpret_cast<uint64_t>(opt->getFunctionPtr()));
+			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
+			site.argRegs.insert(site.argRegs.begin(), targetReg);
+			site.target = thunk;
+			const auto siteIdx = addCallSite(std::move(site));
+			emit(block, Op::CALL_EXT, dst, siteIdx);
+			emitCheckPending(opt, block);
 			return;
 		}
 		site.target = opt->getFunctionPtr();
@@ -986,6 +1058,21 @@ private:
 		if (opt->getStamp() != Type::v) {
 			dst = getResultRegister(opt, frame);
 			frame.setValue(opt->getIdentifier(), dst);
+		}
+
+		// Captured-exception call: pass the raw target (held in functionReg) as
+		// the thunk's first argument and call the capture thunk via CALL_EXT
+		// (which reads site.target), so the exception is caught in a real C++
+		// frame before crossing dyncall's trampoline.
+		if (callNeedsCapture(opt)) {
+			void* thunk = resolveCaptureThunk(opt);
+			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
+			site.argRegs.insert(site.argRegs.begin(), functionReg);
+			site.target = thunk;
+			const auto siteIdx = addCallSite(std::move(site));
+			emit(block, Op::CALL_EXT, dst, siteIdx);
+			emitCheckPending(opt, block);
+			return;
 		}
 		const auto siteIdx = addCallSite(std::move(site));
 		emit(block, Op::CALL_IND, dst, functionReg, siteIdx);
@@ -1006,6 +1093,43 @@ private:
 		const auto target = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), target);
 		emit(block, Op::MOV, target, constSlot(value));
+	}
+
+	// ── Exception region pad lowering ─────────────────────────────────────────
+
+	/// After the main CFG is lowered, materialise the exception-region landing
+	/// pads and the exceptional-exit block, then resolve every recorded
+	/// CHECK_PENDING site to its final block index. Pads are lowered as
+	/// ordinary TBC blocks whose operations are the destructor proxy calls; each
+	/// pad terminates with a jump to the exceptional-exit block. The
+	/// exceptional-exit block does a void return — the Invocable wrapper
+	/// rethrows the pending exception regardless of the return value.
+	void lowerExceptionPads(RegisterFrame& rootFrame) {
+		if (!func->exceptionRegion.has_value() || func->exceptionRegion->callSites.empty()) {
+			return;
+		}
+		const auto& pads = func->exceptionRegion->pads;
+		const int mainBlockCount = static_cast<int>(blocks.size());
+		const int exceptionalExitBlock = mainBlockCount + static_cast<int>(pads.size());
+
+		std::unordered_map<const ir::LandingPadBlock*, int> padBlockIndices;
+		for (const auto& pad : pads) {
+			const int padIndex = processBlock(pad.block, rootFrame);
+			blocks[padIndex].term = Terminator {Terminator::Jump, kNoReg, exceptionalExitBlock, -1, kNoReg};
+			padBlockIndices[&pad] = padIndex;
+		}
+
+		blocks.emplace_back();
+		blocks.back().term = Terminator {Terminator::Ret, kNoReg, -1, -1, kNoReg};
+
+		for (auto& site : checkPendingSites) {
+			if (site.pad != nullptr) {
+				const auto it = padBlockIndices.find(site.pad);
+				site.targetBlock = it != padBlockIndices.end() ? it->second : exceptionalExitBlock;
+			} else {
+				site.targetBlock = exceptionalExitBlock;
+			}
+		}
 	}
 
 	// ── Flattening ───────────────────────────────────────────────────────────
@@ -1092,6 +1216,14 @@ private:
 		std::vector<Fixup> fixups;
 		auto& codeOut = out.code;
 
+		// Map each recorded CHECK_PENDING site to its resolved target block, so
+		// the flattening loop below can emit the instruction and record a fixup
+		// (its offset is only known once every block start is computed).
+		std::map<std::pair<int, uint32_t>, int> checkPendingTargets;
+		for (const auto& site : checkPendingSites) {
+			checkPendingTargets[{site.block, site.codeIndex}] = site.targetBlock;
+		}
+
 		for (std::size_t b = 0; b < blocks.size(); ++b) {
 			blockStart[b] = static_cast<uint32_t>(codeOut.size());
 			auto& blk = blocks[b];
@@ -1099,6 +1231,13 @@ private:
 			const std::size_t bodyCount = blk.code.size() - (fuse ? 1 : 0);
 			for (std::size_t i = 0; i < bodyCount; ++i) {
 				if (blk.deadIndices.count(static_cast<uint32_t>(i)) > 0) {
+					continue;
+				}
+				const auto pendingIt = checkPendingTargets.find({static_cast<int>(b), static_cast<uint32_t>(i)});
+				if (pendingIt != checkPendingTargets.end()) {
+					const auto at = static_cast<uint32_t>(codeOut.size());
+					codeOut.push_back(Instr {opIndex(Op::CHECK_PENDING), 0, 0, 0});
+					fixups.push_back({at, at, false, pendingIt->second});
 					continue;
 				}
 				codeOut.push_back(blk.code[i]);

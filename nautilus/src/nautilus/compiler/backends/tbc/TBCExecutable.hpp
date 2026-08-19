@@ -23,6 +23,10 @@ public:
 	bool hasInvocableFunctionPtr() override;
 	std::unique_ptr<GenericInvocable> getGenericInvocable(const std::string& member) override;
 
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
+		return ExceptionPropagationMode::CapturedHostRethrow;
+	}
+
 private:
 	std::shared_ptr<TBCProgram> program;
 };

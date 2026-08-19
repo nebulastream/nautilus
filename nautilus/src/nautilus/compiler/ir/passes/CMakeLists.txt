@@ -16,4 +16,5 @@ add_source_files(nautilus
         BlockArgumentPruningPass.cpp
         LocalCSEPass.cpp
         LoopInvariantCodeMotionPass.cpp
+        ExceptionRegionPreparationPass.cpp
 )

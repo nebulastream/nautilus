@@ -259,11 +259,16 @@ public:
 	                         FunctionAttributes fnAttrs) override;
 	TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
 	                                              const std::vector<tracing::TypedValueRef>& arguments,
-	                                              FunctionAttributes fnAttrs) override;
+	                                              FunctionAttributes fnAttrs, void* captureFunc = nullptr) override;
 
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-	                                 const std::vector<tracing::TypedValueRef>& arguments,
-	                                 FunctionAttributes fnAttrs) override;
+	                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+	                                 void* captureFunc = nullptr) override;
+
+	TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+	                                                      const std::vector<tracing::TypedValueRef>& arguments,
+	                                                      FunctionAttributes fnAttrs,
+	                                                      void* captureFunc = nullptr) override;
 
 	bool traceBool(const TypedValueRef& value, double probability) override;
 
@@ -273,6 +278,11 @@ public:
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
 	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;
+
+	TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
+	                                                      std::function<void()> fwrapper, Type resultType,
+	                                                      const std::vector<tracing::TypedValueRef>& arguments,
+	                                                      FunctionAttributes fnAttrs) override;
 
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;

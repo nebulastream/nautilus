@@ -134,6 +134,11 @@ private:
 	// return the wrong caller/callee line.
 	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
 
+	/// The Nautilus FunctionOperation currently being lowered. Set in
+	/// generateFunction so visitProxyCall/visitIndirectCall can read the
+	/// exception-region side table.
+	const ir::FunctionOperation* currentFunction_ = nullptr;
+
 	/// Every SSA value produced so far for a Nautilus IR operation or block
 	/// argument, keyed by the operation's identity -- not its identifier: an
 	/// identifier is deliberately shared between a merge-block argument and

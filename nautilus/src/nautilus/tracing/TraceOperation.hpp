@@ -61,6 +61,14 @@ struct FunctionCall {
 	 * The caller is responsible for lifetime management.
 	 */
 	void* ptr;
+	/**
+	 * @brief Capture wrapper for a potentially-throwing call. Points at a
+	 * `captureThrowingCall<R, Args...>` instantiation generated at the typed
+	 * invoke() site — a real C++ frame that catches exceptions before they
+	 * cross a generated/interpreted frame without unwind tables.
+	 * Null for `noUnwind` calls.
+	 */
+	void* captureFunc = nullptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
 	std::vector<Destructor> destructors;
@@ -69,8 +77,14 @@ struct FunctionCall {
 /// Represents an indirect call through a runtime function pointer value.
 struct IndirectFunctionCall {
 	TypedValueRef fnPtr;
+	/**
+	 * @brief Capture wrapper for a potentially-throwing indirect call. See
+	 * `FunctionCall::captureFunc`; null for `noUnwind` calls.
+	 */
+	void* captureFunc = nullptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::vector<FunctionCall::Destructor> destructors;
 };
 
 struct BlockRef {
@@ -124,6 +138,9 @@ void forEachValueRef(const InputVariant& input, Callback&& callback) {
 		for (const auto argument : (*call)->arguments) {
 			callback(argument);
 		}
+		for (const auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
+		}
 	}
 }
 
@@ -147,6 +164,9 @@ void forEachMutableValueRef(InputVariant& input, Callback&& callback) {
 		callback((*call)->fnPtr);
 		for (auto& argument : (*call)->arguments) {
 			callback(argument);
+		}
+		for (auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
 		}
 	}
 }
