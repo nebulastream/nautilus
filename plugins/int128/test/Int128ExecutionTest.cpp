@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
@@ -5,75 +6,109 @@
 #include <nautilus/int128.hpp>
 
 namespace {
-using nautilus::int128;
+using I128 = nautilus::val<nautilus::detail::int128_t>;
+using nautilus::val;
 
-nautilus::val<uint64_t> multiplyHigh(nautilus::val<uint64_t> x) {
-	int128 wide(x);
-	return (wide * int128(nautilus::val<uint64_t>(0), nautilus::val<int64_t>(1))).high();
+val<uint64_t> multiplyHigh(val<uint64_t> x) {
+	I128 wide(x);
+	return (wide * I128(val<uint64_t>(0), val<int64_t>(1))).high();
 }
-nautilus::val<int64_t> signedArithmetic(nautilus::val<int64_t> x) {
-	int128 wide(x);
-	return static_cast<nautilus::val<int64_t>>((wide * int128(7)) / int128(3));
+val<int64_t> signedArithmetic(val<int64_t> x) {
+	I128 wide(x);
+	return static_cast<val<int64_t>>((wide * I128(7)) / I128(3));
 }
-nautilus::val<uint64_t> arithmetic(nautilus::val<uint64_t> a, nautilus::val<uint64_t> b) {
-	int128 value = (((int128(a) + int128(b)) - int128(9)) * int128(3)) / int128(2);
-	return value.low() ^ static_cast<nautilus::val<uint64_t>>(value.high());
+val<uint64_t> arithmetic(val<uint64_t> a, val<uint64_t> b) {
+	I128 value = (((I128(a) + I128(b)) - I128(9)) * I128(3)) / I128(2);
+	return value.low() ^ static_cast<val<uint64_t>>(value.high());
 }
-nautilus::val<uint64_t> bitwise(nautilus::val<uint64_t> a, nautilus::val<uint32_t> shift) {
-	int128 x(a);
-	auto value = ~(-(((x << shift) | int128(0x55)) ^ (x >> shift)));
-	return value.low() ^ static_cast<nautilus::val<uint64_t>>(value.high());
+val<uint64_t> bitwise(val<uint64_t> a, val<uint32_t> shift) {
+	I128 x(a);
+	auto value = ~(-(((x << shift) | I128(0x55)) ^ (x >> shift)));
+	return value.low() ^ static_cast<val<uint64_t>>(value.high());
 }
-nautilus::val<bool> comparisons(nautilus::val<int64_t> a, nautilus::val<int64_t> b) {
-	int128 x(a);
-	int128 y(b);
+val<bool> comparisons(val<int64_t> a, val<int64_t> b) {
+	I128 x(a);
+	I128 y(b);
 	return (x < y) && (x != y) && (y > x) && (x <= y) && (y >= x);
 }
-nautilus::val<int32_t> casts(nautilus::val<int32_t> input) {
-	return static_cast<nautilus::val<int32_t>>(int128(input));
+val<int32_t> casts(val<int32_t> input) {
+	return static_cast<val<int32_t>>(I128(input));
 }
-nautilus::val<bool> boolCast(nautilus::val<uint64_t> low, nautilus::val<int64_t> high) {
-	return static_cast<nautilus::val<bool>>(int128(low, high));
+val<bool> boolCast(val<uint64_t> low, val<int64_t> high) {
+	return static_cast<val<bool>>(I128(low, high));
 }
-nautilus::val<uint64_t> memoryRoundTrip(nautilus::val<void*> output, nautilus::val<const void*> input) {
-	auto value = int128::Load(input) + int128(1);
+val<uint64_t> memoryRoundTrip(val<void*> output, val<const void*> input) {
+	auto value = I128::Load(input) + I128(1);
 	value.Store(output);
 	return value.high();
 }
-} // namespace
-
-TEST_CASE("int128 arithmetic executes through available backends") {
-	nautilus::engine::NautilusEngine engine(nautilus::engine::Options {});
-	auto mul = engine.registerFunction(multiplyHigh);
-	auto arithmeticFn = engine.registerFunction(signedArithmetic);
-	REQUIRE(mul(0x123456789ULL) == 0x123456789ULL);
-	REQUIRE(arithmeticFn(-30) == -70);
+val<uint64_t> notOnly(val<uint64_t> a) {
+	I128 v = ~I128(a);
+	return v.low() ^ static_cast<val<uint64_t>>(v.high());
+}
+val<uint64_t> negOnly(val<uint64_t> a) {
+	I128 v = -I128(a);
+	return v.low() ^ static_cast<val<uint64_t>>(v.high());
+}
+val<uint64_t> constMath(val<uint64_t> a) {
+	I128 c(UINT64_C(0xfedcba9876543210), INT64_C(0x123456789abcdef0));
+	I128 v = (c + I128(a)) * I128(2);
+	return v.low() ^ static_cast<val<uint64_t>>(v.high());
+}
+val<uint64_t> unsignedCtor(val<uint64_t> a) {
+	nautilus::detail::uint128_t c =
+	    (nautilus::detail::uint128_t) UINT64_C(0x8000000000000000) << 64 | UINT64_C(0x123456789abcdef0);
+	I128 v(c);
+	I128 sum = v + I128(a);
+	return sum.low() ^ sum.high();
 }
 
-TEST_CASE("int128 operators, casts, comparisons, and memory execute") {
-	nautilus::engine::NautilusEngine engine(nautilus::engine::Options {});
+void exercise(const nautilus::engine::NautilusEngine& engine) {
 	auto arithmeticFn = engine.registerFunction(arithmetic);
 	auto multiplyHighFn = engine.registerFunction(multiplyHigh);
+	auto signedArithmeticFn = engine.registerFunction(signedArithmetic);
 	auto bitwiseFn = engine.registerFunction(bitwise);
 	auto comparisonsFn = engine.registerFunction(comparisons);
 	auto castsFn = engine.registerFunction(casts);
 	auto boolCastFn = engine.registerFunction(boolCast);
 	auto memoryFn = engine.registerFunction(memoryRoundTrip);
+	auto notOnlyFn = engine.registerFunction(notOnly);
+	auto negOnlyFn = engine.registerFunction(negOnly);
+	auto constMathFn = engine.registerFunction(constMath);
+	auto unsignedCtorFn = engine.registerFunction(unsignedCtor);
 
 	__extension__ typedef unsigned __int128 uint128;
 	const uint64_t a = UINT64_C(0xfedcba9876543210);
 	const uint64_t b = UINT64_C(0x123456789abcdef0);
+
+	REQUIRE(multiplyHighFn(0x123456789ULL) == 0x123456789ULL);
+	REQUIRE(signedArithmeticFn(-30) == -70);
+
 	uint128 expectedArithmetic = ((uint128(a) + b - 9) * 3) / 2;
 	REQUIRE(arithmeticFn(a, b) == (uint64_t(expectedArithmetic) ^ uint64_t(expectedArithmetic >> 64)));
+
 	uint128 shifted = uint128(a) << 73;
 	uint128 expectedBits = ~(-((shifted | 0x55) ^ (uint128(a) >> 73)));
 	REQUIRE(bitwiseFn(a, 73) == (uint64_t(expectedBits) ^ uint64_t(expectedBits >> 64)));
+
 	REQUIRE(comparisonsFn(-100, 42));
 	REQUIRE_FALSE(comparisonsFn(42, -100));
-	REQUIRE(castsFn(-1234567) == -1234567);
-	REQUIRE_FALSE(boolCastFn(0, 0));
-	REQUIRE(boolCastFn(0, 1));
-	REQUIRE(boolCastFn(1, 0));
+
+	__extension__ typedef unsigned __int128 uint128;
+	uint128 negA = ~(uint128) a;
+	REQUIRE(notOnlyFn((uint64_t) a) == (uint64_t(negA) ^ uint64_t(negA >> 64)));
+	uint128 posA = (uint128) a;
+	REQUIRE(negOnlyFn((uint64_t) a) == (uint64_t(-posA) ^ uint64_t((-posA) >> 64)));
+
+	uint128 c = ((uint128) (int64_t) INT64_C(0x123456789abcdef0) << 64) | UINT64_C(0xfedcba9876543210);
+	uint128 cm = (c + posA) * 2;
+	REQUIRE(constMathFn((uint64_t) a) == (uint64_t(cm) ^ uint64_t(cm >> 64)));
+
+	nautilus::detail::uint128_t uc =
+	    (nautilus::detail::uint128_t) UINT64_C(0x8000000000000000) << 64 | UINT64_C(0x123456789abcdef0);
+	uint128 um = uc + posA;
+	REQUIRE(unsignedCtorFn((uint64_t) a) == (uint64_t(um) ^ uint64_t(um >> 64)));
+
 	for (int32_t value = -4096; value <= 4096; value += 127) {
 		CAPTURE(value);
 		REQUIRE(castsFn(value) == value);
@@ -94,4 +129,9 @@ TEST_CASE("int128 operators, casts, comparisons, and memory execute") {
 	std::memcpy(&output, unalignedOutput.data() + 1, sizeof(output));
 	REQUIRE(output.low == 0);
 	REQUIRE(output.high == 5);
+}
+} // namespace
+
+TEST_CASE("int128: every backend", "[int128]") {
+	nautilus::testing::forEachBackend([](auto& engine) { exercise(engine); });
 }

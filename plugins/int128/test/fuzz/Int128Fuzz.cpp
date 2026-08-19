@@ -5,16 +5,16 @@
 #include <nautilus/int128.hpp>
 
 namespace {
-using nautilus::int128;
+using I128 = nautilus::val<nautilus::detail::int128_t>;
+using nautilus::val;
 __extension__ typedef unsigned __int128 uint128;
 __extension__ typedef __int128 sint128;
 
-nautilus::val<uint64_t> fuzzKernel(nautilus::val<uint64_t> a, nautilus::val<uint64_t> b,
-                                   nautilus::val<uint32_t> shift) {
-	int128 x(a);
-	int128 y(b | 1);
-	int128 mixed = (((x + y) * (x - y)) ^ ~(x | y));
-	mixed = mixed & int128(UINT64_MAX, INT64_MAX);
+nautilus::val<uint64_t> fuzzKernel(val<uint64_t> a, val<uint64_t> b, val<uint32_t> shift) {
+	I128 x(a);
+	I128 y(b | 1);
+	I128 mixed = (((x + y) * (x - y)) ^ ~(x | y));
+	mixed = mixed & I128(UINT64_MAX, INT64_MAX);
 	mixed = ((mixed << shift) >> shift) + (mixed / y) + (mixed % y);
 	return mixed.low() ^ static_cast<nautilus::val<uint64_t>>(mixed.high());
 }
