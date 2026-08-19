@@ -11,9 +11,12 @@ ProxyCallOperation::ProxyCallOperation(common::Arena& arena, OperationIdentifier
 ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol,
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-                                       Type resultType, const FunctionAttributes fnAttrs)
+                                       Type resultType, const FunctionAttributes fnAttrs,
+                                       std::vector<Destructor> destructors, bool exceptionHandling, void* captureFunc)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
-      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr), fnAttrs(fnAttrs) {
+      mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr),
+      captureFunc(captureFunc), fnAttrs(fnAttrs), destructors(std::move(destructors)),
+      exceptionHandling(exceptionHandling) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -39,8 +42,20 @@ void* ProxyCallOperation::getFunctionPtr() {
 	return functionPtr;
 }
 
+void* ProxyCallOperation::getCaptureFunc() const {
+	return captureFunc;
+}
+
 const FunctionAttributes& ProxyCallOperation::getFunctionAttributes() const {
 	return fnAttrs;
+}
+
+const std::vector<ProxyCallOperation::Destructor>& ProxyCallOperation::getDestructors() const {
+	return destructors;
+}
+
+bool ProxyCallOperation::requiresExceptionHandling() const {
+	return exceptionHandling;
 }
 
 bool ProxyCallOperation::classof(const Operation* op) {

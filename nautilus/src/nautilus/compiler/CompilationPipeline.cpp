@@ -25,6 +25,7 @@
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
@@ -208,6 +209,9 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
 			passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
 		}
+		// Exception-region preparation: collects cleanup metadata for backends.
+		// Terminal pass — runs once after all optimisation.
+		passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}

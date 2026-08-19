@@ -3,6 +3,7 @@ source_filename = "LLVMDialectModule"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
+; Function Attrs: nounwind
 define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 1
   br i1 %2, label %3, label %5, !prof !1
@@ -16,6 +17,7 @@ define signext i32 @execute(i32 %0) local_unnamed_addr #0 {
   br label %3
 }
 
+; Function Attrs: nounwind
 define signext i32 @_mlir_ciface_execute(i32 %0) local_unnamed_addr #0 {
   %2 = icmp eq i32 %0, 1
   br i1 %2, label %execute.exit, label %3, !prof !1
@@ -29,9 +31,10 @@ execute.exit:                                     ; preds = %1, %3
   ret i32 %5
 }
 
-; Function Attrs: memory(readwrite)
+; Function Attrs: nounwind memory(readwrite)
 declare i32 @runtimeFunc0(i32) local_unnamed_addr #1
 
+; Function Attrs: nounwind
 define void @_mlir_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
@@ -50,6 +53,7 @@ execute.exit:                                     ; preds = %1, %5
   ret void
 }
 
+; Function Attrs: nounwind
 define void @_mlir__mlir_ciface_execute(ptr readonly %0) local_unnamed_addr #0 {
   %2 = load ptr, ptr %0, align 8
   %3 = load i32, ptr %2, align 4
@@ -68,7 +72,8 @@ _mlir_ciface_execute.exit:                        ; preds = %1, %5
   ret void
 }
 
-attributes #1 = { memory(readwrite) }
+attributes #0 = { nounwind }
+attributes #1 = { nounwind memory(readwrite) }
 
 !llvm.module.flags = !{!0}
 

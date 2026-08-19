@@ -24,6 +24,10 @@ public:
 
 	bool hasInvocableFunctionPtr() override;
 
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode() const override {
+		return ExceptionPropagationMode::CapturedHostRethrow;
+	}
+
 private:
 	std::shared_ptr<SharedLibrary> obj;
 };

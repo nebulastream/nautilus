@@ -159,6 +159,7 @@ namespace nautilus::compiler::tbc {
 	X(CALL)                                                                                                            \
 	X(CALL_EXT)                                                                                                        \
 	X(CALL_IND)                                                                                                        \
+	X(CHECK_PENDING)                                                                                                   \
 	X(HALT)                                                                                                            \
 	X(TRAP)
 

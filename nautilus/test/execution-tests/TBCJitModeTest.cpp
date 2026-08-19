@@ -109,12 +109,30 @@ val<int64_t> jitVoidCaller(val<int64_t*> p) {
 }
 
 // External calls (CALL_EXT opcode via the dyncall helper).
-int64_t nativeMix(int32_t a, int64_t b, double c) {
+int64_t nativeMix(int32_t a, int64_t b, double c) noexcept {
 	return a + b + static_cast<int64_t>(c * 10);
 }
 
 val<int64_t> jitExternal(val<int32_t> a, val<int64_t> b, val<double> c) {
 	return invoke(nativeMix, a, b, c) + 1;
+}
+
+// A nested Nautilus call (same module) whose callee throws: the caller must
+// run its CHECK_PENDING after the internal CALL and abandon the post-call
+// store, so the exception propagates instead of silently skipping cleanup.
+void jitThrowNative() {
+	throw std::runtime_error("jit internal call throw");
+}
+
+void jitThrowCalleeBody(val<int64_t*>) {
+	invoke(jitThrowNative);
+}
+static auto jitThrowCallee = NautilusFunction {"jitThrowCallee", jitThrowCalleeBody};
+
+val<int64_t> jitCallerInternalThrow(val<int64_t*> cell) {
+	jitThrowCallee(cell);
+	*cell = 42;
+	return 0;
 }
 
 // Note on exceptions: a C++ exception thrown by an invoke() target dies in
@@ -236,6 +254,27 @@ TEST_CASE("TBC JIT internal and external calls") {
 		auto jExt = jit.registerFunction(jitExternal);
 		REQUIRE(jExt(3, 100, 2.5) == cExt(3, 100, 2.5));
 		REQUIRE(jExt(-7, 0, -0.5) == cExt(-7, 0, -0.5));
+	}
+}
+
+TEST_CASE("TBC JIT exception through an internal call") {
+	if (!jitAvailable()) {
+		SKIP("tbc-jit runtime unavailable on this build");
+	}
+	// The JIT path exercises the stencil_CHECK_PENDING inserted by the
+	// lowering after same-module CALLs. The interpreter path (switch, low
+	// optimisation) confirms CHECK_PENDING works in the interpreted mode.
+	for (const std::string mode : {"jit", "interp"}) {
+		DYNAMIC_SECTION("mode=" + mode) {
+			auto engine = jitEngine(mode, false, false, false);
+			auto caller = engine.registerFunction(jitCallerInternalThrow);
+			int64_t cell = 0;
+			REQUIRE_THROWS_AS(caller(&cell), std::runtime_error);
+			// The store *cell = 42 after the internal call must be
+			// skipped — the pending-exception check must branch past
+			// it before the exception rethrows at the Invocable level.
+			REQUIRE(cell == 0);
+		}
 	}
 }
 

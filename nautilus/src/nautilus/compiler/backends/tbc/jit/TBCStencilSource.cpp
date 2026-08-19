@@ -75,12 +75,13 @@ uint64_t* tbcJitPushFrame(VMContextPrefix* ctx, const void* callee, const void* 
                           void* nativeReturnAddress, uint64_t dstRegRaw);
 uint64_t tbcJitExtCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw);
 uint64_t tbcJitIndCall(VMContextPrefix* ctx, const void* site, uint64_t* fp, uint64_t dstRegRaw, void* target);
+bool tbcJitCheckPendingException();
 }
 
-#define OFF_A ((uint64_t) (uintptr_t) & _JIT_A)
-#define OFF_B ((uint64_t) (uintptr_t) & _JIT_B)
-#define OFF_C ((uint64_t) (uintptr_t) & _JIT_C)
-#define OFF_D ((uint64_t) (uintptr_t) & _JIT_D)
+#define OFF_A ((uint64_t) (uintptr_t) &_JIT_A)
+#define OFF_B ((uint64_t) (uintptr_t) &_JIT_B)
+#define OFF_C ((uint64_t) (uintptr_t) &_JIT_C)
+#define OFF_D ((uint64_t) (uintptr_t) &_JIT_D)
 
 #define TAIL_NEXT() [[clang::musttail]] return ((JitHandler) & _JIT_CONTINUE)(fp, ctx)
 #define TAIL_TARGET() [[clang::musttail]] return ((JitHandler) & _JIT_TARGET)(fp, ctx)
@@ -348,6 +349,13 @@ extern "C" uint64_t STENCIL_CC stencil_CJMP(uint64_t* fp, VMContextPrefix* ctx) 
 	}
 TBC_CJMP_FUSED_LIST(TBC_STENCIL_F)
 #undef TBC_STENCIL_F
+
+extern "C" uint64_t STENCIL_CC stencil_CHECK_PENDING(uint64_t* fp, VMContextPrefix* ctx) {
+	if (tbcJitCheckPendingException()) {
+		TAIL_TARGET();
+	}
+	TAIL_NEXT();
+}
 
 // RET pops the frame inline (mirrors TBCInterpreter.cpp's doReturn) and
 // tail-jumps to the native continuation the caller's CALL stencil stored in
