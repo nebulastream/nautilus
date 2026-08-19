@@ -1,0 +1,41 @@
+name: Install LLVM/Clang
+description: >-
+  Install a clang/LLVM toolchain from apt.llvm.org for Ubuntu runners without
+  letting apt hang. Only the needed packages are installed:
+  clang-<ver>, clang++-<ver>, llvm-<ver> (provides llvm-diff), and
+  llvm-<ver>-dev (provides LLVMConfig.cmake for the inlining plugin). Every apt
+  call is bounded by a hard timeout plus Acquire::Retries and the whole step is
+  retried, so a hung apt-get update can never stall a job.
+
+inputs:
+  llvm-version:
+    description: LLVM/clang version to install, e.g. 19, 21 or 22.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install LLVM ${{ inputs.llvm-version }} (timeout-bounded apt)
+      shell: bash
+      run: |
+        set -u
+        UBUNTU_CODENAME=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME}")
+        LLVM_VERSION="${{ inputs.llvm-version }}"
+        APTOPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60"
+        for i in 1 2 3 4 5; do
+          if timeout 180 sudo apt-get update ${APTOPTS} \
+            && timeout 60 sudo wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add - \
+            && printf 'deb http://apt.llvm.org/%s/ llvm-toolchain-%s-%s main\n' \
+                 "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${LLVM_VERSION}" \
+                 | sudo tee /etc/apt/sources.list.d/llvm-${LLVM_VERSION}.list \
+            && timeout 180 sudo apt-get update ${APTOPTS} \
+            && timeout 300 sudo apt-get install -y --no-install-recommends \
+                 clang-${LLVM_VERSION} clang++-${LLVM_VERSION} \
+                 llvm-${LLVM_VERSION} llvm-${LLVM_VERSION}-dev ${APTOPTS}; then
+            clang++-${LLVM_VERSION} --version | head -1
+            exit 0
+          fi
+          echo "apt install of LLVM ${LLVM_VERSION} failed (attempt $i/5), retrying in 15s..."
+          sleep 15
+        done
+        exit 1

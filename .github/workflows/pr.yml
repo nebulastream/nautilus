@@ -82,14 +82,9 @@ jobs:
       - name: Derive clang version
         if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
         run: echo "CC_VERSION=$(echo '${{ matrix.cc }}' | sed 's/clang-//')" >> "$GITHUB_ENV"
-      - name: Install clang
+      - name: Install clang + LLVM
         if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
-        uses: egor-tensin/setup-clang@v2
-        with:
-          version: ${{ env.CC_VERSION }}
-      - name: Install LLVM dev for the inlining plugin
-        if: startsWith(matrix.cc, 'clang-') && startsWith(matrix.os, 'ubuntu')
-        uses: ./.github/actions/install-llvm-dev
+        uses: ./.github/actions/install-llvm
         with:
           llvm-version: ${{ env.CC_VERSION }}
       - name: cmake
@@ -234,12 +229,8 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-fuzz-replay-smoke
-      - name: Install clang 21
-        uses: egor-tensin/setup-clang@v2
-        with:
-          version: "21"
-      - name: Install LLVM dev for the inlining plugin
-        uses: ./.github/actions/install-llvm-dev
+      - name: Install clang + LLVM 21
+        uses: ./.github/actions/install-llvm
         with:
           llvm-version: "21"
       - name: cmake
@@ -276,10 +267,10 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2.20
         with:
           key: ${{ github.job }}-llvm-ir-test
-      - name: Install clang 22 + LLVM tools
-        uses: egor-tensin/setup-clang@v2
+      - name: Install clang + LLVM 22
+        uses: ./.github/actions/install-llvm
         with:
-          version: "22"
+          llvm-version: "22"
       - name: Expose llvm-diff-22 under the fallback name
         run: |
           # llvm-diff-22 matches the LLVM 22 IR the bundled MLIR (22.1.8) emits,
