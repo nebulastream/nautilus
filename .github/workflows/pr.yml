@@ -43,7 +43,7 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_GPU_PLUGIN=ON'
-          - os: 'macos-15'
+          - os: 'macos-26'
             cc: 'clang'
             cxx: 'clang++'
             flags: '-DENABLE_GPU_PLUGIN=ON'
