@@ -10,6 +10,7 @@ if (ENABLE_TRACING)
             TracingUtil.cpp
             ExceptionBasedTraceContext.cpp
             LazyTraceContext.cpp
+            TraceContextBase.cpp
             TraceOperation.cpp
             Snapshot.cpp)
 endif ()

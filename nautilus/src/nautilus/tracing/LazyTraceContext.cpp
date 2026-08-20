@@ -527,19 +527,8 @@ void LazyTraceContext::popStaticVal() {
 	staticVars.pop_back();
 }
 
-std::string LazyTraceContext::formatStaticVars() const {
-	std::string result;
-	for (size_t i = 0; i < staticVars.size(); i++) {
-		if (i > 0) {
-			result += ", ";
-		}
-		result += std::to_string(getStaticVarValue(staticVars[i]));
-	}
-	return result;
-}
-
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), currentStateHash()};
 }
 
 } // namespace nautilus::tracing

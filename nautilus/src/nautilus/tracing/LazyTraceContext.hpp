@@ -1,7 +1,8 @@
 
 #pragma once
 
-#include "ExceptionBasedTraceContext.hpp"
+#include "ExecutionTrace.hpp"
+#include "TraceContextBase.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include <functional>
 #include <list>
@@ -11,6 +12,7 @@
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+class TraceModule;
 
 /**
  * @brief Exception-free tracing context that always completes function execution.
@@ -113,11 +115,6 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
-	std::string formatStaticVars() const;
-
-	// Persistent state - reset between trace iterations via resume()
-	std::vector<StaticVarHolder> staticVars;
-	AliveVariableHash aliveVars;
 
 	// Passive mode state
 	bool paused_ = false;

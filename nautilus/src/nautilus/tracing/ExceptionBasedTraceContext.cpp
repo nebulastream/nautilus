@@ -10,10 +10,7 @@
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
 #include <cstddef>
-#include <cxxabi.h>
-#include <dlfcn.h>
 #include <fmt/format.h>
-#include <sstream>
 
 namespace fmt {
 template <>
@@ -27,11 +24,6 @@ namespace nautilus::tracing {
 // Thread-local ExceptionBasedTraceContext object (not a pointer)
 // This is allocated in thread-local storage - zero heap allocation overhead
 static thread_local ExceptionBasedTraceContext traceContext;
-
-TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
-	// TraceState only holds references - the actual objects are stack-allocated in trace()
-}
 
 bool ExceptionBasedTraceContext::isActive() const {
 	return state.has_value();
@@ -316,31 +308,6 @@ TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType
 	});
 }
 
-std::string ExceptionBasedTraceContext::formatStaticVars() const {
-	std::string result;
-	for (size_t i = 0; i < staticVars.size(); i++) {
-		if (i > 0) {
-			result += ", ";
-		}
-		result += std::to_string(getStaticVarValue(staticVars[i]));
-	}
-	return result;
-}
-
-void ExceptionBasedTraceContext::pushStaticVal(void* valPtr, size_t size) {
-	staticVars.emplace_back(valPtr, size);
-	if (log::options::getLogStaticVars()) {
-		log::info("pushStaticVal: [{}]", formatStaticVars());
-	}
-}
-
-void ExceptionBasedTraceContext::popStaticVal() {
-	if (log::options::getLogStaticVars()) {
-		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
-	}
-	staticVars.pop_back();
-}
-
 bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
@@ -498,69 +465,8 @@ void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-std::string TraceContextBase::getMangledName(void* fnptr) {
-	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
-		return it->second;
-	}
-
-	Dl_info info;
-	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
-		mangledNameCache[fnptr] = info.dli_sname;
-		return info.dli_sname;
-	}
-	std::stringstream ss;
-	ss << fnptr;
-	std::string ptrStr = ss.str();
-	mangledNameCache[fnptr] = ptrStr;
-	return ptrStr;
-}
-
-std::string TraceContextBase::getFunctionName(void* fnptr, const std::string& mangledName) {
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
-
-	if (normalizeFunctionNames) {
-		auto it = state->normalizedFunctionNameCache.find(fnptr);
-		if (it != state->normalizedFunctionNameCache.end()) {
-			return "runtimeFunc" + std::to_string(it->second);
-		}
-		uint32_t index = state->nextNormalizedFunctionIndex++;
-		state->normalizedFunctionNameCache[fnptr] = index;
-		return "runtimeFunc" + std::to_string(index);
-	}
-
-	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
-
-	if (!demangleFunctionNames) {
-		return mangledName;
-	}
-
-	int status;
-	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
-	if (status == 0 && demangled != nullptr) {
-		std::string result(demangled);
-		std::free(demangled);
-		return result;
-	}
-
-	return mangledName;
-}
-
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
-
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& entry : data) {
-		uint64_t val = 0;
-		std::memcpy(&val, entry.ptr, entry.size);
-		hash ^= val;
-		hash *= fnv_prime;
-	}
-	return hash;
-}
-
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), currentStateHash()};
 }
 
 } // namespace nautilus::tracing
