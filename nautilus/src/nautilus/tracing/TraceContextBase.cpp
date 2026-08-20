@@ -79,6 +79,10 @@ uint64_t TraceContextBase::currentStateHash() const {
 	return hashStaticVector(staticVars) ^ aliveVars.hash();
 }
 
+TraceEnv& TraceContextBase::getEnv() {
+	return env;
+}
+
 std::string TraceContextBase::formatStaticVars() const {
 	std::string result;
 	for (size_t i = 0; i < staticVars.size(); i++) {

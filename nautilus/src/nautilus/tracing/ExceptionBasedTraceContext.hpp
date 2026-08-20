@@ -98,6 +98,12 @@ public:
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;
 
+	TraceContextBase* getRootContext() override;
+
+	bool traceRegionBegin(TagAddress callSite) override;
+
+	void traceRegionEnd() override;
+
 	// --- Non-interface public API ---
 
 	~ExceptionBasedTraceContext() override = default;
@@ -147,7 +153,7 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
-	Snapshot recordSnapshot();
+	Snapshot recordSnapshot() override;
 
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;

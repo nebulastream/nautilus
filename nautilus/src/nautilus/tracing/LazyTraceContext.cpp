@@ -33,6 +33,8 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 
 void LazyTraceContext::resume() {
 	staticVars.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 	aliveVars.reset();
 	paused_ = false;
 }
@@ -86,7 +88,7 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	if (isFollowing()) {
 		return follow(op);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
@@ -107,7 +109,7 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	if (isFollowing()) {
 		return follow(op);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
@@ -135,7 +137,7 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 	auto globalTabIter = trace.globalTagMap.find(tag);
 	if (globalTabIter != trace.globalTagMap.end()) {
@@ -260,7 +262,7 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 		follow(ASSIGN);
 		return;
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 
 	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
@@ -299,7 +301,7 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
@@ -348,7 +350,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
 		// record
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
@@ -440,6 +442,8 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
@@ -525,6 +529,17 @@ void LazyTraceContext::popStaticVal() {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
 	}
 	staticVars.pop_back();
+}
+
+TraceContextBase* LazyTraceContext::getRootContext() {
+	return this;
+}
+
+bool LazyTraceContext::traceRegionBegin([[maybe_unused]] TagAddress callSite) {
+	return true;
+}
+
+void LazyTraceContext::traceRegionEnd() {
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {

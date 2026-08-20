@@ -151,6 +151,22 @@ public:
 };
 
 /**
+ * @brief View over the environment (static variables + alive variables) of a trace context.
+ * Holds references to the owning context's storage, which lives exactly once in the base.
+ */
+struct TraceEnv {
+	std::vector<StaticVarHolder>& staticVars;
+	AliveVariableHash& aliveVars;
+};
+
+struct RegionExec {
+	ValueRef continuationOperationIndex;
+	uint32_t continuationBlockIndex;
+};
+
+using RegionMemo = std::unordered_map<uint64_t, RegionExec>;
+
+/**
  * @brief State that requires initialization for tracing operations.
  * This is initialized in the trace context when tracing begins and reset when it ends.
  * Holds references to stack-allocated objects.
@@ -183,6 +199,8 @@ public:
 
 	uint64_t currentStateHash() const;
 
+	TraceEnv& getEnv() override;
+
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
@@ -195,6 +213,11 @@ protected:
 
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
+	// View over staticVars/aliveVars - the single storage location is the two members above.
+	TraceEnv env {staticVars, aliveVars};
+
+	std::unordered_map<TagAddress, TagRecorder*> regionRecorders;
+	std::unordered_map<TagAddress, RegionMemo> regionMemos;
 
 	std::string formatStaticVars() const;
 };

@@ -6,6 +6,7 @@
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -14,6 +15,13 @@ class NautilusFunctionDefinition;
 }
 
 namespace nautilus::tracing {
+
+/// The tag address references a function on the callstack.
+using TagAddress = uint64_t;
+
+class TraceContextBase;
+struct TraceEnv;
+struct Snapshot;
 
 /**
  * @brief Abstract interface for tracing operations.
@@ -97,6 +105,21 @@ public:
 
 	/// Pop the top static variable from the static-variable stack.
 	virtual void popStaticVal() = 0;
+
+	/// Capture a snapshot of the current tracing state.
+	virtual Snapshot recordSnapshot() = 0;
+
+	/// Get the environment view (static variables + alive variables) of the current context.
+	virtual TraceEnv& getEnv() = 0;
+
+	/// Get the root trace context that owns the execution trace and caches.
+	virtual TraceContextBase* getRootContext() = 0;
+
+	/// Begin a traced region at the given call site. Returns false to skip the region body.
+	virtual bool traceRegionBegin(TagAddress callSite) = 0;
+
+	/// End the current traced region.
+	virtual void traceRegionEnd() = 0;
 };
 
 } // namespace nautilus::tracing

@@ -41,6 +41,8 @@ ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& 
 void ExceptionBasedTraceContext::resume() {
 	// Clear dynamic containers
 	staticVars.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
@@ -94,7 +96,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	if (isFollowing()) {
 		return follow(op);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
@@ -112,7 +114,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 	if (isFollowing()) {
 		return follow(op);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
@@ -136,7 +138,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 	auto globalTabIter = trace.globalTagMap.find(tag);
 	if (globalTabIter != trace.globalTagMap.end()) {
@@ -246,7 +248,7 @@ void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, co
 		follow(ASSIGN);
 		return;
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 
 	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
@@ -283,7 +285,7 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
@@ -316,7 +318,7 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			result = state->symbolicExecutionContext.record(tag);
@@ -400,6 +402,8 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// other than TraceTerminationException escapes the per-function loop below.
@@ -463,6 +467,17 @@ void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
 }
 void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
+}
+
+TraceContextBase* ExceptionBasedTraceContext::getRootContext() {
+	return this;
+}
+
+bool ExceptionBasedTraceContext::traceRegionBegin([[maybe_unused]] TagAddress callSite) {
+	return true;
+}
+
+void ExceptionBasedTraceContext::traceRegionEnd() {
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {

@@ -64,6 +64,12 @@ public:
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
+	TraceContextBase* getRootContext() override;
+
+	bool traceRegionBegin(TagAddress callSite) override;
+
+	void traceRegionEnd() override;
+
 	// --- Non-interface public API ---
 
 	~LazyTraceContext() override = default;
@@ -114,7 +120,7 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
-	Snapshot recordSnapshot();
+	Snapshot recordSnapshot() override;
 
 	// Passive mode state
 	bool paused_ = false;
