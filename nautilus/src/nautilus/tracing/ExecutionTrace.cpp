@@ -260,6 +260,20 @@ uint32_t ExecutionTrace::createBlock() {
 	return block->blockId;
 }
 
+Block& ExecutionTrace::createRegionEntryBlock() {
+	auto* enclosingBlock = &getCurrentBlock();
+	auto entryBlockId = createBlock();
+	auto& entryBlock = getBlock(entryBlockId);
+	appendJump(enclosingBlock, &entryBlock);
+	setCurrentBlock(entryBlockId);
+	return entryBlock;
+}
+
+void ExecutionTrace::appendJump(Block* from, Block* to) {
+	from->addOperation(makeTraceOp(*arena, Op::JMP, arena->create<BlockRef>(to->blockId)));
+	to->predecessors.emplace_back(from->blockId);
+}
+
 Block& ExecutionTrace::processControlFlowMerge(operation_identifier oi) {
 	if (oi.blockIndex == currentBlockIndex) {
 		throw RuntimeException("Invalid trace. This is maybe caused by a constant loop.");
