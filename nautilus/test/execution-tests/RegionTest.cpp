@@ -68,6 +68,18 @@ val<int64_t> regionEmptyAndUnnamed() {
 	return sum + 1;
 }
 
+val<int64_t> regionOuterDynamicInnerStatic(val<int64_t> n) {
+	val<int64_t> sum = 0;
+	val<int64_t> i = 0;
+	while (i < n) {
+		for (static_val<int32_t> j = 0; j < 3; j++) {
+			region([&]() { sum = sum + val<int64_t>(j); });
+		}
+		i = i + 1;
+	}
+	return sum;
+}
+
 void runRegionTests(engine::NautilusEngine& engine) {
 	SECTION("region basic") {
 		auto fn = engine.registerFunction(regionBasic);
@@ -105,10 +117,22 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		auto fn = engine.registerFunction(regionEmptyAndUnnamed);
 		REQUIRE(fn() == 1);
 	}
+
+	SECTION("region outer dynamic inner static") {
+		auto fn = engine.registerFunction(regionOuterDynamicInnerStatic);
+		REQUIRE(fn(2) == 6); // 2 * (0+1+2); region re-entered under 3 parent-hash values
+		REQUIRE(fn(0) == 0);
+	}
 }
 
+#ifdef ENABLE_TRACING
 TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
 }
+#else
+TEST_CASE("Region Compiler Test", "[region]") {
+	SKIP("Region compilation requires the tracing/compiler pipeline (ENABLE_TRACING)");
+}
+#endif
 
 } // namespace nautilus::engine
