@@ -49,6 +49,14 @@ void ExceptionBasedTraceContext::resume() {
 	setActiveTracer(this);
 	// Clear dynamic containers
 	staticVars.clear();
+	// Region memo/recorder caches are intentionally cleared here, at the top of
+	// EVERY symbolic-execution pass. The memo must NOT span the RECORD->FOLLOW
+	// boundary or span passes: a RegionExec continuation indexes into the trace
+	// layout of the pass that recorded it, and the P inputs (staticVars,
+	// aliveVars) are reset per pass, so an old entry keyed by a stale caller/P
+	// could jump the FOLLOW cursor to a continuation that no longer matches the
+	// current parent state (hash collision / ABA). This is safety, not hygiene
+	// (see docs/design/region.md "The memo is single-pass").
 	regionRecorders.clear();
 	regionMemos.clear();
 	activeRegions_.clear();

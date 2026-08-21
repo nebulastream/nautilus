@@ -41,6 +41,13 @@ void LazyTraceContext::resume() {
 	// restore on the leak path.
 	setActiveTracer(this);
 	staticVars.clear();
+	// Region memo/recorder caches are cleared here at the top of EVERY
+	// symbolic-execution pass (not just at trace start): a RegionExec's
+	// continuation indices reference the trace layout of the pass that recorded
+	// it, and the P inputs (staticVars, aliveVars) are reset per pass. Keeping a
+	// stale entry across the RECORD->FOLLOW boundary could jump the replay cursor
+	// to a continuation that no longer matches the current parent state (hash
+	// collision / ABA). Safety, not hygiene (docs/design/region.md §4.4).
 	regionRecorders.clear();
 	regionMemos.clear();
 	activeRegions_.clear();
