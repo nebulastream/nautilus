@@ -135,6 +135,22 @@ public:
 	}
 
 	/**
+	 * @brief Invokes @p fn with each alive variable id and its reference count.
+	 *
+	 * Zero-count entries are erased by decrement(), so every entry visited has a
+	 * positive count. The callback is called once per alive variable with its
+	 * current reference count.
+	 *
+	 * @param fn Callback invoked as fn(id, count) for each alive variable
+	 */
+	template <typename F>
+	inline void forEachAliveRef(F&& fn) const noexcept {
+		for (const auto& entry : counts) {
+			fn(entry.first, entry.second);
+		}
+	}
+
+	/**
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
 	 * This efficiently clears all counts without creating a temporary object.

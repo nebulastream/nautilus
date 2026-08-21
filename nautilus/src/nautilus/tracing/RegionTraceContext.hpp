@@ -29,7 +29,7 @@ class SymbolicExecutionContext;
  */
 class RegionTraceContext final : public TraceContextBase {
 public:
-	RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder, TagAddress callSite);
+	RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder);
 
 	// --- TracingInterface overrides ---
 
@@ -86,8 +86,6 @@ private:
 	TagAddress callSite_;
 	uint64_t P_;
 	ExecutionTrace& trace_;
-	// Refs made alive inside the region, used to escape-transfer on region exit.
-	std::vector<ValueRef> aliveDeltaRefs_;
 };
 
 } // namespace nautilus::tracing

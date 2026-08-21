@@ -3,10 +3,10 @@
 
 namespace nautilus::tracing {
 
-RegionTraceContext::RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder, TagAddress callSite)
-    : parent_(parent), recorder_(recorder), callSite_(callSite), trace_(parent->getRootContext()->getExecutionTrace()) {
+RegionTraceContext::RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder)
+    : parent_(parent), recorder_(recorder), trace_(parent->getRootContext()->getExecutionTrace()) {
+	callSite_ = 0;
 	P_ = parent_->currentStateHash();
-	trace_.createRegionEntryBlock();
 }
 
 TypedValueRef& RegionTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -77,7 +77,6 @@ bool RegionTraceContext::traceBool(const TypedValueRef& value, const double prob
 
 void RegionTraceContext::allocateValRef(ValueRef ref) {
 	aliveVars.increment(ref);
-	aliveDeltaRefs_.push_back(ref);
 }
 
 void RegionTraceContext::freeValRef(ValueRef ref) {
@@ -88,16 +87,19 @@ TraceContextBase* RegionTraceContext::getRootContext() {
 	return parent_->getRootContext();
 }
 
-bool RegionTraceContext::traceRegionBegin([[maybe_unused]] TagAddress callSite) {
+bool RegionTraceContext::traceRegionBegin(TagAddress callSite) {
+	callSite_ = callSite;
 	trace_.createRegionEntryBlock();
 	return true;
 }
 
 void RegionTraceContext::traceRegionEnd() {
 	if (aliveVars.size() > 0) {
-		for (auto ref : aliveDeltaRefs_) {
-			parent_->allocateValRef(ref);
-		}
+		aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
+			for (uint32_t i = 0; i < count; ++i) {
+				parent_->allocateValRef(ref);
+			}
+		});
 	} else {
 		getRootContext()->regionMemos[callSite_][P_] =
 		    RegionExec {trace_.currentOperationIndex, trace_.currentBlockIndex};
