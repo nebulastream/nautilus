@@ -83,6 +83,10 @@ TraceEnv& TraceContextBase::getEnv() {
 	return env;
 }
 
+ExecutionTrace& TraceContextBase::getExecutionTrace() {
+	return state->executionTrace;
+}
+
 std::string TraceContextBase::formatStaticVars() const {
 	std::string result;
 	for (size_t i = 0; i < staticVars.size(); i++) {

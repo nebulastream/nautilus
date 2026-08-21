@@ -204,6 +204,14 @@ public:
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
+	/// Returns the thread-local state's execution trace (the root's shared trace).
+	ExecutionTrace& getExecutionTrace();
+
+	/// Per-call-site tag recorders and per-call-site region memos. Owned by the
+	/// root context and shared with all of its regions.
+	std::unordered_map<TagAddress, TagRecorder*> regionRecorders;
+	std::unordered_map<TagAddress, RegionMemo> regionMemos;
+
 protected:
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext).
 	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
@@ -215,9 +223,6 @@ protected:
 	AliveVariableHash aliveVars;
 	// View over staticVars/aliveVars - the single storage location is the two members above.
 	TraceEnv env {staticVars, aliveVars};
-
-	std::unordered_map<TagAddress, TagRecorder*> regionRecorders;
-	std::unordered_map<TagAddress, RegionMemo> regionMemos;
 
 	std::string formatStaticVars() const;
 };
