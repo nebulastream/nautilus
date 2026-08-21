@@ -2,6 +2,8 @@
 
 #include "nautilus/config.hpp"
 
+#include <utility>
+
 #ifdef ENABLE_TRACING
 
 #include "nautilus/tracing/TracingInterface.hpp"
