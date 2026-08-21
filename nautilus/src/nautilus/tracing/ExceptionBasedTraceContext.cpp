@@ -43,6 +43,7 @@ void ExceptionBasedTraceContext::resume() {
 	staticVars.clear();
 	regionRecorders.clear();
 	regionMemos.clear();
+	activeRegions_.clear();
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
@@ -473,11 +474,48 @@ TraceContextBase* ExceptionBasedTraceContext::getRootContext() {
 	return this;
 }
 
-bool ExceptionBasedTraceContext::traceRegionBegin([[maybe_unused]] TagAddress callSite) {
+bool ExceptionBasedTraceContext::traceRegionBegin(TagAddress callSite) {
+	const uint64_t P = currentStateHash();
+	if (auto siteIter = regionMemos.find(callSite); siteIter != regionMemos.end()) {
+		if (auto memoIter = siteIter->second.find(P); memoIter != siteIter->second.end()) {
+			// Memo hit: skip the region body. In FOLLOW mode the enclosing
+			// trace is being replayed, so jump the shared cursor onto the
+			// recorded continuation. In RECORD mode nothing is emitted; the
+			// next post-region operation merges into the recorded continuation
+			// via the existing control-flow-merge machinery.
+			if (isFollowing()) {
+				auto& continuation = memoIter->second;
+				state->executionTrace.currentBlockIndex = continuation.continuationBlockIndex;
+				state->executionTrace.currentOperationIndex = continuation.continuationOperationIndex;
+			}
+			return false;
+		}
+	}
+
+	// Memo miss: create (or reuse) the per-call-site tag recorder, push a
+	// region context, and make it the active tracer for the body.
+	auto recorderNode = regionRecorders.try_emplace(callSite, callSite);
+	auto recorder = &recorderNode.first->second;
+
+	RegionFrame frame;
+	frame.region = std::make_unique<RegionTraceContext>(this, recorder);
+	frame.previous = getActiveTracer();
+	frame.region->traceRegionBegin(callSite);
+	setActiveTracer(frame.region.get());
+	activeRegions_.push_back(std::move(frame));
 	return true;
 }
 
 void ExceptionBasedTraceContext::traceRegionEnd() {
+	if (activeRegions_.empty()) {
+		return;
+	}
+	auto frame = std::move(activeRegions_.back());
+	activeRegions_.pop_back();
+	// Escape transfer / memo caching already happened in the region's own
+	// traceRegionEnd(); the root only restores the enclosing active tracer.
+	setActiveTracer(frame.previous);
+	frame.region->traceRegionEnd();
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {

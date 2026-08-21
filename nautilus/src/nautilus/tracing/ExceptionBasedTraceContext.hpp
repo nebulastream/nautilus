@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ExecutionTrace.hpp"
+#include "RegionTraceContext.hpp"
 #include "TraceContextBase.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
@@ -154,6 +155,15 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot() override;
+
+	/// Stack of active traced regions. Each frame records the owning region
+	/// context (so traceRegionEnd can pop it) and the active tracer that was in
+	/// effect before the region body began (so it can be restored).
+	struct RegionFrame {
+		std::unique_ptr<RegionTraceContext> region;
+		TracingInterface* previous;
+	};
+	std::vector<RegionFrame> activeRegions_;
 
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;

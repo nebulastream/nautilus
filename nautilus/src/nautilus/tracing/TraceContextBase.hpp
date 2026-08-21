@@ -224,8 +224,10 @@ public:
 	ExecutionTrace& getExecutionTrace();
 
 	/// Per-call-site tag recorders and per-call-site region memos. Owned by the
-	/// root context and shared with all of its regions.
-	std::unordered_map<TagAddress, TagRecorder*> regionRecorders;
+	/// root context and shared with all of its regions. TagRecorder is stored by
+	/// value (cleared with the map) so recorders are freed between trace
+	/// iterations instead of leaking on the heap.
+	std::unordered_map<TagAddress, TagRecorder> regionRecorders;
 	std::unordered_map<TagAddress, RegionMemo> regionMemos;
 
 protected:
