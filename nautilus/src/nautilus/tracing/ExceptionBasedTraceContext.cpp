@@ -39,6 +39,14 @@ ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& 
 }
 
 void ExceptionBasedTraceContext::resume() {
+	// Restore the thread-local active tracer to this root before clearing the
+	// active-region frame stack. If a RECORD-mode region body threw
+	// TraceTerminationException before traceRegionEnd ran (abandoned iteration),
+	// activeRegions_ still holds region objects whose region contexts may have
+	// installed themselves as the active tracer. Clearing their destructor-driven
+	// frames must not leave activeTracer pointing into freed memory; this is a
+	// no-op on the nominal path and a correct restore on the leak path.
+	setActiveTracer(this);
 	// Clear dynamic containers
 	staticVars.clear();
 	regionRecorders.clear();

@@ -32,6 +32,14 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 }
 
 void LazyTraceContext::resume() {
+	// Restore the thread-local active tracer to this root before clearing the
+	// active-region frame stack. If a RECORD-mode region body threw
+	// TraceTerminationException before the abandoned region's end ran,
+	// activeRegions_ still holds region objects whose contexts may be pointed at
+	// by activeTracer. Clearing those frames must not leave activeTracer dangling
+	// into freed memory; this is a no-op on the nominal path and a correct
+	// restore on the leak path.
+	setActiveTracer(this);
 	staticVars.clear();
 	regionRecorders.clear();
 	regionMemos.clear();
