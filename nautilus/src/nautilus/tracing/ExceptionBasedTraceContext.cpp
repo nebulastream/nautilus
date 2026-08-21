@@ -506,7 +506,7 @@ bool ExceptionBasedTraceContext::traceRegionBegin(TagAddress callSite) {
 	auto recorder = &recorderNode.first->second;
 
 	RegionFrame frame;
-	frame.region = std::make_unique<RegionTraceContext>(this, recorder);
+	frame.region = std::make_unique<RegionTraceContext>(this, recorder, !isFollowing());
 	frame.previous = getActiveTracer();
 	frame.region->traceRegionBegin(callSite);
 	setActiveTracer(frame.region.get());

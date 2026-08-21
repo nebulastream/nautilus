@@ -29,7 +29,7 @@ class SymbolicExecutionContext;
  */
 class RegionTraceContext final : public TraceContextBase {
 public:
-	RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder);
+	RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder, bool recording);
 
 	// --- TracingInterface overrides ---
 
@@ -86,6 +86,11 @@ private:
 	TagAddress callSite_;
 	uint64_t P_;
 	ExecutionTrace& trace_;
+	// True when this engagement *records* the region body into a fresh entry
+	// block; false when it is a symbolic FOLLOW replay of an already-recorded
+	// open (non-memoizable) region, in which case the body is transparently
+	// followed and no entry block is created (issue: region internal branch).
+	bool recording_;
 };
 
 } // namespace nautilus::tracing

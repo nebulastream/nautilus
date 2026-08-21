@@ -3,8 +3,9 @@
 
 namespace nautilus::tracing {
 
-RegionTraceContext::RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder)
-    : parent_(parent), recorder_(recorder), trace_(parent->getRootContext()->getExecutionTrace()) {
+RegionTraceContext::RegionTraceContext(TraceContextBase* parent, TagRecorder* recorder, bool recording)
+    : parent_(parent), recorder_(recorder), trace_(parent->getRootContext()->getExecutionTrace()),
+      recording_(recording) {
 	callSite_ = 0;
 	P_ = parent_->currentStateHash();
 }
@@ -89,11 +90,24 @@ TraceContextBase* RegionTraceContext::getRootContext() {
 
 bool RegionTraceContext::traceRegionBegin(TagAddress callSite) {
 	callSite_ = callSite;
-	trace_.createRegionEntryBlock();
+	// On a recording engagement create a dedicated region entry block. On a
+	// FOLLOW replay of a non-memoized (open) region the body's ops already live
+	// in the trace, so creating a fresh (empty) entry block here would leave the
+	// shared cursor in an empty block and the body's follow() reads past its end
+	// (crash "Current operation index out of bounds" on regions with internal
+	// control flow). The body is transparently followed instead.
+	if (recording_) {
+		trace_.createRegionEntryBlock();
+	}
 	return true;
 }
 
 void RegionTraceContext::traceRegionEnd() {
+	if (!recording_) {
+		// FOLLOW replay: the body was already recorded; there is nothing new to
+		// memoize or escape-transfer, and a bogus continuation must not be cached.
+		return;
+	}
 	if (aliveVars.size() > 0) {
 		aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
 			for (uint32_t i = 0; i < count; ++i) {
