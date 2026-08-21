@@ -1,16 +1,20 @@
 
 #pragma once
 
-#include "ExceptionBasedTraceContext.hpp"
+#include "ExecutionTrace.hpp"
+#include "RegionTraceContext.hpp"
+#include "TraceContextBase.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include <functional>
 #include <list>
 #include <memory>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+class TraceModule;
 
 /**
  * @brief Exception-free tracing context that always completes function execution.
@@ -62,6 +66,12 @@ public:
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
+	TraceContextBase* getRootContext() override;
+
+	bool traceRegionBegin(TagAddress callSite) override;
+
+	void traceRegionEnd() override;
+
 	// --- Non-interface public API ---
 
 	~LazyTraceContext() override = default;
@@ -112,12 +122,15 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
-	Snapshot recordSnapshot();
-	std::string formatStaticVars() const;
+	Snapshot recordSnapshot() override;
 
-	// Persistent state - reset between trace iterations via resume()
-	std::vector<StaticVarHolder> staticVars;
-	AliveVariableHash aliveVars;
+	// Active traced regions. Each frame tracks the owning region context and
+	// the active tracer that was in effect before the region body began.
+	struct RegionFrame {
+		std::unique_ptr<RegionTraceContext> region;
+		TracingInterface* previous;
+	};
+	std::vector<RegionFrame> activeRegions_;
 
 	// Passive mode state
 	bool paused_ = false;

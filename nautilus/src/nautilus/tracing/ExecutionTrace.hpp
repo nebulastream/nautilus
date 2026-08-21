@@ -199,6 +199,22 @@ public:
 	uint32_t createBlock();
 
 	/**
+	 * @brief Creates a fresh block as the entry of a traced region scope, sets
+	 * it as the current block, and wires a jump from the previous (enclosing)
+	 * block to it.
+	 * @return The new entry block.
+	 */
+	Block& createRegionEntryBlock();
+
+	/**
+	 * @brief Emits a jump operation from @p from to @p to and records @p from
+	 * as a predecessor of @p to.
+	 * @param from The source block of the jump.
+	 * @param to The target block of the jump.
+	 */
+	void appendJump(Block* from, Block* to);
+
+	/**
 	 * @brief Returns the reference to a specific block
 	 * @param blockIndex
 	 * @return Block&
