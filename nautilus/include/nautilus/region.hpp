@@ -1,7 +1,6 @@
 #pragma once
 
 #include "nautilus/config.hpp"
-
 #include <utility>
 
 #ifdef ENABLE_TRACING
