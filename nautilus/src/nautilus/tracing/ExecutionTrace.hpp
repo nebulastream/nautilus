@@ -4,9 +4,11 @@
 #include "Block.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "tag/TagRecorder.hpp"
 #include <initializer_list>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -323,5 +325,51 @@ public:
 	 */
 	operation_identifier getNextOperationIdentifier();
 };
+
+// Defined inline (rather than in ExecutionTrace.cpp) so that callers in other
+// translation units (LazyTraceContext.cpp, ExceptionBasedTraceContext.cpp) can
+// inline these accessors at their many hot call sites. See issue #432.
+inline Block& ExecutionTrace::getCurrentBlock() {
+	if (currentBlockIndex >= blocks.size()) {
+		throw RuntimeException("Current block index out of bounds: " + std::to_string(currentBlockIndex));
+	}
+	return *blocks[currentBlockIndex];
+}
+
+inline void ExecutionTrace::setCurrentBlock(uint32_t index) {
+	if (index >= blocks.size()) {
+		throw RuntimeException("Cannot set current block to out of bounds index: " + std::to_string(index));
+	}
+	currentOperationIndex = 0;
+	currentBlockIndex = index;
+}
+
+inline void ExecutionTrace::nextOperation() {
+	this->currentOperationIndex++;
+	auto& block = getCurrentBlock();
+	if (currentOperationIndex >= block.operations.size()) {
+		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
+	}
+	auto* currentOp = block.operations[currentOperationIndex];
+	if (currentOp->op == JMP) {
+		auto* nextBlock = std::get<BlockRef*>(currentOp->input[0]);
+		setCurrentBlock(nextBlock->block);
+	}
+}
+
+inline TraceOperation& ExecutionTrace::getCurrentOperation() {
+	if (currentOperationIndex >= getCurrentBlock().operations.size()) {
+		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
+	}
+	while (getCurrentBlock().operations[currentOperationIndex]->op == JMP) {
+		auto* nextBlock = std::get<BlockRef*>(getCurrentBlock().operations[currentOperationIndex]->input[0]);
+		setCurrentBlock(nextBlock->block);
+		if (currentOperationIndex >= getCurrentBlock().operations.size()) {
+			throw RuntimeException("Current operation index out of bounds after JMP: " +
+			                       std::to_string(currentOperationIndex));
+		}
+	}
+	return *getCurrentBlock().operations[currentOperationIndex];
+}
 
 } // namespace nautilus::tracing

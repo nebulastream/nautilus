@@ -109,21 +109,6 @@ uint32_t ExecutionTrace::getCurrentBlockIndex() const {
 	return currentBlockIndex;
 }
 
-Block& ExecutionTrace::getCurrentBlock() {
-	if (currentBlockIndex >= blocks.size()) {
-		throw RuntimeException("Current block index out of bounds: " + std::to_string(currentBlockIndex));
-	}
-	return *blocks[currentBlockIndex];
-}
-
-void ExecutionTrace::setCurrentBlock(uint32_t index) {
-	if (index >= blocks.size()) {
-		throw RuntimeException("Cannot set current block to out of bounds index: " + std::to_string(index));
-	}
-	currentOperationIndex = 0;
-	currentBlockIndex = index;
-}
-
 std::vector<Block*>& ExecutionTrace::getBlocks() {
 	return blocks;
 }
@@ -223,34 +208,6 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	operations.push_back(cmpOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
-}
-
-void ExecutionTrace::nextOperation() {
-	this->currentOperationIndex++;
-	auto& block = getCurrentBlock();
-	if (currentOperationIndex >= block.operations.size()) {
-		throw RuntimeException("Operation index out of bounds: " + std::to_string(currentOperationIndex));
-	}
-	auto* currentOp = block.operations[currentOperationIndex];
-	if (currentOp->op == JMP) {
-		auto* nextBlock = std::get<BlockRef*>(currentOp->input[0]);
-		setCurrentBlock(nextBlock->block);
-	}
-}
-
-TraceOperation& ExecutionTrace::getCurrentOperation() {
-	if (currentOperationIndex >= getCurrentBlock().operations.size()) {
-		throw RuntimeException("Current operation index out of bounds: " + std::to_string(currentOperationIndex));
-	}
-	while (getCurrentBlock().operations[currentOperationIndex]->op == JMP) {
-		auto* nextBlock = std::get<BlockRef*>(getCurrentBlock().operations[currentOperationIndex]->input[0]);
-		setCurrentBlock(nextBlock->block);
-		if (currentOperationIndex >= getCurrentBlock().operations.size()) {
-			throw RuntimeException("Current operation index out of bounds after JMP: " +
-			                       std::to_string(currentOperationIndex));
-		}
-	}
-	return *getCurrentBlock().operations[currentOperationIndex];
 }
 
 uint32_t ExecutionTrace::createBlock() {
