@@ -78,19 +78,23 @@ Tag* TagRecorder::createReferenceTagBacktrace() {
 	                           " which is not supported in Nautilus code.");
 }
 
-Tag* TagRecorder::createReferenceTagBuildin() {
+// Walks the frame-pointer chain in a single linear pass instead of resolving each frame's return
+// address independently via __builtin_return_address(N), which re-walks N frames from the top every
+// call and makes a loop over depth 0..d cost O(d^2) frame dereferences in total (see issue #426).
+// This relies on the frame-pointer chain being intact, which the project guarantees globally via
+// -fno-omit-frame-pointer. The layout (frame[0] = saved/previous frame pointer, frame[1] = return
+// address) matches the frame-record convention used by both the x86-64 SysV and AArch64 AAPCS64 ABIs.
+__attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 	auto* currentTagNode = &rootTagThreeNode;
 #pragma GCC diagnostic ignored "-Wframe-address"
-	[[maybe_unused]] auto tag1 = __builtin_return_address(0);
-	[[maybe_unused]] auto tag2 = __builtin_return_address(1);
-	[[maybe_unused]] auto tag3 = __builtin_return_address(1);
-
-	for (size_t i = 0; i <= MAX_TAG_SIZE; i++) {
-		auto tagAddress = (TagAddress) getReturnAddress(i);
+	auto** frame = static_cast<void**>(__builtin_frame_address(0));
+	for (size_t i = 0; i <= MAX_TAG_SIZE && frame != nullptr; i++) {
+		auto tagAddress = (TagAddress) frame[1];
 		if (tagAddress == startAddress) {
 			return currentTagNode;
 		}
 		currentTagNode = currentTagNode->append(tagAddress);
+		frame = static_cast<void**>(frame[0]);
 	}
 	throw TagCreationException("Stack is too deep. This could indicate the use "
 	                           "of recursive control-flow,"
