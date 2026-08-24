@@ -1536,7 +1536,7 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 	// internalFunctionPtrs) are handled by the callee's own captured transport:
 	// no thunk here, the caller only runs the pending-exception check.
 	short calleeRegister = funcPtrRegister;
-	if (callNeedsCapture(opt) && opt->getCaptureFunc() != nullptr) {
+	if (transport_.callNeedsCaptureThunk(opt)) {
 		void* thunk = opt->getCaptureFunc();
 		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcPtrRegister, -1, -1);
 		calleeRegister = registerProvider.allocPinnedRegister();
@@ -1700,7 +1700,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	// internalFunctionPtrs) are handled by the callee's own captured transport:
 	// no thunk here, the caller only runs the pending-exception check.
 	short calleeRegister = funcInfoRegister;
-	if (callNeedsCapture(opt) && opt->getCaptureFunc() != nullptr) {
+	if (transport_.callNeedsCaptureThunk(opt)) {
 		void* thunk = opt->getCaptureFunc();
 		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcInfoRegister, -1, -1);
 		calleeRegister = registerProvider.allocPinnedRegister();

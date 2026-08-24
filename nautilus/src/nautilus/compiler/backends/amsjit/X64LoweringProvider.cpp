@@ -1385,7 +1385,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// calls need the capture thunk (mirrors TBC's visitProxyCall).
 	auto it = funcNodes_.find(op->getFunctionName());
 	const bool isInternal = it != funcNodes_.end();
-	const bool needsCapture = !isInternal && callNeedsCapture(op);
+	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
@@ -1457,7 +1457,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
 	// Build callee signature from IR type information.
-	const bool needsCapture = callNeedsCapture(op);
+	const bool needsCapture = transport_.callNeedsCaptureThunk(op);
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	if (needsCapture) {
@@ -1708,13 +1708,11 @@ const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCal
 }
 
 void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
-	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
-		return proxy->getCaptureFunc();
+	void* thunk = CapturedExceptionTransport::captureThunkFor(call);
+	if (thunk == nullptr) {
+		throw NotImplementedException("asmjit: captured-exception call has no recorded capture wrapper");
 	}
-	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
-		return indirect->getCaptureFunc();
-	}
-	throw NotImplementedException("asmjit: captured-exception call has no recorded capture wrapper");
+	return thunk;
 }
 
 void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call) {

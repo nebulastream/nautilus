@@ -59,9 +59,12 @@ void dyncallCallV(const OpCode& op, RegisterFile& regs) {
 	try {
 		Dyncall::getVM().callVoid(value);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 }
@@ -72,9 +75,12 @@ void dyncallCallB(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callB(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<bool>(regs, op.output, returnValue);
@@ -86,9 +92,12 @@ void dyncallCallI8(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callI8(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<int8_t>(regs, op.output, returnValue);
@@ -100,9 +109,12 @@ void dyncallCallI16(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callI16(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<int16_t>(regs, op.output, returnValue);
@@ -114,9 +126,12 @@ void dyncallCallI32(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callI32(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<int32_t>(regs, op.output, returnValue);
@@ -128,9 +143,12 @@ void dyncallCallI64(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callI64(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<int64_t>(regs, op.output, returnValue);
@@ -142,9 +160,12 @@ void dyncallCallPtr(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callPtr(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<void*>(regs, op.output, returnValue);
@@ -156,9 +177,12 @@ void dyncallCallf(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callF(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<float>(regs, op.output, returnValue);
@@ -170,9 +194,12 @@ void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	try {
 		returnValue = Dyncall::getVM().callD(address);
 	} catch (...) {
-		auto* frame = currentExceptionFrame();
-		if (frame && !frame->pending) {
-			frame->pending = std::current_exception();
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
 		}
 	}
 	writeReg<double>(regs, op.output, returnValue);

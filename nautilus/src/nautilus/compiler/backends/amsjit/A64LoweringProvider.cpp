@@ -855,7 +855,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// calls need the capture thunk (mirrors X64's visitProxyCall).
 	auto it = funcNodes_.find(op->getFunctionName());
 	const bool isInternal = it != funcNodes_.end();
-	const bool needsCapture = !isInternal && callNeedsCapture(op);
+	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
 
 	FuncSignature sig;
@@ -926,7 +926,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
-	const bool needsCapture = callNeedsCapture(op);
+	const bool needsCapture = transport_.callNeedsCaptureThunk(op);
 
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));

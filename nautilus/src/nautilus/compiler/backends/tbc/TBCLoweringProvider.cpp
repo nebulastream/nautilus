@@ -996,13 +996,7 @@ private:
 	/// wrapper is generated at the typed invoke() site and threaded through the
 	/// trace into the IR; backends simply read it.
 	void* resolveCaptureThunk(const ir::Operation* call) {
-		if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
-			return proxy->getCaptureFunc();
-		}
-		if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
-			return indirect->getCaptureFunc();
-		}
-		return nullptr;
+		return CapturedExceptionTransport::captureThunkFor(call);
 	}
 
 	void visitProxyCall(ir::ProxyCallOperation* opt, int block, RegisterFrame& frame) {
@@ -1030,8 +1024,7 @@ private:
 		// the raw target, so an exception is caught before it crosses dyncall's
 		// assembly trampoline. The raw target becomes the thunk's first argument
 		// (a pinned constant slot) and the thunk itself is the callee.
-		if (callNeedsCapture(opt)) {
-			void* thunk = resolveCaptureThunk(opt);
+		if (void* thunk = transport.callNeedsCaptureThunk(opt) ? resolveCaptureThunk(opt) : nullptr) {
 			const uint16_t targetReg = constSlot(reinterpret_cast<uint64_t>(opt->getFunctionPtr()));
 			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
 			site.argRegs.insert(site.argRegs.begin(), targetReg);
@@ -1061,8 +1054,7 @@ private:
 		// the thunk's first argument and call the capture thunk via CALL_EXT
 		// (which reads site.target), so the exception is caught in a real C++
 		// frame before crossing dyncall's trampoline.
-		if (callNeedsCapture(opt)) {
-			void* thunk = resolveCaptureThunk(opt);
+		if (void* thunk = transport.callNeedsCaptureThunk(opt) ? resolveCaptureThunk(opt) : nullptr) {
 			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
 			site.argRegs.insert(site.argRegs.begin(), functionReg);
 			site.target = thunk;

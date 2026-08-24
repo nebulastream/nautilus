@@ -1,4 +1,6 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 
 namespace nautilus::compiler {
 
@@ -28,6 +30,16 @@ size_t CapturedExceptionTransport::getPadIndexForCall(const ir::Operation* call)
 const ir::LandingPadBlock* CapturedExceptionTransport::getPadForCall(const ir::Operation* call) const {
 	const auto padIndex = getPadIndexForCall(call);
 	return padIndex == ir::noLandingPad ? nullptr : &region_->pads[padIndex];
+}
+
+void* CapturedExceptionTransport::captureThunkFor(const ir::Operation* call) {
+	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
+		return proxy->getCaptureFunc();
+	}
+	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
+		return indirect->getCaptureFunc();
+	}
+	return nullptr;
 }
 
 } // namespace nautilus::compiler

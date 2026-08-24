@@ -234,11 +234,12 @@ public:
 		 * @return returns the result of the function if any
 		 */
 		R operator()(Args... arguments) {
-			ExceptionFrame frame;
-			const bool useFrame = exceptionMode == ExceptionPropagationMode::CapturedHostRethrow;
-			if (useFrame) {
-				pushExceptionFrame(&frame);
-			}
+			// The guard pops on every exit path. Popping by hand after the call
+			// would be skipped whenever the call itself throws -- a bad_any_cast
+			// out of castGenericResult, or an interpreter propagating -- leaving
+			// the thread-local stack pointing at this destroyed frame for the
+			// rest of the thread's life.
+			ExceptionFrameScope frameScope(exceptionMode == ExceptionPropagationMode::CapturedHostRethrow);
 
 			auto doCall = [&]() -> R {
 				if (std::holds_alternative<FunctionType*>(func)) {
@@ -277,20 +278,14 @@ public:
 
 			if constexpr (!std::is_void_v<R>) {
 				R result = doCall();
-				if (useFrame) {
-					popExceptionFrame();
-					if (frame.pending) {
-						std::rethrow_exception(frame.pending);
-					}
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
 				}
 				return result;
 			} else {
 				doCall();
-				if (useFrame) {
-					popExceptionFrame();
-					if (frame.pending) {
-						std::rethrow_exception(frame.pending);
-					}
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
 				}
 			}
 		}

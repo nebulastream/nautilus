@@ -44,6 +44,22 @@ public:
 	/// exceptional call site or has no destructors to run.
 	[[nodiscard]] const ir::LandingPadBlock* getPadForCall(const ir::Operation* call) const;
 
+	/// The recorded `captureThrowingCall<R, Args...>` thunk for @p call, or
+	/// nullptr when the call has none.
+	///
+	/// A capture site without a thunk must be lowered as a *direct* call plus
+	/// the pending-exception check. Routing it through a null thunk would call
+	/// address 0, with the argument list shifted by the thunk's extra target
+	/// parameter. Not every exceptional call site carries a thunk:
+	/// `traceNautilusCallWithExceptionHandling` records none, since a nested
+	/// Nautilus callee captures through its own transport.
+	[[nodiscard]] static void* captureThunkFor(const ir::Operation* call);
+
+	/// True when @p call both needs capture and has a thunk to capture through.
+	[[nodiscard]] bool callNeedsCaptureThunk(const ir::Operation* call) const {
+		return callNeedsCapture(call) && captureThunkFor(call) != nullptr;
+	}
+
 	/// The underlying side table, or nullptr when the function has none.
 	[[nodiscard]] const ir::FunctionExceptionRegion* getRegion() const {
 		return region_;
