@@ -112,6 +112,7 @@ When you register a function with the Nautilus engine, the following steps occur
 - [Loops](loops.md) -- Writing traced for and while loops
 - [Pointers](pointers.md) -- Working with `val<T*>` pointer types
 - [Functions](functions.md) -- Calling and registering functions
+- [Regions](region.md) -- Inline isolated scopes with `nautilus::region()`
 - [Static Values (`static_val<T>`)](static-val.md) -- Compile-time constant values
 - [Engine Configuration and Backends](engine.md) -- Backend selection, options, and debugging output
 - [Tracing Internals](tracing.md) -- How the tracing system works under the hood

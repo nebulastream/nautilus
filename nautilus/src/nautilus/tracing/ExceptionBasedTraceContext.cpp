@@ -10,10 +10,7 @@
 #include "symbolic_execution/TraceTerminationException.hpp"
 #include <cassert>
 #include <cstddef>
-#include <cxxabi.h>
-#include <dlfcn.h>
 #include <fmt/format.h>
-#include <sstream>
 
 namespace fmt {
 template <>
@@ -27,11 +24,6 @@ namespace nautilus::tracing {
 // Thread-local ExceptionBasedTraceContext object (not a pointer)
 // This is allocated in thread-local storage - zero heap allocation overhead
 static thread_local ExceptionBasedTraceContext traceContext;
-
-TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
-    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
-	// TraceState only holds references - the actual objects are stack-allocated in trace()
-}
 
 bool ExceptionBasedTraceContext::isActive() const {
 	return state.has_value();
@@ -47,8 +39,27 @@ ExceptionBasedTraceContext* ExceptionBasedTraceContext::initialize(TagRecorder& 
 }
 
 void ExceptionBasedTraceContext::resume() {
+	// Restore the thread-local active tracer to this root before abandoning the
+	// active-region frame stack. If a RECORD-mode region body threw
+	// TraceTerminationException before traceRegionEnd ran (abandoned iteration),
+	// activeTracer still points at that region's context; this pass is starting
+	// over, so it must point at the root again. (The contexts themselves live in
+	// regionPool_ and outlive the frames, so this is about pointing at the right
+	// tracer, not about avoiding a dangling one.) No-op on the nominal path.
+	setActiveTracer(this);
 	// Clear dynamic containers
 	staticVars.clear();
+	// Region memo/recorder caches are intentionally cleared here, at the top of
+	// EVERY symbolic-execution pass. The memo must NOT span the RECORD->FOLLOW
+	// boundary or span passes: a RegionExec continuation indexes into the trace
+	// layout of the pass that recorded it, and the P inputs (staticVars,
+	// aliveVars) are reset per pass, so an old entry keyed by a stale caller/P
+	// could jump the FOLLOW cursor to a continuation that no longer matches the
+	// current parent state (hash collision / ABA). This is safety, not hygiene
+	// (see docs/region.md).
+	regionRecorders.clear();
+	regionMemos.clear();
+	activeRegions_.clear();
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
@@ -102,7 +113,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceConstant(Type type, const Consta
 	if (isFollowing()) {
 		return follow(op);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
@@ -120,7 +131,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceOperation(Op op, OnCreation&& on
 	if (isFollowing()) {
 		return follow(op);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
@@ -144,7 +155,7 @@ TypedValueRef& ExceptionBasedTraceContext::traceCopy(const TypedValueRef& ref) {
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 	auto globalTabIter = trace.globalTagMap.find(tag);
 	if (globalTabIter != trace.globalTagMap.end()) {
@@ -254,7 +265,7 @@ void ExceptionBasedTraceContext::traceAssignment(const TypedValueRef& target, co
 		follow(ASSIGN);
 		return;
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 
 	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
@@ -291,7 +302,7 @@ void ExceptionBasedTraceContext::traceReturnOperation(Type resultType, const Typ
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
@@ -316,31 +327,6 @@ TypedValueRef& ExceptionBasedTraceContext::traceTernaryOp(Op op, Type resultType
 	});
 }
 
-std::string ExceptionBasedTraceContext::formatStaticVars() const {
-	std::string result;
-	for (size_t i = 0; i < staticVars.size(); i++) {
-		if (i > 0) {
-			result += ", ";
-		}
-		result += std::to_string(getStaticVarValue(staticVars[i]));
-	}
-	return result;
-}
-
-void ExceptionBasedTraceContext::pushStaticVal(void* valPtr, size_t size) {
-	staticVars.emplace_back(valPtr, size);
-	if (log::options::getLogStaticVars()) {
-		log::info("pushStaticVal: [{}]", formatStaticVars());
-	}
-}
-
-void ExceptionBasedTraceContext::popStaticVal() {
-	if (log::options::getLogStaticVars()) {
-		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
-	}
-	staticVars.pop_back();
-}
-
 bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	bool result;
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
@@ -349,7 +335,7 @@ bool ExceptionBasedTraceContext::traceBool(const TypedValueRef& value, const dou
 		result = state->symbolicExecutionContext.follow();
 	} else {
 		// record
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			result = state->symbolicExecutionContext.record(tag);
@@ -433,6 +419,8 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// other than TraceTerminationException escapes the per-function loop below.
@@ -498,69 +486,72 @@ void ExceptionBasedTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-std::string TraceContextBase::getMangledName(void* fnptr) {
-	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
-		return it->second;
-	}
-
-	Dl_info info;
-	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
-		mangledNameCache[fnptr] = info.dli_sname;
-		return info.dli_sname;
-	}
-	std::stringstream ss;
-	ss << fnptr;
-	std::string ptrStr = ss.str();
-	mangledNameCache[fnptr] = ptrStr;
-	return ptrStr;
+TraceContextBase* ExceptionBasedTraceContext::getRootContext() {
+	return this;
 }
 
-std::string TraceContextBase::getFunctionName(void* fnptr, const std::string& mangledName) {
-	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
-
-	if (normalizeFunctionNames) {
-		auto it = state->normalizedFunctionNameCache.find(fnptr);
-		if (it != state->normalizedFunctionNameCache.end()) {
-			return "runtimeFunc" + std::to_string(it->second);
+bool ExceptionBasedTraceContext::traceRegionBegin(TagAddress callSite) {
+	const uint64_t P = currentStateHash();
+	if (auto siteIter = regionMemos.find(callSite); siteIter != regionMemos.end()) {
+		if (auto memoIter = siteIter->second.find(P); memoIter != siteIter->second.end()) {
+			// Memo hit: skip the region body. In FOLLOW mode the enclosing
+			// trace is being replayed, so jump the shared cursor onto the
+			// recorded continuation. In RECORD mode nothing is emitted; the
+			// next post-region operation merges into the recorded continuation
+			// via the existing control-flow-merge machinery.
+			if (isFollowing()) {
+				auto& continuation = memoIter->second;
+				state->executionTrace.currentBlockIndex = continuation.continuationBlockIndex;
+				state->executionTrace.currentOperationIndex = continuation.continuationOperationIndex;
+			}
+			return false;
 		}
-		uint32_t index = state->nextNormalizedFunctionIndex++;
-		state->normalizedFunctionNameCache[fnptr] = index;
-		return "runtimeFunc" + std::to_string(index);
 	}
 
-	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
+	// Memo miss: create (or reuse) the per-call-site tag recorder, push a
+	// region context, and make it the active tracer for the body.
+	auto recorderNode = regionRecorders.try_emplace(callSite, callSite, state->executionTrace.getArena());
+	auto recorder = &recorderNode.first->second;
 
-	if (!demangleFunctionNames) {
-		return mangledName;
+	const size_t depth = activeRegions_.size();
+	if (depth == regionPool_.size()) {
+		regionPool_.push_back(std::make_unique<RegionTraceContext>(this, recorder, !isFollowing()));
+	} else {
+		regionPool_[depth]->reinitialize(this, recorder, !isFollowing());
 	}
+	auto* region = regionPool_[depth].get();
 
-	int status;
-	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
-	if (status == 0 && demangled != nullptr) {
-		std::string result(demangled);
-		std::free(demangled);
-		return result;
-	}
-
-	return mangledName;
+	RegionFrame frame;
+	frame.region = region;
+	frame.previous = getActiveTracer();
+	region->traceRegionBegin(callSite);
+	setActiveTracer(region);
+	activeRegions_.push_back(frame);
+	return true;
 }
 
-constexpr size_t fnv_prime = 0x100000001b3;
-constexpr size_t offset_basis = 0xcbf29ce484222325;
+bool ExceptionBasedTraceContext::traceRegionContinue() {
+	// Region-local exploration (RegionTraceContext::traceRegionContinue) is
+	// only implemented against the non-throwing (Lazy) substrate; regions
+	// driven by exception-based tracing keep today's single-invocation
+	// behavior, unchanged.
+	return false;
+}
 
-uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
-	size_t hash = offset_basis;
-	for (auto& entry : data) {
-		uint64_t val = 0;
-		std::memcpy(&val, entry.ptr, entry.size);
-		hash ^= val;
-		hash *= fnv_prime;
+void ExceptionBasedTraceContext::traceRegionEnd() {
+	if (activeRegions_.empty()) {
+		return;
 	}
-	return hash;
+	auto frame = activeRegions_.back();
+	activeRegions_.pop_back();
+	// Escape transfer / memo caching already happened in the region's own
+	// traceRegionEnd(); the root only restores the enclosing active tracer.
+	setActiveTracer(frame.previous);
+	frame.region->traceRegionEnd();
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), currentStateHash()};
 }
 
 } // namespace nautilus::tracing

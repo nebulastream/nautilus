@@ -1,16 +1,20 @@
 
 #pragma once
 
-#include "ExceptionBasedTraceContext.hpp"
+#include "ExecutionTrace.hpp"
+#include "RegionTraceContext.hpp"
+#include "TraceContextBase.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include <functional>
 #include <list>
 #include <memory>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
 class SymbolicExecutionContext;
+class TraceModule;
 
 /**
  * @brief Exception-free tracing context that always completes function execution.
@@ -62,6 +66,14 @@ public:
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
+	TraceContextBase* getRootContext() override;
+
+	bool traceRegionBegin(TagAddress callSite) override;
+
+	bool traceRegionContinue() override;
+
+	void traceRegionEnd() override;
+
 	// --- Non-interface public API ---
 
 	~LazyTraceContext() override = default;
@@ -112,12 +124,25 @@ private:
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
-	Snapshot recordSnapshot();
-	std::string formatStaticVars() const;
+	Snapshot recordSnapshot() override;
 
-	// Persistent state - reset between trace iterations via resume()
-	std::vector<StaticVarHolder> staticVars;
-	AliveVariableHash aliveVars;
+	// Active traced regions. Each frame borrows a region context from
+	// regionPool_ (it does not own it) and records the active tracer that was in
+	// effect before the region body began.
+	struct RegionFrame {
+		RegionTraceContext* region;
+		TracingInterface* previous;
+	};
+	std::vector<RegionFrame> activeRegions_;
+
+	// Pool of region contexts, indexed by nesting depth. Regions nest strictly
+	// LIFO, so the context at index activeRegions_.size() is always free when a
+	// region is entered; it is re-armed via RegionTraceContext::reinitialize()
+	// rather than heap-allocated afresh. At the target usage pattern (one region
+	// per branch) the pool stays at size 1 and is reused for every region in the
+	// trace, instead of constructing RegionTraceContext -- and the several
+	// containers it inherits from TraceContextBase -- once per region entry.
+	std::vector<std::unique_ptr<RegionTraceContext>> regionPool_;
 
 	// Passive mode state
 	bool paused_ = false;

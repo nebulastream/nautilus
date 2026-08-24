@@ -43,6 +43,8 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
     {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
+    {"chainedIf10Region", details::createFunctionWrapper(chainedIf10Region)},
+    {"chainedIf100Region", details::createFunctionWrapper(chainedIf100Region)},
 };
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {

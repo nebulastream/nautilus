@@ -156,6 +156,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [Loops](docs/loops.md) | Writing traced for and while loops |
 | [Pointers](docs/pointers.md) | Working with `val<T*>` pointer types |
 | [Functions](docs/functions.md) | Calling and registering functions |
+| [Regions](docs/region.md) | Inline isolated scopes with `nautilus::region()` |
 | [Static Values (`static_val<T>`)](docs/static-val.md) | Compile-time constant values |
 | [Engine Configuration](docs/engine.md) | Backend selection, options, and debugging output |
 | [Tracing Internals](docs/tracing.md) | How the tracing system works under the hood |

@@ -32,7 +32,25 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
 }
 
 void LazyTraceContext::resume() {
+	// Restore the thread-local active tracer to this root before abandoning the
+	// active-region frame stack. If a RECORD-mode region body threw
+	// TraceTerminationException before the abandoned region's end ran,
+	// activeTracer still points at that region's context; this pass is starting
+	// over, so it must point at the root again. (The contexts themselves live in
+	// regionPool_ and outlive the frames, so this is about pointing at the right
+	// tracer, not about avoiding a dangling one.) No-op on the nominal path.
+	setActiveTracer(this);
 	staticVars.clear();
+	// Region memo/recorder caches are cleared here at the top of EVERY
+	// symbolic-execution pass (not just at trace start): a RegionExec's
+	// continuation indices reference the trace layout of the pass that recorded
+	// it, and the P inputs (staticVars, aliveVars) are reset per pass. Keeping a
+	// stale entry across the RECORD->FOLLOW boundary could jump the replay cursor
+	// to a continuation that no longer matches the current parent state (hash
+	// collision / ABA). Safety, not hygiene (see docs/region.md).
+	regionRecorders.clear();
+	regionMemos.clear();
+	activeRegions_.clear();
 	aliveVars.reset();
 	paused_ = false;
 }
@@ -86,7 +104,7 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 	if (isFollowing()) {
 		return follow(op);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto globalTabIter = state->executionTrace.globalTagMap.find(tag);
 	if (globalTabIter != state->executionTrace.globalTagMap.end()) {
 		auto& ref = globalTabIter->second;
@@ -107,7 +125,7 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	if (isFollowing()) {
 		return follow(op);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
@@ -135,7 +153,7 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 	if (isFollowing()) {
 		return follow(ASSIGN);
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 	auto globalTabIter = trace.globalTagMap.find(tag);
 	if (globalTabIter != trace.globalTagMap.end()) {
@@ -260,7 +278,7 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 		follow(ASSIGN);
 		return;
 	}
-	auto tag = recordSnapshot();
+	auto tag = getActiveTracer()->recordSnapshot();
 	auto& trace = state->executionTrace;
 
 	// Tag identity is purely a call-stack return-address chain (TagRecorder.cpp),
@@ -299,7 +317,7 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		state->executionTrace.addReturn(tag, resultType, ref);
 	}
 }
@@ -348,7 +366,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
 		// record
-		auto tag = recordSnapshot();
+		auto tag = getActiveTracer()->recordSnapshot();
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
 			auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
@@ -440,6 +458,8 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
+	regionRecorders.clear();
+	regionMemos.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// escapes the per-function loop below.
@@ -527,19 +547,72 @@ void LazyTraceContext::popStaticVal() {
 	staticVars.pop_back();
 }
 
-std::string LazyTraceContext::formatStaticVars() const {
-	std::string result;
-	for (size_t i = 0; i < staticVars.size(); i++) {
-		if (i > 0) {
-			result += ", ";
+TraceContextBase* LazyTraceContext::getRootContext() {
+	return this;
+}
+
+bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
+	const uint64_t P = currentStateHash();
+	if (auto siteIter = regionMemos.find(callSite); siteIter != regionMemos.end()) {
+		if (auto memoIter = siteIter->second.find(P); memoIter != siteIter->second.end()) {
+			// Memo hit: skip the region body. In FOLLOW mode jump the shared
+			// cursor onto the recorded continuation before resuming following.
+			// In RECORD mode nothing is emitted; the next post-region operation
+			// merges via the existing control-flow-merge machinery.
+			if (isFollowing()) {
+				auto& continuation = memoIter->second;
+				state->executionTrace.currentBlockIndex = continuation.continuationBlockIndex;
+				state->executionTrace.currentOperationIndex = continuation.continuationOperationIndex;
+			}
+			return false;
 		}
-		result += std::to_string(getStaticVarValue(staticVars[i]));
 	}
-	return result;
+
+	// Memo miss: create (or reuse) the per-call-site tag recorder, take a region
+	// context from the pool, and make it the active tracer for the body.
+	auto recorderNode = regionRecorders.try_emplace(callSite, callSite, state->executionTrace.getArena());
+	auto recorder = &recorderNode.first->second;
+
+	const size_t depth = activeRegions_.size();
+	if (depth == regionPool_.size()) {
+		regionPool_.push_back(std::make_unique<RegionTraceContext>(this, recorder, !isFollowing()));
+	} else {
+		regionPool_[depth]->reinitialize(this, recorder, !isFollowing());
+	}
+	auto* region = regionPool_[depth].get();
+
+	RegionFrame frame;
+	frame.region = region;
+	frame.previous = getActiveTracer();
+	region->traceRegionBegin(callSite);
+	setActiveTracer(region);
+	activeRegions_.push_back(frame);
+	return true;
+}
+
+bool LazyTraceContext::traceRegionContinue() {
+	// Region-local exploration is driven by the active region (RegionTraceContext),
+	// which is what region()'s loop is actually calling this on by the time a
+	// region body has run once. The root has no local-exploration state of its
+	// own, so it never requests another pass.
+	return false;
+}
+
+void LazyTraceContext::traceRegionEnd() {
+	if (activeRegions_.empty()) {
+		return;
+	}
+	auto frame = activeRegions_.back();
+	activeRegions_.pop_back();
+	// Escape transfer / memo caching already happened in the region's own
+	// traceRegionEnd(); the root only restores the enclosing active tracer.
+	// The context itself stays in regionPool_ for the next region at this depth.
+	setActiveTracer(frame.previous);
+	frame.region->traceRegionEnd();
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
-	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash()};
+	return {state->tagRecorder.createTag(), currentStateHash()};
 }
 
 } // namespace nautilus::tracing
