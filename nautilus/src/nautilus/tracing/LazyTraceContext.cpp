@@ -385,7 +385,7 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
                                                         const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Completing Tracing");
 	auto rootAddress = __builtin_return_address(0);
-	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 
 	// The ExecutionTrace borrows the caller-provided arena for all
 	// allocations; the arena must outlive the returned trace.
@@ -470,7 +470,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);
-		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress);
+		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 		SymbolicExecutionContext symbolicExecutionContext;
 		state.emplace(tr, executionTrace, symbolicExecutionContext, options);
 		auto traceIteration = 0;

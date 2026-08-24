@@ -9,7 +9,7 @@ namespace nautilus::tracing {
 
 #pragma GCC diagnostic ignored "-Wframe-address"
 
-TagRecorder::TagRecorder(TagAddress startAddress) : startAddress(startAddress) {
+TagRecorder::TagRecorder(TagAddress startAddress, common::Arena& arena) : startAddress(startAddress), arena(arena) {
 	useBuiltinTagCreation = __builtin_return_address(1) != nullptr;
 }
 
@@ -66,7 +66,7 @@ Tag* TagRecorder::createReferenceTagBacktrace() {
 		if (tagAddress == startAddress) {
 			return currentTagNode;
 		}
-		currentTagNode = currentTagNode->append(tagAddress);
+		currentTagNode = currentTagNode->append(tagAddress, arena);
 	}
 	throw TagCreationException("Stack is too deep. This could indicate the use "
 	                           "of recursive control-flow,"
@@ -88,7 +88,7 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 		if (tagAddress == startAddress) {
 			return currentTagNode;
 		}
-		currentTagNode = currentTagNode->append(tagAddress);
+		currentTagNode = currentTagNode->append(tagAddress, arena);
 		frame = static_cast<void**>(frame[0]);
 	}
 	throw TagCreationException("Stack is too deep. This could indicate the use "
