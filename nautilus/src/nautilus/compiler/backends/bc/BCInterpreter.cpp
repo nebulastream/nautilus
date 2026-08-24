@@ -884,6 +884,35 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		return executeThreaded(regs);
 	}
 #endif
+	// Dispatches a single non-terminator opcode through the inlined switch.
+	// Factored out so it can be shared, unchanged, between the two switch-path
+	// loop variants below (with and without the per-instruction pending-check
+	// test) instead of duplicating the macro-generated switch body.
+	auto dispatchSwitch = [&regs](const OpCode& c) {
+		switch (c.op) {
+#define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
+	case ByteCode::name:                                                                                               \
+		__VA_ARGS__(c, regs);                                                                                          \
+		break;
+			NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
+#undef NAUTILUS_BC_SWITCH_CASE
+		// Terminator pseudo-opcodes never appear in a block's operation stream in
+		// the call/switch paths (they keep the structured terminators); these
+		// cases exist only so the switch covers the whole ByteCode enum.
+		case ByteCode::JMP:
+		case ByteCode::CJMP:
+		case ByteCode::RET:
+		case ByteCode::CHECK_PENDING_EXCEPTION:
+#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
+			NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
+#undef NAUTILUS_BC_FUSED_SWITCH
+#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
+			NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
+#undef NAUTILUS_BC_IMM_SWITCH
+			break;
+		}
+	};
+
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
 	// Threaded falls here when computed goto is unavailable, behaving as Switch.
@@ -893,54 +922,53 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		// run, so this branch is perfectly predicted; it picks between the legacy
 		// indirect-call table and the inlined switch (which avoids a non-inlined
 		// call per instruction and lets the compiler keep the register base hot).
+		//
 		// CHECK_PENDING_EXCEPTION is a control-flow pseudo-opcode handled inline:
 		// when the captured-exception transport has a pending exception it jumps
-		// to the block in reg1 (the landing pad), otherwise it falls through.
+		// to the block in reg1 (the landing pad), otherwise it falls through. Most
+		// blocks -- everywhere in a function with no exceptional call sites, and
+		// most blocks even in one that has some -- never contain this opcode, so
+		// `hasPendingCheck` (set once by the lowering, not scanned here) picks
+		// between a loop that tests for it and a tight loop that doesn't. Folding
+		// that test into every iteration of the common loop would cost one extra
+		// compare-and-branch per instruction, in every program, whether or not it
+		// ever uses exceptions.
 		bool jumped = false;
 		if (useSwitch) {
-			for (const auto& c : currentBlock->code) {
-				if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
-					if (hasPendingException()) {
-						currentBlock = &code.blocks[c.reg1];
-						jumped = true;
-						break;
+			if (currentBlock->hasPendingCheck) {
+				for (const auto& c : currentBlock->code) {
+					if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+						if (hasPendingException()) {
+							currentBlock = &code.blocks[c.reg1];
+							jumped = true;
+							break;
+						}
+						continue;
 					}
-					continue;
+					dispatchSwitch(c);
 				}
-				switch (c.op) {
-#define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
-	case ByteCode::name:                                                                                               \
-		__VA_ARGS__(c, regs);                                                                                          \
-		break;
-					NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
-#undef NAUTILUS_BC_SWITCH_CASE
-				// Terminator pseudo-opcodes never appear in a block's operation stream
-				// in the call/switch paths (they keep the structured terminators); these
-				// cases exist only so the switch covers the whole ByteCode enum.
-				case ByteCode::JMP:
-				case ByteCode::CJMP:
-				case ByteCode::RET:
-				case ByteCode::CHECK_PENDING_EXCEPTION:
-#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
-					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
-#undef NAUTILUS_BC_FUSED_SWITCH
-#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
-					NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
-#undef NAUTILUS_BC_IMM_SWITCH
-					break;
+			} else {
+				for (const auto& c : currentBlock->code) {
+					dispatchSwitch(c);
 				}
 			}
 		} else {
-			for (const auto& c : currentBlock->code) {
-				if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
-					if (hasPendingException()) {
-						currentBlock = &code.blocks[c.reg1];
-						jumped = true;
-						break;
+			if (currentBlock->hasPendingCheck) {
+				for (const auto& c : currentBlock->code) {
+					if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+						if (hasPendingException()) {
+							currentBlock = &code.blocks[c.reg1];
+							jumped = true;
+							break;
+						}
+						continue;
 					}
-					continue;
+					OpTable[(int16_t) c.op](c, regs);
 				}
-				OpTable[(int16_t) c.op](c, regs);
+			} else {
+				for (const auto& c : currentBlock->code) {
+					OpTable[(int16_t) c.op](c, regs);
+				}
 			}
 		}
 		if (jumped) {

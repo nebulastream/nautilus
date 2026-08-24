@@ -1664,10 +1664,13 @@ void BCLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Op
 	if (!callNeedsCapture(call)) {
 		return;
 	}
-	auto& code = program.blocks[block].code;
+	auto& codeBlock = program.blocks[block];
 	pendingExceptionPatches.emplace_back(
-	    PendingExceptionPatch {block, code.size(), transport_.getPadIndexForCall(call)});
-	code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
+	    PendingExceptionPatch {block, codeBlock.code.size(), transport_.getPadIndexForCall(call)});
+	codeBlock.code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
+	// Lets BCInterpreter::execute() skip the per-instruction pending check
+	// entirely for every block that never emits one -- the common case.
+	codeBlock.hasPendingCheck = true;
 }
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
