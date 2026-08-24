@@ -9,6 +9,8 @@
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "tag/Tag.hpp"
 #include "tag/TagRecorder.hpp"
+#include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -48,29 +50,35 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 /**
  * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.
  *
- * This class maintains reference counts using a sparse hash map to support the full uint32_t range
- * of variable IDs while keeping memory usage reasonable. The hash reflects both which variables
- * are alive and their reference counts, updated incrementally in O(1) average time.
+ * ValueRefs are dense small integers (ExecutionTrace::getNextValueRef() is a plain incrementing
+ * counter), so reference counts are stored in a vector indexed by id rather than a hash map.
+ * The hash reflects both which variables are alive and their reference counts, updated
+ * incrementally in O(1) time.
  *
  * Implementation details:
  * - Uses XOR-based hashing for O(1) incremental updates
  * - Each variable ID is mixed with a constant multiplier for better hash distribution
  * - The hash incorporates both variable identity (ID) and reference count
- * - Uses unordered_map for sparse storage (only allocates for variables that exist)
- * - Entries are erased when their count reaches zero, so the map stays bounded by the
- *   peak number of alive variables instead of growing with every value ref ever seen
+ * - Uses a growable vector indexed by id - no allocation on increment/decrement beyond
+ *   the amortized growth needed to cover the highest id seen so far
+ * - A separate alive-count is maintained so size() stays O(1) even though zero-count
+ *   entries are not removed from the vector
  *
  * Performance characteristics:
- * - increment(): O(1) average - hash map lookup + two XOR operations, two multiplications
- * - decrement(): O(1) average - hash map lookup + two XOR operations, two multiplications
+ * - increment(): O(1) amortized - vector index + two XOR operations, two multiplications
+ * - decrement(): O(1) - vector index + two XOR operations, two multiplications
  * - hash(): O(1) - returns cached value
+ * - size(): O(1) - returns cached alive count
  *
- * @note Changed from fixed array to hash map to support uint32_t ValueRef (was uint16_t).
+ * @note Changed from a hash map (which erased entries to bound its size) to a vector indexed
+ * by ValueRef. This trades peak-alive-sized memory for maxRef-sized memory in exchange for
+ * removing the malloc/free pair that the map's insert/erase pair cost per traced value.
  */
 class AliveVariableHash {
 	static constexpr uint64_t HASH_MULTIPLIER = 0x9e3779b97f4a7c15; // Golden ratio constant for good mixing
 
-	std::unordered_map<uint32_t, uint32_t> counts;
+	std::vector<uint32_t> counts;
+	size_t aliveCount = 0;
 	uint64_t alive_hash = 0;
 
 public:
@@ -88,8 +96,14 @@ public:
 	 * @param id Variable identifier (32-bit value)
 	 */
 	inline void increment(uint32_t id) noexcept {
+		if (id >= counts.size()) {
+			counts.resize(id + 1, 0);
+		}
 		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
+		if (c == 0) {
+			++aliveCount;
+		}
 		++c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 	}
@@ -100,22 +114,16 @@ public:
 	 * The hash is updated by XOR-ing out the old contribution ((id * HASH_MULTIPLIER) * old_count)
 	 * and XOR-ing in the new contribution ((id * HASH_MULTIPLIER) * new_count).
 	 *
-	 * Entries that reach a count of zero are erased. This is hash-neutral (a zero count
-	 * contributes 0 to the XOR hash, identical to an absent entry) and keeps the map size
-	 * proportional to the number of currently-alive variables. Without the erase, the map
-	 * grows with every value ref ever seen and — because the trace context is thread_local —
-	 * persists across trace iterations and across traced functions.
-	 *
-	 * @param id Variable identifier (32-bit value)
+	 * @param id Variable identifier (32-bit value), previously passed to increment()
 	 */
 	inline void decrement(uint32_t id) noexcept {
-		const auto it = counts.try_emplace(id, 0).first;
-		uint32_t& c = it->second;
+		assert(id < counts.size() && counts[id] > 0 && "decrement() on a variable that is not alive");
+		uint32_t& c = counts[id];
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		--c;
 		alive_hash ^= (id * HASH_MULTIPLIER) * c;
 		if (c == 0) {
-			counts.erase(it);
+			--aliveCount;
 		}
 	}
 
@@ -133,29 +141,23 @@ public:
 	}
 
 	/**
-	 * @brief Returns the number of tracked entries.
-	 *
-	 * Since zero-count entries are erased by decrement(), this is the number of
-	 * currently-alive variables (variables with a non-zero reference count).
-	 *
-	 * @return Number of entries in the underlying map
+	 * @brief Returns the number of currently-alive variables (non-zero reference count).
+	 * @return Number of currently-alive variables
 	 */
 	inline size_t size() const noexcept {
-		return counts.size();
+		return aliveCount;
 	}
 
 	/**
 	 * @brief Resets all reference counts and hash to initial state.
 	 *
-	 * This efficiently clears all counts without creating a temporary object.
-	 * Since decrement() erases entries when they reach zero, a balanced trace iteration
-	 * leaves the map empty and this is a no-op. The emptiness check (rather than a hash
-	 * check) also guards against the rare XOR collision where live entries hash to 0.
+	 * Zeroes every slot in the backing vector rather than shrinking it, so the vector's
+	 * capacity - and thus the highest id it can hold without reallocating - is retained
+	 * across trace iterations.
 	 */
 	inline void reset() noexcept {
-		if (!counts.empty()) {
-			counts.clear();
-		}
+		std::fill(counts.begin(), counts.end(), 0);
+		aliveCount = 0;
 		alive_hash = 0;
 	}
 };
@@ -328,7 +330,7 @@ private:
 
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
-	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash (256KB)
+	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;
 };
