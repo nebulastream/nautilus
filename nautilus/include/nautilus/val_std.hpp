@@ -279,11 +279,22 @@ public:
 	// SSA ref instead of going through val<T*>'s copy ctor, which would emit an
 	// extra traceCopy/ASSIGN op into the IR for what is logically just an alias.
 	// The source is left in a moved-from state and its destructor becomes a no-op.
+	//
+	// Deliberately does NOT touch the destructor registration: `value_ptr` is
+	// constructed directly from `other.value_ptr.getState()` (see above), so
+	// this object's state compares equal to other's -- same underlying address,
+	// same destructor function, since both are the same val<ValueType>
+	// instantiation. The registration made when the (possibly several moves
+	// back) original object was constructed already covers `this`; re-deriving
+	// it here would only remove and re-append that entry at the same address,
+	// reordering it after every other value currently live -- wrong when a
+	// throw during unwind must run destructors in reverse construction order,
+	// and, since register_destructor()/unregister_destructor() can allocate
+	// (activeDestructors is a std::vector), an avoidable way for an allocation
+	// to happen inside a noexcept move constructor.
 #ifdef ENABLE_TRACING
 	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value, other.value_ptr.getState()) {
-		other.unregister_destructor();
 		other.moved_ = true;
-		register_destructor();
 	}
 #else
 	val(val<ValueType>&& other) noexcept : value_ptr(other.value_ptr.value) {

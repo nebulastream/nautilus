@@ -1102,12 +1102,15 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 		return;
 	}
 
-	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
+	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the
+	// first element of the operands. Reuses `callArgs` (resolved once above)
+	// instead of re-resolving every argument: resolveOperand can materialize
+	// conversion ops, so calling it twice per argument on this -- the common,
+	// no-landing-pad -- path would both waste work and risk duplicate ops.
 	std::vector<mlir::Value> allOperands;
+	allOperands.reserve(callArgs.size() + 1);
 	allOperands.push_back(calleePtr);
-	for (const auto& arg : indirectCallOp->getInputArguments()) {
-		allOperands.push_back(resolveOperand(arg, frame));
-	}
+	allOperands.insert(allOperands.end(), callArgs.begin(), callArgs.end());
 	if (indirectCallOp->getStamp() != Type::v) {
 		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
 		bind(frame, indirectCallOp, res.getResult());
