@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/amsjit/A64PostRAPeepholePass.hpp"
 #include "nautilus/compiler/backends/amsjit/AsmJitRegister.hpp"
 #include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
@@ -98,8 +99,11 @@ private:
 		/// Function being lowered, used by the captured-exception transport to
 		/// find the call's landing pad. Cleared per function.
 		const ir::FunctionOperation* currentFunction_ = nullptr;
+		/// Captured-exception queries for `currentFunction_`, built once per
+		/// function rather than once per call site.
+		CapturedExceptionTransport transport_;
 		/// AsmJit labels for the current function's exception landing pads.
-		std::unordered_map<const ir::LandingPadBlock*, ::asmjit::Label> padLabels_;
+		std::unordered_map<size_t, ::asmjit::Label> padLabels_;
 		/// Shared exceptional-exit label for the current function (created on
 		/// first use, reset per function).
 		::asmjit::Label exceptionalExitLabel_;
@@ -198,7 +202,7 @@ private:
 		/// call's landing pad (or the exceptional-exit label) when set.
 		void emitCheckPendingException(const ir::Operation* call);
 		/// Returns the AsmJit label bound to @p pad (creating it on first use).
-		[[nodiscard]] ::asmjit::Label getPadLabel(const ir::LandingPadBlock* pad);
+		[[nodiscard]] ::asmjit::Label getPadLabel(size_t padIndex);
 		/// Returns the shared exceptional-exit label (creating it on first use).
 		[[nodiscard]] ::asmjit::Label getExceptionalExitLabel();
 		/// After the main CFG, emits the function's landing pads (each running

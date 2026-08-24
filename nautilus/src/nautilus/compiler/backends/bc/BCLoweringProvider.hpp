@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
@@ -158,16 +159,19 @@ private:
 		/// by visitProxyCall/visitIndirectCall via CapturedExceptionTransport to
 		/// decide whether a call site needs a pending-exception check.
 		const ir::FunctionOperation* currentFunction_ = nullptr;
+		/// Captured-exception queries for `currentFunction_`, built once per
+		/// function rather than once per call site.
+		CapturedExceptionTransport transport_;
 
 		/// Records the (block, op-index, pad) of every emitted
 		/// CHECK_PENDING_EXCEPTION whose target block index is resolved only
-		/// after the main CFG and landing pads have been lowered. `pad` is
-		/// nullptr when the call has no destructors (targets the exceptional
-		/// exit block directly).
+		/// after the main CFG and landing pads have been lowered. `padIndex` is
+		/// `ir::noLandingPad` when the call has no destructors (targets the
+		/// exceptional exit block directly).
 		struct PendingExceptionPatch {
 			short blockIndex;
 			size_t opIndex;
-			const ir::LandingPadBlock* pad;
+			size_t padIndex;
 		};
 		std::vector<PendingExceptionPatch> pendingExceptionPatches;
 

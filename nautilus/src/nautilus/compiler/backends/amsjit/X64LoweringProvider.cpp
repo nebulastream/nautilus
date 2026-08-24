@@ -381,6 +381,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		padLabels_.clear();
 		exceptionalExitLabel_.reset();
 		currentFunction_ = funcOp;
+		transport_ = CapturedExceptionTransport(*funcOp);
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -1696,16 +1697,14 @@ bool AsmJitLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operati
 	if (currentFunction_ == nullptr) {
 		return false;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.callNeedsCapture(call);
+	return transport_.callNeedsCapture(call);
 }
 
 const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCall(const ir::Operation* call) const {
 	if (currentFunction_ == nullptr) {
 		return nullptr;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.getPadForCall(call);
+	return transport_.getPadForCall(call);
 }
 
 void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
@@ -1719,8 +1718,8 @@ void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Ope
 }
 
 void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call) {
-	const auto* pad = getPadForCall(call);
-	const Label target = pad != nullptr ? getPadLabel(pad) : getExceptionalExitLabel();
+	const auto padIndex = transport_.getPadIndexForCall(call);
+	const Label target = padIndex != ir::noLandingPad ? getPadLabel(padIndex) : getExceptionalExitLabel();
 
 	// frame = currentExceptionFrame()
 	FuncSignature frameSig;
@@ -1739,13 +1738,13 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 	cc.jne(target);
 }
 
-::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(const ir::LandingPadBlock* pad) {
-	auto it = padLabels_.find(pad);
+::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(size_t padIndex) {
+	auto it = padLabels_.find(padIndex);
 	if (it != padLabels_.end()) {
 		return it->second;
 	}
 	auto label = cc.newLabel();
-	padLabels_[pad] = label;
+	padLabels_[padIndex] = label;
 	return label;
 }
 
@@ -1763,8 +1762,9 @@ void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& 
 	}
 
 	const auto& pads = currentFunction_->exceptionRegion->pads;
-	for (const auto& pad : pads) {
-		cc.bind(getPadLabel(&pad));
+	for (size_t padIndex = 0; padIndex < pads.size(); ++padIndex) {
+		const auto& pad = pads[padIndex];
+		cc.bind(getPadLabel(padIndex));
 		// Pads contain only destructor ProxyCallOperations (all noUnwind), so
 		// lowering them through the normal dispatch emits plain external calls
 		// with no re-entrant capture.

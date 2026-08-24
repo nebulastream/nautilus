@@ -81,7 +81,7 @@ TEST_CASE("ExceptionRegionPreparation: one alloc, one throwing call -> one pad w
 	REQUIRE(region.pads[0].block->getOperations().size() == 1);
 	REQUIRE(region.callSites.size() == 1);
 	REQUIRE(region.callSites[0].call == call);
-	REQUIRE(region.callSites[0].pad == &region.pads[0]);
+	REQUIRE(region.callSites[0].padIndex == 0);
 
 	auto* dtorCall = compiler::ir::dyn_cast<ProxyCallOperation>(region.pads[0].block->getOperations().front());
 	REQUIRE(dtorCall != nullptr);
@@ -131,8 +131,8 @@ TEST_CASE("ExceptionRegionPreparation: two calls with same dtor set share a pad"
 	REQUIRE(region.callSites.size() == 2);
 	REQUIRE(region.callSites[0].call == call1);
 	REQUIRE(region.callSites[1].call == call2);
-	REQUIRE(region.callSites[0].pad == &region.pads[0]);
-	REQUIRE(region.callSites[1].pad == &region.pads[0]);
+	REQUIRE(region.callSites[0].padIndex == 0);
+	REQUIRE(region.callSites[1].padIndex == 0);
 }
 
 TEST_CASE("ExceptionRegionPreparation: two calls with different dtor sets use different pads") {
@@ -151,9 +151,9 @@ TEST_CASE("ExceptionRegionPreparation: two calls with different dtor sets use di
 	REQUIRE(region.callSites.size() == 2);
 	REQUIRE(region.callSites[0].call == call1);
 	REQUIRE(region.callSites[1].call == call2);
-	REQUIRE(region.callSites[0].pad == &region.pads[0]);
-	REQUIRE(region.callSites[1].pad == &region.pads[1]);
-	REQUIRE(region.callSites[0].pad != region.callSites[1].pad);
+	REQUIRE(region.callSites[0].padIndex == 0);
+	REQUIRE(region.callSites[1].padIndex == 1);
+	REQUIRE(region.callSites[0].padIndex != region.callSites[1].padIndex);
 }
 
 TEST_CASE("ExceptionRegionPreparation: throwing call without destructors maps to a null pad") {
@@ -168,7 +168,7 @@ TEST_CASE("ExceptionRegionPreparation: throwing call without destructors maps to
 	REQUIRE(region.pads.size() == 0);
 	REQUIRE(region.callSites.size() == 1);
 	REQUIRE(region.callSites[0].call == call);
-	REQUIRE(region.callSites[0].pad == nullptr);
+	REQUIRE_FALSE(region.callSites[0].hasPad());
 }
 
 TEST_CASE("ExceptionRegionPreparation: noUnwind call is absent from the region") {
@@ -284,7 +284,7 @@ TEST_CASE("ExceptionRegionPreparation: indirect call with a destructor is collec
 	REQUIRE(region.pads.size() == 1);
 	REQUIRE(region.callSites.size() == 1);
 	REQUIRE(region.callSites[0].call == call);
-	REQUIRE(region.callSites[0].pad == &region.pads[0]);
+	REQUIRE(region.callSites[0].padIndex == 0);
 	auto* dtorCall = compiler::ir::dyn_cast<ProxyCallOperation>(region.pads[0].block->getOperations().front());
 	REQUIRE(dtorCall != nullptr);
 	REQUIRE(dtorCall->getInputArguments()[0] == addr);

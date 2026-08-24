@@ -1,9 +1,9 @@
 
 #pragma once
 
+#include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include <cstddef>
 #include <optional>
 #include <unordered_map>

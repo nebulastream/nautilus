@@ -679,6 +679,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	debugAllocas_.clear();
 	functionAllocaSlots_.clear();
 	currentFunction_ = &functionOp;
+	transport_ = CapturedExceptionTransport(functionOp);
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
@@ -962,15 +963,7 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	// exception propagates natively through this unwindable frame. Only calls
 	// with a landing pad need the invoke/landingpad and the personality
 	// function.
-	const ir::LandingPadBlock* pad = nullptr;
-	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
-		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
-			if (cs.call == proxyCallOp) {
-				pad = cs.pad;
-				break;
-			}
-		}
-	}
+	const ir::LandingPadBlock* pad = transport_.getPadForCall(proxyCallOp);
 
 	if (proxyCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
 		const auto location = getNameLoc("invoke");
@@ -1048,15 +1041,7 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	// destructors) need the invoke/landingpad machinery; pad-less calls fall
 	// through to the plain LLVM call below and the exception propagates
 	// natively through this unwindable frame.
-	const ir::LandingPadBlock* pad = nullptr;
-	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
-		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
-			if (cs.call == indirectCallOp) {
-				pad = cs.pad;
-				break;
-			}
-		}
-	}
+	const ir::LandingPadBlock* pad = transport_.getPadForCall(indirectCallOp);
 
 	if (indirectCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
 		auto* currentBlock = builder->getInsertionBlock();

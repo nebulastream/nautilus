@@ -195,6 +195,7 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		countAllUsages(&functionBasicBlock);
 	}
 	currentFunction_ = targetFunction;
+	transport_ = CapturedExceptionTransport(*targetFunction);
 	this->process(&functionBasicBlock, rootFrame);
 
 	// Lower the exception-region landing pads and the exceptional exit block.
@@ -227,15 +228,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		// index: the associated landing pad, or the exceptional exit when the call
 		// has no destructors.
 		for (const auto& patch : pendingExceptionPatches) {
-			short target = exceptionalExitBlock;
-			if (patch.pad != nullptr) {
-				for (size_t i = 0; i < pads.size(); ++i) {
-					if (&pads[i] == patch.pad) {
-						target = padBlockIndices[i];
-						break;
-					}
-				}
-			}
+			const short target =
+			    patch.padIndex == ir::noLandingPad ? exceptionalExitBlock : padBlockIndices[patch.padIndex];
 			program.blocks[patch.blockIndex].code[patch.opIndex].reg1 = target;
 		}
 	}
@@ -1664,21 +1658,16 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 }
 
 bool BCLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operation* call) const {
-	if (currentFunction_ == nullptr) {
-		return false;
-	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.callNeedsCapture(call);
+	return transport_.callNeedsCapture(call);
 }
 
 void BCLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call, short block) {
 	if (!callNeedsCapture(call)) {
 		return;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	const auto* pad = transport.getPadForCall(call);
 	auto& code = program.blocks[block].code;
-	pendingExceptionPatches.emplace_back(PendingExceptionPatch {block, code.size(), pad});
+	pendingExceptionPatches.emplace_back(
+	    PendingExceptionPatch {block, code.size(), transport_.getPadIndexForCall(call)});
 	code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
 }
 

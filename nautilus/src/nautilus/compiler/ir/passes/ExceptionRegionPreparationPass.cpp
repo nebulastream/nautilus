@@ -108,13 +108,11 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	uint32_t nextBlockId = maxBlockId + 1;
 
 	FunctionExceptionRegion region;
-	// Upper bound on distinct pads: never reallocates, so `pad` pointers into
-	// `region.pads` stay stable while we intern.
 	region.pads.reserve(rawSites.size());
 
 	for (auto& site : rawSites) {
 		if (site.destructors.empty()) {
-			region.callSites.push_back({site.call, nullptr});
+			region.callSites.push_back({site.call, noLandingPad});
 			continue;
 		}
 
@@ -141,7 +139,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 			}
 			region.pads.push_back({padBlock});
 		}
-		region.callSites.push_back({site.call, &region.pads[index]});
+		region.callSites.push_back({site.call, index});
 	}
 
 	fn.exceptionRegion = std::move(region);
