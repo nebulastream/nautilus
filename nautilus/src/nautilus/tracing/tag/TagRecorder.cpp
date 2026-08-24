@@ -9,10 +9,8 @@ namespace nautilus::tracing {
 
 #pragma GCC diagnostic ignored "-Wframe-address"
 
-static void* getReturnAddress(uint32_t offset);
-
 TagRecorder::TagRecorder(TagAddress startAddress) : startAddress(startAddress) {
-	useBuiltinTagCreation = getReturnAddress(1) != nullptr;
+	useBuiltinTagCreation = __builtin_return_address(1) != nullptr;
 }
 
 // check if gnu backtrace is available.
@@ -28,17 +26,14 @@ TagVector TagRecorder::createBaseTag() {
 }
 #else
 
-static void* getReturnAddress(uint32_t offset);
-
-TagVector TagRecorder::createBaseTag() {
-	// throw NotImplementedException("No plugin registered that can handle this
-	// operation between");
-	[[maybe_unused]] void* root = __builtin_thread_pointer();
+// Walks the frame-pointer chain in a single linear pass; see the comment on createReferenceTagBuildin
+// below for why this replaces resolving each frame independently via __builtin_return_address(N).
+__attribute__((noinline)) TagVector TagRecorder::createBaseTag() {
 	std::vector<TagAddress> addresses;
-	for (size_t i = 0; i < MAX_TAG_SIZE; i++) {
-		auto address = getReturnAddress(i);
-		[[maybe_unused]] void* addr = __builtin_extract_return_addr(address);
-		addresses.emplace_back((TagAddress) address);
+	auto** frame = static_cast<void**>(__builtin_frame_address(0));
+	for (size_t i = 0; i < MAX_TAG_SIZE && frame != nullptr; i++) {
+		addresses.emplace_back((TagAddress) frame[1]);
+		frame = static_cast<void**>(frame[0]);
 	}
 	return addresses;
 }
@@ -106,22 +101,6 @@ Tag* TagRecorder::createReferenceTag() {
 		return createReferenceTagBuildin();
 	}
 	return createReferenceTagBacktrace();
-}
-
-template <size_t StackSize>
-__attribute__((noinline)) void* get_addr(size_t index) {
-	return [&]<std::size_t... ints>(std::index_sequence<ints...>) __attribute__((noinline)) {
-		void* addr = nullptr;
-		(void) ((index == ints &&
-		         (void(addr = __builtin_extract_return_addr(__builtin_return_address(ints + 2))), true)) ||
-		        ...);
-		return addr;
-	}
-	(std::make_index_sequence<StackSize> {});
-}
-
-static void* getReturnAddress(uint32_t offset) {
-	return get_addr<TagRecorder::MAX_TAG_SIZE>(offset);
 }
 
 } // namespace nautilus::tracing
