@@ -71,23 +71,32 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	std::stringstream pipelineCode;
 	pipelineCode << "\n";
 	pipelineCode << "#include <cstdint>\n";
-	pipelineCode << "#include <exception>\n\n";
-
-	// The generated shared library cannot link against nautilus, so the
-	// captured-exception transport helpers are baked in as raw function
-	// addresses resolved in the host process (same mechanism as the external
-	// function pointers emitted for ProxyCall/IndirectCall).
-	pipelineCode << "namespace nautilus { namespace compiler {\n";
-	pipelineCode << "struct ExceptionFrame { std::exception_ptr pending; ExceptionFrame* parent = nullptr; };\n";
-	pipelineCode << "}}\n\n";
-	pipelineCode << "static nautilus::compiler::ExceptionFrame* (*nautilus_current_exception_frame)() = "
-	             << "(nautilus::compiler::ExceptionFrame* (*)())(uintptr_t)"
-	             << reinterpret_cast<void*>(&nautilus::compiler::currentExceptionFrame) << ";\n";
-	pipelineCode << "static bool (*nautilus_has_pending_exception)() = (bool (*)())(uintptr_t)"
-	             << reinterpret_cast<void*>(&nautilus::compiler::hasPendingException) << ";\n\n";
 
 	// Process all function operations in the IR graph
 	const auto& functionOperations = ir->getFunctionOperations();
+
+	// The captured-exception preamble (the <exception> include, the mirrored
+	// ExceptionFrame layout, and the two helper-function-pointer globals) costs
+	// real compile time in the generated TU, so only pay for it when at least
+	// one function in the module actually has an exceptional call site -- the
+	// common case has none. The generated shared library cannot link against
+	// nautilus, so these helpers are baked in as raw function addresses
+	// resolved in the host process (same mechanism as the external function
+	// pointers emitted for ProxyCall/IndirectCall).
+	const bool moduleNeedsCapture = CapturedExceptionTransport::anyFunctionNeedsCapture(*ir);
+	if (moduleNeedsCapture) {
+		pipelineCode << "#include <exception>\n\n";
+		pipelineCode << "namespace nautilus { namespace compiler {\n";
+		pipelineCode << "struct ExceptionFrame { std::exception_ptr pending; ExceptionFrame* parent = nullptr; };\n";
+		pipelineCode << "}}\n\n";
+		pipelineCode << "static nautilus::compiler::ExceptionFrame* (*nautilus_current_exception_frame)() = "
+		             << "(nautilus::compiler::ExceptionFrame* (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::currentExceptionFrame) << ";\n";
+		pipelineCode << "static bool (*nautilus_has_pending_exception)() = (bool (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::hasPendingException) << ";\n\n";
+	} else {
+		pipelineCode << "\n";
+	}
 
 	// Helper lambda to process a single function
 	auto processFunction = [&](const ir::FunctionOperation& functionOperation) {
@@ -135,8 +144,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		// Lower the exception-region landing pads into the block stream (before
 		// the variable/function declaration sections are emitted, so any
 		// declarations the pad's destructor calls introduce are captured).
-		const bool hasExceptionRegion =
-		    functionOperation.exceptionRegion.has_value() && !functionOperation.exceptionRegion->callSites.empty();
+		const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
 		if (hasExceptionRegion) {
 			const auto& pads = functionOperation.exceptionRegion->pads;
 			for (size_t i = 0; i < pads.size(); ++i) {

@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/amsjit/AsmJitCompilationBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 #include "nautilus/compiler/backends/amsjit/X64LoweringProvider.hpp"
 #else
@@ -42,7 +43,8 @@ std::unique_ptr<Executable> AsmJitCompilationBackend::compile(const std::shared_
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
-	return std::make_unique<AsmJitExecutable>(std::move(runtime), result.basePtr, std::move(result.jitPtrs));
+	return std::make_unique<AsmJitExecutable>(std::move(runtime), result.basePtr, std::move(result.jitPtrs),
+	                                          CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
 } // namespace nautilus::compiler::asmjit

@@ -1169,8 +1169,7 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 }
 
 void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& frame) {
-	if (currentFunction_ == nullptr || !currentFunction_->exceptionRegion.has_value() ||
-	    currentFunction_->exceptionRegion->callSites.empty()) {
+	if (currentFunction_ == nullptr || !transport_.hasExceptionalCallSites()) {
 		return;
 	}
 

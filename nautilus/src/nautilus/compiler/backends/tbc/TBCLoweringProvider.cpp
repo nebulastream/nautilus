@@ -1094,7 +1094,7 @@ private:
 	/// exceptional-exit block does a void return — the Invocable wrapper
 	/// rethrows the pending exception regardless of the return value.
 	void lowerExceptionPads(RegisterFrame& rootFrame) {
-		if (!func->exceptionRegion.has_value() || func->exceptionRegion->callSites.empty()) {
+		if (!transport.hasExceptionalCallSites()) {
 			return;
 		}
 		const auto& pads = func->exceptionRegion->pads;

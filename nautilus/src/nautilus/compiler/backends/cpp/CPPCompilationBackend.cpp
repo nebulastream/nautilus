@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/cpp/CPPCompilationBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/cpp/CPPCompiler.hpp"
 #include "nautilus/compiler/backends/cpp/CPPExecutable.hpp"
 #include "nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp"
@@ -28,7 +29,7 @@ std::unique_ptr<Executable> CPPCompilationBackend::compile(const std::shared_ptr
 		statistics->recordTimingMs("cpp.compile.ms", compileStart);
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
-	return std::make_unique<CPPExecutable>(res);
+	return std::make_unique<CPPExecutable>(res, CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
 } // namespace nautilus::compiler::cpp

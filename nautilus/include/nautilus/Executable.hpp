@@ -300,7 +300,7 @@ public:
 	 */
 	template <typename R, typename... Args>
 	auto getInvocableMember(const std::string& member) {
-		auto mode = getExceptionPropagationMode();
+		auto mode = getExceptionPropagationMode(member);
 		if (hasInvocableFunctionPtr()) {
 			return Invocable<R, Args...>(getInvocableFunctionPtr(member), mode);
 		} else {
@@ -325,6 +325,24 @@ public:
 
 	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
 		return ExceptionPropagationMode::NativeUnwind;
+	}
+
+	/**
+	 * @brief Per-function refinement of getExceptionPropagationMode().
+	 *
+	 * A captured-host-rethrow backend (CPP/BC/TBC/AsmJit) still compiles most
+	 * functions with no exceptional call sites at all -- the common case, since
+	 * only a function that transitively invokes a non-noexcept call needs one.
+	 * Such a function never touches the ExceptionFrame machinery at runtime, so
+	 * it can be called through the raw function pointer with no frame active,
+	 * same as a NativeUnwind backend. Backends that track which of their
+	 * functions actually need capture (see
+	 * CapturedExceptionTransport::functionsNeedingCapture) override this to
+	 * answer per @p member instead of conservatively for the whole executable;
+	 * the default falls back to the executable-wide answer.
+	 */
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode(const std::string& /*member*/) const {
+		return getExceptionPropagationMode();
 	}
 
 	/**

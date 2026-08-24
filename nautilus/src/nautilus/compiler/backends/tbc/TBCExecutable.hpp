@@ -3,6 +3,8 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCCode.hpp"
 #include <memory>
+#include <string>
+#include <unordered_set>
 
 namespace nautilus::compiler::tbc {
 
@@ -17,7 +19,13 @@ namespace nautilus::compiler::tbc {
  */
 class TBCExecutable : public Executable {
 public:
-	explicit TBCExecutable(std::shared_ptr<TBCProgram> program);
+	/// @param functionsNeedingCapture names of the module's functions whose
+	///        compiled body has at least one captured-exception call site (see
+	///        CapturedExceptionTransport::functionsNeedingCapture). A function
+	///        not in this set is reported as NativeUnwind: it never touches
+	///        the ExceptionFrame machinery, so the generic Invocable skips
+	///        pushing one for it.
+	TBCExecutable(std::shared_ptr<TBCProgram> program, std::unordered_set<std::string> functionsNeedingCapture);
 
 	[[nodiscard]] void* getInvocableFunctionPtr(const std::string& member) override;
 	bool hasInvocableFunctionPtr() override;
@@ -27,8 +35,14 @@ public:
 		return ExceptionPropagationMode::CapturedHostRethrow;
 	}
 
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode(const std::string& member) const override {
+		return functionsNeedingCapture_.contains(member) ? ExceptionPropagationMode::CapturedHostRethrow
+		                                                 : ExceptionPropagationMode::NativeUnwind;
+	}
+
 private:
 	std::shared_ptr<TBCProgram> program;
+	std::unordered_set<std::string> functionsNeedingCapture_;
 };
 
 } // namespace nautilus::compiler::tbc

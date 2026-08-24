@@ -693,8 +693,10 @@ void BCInterpreter::buildFlatCode() {
 
 BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
                            std::vector<std::unique_ptr<BCCallbackData>> callbackData,
-                           std::vector<BCClosureHandle> callbacks)
-    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)) {
+                           std::vector<BCClosureHandle> callbacks,
+                           std::unordered_set<std::string> functionsNeedingCapture)
+    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)),
+      functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
 BCExecutable::~BCExecutable() {

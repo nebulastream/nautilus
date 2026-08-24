@@ -1,4 +1,5 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
+#include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 
@@ -40,6 +41,25 @@ void* CapturedExceptionTransport::captureThunkFor(const ir::Operation* call) {
 		return indirect->getCaptureFunc();
 	}
 	return nullptr;
+}
+
+std::unordered_set<std::string> CapturedExceptionTransport::functionsNeedingCapture(const ir::IRGraph& ir) {
+	std::unordered_set<std::string> names;
+	for (const auto* fn : ir.getFunctionOperations()) {
+		if (fn != nullptr && CapturedExceptionTransport(*fn).hasExceptionalCallSites()) {
+			names.insert(fn->getName());
+		}
+	}
+	return names;
+}
+
+bool CapturedExceptionTransport::anyFunctionNeedsCapture(const ir::IRGraph& ir) {
+	for (const auto* fn : ir.getFunctionOperations()) {
+		if (fn != nullptr && CapturedExceptionTransport(*fn).hasExceptionalCallSites()) {
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace nautilus::compiler

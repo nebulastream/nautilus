@@ -3,7 +3,13 @@
 #include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include <cstddef>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
+
+namespace nautilus::compiler::ir {
+class IRGraph;
+}
 
 namespace nautilus::compiler {
 
@@ -70,6 +76,22 @@ public:
 	[[nodiscard]] bool hasExceptionalCallSites() const {
 		return region_ != nullptr && !region_->callSites.empty();
 	}
+
+	/// Names of every function in @p ir whose compiled body actually touches
+	/// the captured-exception transport (i.e. `hasExceptionalCallSites()` is
+	/// true for it). A function whose name is absent from this set never
+	/// pushes/checks an ExceptionFrame at runtime, so it is safe to invoke
+	/// through the raw function pointer with no frame active -- see
+	/// `Executable::getExceptionPropagationMode(member)`, which backends use
+	/// this to answer per function instead of conservatively for the whole
+	/// executable.
+	[[nodiscard]] static std::unordered_set<std::string> functionsNeedingCapture(const ir::IRGraph& ir);
+
+	/// True when at least one function in @p ir has an exceptional call site.
+	/// Cheaper than checking `!functionsNeedingCapture(ir).empty()` when the
+	/// caller only needs a yes/no answer (e.g. deciding whether a generated
+	/// translation unit needs the captured-exception preamble at all).
+	[[nodiscard]] static bool anyFunctionNeedsCapture(const ir::IRGraph& ir);
 
 private:
 	const ir::FunctionExceptionRegion* region_ = nullptr;

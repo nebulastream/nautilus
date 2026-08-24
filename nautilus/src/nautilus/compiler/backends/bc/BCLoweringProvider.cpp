@@ -202,8 +202,7 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 	// CHECK_PENDING_EXCEPTION opcodes emitted during the main CFG lowering carry
 	// a placeholder target (reg1 == -1) recorded in pendingExceptionPatches; the
 	// pad block indices are known only now, after the main CFG has been emitted.
-	const bool hasExceptionRegion =
-	    currentFunction_->exceptionRegion.has_value() && !currentFunction_->exceptionRegion->callSites.empty();
+	const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
 	if (hasExceptionRegion) {
 		const auto& pads = currentFunction_->exceptionRegion->pads;
 		const short mainBlockCount = static_cast<short>(program.blocks.size());
