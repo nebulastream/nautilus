@@ -5,6 +5,7 @@
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace nautilus::engine {
@@ -272,6 +273,96 @@ val<int64_t> regionNestedEscapeStaticUnroll() {
 	return sum;
 }
 
+// Control flow in the *outer* region, positioned after the inner region has
+// already closed: the inner region's exit wiring (or its memoized
+// continuation) has to leave the cursor somewhere the following branch can
+// legally extend from, and the branch's own exploration must not re-enter or
+// disturb the finished inner region.
+val<int64_t> regionBranchAfterInnerRegion(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region([&]() {
+		region([&]() { sum = sum + 1; });
+		if (x > 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+	});
+	return sum;
+}
+
+// Same, with a native loop after the inner region instead of a branch.
+val<int64_t> regionLoopAfterInnerRegion(val<int64_t> n) {
+	val<int64_t> sum = 0;
+	region([&]() {
+		region([&]() { sum = sum + 1; });
+		val<int64_t> i = 0;
+		while (i < n) {
+			sum = sum + 2;
+			i = i + 1;
+		}
+	});
+	return sum;
+}
+
+// Inner region, then a branch, then a *second* inner region inside one arm:
+// the second region is entered under a parent state that only one arm reaches,
+// so its memo key must not collide with the first region's.
+val<int64_t> regionBranchBetweenInnerRegions(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region([&]() {
+		region([&]() { sum = sum + 1; });
+		if (x > 0) {
+			region([&]() { sum = sum + 10; });
+		} else {
+			sum = sum + 20;
+		}
+		region([&]() { sum = sum + 100; });
+	});
+	return sum;
+}
+
+// Control flow following the *outer* region, at function level.
+val<int64_t> regionBranchAfterOuterRegion(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region([&]() { region([&]() { sum = sum + 1; }); });
+	if (x > 0) {
+		sum = sum + 10;
+	} else {
+		sum = sum + 20;
+	}
+	return sum;
+}
+
+// Branch before the inner region, with the inner region trailing it.
+val<int64_t> regionBranchBeforeInnerRegion(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region([&]() {
+		if (x > 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+		region([&]() { sum = sum + 1; });
+	});
+	return sum;
+}
+
+// The minimal shape: a branch inside a region followed by one more traced
+// operation. No nesting, no escaping value -- just work after the branch.
+val<int64_t> regionBranchNoInnerRegion(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region([&]() {
+		if (x > 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+		sum = sum + 1;
+	});
+	return sum;
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -386,6 +477,12 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		REQUIRE(fn() == 6); // 1 + 2 + 3
 	}
 
+	SECTION("region branch after outer region") {
+		auto fn = engine.registerFunction(regionBranchAfterOuterRegion);
+		REQUIRE(fn(1) == 11);
+		REQUIRE(fn(-1) == 21);
+	}
+
 	SECTION("region empty and unnamed") {
 		auto fn = engine.registerFunction(regionEmptyAndUnnamed);
 		REQUIRE(fn() == 1);
@@ -420,6 +517,61 @@ TEST_CASE("Region Live Escape Across Branch (exception-based)", "[region]") {
 			auto fn = engine.registerFunction(regionEscapeAcrossBranch);
 			REQUIRE(fn(1) == 10);
 			REQUIRE(fn(-1) == 20);
+
+			auto afterInner = engine.registerFunction(regionBranchAfterInnerRegion);
+			REQUIRE(afterInner(1) == 11);
+			REQUIRE(afterInner(-1) == 21);
+
+			auto loopAfterInner = engine.registerFunction(regionLoopAfterInnerRegion);
+			REQUIRE(loopAfterInner(3) == 7);
+			REQUIRE(loopAfterInner(0) == 1);
+
+			auto betweenInner = engine.registerFunction(regionBranchBetweenInnerRegions);
+			REQUIRE(betweenInner(1) == 111);
+			REQUIRE(betweenInner(-1) == 121);
+
+			auto beforeInner = engine.registerFunction(regionBranchBeforeInnerRegion);
+			REQUIRE(beforeInner(1) == 11);
+			REQUIRE(beforeInner(-1) == 21);
+
+			auto afterBranch = engine.registerFunction(regionBranchNoInnerRegion);
+			REQUIRE(afterBranch(1) == 11);
+			REQUIRE(afterBranch(-1) == 21);
+		}
+	}
+}
+
+// The same shapes under lazyTracing, which cannot express them today. What is
+// pinned here is not the limitation itself but the *diagnosis*: each one has to
+// surface as a NautilusException naming region() and the trace mode, because
+// the untrapped failures are a segfault in a much later IR pass (traced
+// operations after internal control flow leave an empty, unterminated block)
+// and a reference-count underflow (a val<T> left alive across an exploration
+// pass). Both point nowhere near the region that caused them.
+TEST_CASE("Region Unsupported Shapes Diagnose Cleanly (lazy)", "[region]") {
+	for (const auto& backend : nautilus::testing::availableBackends()) {
+		DYNAMIC_SECTION(backend) {
+			auto engine = nautilus::testing::makeEngine(
+			    backend, [](engine::Options& opts) { opts.setOption("engine.traceMode", std::string("lazyTracing")); });
+			// The message is the contract here: whoever hits this needs to be
+			// told which construct is unsupported and what to do instead, not
+			// merely that something threw.
+			auto diagnosisOf = [&](auto fnptr) {
+				try {
+					engine.registerFunction(fnptr);
+				} catch (const std::exception& e) {
+					return std::string(e.what());
+				}
+				return std::string("<no exception thrown>");
+			};
+			for (const auto& message :
+			     {diagnosisOf(regionBranchNoInnerRegion), diagnosisOf(regionBranchAfterInnerRegion),
+			      diagnosisOf(regionLoopAfterInnerRegion), diagnosisOf(regionBranchBetweenInnerRegions),
+			      diagnosisOf(regionBranchBeforeInnerRegion), diagnosisOf(regionEscapeAcrossBranch)}) {
+				INFO("diagnostic: " << message);
+				REQUIRE(message.find("region()") != std::string::npos);
+				REQUIRE(message.find("exceptionBasedTracing") != std::string::npos);
+			}
 		}
 	}
 }

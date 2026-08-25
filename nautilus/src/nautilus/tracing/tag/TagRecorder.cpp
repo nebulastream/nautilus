@@ -9,6 +9,52 @@ namespace nautilus::tracing {
 
 #pragma GCC diagnostic ignored "-Wframe-address"
 
+namespace {
+// Largest plausible distance between a callee's frame record and its caller's.
+// Real frames are far smaller; this only has to rule out wild pointers.
+constexpr uintptr_t MAX_PLAUSIBLE_FRAME_DELTA = 64ull * 1024 * 1024;
+
+/**
+ * @brief Best-effort check that @p caller is a real frame record linked from @p callee.
+ *
+ * The frame-pointer walks below rely on the frame-record convention shared by the x86-64 SysV and
+ * AArch64 AAPCS64 ABIs (frame[0] = caller's frame pointer, frame[1] = return address), which only
+ * holds when everything on the stack was built with -fno-omit-frame-pointer. Nautilus applies that
+ * flag to itself and exports it to consumers (see nautilus/CMakeLists.txt), but a caller that
+ * compiles against the library without going through CMake gets the compiler default instead --
+ * omitted frame pointers at -O1 and above. frame[0] then holds ordinary local data, and following
+ * it walks into unmapped memory.
+ *
+ * A well-formed chain runs towards higher addresses (the stack grows down, so a caller's frame
+ * always sits above its callee's) and every link is pointer-aligned, which arbitrary data almost
+ * never satisfies. This cannot be exhaustive -- data that happens to look like a frame pointer is
+ * indistinguishable -- but it turns the common case from a segfault into a diagnosable error.
+ */
+bool isPlausibleCallerFrame(void** callee, void** caller) {
+	if (caller == nullptr) {
+		return false;
+	}
+	const auto calleeAddress = reinterpret_cast<uintptr_t>(callee);
+	const auto callerAddress = reinterpret_cast<uintptr_t>(caller);
+	if (callerAddress % alignof(void*) != 0) {
+		return false;
+	}
+	if (callerAddress <= calleeAddress) {
+		return false;
+	}
+	return callerAddress - calleeAddress <= MAX_PLAUSIBLE_FRAME_DELTA;
+}
+
+[[noreturn]] void throwBrokenFrameChain() {
+	throw TagCreationException(
+	    "Could not walk the call stack: the frame-pointer chain is broken. Nautilus derives the tag that "
+	    "identifies each traced instruction from the caller's stack frames, which requires every frame on the "
+	    "stack to have a frame pointer. Rebuild the code that calls into Nautilus with -fno-omit-frame-pointer. "
+	    "Linking against the CMake target 'nautilus' applies this flag automatically; compiling against the "
+	    "library by hand does not.");
+}
+} // namespace
+
 TagRecorder::TagRecorder(TagAddress startAddress, common::Arena& arena) : startAddress(startAddress), arena(arena) {
 	useBuiltinTagCreation = __builtin_return_address(1) != nullptr;
 }
@@ -33,7 +79,14 @@ __attribute__((noinline)) TagVector TagRecorder::createBaseTag() {
 	auto** frame = static_cast<void**>(__builtin_frame_address(0));
 	for (size_t i = 0; i < MAX_TAG_SIZE && frame != nullptr; i++) {
 		addresses.emplace_back((TagAddress) frame[1]);
-		frame = static_cast<void**>(frame[0]);
+		auto** caller = static_cast<void**>(frame[0]);
+		if (caller == nullptr) {
+			break; // Clean end of the chain (outermost frame).
+		}
+		if (!isPlausibleCallerFrame(frame, caller)) {
+			throwBrokenFrameChain();
+		}
+		frame = caller;
 	}
 	return addresses;
 }
@@ -89,7 +142,14 @@ __attribute__((noinline)) Tag* TagRecorder::createReferenceTagBuildin() {
 			return currentTagNode;
 		}
 		currentTagNode = currentTagNode->append(tagAddress, arena);
-		frame = static_cast<void**>(frame[0]);
+		auto** caller = static_cast<void**>(frame[0]);
+		// Validate before dereferencing on the next iteration. The walk always
+		// terminates by finding startAddress, so a chain that runs out early is
+		// never normal -- it means frame[0] was not a frame pointer at all.
+		if (!isPlausibleCallerFrame(frame, caller)) {
+			throwBrokenFrameChain();
+		}
+		frame = caller;
 	}
 	throw TagCreationException("Stack is too deep. This could indicate the use "
 	                           "of recursive control-flow,"

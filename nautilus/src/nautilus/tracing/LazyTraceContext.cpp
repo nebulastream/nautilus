@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -46,6 +47,35 @@ bool blockAlreadyTerminated(const Block& block) {
 	auto op = block.operations.back()->op;
 	return op == Op::CMP || op == Op::JMP;
 }
+
+// Reports a region-shaped defect in the trace this context just built, as an
+// actionable error instead of the crash or corruption it would otherwise cause
+// downstream. Region-local exploration (see traceRegionContinue) is the only
+// thing that builds blocks outside the linear top-level flow, so these are
+// always attributable to a region() in the traced function.
+[[noreturn]] void throwUnsupportedRegionShape(const std::string& detail) {
+	throw RuntimeException(
+	    "Unsupported region() usage under engine.traceMode = \"lazyTracing\": " + detail +
+	    " Region-local branch exploration cannot currently express this shape, and continuing would emit a "
+	    "malformed trace. Either restructure the region so its internal control flow is the last thing in the "
+	    "region body, or set engine.traceMode = \"exceptionBasedTracing\", which traces this correctly (at the "
+	    "cost of the region's branch-tracing speedup). See docs/region.md.");
+}
+
+// Verifies the shape invariants the rest of the pipeline relies on. An empty
+// block reaches ConstantBranchFoldingPass as an unchecked operations.back(),
+// so leaving one behind turns into a segfault several phases later, with
+// nothing left pointing back at the region that produced it.
+void verifyNoEmptyBlocks(ExecutionTrace& trace) {
+	const auto& blocks = trace.getBlocks();
+	for (size_t index = 0; index < blocks.size(); index++) {
+		if (blocks[index]->operations.empty()) {
+			throwUnsupportedRegionShape("tracing left basic block " + std::to_string(index) +
+			                            " empty and unterminated, which happens when traced operations follow a "
+			                            "branch or loop inside a region() body.");
+		}
+	}
+}
 } // namespace
 
 // Thread-local LazyTraceContext object (not a pointer)
@@ -78,6 +108,7 @@ void LazyTraceContext::resume() {
 	// reinitialize() on the next traceRegionBegin(). No-op on the nominal path,
 	// where every region already popped its own frame via traceRegionEnd().
 	activeRegionDepth_ = 0;
+	tracedAnyRegion_ = false;
 	aliveVars.reset();
 	paused_ = false;
 }
@@ -93,11 +124,25 @@ bool LazyTraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
+TypedValueRef& LazyTraceContext::follow(Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	auto consumedTag = currentOperation.tag;
 	state->executionTrace.nextOperation();
-	assert(currentOperation.op == op);
+	if (currentOperation.op != op) [[unlikely]] {
+		// The replay cursor no longer lines up with the recorded operation
+		// stream. When this function used region(), that is the known
+		// region-shape limitation surfacing (a region's recorded continuation
+		// no longer matches what replay walks into); report it as such while
+		// the cause is still attributable. Otherwise it is an internal
+		// invariant break, which was previously only an assert -- and so went
+		// silently unnoticed in release builds, corrupting the trace instead.
+		if (tracedAnyRegion_) {
+			throwUnsupportedRegionShape("replaying the trace desynchronized from the recorded operation stream, "
+			                            "which happens when traced operations follow a nested region() inside "
+			                            "another region() body.");
+		}
+		throw RuntimeException("Trace replay desynchronized from the recorded operation stream.");
+	}
 	// traceConstant/traceCopy's globalTagMap-collision branch (see their
 	// definitions below) records a *reconciliation* ASSIGN immediately after
 	// the primary operation, sharing its exact tag, so that a stale value ref
@@ -543,6 +588,7 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		state.reset();
 		log::debug("Lazy Tracing Terminated with {} iterations", traceIteration);
 		log::trace("Final trace: {}", executionTrace);
+		verifyNoEmptyBlocks(executionTrace);
 	}
 
 	// activeTracer is cleared by ActiveTracerGuard.
@@ -603,6 +649,7 @@ TraceContextBase* LazyTraceContext::getRootContext() {
 }
 
 bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
+	tracedAnyRegion_ = true;
 	bool recording;
 	uint64_t P;
 	if (!inActiveRegion()) {
@@ -686,6 +733,17 @@ bool LazyTraceContext::traceRegionContinue() {
 		}
 		f.localCtx.next();
 		trace.setCurrentBlock(f.entryBlockIndex);
+		if (f.aliveVars.size() > 0) {
+			// Values created by this pass are still alive in an enclosing C++
+			// scope, so the reset below would drop liveness that their eventual
+			// destruction still decrements -- an assert in debug builds and a
+			// count underflow in release. Report it here, where the region is
+			// still identifiable, rather than at the mismatched decrement.
+			throwUnsupportedRegionShape("a value created inside the region is still alive at the end of a local "
+			                            "exploration pass, which happens when a region() body both contains "
+			                            "internal control flow and leaves a val<T> alive past its end (for "
+			                            "example by storing one into a container declared outside the region).");
+		}
 		// aliveVars must not carry an imbalance a paused-truncated pass left
 		// behind (a loop or merge inside the region can end a pass early,
 		// skipping the freeValRef calls for temporaries whose destructors run

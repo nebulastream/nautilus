@@ -296,6 +296,10 @@ private:
 	/// reinitialize() when a region is entered.
 	std::vector<RegionFrame> regionFramePool_;
 	size_t activeRegionDepth_ = 0;
+	// Whether any region() was engaged while tracing the current function, so
+	// that a replay desynchronization can be attributed to the region-shape
+	// limitation rather than reported as a generic internal error.
+	bool tracedAnyRegion_ = false;
 
 	// Passive mode state (root-level; see RegionFrame::paused for the region-local
 	// equivalent).
