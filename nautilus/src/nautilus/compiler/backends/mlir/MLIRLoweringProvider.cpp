@@ -655,7 +655,7 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 
 	// Only set result attributes if the function returns a value
 	if (functionOp.getOutputArg() != Type::v) {
-		if (isUnsignedInteger(functionOp.getStamp())) {
+		if (isUnsignedInteger(functionOp.getStamp()) || functionOp.getStamp() == Type::b) {
 			mlirFunction.setResultAttr(0, "llvm.zeroext", mlir::UnitAttr::get(context));
 		} else if (isSignedInteger(functionOp.getStamp())) {
 			mlirFunction.setResultAttr(0, "llvm.signext", mlir::UnitAttr::get(context));
