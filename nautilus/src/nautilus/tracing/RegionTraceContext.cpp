@@ -142,18 +142,22 @@ void RegionTraceContext::traceRegionEnd() {
 		return;
 	}
 
-	// FOLLOW replay: the body was already recorded, so there is nothing new to
-	// memoize or escape-transfer, and a bogus continuation must not be cached.
-	if (!recording_) {
-		return;
-	}
 	if (aliveVars.size() > 0) {
+		// Not gated on recording_, unlike the memoization below: this mirrors
+		// real C++ object lifetimes, which happen whether or not this
+		// engagement recorded anything. A FOLLOW replay still constructs the
+		// escaping value (allocateValRef is likewise ungated here) and still
+		// destroys it afterwards, routing that freeValRef to parent_, so
+		// skipping the hand-off left parent_ decrementing a ref it never
+		// incremented.
 		aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
 			for (uint32_t i = 0; i < count; ++i) {
 				parent_->allocateValRef(ref);
 			}
 		});
-	} else {
+	} else if (recording_) {
+		// FOLLOW replay records nothing new, so there is no continuation worth
+		// caching -- and caching a bogus one would corrupt later replays.
 		auto& trace = getRootContext()->getExecutionTrace();
 		getRootContext()->regionMemos[callSite_][P_] =
 		    RegionExec {trace.currentOperationIndex, trace.currentBlockIndex};

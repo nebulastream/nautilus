@@ -722,9 +722,6 @@ void LazyTraceContext::traceRegionEnd() {
 	// depth counter and leaves the (distinct) pool entry untouched.
 	--activeRegionDepth_;
 
-	if (!recording) {
-		return;
-	}
 	if (hasEscapes) {
 		// A value created inside the region that is still alive at region end
 		// escapes into the enclosing scope, so its liveness bookkeeping has to
@@ -735,12 +732,19 @@ void LazyTraceContext::traceRegionEnd() {
 		// before) left the enclosing frame to be decremented for a ref it never
 		// incremented -- an assert in debug builds, and a uint32_t underflow to
 		// ~4.29e9 in release, which then made this loop iterate ~4.29e9 times.
+		//
+		// Deliberately not gated on `recording`, unlike the memoization below:
+		// this mirrors real C++ object lifetimes, which happen whether or not
+		// this engagement recorded anything. A FOLLOW replay still constructs
+		// the escaping value (allocateValRef is likewise ungated inside a
+		// region) and still destroys it afterwards, so skipping the hand-off
+		// here left the enclosing scope decrementing a ref it never incremented.
 		f.aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
 			for (uint32_t i = 0; i < count; ++i) {
 				allocateValRef(ref);
 			}
 		});
-	} else if (!inActiveRegion()) {
+	} else if (recording && !inActiveRegion()) {
 		// Memoize only a top-level region: only a top-level traceRegionBegin
 		// ever performs a memo lookup, so an entry filed here by a nested
 		// region could never be read back by another nested entry -- only by a

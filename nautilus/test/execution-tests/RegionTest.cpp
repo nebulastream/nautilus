@@ -4,6 +4,7 @@
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
+#include <optional>
 #include <vector>
 
 namespace nautilus::engine {
@@ -152,6 +153,125 @@ val<int64_t> regionNestedEscapeToFunction() {
 	return sum + v[0];
 }
 
+// Three nesting levels, each handing a freshly created value one level out:
+// the innermost escapes into the middle region, the middle's into the outer,
+// the outer's out to the function. Each transfer targets a different scope, so
+// a rule that always credited the function (or always the immediate parent)
+// gets a different level wrong.
+val<int64_t> regionTripleNestedEscape() {
+	std::vector<val<int64_t>> outer;
+	region([&]() {
+		std::vector<val<int64_t>> mid;
+		region([&]() {
+			std::vector<val<int64_t>> inner;
+			region([&]() { inner.push_back(val<int64_t>(1)); });
+			mid.push_back(inner[0] + 2);
+		});
+		outer.push_back(mid[0] + 4);
+	});
+	return outer[0];
+}
+
+// Several distinct refs alive at once at the inner region's end, so the
+// transfer walks more than one entry.
+val<int64_t> regionMultipleEscapes() {
+	val<int64_t> sum = 0;
+	region([&]() {
+		std::vector<val<int64_t>> v;
+		region([&]() {
+			v.push_back(val<int64_t>(1));
+			v.push_back(val<int64_t>(2));
+			v.push_back(val<int64_t>(4));
+		});
+		sum = sum + v[0] + v[1] + v[2];
+	});
+	return sum;
+}
+
+// One escaping value held by several live copies: the transfer has to move the
+// whole reference count, not just mark the ref alive once, or the enclosing
+// scope's count goes negative on the second destruction.
+val<int64_t> regionEscapeWithMultipleCopies() {
+	val<int64_t> sum = 0;
+	region([&]() {
+		std::vector<val<int64_t>> v;
+		region([&]() {
+			val<int64_t> t = 5;
+			v.push_back(t);
+			v.push_back(t);
+			v.push_back(t);
+		});
+		sum = sum + v[0] + v[1] + v[2];
+	});
+	return sum;
+}
+
+// A live value escaping a region that also contains an internal branch: the
+// value is constructed inside the region and is still alive at region end, so
+// the region has to hand its liveness to the enclosing scope -- which must
+// happen whether or not that engagement was the one that recorded the body,
+// since the destruction happens either way.
+//
+// Only exercised under exceptionBasedTracing (see the dedicated test case at
+// the bottom of this file); see docs/region.md for why lazyTracing does not
+// support this yet.
+val<int64_t> regionEscapeAcrossBranch(val<int64_t> x) {
+	std::optional<val<int64_t>> slot;
+	region([&]() {
+		if (x > 0) {
+			slot.emplace(val<int64_t>(10));
+		} else {
+			slot.emplace(val<int64_t>(20));
+		}
+	});
+	return *slot;
+}
+
+// Two sibling regions nested in the same outer region: the first escapes a
+// value, the second closes cleanly and takes the memoization path. The second
+// must not inherit or re-transfer what the first left behind.
+val<int64_t> regionSiblingNestedEscapes() {
+	val<int64_t> sum = 0;
+	region([&]() {
+		std::optional<val<int64_t>> slot;
+		region([&]() { slot.emplace(val<int64_t>(5)); });
+		region([&]() { sum = sum + 1; });
+		sum = sum + *slot;
+	});
+	return sum;
+}
+
+// The whole nest re-entered under a dynamic loop, so the same call sites are
+// engaged repeatedly and any liveness left over from one engagement shows up
+// in the next one's parent-state hash.
+val<int64_t> regionNestedEscapeInLoop(val<int64_t> n) {
+	val<int64_t> sum = 0;
+	val<int64_t> i = 0;
+	while (i < n) {
+		region([&]() {
+			std::optional<val<int64_t>> slot;
+			region([&]() { slot.emplace(val<int64_t>(3)); });
+			sum = sum + *slot;
+		});
+		i = i + 1;
+	}
+	return sum;
+}
+
+// Same nest re-entered under static unrolling, so each engagement sees a
+// different enclosing state hash P -- the key regions are memoized under.
+val<int64_t> regionNestedEscapeStaticUnroll() {
+	val<int64_t> sum = 0;
+	for (static_val<int32_t> j = 0; j < 3; j++) {
+		region([&]() {
+			std::optional<val<int64_t>> slot;
+			region([&]() { slot.emplace(val<int64_t>(j) + 1); });
+			sum = sum + *slot;
+		});
+	}
+	return sum;
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -235,6 +355,37 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		REQUIRE(fn() == 14);
 	}
 
+	SECTION("region triple nested escape") {
+		auto fn = engine.registerFunction(regionTripleNestedEscape);
+		REQUIRE(fn() == 7); // ((1) + 2) + 4
+	}
+
+	SECTION("region multiple escapes from one region") {
+		auto fn = engine.registerFunction(regionMultipleEscapes);
+		REQUIRE(fn() == 7); // 1 + 2 + 4
+	}
+
+	SECTION("region escape with multiple live copies") {
+		auto fn = engine.registerFunction(regionEscapeWithMultipleCopies);
+		REQUIRE(fn() == 15); // 5 * 3
+	}
+
+	SECTION("region sibling nested escapes") {
+		auto fn = engine.registerFunction(regionSiblingNestedEscapes);
+		REQUIRE(fn() == 6); // 1 + 5
+	}
+
+	SECTION("region nested escape re-entered in loop") {
+		auto fn = engine.registerFunction(regionNestedEscapeInLoop);
+		REQUIRE(fn(3) == 9);
+		REQUIRE(fn(0) == 0);
+	}
+
+	SECTION("region nested escape under static unroll") {
+		auto fn = engine.registerFunction(regionNestedEscapeStaticUnroll);
+		REQUIRE(fn() == 6); // 1 + 2 + 3
+	}
+
 	SECTION("region empty and unnamed") {
 		auto fn = engine.registerFunction(regionEmptyAndUnnamed);
 		REQUIRE(fn() == 1);
@@ -250,6 +401,27 @@ void runRegionTests(engine::NautilusEngine& engine) {
 #ifdef ENABLE_TRACING
 TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
+}
+
+// Escaping a *live* value out of a region that also contains internal control
+// flow works under exceptionBasedTracing, which invokes the region body once
+// per engagement. It is not yet supported under lazyTracing, whose local
+// exploration re-invokes the body and resets the region's delta liveness
+// between passes, discarding refs still alive in an enclosing C++ scope -- so
+// this is pinned to the one tracer that supports it rather than run through
+// forEachBackendWithTraceMode. See docs/region.md. Escaping by *assignment* to
+// a captured val<T> (regionBranchWritesDifferentVars above) works under both.
+TEST_CASE("Region Live Escape Across Branch (exception-based)", "[region]") {
+	for (const auto& backend : nautilus::testing::availableBackends()) {
+		DYNAMIC_SECTION(backend) {
+			auto engine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
+				opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
+			});
+			auto fn = engine.registerFunction(regionEscapeAcrossBranch);
+			REQUIRE(fn(1) == 10);
+			REQUIRE(fn(-1) == 20);
+		}
+	}
 }
 #else
 TEST_CASE("Region Compiler Test", "[region]") {
