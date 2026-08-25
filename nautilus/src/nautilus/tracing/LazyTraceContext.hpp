@@ -187,7 +187,9 @@ private:
 			entryBlockIndex = 0;
 			exitBlockIndex = 0;
 			hasExitBlock = false;
+			pendingTails.clear();
 			recording = isRecording;
+			explores = false;
 			// The region's *delta* environment (region.md §4.2) must start empty:
 			// a reused frame would otherwise inherit the previous region's
 			// statics/alive refs into its snapshot hash and escape transfer.
@@ -217,6 +219,12 @@ private:
 		// region()'s IR footprint for the common case is unchanged.
 		uint32_t exitBlockIndex = 0;
 		bool hasExitBlock = false;
+		// Blocks where an exploration pass ran out of body without a terminator.
+		// They may still gain one later -- the control-flow-merge machinery
+		// repoints such a tail at its own merge block when the region body
+		// continues past its branch -- so convergence is decided once, at the end,
+		// over whichever of these are still open.
+		std::vector<uint32_t> pendingTails;
 		// True when this engagement *records* the region body; false on a FOLLOW
 		// replay of an already-recorded open (non-memoizable) region, in which
 		// case local exploration never runs and every op below just updates this
@@ -230,6 +238,14 @@ private:
 		// current *local* pass mode (which alternates between RECORD and FOLLOW
 		// across its own passes; recording here is not that).
 		bool recording = false;
+		// Whether this frame runs an exploration loop of its own. Only a
+		// top-level region does: a region nested inside another shares the
+		// enclosing region's exploration state, so that when the enclosing region
+		// replays a pass the nested body replays with it instead of starting a
+		// fresh recording and desynchronizing the shared trace cursor. This
+		// mirrors the exception-based substrate, where the whole nesting chain is
+		// served by one context with one exploration state.
+		bool explores = false;
 		std::vector<StaticVarHolder> staticVars;
 		AliveVariableHash aliveVars;
 	};
@@ -270,23 +286,50 @@ private:
 	/// every trace call to whatever scope is really doing the work, exactly like
 	/// the old RegionTraceContext's `if (!recording_) return parent_->traceX(...)`).
 	bool currentPaused() const {
-		return inActiveRegion() && topFrame().recording ? topFrame().paused : paused_;
+		const auto* f = exploringFrame();
+		return f != nullptr ? f->paused : paused_;
 	}
 
 	void setCurrentPaused(bool value) {
-		if (inActiveRegion() && topFrame().recording) {
-			topFrame().paused = value;
+		auto* f = exploringFrame();
+		if (f != nullptr) {
+			f->paused = value;
 		} else {
 			paused_ = value;
 		}
+	}
+
+	/// The innermost frame running its own exploration loop, or nullptr when
+	/// none is (no region active, the active one is a replay, or the active one
+	/// is nested inside another and therefore shares its enclosing frame's
+	/// exploration state).
+	RegionFrame* exploringFrame() {
+		for (size_t depth = activeRegionDepth_; depth > 0; depth--) {
+			auto& frame = regionFramePool_[depth - 1];
+			if (frame.explores) {
+				return &frame;
+			}
+		}
+		return nullptr;
+	}
+
+	const RegionFrame* exploringFrame() const {
+		for (size_t depth = activeRegionDepth_; depth > 0; depth--) {
+			const auto& frame = regionFramePool_[depth - 1];
+			if (frame.explores) {
+				return &frame;
+			}
+		}
+		return nullptr;
 	}
 
 	/// The SymbolicExecutionContext currently driving record/follow decisions:
 	/// the innermost *recording* region frame's local context, or this object's
 	/// own root-level one.
 	SymbolicExecutionContext& currentSymbolicExecutionContext() {
-		if (inActiveRegion() && topFrame().recording) {
-			return topFrame().localCtx;
+		auto* f = exploringFrame();
+		if (f != nullptr) {
+			return f->localCtx;
 		}
 		return state->symbolicExecutionContext;
 	}

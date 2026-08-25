@@ -207,15 +207,14 @@ val<int64_t> regionEscapeWithMultipleCopies() {
 	return sum;
 }
 
-// A live value escaping a region that also contains an internal branch: the
-// value is constructed inside the region and is still alive at region end, so
-// the region has to hand its liveness to the enclosing scope -- which must
-// happen whether or not that engagement was the one that recorded the body,
-// since the destruction happens either way.
-//
-// Only exercised under exceptionBasedTracing (see the dedicated test case at
-// the bottom of this file); see docs/region.md for why lazyTracing does not
-// support this yet.
+// A live value built in ONE branch arm and carried out of the region. Each arm
+// constructs a different value with no merge point between them, so what
+// escapes depends on which arm ran -- the region equivalent of returning a
+// value from the lambda. Works under exceptionBasedTracing, which traces one
+// arm per engagement; not supported under lazyTracing, whose local exploration
+// runs both arms against the same enclosing `slot`. Escaping by assignment to
+// a captured val<T> (regionBranchWritesDifferentVars above) is the supported
+// idiom and merges correctly in both.
 val<int64_t> regionEscapeAcrossBranch(val<int64_t> x) {
 	std::optional<val<int64_t>> slot;
 	region([&]() {
@@ -226,6 +225,25 @@ val<int64_t> regionEscapeAcrossBranch(val<int64_t> x) {
 		}
 	});
 	return *slot;
+}
+
+// A live value escaping a region that also contains an internal branch, built
+// unconditionally so both arms agree on what escapes. The region body is
+// re-invoked once per exploration pass, so the escaping value is rebuilt each
+// pass while the previous pass's copy is still held by the enclosing scope --
+// the region's liveness bookkeeping has to carry both across the pass boundary.
+val<int64_t> regionLiveEscapeWithInternalBranch(val<int64_t> x) {
+	std::vector<val<int64_t>> v;
+	val<int64_t> sum = 0;
+	region([&]() {
+		v.push_back(val<int64_t>(7));
+		if (x > 0) {
+			sum = sum + 1;
+		} else {
+			sum = sum + 2;
+		}
+	});
+	return sum + v[0];
 }
 
 // Two sibling regions nested in the same outer region: the first escapes a
@@ -483,6 +501,42 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		REQUIRE(fn(-1) == 21);
 	}
 
+	SECTION("region branch after inner region") {
+		auto fn = engine.registerFunction(regionBranchAfterInnerRegion);
+		REQUIRE(fn(1) == 11);
+		REQUIRE(fn(-1) == 21);
+	}
+
+	SECTION("region loop after inner region") {
+		auto fn = engine.registerFunction(regionLoopAfterInnerRegion);
+		REQUIRE(fn(3) == 7); // 1 + 3*2
+		REQUIRE(fn(0) == 1);
+	}
+
+	SECTION("region branch between inner regions") {
+		auto fn = engine.registerFunction(regionBranchBetweenInnerRegions);
+		REQUIRE(fn(1) == 111);  // 1 + 10 + 100
+		REQUIRE(fn(-1) == 121); // 1 + 20 + 100
+	}
+
+	SECTION("region branch before inner region") {
+		auto fn = engine.registerFunction(regionBranchBeforeInnerRegion);
+		REQUIRE(fn(1) == 11);
+		REQUIRE(fn(-1) == 21);
+	}
+
+	SECTION("region operation after internal branch") {
+		auto fn = engine.registerFunction(regionBranchNoInnerRegion);
+		REQUIRE(fn(1) == 11);
+		REQUIRE(fn(-1) == 21);
+	}
+
+	SECTION("region live escape with internal branch") {
+		auto fn = engine.registerFunction(regionLiveEscapeWithInternalBranch);
+		REQUIRE(fn(1) == 8);  // 7 + 1
+		REQUIRE(fn(-1) == 9); // 7 + 2
+	}
+
 	SECTION("region empty and unnamed") {
 		auto fn = engine.registerFunction(regionEmptyAndUnnamed);
 		REQUIRE(fn() == 1);
@@ -500,81 +554,34 @@ TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
 }
 
-// Escaping a *live* value out of a region that also contains internal control
-// flow works under exceptionBasedTracing, which invokes the region body once
-// per engagement. It is not yet supported under lazyTracing, whose local
-// exploration re-invokes the body and resets the region's delta liveness
-// between passes, discarding refs still alive in an enclosing C++ scope -- so
-// this is pinned to the one tracer that supports it rather than run through
-// forEachBackendWithTraceMode. See docs/region.md. Escaping by *assignment* to
-// a captured val<T> (regionBranchWritesDifferentVars above) works under both.
-TEST_CASE("Region Live Escape Across Branch (exception-based)", "[region]") {
+// The one region shape lazyTracing still cannot express: a live value built in
+// a single branch arm and carried out (see regionEscapeAcrossBranch). It has to
+// surface as an exception rather than a crash or a silently wrong trace, so the
+// diagnosis is pinned here alongside the exception-based behaviour it works in.
+TEST_CASE("Region Live Escape From One Branch Arm", "[region]") {
 	for (const auto& backend : nautilus::testing::availableBackends()) {
 		DYNAMIC_SECTION(backend) {
-			auto engine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
+			auto ebEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
 				opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
 			});
-			auto fn = engine.registerFunction(regionEscapeAcrossBranch);
+			auto fn = ebEngine.registerFunction(regionEscapeAcrossBranch);
 			REQUIRE(fn(1) == 10);
 			REQUIRE(fn(-1) == 20);
 
-			auto afterInner = engine.registerFunction(regionBranchAfterInnerRegion);
-			REQUIRE(afterInner(1) == 11);
-			REQUIRE(afterInner(-1) == 21);
-
-			auto loopAfterInner = engine.registerFunction(regionLoopAfterInnerRegion);
-			REQUIRE(loopAfterInner(3) == 7);
-			REQUIRE(loopAfterInner(0) == 1);
-
-			auto betweenInner = engine.registerFunction(regionBranchBetweenInnerRegions);
-			REQUIRE(betweenInner(1) == 111);
-			REQUIRE(betweenInner(-1) == 121);
-
-			auto beforeInner = engine.registerFunction(regionBranchBeforeInnerRegion);
-			REQUIRE(beforeInner(1) == 11);
-			REQUIRE(beforeInner(-1) == 21);
-
-			auto afterBranch = engine.registerFunction(regionBranchNoInnerRegion);
-			REQUIRE(afterBranch(1) == 11);
-			REQUIRE(afterBranch(-1) == 21);
-		}
-	}
-}
-
-// The same shapes under lazyTracing, which cannot express them today. What is
-// pinned here is not the limitation itself but the *diagnosis*: each one has to
-// surface as a NautilusException naming region() and the trace mode, because
-// the untrapped failures are a segfault in a much later IR pass (traced
-// operations after internal control flow leave an empty, unterminated block)
-// and a reference-count underflow (a val<T> left alive across an exploration
-// pass). Both point nowhere near the region that caused them.
-TEST_CASE("Region Unsupported Shapes Diagnose Cleanly (lazy)", "[region]") {
-	for (const auto& backend : nautilus::testing::availableBackends()) {
-		DYNAMIC_SECTION(backend) {
-			auto engine = nautilus::testing::makeEngine(
+			auto lazyEngine = nautilus::testing::makeEngine(
 			    backend, [](engine::Options& opts) { opts.setOption("engine.traceMode", std::string("lazyTracing")); });
-			// The message is the contract here: whoever hits this needs to be
-			// told which construct is unsupported and what to do instead, not
-			// merely that something threw.
-			auto diagnosisOf = [&](auto fnptr) {
-				try {
-					engine.registerFunction(fnptr);
-				} catch (const std::exception& e) {
-					return std::string(e.what());
-				}
-				return std::string("<no exception thrown>");
-			};
-			for (const auto& message :
-			     {diagnosisOf(regionBranchNoInnerRegion), diagnosisOf(regionBranchAfterInnerRegion),
-			      diagnosisOf(regionLoopAfterInnerRegion), diagnosisOf(regionBranchBetweenInnerRegions),
-			      diagnosisOf(regionBranchBeforeInnerRegion), diagnosisOf(regionEscapeAcrossBranch)}) {
-				INFO("diagnostic: " << message);
-				REQUIRE(message.find("region()") != std::string::npos);
-				REQUIRE(message.find("exceptionBasedTracing") != std::string::npos);
+			std::string diagnosis = "<no exception thrown>";
+			try {
+				lazyEngine.registerFunction(regionEscapeAcrossBranch);
+			} catch (const std::exception& e) {
+				diagnosis = e.what();
 			}
+			INFO("diagnosis: " << diagnosis);
+			REQUIRE(diagnosis != "<no exception thrown>");
 		}
 	}
 }
+
 #else
 TEST_CASE("Region Compiler Test", "[region]") {
 	SKIP("Region compilation requires the tracing/compiler pipeline (ENABLE_TRACING)");

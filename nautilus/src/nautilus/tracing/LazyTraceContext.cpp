@@ -48,18 +48,24 @@ bool blockAlreadyTerminated(const Block& block) {
 	return op == Op::CMP || op == Op::JMP;
 }
 
-// Reports a region-shaped defect in the trace this context just built, as an
-// actionable error instead of the crash or corruption it would otherwise cause
-// downstream. Region-local exploration (see traceRegionContinue) is the only
-// thing that builds blocks outside the linear top-level flow, so these are
-// always attributable to a region() in the traced function.
-[[noreturn]] void throwUnsupportedRegionShape(const std::string& detail) {
+// Reports a malformed trace as an actionable error instead of the crash or
+// silent corruption it would otherwise cause several phases downstream.
+// Region-local exploration (see traceRegionContinue) is the only thing that
+// builds blocks outside the linear top-level flow, so a break in these
+// invariants is attributable to a region() in the traced function.
+//
+// These are backstops, not an expression of what regions support: a region
+// body may contain arbitrary control flow, with or without further operations
+// after it, and may carry live values out. If one of these does fire it is a
+// bug in region tracing rather than a usage error, so the message says so and
+// names the escape hatch.
+[[noreturn]] void throwMalformedRegionTrace(const std::string& detail) {
 	throw RuntimeException(
-	    "Unsupported region() usage under engine.traceMode = \"lazyTracing\": " + detail +
-	    " Region-local branch exploration cannot currently express this shape, and continuing would emit a "
-	    "malformed trace. Either restructure the region so its internal control flow is the last thing in the "
-	    "region body, or set engine.traceMode = \"exceptionBasedTracing\", which traces this correctly (at the "
-	    "cost of the region's branch-tracing speedup). See docs/region.md.");
+	    "Malformed trace built by region() under engine.traceMode = \"lazyTracing\": " + detail +
+	    " This is a bug in region-local branch exploration, not a limit on what a region body may contain; "
+	    "continuing would emit a trace later phases cannot consume. Setting engine.traceMode = "
+	    "\"exceptionBasedTracing\" traces the same code without region-local exploration (and without its "
+	    "branch-tracing speedup) and is a workaround. Please report the traced function. See docs/region.md.");
 }
 
 // Verifies the shape invariants the rest of the pipeline relies on. An empty
@@ -70,9 +76,7 @@ void verifyNoEmptyBlocks(ExecutionTrace& trace) {
 	const auto& blocks = trace.getBlocks();
 	for (size_t index = 0; index < blocks.size(); index++) {
 		if (blocks[index]->operations.empty()) {
-			throwUnsupportedRegionShape("tracing left basic block " + std::to_string(index) +
-			                            " empty and unterminated, which happens when traced operations follow a "
-			                            "branch or loop inside a region() body.");
+			throwMalformedRegionTrace("basic block " + std::to_string(index) + " was left empty and unterminated.");
 		}
 	}
 }
@@ -137,9 +141,7 @@ TypedValueRef& LazyTraceContext::follow(Op op) {
 		// invariant break, which was previously only an assert -- and so went
 		// silently unnoticed in release builds, corrupting the trace instead.
 		if (tracedAnyRegion_) {
-			throwUnsupportedRegionShape("replaying the trace desynchronized from the recorded operation stream, "
-			                            "which happens when traced operations follow a nested region() inside "
-			                            "another region() body.");
+			throwMalformedRegionTrace("replaying the trace desynchronized from the recorded operation stream.");
 		}
 		throw RuntimeException("Trace replay desynchronized from the recorded operation stream.");
 	}
@@ -685,19 +687,33 @@ bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
 		recording = outer.recording;
 	}
 
-	// Memo miss (or nested entry): create (or reuse) the per-call-site tag
-	// recorder and take a frame from the pool.
-	auto recorderNode = regionRecorders.try_emplace(callSite, callSite, state->executionTrace.getArena());
-	auto* recorder = &recorderNode.first->second;
+	const bool nested = inActiveRegion();
+	// A nested region shares the enclosing region's tag recorder as well as its
+	// P: the exception-based substrate serves a whole nesting chain from one
+	// context, so tag identity there does not change on the way in, and the
+	// enclosing region's replay of a later pass has to walk the same tags it
+	// recorded on the first one.
+	TagRecorder* recorder = nullptr;
+	if (nested) {
+		recorder = topFrame().recorder;
+	} else {
+		auto recorderNode = regionRecorders.try_emplace(callSite, callSite, state->executionTrace.getArena());
+		recorder = &recorderNode.first->second;
+	}
 
 	if (activeRegionDepth_ == regionFramePool_.size()) {
 		regionFramePool_.emplace_back();
 	}
 	auto& frame = regionFramePool_[activeRegionDepth_];
 	frame.reinitialize(recorder, callSite, P, recording);
+	// Only a top-level region opens an exploration loop. A nested one defers to
+	// the enclosing region's: giving it a loop of its own meant that, on the
+	// enclosing region's second pass, the nested body started a fresh recording
+	// while the shared trace cursor was mid-replay, desynchronizing follow().
+	frame.explores = recording && !nested;
 	++activeRegionDepth_;
 
-	if (recording) {
+	if (frame.explores) {
 		state->executionTrace.createRegionEntryBlock();
 		frame.entryBlockIndex = state->executionTrace.getCurrentBlockIndex();
 		// Mirrors the top-level `while (shouldContinue()) { next(); ...; fn(); }`
@@ -712,7 +728,9 @@ bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
 
 bool LazyTraceContext::traceRegionContinue() {
 	auto& f = topFrame();
-	if (!f.recording) {
+	if (!f.explores) {
+		// Not this frame's loop to drive: either a replay, or a nested region
+		// whose exploration is the enclosing region's business.
 		return false;
 	}
 	auto& trace = state->executionTrace;
@@ -724,39 +742,54 @@ bool LazyTraceContext::traceRegionContinue() {
 		// a branch-free region never allocates one -- then rewind for the next
 		// pass exactly like ExecutionTrace::resetExecution() does at the
 		// top level, scoped to this region's entry instead of block 0.
+		// Only remember this pass's open tail; do not wire it anywhere yet.
+		// Creating an exit block here and jumping into it eagerly is what
+		// corrupted regions whose body continues past its branch: the
+		// operations that follow are reached again on the next pass, so
+		// ExecutionTrace::checkTag's control-flow-merge machinery joins the
+		// arms into a merge block of its own and repoints these tails at it --
+		// leaving the region's exit block dead and empty, while its own stray
+		// jump appended a second terminator to the merge block.
 		if (!blockAlreadyTerminated(trace.getCurrentBlock())) {
-			if (!f.hasExitBlock) {
-				f.exitBlockIndex = trace.createBlock();
-				f.hasExitBlock = true;
-			}
-			trace.appendJump(&trace.getCurrentBlock(), &trace.getBlock(f.exitBlockIndex));
+			f.pendingTails.push_back(trace.getCurrentBlockIndex());
 		}
 		f.localCtx.next();
 		trace.setCurrentBlock(f.entryBlockIndex);
-		if (f.aliveVars.size() > 0) {
-			// Values created by this pass are still alive in an enclosing C++
-			// scope, so the reset below would drop liveness that their eventual
-			// destruction still decrements -- an assert in debug builds and a
-			// count underflow in release. Report it here, where the region is
-			// still identifiable, rather than at the mismatched decrement.
-			throwUnsupportedRegionShape("a value created inside the region is still alive at the end of a local "
-			                            "exploration pass, which happens when a region() body both contains "
-			                            "internal control flow and leaves a val<T> alive past its end (for "
-			                            "example by storing one into a container declared outside the region).");
-		}
-		// aliveVars must not carry an imbalance a paused-truncated pass left
-		// behind (a loop or merge inside the region can end a pass early,
-		// skipping the freeValRef calls for temporaries whose destructors run
-		// after paused was set) into the next pass's own bookkeeping -- mirrors
-		// LazyTraceContext::resume() resetting it once per top-level pass.
-		f.aliveVars.reset();
+		// Deliberately not reset: values created by this pass that are still
+		// alive belong to an enclosing C++ scope and will still be released
+		// there, so their counts have to survive into the next pass. Zeroing
+		// them here made that eventual release underflow the count.
 		f.paused = false;
 		return true;
 	}
-	if (f.hasExitBlock && !blockAlreadyTerminated(trace.getCurrentBlock())) {
-		trace.appendJump(&trace.getCurrentBlock(), &trace.getBlock(f.exitBlockIndex));
-		trace.setCurrentBlock(f.exitBlockIndex);
+	// Decide convergence once, now that every pass has run and the
+	// control-flow-merge machinery has had its say. Only tails still lacking a
+	// terminator need joining; any it already repointed at its own merge block
+	// are finished, and that merge block is then the real continuation.
+	std::vector<uint32_t> openTails;
+	for (auto tail : f.pendingTails) {
+		if (!blockAlreadyTerminated(trace.getBlock(tail))) {
+			openTails.push_back(tail);
+		}
 	}
+	if (!openTails.empty()) {
+		// Arms still ending mid-air: the body stopped at its branch, so nothing
+		// after it forced a merge. Join them, and the current tail with them,
+		// into one continuation for the enclosing function to carry on from.
+		const auto exitBlockIndex = trace.createBlock();
+		f.exitBlockIndex = exitBlockIndex;
+		f.hasExitBlock = true;
+		for (auto tail : openTails) {
+			trace.appendJump(&trace.getBlock(tail), &trace.getBlock(exitBlockIndex));
+		}
+		if (!blockAlreadyTerminated(trace.getCurrentBlock())) {
+			trace.appendJump(&trace.getCurrentBlock(), &trace.getBlock(exitBlockIndex));
+		}
+		trace.setCurrentBlock(exitBlockIndex);
+	}
+	// else: every earlier tail was absorbed by a merge block, so the cursor is
+	// already on the real continuation. Creating an exit block here would only
+	// leave an unreachable empty one behind.
 	// else: either a single pass with no branch ever recorded (leave the
 	// cursor exactly where fn() left it, matching zero-overhead behavior for
 	// the common branch-free region), or the last pass's tail already lands
