@@ -224,8 +224,6 @@ public:
 
 	virtual uint64_t currentStateHash() const;
 
-	TraceEnv& getEnv() override;
-
 	void pushStaticVal(void* ptr, size_t size) override;
 	void popStaticVal() override;
 
@@ -248,8 +246,6 @@ protected:
 
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
-	// View over staticVars/aliveVars - the single storage location is the two members above.
-	TraceEnv env {staticVars, aliveVars};
 
 	std::string formatStaticVars() const;
 };

@@ -122,26 +122,41 @@ bool RegionTraceContext::traceRegionContinue() {
 }
 
 void RegionTraceContext::traceRegionEnd() {
-	if (recording_) {
-		if (aliveVars.size() > 0) {
-			aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
-				for (uint32_t i = 0; i < count; ++i) {
-					parent_->allocateValRef(ref);
-				}
-			});
-		} else {
-			auto& trace = getRootContext()->getExecutionTrace();
-			getRootContext()->regionMemos[callSite_][P_] =
-			    RegionExec {trace.currentOperationIndex, trace.currentBlockIndex};
-		}
-	}
-	// else: FOLLOW replay -- the body was already recorded; there is nothing
-	// new to memoize or escape-transfer, and a bogus continuation must not be
-	// cached. Still need to restore callSite_ below regardless.
 	--depth_;
 	if (depth_ > 0) {
+		// A nested region() ending: the whole nesting chain shares this one
+		// instance, so the enclosing region's delta environment *is* this same
+		// aliveVars. Values that outlive the inner region are therefore already
+		// accounted for in the right place and must not be handed to parent_
+		// yet -- doing that credited the root once per boundary crossed for a
+		// value that only ever receives one freeValRef(), leaving a phantom
+		// alive ref that skews the root's hash (and so every later snapshot)
+		// for the rest of the pass. There is nothing to memoize here either:
+		// only a top-level traceRegionBegin performs a memo lookup, so an entry
+		// filed by a nested region could only ever be read back by a later
+		// *top-level* entry at the same call site, which would match it against
+		// a P computed fresh at that site while this key carries the P
+		// inherited from the enclosing chain.
 		callSite_ = savedCallSites_.back();
 		savedCallSites_.pop_back();
+		return;
+	}
+
+	// FOLLOW replay: the body was already recorded, so there is nothing new to
+	// memoize or escape-transfer, and a bogus continuation must not be cached.
+	if (!recording_) {
+		return;
+	}
+	if (aliveVars.size() > 0) {
+		aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
+			for (uint32_t i = 0; i < count; ++i) {
+				parent_->allocateValRef(ref);
+			}
+		});
+	} else {
+		auto& trace = getRootContext()->getExecutionTrace();
+		getRootContext()->regionMemos[callSite_][P_] =
+		    RegionExec {trace.currentOperationIndex, trace.currentBlockIndex};
 	}
 }
 

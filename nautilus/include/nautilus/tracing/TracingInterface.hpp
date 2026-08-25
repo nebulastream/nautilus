@@ -20,7 +20,6 @@ namespace nautilus::tracing {
 using TagAddress = uint64_t;
 
 class TraceContextBase;
-struct TraceEnv;
 struct Snapshot;
 
 /**
@@ -108,9 +107,6 @@ public:
 
 	/// Capture a snapshot of the current tracing state.
 	virtual Snapshot recordSnapshot() = 0;
-
-	/// Get the environment view (static variables + alive variables) of the current context.
-	virtual TraceEnv& getEnv() = 0;
 
 	/// Get the root trace context that owns the execution trace and caches.
 	virtual TraceContextBase* getRootContext() = 0;

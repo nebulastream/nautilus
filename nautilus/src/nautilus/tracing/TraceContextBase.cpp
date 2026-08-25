@@ -79,10 +79,6 @@ uint64_t TraceContextBase::currentStateHash() const {
 	return hashStaticVector(staticVars) ^ aliveVars.hash();
 }
 
-TraceEnv& TraceContextBase::getEnv() {
-	return env;
-}
-
 ExecutionTrace& TraceContextBase::getExecutionTrace() {
 	return state->executionTrace;
 }

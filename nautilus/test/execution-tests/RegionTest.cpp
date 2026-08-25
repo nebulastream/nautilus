@@ -4,6 +4,7 @@
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
+#include <vector>
 
 namespace nautilus::engine {
 
@@ -122,6 +123,35 @@ val<int64_t> regionNested() {
 	return sum;
 }
 
+// A value constructed inside the *inner* region but owned by a container in
+// the *outer* region's scope: it is still alive when the inner region ends, so
+// it escapes into the enclosing region rather than all the way out to the
+// function. Its liveness bookkeeping has to follow it there, because the
+// freeValRef for its eventual destruction (below, while the outer region is
+// still the active scope) is routed to the outer region too.
+val<int64_t> regionNestedEscapeToOuter() {
+	val<int64_t> sum = 0;
+	region([&]() {
+		std::vector<val<int64_t>> v;
+		region([&]() { v.push_back(val<int64_t>(7)); });
+		sum = sum + v[0];
+	}); // v dies here, inside the outer region
+	return sum;
+}
+
+// The same escape, but the container outlives *both* regions, so the value is
+// still alive at each region end in turn -- the case that used to hand the same
+// ref to the enclosing function once per region boundary crossed.
+val<int64_t> regionNestedEscapeToFunction() {
+	val<int64_t> sum = 0;
+	std::vector<val<int64_t>> v;
+	region([&]() {
+		region([&]() { v.push_back(val<int64_t>(7)); });
+		sum = sum + v[0];
+	});
+	return sum + v[0];
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -193,6 +223,16 @@ void runRegionTests(engine::NautilusEngine& engine) {
 	SECTION("region nesting") {
 		auto fn = engine.registerFunction(regionNested);
 		REQUIRE(fn() == 3);
+	}
+
+	SECTION("region nested escape into enclosing region") {
+		auto fn = engine.registerFunction(regionNestedEscapeToOuter);
+		REQUIRE(fn() == 7);
+	}
+
+	SECTION("region nested escape out to function") {
+		auto fn = engine.registerFunction(regionNestedEscapeToFunction);
+		REQUIRE(fn() == 14);
 	}
 
 	SECTION("region empty and unnamed") {

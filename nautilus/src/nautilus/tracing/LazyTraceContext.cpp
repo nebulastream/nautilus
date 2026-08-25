@@ -710,30 +710,47 @@ bool LazyTraceContext::traceRegionContinue() {
 
 void LazyTraceContext::traceRegionEnd() {
 	auto& f = topFrame();
-	if (f.recording) {
-		if (f.aliveVars.size() > 0) {
-			f.aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
-				for (uint32_t i = 0; i < count; ++i) {
-					// Escapes directly into the *true root's* own aliveVars,
-					// regardless of nesting depth: the pre-flattening design's
-					// RegionTraceContext::parent_ was fixed to the true root for
-					// an entire nested-region-reuse chain (only ever assigned by
-					// the root's own traceRegionBegin, never touched by a nested
-					// call), so an escape from any nesting level already skipped
-					// straight past every intermediate level. Subject to the
-					// root's own paused_ guard, matching what a virtual call to
-					// the root's allocateValRef() would have done.
-					if (!paused_) {
-						aliveVars.increment(ref);
-					}
-				}
-			});
-		} else {
-			regionMemos[f.callSite][f.P] =
-			    RegionExec {state->executionTrace.currentOperationIndex, state->executionTrace.currentBlockIndex};
-		}
-	}
+	const bool recording = f.recording;
+	const bool hasEscapes = f.aliveVars.size() > 0;
+	const auto callSite = f.callSite;
+	const auto P = f.P;
+
+	// Pop before transferring escapes below, so that allocateValRef() routes
+	// them into whatever scope the region is returning *into* -- the enclosing
+	// region frame when nested, this context's own root state otherwise. `f`
+	// stays valid across the pop: frames are pooled, so this only lowers the
+	// depth counter and leaves the (distinct) pool entry untouched.
 	--activeRegionDepth_;
+
+	if (!recording) {
+		return;
+	}
+	if (hasEscapes) {
+		// A value created inside the region that is still alive at region end
+		// escapes into the enclosing scope, so its liveness bookkeeping has to
+		// move there too. Delegating to allocateValRef() rather than touching
+		// aliveVars directly is what keeps that target correct for a *nested*
+		// region: freeValRef() will later be routed by the very same rule when
+		// the value dies, and crediting the true root here instead (as this did
+		// before) left the enclosing frame to be decremented for a ref it never
+		// incremented -- an assert in debug builds, and a uint32_t underflow to
+		// ~4.29e9 in release, which then made this loop iterate ~4.29e9 times.
+		f.aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
+			for (uint32_t i = 0; i < count; ++i) {
+				allocateValRef(ref);
+			}
+		});
+	} else if (!inActiveRegion()) {
+		// Memoize only a top-level region: only a top-level traceRegionBegin
+		// ever performs a memo lookup, so an entry filed here by a nested
+		// region could never be read back by another nested entry -- only by a
+		// later *top-level* entry at the same call site (the same region() in a
+		// helper reached both directly and from inside another region), which
+		// would match it against a P computed fresh at that site while this key
+		// carries the P inherited from the enclosing chain.
+		regionMemos[callSite][P] =
+		    RegionExec {state->executionTrace.currentOperationIndex, state->executionTrace.currentBlockIndex};
+	}
 }
 
 Snapshot LazyTraceContext::recordSnapshot() {
