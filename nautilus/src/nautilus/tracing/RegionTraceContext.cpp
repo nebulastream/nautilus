@@ -13,6 +13,8 @@ void RegionTraceContext::reinitialize(TraceContextBase* parent, TagRecorder* rec
 	recording_ = recording;
 	callSite_ = 0;
 	P_ = parent_->currentStateHash();
+	depth_ = 0;
+	savedCallSites_.clear();
 
 	// The region's *delta* environment (region.md §4.2) must start empty: a
 	// reused instance would otherwise inherit the previous region's
@@ -100,6 +102,15 @@ TraceContextBase* RegionTraceContext::getRootContext() {
 }
 
 bool RegionTraceContext::traceRegionBegin(TagAddress callSite) {
+	// Save the enclosing call's callSite_ before overwriting it below, but only
+	// for an actual nested call (depth_ > 0) -- at depth 0 this instance was
+	// just (re)armed by the root's own traceRegionBegin, so there is nothing
+	// of a prior engagement left to protect. See the depth_ comment in the
+	// header for why callSite_ specifically needs this and P_/recording_ don't.
+	if (depth_ > 0) {
+		savedCallSites_.push_back(callSite_);
+	}
+	++depth_;
 	callSite_ = callSite;
 	return true;
 }
@@ -111,26 +122,46 @@ bool RegionTraceContext::traceRegionContinue() {
 }
 
 void RegionTraceContext::traceRegionEnd() {
-	if (!recording_) {
-		// FOLLOW replay: the body was already recorded; there is nothing new to
-		// memoize or escape-transfer, and a bogus continuation must not be cached.
-		return;
+	if (recording_) {
+		if (aliveVars.size() > 0) {
+			aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
+				for (uint32_t i = 0; i < count; ++i) {
+					parent_->allocateValRef(ref);
+				}
+			});
+		} else {
+			auto& trace = getRootContext()->getExecutionTrace();
+			getRootContext()->regionMemos[callSite_][P_] =
+			    RegionExec {trace.currentOperationIndex, trace.currentBlockIndex};
+		}
 	}
-	if (aliveVars.size() > 0) {
-		aliveVars.forEachAliveRef([this](ValueRef ref, uint32_t count) {
-			for (uint32_t i = 0; i < count; ++i) {
-				parent_->allocateValRef(ref);
-			}
-		});
-	} else {
-		auto& trace = getRootContext()->getExecutionTrace();
-		getRootContext()->regionMemos[callSite_][P_] =
-		    RegionExec {trace.currentOperationIndex, trace.currentBlockIndex};
+	// else: FOLLOW replay -- the body was already recorded; there is nothing
+	// new to memoize or escape-transfer, and a bogus continuation must not be
+	// cached. Still need to restore callSite_ below regardless.
+	--depth_;
+	if (depth_ > 0) {
+		callSite_ = savedCallSites_.back();
+		savedCallSites_.pop_back();
 	}
 }
 
 Snapshot RegionTraceContext::recordSnapshot() {
-	return {recorder_->createTag(), currentStateHash() ^ P_};
+	// Forwards too, unlike everything else this class merely delegates:
+	// recordSnapshot() is dispatched polymorphically via getActiveTracer()
+	// from *parent_'s own* traceOperation/traceBool/etc bodies (see
+	// TracingUtil.cpp's trampolines and ExceptionBasedTraceContext's use of
+	// getActiveTracer()->recordSnapshot()), not called directly by this
+	// class. Those callers restart the *whole* enclosing function from
+	// scratch on every unresolved branch (ExceptionBasedTraceContext has no
+	// region-local exploration loop of its own -- see traceRegionContinue()
+	// below), so a region-scoped tag/hash here would recompute P_ fresh on
+	// every such restart while the tags it's XORed against are expected to
+	// stay stable across restarts for checkTag() dedup to work. The result
+	// was silent exponential blowup (thousands of duplicate blocks) for any
+	// branch inside a region, not a no-op. Delegating here instead gives the
+	// branch the exact same identity it would have if the region weren't
+	// there, matching every other method on this class.
+	return parent_->recordSnapshot();
 }
 
 } // namespace nautilus::tracing

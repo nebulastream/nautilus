@@ -103,7 +103,25 @@ private:
 	// this engagement is a FOLLOW replay of an already-recorded open
 	// (non-memoizable) region, in which case a bogus continuation must not be
 	// cached (the body was already fully recorded by an earlier engagement).
+	// Fixed once per top-level engagement and, like P_, inherited unchanged by
+	// any region nested inside it (see the depth_/savedCallSites_ comment).
 	bool recording_ = false;
+
+	// Nesting depth of region() calls served by *this* instance. A region()
+	// call reached while this instance is already the active tracer (i.e. a
+	// region() nested inside another region's body) reuses this same
+	// instance rather than creating a new one -- getActiveTracer() still
+	// points at it, so its own traceRegionBegin runs again -- instead of the
+	// root's traceRegionBegin, which only ever runs for a genuinely top-level
+	// entry. P_/recording_ are therefore *not* reassigned for a nested call
+	// (they describe the whole nesting chain, fixed at the top-level entry),
+	// but callSite_ *is* overwritten on every call, recording or not, so it
+	// must be saved before a nested call and restored after that call's own
+	// traceRegionEnd() -- otherwise the outer region's own traceRegionEnd()
+	// would file its memo entry (or skip it) under the inner region's call
+	// site instead of its own.
+	uint32_t depth_ = 0;
+	std::vector<TagAddress> savedCallSites_;
 };
 
 } // namespace nautilus::tracing
