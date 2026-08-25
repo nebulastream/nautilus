@@ -15,6 +15,11 @@ jobs:
   build-test:
     runs-on: ${{matrix.os}}
     name: ${{ matrix.os }} ${{ matrix.cc }} ${{ matrix.flags }}
+    # Backstop against a hung test: a single ctest case hanging on macos-26
+    # once ran for ~6h before hitting GitHub's default 360m job timeout. The
+    # per-test `ctest --timeout` below should catch this first; this is the
+    # second line of defense.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -98,25 +103,25 @@ jobs:
       - name: test
         shell: bash
         run: |
-          ctest --test-dir build/nautilus --output-on-failure
+          ctest --test-dir build/nautilus --output-on-failure --timeout 300
       - name: test std plugin
         shell: bash
         run: |
-          ctest --test-dir build/plugins/std/test --output-on-failure
+          ctest --test-dir build/plugins/std/test --output-on-failure --timeout 300
       - name: test simd plugin
         shell: bash
         run: |
-          ctest --test-dir build/plugins/simd/test --output-on-failure
+          ctest --test-dir build/plugins/simd/test --output-on-failure --timeout 300
       - name: test inlining plugin
         if: startsWith(matrix.cc, 'clang-19') || startsWith(matrix.cc, 'clang-20') || startsWith(matrix.cc, 'clang-21')
         shell: bash
         run: |
-          ctest --test-dir build/plugins/inlining/test --output-on-failure
+          ctest --test-dir build/plugins/inlining/test --output-on-failure --timeout 300
       - name: test gpu plugin
         if: contains(matrix.flags, 'ENABLE_GPU_PLUGIN=ON')
         shell: bash
         run: |
-          ctest --test-dir build/plugins/gpu/test --output-on-failure
+          ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)
