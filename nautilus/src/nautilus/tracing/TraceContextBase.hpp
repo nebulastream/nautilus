@@ -37,6 +37,11 @@ inline size_t getStaticVarValue(const StaticVarHolder& holder) {
 	return result;
 }
 
+/// FNV-1a hash of a static-variable stack snapshot. Exposed (not file-local) so
+/// LazyTraceContext's currentStateHash() override can hash a region frame's own
+/// staticVars the same way TraceContextBase::currentStateHash() hashes the root's.
+uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data);
+
 /**
  * @brief Efficiently tracks reference counts and computes an incremental hash of alive variables.
  *
@@ -217,7 +222,7 @@ public:
 	std::string getMangledName(void* fnptr);
 	std::string getFunctionName(void* fnptr, const std::string& mangledName);
 
-	uint64_t currentStateHash() const;
+	virtual uint64_t currentStateHash() const;
 
 	TraceEnv& getEnv() override;
 

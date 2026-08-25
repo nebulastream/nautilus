@@ -111,6 +111,7 @@ This is purely a tracing-time (compile-time) effect — it changes how much work
 
 ## Scope and limitations
 
+- **Local branch exploration only happens under `engine.traceMode = "lazyTracing"`** (the default tracer). Under `"exceptionBasedTracing"`, a branch inside a region still forwards straight to the enclosing function, exactly as if the region weren't there — correct, but without the O(N²) → O(N) benefit above. `lazyTracing` and `exceptionBasedTracing` always produce an equivalent trace either way; this only affects how long tracing itself takes.
 - **Region lambdas return `void`.** There's no mechanism for a region to hand back a value directly — use a captured reference instead, as in the examples above.
 - **Local branch-tracing only covers the operations a region traces directly:** arithmetic, comparisons, assignments, and (as of the current implementation) `if`/`while`/`for` control flow. A runtime call, indirect call, `nautilus::function` call, or `alloca` inside a region still forwards to the enclosing context rather than being resolved locally — regions containing only arithmetic/comparison logic get the full local-exploration benefit; regions that also call out to other traced functions do not lose correctness, just some of the performance benefit for that call.
 - **Writes to an enclosing `static_val` from inside a region are not detected.** `static_val` writes are invisible to the tracer in general (not a region-specific limitation); avoid writing to a captured `static_val` from inside a region body.

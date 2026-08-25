@@ -2,9 +2,9 @@
 #pragma once
 
 #include "ExecutionTrace.hpp"
-#include "RegionTraceContext.hpp"
 #include "TraceContextBase.hpp"
 #include "nautilus/CompilableFunction.hpp"
+#include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include <functional>
 #include <list>
 #include <memory>
@@ -13,7 +13,6 @@
 
 namespace nautilus::tracing {
 class ExecutionTrace;
-class SymbolicExecutionContext;
 class TraceModule;
 
 /**
@@ -34,6 +33,19 @@ class TraceModule;
  * Both LazyTraceContext and ExceptionBasedTraceContext produce identical ExecutionTrace output.
  * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
  * "lazyTracing").
+ *
+ * This class also drives region()'s local branch exploration directly (see docs/region.md and
+ * RegionFrame below), rather than delegating to a separate RegionTraceContext the way
+ * ExceptionBasedTraceContext does. A region does not need its own ExecutionTrace or
+ * TagRecorder-holding object: it shares this trace context's single ExecutionTrace and
+ * differs from top-level tracing only in which SymbolicExecutionContext/staticVars/aliveVars/
+ * paused flag/TagRecorder/hash-offset are "current" -- exactly what a RegionFrame holds. Every
+ * trace* method below picks between "top RegionFrame" and "this object's own root state" via a
+ * handful of small accessors (currentPaused()/setCurrentPaused()/currentSymbolicExecutionContext()/
+ * currentEnv()), so the actual per-operation tracing logic (traceConstant, traceCopy, follow,
+ * traceOperation, traceBool, ...) is written exactly once and used for both scopes -- unlike the
+ * old RegionTraceContext, whose local-exploration methods were near-identical, separately
+ * maintained copies of this class's own.
  */
 class LazyTraceContext final : public TraceContextBase {
 public:
@@ -121,30 +133,172 @@ public:
 
 private:
 	bool isFollowing();
+	/// Region-aware form of isFollowing(): consults the innermost recording
+	/// region frame's own SymbolicExecutionContext if one is active, else the
+	/// root's -- see currentSymbolicExecutionContext().
+	bool currentlyFollowing();
 	TypedValueRef& follow(Op op);
+	/// Region-aware per-operation tracing, shared by traceConstant/traceCopy/
+	/// traceBinaryOp/traceUnaryOp/traceTernaryOp/traceAssignment/traceBool (via
+	/// their own bodies) and this template: dispatches through currentPaused()/
+	/// currentlyFollowing()/setCurrentPaused() so the exact same body serves
+	/// both root-level and region-local tracing.
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	/// Root-only variant of traceOperation, for the six ops that always forward
+	/// straight to the true root regardless of any active region (traceAlloca,
+	/// traceCall, traceIndirectCall, traceNautilusCall, traceNautilusFunctionPtr,
+	/// traceReturnOperation) -- matching the old RegionTraceContext, which
+	/// unconditionally forwarded these to parent_. Still calls the region-aware
+	/// recordSnapshot() (matching the old getActiveTracer()->recordSnapshot()
+	/// dispatch, which resolved to the *active* region's own snapshot even for a
+	/// call that otherwise forwarded straight through it).
+	template <typename OnCreation>
+	TypedValueRef& rootTraceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot() override;
+	uint64_t currentStateHash() const override;
 
-	// Active traced regions. Each frame borrows a region context from
-	// regionPool_ (it does not own it) and records the active tracer that was in
-	// effect before the region body began.
+	/**
+	 * @brief One nested level of an active region() engagement.
+	 *
+	 * Holds everything a region needs that isn't the (always shared, root-owned)
+	 * ExecutionTrace: its own local SymbolicExecutionContext driving branch
+	 * exploration scoped to the region body, its own passive-mode flag, its own
+	 * delta staticVars/aliveVars (region.md's "fresh tag/liveness domain"), and
+	 * the bookkeeping traceRegionBegin/Continue/End need (callSite/P for
+	 * memoization, entry/exit block indices for wiring passes together).
+	 *
+	 * regionFramePool_ below pools these by nesting depth exactly like the old
+	 * regionPool_ pooled RegionTraceContext instances: entries persist across
+	 * engagements and are reinitialize()'d rather than reconstructed, so a
+	 * region's SymbolicExecutionContext (and its tag map's allocation) is paid
+	 * for once per depth, not once per region entry.
+	 */
 	struct RegionFrame {
-		RegionTraceContext* region;
-		TracingInterface* previous;
+		explicit RegionFrame() : localCtx(kExpectedRegionTags) {
+		}
+
+		void reinitialize(TagRecorder* rec, TagAddress site, uint64_t parentP, bool isRecording) {
+			localCtx.reset();
+			paused = false;
+			recorder = rec;
+			callSite = site;
+			P = parentP;
+			entryBlockIndex = 0;
+			exitBlockIndex = 0;
+			hasExitBlock = false;
+			recording = isRecording;
+			// The region's *delta* environment (region.md §4.2) must start empty:
+			// a reused frame would otherwise inherit the previous region's
+			// statics/alive refs into its snapshot hash and escape transfer.
+			staticVars.clear();
+			aliveVars.reset();
+		}
+
+		// Sized for the branches structurally inside one region body, not a whole
+		// function: the default (128) would allocate a large bucket array on
+		// every region entry, which at one-region-per-branch is paid N times per
+		// trace.
+		static constexpr size_t kExpectedRegionTags = 8;
+
+		SymbolicExecutionContext localCtx;
+		bool paused = false;
+		TagRecorder* recorder = nullptr;
+		TagAddress callSite = 0;
+		uint64_t P = 0;
+		// The region's entry block/position, captured once at first recording so
+		// every local pass after the first can rewind the shared cursor back to
+		// the start of the region body (mirrors ExecutionTrace::resetExecution(),
+		// scoped to the region instead of the whole function).
+		uint32_t entryBlockIndex = 0;
+		// Lazily created the first time a second local pass turns out to be
+		// needed, i.e. only for regions that actually contain an unresolved
+		// internal branch. A branch-free region never allocates this block, so
+		// region()'s IR footprint for the common case is unchanged.
+		uint32_t exitBlockIndex = 0;
+		bool hasExitBlock = false;
+		// True when this engagement *records* the region body; false on a FOLLOW
+		// replay of an already-recorded open (non-memoizable) region, in which
+		// case local exploration never runs and every op below just updates this
+		// frame's env (staticVars/aliveVars) as a side effect of the shared
+		// trace's own record/follow cursor doing its normal thing. Fixed once,
+		// when the outermost region of a nesting chain begins (root RECORD vs
+		// FOLLOW at that point), and inherited unchanged by every region nested
+		// inside it -- not recomputed per nesting level, since a nested region
+		// reached while running an already-recording outer region's body is
+		// unconditionally "new work" too, regardless of the outer region's own
+		// current *local* pass mode (which alternates between RECORD and FOLLOW
+		// across its own passes; recording here is not that).
+		bool recording = false;
+		std::vector<StaticVarHolder> staticVars;
+		AliveVariableHash aliveVars;
 	};
-	std::vector<RegionFrame> activeRegions_;
 
-	// Pool of region contexts, indexed by nesting depth. Regions nest strictly
-	// LIFO, so the context at index activeRegions_.size() is always free when a
-	// region is entered; it is re-armed via RegionTraceContext::reinitialize()
-	// rather than heap-allocated afresh. At the target usage pattern (one region
-	// per branch) the pool stays at size 1 and is reused for every region in the
-	// trace, instead of constructing RegionTraceContext -- and the several
-	// containers it inherits from TraceContextBase -- once per region entry.
-	std::vector<std::unique_ptr<RegionTraceContext>> regionPool_;
+	/// True if there is an active region frame right now (top of regionFramePool_,
+	/// up to activeRegionDepth_). Env bookkeeping (staticVars/aliveVars/hash) uses
+	/// this unconditionally; exploration state (paused/SymbolicExecutionContext)
+	/// additionally requires that frame to be `recording` -- see currentPaused()
+	/// and currentSymbolicExecutionContext().
+	bool inActiveRegion() const {
+		return activeRegionDepth_ > 0;
+	}
 
-	// Passive mode state
+	RegionFrame& topFrame() {
+		return regionFramePool_[activeRegionDepth_ - 1];
+	}
+
+	const RegionFrame& topFrame() const {
+		return regionFramePool_[activeRegionDepth_ - 1];
+	}
+
+	/// The staticVars/aliveVars currently being written to: the top region
+	/// frame's own delta environment if any region is active (regardless of
+	/// whether it is `recording` -- matches the old RegionTraceContext, whose
+	/// allocateValRef/freeValRef/pushStaticVal/popStaticVal were never gated on
+	/// recording_), or this object's own (root) environment otherwise.
+	TraceEnv currentEnv() {
+		if (inActiveRegion()) {
+			auto& f = topFrame();
+			return TraceEnv {f.staticVars, f.aliveVars};
+		}
+		return TraceEnv {staticVars, aliveVars};
+	}
+
+	/// The passive-mode flag currently in effect: the innermost *recording*
+	/// region frame's own, or this object's root-level paused_ if no region is
+	/// active or the active one isn't recording (a non-recording region defers
+	/// every trace call to whatever scope is really doing the work, exactly like
+	/// the old RegionTraceContext's `if (!recording_) return parent_->traceX(...)`).
+	bool currentPaused() const {
+		return inActiveRegion() && topFrame().recording ? topFrame().paused : paused_;
+	}
+
+	void setCurrentPaused(bool value) {
+		if (inActiveRegion() && topFrame().recording) {
+			topFrame().paused = value;
+		} else {
+			paused_ = value;
+		}
+	}
+
+	/// The SymbolicExecutionContext currently driving record/follow decisions:
+	/// the innermost *recording* region frame's local context, or this object's
+	/// own root-level one.
+	SymbolicExecutionContext& currentSymbolicExecutionContext() {
+		if (inActiveRegion() && topFrame().recording) {
+			return topFrame().localCtx;
+		}
+		return state->symbolicExecutionContext;
+	}
+
+	/// Pool of region frames, indexed by nesting depth. Regions nest strictly
+	/// LIFO, so the frame at index activeRegionDepth_ is always free to
+	/// reinitialize() when a region is entered.
+	std::vector<RegionFrame> regionFramePool_;
+	size_t activeRegionDepth_ = 0;
+
+	// Passive mode state (root-level; see RegionFrame::paused for the region-local
+	// equivalent).
 	bool paused_ = false;
 	// Returned by all trace methods when paused. Safe because callers (val<T> constructors)
 	// always copy the TypedValueRef by value — no one holds the reference across calls.
