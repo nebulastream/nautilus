@@ -66,9 +66,13 @@ bool findSimpleLoopEdges(BasicBlock* header, Reachability& reach, BasicBlock*& l
 	}
 
 	auto findSingleInvocationTo = [&](BasicBlock* pred, BasicBlockInvocation*& out) {
+		auto* predTerminator = pred->getTerminatorOp();
+		if (predTerminator == nullptr) {
+			return false;
+		}
 		BasicBlockInvocation* found = nullptr;
 		int count = 0;
-		for (auto* inv : getSuccessorInvocations(*pred->getTerminatorOp())) {
+		for (auto* inv : getSuccessorInvocations(*predTerminator)) {
 			if (inv->getBlock() == header) {
 				found = inv;
 				count++;

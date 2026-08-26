@@ -76,6 +76,10 @@ public:
 
 	[[nodiscard]] Operation* getOperationAt(size_t index);
 
+	/// Returns this block's terminator, or nullptr when the block has no
+	/// operations at all. A well-formed block always has one; an empty block is
+	/// malformed IR, reported by IRVerifier as "block is empty (has no
+	/// terminator)".
 	[[nodiscard]] Operation* getTerminatorOp();
 
 	[[nodiscard]] const std::vector<BasicBlockArgument*>& getArguments() const;

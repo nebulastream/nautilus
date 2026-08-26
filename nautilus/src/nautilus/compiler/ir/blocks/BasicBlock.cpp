@@ -42,6 +42,15 @@ const std::vector<Operation*>& BasicBlock::getOperations() const {
 }
 
 Operation* BasicBlock::getTerminatorOp() {
+	// A block with no operations has no terminator to return. Reading back()
+	// on the empty vector instead is undefined behaviour, and in practice
+	// surfaced as a segfault several phases away from whatever produced the
+	// malformed block. Callers throughout the IR passes already test the
+	// result for null (and IRVerifier reports the empty block itself), so
+	// honouring that contract is what makes those checks do their job.
+	if (operations.empty()) {
+		return nullptr;
+	}
 	return operations.back();
 }
 

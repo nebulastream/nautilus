@@ -60,7 +60,8 @@ void runPass(IRGraph& ir) {
 /// entry --if(ConstBooleanOperation(condValue))--> trueBlock(arg=trueVal) /
 /// falseBlock(arg=falseVal), each target block returning its argument.
 /// BlockIdentifier 0=entry, 1=trueBlock, 2=falseBlock.
-std::shared_ptr<IRGraph> makeConstIfGraph(bool condValue, int64_t trueVal, int64_t falseVal) {
+std::shared_ptr<IRGraph> makeConstIfGraph(bool condValue, int64_t trueVal, int64_t falseVal,
+                                          bool withEmptyBlock = false) {
 	namespace ir = compiler::ir;
 	auto irGraph = std::make_shared<ir::IRGraph>("const-if-test");
 	auto& arena = irGraph->getArena();
@@ -86,14 +87,50 @@ std::shared_ptr<IRGraph> makeConstIfGraph(bool condValue, int64_t trueVal, int64
 	ifOp->getFalseBlockInvocation().addArgument(arena, falseConst);
 	entry->addOperation(ifOp);
 
-	auto* fn =
-	    arena.create<ir::FunctionOperation>("execute", std::vector<ir::BasicBlock*> {entry, trueBlock, falseBlock},
-	                                        std::vector<Type> {}, std::vector<std::string> {}, Type::i32);
+	std::vector<ir::BasicBlock*> blocks {entry, trueBlock, falseBlock};
+	if (withEmptyBlock) {
+		// A block holding no operations at all. Malformed IR -- IRVerifier
+		// reports it as "block is empty (has no terminator)" -- but reachable
+		// from a tracing bug, and a pass has to cope with it rather than read
+		// past the end of the block's operation vector.
+		blocks.push_back(
+		    arena.create<ir::BasicBlock>(arena, ir::BlockIdentifier {99}, std::vector<ir::BasicBlockArgument*> {}));
+	}
+
+	auto* fn = arena.create<ir::FunctionOperation>("execute", std::move(blocks), std::vector<Type> {},
+	                                               std::vector<std::string> {}, Type::i32);
 	irGraph->addFunctionOperation(fn);
 	return irGraph;
 }
 
 } // namespace
+
+TEST_CASE("BasicBlock: an empty block reports no terminator instead of reading past its operations") {
+	auto ir = makeConstIfGraph(true, 7, 9, /*withEmptyBlock=*/true);
+	auto* fn = ir->getFunctionOperations().front();
+
+	compiler::ir::BasicBlock* empty = nullptr;
+	for (auto* block : fn->getBasicBlocks()) {
+		if (block->getIdentifier() == BlockIdentifier {99}) {
+			empty = block;
+		}
+	}
+	REQUIRE(empty != nullptr);
+	REQUIRE(empty->getOperations().empty());
+	// The contract every IR pass already tests for: no operations, no terminator.
+	REQUIRE(empty->getTerminatorOp() == nullptr);
+}
+
+TEST_CASE("ConstantBranchFolding: an empty block does not crash the pass") {
+	auto ir = makeConstIfGraph(true, 7, 9, /*withEmptyBlock=*/true);
+	// Walking a block with no terminator used to be undefined behaviour and
+	// segfaulted here; the pass now simply finds no `if` to fold in it. Run
+	// without the verifier, which legitimately rejects the empty block.
+	engine::Options opts;
+	compiler::ir::IRPassManager mgr(opts);
+	mgr.addPass(std::make_unique<compiler::ir::ConstantBranchFoldingPass>());
+	REQUIRE_NOTHROW(mgr.run(*ir));
+}
 
 TEST_CASE("ConstantBranchFolding: if(true) folds to a branch, taken argument preserved") {
 	auto ir = makeConstIfGraph(true, 7, 9);
