@@ -53,6 +53,24 @@ val<int64_t> nested() {
 }
 ```
 
+A nested region is an ordinary part of the enclosing region's body, so control
+flow may come before it, after it, or between two of them:
+
+```cpp
+val<int64_t> nestedThenBranch(val<int64_t> x) {
+    val<int64_t> sum = 0;
+    nautilus::region([&]() {
+        nautilus::region([&]() { sum = sum + 1; });
+        if (x > 0) {
+            sum = sum + 10;
+        } else {
+            sum = sum + 20;
+        }
+    });
+    return sum;
+}
+```
+
 ## Branches and loops inside a region
 
 Ordinary C++ control flow — `if`/`else`, `while`, `for` — works inside a region body exactly as it does anywhere else in a traced function:
@@ -80,6 +98,24 @@ val<int64_t> chainedBranches(val<int64_t> a, val<int64_t> b, val<int64_t> c) {
         if (a > 0) { sum = sum + 1; } else { sum = sum + 100; }
         if (b > 0) { sum = sum + 2; } else { sum = sum + 200; }
         if (c > 0) { sum = sum + 4; } else { sum = sum + 400; }
+    });
+    return sum;
+}
+```
+
+Control flow does not have to be the last thing in the body — further traced
+operations, and further regions, can follow it:
+
+```cpp
+val<int64_t> workAfterBranch(val<int64_t> x) {
+    val<int64_t> sum = 0;
+    nautilus::region([&]() {
+        if (x > 0) {
+            sum = sum + 10;
+        } else {
+            sum = sum + 20;
+        }
+        sum = sum + 1;   // continues in the block the two arms merge into
     });
     return sum;
 }

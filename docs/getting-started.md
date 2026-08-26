@@ -45,6 +45,16 @@ cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARKS=ON ..
 cmake --build . --target nautilus
 ```
 
+### Linking Against Nautilus
+
+Link your target against the exported `nautilus` CMake target:
+
+```cmake
+target_link_libraries(my_target PRIVATE nautilus)
+```
+
+Going through the target matters: it carries `-fno-omit-frame-pointer`, which Nautilus requires because tracing derives each instruction's identity by walking the caller's stack frames (see [Tracing](tracing.md)). Compiling against the library by hand without that flag is reported as a `TagCreationException` naming it.
+
 ## Quick Start Example
 
 The following example defines a function that computes a conditional sum over an array, compiles it with the Nautilus engine, and executes it.
