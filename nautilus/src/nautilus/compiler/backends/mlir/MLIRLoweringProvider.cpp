@@ -74,6 +74,34 @@ std::vector<mlir::Type> MLIRLoweringProvider::getMLIRType(std::span<ir::Operatio
 	return resultTypes;
 }
 
+/// Returns the LLVM ABI extension attribute that @p stamp requires when it
+/// crosses a native call boundary, or nullptr for stamps that need none.
+///
+/// Several C ABIs (Darwin AArch64, x86-64 SysV) make the *caller* responsible
+/// for widening a sub-32-bit integer argument, leaving the callee free to read
+/// the full register. Both ends of every boundary Nautilus generates are
+/// ABI-conforming compilers -- natively compiled C++ on one side, LLVM on the
+/// other -- so the two only agree if the generated signature spells the
+/// contract out. Types 32 bits and wider occupy a full register already and
+/// need no attribute.
+///
+/// Type::b is grouped with the unsigned types because C++ passes and returns
+/// `bool` zero-extended. It needs listing explicitly: isUnsignedInteger() does
+/// not cover it, as Type::b is a stamp of its own distinct from ui8.
+static const char* getNarrowIntExtensionAttr(Type stamp) {
+	switch (stamp) {
+	case Type::i8:
+	case Type::i16:
+		return "llvm.signext";
+	case Type::b:
+	case Type::ui8:
+	case Type::ui16:
+		return "llvm.zeroext";
+	default:
+		return nullptr;
+	}
+}
+
 mlir::Value MLIRLoweringProvider::getConstInt(const std::string& location, Type stamp, int64_t value) {
 	auto type = getMLIRType(stamp);
 	return mlir::arith::ConstantOp::create(*builder, getNameLoc(location), type, builder->getIntegerAttr(type, value));
@@ -449,18 +477,8 @@ mlir::FlatSymbolRefAttr MLIRLoweringProvider::insertExternalFunction(const std::
 	// (AAPCS64 does not), and an unattributed narrow result is always safe --
 	// LLVM re-extends it itself before any wider use.
 	for (size_t i = 0; i < argStamps.size() && i < argTypes.size(); ++i) {
-		switch (argStamps[i]) {
-		case Type::i8:
-		case Type::i16:
-			funcOp.setArgAttr(static_cast<unsigned>(i), "llvm.signext", mlir::UnitAttr::get(context));
-			break;
-		case Type::b:
-		case Type::ui8:
-		case Type::ui16:
-			funcOp.setArgAttr(static_cast<unsigned>(i), "llvm.zeroext", mlir::UnitAttr::get(context));
-			break;
-		default:
-			break;
+		if (const char* extensionAttr = getNarrowIntExtensionAttr(argStamps[i])) {
+			funcOp.setArgAttr(static_cast<unsigned>(i), extensionAttr, mlir::UnitAttr::get(context));
 		}
 	}
 
@@ -609,9 +627,14 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 	// This is a placeholder for future functionality.
 
 	// Generate execute function. Set input/output types and get its entry block.
+	// The stamps are collected alongside the types, from the same source, so the
+	// indices used for the argument attributes below cannot drift out of step
+	// with the signature they annotate.
 	llvm::SmallVector<mlir::Type> inputTypes(0);
+	llvm::SmallVector<Type> inputStamps(0);
 	for (auto& inputArg : functionOp.getFunctionBasicBlock().getArguments()) {
 		inputTypes.emplace_back(getMLIRType(inputArg->getStamp()));
+		inputStamps.emplace_back(inputArg->getStamp());
 	}
 
 	// Handle void vs non-void return types
@@ -652,6 +675,21 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 
 	// Avoid function name mangling.
 	mlirFunction->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(context));
+
+	// The entry function is not reached only through MLIR's packed `void**`
+	// interface: MLIRExecutable::getInvocableFunctionPtr resolves the bare
+	// symbol and Executable.hpp's Invocable calls it through a function pointer
+	// typed with the traced signature. Its parameters therefore sit on a real C
+	// ABI boundary, and the natively compiled caller on the other side extends
+	// narrow arguments as that ABI directs. Spelling the same contract out here
+	// makes the generated signature a faithful implementation of the C
+	// prototype it is invoked as, and lets LLVM drop the defensive re-extension
+	// it otherwise emits in the prologue for every narrow parameter.
+	for (size_t i = 0; i < inputStamps.size(); ++i) {
+		if (const char* extensionAttr = getNarrowIntExtensionAttr(inputStamps[i])) {
+			mlirFunction.setArgAttr(static_cast<unsigned>(i), extensionAttr, mlir::UnitAttr::get(context));
+		}
+	}
 
 	// Only set result attributes if the function returns a value
 	if (functionOp.getOutputArg() != Type::v) {
