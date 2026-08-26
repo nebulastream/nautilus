@@ -188,6 +188,8 @@ private:
 			exitBlockIndex = 0;
 			hasExitBlock = false;
 			pendingTails.clear();
+			firstPassEscapes.clear();
+			haveFirstPassEscapes = false;
 			recording = isRecording;
 			explores = false;
 			// The region's *delta* environment (region.md §4.2) must start empty:
@@ -225,6 +227,11 @@ private:
 		// continues past its branch -- so convergence is decided once, at the end,
 		// over whichever of these are still open.
 		std::vector<uint32_t> pendingTails;
+		// The set of refs escaping the region, as observed at the end of the
+		// first exploration pass. Every later pass has to agree with it: see
+		// LazyTraceContext::checkEscapesAgreeAcrossPasses.
+		std::vector<ValueRef> firstPassEscapes;
+		bool haveFirstPassEscapes = false;
 		// True when this engagement *records* the region body; false on a FOLLOW
 		// replay of an already-recorded open (non-memoizable) region, in which
 		// case local exploration never runs and every op below just updates this
@@ -258,6 +265,10 @@ private:
 	bool inActiveRegion() const {
 		return activeRegionDepth_ > 0;
 	}
+
+	/// Records the refs escaping @p frame on this exploration pass, and requires
+	/// every pass to agree on that set. Throws otherwise -- see the definition.
+	void checkEscapesAgreeAcrossPasses(RegionFrame& frame);
 
 	RegionFrame& topFrame() {
 		return regionFramePool_[activeRegionDepth_ - 1];

@@ -208,13 +208,12 @@ val<int64_t> regionEscapeWithMultipleCopies() {
 }
 
 // A live value built in ONE branch arm and carried out of the region. Each arm
-// constructs a different value with no merge point between them, so what
+// constructs a different value with no merge point between them, so which one
 // escapes depends on which arm ran -- the region equivalent of returning a
-// value from the lambda. Works under exceptionBasedTracing, which traces one
-// arm per engagement; not supported under lazyTracing, whose local exploration
-// runs both arms against the same enclosing `slot`. Escaping by assignment to
-// a captured val<T> (regionBranchWritesDifferentVars above) is the supported
-// idiom and merges correctly in both.
+// value from the lambda. lazyTracing's per-pass escape-set check rejects it;
+// exceptionBasedTracing traces one arm per engagement and accepts it. Escaping
+// by assignment to a captured val<T> (regionBranchWritesDifferentVars above)
+// merges across branches and works under both.
 val<int64_t> regionEscapeAcrossBranch(val<int64_t> x) {
 	std::optional<val<int64_t>> slot;
 	region([&]() {
@@ -554,10 +553,13 @@ TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
 }
 
-// The one region shape lazyTracing still cannot express: a live value built in
-// a single branch arm and carried out (see regionEscapeAcrossBranch). It has to
-// surface as an exception rather than a crash or a silently wrong trace, so the
-// diagnosis is pinned here alongside the exception-based behaviour it works in.
+// A live value built in a single branch arm and carried out of the region (see
+// regionEscapeAcrossBranch). lazyTracing rejects it: each pass leaves a
+// different value alive at the region's end, so which one escapes would depend
+// on the path explored last. What is pinned here is that this is *diagnosed* --
+// an exception naming region(), not a crash and not a silently wrong trace --
+// alongside the exception-based behaviour, which traces one path per engagement
+// and accepts it.
 TEST_CASE("Region Live Escape From One Branch Arm", "[region]") {
 	for (const auto& backend : nautilus::testing::availableBackends()) {
 		DYNAMIC_SECTION(backend) {
@@ -577,7 +579,8 @@ TEST_CASE("Region Live Escape From One Branch Arm", "[region]") {
 				diagnosis = e.what();
 			}
 			INFO("diagnosis: " << diagnosis);
-			REQUIRE(diagnosis != "<no exception thrown>");
+			REQUIRE(diagnosis.find("region()") != std::string::npos);
+			REQUIRE(diagnosis.find("exceptionBasedTracing") != std::string::npos);
 		}
 	}
 }

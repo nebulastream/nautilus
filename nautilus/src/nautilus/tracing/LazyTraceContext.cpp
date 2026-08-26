@@ -726,6 +726,49 @@ bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
 	return true;
 }
 
+void LazyTraceContext::checkEscapesAgreeAcrossPasses(RegionFrame& frame) {
+	// Kept off the hot path: forEachAliveRef scans the whole ref-count vector,
+	// which grows with the traced function, so collecting the set on every pass
+	// of every region would put back the O(N^2) cost regions exist to remove.
+	// A region that escapes nothing -- the overwhelmingly common case, and the
+	// one the branch-tracing benchmarks measure -- is settled by the O(1) alive
+	// count alone.
+	const bool escapesNothing = frame.aliveVars.size() == 0;
+	if (frame.haveFirstPassEscapes && escapesNothing && frame.firstPassEscapes.empty()) {
+		return;
+	}
+
+	std::vector<ValueRef> escapes;
+	if (!escapesNothing) {
+		frame.aliveVars.forEachAliveRef([&escapes](ValueRef ref, uint32_t) { escapes.push_back(ref); });
+	}
+
+	if (!frame.haveFirstPassEscapes) {
+		frame.firstPassEscapes = std::move(escapes);
+		frame.haveFirstPassEscapes = true;
+		return;
+	}
+	// Compared as a set of refs, not of counts: the body is re-invoked once per
+	// pass, so an enclosing container legitimately accumulates another copy of
+	// the same value each time round.
+	if (escapes == frame.firstPassEscapes) {
+		return;
+	}
+	// Every pass explores a different path through the region, so a disagreement
+	// means what escapes depends on which path ran. That happens when the value
+	// is built inside one arm of an internal branch: each arm produces its own
+	// value with no merge point between them, and whichever pass happened to run
+	// last would silently become the one that escapes. A value built on every
+	// path reconciles to one ref across passes (traceConstant's globalTagMap
+	// path) and compares equal here.
+	throw RuntimeException(
+	    "region() cannot decide which value escapes under engine.traceMode = \"lazyTracing\": the set of values "
+	    "still alive at the end of the region differs between exploration passes, so what escapes depends on "
+	    "which branch inside the region was explored. Build the escaping value on every path through the region, "
+	    "or write it to a val<T> declared outside the region (assignment merges across branches), or set "
+	    "engine.traceMode = \"exceptionBasedTracing\", which traces one path per engagement. See docs/region.md.");
+}
+
 bool LazyTraceContext::traceRegionContinue() {
 	auto& f = topFrame();
 	if (!f.explores) {
@@ -753,6 +796,7 @@ bool LazyTraceContext::traceRegionContinue() {
 		if (!blockAlreadyTerminated(trace.getCurrentBlock())) {
 			f.pendingTails.push_back(trace.getCurrentBlockIndex());
 		}
+		checkEscapesAgreeAcrossPasses(f);
 		f.localCtx.next();
 		trace.setCurrentBlock(f.entryBlockIndex);
 		// Deliberately not reset: values created by this pass that are still
@@ -771,6 +815,11 @@ bool LazyTraceContext::traceRegionContinue() {
 		if (!blockAlreadyTerminated(trace.getBlock(tail))) {
 			openTails.push_back(tail);
 		}
+	}
+	// Settle the final pass here rather than in traceRegionEnd: that runs from
+	// region()'s noexcept guard destructor, where throwing would terminate.
+	if (f.haveFirstPassEscapes) {
+		checkEscapesAgreeAcrossPasses(f);
 	}
 	if (!openTails.empty()) {
 		// Arms still ending mid-air: the body stopped at its branch, so nothing
