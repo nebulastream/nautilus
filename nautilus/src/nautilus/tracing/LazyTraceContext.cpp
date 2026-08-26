@@ -158,9 +158,7 @@ TypedValueRef& LazyTraceContext::follow(Op op) {
 	// same-tagged reconciliation operations here to keep the cursor aligned.
 	// Shared verbatim by both root-level and region-local tracing: both operate
 	// on this same state->executionTrace cursor, so a single implementation
-	// suffices (unlike the old separate RegionTraceContext::localFollow, which
-	// was this exact function operating on the identical object via a
-	// differently-named accessor).
+	// suffices.
 	while (true) {
 		auto& block = state->executionTrace.getCurrentBlock();
 		if (state->executionTrace.currentOperationIndex >= block.operations.size()) {
@@ -599,9 +597,9 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 
 void LazyTraceContext::allocateValRef(ValueRef ref) {
 	if (inActiveRegion()) {
-		// Unconditional, unlike the root branch below: the old RegionTraceContext
-		// never gated its own allocateValRef/freeValRef on any paused flag,
-		// because aliveVars must stay accurate to real C++ scope lifetimes
+		// Unconditional, unlike the root branch below: aliveVars inside a region
+		// is never gated on any paused flag, because it must stay accurate to
+		// real C++ scope lifetimes
 		// (which keep happening regardless of tracing being paused) for
 		// traceRegionEnd's escape/memoization decision to be correct.
 		topFrame().aliveVars.increment(ref);
@@ -657,9 +655,7 @@ bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
 	if (!inActiveRegion()) {
 		// Top-level entry: memoized replay only applies here (see
 		// docs/region.md) -- a region nested inside another region is never
-		// memo-checked (matches the pre-flattening design, where a nested
-		// region() call reused the *same* RegionTraceContext instance and its
-		// traceRegionBegin had no memo lookup of its own at all).
+		// memo-checked, since only a top-level entry can be replayed as a unit.
 		P = currentStateHash();
 		if (auto siteIter = regionMemos.find(callSite); siteIter != regionMemos.end()) {
 			if (auto memoIter = siteIter->second.find(P); memoIter != siteIter->second.end()) {
@@ -678,10 +674,8 @@ bool LazyTraceContext::traceRegionBegin(TagAddress callSite) {
 		recording = !isFollowing();
 	} else {
 		// Nested region(): P and recording are inherited unchanged from the
-		// enclosing frame, not recomputed -- see RegionFrame::recording's
-		// comment for why (this exactly mirrors the pre-flattening design,
-		// where a nested call reused the same RegionTraceContext instance and
-		// so never touched its own P_/recording_ either).
+		// enclosing frame, not recomputed: they describe the whole nesting
+		// chain, which is fixed at the top-level entry.
 		auto& outer = topFrame();
 		P = outer.P;
 		recording = outer.recording;

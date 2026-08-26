@@ -29,13 +29,13 @@ class SymbolicExecutionContext {
 public:
 	/// @param expectedTags  Number of branch tags to pre-size the tag map for.
 	/// A function-level context explores the whole function and benefits from the
-	/// default; a region-local context (RegionTraceContext) covers only the
+	/// default; a region-local context (a region frame) covers only the
 	/// branches structurally inside one region, so it passes a small value to
 	/// avoid a large bucket-array allocation per region entry.
 	explicit SymbolicExecutionContext(size_t expectedTags = 128);
 
 	/// Returns this context to its freshly-constructed state without releasing
-	/// the tag map's bucket storage, so a pooled owner (RegionTraceContext) can
+	/// the tag map's bucket storage, so a pooled owner (a region frame) can
 	/// reuse it for the next engagement without re-paying the allocation.
 	void reset();
 

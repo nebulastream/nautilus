@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ExecutionTrace.hpp"
-#include "RegionTraceContext.hpp"
 #include "TraceContextBase.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
@@ -157,22 +156,6 @@ private:
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot() override;
-
-	/// Stack of active traced regions. Each frame borrows a region context from
-	/// regionPool_ (it does not own it) and records the active tracer that was
-	/// in effect before the region body began (so it can be restored).
-	struct RegionFrame {
-		RegionTraceContext* region;
-		TracingInterface* previous;
-	};
-	std::vector<RegionFrame> activeRegions_;
-
-	/// Pool of region contexts, indexed by nesting depth. Regions nest strictly
-	/// LIFO, so the context at index activeRegions_.size() is always free when a
-	/// region is entered; it is re-armed via RegionTraceContext::reinitialize()
-	/// rather than heap-allocated afresh. See the equivalent member on
-	/// LazyTraceContext.
-	std::vector<std::unique_ptr<RegionTraceContext>> regionPool_;
 
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
 	std::unordered_set<std::string> registeredFunctions;

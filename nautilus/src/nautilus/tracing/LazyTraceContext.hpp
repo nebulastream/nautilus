@@ -34,18 +34,16 @@ class TraceModule;
  * The choice between them is made via the engine option "engine.traceMode" (values: "exceptionBasedTracing",
  * "lazyTracing").
  *
- * This class also drives region()'s local branch exploration directly (see docs/region.md and
- * RegionFrame below), rather than delegating to a separate RegionTraceContext the way
- * ExceptionBasedTraceContext does. A region does not need its own ExecutionTrace or
+ * This class also drives region()'s local branch exploration (see docs/region.md and RegionFrame
+ * below). It is the only substrate that does: ExceptionBasedTraceContext passes region() straight
+ * through, tracing the body inline. A region does not need its own ExecutionTrace or
  * TagRecorder-holding object: it shares this trace context's single ExecutionTrace and
  * differs from top-level tracing only in which SymbolicExecutionContext/staticVars/aliveVars/
  * paused flag/TagRecorder/hash-offset are "current" -- exactly what a RegionFrame holds. Every
  * trace* method below picks between "top RegionFrame" and "this object's own root state" via a
  * handful of small accessors (currentPaused()/setCurrentPaused()/currentSymbolicExecutionContext()/
  * currentEnv()), so the actual per-operation tracing logic (traceConstant, traceCopy, follow,
- * traceOperation, traceBool, ...) is written exactly once and used for both scopes -- unlike the
- * old RegionTraceContext, whose local-exploration methods were near-identical, separately
- * maintained copies of this class's own.
+ * traceOperation, traceBool, ...) is written exactly once and used for both scopes.
  */
 class LazyTraceContext final : public TraceContextBase {
 public:
@@ -148,7 +146,7 @@ private:
 	/// Root-only variant of traceOperation, for the six ops that always forward
 	/// straight to the true root regardless of any active region (traceAlloca,
 	/// traceCall, traceIndirectCall, traceNautilusCall, traceNautilusFunctionPtr,
-	/// traceReturnOperation) -- matching the old RegionTraceContext, which
+	/// traceReturnOperation) -- these are not region-scoped, and
 	/// unconditionally forwarded these to parent_. Still calls the region-aware
 	/// recordSnapshot() (matching the old getActiveTracer()->recordSnapshot()
 	/// dispatch, which resolved to the *active* region's own snapshot even for a
@@ -169,7 +167,7 @@ private:
 	 * memoization, entry/exit block indices for wiring passes together).
 	 *
 	 * regionFramePool_ below pools these by nesting depth exactly like the old
-	 * regionPool_ pooled RegionTraceContext instances: entries persist across
+	 * The pooled RegionFrames below work the same way: entries persist across
 	 * engagements and are reinitialize()'d rather than reconstructed, so a
 	 * region's SymbolicExecutionContext (and its tag map's allocation) is paid
 	 * for once per depth, not once per region entry.
@@ -280,9 +278,9 @@ private:
 
 	/// The staticVars/aliveVars currently being written to: the top region
 	/// frame's own delta environment if any region is active (regardless of
-	/// whether it is `recording` -- matches the old RegionTraceContext, whose
-	/// allocateValRef/freeValRef/pushStaticVal/popStaticVal were never gated on
-	/// recording_), or this object's own (root) environment otherwise.
+	/// whether it is `recording`: these track real C++ scope lifetimes, which
+	/// happen whether or not this engagement is the one recording the body), or
+	/// this object's own (root) environment otherwise.
 	TraceEnv currentEnv() {
 		if (inActiveRegion()) {
 			auto& f = topFrame();
@@ -294,8 +292,7 @@ private:
 	/// The passive-mode flag currently in effect: the innermost *recording*
 	/// region frame's own, or this object's root-level paused_ if no region is
 	/// active or the active one isn't recording (a non-recording region defers
-	/// every trace call to whatever scope is really doing the work, exactly like
-	/// the old RegionTraceContext's `if (!recording_) return parent_->traceX(...)`).
+	/// every trace call to whatever scope is really doing the work).
 	bool currentPaused() const {
 		const auto* f = exploringFrame();
 		return f != nullptr ? f->paused : paused_;

@@ -10,7 +10,6 @@ if (ENABLE_TRACING)
             TracingUtil.cpp
             ExceptionBasedTraceContext.cpp
             LazyTraceContext.cpp
-            RegionTraceContext.cpp
             TraceContextBase.cpp
             TraceOperation.cpp
             Snapshot.cpp)

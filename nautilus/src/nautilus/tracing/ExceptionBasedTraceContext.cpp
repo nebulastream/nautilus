@@ -49,18 +49,6 @@ void ExceptionBasedTraceContext::resume() {
 	setActiveTracer(this);
 	// Clear dynamic containers
 	staticVars.clear();
-	// Region memo/recorder caches are intentionally cleared here, at the top of
-	// EVERY symbolic-execution pass. The memo must NOT span the RECORD->FOLLOW
-	// boundary or span passes: a RegionExec continuation indexes into the trace
-	// layout of the pass that recorded it, and the P inputs (staticVars,
-	// aliveVars) are reset per pass, so an old entry keyed by a stale caller/P
-	// could jump the FOLLOW cursor to a continuation that no longer matches the
-	// current parent state (hash collision / ABA). This is safety, not hygiene
-	// (see docs/region.md).
-	regionRecorders.clear();
-	regionMemos.clear();
-	activeRegions_.clear();
-
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
 
@@ -419,8 +407,6 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
-	regionRecorders.clear();
-	regionMemos.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// other than TraceTerminationException escapes the per-function loop below.
@@ -490,64 +476,29 @@ TraceContextBase* ExceptionBasedTraceContext::getRootContext() {
 	return this;
 }
 
-bool ExceptionBasedTraceContext::traceRegionBegin(TagAddress callSite) {
-	const uint64_t P = currentStateHash();
-	if (auto siteIter = regionMemos.find(callSite); siteIter != regionMemos.end()) {
-		if (auto memoIter = siteIter->second.find(P); memoIter != siteIter->second.end()) {
-			// Memo hit: skip the region body. In FOLLOW mode the enclosing
-			// trace is being replayed, so jump the shared cursor onto the
-			// recorded continuation. In RECORD mode nothing is emitted; the
-			// next post-region operation merges into the recorded continuation
-			// via the existing control-flow-merge machinery.
-			if (isFollowing()) {
-				auto& continuation = memoIter->second;
-				state->executionTrace.currentBlockIndex = continuation.continuationBlockIndex;
-				state->executionTrace.currentOperationIndex = continuation.continuationOperationIndex;
-			}
-			return false;
-		}
-	}
-
-	// Memo miss: create (or reuse) the per-call-site tag recorder, push a
-	// region context, and make it the active tracer for the body.
-	auto recorderNode = regionRecorders.try_emplace(callSite, callSite, state->executionTrace.getArena());
-	auto recorder = &recorderNode.first->second;
-
-	const size_t depth = activeRegions_.size();
-	if (depth == regionPool_.size()) {
-		regionPool_.push_back(std::make_unique<RegionTraceContext>(this, recorder, !isFollowing()));
-	} else {
-		regionPool_[depth]->reinitialize(this, recorder, !isFollowing());
-	}
-	auto* region = regionPool_[depth].get();
-
-	RegionFrame frame;
-	frame.region = region;
-	frame.previous = getActiveTracer();
-	region->traceRegionBegin(callSite);
-	setActiveTracer(region);
-	activeRegions_.push_back(frame);
+// region() is a no-op against this substrate: the body is traced inline, into
+// the enclosing function's trace, exactly as if the region were not there.
+//
+// A region's benefits -- bounded branch-tracing cost, its own tag space, its
+// own liveness delta, memoized replay -- all come from the region-local
+// exploration loop, which only the non-throwing (Lazy) substrate implements.
+// This one restarts the whole enclosing function on every unresolved branch,
+// so there is nothing for a region to bound, and the machinery that used to
+// sit here bought nothing: its tag/hash isolation had to be given up outright
+// (computing a region-scoped snapshot broke the dedup that restart-from-scratch
+// depends on, causing exponential blowup), leaving bookkeeping whose only
+// remaining effects were a memo that saved re-tracing this substrate does
+// anyway and a liveness delta immediately handed back. Passing straight
+// through is the same behaviour with none of the machinery.
+bool ExceptionBasedTraceContext::traceRegionBegin(TagAddress) {
 	return true;
 }
 
 bool ExceptionBasedTraceContext::traceRegionContinue() {
-	// Region-local exploration (RegionTraceContext::traceRegionContinue) is
-	// only implemented against the non-throwing (Lazy) substrate; regions
-	// driven by exception-based tracing keep today's single-invocation
-	// behavior, unchanged.
 	return false;
 }
 
 void ExceptionBasedTraceContext::traceRegionEnd() {
-	if (activeRegions_.empty()) {
-		return;
-	}
-	auto frame = activeRegions_.back();
-	activeRegions_.pop_back();
-	// Escape transfer / memo caching already happened in the region's own
-	// traceRegionEnd(); the root only restores the enclosing active tracer.
-	setActiveTracer(frame.previous);
-	frame.region->traceRegionEnd();
 }
 
 Snapshot ExceptionBasedTraceContext::recordSnapshot() {
