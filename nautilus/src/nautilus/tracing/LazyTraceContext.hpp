@@ -143,16 +143,6 @@ private:
 	/// both root-level and region-local tracing.
 	template <typename OnCreation>
 	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
-	/// Root-only variant of traceOperation, for the six ops that always forward
-	/// straight to the true root regardless of any active region (traceAlloca,
-	/// traceCall, traceIndirectCall, traceNautilusCall, traceNautilusFunctionPtr,
-	/// traceReturnOperation) -- these are not region-scoped, and
-	/// unconditionally forwarded these to parent_. Still calls the region-aware
-	/// recordSnapshot() (matching the old getActiveTracer()->recordSnapshot()
-	/// dispatch, which resolved to the *active* region's own snapshot even for a
-	/// call that otherwise forwarded straight through it).
-	template <typename OnCreation>
-	TypedValueRef& rootTraceOperation(Op op, OnCreation&& onCreation);
 	Snapshot recordSnapshot() override;
 	uint64_t currentStateHash() const override;
 

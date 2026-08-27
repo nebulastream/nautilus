@@ -213,26 +213,10 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, OnCreation&& onCreation) 
 	return dummyRef_;
 }
 
-template <typename OnCreation>
-TypedValueRef& LazyTraceContext::rootTraceOperation(Op op, OnCreation&& onCreation) {
-	if (paused_) {
-		return dummyRef_;
-	}
-	if (isFollowing()) {
-		return follow(op);
-	}
-	auto tag = recordSnapshot();
-	if (state->executionTrace.checkTag(tag)) {
-		return onCreation(tag);
-	}
-	paused_ = true;
-	return dummyRef_;
-}
-
 TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
-	return rootTraceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, [&, size, align](Snapshot& tag) -> TypedValueRef& {
 		auto index = state->executionTrace.addAllocaSpec(size, align);
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {index});
 	});
@@ -284,7 +268,7 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	auto mangledName = getMangledName(fptn);
 	auto functionName = getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
-	return rootTraceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = mangledName,
@@ -299,7 +283,7 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
                                                    const std::vector<tracing::TypedValueRef>& arguments,
                                                    FunctionAttributes fnAttrs) {
 	auto op = Op::INDIRECT_CALL;
-	return rootTraceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
 		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
@@ -310,7 +294,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
                                                    std::function<void()> fwrapper, Type resultType,
                                                    const std::vector<tracing::TypedValueRef>& arguments,
                                                    FunctionAttributes fnAttrs) {
-	if (paused_) {
+	if (currentPaused()) {
 		return dummyRef_;
 	}
 	auto functionName = definition->name();
@@ -321,7 +305,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 		           functionsToTrace.size());
 	}
 	auto op = Op::CALL;
-	return rootTraceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
@@ -334,7 +318,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 
 TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
                                                           std::function<void()> fwrapper) {
-	if (paused_) {
+	if (currentPaused()) {
 		return dummyRef_;
 	}
 	auto functionName = definition->name();
@@ -346,7 +330,7 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	}
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
-	return rootTraceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,

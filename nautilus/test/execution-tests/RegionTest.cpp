@@ -1,5 +1,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
 #include "nautilus/region.hpp"
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
@@ -380,6 +382,69 @@ val<int64_t> regionBranchNoInnerRegion(val<int64_t> x) {
 	return sum;
 }
 
+// Calls inside a region. These are traced at region level like every other
+// operation: gating them on the enclosing function's pause/replay state instead,
+// while still tagging them against the region, meant a call on a path the region
+// re-explored recorded a duplicate tag and aborted the whole function's trace
+// ("Invalid trace. This is maybe caused by a constant loop").
+int64_t regionRuntimeAdd(int64_t a, int64_t b) {
+	return a + b;
+}
+
+val<int64_t> regionCallOnly(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	nautilus::region([&]() { sum = invoke<>(regionRuntimeAdd, x, val<int64_t>(5)); });
+	return sum;
+}
+
+// The call sits before the branch, so it is re-executed on every local
+// exploration pass -- the shape that used to abort tracing.
+val<int64_t> regionCallThenBranch(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	nautilus::region([&]() {
+		sum = invoke<>(regionRuntimeAdd, x, val<int64_t>(5));
+		if (x > 0) {
+			sum = sum + 100;
+		} else {
+			sum = sum + 200;
+		}
+	});
+	return sum;
+}
+
+// A different call per arm: each pass runs its own call site.
+val<int64_t> regionCallInsideBranchArm(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	nautilus::region([&]() {
+		if (x > 0) {
+			sum = invoke<>(regionRuntimeAdd, x, val<int64_t>(5));
+		} else {
+			sum = invoke<>(regionRuntimeAdd, x, val<int64_t>(50));
+		}
+	});
+	return sum;
+}
+
+val<int64_t> regionNautilusCalleeBody(val<int64_t> x) {
+	return x * 2;
+}
+static auto regionNautilusCallee = NautilusFunction {"regionNautilusCallee", regionNautilusCalleeBody};
+
+// A nautilus::function call before a branch in the same region: the callee is
+// queued and traced as its own function, the region records only the CALL.
+val<int64_t> regionNautilusCallThenBranch(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	nautilus::region([&]() {
+		sum = regionNautilusCallee(x);
+		if (x > 0) {
+			sum = sum + 100;
+		} else {
+			sum = sum + 200;
+		}
+	});
+	return sum;
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -534,6 +599,29 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		auto fn = engine.registerFunction(regionLiveEscapeWithInternalBranch);
 		REQUIRE(fn(1) == 8);  // 7 + 1
 		REQUIRE(fn(-1) == 9); // 7 + 2
+	}
+
+	SECTION("region runtime call alone") {
+		auto fn = engine.registerFunction(regionCallOnly);
+		REQUIRE(fn(1) == 6);
+	}
+
+	SECTION("region runtime call before internal branch") {
+		auto fn = engine.registerFunction(regionCallThenBranch);
+		REQUIRE(fn(1) == 106);  // (1+5) + 100
+		REQUIRE(fn(-1) == 204); // (-1+5) + 200
+	}
+
+	SECTION("region runtime call inside branch arm") {
+		auto fn = engine.registerFunction(regionCallInsideBranchArm);
+		REQUIRE(fn(1) == 6);
+		REQUIRE(fn(-1) == 49);
+	}
+
+	SECTION("region nautilus function call before internal branch") {
+		auto fn = engine.registerFunction(regionNautilusCallThenBranch);
+		REQUIRE(fn(1) == 102);  // 1*2 + 100
+		REQUIRE(fn(-1) == 198); // -1*2 + 200
 	}
 
 	SECTION("region empty and unnamed") {
