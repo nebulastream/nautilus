@@ -884,34 +884,37 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		return executeThreaded(regs);
 	}
 #endif
-	// Dispatches a single non-terminator opcode through the inlined switch.
-	// Factored out so it can be shared, unchanged, between the two switch-path
-	// loop variants below (with and without the per-instruction pending-check
-	// test) instead of duplicating the macro-generated switch body.
-	auto dispatchSwitch = [&regs](const OpCode& c) {
-		switch (c.op) {
+	// Dispatches a single non-terminator opcode through the inlined switch,
+	// reading `c` (the current OpCode) and `regs` from the enclosing scope.
+	//
+	// Deliberately a macro, not a lambda or a helper function: the whole point
+	// of the switch path is that the dispatch is *inlined* into the loop, and a
+	// lambda called from the two loop variants below is large enough that clang
+	// emits it out of line and calls it once per bytecode instruction -- the
+	// exact non-inlined call per instruction this path exists to avoid (~1.4x on
+	// exec_bc_*_switch). Marking the lambda always_inline would fix it on clang
+	// but GCC ignores attributes in that position, so the regression would come
+	// back silently on the gcc-14 leg. A macro cannot be un-inlined by anyone.
 #define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
 	case ByteCode::name:                                                                                               \
 		__VA_ARGS__(c, regs);                                                                                          \
 		break;
-			NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
-#undef NAUTILUS_BC_SWITCH_CASE
-		// Terminator pseudo-opcodes never appear in a block's operation stream in
-		// the call/switch paths (they keep the structured terminators); these
-		// cases exist only so the switch covers the whole ByteCode enum.
-		case ByteCode::JMP:
-		case ByteCode::CJMP:
-		case ByteCode::RET:
-		case ByteCode::CHECK_PENDING_EXCEPTION:
 #define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
-			NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
-#undef NAUTILUS_BC_FUSED_SWITCH
 #define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
-			NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
-#undef NAUTILUS_BC_IMM_SWITCH
-			break;
-		}
-	};
+	// Terminator pseudo-opcodes never appear in a block's operation stream in
+	// the call/switch paths (they keep the structured terminators); those cases
+	// exist only so the switch covers the whole ByteCode enum.
+#define NAUTILUS_BC_DISPATCH_ONE()                                                                                     \
+	switch (c.op) {                                                                                                    \
+		NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)                                                               \
+	case ByteCode::JMP:                                                                                                \
+	case ByteCode::CJMP:                                                                                               \
+	case ByteCode::RET:                                                                                                \
+	case ByteCode::CHECK_PENDING_EXCEPTION:                                                                            \
+		NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)                                                        \
+		NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)                                                                   \
+		break;                                                                                                         \
+	}
 
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
@@ -945,11 +948,11 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 						}
 						continue;
 					}
-					dispatchSwitch(c);
+					NAUTILUS_BC_DISPATCH_ONE();
 				}
 			} else {
 				for (const auto& c : currentBlock->code) {
-					dispatchSwitch(c);
+					NAUTILUS_BC_DISPATCH_ONE();
 				}
 			}
 		} else {
@@ -990,6 +993,10 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 			return regs[res->resultReg];
 		}
 	}
+#undef NAUTILUS_BC_DISPATCH_ONE
+#undef NAUTILUS_BC_IMM_SWITCH
+#undef NAUTILUS_BC_FUSED_SWITCH
+#undef NAUTILUS_BC_SWITCH_CASE
 }
 
 #ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
