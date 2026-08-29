@@ -253,6 +253,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		processedBlocks.clear();
 		functionAllocaSlots_.clear();
 		currentFunction_ = funcOp;
+		transport_ = CapturedExceptionTransport(*funcOp);
 		padLabels_.clear();
 		exceptionalExitLabel_.reset();
 
@@ -854,7 +855,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// calls need the capture thunk (mirrors X64's visitProxyCall).
 	auto it = funcNodes_.find(op->getFunctionName());
 	const bool isInternal = it != funcNodes_.end();
-	const bool needsCapture = !isInternal && callNeedsCapture(op);
+	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
 
 	FuncSignature sig;
@@ -925,7 +926,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 }
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
-	const bool needsCapture = callNeedsCapture(op);
+	const bool needsCapture = transport_.callNeedsCaptureThunk(op);
 
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
@@ -1108,16 +1109,14 @@ bool AsmJitLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operati
 	if (currentFunction_ == nullptr) {
 		return false;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.callNeedsCapture(call);
+	return transport_.callNeedsCapture(call);
 }
 
 const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCall(const ir::Operation* call) const {
 	if (currentFunction_ == nullptr) {
 		return nullptr;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.getPadForCall(call);
+	return transport_.getPadForCall(call);
 }
 
 void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
@@ -1131,8 +1130,8 @@ void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Ope
 }
 
 void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call) {
-	const auto* pad = getPadForCall(call);
-	const Label target = pad != nullptr ? getPadLabel(pad) : getExceptionalExitLabel();
+	const auto padIndex = transport_.getPadIndexForCall(call);
+	const Label target = padIndex != ir::noLandingPad ? getPadLabel(padIndex) : getExceptionalExitLabel();
 
 	// frame = currentExceptionFrame()
 	FuncSignature frameSig;
@@ -1152,13 +1151,13 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 	cc.cbnz(pendingReg, target);
 }
 
-::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(const ir::LandingPadBlock* pad) {
-	auto it = padLabels_.find(pad);
+::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(size_t padIndex) {
+	auto it = padLabels_.find(padIndex);
 	if (it != padLabels_.end()) {
 		return it->second;
 	}
 	auto label = cc.newLabel();
-	padLabels_[pad] = label;
+	padLabels_[padIndex] = label;
 	return label;
 }
 
@@ -1170,14 +1169,14 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 }
 
 void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& frame) {
-	if (currentFunction_ == nullptr || !currentFunction_->exceptionRegion.has_value() ||
-	    currentFunction_->exceptionRegion->callSites.empty()) {
+	if (currentFunction_ == nullptr || !transport_.hasExceptionalCallSites()) {
 		return;
 	}
 
 	const auto& pads = currentFunction_->exceptionRegion->pads;
-	for (const auto& pad : pads) {
-		cc.bind(getPadLabel(&pad));
+	for (size_t padIndex = 0; padIndex < pads.size(); ++padIndex) {
+		const auto& pad = pads[padIndex];
+		cc.bind(getPadLabel(padIndex));
 		// Pads contain only destructor ProxyCallOperations (all noUnwind), so
 		// lowering them through the normal dispatch emits plain external calls
 		// with no re-entrant capture.

@@ -381,6 +381,7 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		padLabels_.clear();
 		exceptionalExitLabel_.reset();
 		currentFunction_ = funcOp;
+		transport_ = CapturedExceptionTransport(*funcOp);
 
 		// Static usage counts feed the compare→branch fusion decision; only
 		// pay for the walk when the fusion is enabled.
@@ -1384,7 +1385,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 	// calls need the capture thunk (mirrors TBC's visitProxyCall).
 	auto it = funcNodes_.find(op->getFunctionName());
 	const bool isInternal = it != funcNodes_.end();
-	const bool needsCapture = !isInternal && callNeedsCapture(op);
+	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
@@ -1456,7 +1457,7 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 
 void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame) {
 	// Build callee signature from IR type information.
-	const bool needsCapture = callNeedsCapture(op);
+	const bool needsCapture = transport_.callNeedsCaptureThunk(op);
 	FuncSignature sig;
 	sig.setRet(getTypeId(op->getStamp()));
 	if (needsCapture) {
@@ -1696,31 +1697,27 @@ bool AsmJitLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operati
 	if (currentFunction_ == nullptr) {
 		return false;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.callNeedsCapture(call);
+	return transport_.callNeedsCapture(call);
 }
 
 const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCall(const ir::Operation* call) const {
 	if (currentFunction_ == nullptr) {
 		return nullptr;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.getPadForCall(call);
+	return transport_.getPadForCall(call);
 }
 
 void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
-	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
-		return proxy->getCaptureFunc();
+	void* thunk = CapturedExceptionTransport::captureThunkFor(call);
+	if (thunk == nullptr) {
+		throw NotImplementedException("asmjit: captured-exception call has no recorded capture wrapper");
 	}
-	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
-		return indirect->getCaptureFunc();
-	}
-	throw NotImplementedException("asmjit: captured-exception call has no recorded capture wrapper");
+	return thunk;
 }
 
 void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call) {
-	const auto* pad = getPadForCall(call);
-	const Label target = pad != nullptr ? getPadLabel(pad) : getExceptionalExitLabel();
+	const auto padIndex = transport_.getPadIndexForCall(call);
+	const Label target = padIndex != ir::noLandingPad ? getPadLabel(padIndex) : getExceptionalExitLabel();
 
 	// frame = currentExceptionFrame()
 	FuncSignature frameSig;
@@ -1739,13 +1736,13 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 	cc.jne(target);
 }
 
-::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(const ir::LandingPadBlock* pad) {
-	auto it = padLabels_.find(pad);
+::asmjit::Label AsmJitLoweringProvider::LoweringContext::getPadLabel(size_t padIndex) {
+	auto it = padLabels_.find(padIndex);
 	if (it != padLabels_.end()) {
 		return it->second;
 	}
 	auto label = cc.newLabel();
-	padLabels_[pad] = label;
+	padLabels_[padIndex] = label;
 	return label;
 }
 
@@ -1757,14 +1754,14 @@ void AsmJitLoweringProvider::LoweringContext::emitCheckPendingException(const ir
 }
 
 void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& frame) {
-	if (currentFunction_ == nullptr || !currentFunction_->exceptionRegion.has_value() ||
-	    currentFunction_->exceptionRegion->callSites.empty()) {
+	if (currentFunction_ == nullptr || !transport_.hasExceptionalCallSites()) {
 		return;
 	}
 
 	const auto& pads = currentFunction_->exceptionRegion->pads;
-	for (const auto& pad : pads) {
-		cc.bind(getPadLabel(&pad));
+	for (size_t padIndex = 0; padIndex < pads.size(); ++padIndex) {
+		const auto& pad = pads[padIndex];
+		cc.bind(getPadLabel(padIndex));
 		// Pads contain only destructor ProxyCallOperations (all noUnwind), so
 		// lowering them through the normal dispatch emits plain external calls
 		// with no re-entrant capture.

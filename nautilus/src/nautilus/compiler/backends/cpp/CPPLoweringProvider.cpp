@@ -71,28 +71,38 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	std::stringstream pipelineCode;
 	pipelineCode << "\n";
 	pipelineCode << "#include <cstdint>\n";
-	pipelineCode << "#include <exception>\n\n";
-
-	// The generated shared library cannot link against nautilus, so the
-	// captured-exception transport helpers are baked in as raw function
-	// addresses resolved in the host process (same mechanism as the external
-	// function pointers emitted for ProxyCall/IndirectCall).
-	pipelineCode << "namespace nautilus { namespace compiler {\n";
-	pipelineCode << "struct ExceptionFrame { std::exception_ptr pending; ExceptionFrame* parent = nullptr; };\n";
-	pipelineCode << "}}\n\n";
-	pipelineCode << "static nautilus::compiler::ExceptionFrame* (*nautilus_current_exception_frame)() = "
-	             << "(nautilus::compiler::ExceptionFrame* (*)())(uintptr_t)"
-	             << reinterpret_cast<void*>(&nautilus::compiler::currentExceptionFrame) << ";\n";
-	pipelineCode << "static bool (*nautilus_has_pending_exception)() = (bool (*)())(uintptr_t)"
-	             << reinterpret_cast<void*>(&nautilus::compiler::hasPendingException) << ";\n\n";
 
 	// Process all function operations in the IR graph
 	const auto& functionOperations = ir->getFunctionOperations();
+
+	// The captured-exception preamble (the <exception> include, the mirrored
+	// ExceptionFrame layout, and the two helper-function-pointer globals) costs
+	// real compile time in the generated TU, so only pay for it when at least
+	// one function in the module actually has an exceptional call site -- the
+	// common case has none. The generated shared library cannot link against
+	// nautilus, so these helpers are baked in as raw function addresses
+	// resolved in the host process (same mechanism as the external function
+	// pointers emitted for ProxyCall/IndirectCall).
+	const bool moduleNeedsCapture = CapturedExceptionTransport::anyFunctionNeedsCapture(*ir);
+	if (moduleNeedsCapture) {
+		pipelineCode << "#include <exception>\n\n";
+		pipelineCode << "namespace nautilus { namespace compiler {\n";
+		pipelineCode << "struct ExceptionFrame { std::exception_ptr pending; ExceptionFrame* parent = nullptr; };\n";
+		pipelineCode << "}}\n\n";
+		pipelineCode << "static nautilus::compiler::ExceptionFrame* (*nautilus_current_exception_frame)() = "
+		             << "(nautilus::compiler::ExceptionFrame* (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::currentExceptionFrame) << ";\n";
+		pipelineCode << "static bool (*nautilus_has_pending_exception)() = (bool (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::hasPendingException) << ";\n\n";
+	} else {
+		pipelineCode << "\n";
+	}
 
 	// Helper lambda to process a single function
 	auto processFunction = [&](const ir::FunctionOperation& functionOperation) {
 		// Reset state for each function
 		currentFunction_ = &functionOperation;
+		transport_ = CapturedExceptionTransport(functionOperation);
 		blocks.clear();
 		activeBlocks.clear();
 		blockArguments.str("");
@@ -134,8 +144,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		// Lower the exception-region landing pads into the block stream (before
 		// the variable/function declaration sections are emitted, so any
 		// declarations the pad's destructor calls introduce are captured).
-		const bool hasExceptionRegion =
-		    functionOperation.exceptionRegion.has_value() && !functionOperation.exceptionRegion->callSites.empty();
+		const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
 		if (hasExceptionRegion) {
 			const auto& pads = functionOperation.exceptionRegion->pads;
 			for (size_t i = 0; i < pads.size(); ++i) {
@@ -240,19 +249,30 @@ void CPPLoweringProvider::LoweringContext::processPad(const ir::BasicBlock* bloc
 	blocks[blockIndex] << "goto exceptional_exit;\n";
 }
 
-std::string CPPLoweringProvider::LoweringContext::getPadLabel(const ir::LandingPadBlock* pad) {
-	if (pad == nullptr) {
+std::string CPPLoweringProvider::LoweringContext::getPadLabel(size_t padIndex) {
+	if (padIndex == ir::noLandingPad) {
 		return "exceptional_exit";
 	}
-	if (currentFunction_ != nullptr && currentFunction_->exceptionRegion.has_value()) {
-		const auto& pads = currentFunction_->exceptionRegion->pads;
-		for (size_t i = 0; i < pads.size(); ++i) {
-			if (&pads[i] == pad) {
-				return "cleanup_pad_" + std::to_string(i);
-			}
-		}
+	return "cleanup_pad_" + std::to_string(padIndex);
+}
+
+void CPPLoweringProvider::LoweringContext::emitCapturedCall(short blockIndex, const std::string& callExpr,
+                                                            const std::string& resultVar, const std::string& returnType,
+                                                            size_t padIndex) {
+	auto& out = blocks[blockIndex];
+	const bool hasResult = !resultVar.empty();
+	out << "try {\n";
+	out << (hasResult ? resultVar + " = " : "") << callExpr << ";\n";
+	out << "} catch (...) {\n";
+	out << "auto* __frame = nautilus_current_exception_frame();\n";
+	out << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
+	if (hasResult) {
+		out << resultVar << " = (" << returnType << ")0;\n";
 	}
-	return "exceptional_exit";
+	out << "}\n";
+	out << "if (nautilus_has_pending_exception()) {\n";
+	out << "goto " << getPadLabel(padIndex) << ";\n";
+	out << "}\n";
 }
 
 void CPPLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* cmpOp, short blockIndex,
@@ -508,46 +528,21 @@ void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation
 	callExpr += "(" + args.str() + ")";
 
 	// Does this call site need captured exception transport?
-	CapturedExceptionTransport transport(*currentFunction_);
-	const bool needsCapture = transport.callNeedsCapture(opt);
-	const auto* pad = needsCapture ? transport.getPadForCall(opt) : nullptr;
+	const bool needsCapture = transport_.callNeedsCapture(opt);
+	const auto padIndex = transport_.getPadIndexForCall(opt);
 
+	std::string resultVar;
 	if (opt->getStamp() != Type::v) {
-		auto resultVar = getVariable(opt->getIdentifier());
+		resultVar = getVariable(opt->getIdentifier());
 		if (!frame.contains(opt->getIdentifier())) {
 			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
 			frame.setValue(opt->getIdentifier(), resultVar);
 		}
-		if (needsCapture) {
-			blocks[blockIndex] << "try {\n";
-			blocks[blockIndex] << resultVar << " = " << callExpr << ";\n";
-			blocks[blockIndex] << "} catch (...) {\n";
-			blocks[blockIndex] << "auto* __frame = nautilus_current_exception_frame();\n";
-			blocks[blockIndex]
-			    << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
-			blocks[blockIndex] << resultVar << " = (" << returnType << ")0;\n";
-			blocks[blockIndex] << "}\n";
-			blocks[blockIndex] << "if (nautilus_has_pending_exception()) {\n";
-			blocks[blockIndex] << "goto " << getPadLabel(pad) << ";\n";
-			blocks[blockIndex] << "}\n";
-		} else {
-			blocks[blockIndex] << resultVar << " = " << callExpr << ";\n";
-		}
+	}
+	if (needsCapture) {
+		emitCapturedCall(blockIndex, callExpr, resultVar, returnType, padIndex);
 	} else {
-		if (needsCapture) {
-			blocks[blockIndex] << "try {\n";
-			blocks[blockIndex] << callExpr << ";\n";
-			blocks[blockIndex] << "} catch (...) {\n";
-			blocks[blockIndex] << "auto* __frame = nautilus_current_exception_frame();\n";
-			blocks[blockIndex]
-			    << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
-			blocks[blockIndex] << "}\n";
-			blocks[blockIndex] << "if (nautilus_has_pending_exception()) {\n";
-			blocks[blockIndex] << "goto " << getPadLabel(pad) << ";\n";
-			blocks[blockIndex] << "}\n";
-		} else {
-			blocks[blockIndex] << callExpr << ";\n";
-		}
+		blocks[blockIndex] << (resultVar.empty() ? "" : resultVar + " = ") << callExpr << ";\n";
 	}
 }
 
@@ -572,46 +567,21 @@ void CPPLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOpe
 	std::string callExpr = "((" + returnType + "(*)(" + argTypes.str() + "))" + fnPtrVar + ")(" + args.str() + ")";
 
 	// Does this call site need captured exception transport?
-	CapturedExceptionTransport transport(*currentFunction_);
-	const bool needsCapture = transport.callNeedsCapture(opt);
-	const auto* pad = needsCapture ? transport.getPadForCall(opt) : nullptr;
+	const bool needsCapture = transport_.callNeedsCapture(opt);
+	const auto padIndex = transport_.getPadIndexForCall(opt);
 
+	std::string resultVar;
 	if (opt->getStamp() != Type::v) {
-		auto resultVar = getVariable(opt->getIdentifier());
+		resultVar = getVariable(opt->getIdentifier());
 		if (!frame.contains(opt->getIdentifier())) {
 			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
 			frame.setValue(opt->getIdentifier(), resultVar);
 		}
-		if (needsCapture) {
-			blocks[blockIndex] << "try {\n";
-			blocks[blockIndex] << resultVar << " = " << callExpr << ";\n";
-			blocks[blockIndex] << "} catch (...) {\n";
-			blocks[blockIndex] << "auto* __frame = nautilus_current_exception_frame();\n";
-			blocks[blockIndex]
-			    << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
-			blocks[blockIndex] << resultVar << " = (" << returnType << ")0;\n";
-			blocks[blockIndex] << "}\n";
-			blocks[blockIndex] << "if (nautilus_has_pending_exception()) {\n";
-			blocks[blockIndex] << "goto " << getPadLabel(pad) << ";\n";
-			blocks[blockIndex] << "}\n";
-		} else {
-			blocks[blockIndex] << resultVar << " = " << callExpr << ";\n";
-		}
+	}
+	if (needsCapture) {
+		emitCapturedCall(blockIndex, callExpr, resultVar, returnType, padIndex);
 	} else {
-		if (needsCapture) {
-			blocks[blockIndex] << "try {\n";
-			blocks[blockIndex] << callExpr << ";\n";
-			blocks[blockIndex] << "} catch (...) {\n";
-			blocks[blockIndex] << "auto* __frame = nautilus_current_exception_frame();\n";
-			blocks[blockIndex]
-			    << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
-			blocks[blockIndex] << "}\n";
-			blocks[blockIndex] << "if (nautilus_has_pending_exception()) {\n";
-			blocks[blockIndex] << "goto " << getPadLabel(pad) << ";\n";
-			blocks[blockIndex] << "}\n";
-		} else {
-			blocks[blockIndex] << callExpr << ";\n";
-		}
+		blocks[blockIndex] << (resultVar.empty() ? "" : resultVar + " = ") << callExpr << ";\n";
 	}
 }
 

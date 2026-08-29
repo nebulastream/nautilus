@@ -195,14 +195,14 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		countAllUsages(&functionBasicBlock);
 	}
 	currentFunction_ = targetFunction;
+	transport_ = CapturedExceptionTransport(*targetFunction);
 	this->process(&functionBasicBlock, rootFrame);
 
 	// Lower the exception-region landing pads and the exceptional exit block.
 	// CHECK_PENDING_EXCEPTION opcodes emitted during the main CFG lowering carry
 	// a placeholder target (reg1 == -1) recorded in pendingExceptionPatches; the
 	// pad block indices are known only now, after the main CFG has been emitted.
-	const bool hasExceptionRegion =
-	    currentFunction_->exceptionRegion.has_value() && !currentFunction_->exceptionRegion->callSites.empty();
+	const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
 	if (hasExceptionRegion) {
 		const auto& pads = currentFunction_->exceptionRegion->pads;
 		const short mainBlockCount = static_cast<short>(program.blocks.size());
@@ -227,15 +227,8 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		// index: the associated landing pad, or the exceptional exit when the call
 		// has no destructors.
 		for (const auto& patch : pendingExceptionPatches) {
-			short target = exceptionalExitBlock;
-			if (patch.pad != nullptr) {
-				for (size_t i = 0; i < pads.size(); ++i) {
-					if (&pads[i] == patch.pad) {
-						target = padBlockIndices[i];
-						break;
-					}
-				}
-			}
+			const short target =
+			    patch.padIndex == ir::noLandingPad ? exceptionalExitBlock : padBlockIndices[patch.padIndex];
 			program.blocks[patch.blockIndex].code[patch.opIndex].reg1 = target;
 		}
 	}
@@ -1542,7 +1535,7 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 	// internalFunctionPtrs) are handled by the callee's own captured transport:
 	// no thunk here, the caller only runs the pending-exception check.
 	short calleeRegister = funcPtrRegister;
-	if (callNeedsCapture(opt) && opt->getCaptureFunc() != nullptr) {
+	if (transport_.callNeedsCaptureThunk(opt)) {
 		void* thunk = opt->getCaptureFunc();
 		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcPtrRegister, -1, -1);
 		calleeRegister = registerProvider.allocPinnedRegister();
@@ -1664,22 +1657,20 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 }
 
 bool BCLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operation* call) const {
-	if (currentFunction_ == nullptr) {
-		return false;
-	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	return transport.callNeedsCapture(call);
+	return transport_.callNeedsCapture(call);
 }
 
 void BCLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call, short block) {
 	if (!callNeedsCapture(call)) {
 		return;
 	}
-	CapturedExceptionTransport transport(*currentFunction_);
-	const auto* pad = transport.getPadForCall(call);
-	auto& code = program.blocks[block].code;
-	pendingExceptionPatches.emplace_back(PendingExceptionPatch {block, code.size(), pad});
-	code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
+	auto& codeBlock = program.blocks[block];
+	pendingExceptionPatches.emplace_back(
+	    PendingExceptionPatch {block, codeBlock.code.size(), transport_.getPadIndexForCall(call)});
+	codeBlock.code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
+	// Lets BCInterpreter::execute() skip the per-instruction pending check
+	// entirely for every block that never emits one -- the common case.
+	codeBlock.hasPendingCheck = true;
 }
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
@@ -1711,7 +1702,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	// internalFunctionPtrs) are handled by the callee's own captured transport:
 	// no thunk here, the caller only runs the pending-exception check.
 	short calleeRegister = funcInfoRegister;
-	if (callNeedsCapture(opt) && opt->getCaptureFunc() != nullptr) {
+	if (transport_.callNeedsCaptureThunk(opt)) {
 		void* thunk = opt->getCaptureFunc();
 		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcInfoRegister, -1, -1);
 		calleeRegister = registerProvider.allocPinnedRegister();

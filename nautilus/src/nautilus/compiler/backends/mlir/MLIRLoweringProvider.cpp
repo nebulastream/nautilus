@@ -679,6 +679,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	debugAllocas_.clear();
 	functionAllocaSlots_.clear();
 	currentFunction_ = &functionOp;
+	transport_ = CapturedExceptionTransport(functionOp);
 	currentFunctionHeaderLine_ = 0;
 	currentFunctionLines_ = nullptr;
 	if (debugInfo_.enable && irSourceMap_ != nullptr) {
@@ -962,15 +963,7 @@ void MLIRLoweringProvider::visitProxyCall(ir::ProxyCallOperation* proxyCallOp, V
 	// exception propagates natively through this unwindable frame. Only calls
 	// with a landing pad need the invoke/landingpad and the personality
 	// function.
-	const ir::LandingPadBlock* pad = nullptr;
-	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
-		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
-			if (cs.call == proxyCallOp) {
-				pad = cs.pad;
-				break;
-			}
-		}
-	}
+	const ir::LandingPadBlock* pad = transport_.getPadForCall(proxyCallOp);
 
 	if (proxyCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
 		const auto location = getNameLoc("invoke");
@@ -1048,15 +1041,7 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 	// destructors) need the invoke/landingpad machinery; pad-less calls fall
 	// through to the plain LLVM call below and the exception propagates
 	// natively through this unwindable frame.
-	const ir::LandingPadBlock* pad = nullptr;
-	if (currentFunction_ && currentFunction_->exceptionRegion.has_value()) {
-		for (const auto& cs : currentFunction_->exceptionRegion->callSites) {
-			if (cs.call == indirectCallOp) {
-				pad = cs.pad;
-				break;
-			}
-		}
-	}
+	const ir::LandingPadBlock* pad = transport_.getPadForCall(indirectCallOp);
 
 	if (indirectCallOp->requiresExceptionHandling() && pad != nullptr && pad->block != nullptr) {
 		auto* currentBlock = builder->getInsertionBlock();
@@ -1117,12 +1102,15 @@ void MLIRLoweringProvider::visitIndirectCall(ir::IndirectCallOperation* indirect
 		return;
 	}
 
-	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the first element of the operands.
+	// For indirect calls in the MLIR LLVM dialect, the callee pointer is the
+	// first element of the operands. Reuses `callArgs` (resolved once above)
+	// instead of re-resolving every argument: resolveOperand can materialize
+	// conversion ops, so calling it twice per argument on this -- the common,
+	// no-landing-pad -- path would both waste work and risk duplicate ops.
 	std::vector<mlir::Value> allOperands;
+	allOperands.reserve(callArgs.size() + 1);
 	allOperands.push_back(calleePtr);
-	for (const auto& arg : indirectCallOp->getInputArguments()) {
-		allOperands.push_back(resolveOperand(arg, frame));
-	}
+	allOperands.insert(allOperands.end(), callArgs.begin(), callArgs.end());
 	if (indirectCallOp->getStamp() != Type::v) {
 		auto res = mlir::LLVM::CallOp::create(*builder, getNameLoc("indirectCall"), fnType, allOperands);
 		bind(frame, indirectCallOp, res.getResult());

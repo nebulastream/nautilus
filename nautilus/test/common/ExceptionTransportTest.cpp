@@ -4,9 +4,11 @@
 #include <string>
 #include <thread>
 
+using nautilus::compiler::captureCurrentException;
 using nautilus::compiler::captureThrowingCall;
 using nautilus::compiler::currentExceptionFrame;
 using nautilus::compiler::ExceptionFrame;
+using nautilus::compiler::ExceptionFrameScope;
 using nautilus::compiler::hasPendingException;
 using nautilus::compiler::popExceptionFrame;
 using nautilus::compiler::pushExceptionFrame;
@@ -107,4 +109,77 @@ TEST_CASE("concurrent invocations isolate frames", "[ExceptionTransport]") {
 	});
 	th1.join();
 	th2.join();
+}
+
+TEST_CASE("ExceptionFrameScope pops when the guarded call throws", "[ExceptionTransport]") {
+	// The hand-rolled push/call/pop this replaced skipped the pop whenever the
+	// call threw, leaving the TLS stack pointing at a destroyed stack frame.
+	REQUIRE(currentExceptionFrame() == nullptr);
+	REQUIRE_THROWS_AS(
+	    [] {
+		    ExceptionFrameScope scope(true);
+		    REQUIRE(currentExceptionFrame() != nullptr);
+		    throw std::runtime_error("escapes past the guard");
+	    }(),
+	    std::runtime_error);
+	REQUIRE(currentExceptionFrame() == nullptr);
+}
+
+TEST_CASE("ExceptionFrameScope nests and restores the parent", "[ExceptionTransport]") {
+	ExceptionFrameScope outer(true);
+	auto* outerFrame = currentExceptionFrame();
+	REQUIRE(outerFrame != nullptr);
+	{
+		ExceptionFrameScope inner(true);
+		REQUIRE(currentExceptionFrame() != outerFrame);
+		REQUIRE(currentExceptionFrame()->parent == outerFrame);
+	}
+	REQUIRE(currentExceptionFrame() == outerFrame);
+}
+
+TEST_CASE("disabled ExceptionFrameScope pushes nothing", "[ExceptionTransport]") {
+	REQUIRE(currentExceptionFrame() == nullptr);
+	{
+		ExceptionFrameScope scope(false);
+		REQUIRE(currentExceptionFrame() == nullptr);
+		REQUIRE_FALSE(scope.pending());
+	}
+	REQUIRE(currentExceptionFrame() == nullptr);
+}
+
+TEST_CASE("a frame is reusable after it captured an exception", "[ExceptionTransport]") {
+	// One invocation throwing must not poison the next one on the same thread.
+	{
+		ExceptionFrameScope first(true);
+		captureThrowingCall(+[]() { throw std::runtime_error("boom"); });
+		REQUIRE(first.pending());
+	}
+	REQUIRE(currentExceptionFrame() == nullptr);
+	{
+		ExceptionFrameScope second(true);
+		REQUIRE_FALSE(second.pending());
+		REQUIRE(captureThrowingCall(+[](int x) { return x + 1; }, 41) == 42);
+		REQUIRE_FALSE(second.pending());
+	}
+}
+
+TEST_CASE("captureCurrentException reports a missing frame", "[ExceptionTransport]") {
+	REQUIRE(currentExceptionFrame() == nullptr);
+	bool captured = true;
+	try {
+		throw std::runtime_error("nowhere to put this");
+	} catch (...) {
+		captured = captureCurrentException();
+	}
+	// False tells the caller to rethrow rather than silently drop it, which is
+	// what the BC dyncall handlers now do when driven without a frame.
+	REQUIRE_FALSE(captured);
+
+	ExceptionFrameScope scope(true);
+	try {
+		throw std::runtime_error("this one lands");
+	} catch (...) {
+		REQUIRE(captureCurrentException());
+	}
+	REQUIRE(scope.pending());
 }

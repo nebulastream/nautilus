@@ -154,7 +154,9 @@ private:
 
 } // namespace
 
-TBCExecutable::TBCExecutable(std::shared_ptr<TBCProgram> program) : program(std::move(program)) {
+TBCExecutable::TBCExecutable(std::shared_ptr<TBCProgram> program,
+                             std::unordered_set<std::string> functionsNeedingCapture)
+    : program(std::move(program)), functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
 void* TBCExecutable::getInvocableFunctionPtr(const std::string&) {

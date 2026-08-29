@@ -824,6 +824,16 @@ public:
 	// when bc.immediates is enabled; call/switch ignore them.
 	std::vector<std::pair<uint32_t, int16_t>> foldableImmediates = {};
 
+	// True when this block's `code` contains a CHECK_PENDING_EXCEPTION opcode
+	// (set by the lowering when it emits one). The call/switch dispatch loops in
+	// BCInterpreter::execute() branch on this once per block, outside the
+	// per-instruction loop, so a block with no captured-exception call site pays
+	// no per-instruction cost at all -- only a block that actually needs the
+	// check runs the loop variant that tests for it. The threaded path is
+	// unaffected: CHECK_PENDING_EXCEPTION is already a distinct computed-goto
+	// label there, costing nothing extra either way.
+	bool hasPendingCheck = false;
+
 	friend std::ostream& operator<<(std::ostream& os, const CodeBlock& block);
 };
 

@@ -78,6 +78,44 @@ val<int32_t> invokeThrowingWithoutStruct() {
 	return 42;
 }
 
+void throwIfTrue(int32_t flag) {
+	if (flag != 0) {
+		throw std::runtime_error("conditional throw");
+	}
+}
+
+// Conditionally throws, so the same registered function object can be called
+// twice -- once throwing, once not -- to check the executable is reusable
+// after an exception. `result` is cleaned up on both paths: the exceptional
+// one via the landing pad, the normal one via the traced destructor call at
+// its natural scope exit.
+val<int32_t> invokeMaybeThrowingWithStruct(val<int32_t> shouldThrow) {
+	val<ExceptionResult> result;
+	invoke(writeResult, &result, val<int32_t> {7});
+	invoke(throwIfTrue, shouldThrow);
+	return result.get(&ExceptionResult::value);
+}
+
+// Move-constructs a val<Struct> while a sibling val<Struct> is already live,
+// then throws. Regression coverage for the move constructor's destructor
+// bookkeeping: val<T>'s move ctor must not remove-then-re-append the moved
+// value's landing-pad registration (same address, same destructor, so the
+// existing registration from the original -- pre-move -- construction already
+// covers it), or the destructor of the moved-into object would run out of
+// its correct reverse-construction-order position relative to a sibling
+// that's still alive. `first` moves into `movedInto` while `second` stays
+// where it was constructed; the throw must still run `second` before the
+// moved value, matching the order they were originally constructed in.
+val<int32_t> invokeThrowingAfterMove() {
+	val<ExceptionResult> first;
+	invoke(writeResult, &first, val<int32_t> {1});
+	val<ExceptionResult> second;
+	invoke(writeResult, &second, val<int32_t> {2});
+	val<ExceptionResult> movedInto = std::move(first);
+	invoke(throwWhileWriting, &movedInto, val<int32_t> {99});
+	return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Nested Nautilus function calls: the caller's live val<Struct> destructors
 // must be carried across the nested-call boundary so they run if the nested
@@ -160,6 +198,22 @@ engine::NautilusEngine makeBcEngine(const std::string& traceMode) {
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
 	options.setOption("engine.traceMode", traceMode);
+	return engine::NautilusEngine {options};
+}
+
+// Same as makeBcEngine, but pins bc.dispatch instead of leaving it at the
+// "call" default. The interpreter's CHECK_PENDING_EXCEPTION handling differs
+// by dispatch mode (BCInterpreter::execute's switch-path loop vs. its
+// call-path loop, each gated by CodeBlock::hasPendingCheck; the threaded path
+// takes a separate computed-goto label entirely) -- exercise every mode
+// against a throwing call so all three are covered, not just the default.
+engine::NautilusEngine makeBcEngine(const std::string& traceMode, const std::string& dispatch) {
+	engine::Options options;
+	options.setOption("engine.Compilation", true);
+	options.setOption("engine.backend", std::string("bc"));
+	options.setOption("engine.compilationStrategy", std::string("legacy"));
+	options.setOption("engine.traceMode", traceMode);
+	options.setOption("bc.dispatch", dispatch);
 	return engine::NautilusEngine {options};
 }
 #endif // ENABLE_BC_BACKEND
@@ -273,6 +327,24 @@ TEST_CASE("BC backend exceptional cleanups run in reverse construction order") {
 	REQUIRE(destructorCalls == 2);
 	REQUIRE(destructorValues[0] == 2);
 	REQUIRE(destructorValues[1] == 1);
+}
+
+TEST_CASE("BC backend unwinds destructors under every dispatch mode") {
+	// BCInterpreter::execute() picks a loop variant per basic block based on
+	// CodeBlock::hasPendingCheck, nested inside the call/switch dispatch-mode
+	// branch; the threaded path handles the check as its own computed-goto
+	// label. All three need to actually take the pending-exception branch, not
+	// just agree on ordinary (non-throwing) results the way BCDispatchModeTest
+	// checks.
+	for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
+		DYNAMIC_SECTION(dispatch) {
+			auto engine = makeBcEngine("lazyTracing", dispatch);
+			auto function = engine.registerFunction(invokeThrowingWithStruct);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
+		}
+	}
 }
 #endif // ENABLE_BC_BACKEND
 
@@ -543,14 +615,14 @@ TEST_CASE("indirect throwing invokes unwind destructors across backends") {
 		DYNAMIC_SECTION(backend.name) {
 			for (const auto& [traceMode, traceFn] : traceModes) {
 				DYNAMIC_SECTION(traceMode) {
-				auto ir = traceIndirectThrowIR(traceFn);
-				auto* compilationBackend =
-				    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.name);
-				// DumpHandler stores Options by reference, so the options must
-				// outlive the compile() call (no temporaries here).
-				engine::Options dumpOptions;
-				compiler::DumpHandler dumpHandler(dumpOptions, "indirect-throw-test");
-				auto executable = compilationBackend->compile(ir, dumpHandler, engine::Options {}, nullptr);
+					auto ir = traceIndirectThrowIR(traceFn);
+					auto* compilationBackend =
+					    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.name);
+					// DumpHandler stores Options by reference, so the options must
+					// outlive the compile() call (no temporaries here).
+					engine::Options dumpOptions;
+					compiler::DumpHandler dumpHandler(dumpOptions, "indirect-throw-test");
+					auto executable = compilationBackend->compile(ir, dumpHandler, engine::Options {}, nullptr);
 					auto function = executable->getInvocableMember<void>("execute");
 					destructorCalls = 0;
 					REQUIRE_THROWS_AS(function(), std::runtime_error);
@@ -592,6 +664,67 @@ TEST_CASE("noexcept nested Nautilus call stays on the direct path") {
 					nestedDtorCalls = 0;
 					REQUIRE(function(42) == 42);
 					REQUIRE(nestedDtorCalls == 1);
+				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// val<Struct> move construction must not disturb landing-pad destructor
+// order relative to still-live siblings (see invokeThrowingAfterMove above).
+// ---------------------------------------------------------------------------
+TEST_CASE("moving a live struct preserves reverse construction order") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(invokeThrowingAfterMove);
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					REQUIRE(destructorCalls == 2);
+					// `second` was constructed after `first`/`movedInto`'s storage, so
+					// it must be destroyed first; `movedInto` (== first's original
+					// storage) destructs second, in its original construction-order slot.
+					REQUIRE(destructorValues[0] == 2);
+					REQUIRE(destructorValues[1] == 1);
+				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The same compiled/registered function must remain callable after one
+// invocation throws: the pending exception must not leak into (or be
+// mistaken for one belonging to) the next call. Regression coverage for
+// Invocable::operator()'s ExceptionFrameScope -- each call pushes and pops
+// its own frame, so a throw on call N cannot affect call N+1's frame.
+// ---------------------------------------------------------------------------
+TEST_CASE("an executable is reusable after a call throws") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(invokeMaybeThrowingWithStruct);
+
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(1), std::runtime_error);
+					REQUIRE(destructorCalls == 1);
+
+					// Same function object, called again: must run normally, not
+					// inherit or rethrow anything left over from the first call.
+					destructorCalls = 0;
+					REQUIRE(function(0) == 7);
+					REQUIRE(destructorCalls == 1);
+
+					// And a third call confirms the second call's frame was popped
+					// cleanly too, not just the first's.
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(1), std::runtime_error);
+					REQUIRE(destructorCalls == 1);
 				}
 			}
 		}

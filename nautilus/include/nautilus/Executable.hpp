@@ -234,11 +234,12 @@ public:
 		 * @return returns the result of the function if any
 		 */
 		R operator()(Args... arguments) {
-			ExceptionFrame frame;
-			const bool useFrame = exceptionMode == ExceptionPropagationMode::CapturedHostRethrow;
-			if (useFrame) {
-				pushExceptionFrame(&frame);
-			}
+			// The guard pops on every exit path. Popping by hand after the call
+			// would be skipped whenever the call itself throws -- a bad_any_cast
+			// out of castGenericResult, or an interpreter propagating -- leaving
+			// the thread-local stack pointing at this destroyed frame for the
+			// rest of the thread's life.
+			ExceptionFrameScope frameScope(exceptionMode == ExceptionPropagationMode::CapturedHostRethrow);
 
 			auto doCall = [&]() -> R {
 				if (std::holds_alternative<FunctionType*>(func)) {
@@ -277,20 +278,14 @@ public:
 
 			if constexpr (!std::is_void_v<R>) {
 				R result = doCall();
-				if (useFrame) {
-					popExceptionFrame();
-					if (frame.pending) {
-						std::rethrow_exception(frame.pending);
-					}
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
 				}
 				return result;
 			} else {
 				doCall();
-				if (useFrame) {
-					popExceptionFrame();
-					if (frame.pending) {
-						std::rethrow_exception(frame.pending);
-					}
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
 				}
 			}
 		}
@@ -305,7 +300,7 @@ public:
 	 */
 	template <typename R, typename... Args>
 	auto getInvocableMember(const std::string& member) {
-		auto mode = getExceptionPropagationMode();
+		auto mode = getExceptionPropagationMode(member);
 		if (hasInvocableFunctionPtr()) {
 			return Invocable<R, Args...>(getInvocableFunctionPtr(member), mode);
 		} else {
@@ -330,6 +325,24 @@ public:
 
 	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
 		return ExceptionPropagationMode::NativeUnwind;
+	}
+
+	/**
+	 * @brief Per-function refinement of getExceptionPropagationMode().
+	 *
+	 * A captured-host-rethrow backend (CPP/BC/TBC/AsmJit) still compiles most
+	 * functions with no exceptional call sites at all -- the common case, since
+	 * only a function that transitively invokes a non-noexcept call needs one.
+	 * Such a function never touches the ExceptionFrame machinery at runtime, so
+	 * it can be called through the raw function pointer with no frame active,
+	 * same as a NativeUnwind backend. Backends that track which of their
+	 * functions actually need capture (see
+	 * CapturedExceptionTransport::functionsNeedingCapture) override this to
+	 * answer per @p member instead of conservatively for the whole executable;
+	 * the default falls back to the executable-wide answer.
+	 */
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode(const std::string& /*member*/) const {
+		return getExceptionPropagationMode();
 	}
 
 	/**

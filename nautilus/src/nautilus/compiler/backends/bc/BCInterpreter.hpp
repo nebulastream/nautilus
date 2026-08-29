@@ -4,7 +4,9 @@
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/config.hpp"
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // The bytecode backend hands each compiled function to its caller as a real C
@@ -141,8 +143,14 @@ private:
  */
 class BCExecutable : public Executable {
 public:
+	/// @param functionsNeedingCapture names of the module's functions whose
+	///        compiled body has at least one captured-exception call site (see
+	///        CapturedExceptionTransport::functionsNeedingCapture). A function
+	///        not in this set is reported as NativeUnwind: it never touches
+	///        the ExceptionFrame machinery, so it is safe to call directly.
 	BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
-	             std::vector<std::unique_ptr<BCCallbackData>> callbackData, std::vector<BCClosureHandle> callbacks);
+	             std::vector<std::unique_ptr<BCCallbackData>> callbackData, std::vector<BCClosureHandle> callbacks,
+	             std::unordered_set<std::string> functionsNeedingCapture);
 
 	~BCExecutable() override;
 
@@ -154,10 +162,16 @@ public:
 		return ExceptionPropagationMode::CapturedHostRethrow;
 	}
 
+	[[nodiscard]] ExceptionPropagationMode getExceptionPropagationMode(const std::string& member) const override {
+		return functionsNeedingCapture_.contains(member) ? ExceptionPropagationMode::CapturedHostRethrow
+		                                                 : ExceptionPropagationMode::NativeUnwind;
+	}
+
 private:
 	std::unordered_map<std::string, void*> functionPtrs_;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackData_;
 	std::vector<BCClosureHandle> callbacks_;
+	std::unordered_set<std::string> functionsNeedingCapture_;
 };
 
 } // namespace nautilus::compiler::bc

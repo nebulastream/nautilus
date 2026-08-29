@@ -51,12 +51,35 @@ std::vector<DestructorSpec> convertDestructors(const std::vector<IndirectCallOpe
 	return out;
 }
 
+/// One entry in the pad-identity key: the destructor's address operand plus
+/// which function is called on it. In practice the address alone already
+/// disambiguates -- an SSA value has one declared type, so its recorded
+/// destructor follows from that type -- but keying on the pair costs nothing
+/// and doesn't rely on that invariant holding.
+struct DestructorIdentity {
+	Operation* address;
+	void* functionPtr;
+
+	bool operator==(const DestructorIdentity& other) const {
+		return address == other.address && functionPtr == other.functionPtr;
+	}
+};
+
 /// Total-order comparison for the pad-identity key (an ordered sequence of
-/// address operands). Uses std::less so unrelated Operation* compare with a
+/// DestructorIdentity). Uses std::less so unrelated pointers compare with a
 /// strict total order rather than the built-in `<`.
+struct IdentityLess {
+	bool operator()(const DestructorIdentity& a, const DestructorIdentity& b) const {
+		if (a.address != b.address) {
+			return std::less<Operation*> {}(a.address, b.address);
+		}
+		return std::less<void*> {}(a.functionPtr, b.functionPtr);
+	}
+};
+
 struct VecLess {
-	bool operator()(const std::vector<Operation*>& a, const std::vector<Operation*>& b) const {
-		return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), std::less<Operation*> {});
+	bool operator()(const std::vector<DestructorIdentity>& a, const std::vector<DestructorIdentity>& b) const {
+		return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), IdentityLess {});
 	}
 };
 
@@ -92,7 +115,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 
 	// 2. Intern pads by the ordered sequence of destructor address operands.
 	// Two calls sharing the same ordered set of address operands share a pad.
-	std::map<std::vector<Operation*>, size_t, VecLess> padIndex;
+	std::map<std::vector<DestructorIdentity>, size_t, VecLess> padIndex;
 
 	// Fresh-identifier baseline: never collide with the main CFG's op/block
 	// ids. The two identifier namespaces are distinct, so track each.
@@ -108,20 +131,18 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	uint32_t nextBlockId = maxBlockId + 1;
 
 	FunctionExceptionRegion region;
-	// Upper bound on distinct pads: never reallocates, so `pad` pointers into
-	// `region.pads` stay stable while we intern.
 	region.pads.reserve(rawSites.size());
 
 	for (auto& site : rawSites) {
 		if (site.destructors.empty()) {
-			region.callSites.push_back({site.call, nullptr});
+			region.callSites.push_back({site.call, noLandingPad});
 			continue;
 		}
 
-		std::vector<Operation*> identity;
+		std::vector<DestructorIdentity> identity;
 		identity.reserve(site.destructors.size());
 		for (const auto& d : site.destructors) {
-			identity.push_back(d.address);
+			identity.push_back({d.address, d.functionPtr});
 		}
 
 		auto [it, inserted] = padIndex.try_emplace(identity, region.pads.size());
@@ -141,7 +162,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 			}
 			region.pads.push_back({padBlock});
 		}
-		region.callSites.push_back({site.call, &region.pads[index]});
+		region.callSites.push_back({site.call, index});
 	}
 
 	fn.exceptionRegion = std::move(region);

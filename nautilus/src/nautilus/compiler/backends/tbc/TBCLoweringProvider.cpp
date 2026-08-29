@@ -226,7 +226,8 @@ class LoweringContext : public ir::OperationDispatcher<LoweringContext> {
 public:
 	LoweringContext(const ir::FunctionOperation* func, TBCProgram& program, TBCFunction& out,
 	                const TBCLoweringOptions& options)
-	    : func(func), program(program), out(out), options(options) {
+	    : func(func), transport(func != nullptr ? CapturedExceptionTransport(*func) : CapturedExceptionTransport {}),
+	      program(program), out(out), options(options) {
 	}
 
 	void process() {
@@ -272,6 +273,8 @@ private:
 	friend class ir::OperationDispatcher<LoweringContext>;
 
 	const ir::FunctionOperation* func;
+	/// Captured-exception queries for `func`, built once rather than per call site.
+	CapturedExceptionTransport transport;
 	TBCProgram& program;
 	TBCFunction& out;
 	TBCLoweringOptions options;
@@ -311,7 +314,7 @@ private:
 		int block = -1;
 		uint32_t codeIndex = 0;
 		int targetBlock = -1;
-		const ir::LandingPadBlock* pad = nullptr;
+		size_t padIndex = ir::noLandingPad;
 	};
 	std::vector<CheckPendingSite> checkPendingSites;
 
@@ -973,10 +976,6 @@ private:
 	/// Returns true if @p call is a captured-exception call site (i.e. it needs
 	/// the capture thunk and a pending-exception check after the call).
 	bool callNeedsCapture(const ir::Operation* call) const {
-		if (func == nullptr) {
-			return false;
-		}
-		CapturedExceptionTransport transport(*func);
 		return transport.callNeedsCapture(call);
 	}
 
@@ -987,10 +986,8 @@ private:
 		if (!callNeedsCapture(call)) {
 			return;
 		}
-		CapturedExceptionTransport transport(*func);
-		const auto* pad = transport.getPadForCall(call);
 		const uint32_t codeIndex = static_cast<uint32_t>(blocks[block].code.size());
-		checkPendingSites.push_back({block, codeIndex, -1, pad});
+		checkPendingSites.push_back({block, codeIndex, -1, transport.getPadIndexForCall(call)});
 		emit(block, Op::CHECK_PENDING, 0, 0, 0);
 	}
 
@@ -999,13 +996,7 @@ private:
 	/// wrapper is generated at the typed invoke() site and threaded through the
 	/// trace into the IR; backends simply read it.
 	void* resolveCaptureThunk(const ir::Operation* call) {
-		if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
-			return proxy->getCaptureFunc();
-		}
-		if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
-			return indirect->getCaptureFunc();
-		}
-		return nullptr;
+		return CapturedExceptionTransport::captureThunkFor(call);
 	}
 
 	void visitProxyCall(ir::ProxyCallOperation* opt, int block, RegisterFrame& frame) {
@@ -1033,8 +1024,7 @@ private:
 		// the raw target, so an exception is caught before it crosses dyncall's
 		// assembly trampoline. The raw target becomes the thunk's first argument
 		// (a pinned constant slot) and the thunk itself is the callee.
-		if (callNeedsCapture(opt)) {
-			void* thunk = resolveCaptureThunk(opt);
+		if (void* thunk = transport.callNeedsCaptureThunk(opt) ? resolveCaptureThunk(opt) : nullptr) {
 			const uint16_t targetReg = constSlot(reinterpret_cast<uint64_t>(opt->getFunctionPtr()));
 			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
 			site.argRegs.insert(site.argRegs.begin(), targetReg);
@@ -1064,8 +1054,7 @@ private:
 		// the thunk's first argument and call the capture thunk via CALL_EXT
 		// (which reads site.target), so the exception is caught in a real C++
 		// frame before crossing dyncall's trampoline.
-		if (callNeedsCapture(opt)) {
-			void* thunk = resolveCaptureThunk(opt);
+		if (void* thunk = transport.callNeedsCaptureThunk(opt) ? resolveCaptureThunk(opt) : nullptr) {
 			site.argTypes.insert(site.argTypes.begin(), Type::ptr);
 			site.argRegs.insert(site.argRegs.begin(), functionReg);
 			site.target = thunk;
@@ -1105,30 +1094,27 @@ private:
 	/// exceptional-exit block does a void return — the Invocable wrapper
 	/// rethrows the pending exception regardless of the return value.
 	void lowerExceptionPads(RegisterFrame& rootFrame) {
-		if (!func->exceptionRegion.has_value() || func->exceptionRegion->callSites.empty()) {
+		if (!transport.hasExceptionalCallSites()) {
 			return;
 		}
 		const auto& pads = func->exceptionRegion->pads;
 		const int mainBlockCount = static_cast<int>(blocks.size());
 		const int exceptionalExitBlock = mainBlockCount + static_cast<int>(pads.size());
 
-		std::unordered_map<const ir::LandingPadBlock*, int> padBlockIndices;
+		std::vector<int> padBlockIndices;
+		padBlockIndices.reserve(pads.size());
 		for (const auto& pad : pads) {
-			const int padIndex = processBlock(pad.block, rootFrame);
-			blocks[padIndex].term = Terminator {Terminator::Jump, kNoReg, exceptionalExitBlock, -1, kNoReg};
-			padBlockIndices[&pad] = padIndex;
+			const int blockIndex = processBlock(pad.block, rootFrame);
+			blocks[blockIndex].term = Terminator {Terminator::Jump, kNoReg, exceptionalExitBlock, -1, kNoReg};
+			padBlockIndices.push_back(blockIndex);
 		}
 
 		blocks.emplace_back();
 		blocks.back().term = Terminator {Terminator::Ret, kNoReg, -1, -1, kNoReg};
 
 		for (auto& site : checkPendingSites) {
-			if (site.pad != nullptr) {
-				const auto it = padBlockIndices.find(site.pad);
-				site.targetBlock = it != padBlockIndices.end() ? it->second : exceptionalExitBlock;
-			} else {
-				site.targetBlock = exceptionalExitBlock;
-			}
+			site.targetBlock =
+			    site.padIndex == ir::noLandingPad ? exceptionalExitBlock : padBlockIndices[site.padIndex];
 		}
 	}
 
