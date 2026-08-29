@@ -34,6 +34,6 @@ enum class PrefetchLocality {
 /// prefetch instruction; every other backend calls a portable
 /// `__builtin_prefetch`-based fallback.
 void prefetch(val<const void*> address, PrefetchRW rw = PrefetchRW::Read,
-             PrefetchLocality locality = PrefetchLocality::High);
+              PrefetchLocality locality = PrefetchLocality::High);
 
 } // namespace nautilus

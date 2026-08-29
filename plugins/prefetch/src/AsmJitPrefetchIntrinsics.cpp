@@ -80,21 +80,21 @@ bool handlePrefetch(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto mem = a64::ptr(argGp(ctx, 0));
 	if constexpr (Mode == PrefetchMode::ReadNone) {
-		cc.prfm(Imm(PRFOp::kPLDL1STRM), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPLDL1STRM), mem);
 	} else if constexpr (Mode == PrefetchMode::ReadLow) {
-		cc.prfm(Imm(PRFOp::kPLDL3KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPLDL3KEEP), mem);
 	} else if constexpr (Mode == PrefetchMode::ReadModerate) {
-		cc.prfm(Imm(PRFOp::kPLDL2KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPLDL2KEEP), mem);
 	} else if constexpr (Mode == PrefetchMode::ReadHigh) {
-		cc.prfm(Imm(PRFOp::kPLDL1KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPLDL1KEEP), mem);
 	} else if constexpr (Mode == PrefetchMode::WriteNone) {
-		cc.prfm(Imm(PRFOp::kPSTL1STRM), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPSTL1STRM), mem);
 	} else if constexpr (Mode == PrefetchMode::WriteLow) {
-		cc.prfm(Imm(PRFOp::kPSTL3KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPSTL3KEEP), mem);
 	} else if constexpr (Mode == PrefetchMode::WriteModerate) {
-		cc.prfm(Imm(PRFOp::kPSTL2KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPSTL2KEEP), mem);
 	} else {
-		cc.prfm(Imm(PRFOp::kPSTL1KEEP), mem);
+		cc.prfm(Imm(Predicate::PRFOp::kPSTL1KEEP), mem);
 	}
 	return true;
 }
