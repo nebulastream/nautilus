@@ -17,4 +17,5 @@ add_source_files(nautilus
         LocalCSEPass.cpp
         LoopInvariantCodeMotionPass.cpp
         ExceptionRegionPreparationPass.cpp
+        NoThrowInferencePass.cpp
 )

@@ -281,7 +281,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunct
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs,
-		                                                                        .destructors = {}});
+		                                                                        .destructors = {},
+		                                                                        .isNautilusCall = true});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -304,7 +305,8 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusCallWithExceptionHandlin
 		                                                                        .ptr = (void*) definition,
 		                                                                        .arguments = arguments,
 		                                                                        .fnAttrs = fnAttrs,
-		                                                                        .destructors = activeDestructors});
+		                                                                        .destructors = activeDestructors,
+		                                                                        .isNautilusCall = true});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }

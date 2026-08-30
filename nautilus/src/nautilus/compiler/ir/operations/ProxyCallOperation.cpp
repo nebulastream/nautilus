@@ -12,11 +12,12 @@ ProxyCallOperation::ProxyCallOperation(common::Arena& arena, const std::string& 
                                        const std::string& functionName, void* functionPtr,
                                        OperationIdentifier identifier, std::span<Operation* const> inputArguments,
                                        Type resultType, const FunctionAttributes fnAttrs,
-                                       std::vector<Destructor> destructors, bool exceptionHandling, void* captureFunc)
+                                       std::vector<Destructor> destructors, bool exceptionHandling, void* captureFunc,
+                                       bool isNautilusCall)
     : Operation(arena, Operation::OperationType::ProxyCallOp, identifier, resultType, inputArguments),
       mangedFunctionSymbol(functionSymbol), functionName(functionName), functionPtr(functionPtr),
       captureFunc(captureFunc), fnAttrs(fnAttrs), destructors(std::move(destructors)),
-      exceptionHandling(exceptionHandling) {
+      exceptionHandling(exceptionHandling), isNautilusCall(isNautilusCall) {
 }
 
 std::span<Operation* const> ProxyCallOperation::getInputArguments() const {
@@ -56,6 +57,17 @@ const std::vector<ProxyCallOperation::Destructor>& ProxyCallOperation::getDestru
 
 bool ProxyCallOperation::requiresExceptionHandling() const {
 	return exceptionHandling;
+}
+
+bool ProxyCallOperation::isNautilusFunctionCall() const {
+	return isNautilusCall;
+}
+
+void ProxyCallOperation::markNoThrow() {
+	exceptionHandling = false;
+	fnAttrs.noUnwind = true;
+	destructors.clear();
+	captureFunc = nullptr;
 }
 
 bool ProxyCallOperation::classof(const Operation* op) {

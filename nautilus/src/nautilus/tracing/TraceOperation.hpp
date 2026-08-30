@@ -72,6 +72,16 @@ struct FunctionCall {
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
 	std::vector<Destructor> destructors;
+	/**
+	 * @brief True for a call into another traced Nautilus function (via
+	 * NautilusFunction), false for a raw invoke() into an external
+	 * function. Lets IR passes tell the two apart without guessing from
+	 * `functionName` collisions: only a Nautilus-to-Nautilus call can be
+	 * proven noUnwind by inspecting the callee's own traced body, since the
+	 * callee's function pointer type isn't the source of truth here (see
+	 * NoThrowInferencePass).
+	 */
+	bool isNautilusCall = false;
 };
 
 /// Represents an indirect call through a runtime function pointer value.

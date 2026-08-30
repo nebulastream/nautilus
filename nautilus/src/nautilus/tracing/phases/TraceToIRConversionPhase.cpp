@@ -447,7 +447,8 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
 	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, std::move(destructors),
-	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING, functionCallTarget.captureFunc);
+	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING, functionCallTarget.captureFunc,
+	    functionCallTarget.isNautilusCall);
 	if (resultType != Type::v) {
 		frame.setValue(resultIdentifier, proxyCallOperation);
 	}
