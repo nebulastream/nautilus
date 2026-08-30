@@ -528,47 +528,6 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		REQUIRE(fn() == 3);
 	}
 
-	SECTION("region nested escape into enclosing region") {
-		auto fn = engine.registerFunction(regionNestedEscapeToOuter);
-		REQUIRE(fn() == 7);
-	}
-
-	SECTION("region nested escape out to function") {
-		auto fn = engine.registerFunction(regionNestedEscapeToFunction);
-		REQUIRE(fn() == 14);
-	}
-
-	SECTION("region triple nested escape") {
-		auto fn = engine.registerFunction(regionTripleNestedEscape);
-		REQUIRE(fn() == 7); // ((1) + 2) + 4
-	}
-
-	SECTION("region multiple escapes from one region") {
-		auto fn = engine.registerFunction(regionMultipleEscapes);
-		REQUIRE(fn() == 7); // 1 + 2 + 4
-	}
-
-	SECTION("region escape with multiple live copies") {
-		auto fn = engine.registerFunction(regionEscapeWithMultipleCopies);
-		REQUIRE(fn() == 15); // 5 * 3
-	}
-
-	SECTION("region sibling nested escapes") {
-		auto fn = engine.registerFunction(regionSiblingNestedEscapes);
-		REQUIRE(fn() == 6); // 1 + 5
-	}
-
-	SECTION("region nested escape re-entered in loop") {
-		auto fn = engine.registerFunction(regionNestedEscapeInLoop);
-		REQUIRE(fn(3) == 9);
-		REQUIRE(fn(0) == 0);
-	}
-
-	SECTION("region nested escape under static unroll") {
-		auto fn = engine.registerFunction(regionNestedEscapeStaticUnroll);
-		REQUIRE(fn() == 6); // 1 + 2 + 3
-	}
-
 	SECTION("region branch after outer region") {
 		auto fn = engine.registerFunction(regionBranchAfterOuterRegion);
 		REQUIRE(fn(1) == 11);
@@ -603,12 +562,6 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		auto fn = engine.registerFunction(regionBranchNoInnerRegion);
 		REQUIRE(fn(1) == 11);
 		REQUIRE(fn(-1) == 21);
-	}
-
-	SECTION("region live escape with internal branch") {
-		auto fn = engine.registerFunction(regionLiveEscapeWithInternalBranch);
-		REQUIRE(fn(1) == 8);  // 7 + 1
-		REQUIRE(fn(-1) == 9); // 7 + 2
 	}
 
 	SECTION("region runtime call alone") {
@@ -796,35 +749,82 @@ TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
 }
 
-// A live value built in a single branch arm and carried out of the region (see
-// regionEscapeAcrossBranch). lazyTracing rejects it: each pass leaves a
-// different value alive at the region's end, so which one escapes would depend
-// on the path explored last. What is pinned here is that this is *diagnosed* --
-// an exception naming region(), not a crash and not a silently wrong trace --
-// alongside the exception-based behaviour, which traces one path per engagement
-// and accepts it.
-TEST_CASE("Region Live Escape From One Branch Arm", "[region]") {
-	for (const auto& backend : nautilus::testing::availableBackends()) {
-		DYNAMIC_SECTION(backend) {
-			auto ebEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
-				opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
-			});
-			auto fn = ebEngine.registerFunction(regionEscapeAcrossBranch);
-			REQUIRE(fn(1) == 10);
-			REQUIRE(fn(-1) == 20);
+// Every way a value created inside a region body can outlive it. lazyTracing rejects all
+// of them; see LazyTraceContext::traceScopeExit for why it cannot do anything else. What
+// is pinned here is that each is *diagnosed* -- an exception naming region(), not a crash
+// and not a silently wrong trace -- and that exceptionBasedTracing, which inlines region
+// bodies into the enclosing function, still traces every one of them correctly.
+//
+// The supported way to carry a value out of a region is to assign to a val<T> declared
+// outside it; regionEscapedValue and regionBranchWritesDifferentVars in the suite above
+// cover that and work under both tracers.
+namespace {
 
-			auto lazyEngine = nautilus::testing::makeEngine(
-			    backend, [](engine::Options& opts) { opts.setOption("engine.traceMode", std::string("lazyTracing")); });
-			std::string diagnosis = "<no exception thrown>";
-			try {
-				lazyEngine.registerFunction(regionEscapeAcrossBranch);
-			} catch (const std::exception& e) {
-				diagnosis = e.what();
-			}
-			INFO("diagnosis: " << diagnosis);
-			REQUIRE(diagnosis.find("region()") != std::string::npos);
-			REQUIRE(diagnosis.find("exceptionBasedTracing") != std::string::npos);
-		}
+/// Registers @p fn on a fresh lazyTracing engine and requires it to be rejected.
+/// Note the real backend: the "interpreter" engine sets engine.Compilation = false and so
+/// never traces at all, which would make every one of these checks vacuously pass.
+template <typename F>
+void requireRejectedByLazyTracing(const std::string& backend, const char* name, F fn) {
+	auto lazyEngine = nautilus::testing::makeEngine(
+	    backend, [](engine::Options& opts) { opts.setOption("engine.traceMode", std::string("lazyTracing")); });
+	std::string diagnosis = "<no exception thrown>";
+	try {
+		lazyEngine.registerFunction(fn);
+	} catch (const std::exception& e) {
+		diagnosis = e.what();
+	}
+	INFO(name << ": " << diagnosis);
+	REQUIRE(diagnosis.find("region()") != std::string::npos);
+	REQUIRE(diagnosis.find("exceptionBasedTracing") != std::string::npos);
+}
+
+} // namespace
+
+TEST_CASE("Region Rejects Values Outliving The Body", "[region]") {
+	// Both halves are decided while tracing, before code generation, so one backend is
+	// enough here; the suite above covers these paths across every backend.
+	const auto backends = nautilus::testing::availableBackends();
+	if (backends.empty()) {
+		SKIP("no compilation backend available");
+	}
+	const auto& backend = backends.front();
+	auto ebEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
+		opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
+	});
+
+	SECTION("exceptionBasedTracing traces them") {
+		REQUIRE(ebEngine.registerFunction(regionNestedEscapeToOuter)() == 7);
+		REQUIRE(ebEngine.registerFunction(regionNestedEscapeToFunction)() == 14);
+		REQUIRE(ebEngine.registerFunction(regionTripleNestedEscape)() == 7);        // ((1) + 2) + 4
+		REQUIRE(ebEngine.registerFunction(regionMultipleEscapes)() == 7);           // 1 + 2 + 4
+		REQUIRE(ebEngine.registerFunction(regionEscapeWithMultipleCopies)() == 15); // 5 * 3
+		REQUIRE(ebEngine.registerFunction(regionSiblingNestedEscapes)() == 6);      // 1 + 5
+		REQUIRE(ebEngine.registerFunction(regionNestedEscapeStaticUnroll)() == 6);  // 1 + 2 + 3
+
+		auto inLoop = ebEngine.registerFunction(regionNestedEscapeInLoop);
+		REQUIRE(inLoop(3) == 9);
+		REQUIRE(inLoop(0) == 0);
+
+		auto liveEscape = ebEngine.registerFunction(regionLiveEscapeWithInternalBranch);
+		REQUIRE(liveEscape(1) == 8);  // 7 + 1
+		REQUIRE(liveEscape(-1) == 9); // 7 + 2
+
+		auto acrossBranch = ebEngine.registerFunction(regionEscapeAcrossBranch);
+		REQUIRE(acrossBranch(1) == 10);
+		REQUIRE(acrossBranch(-1) == 20);
+	}
+
+	SECTION("lazyTracing rejects them") {
+		requireRejectedByLazyTracing(backend, "regionNestedEscapeToOuter", regionNestedEscapeToOuter);
+		requireRejectedByLazyTracing(backend, "regionNestedEscapeToFunction", regionNestedEscapeToFunction);
+		requireRejectedByLazyTracing(backend, "regionTripleNestedEscape", regionTripleNestedEscape);
+		requireRejectedByLazyTracing(backend, "regionMultipleEscapes", regionMultipleEscapes);
+		requireRejectedByLazyTracing(backend, "regionEscapeWithMultipleCopies", regionEscapeWithMultipleCopies);
+		requireRejectedByLazyTracing(backend, "regionSiblingNestedEscapes", regionSiblingNestedEscapes);
+		requireRejectedByLazyTracing(backend, "regionNestedEscapeInLoop", regionNestedEscapeInLoop);
+		requireRejectedByLazyTracing(backend, "regionNestedEscapeStaticUnroll", regionNestedEscapeStaticUnroll);
+		requireRejectedByLazyTracing(backend, "regionLiveEscapeWithInternalBranch", regionLiveEscapeWithInternalBranch);
+		requireRejectedByLazyTracing(backend, "regionEscapeAcrossBranch", regionEscapeAcrossBranch);
 	}
 }
 

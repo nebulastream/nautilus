@@ -554,14 +554,6 @@ void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry,
 	state.emplace(recorder, parent.state->executionTrace, region.symbolicExecutionContext, parent.state->options);
 }
 
-void LazyTraceContext::transferEscapesTo(LazyTraceContext& parent) {
-	aliveVars.forEachAlive([&parent](uint32_t ref, uint32_t count) {
-		for (uint32_t i = 0; i < count; i++) {
-			parent.aliveVars.increment(ref);
-		}
-	});
-}
-
 void LazyTraceContext::traceScopeExit() {
 	// Each of the skipped cases has already been terminated by other machinery: a pass
 	// paused by a control-flow merge had its jump added by processControlFlowMerge, a
@@ -571,10 +563,33 @@ void LazyTraceContext::traceScopeExit() {
 		return;
 	}
 	auto& region = regionState();
+
+	// Nothing created inside a region may outlive it. A val<T> constructed in the body
+	// and still held when the body returns owns a ref this scope allocated, and there is
+	// no way to hand that to the enclosing scope correctly: on a replay pass the body is
+	// skipped, so the C++ object is never constructed, and once the enclosing scope's
+	// exploration flips from FOLLOW to RECORD every operation it records afterwards would
+	// take its inputs from an object that does not exist. Assigning to a val<T> declared
+	// outside the region has none of that problem -- that ref is allocated before the
+	// region and stays stable across it -- which is why it is the supported way to carry
+	// a value out. See docs/region.md.
+	if (aliveVars.size() > 0) {
+		std::string escaped;
+		aliveVars.forEachAlive([&escaped](uint32_t ref, uint32_t) {
+			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
+		});
+		throw RuntimeException(
+		    "Invalid region(): a value created inside the region body outlives it (" + escaped +
+		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it, or trace "
+		    "this function with engine.traceMode = \"exceptionBasedTracing\".");
+	}
+
 	auto snapshot = recordSnapshot();
 	if (!region.exitSnapshot.has_value()) {
 		region.exitSnapshot = snapshot;
 	} else if (*region.exitSnapshot != snapshot) {
+		// Same escape set, different snapshot: the remaining input to the hash is the
+		// static-variable stack, so a captured static_val was written inside the body.
 		throw RuntimeException(
 		    "Invalid region(): the state alive at the end of the region body differs between the paths through it, so "
 		    "what escapes the region would depend on which path was explored last. Build the escaping value on every "
@@ -611,18 +626,6 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
 			throw RuntimeException("Invalid region(): replaying a recorded path reached a region() call site that was "
 			                       "not recorded there. Trace this function with engine.traceMode = "
 			                       "\"exceptionBasedTracing\", which traces region bodies inline.");
-		}
-		if (memoized->second.hasEscapes) {
-			// A value whose ref was allocated inside the body is still alive at the
-			// region's end, i.e. a C++ object created by the body outlives it. Replay
-			// skips the body, so that object is never created and the live-value state
-			// after the region differs from the recorded pass -- which desynchronizes
-			// every snapshot taken afterwards. There is no way to replay this correctly,
-			// so say so instead of tracing something subtly wrong.
-			throw RuntimeException("Invalid region(): a value created inside the region body outlives it, and the "
-			                       "enclosing function has to replay this call site. Keep the escaping value in a "
-			                       "val<T> declared outside the region, or trace this function with "
-			                       "engine.traceMode = \"exceptionBasedTracing\".");
 		}
 		trace.setCurrentBlock(memoized->second.exitBlock);
 		return;
@@ -666,14 +669,10 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
 		                       "function cannot continue after it.");
 	}
 
-	const bool hasEscapes = child.aliveVars.size() > 0;
-	if (hasEscapes) {
-		child.transferEscapesTo(*this);
-	}
 	child.state.reset();
 
 	trace.setCurrentBlock(exit);
-	regionState().regionMemo[key] = RegionRecord {entry, exit, hasEscapes};
+	regionState().regionMemo[key] = RegionRecord {entry, exit};
 }
 
 std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& traceFunction,

@@ -673,3 +673,95 @@ rebuilding between measurements, and noticing that a runaway benchmark process l
 from a profiling run had been competing for CPU the whole time. On an idle machine with
 interleaved runs the spread is ~2%. Any future number here should be collected the same
 way.
+
+
+---
+
+## 10. Escapes: why the exit-block copy cannot work, and what replaced it
+
+The proposal was: instead of `transferEscapesTo` moving raw alive-counts into the parent,
+emit an explicit copy in the region's end block that assigns each escaping value into a
+parent-owned ref, so that a FOLLOW replay could re-initialise it and `hasEscapes` would
+not have to be a hard error.
+
+It cannot be made to work, and the reason is not in the trace -- it is in the C++ object
+graph.
+
+`TypedValueRefHolder`'s constructor and destructor are what maintain a ref's alive count,
+so a ref's liveness is owned by a live `val<T>` object. `val::operator=` assigns *into* the
+holder's existing ref (`val_arith.hpp:112`) without changing it. That is exactly why the
+supported pattern is safe: a `val<T>` declared outside the region has a ref allocated
+before the region and stable across it, so skipping the body on a replay pass changes
+nothing the parent can observe. An escape is the opposite shape -- a `val<T>` object
+*constructed inside* the region that outlives it -- so its ref cannot be stable, because it
+did not exist before the region ran.
+
+On a replay pass the body does not run, so that object is never constructed. Restoring the
+tracer's *counts* from the memo is easy; restoring the object is not, and the object is
+what matters:
+
+* Once the enclosing scope's exploration flips from FOLLOW to RECORD to explore a new
+  branch, every newly recorded operation takes its input refs from the live `val<T>`
+  objects. The escaping object does not exist, so the operation would be recorded against
+  whatever the user's code yields instead -- an empty `std::optional` is undefined
+  behaviour, a default-constructed `val` silently records `$0`.
+* The object's destructor never runs on the replay pass either, so any count restored from
+  the memo would stay elevated exactly where the recording pass released it, diverging
+  again at the next snapshot.
+
+A copy in the end block changes neither: the tracer knows ref numbers, not objects, and
+cannot retroactively make a not-yet-constructed object hold a ref.
+
+### So escapes are rejected outright
+
+Rather than keep partial support with a replay-time trap, `traceScopeExit` now rejects
+*any* value created inside a region body that is still alive when the body returns, naming
+the refs involved. That makes the limitation a single sentence -- nothing created inside a
+region may outlive it, carry values out through a `val<T>` declared outside -- instead of a
+rule about which escapes happen to survive which exploration order.
+
+It also deletes machinery: `transferEscapesTo`, the `hasEscapes` flag on `RegionRecord`,
+the replay-time trap that consulted it, and the cross-pass escape-set comparison are all
+gone, because nothing can escape any more. The exit-`Snapshot` comparison stays, where it
+now means "a captured `static_val` was written inside the body".
+
+Nine fixtures in the restored suite exercised the old escape-transfer machinery
+(`regionMultipleEscapes`, `regionEscapeWithMultipleCopies`, the nested-escape family,
+`regionLiveEscapeWithInternalBranch`). They were not deleted: they moved into
+`Region Rejects Values Outliving The Body`, which pins both halves -- each is diagnosed
+under `lazyTracing`, and each still traces to its original expected value under
+`exceptionBasedTracing`, which inlines region bodies. No coverage was lost, and the
+expected values from the removed sections are preserved verbatim.
+
+The one relaxation that *would* restore support is to re-run the body under the enclosing
+scope's FOLLOW cursor instead of skipping it -- each operation would follow its recorded
+counterpart, handing the re-created objects their recorded refs. That is sound only for a
+region with no internal branches (a region-internal `CMP` would consult the enclosing
+scope's execution path, which knows nothing about it), and it gives up memoised replay for
+that region. Worth doing only if escaping regions turn out to matter in practice.
+
+One trap to note for anyone writing tests here: `makeEngine("interpreter")` sets
+`engine.Compilation = false`, so it never traces at all. A rejection test written against
+it passes vacuously.
+
+### A latent underflow this uncovered
+
+`regionEscapeAcrossBranch` crashed the moment the explicit check went in, and the cause
+turned out to predate all of this work. Its `std::optional<val<int64_t>>` is declared
+outside the region and emplaced inside, so it survives *across exploration passes*: pass 2's
+`emplace` destroys pass 1's value, calling `freeValRef` for a ref whose count `resume()`
+had already reset to zero. `AliveVariableHash::decrement` underflowed it to `UINT32_MAX`
+while leaving `aliveCount` at 0.
+
+That was invisible while `reset()` unconditionally refilled the vector every pass. Making
+`reset()` O(1) (§9) meant the corrupted count survived instead, poisoning every later
+snapshot hash and running tracing away until it crashed. `decrement` now returns without
+touching anything when the count is already zero, which is the correct semantics -- a scope
+whose environment was reset between passes has nothing to give back for a ref allocated in
+an earlier pass -- and it restores the `aliveCount == number of non-zero entries` invariant
+that the O(1) `reset()` and `forEachAlive` depend on.
+
+The assert that used to sit there could not have caught this: the Debug/ASAN build is where
+it is live, and the shape only arises under `lazyTracing`'s per-pass environment reset,
+which the assert's author had no reason to expect. Restoring the invariant in `decrement`
+is what makes it unnecessary.

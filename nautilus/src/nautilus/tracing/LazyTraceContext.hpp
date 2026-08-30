@@ -154,6 +154,9 @@ private:
 	 * tagged jump to the region's exit block. Because the jump is tagged, a second pass
 	 * that ends in a different block hits the same tag and is merged by the ordinary
 	 * control-flow-merge machinery -- the same code that merges the arms of an `if`.
+	 *
+	 * This is also where a value created inside the body that outlives it is rejected;
+	 * see the check itself for why that cannot be supported.
 	 */
 	void traceScopeExit();
 
@@ -167,18 +170,11 @@ private:
 	/// SymbolicExecutionContext (and its tag map) is allocated once per thread.
 	LazyTraceContext& acquireChildScope();
 
-	/// Hands the refs still alive in this region scope over to @p parent, so that the
-	/// later freeValRef from the enclosing C++ scope finds them accounted for there.
-	void transferEscapesTo(LazyTraceContext& parent);
-
 	/// A region recorded in the enclosing trace: the block its body starts in and the
 	/// block the enclosing scope continues in afterwards.
 	struct RegionRecord {
 		uint32_t entryBlock;
 		uint32_t exitBlock;
-		/// Whether a value allocated inside the body was still alive at its end. Such a
-		/// region cannot be replayed: see the check in traceRegion's FOLLOW path.
-		bool hasEscapes;
 	};
 
 	/// The block a pass of this scope rewinds to before re-invoking the body.
@@ -205,6 +201,13 @@ private:
 		/// completed pass must agree with it, or what escapes the region would depend on
 		/// which path happened to be explored last (see docs/region.md).
 		std::optional<Snapshot> exitSnapshot;
+
+		/// The refs still alive at the end of the first completed pass, ascending -- the
+		/// values that escape the region. Compared directly against every later pass
+		/// rather than relying on exitSnapshot alone: that snapshot folds the escape set
+		/// into an XOR hash together with the static-variable hash, so two different
+		/// escape sets can collide, and a static-variable change can cancel an escape
+		/// change. Comparing the sets also lets the diagnostic name the refs involved.
 
 		/// Regions opened *by* this scope, keyed by their call-site snapshot. Consulted
 		/// when this scope replays a recorded path and reaches the region again: the body
