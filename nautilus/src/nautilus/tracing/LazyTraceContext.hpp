@@ -3,15 +3,17 @@
 
 #include "ExceptionBasedTraceContext.hpp"
 #include "nautilus/CompilableFunction.hpp"
+#include "symbolic_execution/SymbolicExecutionContext.hpp"
+#include <deque>
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::tracing {
 class ExecutionTrace;
-class SymbolicExecutionContext;
 
 /**
  * @brief Exception-free tracing context that always completes function execution.
@@ -70,6 +72,7 @@ public:
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
+	void traceRegion(std::function<void()>& regionFunction) override;
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
@@ -128,6 +131,119 @@ private:
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 
+	/**
+	 * @brief Runs the symbolic-execution loop of one *trace scope* to completion.
+	 *
+	 * A scope is a body that is explored path by path against its own
+	 * SymbolicExecutionContext, TagRecorder, staticVars/aliveVars and passive-mode
+	 * flag -- i.e. exactly the state this object holds. Tracing a whole function is
+	 * running a scope whose entry block is block 0; a region (see docs/region.md) is
+	 * the same loop over a scope whose entry block is a freshly created block inside
+	 * the enclosing scope's trace. `resetExecution()` is by definition
+	 * `setCurrentBlock(0)`, so the two differ only in `entryBlock_`.
+	 *
+	 * @param body The scope body, re-invoked once per explored path.
+	 */
+	void runScope(std::function<void()>& body);
+
+	/**
+	 * @brief Terminates one completed pass of a region scope.
+	 *
+	 * A function scope needs no equivalent: its body already emits a tagged RETURN per
+	 * completed pass. A region body has no terminator of its own, so this records a
+	 * tagged jump to the region's exit block. Because the jump is tagged, a second pass
+	 * that ends in a different block hits the same tag and is merged by the ordinary
+	 * control-flow-merge machinery -- the same code that merges the arms of an `if`.
+	 */
+	void traceScopeExit();
+
+	/// Prepares this (possibly pooled) context to trace the body of a region opened by
+	/// @p parent, recording into @p parent's trace between @p entry and @p exit.
+	void initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder);
+
+	/// Returns the pooled context used for regions opened by this scope, creating it on
+	/// first use. Regions nest strictly LIFO and a scope traces at most one region at a
+	/// time, so one slot per scope covers a whole nesting chain and each depth's
+	/// SymbolicExecutionContext (and its tag map) is allocated once per thread.
+	LazyTraceContext& acquireChildScope();
+
+	/// Hands the refs still alive in this region scope over to @p parent, so that the
+	/// later freeValRef from the enclosing C++ scope finds them accounted for there.
+	void transferEscapesTo(LazyTraceContext& parent);
+
+	/// A region recorded in the enclosing trace: the block its body starts in and the
+	/// block the enclosing scope continues in afterwards.
+	struct RegionRecord {
+		uint32_t entryBlock;
+		uint32_t exitBlock;
+		/// Whether a value allocated inside the body was still alive at its end. Such a
+		/// region cannot be replayed: see the check in traceRegion's FOLLOW path.
+		bool hasEscapes;
+	};
+
+	/// The block a pass of this scope rewinds to before re-invoking the body.
+	/// 0 for a function scope (the trace's own entry block).
+	uint32_t entryBlock_ = 0;
+
+	/// Non-null exactly for a region scope: the scope that opened this region.
+	/// Read on the freeValRef hot path, so it stays a plain member here.
+	LazyTraceContext* parent_ = nullptr;
+
+	/// Everything a scope needs only once region() is involved, held behind one pointer
+	/// and allocated on first use.
+	///
+	/// This is deliberately not inlined into the object. A LazyTraceContext is otherwise
+	/// small and its hot members (state, staticVars, aliveVars, paused_) are touched on
+	/// every traced operation and every val<T> construction; carrying ~250 bytes of
+	/// region state inline pushed them apart and cost 9-13% on tracing benchmarks that
+	/// never use a region at all. Functions that use no region never allocate this.
+	struct RegionScopeState {
+		/// Region scopes only: the block the enclosing scope resumes in.
+		uint32_t exitBlock = 0;
+
+		/// Region scopes only: the exit snapshot of the first completed pass. Every later
+		/// completed pass must agree with it, or what escapes the region would depend on
+		/// which path happened to be explored last (see docs/region.md).
+		std::optional<Snapshot> exitSnapshot;
+
+		/// Regions opened *by* this scope, keyed by their call-site snapshot. Consulted
+		/// when this scope replays a recorded path and reaches the region again: the body
+		/// is not re-executed, the cursor jumps straight to the region's exit block.
+		std::unordered_map<Snapshot, RegionRecord> regionMemo;
+
+		/// The SymbolicExecutionContext this scope's state refers to when it is a region
+		/// scope. Owned here (a function scope's is owned by its caller's stack frame) and
+		/// reset rather than reconstructed, so a pooled scope keeps its tag map
+		/// allocation.
+		SymbolicExecutionContext symbolicExecutionContext {kRegionExpectedTags};
+
+		/// TagRecorders of every region traced during the current function; only the
+		/// session's copy is used. A TagRecorder's trie root is a member Tag and its nodes
+		/// carry pointers to it, while the Tag* it mints are stored in the trace and in
+		/// the tag map -- both of which outlive the region. So recorders must live as long
+		/// as the trace they tag, not as long as the region engagement, and must not move
+		/// once created.
+		std::deque<TagRecorder> tagRecorders;
+
+		/// The pooled context used for regions opened by this scope. Regions nest strictly
+		/// LIFO and a scope traces at most one region at a time, so one slot per scope
+		/// covers a whole nesting chain and each depth's SymbolicExecutionContext (and its
+		/// tag map) is allocated once per thread.
+		std::unique_ptr<LazyTraceContext> childScope;
+	};
+
+	/// Sized for the branches structurally inside one region body, not a whole function.
+	static constexpr size_t kRegionExpectedTags = 8;
+
+	/// Returns this scope's region state, allocating it on first use.
+	RegionScopeState& regionState();
+
+	/// The context that owns the cross-scope bookkeeping shared by every scope of
+	/// one tracing session: the function work-list, the registered-function set and
+	/// the (mangled/normalized) function-name caches. Always the outermost context;
+	/// `this` for a function scope.
+	LazyTraceContext* session_ = this;
+
 	// Persistent state - reset between trace iterations via resume()
 	std::vector<StaticVarHolder> staticVars;
 	AliveVariableHash aliveVars;
@@ -138,7 +254,7 @@ private:
 	// always copy the TypedValueRef by value — no one holds the reference across calls.
 	TypedValueRef dummyRef_ = {0, Type::v};
 
-	// Work-list for multi-function tracing
+	// Work-list for multi-function tracing (session-owned; see session_)
 	std::list<compiler::CompilableFunction> functionsToTrace;
 	/// Definition identity -> the name that definition is traced under.
 	///
@@ -155,6 +271,10 @@ private:
 	/// was the first.
 	const std::string& registerNautilusFunction(const NautilusFunctionDefinition* definition,
 	                                            std::function<void()> fwrapper, bool& newlyRegistered);
+
+	/// Allocated on the first region() this scope opens; null for a scope that never
+	/// sees one. Placed after the hot members on purpose -- see RegionScopeState.
+	std::unique_ptr<RegionScopeState> regionState_;
 };
 
 } // namespace nautilus::tracing

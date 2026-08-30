@@ -174,6 +174,17 @@ public:
 	                                      Type resultType);
 
 	/**
+	 * @brief Appends a tagged unconditional jump to @p targetBlock.
+	 *
+	 * Unlike the jumps synthesised by processControlFlowMerge, this one carries a
+	 * snapshot and is registered in the tag map, so re-reaching the same call site
+	 * under an unchanged state is recognised as a control-flow re-entry by
+	 * checkTag() and merged like any other repeated operation. Used to mark the
+	 * boundaries of a region (docs/region.md) in the enclosing trace.
+	 */
+	void addJumpOperation(Snapshot& snapshot, uint32_t targetBlock);
+
+	/**
 	 * @brief Adds a return operation to the trace
 	 * @param snapshot The current execution snapshot
 	 * @param type The type of the return value

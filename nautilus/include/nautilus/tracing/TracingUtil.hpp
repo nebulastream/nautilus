@@ -97,6 +97,9 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
 
+/// Traces @p regionFunction as an isolated tracing region; see docs/region.md.
+void traceRegion(std::function<void()>& regionFunction);
+
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();
 void allocateValRef(ValueRef ref);

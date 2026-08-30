@@ -3,6 +3,7 @@
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
@@ -27,6 +28,8 @@ LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, Executi
                                                const engine::Options& options) {
 	completingTraceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
 	completingTraceContext.paused_ = false;
+	completingTraceContext.parent_ = nullptr;
+	completingTraceContext.session_ = &completingTraceContext;
 	setActiveTracer(&completingTraceContext);
 	return &completingTraceContext;
 }
@@ -41,6 +44,9 @@ void LazyTraceContext::resume() {
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
+	}
+	if (parent_ != nullptr) {
+		throw RuntimeException("Invalid region(): a region body has no arguments of its own.");
 	}
 	return state->executionTrace.setArgument(type, index);
 }
@@ -174,8 +180,10 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	if (paused_) {
 		return dummyRef_;
 	}
-	auto mangledName = getMangledName(fptn);
-	auto functionName = getFunctionName(fptn, mangledName);
+	// Name caches are session-wide: a call traced inside a region must normalize to
+	// the same name as the same call traced outside one.
+	auto mangledName = session_->getMangledName(fptn);
+	auto functionName = session_->getFunctionName(fptn, mangledName);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
@@ -250,7 +258,7 @@ LazyTraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fn
 
 const std::string& LazyTraceContext::registerNautilusFunction(const NautilusFunctionDefinition* definition,
                                                               std::function<void()> fwrapper, bool& newlyRegistered) {
-	if (const auto it = registeredFunctions.find(definition); it != registeredFunctions.end()) {
+	if (const auto it = session_->registeredFunctions.find(definition); it != session_->registeredFunctions.end()) {
 		newlyRegistered = false;
 		return it->second;
 	}
@@ -261,24 +269,24 @@ const std::string& LazyTraceContext::registerNautilusFunction(const NautilusFunc
 	// and each needs its own name so the trace module, the IR and every
 	// backend can tell them apart.
 	std::string name = definition->name();
-	if (usedFunctionNames.contains(name)) {
+	if (session_->usedFunctionNames.contains(name)) {
 		const std::string base = name;
 		uint32_t suffix = 1;
 		do {
 			++suffix;
 			name = base + "_" + std::to_string(suffix);
-		} while (usedFunctionNames.contains(name));
+		} while (session_->usedFunctionNames.contains(name));
 		log::warn("Two distinct NautilusFunctions are named '{}'; tracing the second as '{}'. Give them distinct "
 		          "names to keep generated code readable.",
 		          base, name);
 	}
-	usedFunctionNames.insert(name);
+	session_->usedFunctionNames.insert(name);
 
-	const auto [inserted, _] = registeredFunctions.emplace(definition, std::move(name));
-	functionsToTrace.push_back(
+	const auto [inserted, _] = session_->registeredFunctions.emplace(definition, std::move(name));
+	session_->functionsToTrace.push_back(
 	    compiler::CompilableFunction(inserted->second, std::move(fwrapper), definition->attributes(), definition));
 	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", inserted->second,
-	           functionsToTrace.size());
+	           session_->functionsToTrace.size());
 	return inserted->second;
 }
 
@@ -395,6 +403,10 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	if (paused_) {
 		return;
 	}
+	if (parent_ != nullptr) {
+		throw RuntimeException("Invalid region(): a region body returns void and cannot return from the enclosing "
+		                       "function; assign to a val<T> captured by reference instead.");
+	}
 	if (isFollowing()) {
 		follow(RETURN);
 	} else {
@@ -480,6 +492,190 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	return result;
 }
 
+void LazyTraceContext::runScope(std::function<void()>& body) {
+	auto& symbolicExecutionContext = state->symbolicExecutionContext;
+	auto traceIteration = 0;
+	while (symbolicExecutionContext.shouldContinue()) {
+		traceIteration = traceIteration + 1;
+		log::trace("Trace Iteration {}", traceIteration);
+		log::trace("{}", state->executionTrace);
+
+		// Prepare for the next iteration. Rewinding to entryBlock_ is what
+		// resetExecution() does for a function scope (entryBlock_ == 0) and what a
+		// region scope needs to replay from its own entry instead of the function's.
+		symbolicExecutionContext.next();
+		state->executionTrace.setCurrentBlock(entryBlock_);
+		resume(); // Reset persistent state (staticVars, aliveVars, paused_)
+
+		// Execute the scope body - it always returns normally.
+		body();
+
+		// A region scope has no terminator of its own; see traceScopeExit().
+		if (parent_ != nullptr) {
+			traceScopeExit();
+		}
+
+		// After each iteration, the static variable stack must be empty.
+		// Since the body completes normally, all destructors fire in order.
+		assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+	}
+	log::debug("Scope traced with {} iterations", traceIteration);
+}
+
+LazyTraceContext::RegionScopeState& LazyTraceContext::regionState() {
+	if (!regionState_) {
+		regionState_ = std::make_unique<RegionScopeState>();
+	}
+	return *regionState_;
+}
+
+LazyTraceContext& LazyTraceContext::acquireChildScope() {
+	auto& region = regionState();
+	if (!region.childScope) {
+		region.childScope = std::make_unique<LazyTraceContext>();
+	}
+	return *region.childScope;
+}
+
+void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder) {
+	parent_ = &parent;
+	session_ = parent.session_;
+	entryBlock_ = entry;
+	paused_ = false;
+	staticVars.clear();
+	aliveVars.reset();
+	auto& region = regionState();
+	region.exitBlock = exit;
+	region.exitSnapshot.reset();
+	// Regions recorded by a previous engagement of this pooled scope belong to that
+	// engagement's body; their entries are unreachable from here.
+	region.regionMemo.clear();
+	region.symbolicExecutionContext.reset();
+	state.emplace(recorder, parent.state->executionTrace, region.symbolicExecutionContext, parent.state->options);
+}
+
+void LazyTraceContext::transferEscapesTo(LazyTraceContext& parent) {
+	aliveVars.forEachAlive([&parent](uint32_t ref, uint32_t count) {
+		for (uint32_t i = 0; i < count; i++) {
+			parent.aliveVars.increment(ref);
+		}
+	});
+}
+
+void LazyTraceContext::traceScopeExit() {
+	// Each of the skipped cases has already been terminated by other machinery: a pass
+	// paused by a control-flow merge had its jump added by processControlFlowMerge, a
+	// pass paused by a second visit ends on the CMP that paused it, and a pass that ran
+	// entirely in FOLLOW mode is replaying a marker that is already recorded.
+	if (paused_ || isFollowing()) {
+		return;
+	}
+	auto& region = regionState();
+	auto snapshot = recordSnapshot();
+	if (!region.exitSnapshot.has_value()) {
+		region.exitSnapshot = snapshot;
+	} else if (*region.exitSnapshot != snapshot) {
+		throw RuntimeException(
+		    "Invalid region(): the state alive at the end of the region body differs between the paths through it, so "
+		    "what escapes the region would depend on which path was explored last. Build the escaping value on every "
+		    "path (assigning to a val<T> declared outside the region merges across branches), or trace this function "
+		    "with engine.traceMode = \"exceptionBasedTracing\".");
+	}
+	auto& trace = state->executionTrace;
+	if (!trace.checkTag(snapshot)) {
+		// This pass's tail was merged with an earlier pass's exit. The pass is over.
+		paused_ = true;
+		return;
+	}
+	trace.getBlock(region.exitBlock).predecessors.emplace_back(trace.getCurrentBlockIndex());
+	trace.addJumpOperation(snapshot, region.exitBlock);
+}
+
+void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
+	if (paused_) {
+		return;
+	}
+	auto& trace = state->executionTrace;
+	// A region is an operation to its enclosing scope and a function to its own body:
+	// identified at its call site exactly like any other traced operation.
+	auto key = recordSnapshot();
+
+	if (isFollowing()) {
+		// Memoized replay: the body was fully explored when it was first reached, so
+		// skip it and continue where it handed control back. The tagged jump recorded
+		// below is invisible here - the cursor traverses JMPs transparently - which is
+		// why this looks the region up by key rather than following the operation.
+		auto& memo = regionState().regionMemo;
+		auto memoized = memo.find(key);
+		if (memoized == memo.end()) {
+			throw RuntimeException("Invalid region(): replaying a recorded path reached a region() call site that was "
+			                       "not recorded there. Trace this function with engine.traceMode = "
+			                       "\"exceptionBasedTracing\", which traces region bodies inline.");
+		}
+		if (memoized->second.hasEscapes) {
+			// A value whose ref was allocated inside the body is still alive at the
+			// region's end, i.e. a C++ object created by the body outlives it. Replay
+			// skips the body, so that object is never created and the live-value state
+			// after the region differs from the recorded pass -- which desynchronizes
+			// every snapshot taken afterwards. There is no way to replay this correctly,
+			// so say so instead of tracing something subtly wrong.
+			throw RuntimeException("Invalid region(): a value created inside the region body outlives it, and the "
+			                       "enclosing function has to replay this call site. Keep the escaping value in a "
+			                       "val<T> declared outside the region, or trace this function with "
+			                       "engine.traceMode = \"exceptionBasedTracing\".");
+		}
+		trace.setCurrentBlock(memoized->second.exitBlock);
+		return;
+	}
+
+	if (!trace.checkTag(key)) {
+		// Re-entering the same region call site in the same state is a control-flow
+		// re-entry (a loop around the region); checkTag has merged, so this pass ends.
+		paused_ = true;
+		return;
+	}
+
+	auto entry = trace.createBlock();
+	auto exit = trace.createBlock();
+	trace.getBlock(entry).predecessors.emplace_back(trace.getCurrentBlockIndex());
+	trace.addJumpOperation(key, entry);
+	trace.setCurrentBlock(entry);
+
+	// The recorder is rooted at this frame's return address, so tags inside the body are
+	// the call path *from the region entry* and cannot collide with the enclosing
+	// scope's. It is owned by the session because the Tag* it mints outlive the region.
+	auto& recorder = session_->regionState().tagRecorders.emplace_back(
+	    reinterpret_cast<TagAddress>(__builtin_return_address(0)), trace.getArena());
+	auto& child = acquireChildScope();
+	child.initRegionScope(*this, entry, exit, recorder);
+
+	setActiveTracer(&child);
+	try {
+		child.runScope(regionFunction);
+	} catch (...) {
+		setActiveTracer(this);
+		throw;
+	}
+	setActiveTracer(this);
+
+	if (trace.getBlock(exit).predecessors.empty()) {
+		// No pass of the body ever ran to completion, so nothing reaches the block the
+		// enclosing scope is about to continue in. Diagnose it here rather than let a
+		// later phase fail on an unreachable block.
+		throw RuntimeException("Invalid region(): no path through the region body reached its end, so the enclosing "
+		                       "function cannot continue after it.");
+	}
+
+	const bool hasEscapes = child.aliveVars.size() > 0;
+	if (hasEscapes) {
+		child.transferEscapesTo(*this);
+	}
+	child.state.reset();
+
+	trace.setCurrentBlock(exit);
+	regionState().regionMemo[key] = RegionRecord {entry, exit, hasEscapes};
+}
+
 std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& traceFunction,
                                                         const engine::Options& options, Arena& arena) {
 	log::debug("Initialize Completing Tracing");
@@ -497,32 +693,20 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	// (e.g. RuntimeException from ExecutionTrace or from the traced function)
 	// escapes the loop below - this variant has no try/catch by design.
 	ActiveTracerGuard activeTracerGuard;
-	auto traceIteration = 0;
 
-	// Symbolic execution loop: explore all execution paths
-	// No try/catch needed - the traced function always returns normally
-	while (symbolicExecutionContext.shouldContinue()) {
-		traceIteration = traceIteration + 1;
-		log::trace("Completing Trace Iteration {}", traceIteration);
-		log::trace("{}", *executionTrace);
-
-		// Prepare for next iteration
-		symbolicExecutionContext.next();
-		executionTrace->resetExecution();
-		tc->resume(); // Reset persistent state (staticVars, aliveVars, paused_)
-
-		// Execute the traced function - it always returns normally
-		traceFunction();
-
-		// After each iteration, the static variable stack must be empty.
-		// Since the function completes normally, all destructors fire in order.
-		assert(completingTraceContext.staticVars.empty() && "static variable stack not empty after tracing iteration");
+	// Symbolic execution loop: explore all execution paths.
+	// No try/catch needed - the traced function always returns normally.
+	if (tc->regionState_) {
+		tc->regionState_->tagRecorders.clear();
+		tc->regionState_->regionMemo.clear();
 	}
+	tc->entryBlock_ = 0;
+	tc->parent_ = nullptr;
+	tc->runScope(traceFunction);
 
 	// Clean up: reset state pointer. activeTracer is cleared by ActiveTracerGuard.
 	tc->state.reset();
 
-	log::debug("Completing Tracing Terminated with {} iterations", traceIteration);
 	log::trace("Final trace: {}", *executionTrace);
 
 	return executionTrace;
@@ -582,21 +766,19 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 		auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 		SymbolicExecutionContext symbolicExecutionContext;
 		state.emplace(tr, executionTrace, symbolicExecutionContext, options);
-		auto traceIteration = 0;
 
-		while (symbolicExecutionContext.shouldContinue()) {
-			traceIteration = traceIteration + 1;
-			log::trace("Lazy Trace Iteration {}", traceIteration);
-			log::trace("{}", executionTrace);
-			symbolicExecutionContext.next();
-			executionTrace.resetExecution();
-			resume();
-			wrapperFunc();
-			assert(staticVars.empty() && "static variable stack not empty after tracing iteration");
+		// Region bookkeeping is scoped to one function trace: the recorders because the
+		// Tag* they mint are only referenced by this function's trace, the memo because
+		// its keys are those tags.
+		if (regionState_) {
+			regionState_->tagRecorders.clear();
+			regionState_->regionMemo.clear();
 		}
+		entryBlock_ = 0;
+		parent_ = nullptr;
+		runScope(wrapperFunc);
 
 		state.reset();
-		log::debug("Lazy Tracing Terminated with {} iterations", traceIteration);
 		log::trace("Final trace: {}", executionTrace);
 	}
 
@@ -614,6 +796,17 @@ void LazyTraceContext::allocateValRef(ValueRef ref) {
 void LazyTraceContext::freeValRef(ValueRef ref) {
 	if (paused_) {
 		return;
+	}
+	if (parent_ != nullptr && !aliveVars.isAlive(ref)) {
+		// A value created outside this region and released inside it (e.g. moved into a
+		// region-local variable) is counted by the scope that allocated it. Walk out to
+		// that scope rather than decrementing a count this one never took.
+		for (auto* scope = parent_; scope != nullptr; scope = scope->parent_) {
+			if (scope->aliveVars.isAlive(ref)) {
+				scope->aliveVars.decrement(ref);
+				return;
+			}
+		}
 	}
 	aliveVars.decrement(ref);
 }

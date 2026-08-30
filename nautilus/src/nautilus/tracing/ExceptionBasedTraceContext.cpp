@@ -610,6 +610,14 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	return traceModule;
 }
 
+// A region is a pass-through here: this tracer restarts the whole enclosing function on
+// every unresolved branch, so there is nothing for a region to bound. The body is traced
+// inline, into the enclosing function's trace, exactly as if region() were not there.
+// See docs/region.md.
+void ExceptionBasedTraceContext::traceRegion(std::function<void()>& regionFunction) {
+	regionFunction();
+}
+
 void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {
 	aliveVars.increment(ref);
 }

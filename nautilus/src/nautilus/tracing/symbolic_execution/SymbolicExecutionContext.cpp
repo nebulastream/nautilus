@@ -5,8 +5,18 @@
 
 namespace nautilus::tracing {
 
-SymbolicExecutionContext::SymbolicExecutionContext() {
-	tagMap.reserve(128);
+SymbolicExecutionContext::SymbolicExecutionContext(size_t expectedTags) {
+	tagMap.reserve(expectedTags);
+}
+
+void SymbolicExecutionContext::reset() {
+	// clear() keeps the bucket array, which is the point of pooling scopes.
+	tagMap.clear();
+	inflightExecutionPaths.clear();
+	currentExecutionPath = SymbolicExecutionPath();
+	currentMode = MODE::RECORD;
+	currentOperation = 0;
+	iterations = 0;
 }
 
 bool SymbolicExecutionContext::record(const Snapshot& tag) {

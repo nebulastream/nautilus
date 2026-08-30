@@ -144,6 +144,19 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
+void ExecutionTrace::addJumpOperation(Snapshot& snapshot, uint32_t targetBlock) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto op = Op::JMP;
+	auto* jump =
+	    makeTraceOp(*arena, snapshot, op, Type::v, TypedValueRef(0, Type::v), arena->create<BlockRef>(targetBlock));
+	operations.push_back(jump);
+	auto operationIdentifier = getNextOperationIdentifier();
+	addTag(snapshot, operationIdentifier);
+}
+
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
 	if (blocks.empty()) {
 		createBlock();
