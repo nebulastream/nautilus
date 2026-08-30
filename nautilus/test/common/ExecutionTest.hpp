@@ -130,6 +130,7 @@ inline void forEachBackendWithTraceMode(Body&& body, const OptionsTweak& tweak =
 #else
 	(void) body;
 	(void) tweak;
+	(void) include_asmjit;
 #endif
 }
 

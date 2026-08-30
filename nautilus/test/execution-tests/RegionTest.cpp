@@ -1,24 +1,29 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
+#include "nautilus/function.hpp"
+#include "nautilus/nautilus_function.hpp"
+#include "nautilus/region.hpp"
+#include "nautilus/static.hpp"
+#include "nautilus/val.hpp"
+#include <catch2/catch_all.hpp>
+#include <optional>
+#include <string>
+#include <vector>
+
+#ifdef ENABLE_TRACING
+// Only the white-box tests below reach past the engine API into the tracer and the IR
+// pipeline, and they only exist when there is a tracer to drive.
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/ir/passes/BlockMergingPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
-#include "nautilus/function.hpp"
-#include "nautilus/nautilus_function.hpp"
-#include "nautilus/region.hpp"
-#include "nautilus/static.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
-#include "nautilus/val.hpp"
-#include <catch2/catch_all.hpp>
 #include <list>
 #include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+#endif
 
 namespace nautilus::engine {
 
@@ -599,6 +604,8 @@ void runRegionTests(engine::NautilusEngine& engine) {
 	}
 }
 
+#ifdef ENABLE_TRACING
+
 // --- White-box tests: these pin the mechanism itself, not just the results. ---
 // Everything above compiles and runs a regioned function and checks its value, which
 // stays green even if region() degrades to tracing the body inline. The two tests below
@@ -744,7 +751,6 @@ TEST_CASE("Region IR Matches Unregioned IR", "[region]") {
 	REQUIRE(regionedStats.numOperations <= unregionedStats.numOperations);
 }
 
-#ifdef ENABLE_TRACING
 TEST_CASE("Region Compiler Test", "[region]") {
 	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runRegionTests(engine); });
 }
