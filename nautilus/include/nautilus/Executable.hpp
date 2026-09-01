@@ -144,8 +144,17 @@ public:
 		template <typename T>
 		static constexpr bool isRawSlotCompatible() {
 			using D = std::remove_cvref_t<T>;
-			return std::is_void_v<D> || std::is_enum_v<D> || std::is_pointer_v<D> || std::is_integral_v<D> ||
-			       std::is_same_v<D, float> || std::is_same_v<D, double>;
+			// 128-bit integers don't fit a 64-bit slot: exclude them (any
+			// integral wider than 64 bits) so the fast path falls back to the
+			// boxed generic invocation rather than silently truncating.
+			// `if constexpr` keeps the `sizeof` below from being instantiated
+			// for non-integral D (e.g. `void`) inside a constant expression.
+			if constexpr (!std::is_integral_v<D>) {
+				return std::is_void_v<D> || std::is_enum_v<D> || std::is_pointer_v<D> || std::is_same_v<D, float> ||
+				       std::is_same_v<D, double>;
+			} else {
+				return sizeof(D) <= sizeof(uint64_t);
+			}
 		}
 
 		/// Normalize a value into a raw 64-bit slot (integers zero-extended,
