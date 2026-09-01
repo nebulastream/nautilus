@@ -121,10 +121,11 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_" + backend + "_" + name)
 			    .operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    // force compilation for the MLIR backend.
-				    op.setOption("mlir.eager_compilation", true);
+				    if (backend == "mlir") {
+					    // force compilation for the MLIR backend.
+					    op.setOption("mlir.eager_compilation", true);
+				    }
 				    op.setOption("engine.backend", backend);
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    func(meter, op);
 			    });
 		}
@@ -153,9 +154,10 @@ TEST_CASE("Execution Benchmark") {
 				Catch::Benchmark::Benchmark("exec_" + backend + "_" + name + "_" + tag)
 				    .operator=([&func, backend, passesOn](Catch::Benchmark::Chronometer meter) {
 					    auto op = engine::Options();
-					    op.setOption("mlir.eager_compilation", true);
+					    if (backend == "mlir") {
+						    op.setOption("mlir.eager_compilation", true);
+					    }
 					    op.setOption("engine.backend", backend);
-					    op.setOption("engine.traceMode", "lazyTracing");
 					    op.setOption("ir.enableLICM", passesOn);
 					    op.setOption("ir.enableLocalCSE", passesOn);
 					    func(meter, op);
@@ -177,9 +179,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + tag)
 			    .operator=([&func, allocOn](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.registerAllocator", allocOn);
 				    func(meter, op);
 			    });
@@ -196,9 +196,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + dispatch)
 			    .operator=([&func, dispatch](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.dispatch", dispatch);
 				    func(meter, op);
 			    });
@@ -216,9 +214,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
 			    .operator=([&func, reuse](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.dispatch", std::string("threaded"));
 				    op.setOption("bc.regfileReuse", reuse);
 				    func(meter, op);
@@ -236,9 +232,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
 			    .operator=([&func, super](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.dispatch", std::string("threaded"));
 				    op.setOption("bc.superinstructions", super);
 				    func(meter, op);
@@ -256,9 +250,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
 			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("bc.dispatch", std::string("threaded"));
 				    op.setOption("bc.superinstructions", allOpts);
 				    op.setOption("bc.immediates", allOpts);
@@ -281,9 +273,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
 			    .operator=([&func, fusion](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("asmjit.enableBranchFusion", fusion);
 				    func(meter, op);
 			    });
@@ -301,9 +291,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
 			    .operator=([&func, fold](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("asmjit.enableConstFolding", fold);
 				    func(meter, op);
 			    });
@@ -320,9 +308,7 @@ TEST_CASE("Execution Benchmark") {
 			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
 			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
 				    auto op = engine::Options();
-				    op.setOption("mlir.eager_compilation", true);
 				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("engine.traceMode", "lazyTracing");
 				    op.setOption("asmjit.enableBranchFusion", allOpts);
 				    op.setOption("asmjit.enableConstFolding", allOpts);
 				    op.setOption("asmjit.enableSelectCmov", allOpts);
@@ -357,9 +343,7 @@ TEST_CASE("Execution Benchmark") {
 				Catch::Benchmark::Benchmark("exec_tbc_" + name + "_" + mode)
 				    .operator=([&func, mode](Catch::Benchmark::Chronometer meter) {
 					    auto op = engine::Options();
-					    op.setOption("mlir.eager_compilation", true);
 					    op.setOption("engine.backend", std::string("tbc"));
-					    op.setOption("engine.traceMode", "lazyTracing");
 					    op.setOption("tbc.mode", mode);
 					    func(meter, op);
 				    });

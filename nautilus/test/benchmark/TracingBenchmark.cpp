@@ -311,8 +311,10 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				    auto ir = irConversionPhase.apply(afterSSAModule, pool);
 				    auto op = engine::Options();
-				    // force compilation for the MLIR backend.
-				    op.setOption("mlir.eager_compilation", true);
+				    if (backend == "mlir") {
+					    // force compilation for the MLIR backend.
+					    op.setOption("mlir.eager_compilation", true);
+				    }
 				    op.setOption("engine.backend", backend);
 				    auto dh = compiler::DumpHandler(op, "");
 				    meter.measure([&] { return backendBackend->compile(ir, dh, op); });
