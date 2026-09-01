@@ -46,6 +46,13 @@ struct AllocaSpec {
  * or deallocated while the trace or executable is in use.
  */
 struct FunctionCall {
+	struct Destructor {
+		TypedValueRef address;
+		std::string functionName;
+		std::string mangledName;
+		void* ptr;
+	};
+
 	std::string functionName;
 	std::string mangledName;
 	/**
@@ -54,15 +61,40 @@ struct FunctionCall {
 	 * The caller is responsible for lifetime management.
 	 */
 	void* ptr;
+	/**
+	 * @brief Capture wrapper for a potentially-throwing call. Points at a
+	 * `captureThrowingCall<R, Args...>` instantiation generated at the typed
+	 * invoke() site — a real C++ frame that catches exceptions before they
+	 * cross a generated/interpreted frame without unwind tables.
+	 * Null for `noUnwind` calls.
+	 */
+	void* captureFunc = nullptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::vector<Destructor> destructors;
+	/**
+	 * @brief True for a call into another traced Nautilus function (via
+	 * NautilusFunction), false for a raw invoke() into an external
+	 * function. Lets IR passes tell the two apart without guessing from
+	 * `functionName` collisions: only a Nautilus-to-Nautilus call can be
+	 * proven noUnwind by inspecting the callee's own traced body, since the
+	 * callee's function pointer type isn't the source of truth here (see
+	 * NoThrowInferencePass).
+	 */
+	bool isNautilusCall = false;
 };
 
 /// Represents an indirect call through a runtime function pointer value.
 struct IndirectFunctionCall {
 	TypedValueRef fnPtr;
+	/**
+	 * @brief Capture wrapper for a potentially-throwing indirect call. See
+	 * `FunctionCall::captureFunc`; null for `noUnwind` calls.
+	 */
+	void* captureFunc = nullptr;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
+	std::vector<FunctionCall::Destructor> destructors;
 };
 
 struct BlockRef {
@@ -108,10 +140,16 @@ void forEachValueRef(const InputVariant& input, Callback&& callback) {
 		for (const auto argument : (*call)->arguments) {
 			callback(argument);
 		}
+		for (const auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
+		}
 	} else if (const auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
 		callback((*call)->fnPtr);
 		for (const auto argument : (*call)->arguments) {
 			callback(argument);
+		}
+		for (const auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
 		}
 	}
 }
@@ -129,10 +167,16 @@ void forEachMutableValueRef(InputVariant& input, Callback&& callback) {
 		for (auto& argument : (*call)->arguments) {
 			callback(argument);
 		}
+		for (auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
+		}
 	} else if (auto* call = std::get_if<IndirectFunctionCall*>(&input); call != nullptr && *call != nullptr) {
 		callback((*call)->fnPtr);
 		for (auto& argument : (*call)->arguments) {
 			callback(argument);
+		}
+		for (auto& destructor : (*call)->destructors) {
+			callback(destructor.address);
 		}
 	}
 }

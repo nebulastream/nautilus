@@ -1,11 +1,11 @@
 EXECUTE:
 B0($1:i32)
 	CONST	$3	3	:i32
-	CALL	$4	func_*($1,$3)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$4	func_*($1,$3)	:i32
 	CONST	$5	2	:i32
-	CALL	$6	func_*($4,$5)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$6	func_*($4,$5)	:i32
 	CONST	$7	1	:i32
-	CALL	$8	func_*($6,$7)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$8	func_*($6,$7)	:i32
 	RETURN	$0	$8	:i32
 
 RECURSIVEHELPER:

@@ -3,6 +3,9 @@
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include <cassert>
+#include <cstdint>
+#include <nautilus/common/ExceptionTransport.hpp>
+#include <nautilus/compiler/backends/CapturedExceptionTransport.hpp>
 #include <nautilus/compiler/backends/cpp/CPPLoweringProvider.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp>
 #include <nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp>
@@ -67,14 +70,39 @@ std::string CPPLoweringProvider::LoweringContext::getType(const Type& stamp) {
 std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	std::stringstream pipelineCode;
 	pipelineCode << "\n";
-	pipelineCode << "#include <cstdint>\n\n";
+	pipelineCode << "#include <cstdint>\n";
 
 	// Process all function operations in the IR graph
 	const auto& functionOperations = ir->getFunctionOperations();
 
+	// The captured-exception preamble (the <exception> include, the mirrored
+	// ExceptionFrame layout, and the two helper-function-pointer globals) costs
+	// real compile time in the generated TU, so only pay for it when at least
+	// one function in the module actually has an exceptional call site -- the
+	// common case has none. The generated shared library cannot link against
+	// nautilus, so these helpers are baked in as raw function addresses
+	// resolved in the host process (same mechanism as the external function
+	// pointers emitted for ProxyCall/IndirectCall).
+	const bool moduleNeedsCapture = CapturedExceptionTransport::anyFunctionNeedsCapture(*ir);
+	if (moduleNeedsCapture) {
+		pipelineCode << "#include <exception>\n\n";
+		pipelineCode << "namespace nautilus { namespace compiler {\n";
+		pipelineCode << "struct ExceptionFrame { std::exception_ptr pending; ExceptionFrame* parent = nullptr; };\n";
+		pipelineCode << "}}\n\n";
+		pipelineCode << "static nautilus::compiler::ExceptionFrame* (*nautilus_current_exception_frame)() = "
+		             << "(nautilus::compiler::ExceptionFrame* (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::currentExceptionFrame) << ";\n";
+		pipelineCode << "static bool (*nautilus_has_pending_exception)() = (bool (*)())(uintptr_t)"
+		             << reinterpret_cast<void*>(&nautilus::compiler::hasPendingException) << ";\n\n";
+	} else {
+		pipelineCode << "\n";
+	}
+
 	// Helper lambda to process a single function
 	auto processFunction = [&](const ir::FunctionOperation& functionOperation) {
 		// Reset state for each function
+		currentFunction_ = &functionOperation;
+		transport_ = CapturedExceptionTransport(functionOperation);
 		blocks.clear();
 		activeBlocks.clear();
 		blockArguments.str("");
@@ -113,6 +141,17 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 
 		this->process(&functionBasicBlock, rootFrame);
 
+		// Lower the exception-region landing pads into the block stream (before
+		// the variable/function declaration sections are emitted, so any
+		// declarations the pad's destructor calls introduce are captured).
+		const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
+		if (hasExceptionRegion) {
+			const auto& pads = functionOperation.exceptionRegion->pads;
+			for (size_t i = 0; i < pads.size(); ++i) {
+				this->processPad(pads[i].block, "cleanup_pad_" + std::to_string(i), rootFrame);
+			}
+		}
+
 		// Generate function code
 		pipelineCode << "extern \"C\" " << returnType << " " << functionOperation.getName() << "(";
 		for (size_t i = 0; i < arguments.size(); i++) {
@@ -132,6 +171,18 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		for (auto& block : blocks) {
 			pipelineCode << block.str();
 			pipelineCode << "\n";
+		}
+
+		// Exceptional exit block: the target of `goto exceptional_exit` emitted
+		// for captured-throwing calls (and the tail of every cleanup pad).
+		if (hasExceptionRegion) {
+			pipelineCode << "exceptional_exit:\n";
+			const auto outputArg = functionOperation.getOutputArg();
+			if (outputArg == Type::v) {
+				pipelineCode << "  return;\n";
+			} else {
+				pipelineCode << "  return (" << getType(outputArg) << ")0;\n";
+			}
 		}
 		pipelineCode << "}\n\n";
 	};
@@ -184,6 +235,44 @@ std::string CPPLoweringProvider::LoweringContext::process(const ir::BasicBlock* 
 	} else {
 		return entry->second;
 	}
+}
+
+void CPPLoweringProvider::LoweringContext::processPad(const ir::BasicBlock* block, const std::string& label,
+                                                      RegisterFrame& frame) {
+	short blockIndex = blocks.size();
+	auto& currentBlock = blocks.emplace_back();
+	currentBlock << label << ":\n";
+	activeBlocks.emplace(block->getIdentifier(), label);
+	for (auto* opt : block->getOperations()) {
+		this->dispatch(opt, blockIndex, frame);
+	}
+	blocks[blockIndex] << "goto exceptional_exit;\n";
+}
+
+std::string CPPLoweringProvider::LoweringContext::getPadLabel(size_t padIndex) {
+	if (padIndex == ir::noLandingPad) {
+		return "exceptional_exit";
+	}
+	return "cleanup_pad_" + std::to_string(padIndex);
+}
+
+void CPPLoweringProvider::LoweringContext::emitCapturedCall(short blockIndex, const std::string& callExpr,
+                                                            const std::string& resultVar, const std::string& returnType,
+                                                            size_t padIndex) {
+	auto& out = blocks[blockIndex];
+	const bool hasResult = !resultVar.empty();
+	out << "try {\n";
+	out << (hasResult ? resultVar + " = " : "") << callExpr << ";\n";
+	out << "} catch (...) {\n";
+	out << "auto* __frame = nautilus_current_exception_frame();\n";
+	out << "if (__frame && !__frame->pending) { __frame->pending = std::current_exception(); }\n";
+	if (hasResult) {
+		out << resultVar << " = (" << returnType << ")0;\n";
+	}
+	out << "}\n";
+	out << "if (nautilus_has_pending_exception()) {\n";
+	out << "goto " << getPadLabel(padIndex) << ";\n";
+	out << "}\n";
 }
 
 void CPPLoweringProvider::LoweringContext::visitCompare(ir::CompareOperation* cmpOp, short blockIndex,
@@ -428,18 +517,32 @@ void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation
 		          << "))" << opt->getFunctionPtr() << ";\n";
 		functionNames.emplace(opt->getFunctionSymbol());
 	}
+
+	// The call expression: direct name for internal functions, f_<symbol> otherwise.
+	std::string callExpr;
+	if (isInternalFunction) {
+		callExpr = opt->getFunctionName();
+	} else {
+		callExpr = "f_" + opt->getFunctionSymbol();
+	}
+	callExpr += "(" + args.str() + ")";
+
+	// Does this call site need captured exception transport?
+	const bool needsCapture = transport_.callNeedsCapture(opt);
+	const auto padIndex = transport_.getPadIndexForCall(opt);
+
+	std::string resultVar;
 	if (opt->getStamp() != Type::v) {
-		auto resultVar = getVariable(opt->getIdentifier());
+		resultVar = getVariable(opt->getIdentifier());
 		if (!frame.contains(opt->getIdentifier())) {
 			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
 			frame.setValue(opt->getIdentifier(), resultVar);
 		}
-		blocks[blockIndex] << resultVar << " = ";
 	}
-	if (isInternalFunction) {
-		blocks[blockIndex] << opt->getFunctionName() << "(" << args.str() << ");\n";
+	if (needsCapture) {
+		emitCapturedCall(blockIndex, callExpr, resultVar, returnType, padIndex);
 	} else {
-		blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+		blocks[blockIndex] << (resultVar.empty() ? "" : resultVar + " = ") << callExpr << ";\n";
 	}
 }
 
@@ -459,17 +562,26 @@ void CPPLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOpe
 		argTypes << getType(arg->getStamp());
 	}
 	auto fnPtrVar = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
+
+	// The call expression for an indirect call through a function-pointer value.
+	std::string callExpr = "((" + returnType + "(*)(" + argTypes.str() + "))" + fnPtrVar + ")(" + args.str() + ")";
+
+	// Does this call site need captured exception transport?
+	const bool needsCapture = transport_.callNeedsCapture(opt);
+	const auto padIndex = transport_.getPadIndexForCall(opt);
+
+	std::string resultVar;
 	if (opt->getStamp() != Type::v) {
-		auto resultVar = getVariable(opt->getIdentifier());
+		resultVar = getVariable(opt->getIdentifier());
 		if (!frame.contains(opt->getIdentifier())) {
 			blockArguments << getType(opt->getStamp()) << " " << resultVar << ";\n";
 			frame.setValue(opt->getIdentifier(), resultVar);
 		}
-		blocks[blockIndex] << resultVar << " = ((" << returnType << "(*)(" << argTypes.str() << "))" << fnPtrVar << ")("
-		                   << args.str() << ");\n";
+	}
+	if (needsCapture) {
+		emitCapturedCall(blockIndex, callExpr, resultVar, returnType, padIndex);
 	} else {
-		blocks[blockIndex] << "((" << returnType << "(*)(" << argTypes.str() << "))" << fnPtrVar << ")(" << args.str()
-		                   << ");\n";
+		blocks[blockIndex] << (resultVar.empty() ? "" : resultVar + " = ") << callExpr << ";\n";
 	}
 }
 

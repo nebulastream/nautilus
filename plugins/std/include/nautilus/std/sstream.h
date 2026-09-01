@@ -51,8 +51,7 @@ public:
 	}
 
 	~val() {
-		invoke(
-		    +[](std::basic_ostream<CharT, Traits>* ptr) -> void { delete ptr; }, this->stream);
+		invoke(+[](std::basic_ostream<CharT, Traits>* ptr) noexcept -> void { delete ptr; }, this->stream);
 	}
 };
 

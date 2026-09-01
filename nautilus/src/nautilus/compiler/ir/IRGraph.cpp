@@ -413,6 +413,27 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 		for (const auto* block : func.getBasicBlocks()) {
 			fmt::format_to(out, "{}", *block);
 		}
+		if (func.exceptionRegion.has_value()) {
+			const auto& region = *func.exceptionRegion;
+			if (!region.pads.empty() || !region.callSites.empty()) {
+				fmt::format_to(out, "exception_region:\n");
+				for (size_t i = 0; i < region.pads.size(); ++i) {
+					fmt::format_to(out, "\tpad_{}:\n", i);
+					for (const auto* op : region.pads[i].block->getOperations()) {
+						fmt::format_to(out, "\t\t{}\n", *op);
+					}
+				}
+				fmt::format_to(out, "\tcall_sites:\n");
+				for (const auto& site : region.callSites) {
+					fmt::format_to(out, "\t\t{} -> ", site.call->getIdentifier());
+					if (site.hasPad()) {
+						fmt::format_to(out, "pad_{}\n", site.padIndex);
+					} else {
+						fmt::format_to(out, "(no_pad)\n");
+					}
+				}
+			}
+		}
 		fmt::format_to(out, "}}\n");
 		return out;
 	}

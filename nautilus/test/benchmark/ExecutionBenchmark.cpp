@@ -46,7 +46,7 @@ val<int64_t> internalCallLoop(val<int32_t> n) {
 	return acc;
 }
 
-int64_t tbcJitNativeAdd(int64_t a, int64_t b) {
+int64_t tbcJitNativeAdd(int64_t a, int64_t b) noexcept {
 	return a + b;
 }
 

@@ -17,20 +17,21 @@ namespace nautilus::compiler::tbc::jit {
 /// their meaning per opcode from the stitcher (register byte-offset,
 /// raw field, or sign-extended immediate); the symbol only names the field.
 enum class HoleSym : uint8_t {
-	A,               // instruction field a (word1.a for the 2-word SELECT's D)
-	B,               // instruction field b
-	C,               // instruction field c
-	D,               // second-word field a (SELECT false-register)
-	Target,          // stitched address of the branch-taken instruction
-	Continue,        // stitched address of the next instruction
-	CallTarget,      // stitched entry of the callee function (CALL)
-	Site,            // &program->callsites[siteIdx]
-	Func,            // &program->functions[fnIdx]
-	Unwind,          // program's UNWIND stencil address
-	HelperPushFrame, // address of tbcJitPushFrame
-	HelperExtCall,   // address of tbcJitExtCall
-	HelperIndCall,   // address of tbcJitIndCall
-	Data,            // base of the program's copy of the stencil rodata image
+	A,                  // instruction field a (word1.a for the 2-word SELECT's D)
+	B,                  // instruction field b
+	C,                  // instruction field c
+	D,                  // second-word field a (SELECT false-register)
+	Target,             // stitched address of the branch-taken instruction
+	Continue,           // stitched address of the next instruction
+	CallTarget,         // stitched entry of the callee function (CALL)
+	Site,               // &program->callsites[siteIdx]
+	Func,               // &program->functions[fnIdx]
+	Unwind,             // program's UNWIND stencil address
+	HelperPushFrame,    // address of tbcJitPushFrame
+	HelperExtCall,      // address of tbcJitExtCall
+	HelperIndCall,      // address of tbcJitIndCall
+	HelperCheckPending, // address of tbcJitCheckPendingException
+	Data,               // base of the program's copy of the stencil rodata image
 };
 
 /// How the patch value is encoded at the hole offset.

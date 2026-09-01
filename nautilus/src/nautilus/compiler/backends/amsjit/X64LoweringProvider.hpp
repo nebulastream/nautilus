@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/amsjit/AsmJitRegister.hpp"
 #include "nautilus/compiler/backends/amsjit/X64PostRAPeepholePass.hpp"
 #include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
@@ -12,8 +13,10 @@
 #include "nautilus/options.hpp"
 #include <asmjit/x86.h>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace nautilus::compiler {
 class CompilationStatistics;
@@ -120,6 +123,21 @@ private:
 		/// function to keep stale entries from leaking across functions.
 		std::vector<AsmReg> functionAllocaSlots_;
 
+		/// The function currently being lowered, or nullptr when lowering
+		/// outside a function body (pads are lowered within the active body).
+		const ir::FunctionOperation* currentFunction_ = nullptr;
+		/// Captured-exception queries for `currentFunction_`, built once per
+		/// function rather than once per call site.
+		CapturedExceptionTransport transport_;
+		/// Lazily-created AsmJit labels for the exception-region landing pads
+		/// of the current function, keyed by the pad's address. Cleared per
+		/// function.
+		std::unordered_map<size_t, ::asmjit::Label> padLabels_;
+		/// Shared exceptional-exit label for the current function, created on
+		/// first use. All pads jump here after running destructors; it returns
+		/// the ABI default for the function's return type.
+		::asmjit::Label exceptionalExitLabel_;
+
 		static ::asmjit::TypeId getTypeId(Type t);
 		static bool isFloatType(Type t);
 		static bool isUnsignedType(Type t);
@@ -224,6 +242,36 @@ private:
 		void visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
 		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
 		void visitCast(ir::CastOperation* op, RegisterFrame& frame);
+
+		// ── Captured-exception transport ───────────────────────────────────
+		// When the current function has an exception region, potentially-
+		// throwing calls are routed through the capture thunk and followed by
+		// a pending-exception check plus a branch to the call's landing pad.
+
+		/// Returns true when @p call needs captured exception transport (a
+		/// pending check after the call plus a branch to its landing pad).
+		[[nodiscard]] bool callNeedsCapture(const ir::Operation* call) const;
+		/// Returns the landing pad for @p call, or nullptr when the call needs
+		/// no pad (no destructors to run).
+		[[nodiscard]] const ir::LandingPadBlock* getPadForCall(const ir::Operation* call) const;
+		/// Resolves the capture thunk for @p call's signature. Throws
+		/// NotImplementedException for unsupported signatures.
+		[[nodiscard]] void* resolveCaptureThunk(const ir::Operation* call) const;
+		/// Emits the pending-exception check for @p call: loads
+		/// currentExceptionFrame(), reads its pending field, and jumps to the
+		/// call's landing pad (or the exceptional-exit label) when set.
+		void emitCheckPendingException(const ir::Operation* call);
+		/// Returns the AsmJit label bound to @p pad (creating it on first use).
+		[[nodiscard]] ::asmjit::Label getPadLabel(size_t padIndex);
+		/// Returns the shared exceptional-exit label (creating it on first use).
+		[[nodiscard]] ::asmjit::Label getExceptionalExitLabel();
+		/// After the main CFG, emits the function's landing pads (each running
+		/// its destructor calls then jumping to the exceptional exit) and the
+		/// exceptional exit itself (returns the ABI default for the return type).
+		void lowerExceptionPads(RegisterFrame& frame);
+		/// Emits a return of the ABI default value for @p retType (0 / 0.0 /
+		/// false / nullptr / nothing for void).
+		void emitDefaultReturn(Type retType);
 	};
 };
 

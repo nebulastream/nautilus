@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
@@ -154,6 +155,26 @@ private:
 		/// here rather than allocating a buffer per call site.
 		std::vector<short> functionAllocaSlots;
 
+		/// The function currently being lowered. Set in process() and consulted
+		/// by visitProxyCall/visitIndirectCall via CapturedExceptionTransport to
+		/// decide whether a call site needs a pending-exception check.
+		const ir::FunctionOperation* currentFunction_ = nullptr;
+		/// Captured-exception queries for `currentFunction_`, built once per
+		/// function rather than once per call site.
+		CapturedExceptionTransport transport_;
+
+		/// Records the (block, op-index, pad) of every emitted
+		/// CHECK_PENDING_EXCEPTION whose target block index is resolved only
+		/// after the main CFG and landing pads have been lowered. `padIndex` is
+		/// `ir::noLandingPad` when the call has no destructors (targets the
+		/// exceptional exit block directly).
+		struct PendingExceptionPatch {
+			short blockIndex;
+			size_t opIndex;
+			size_t padIndex;
+		};
+		std::vector<PendingExceptionPatch> pendingExceptionPatches;
+
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
 		/// Sequentialize a parallel register-to-register copy (dst_i <- src_i, as if
@@ -195,6 +216,15 @@ private:
 		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
 
 		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+
+		/// Returns true if @p call is a captured-exception call site (i.e. it
+		/// needs the capture thunk + a pending-exception check).
+		bool callNeedsCapture(const ir::Operation* call) const;
+
+		/// If @p call is a captured-exception call site, append a
+		/// CHECK_PENDING_EXCEPTION bytecode (with a placeholder target recorded
+		/// in pendingExceptionPatches) to @p block. No-op otherwise.
+		void emitCheckPendingException(const ir::Operation* call, short block);
 
 		short getResultRegister(ir::Operation* opt, RegisterFrame& frame);
 

@@ -17,7 +17,7 @@ namespace nautilus {
  * memory. To avoid a memory leak, the returned pointer must be deallocated with
  * std::free() or std::realloc(). On failure, returns a null pointer.
  */
-val<void*> malloc(val<size_t> size);
+val<void*> malloc(val<size_t> size) noexcept;
 
 /**
  * @brief Allocate size bytes of uninitialized storage whose alignment is
@@ -31,7 +31,7 @@ val<void*> malloc(val<size_t> size);
  * memory. To avoid a memory leak, the returned pointer must be deallocated with
  * std::free() or std::realloc(). On failure, returns a null pointer.
  */
-val<void*> aligned_alloc(val<size_t> alignment, val<size_t> size);
+val<void*> aligned_alloc(val<size_t> alignment, val<size_t> size) noexcept;
 
 /**
  * @brief Allocates memory for an array of num objects of size size, initializes
@@ -48,7 +48,7 @@ val<void*> aligned_alloc(val<size_t> alignment, val<size_t> size);
  * memory. To avoid a memory leak, the returned pointer must be deallocated with
  * std::free() or std::realloc(). On failure, returns a null pointer.
  */
-val<void*> calloc(val<size_t> num, val<size_t> size);
+val<void*> calloc(val<size_t> num, val<size_t> size) noexcept;
 
 /**
  * @brief Reallocates the given area of memory (implicitly creating objects in
@@ -63,7 +63,7 @@ val<void*> calloc(val<size_t> num, val<size_t> size);
  * std::free or std::realloc. The original pointer ptr is invalidated and any
  * access to it is undefined behavior (even if reallocation was in-place).
  */
-val<void*> realloc(val<void*> ptr, val<size_t> new_size);
+val<void*> realloc(val<void*> ptr, val<size_t> new_size) noexcept;
 
 /**
  * @brief Deallocates the space previously allocated by std::malloc,
@@ -71,22 +71,22 @@ val<void*> realloc(val<void*> ptr, val<size_t> new_size);
  * null pointer, the function does nothing. *
  * @param ptr pointer to the memory to deallocate
  */
-void free(val<void*> ptr);
+void free(val<void*> ptr) noexcept;
 
 /**
  * @brief Interprets a floating point value in a byte string pointed to by str.
  * @param str pointer to the null-terminated byte string to be interpreted
  */
-val<double> atof(val<const char*> str);
+val<double> atof(val<const char*> str) noexcept;
 
 /**
  * @brief Interprets an integer value in a byte string pointed to by str. The
  * implied radix is always 10.
  * @param str 	pointer to the null-terminated byte string to be interpreted
  */
-val<int> atoi(val<const char*> str);
-val<long> atol(val<const char*> str);
-val<long long> atoll(val<const char*> str);
+val<int> atoi(val<const char*> str) noexcept;
+val<long> atol(val<const char*> str) noexcept;
+val<long long> atoll(val<const char*> str) noexcept;
 
 /**
  * @brief Interprets an integer value in a byte string pointed to by str.
@@ -94,8 +94,8 @@ val<long long> atoll(val<const char*> str);
  * @param str_end pointer to a pointer to character
  * @param base	base of the interpreted integer value
  */
-val<long> strtol(val<const char*> str, val<const char**> strstr, val<int> base);
-val<long long> strtoll(val<const char*> str, val<const char**> strstr, val<int> base);
+val<long> strtol(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
+val<long long> strtoll(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
 
 /**
  * @brief Interprets an integer value in a byte string pointed to by str.
@@ -103,15 +103,15 @@ val<long long> strtoll(val<const char*> str, val<const char**> strstr, val<int> 
  * @param str_end pointer to a pointer to character
  * @param base	base of the interpreted integer value
  */
-val<unsigned long> strtoul(val<const char*> str, val<const char**> strstr, val<int> base);
-val<unsigned long long> strtoull(val<const char*> str, val<const char**> strstr, val<int> base);
+val<unsigned long> strtoul(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
+val<unsigned long long> strtoull(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
 
 /**
  * @brief Interprets a floating point value in a byte string pointed to by str.
  * @param str pointer to the null-terminated byte string to be interpreted
  * @param str_end pointer to a pointer to character
  */
-val<float> strtof(val<const char*> str, val<const char**> strstr, val<int> base);
-val<double> strtod(val<const char*> str, val<const char**> strstr, val<int> base);
+val<float> strtof(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
+val<double> strtod(val<const char*> str, val<const char**> strstr, val<int> base) noexcept;
 
 } // namespace nautilus

@@ -84,7 +84,14 @@ class ModuleFunction<R(Args...)> {
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
 		if (state_->executable) {
-			if (state_->executable->hasInvocableFunctionPtr()) {
+			// A NativeUnwind backend (MLIR), or a captured-host-rethrow function
+			// with no exceptional call sites of its own, can be called through
+			// the raw function pointer: neither ever touches the ExceptionFrame
+			// machinery. Everything else must go through the Invocable wrapper
+			// so the frame is pushed/rethrown around the call.
+			if (state_->executable->hasInvocableFunctionPtr() &&
+			    state_->executable->getExceptionPropagationMode(name_) ==
+			        compiler::ExceptionPropagationMode::NativeUnwind) {
 				auto* fptr = reinterpret_cast<R (*)(Args...)>(state_->executable->getInvocableFunctionPtr(name_));
 				cache_->impl = fptr;
 			} else {

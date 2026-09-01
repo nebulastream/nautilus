@@ -1,6 +1,7 @@
 
 
 #include "nautilus/compiler/backends/bc/BCLoweringProvider.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/bc/ByteCode.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -193,7 +194,45 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 	if (loweringOptions.enableRegisterAllocator) {
 		countAllUsages(&functionBasicBlock);
 	}
+	currentFunction_ = targetFunction;
+	transport_ = CapturedExceptionTransport(*targetFunction);
 	this->process(&functionBasicBlock, rootFrame);
+
+	// Lower the exception-region landing pads and the exceptional exit block.
+	// CHECK_PENDING_EXCEPTION opcodes emitted during the main CFG lowering carry
+	// a placeholder target (reg1 == -1) recorded in pendingExceptionPatches; the
+	// pad block indices are known only now, after the main CFG has been emitted.
+	const bool hasExceptionRegion = transport_.hasExceptionalCallSites();
+	if (hasExceptionRegion) {
+		const auto& pads = currentFunction_->exceptionRegion->pads;
+		const short mainBlockCount = static_cast<short>(program.blocks.size());
+		const short exceptionalExitBlock = static_cast<short>(mainBlockCount + pads.size());
+
+		// Pad blocks contain only destructor ProxyCallOperations; lower them as
+		// plain BC blocks terminated by a jump to the exceptional exit block.
+		std::vector<short> padBlockIndices;
+		padBlockIndices.reserve(pads.size());
+		for (const auto& pad : pads) {
+			short padIndex = this->process(pad.block, rootFrame);
+			program.blocks[padIndex].terminatorOp = BranchOp {exceptionalExitBlock};
+			padBlockIndices.emplace_back(padIndex);
+		}
+
+		// Exceptional exit block: return 0 (the pending exception is rethrown by
+		// the Invocable wrapper once the BC function returns).
+		program.blocks.emplace_back();
+		program.blocks.back().terminatorOp = ReturnOp {-1};
+
+		// Resolve every recorded CHECK_PENDING_EXCEPTION target to its final block
+		// index: the associated landing pad, or the exceptional exit when the call
+		// has no destructors.
+		for (const auto& patch : pendingExceptionPatches) {
+			const short target =
+			    patch.padIndex == ir::noLandingPad ? exceptionalExitBlock : padBlockIndices[patch.padIndex];
+			program.blocks[patch.blockIndex].code[patch.opIndex].reg1 = target;
+		}
+	}
+
 	// Resize register file to actual number of registers used
 	defaultRegisterFile.resize(registerProvider.getRegisterCount(), 0);
 	return std::make_tuple(program, defaultRegisterFile);
@@ -1474,6 +1513,7 @@ void BCLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation*
                                                          RegisterFrame& frame) {
 	// create a dynamic call using dyncall.h
 	processDynamicCall(opt, block, frame);
+	emitCheckPendingException(opt, block);
 }
 
 void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOperation* opt, short block,
@@ -1483,6 +1523,26 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 
 	// 1. reset dyncall stack
 	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
+
+	// The function pointer SSA value is already in the register frame.
+	auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
+
+	// For a captured-exception call site, invoke the captureThrowingCall<R,
+	// Args...> thunk — a real C++ frame — instead of the raw target, so the
+	// exception is caught before it crosses dyncall's assembly trampoline. The
+	// raw target becomes the thunk's first argument; the thunk is the callee.
+	// Internal Nautilus-function call targets (the pre-compiled callback in
+	// internalFunctionPtrs) are handled by the callee's own captured transport:
+	// no thunk here, the caller only runs the pending-exception check.
+	short calleeRegister = funcPtrRegister;
+	if (transport_.callNeedsCaptureThunk(opt)) {
+		void* thunk = opt->getCaptureFunc();
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcPtrRegister, -1, -1);
+		calleeRegister = registerProvider.allocPinnedRegister();
+		allocateRegister(calleeRegister);
+		defaultRegisterFile[calleeRegister] = (int64_t) thunk;
+	}
+	useValue(opt->getFunctionPtrOperand()->getIdentifier(), frame);
 
 	// 2. set dyncall arguments. Capture each argument's register *and*
 	// decrement its remaining-use counter — the DYNCALL_arg_* bytecode
@@ -1537,7 +1597,8 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 		useValue(arg->getIdentifier(), frame);
 	}
 
-	// 3. call through the function pointer held in the register frame
+	// 3. call through the callee register (thunk for captured calls, raw
+	// function pointer otherwise) held in the register frame.
 	auto returnType = opt->getStamp();
 	ByteCode bc;
 	switch (returnType) {
@@ -1585,28 +1646,69 @@ void BCLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCallOper
 	}
 	}
 
-	// The function pointer SSA value is already in the register frame.
-	auto funcPtrRegister = frame.getValue(opt->getFunctionPtrOperand()->getIdentifier());
-	useValue(opt->getFunctionPtrOperand()->getIdentifier(), frame);
-
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), resultRegister);
-		code.emplace_back(bc, funcPtrRegister, -1, resultRegister);
+		code.emplace_back(bc, calleeRegister, -1, resultRegister);
 	} else {
-		code.emplace_back(bc, funcPtrRegister, -1, -1);
+		code.emplace_back(bc, calleeRegister, -1, -1);
 	}
+	emitCheckPendingException(opt, block);
+}
+
+bool BCLoweringProvider::LoweringContext::callNeedsCapture(const ir::Operation* call) const {
+	return transport_.callNeedsCapture(call);
+}
+
+void BCLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Operation* call, short block) {
+	if (!callNeedsCapture(call)) {
+		return;
+	}
+	auto& codeBlock = program.blocks[block];
+	pendingExceptionPatches.emplace_back(
+	    PendingExceptionPatch {block, codeBlock.code.size(), transport_.getPadIndexForCall(call)});
+	codeBlock.code.emplace_back(ByteCode::CHECK_PENDING_EXCEPTION, -1, -1, -1);
+	// Lets BCInterpreter::execute() skip the per-instruction pending check
+	// entirely for every block that never emits one -- the common case.
+	codeBlock.hasPendingCheck = true;
 }
 
 void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
                                                              RegisterFrame& frame) {
 	auto& code = program.blocks[block].code;
-	// NES_DEBUG("CREATE " << opt->toString() << " : " <<
-	// opt->getStamp()->toString())
 	auto arguments = opt->getInputArguments();
 
 	// 1. reset dyncall stack
 	code.emplace_back(ByteCode::DYNCALL_reset, -1, -1, -1);
+
+	// The function pointer lives in the default register file and is
+	// read on every call site, potentially across loop iterations —
+	// pin to keep reuse from clobbering it.
+	auto funcInfoRegister = registerProvider.allocPinnedRegister();
+	allocateRegister(funcInfoRegister);
+	// For internal NautilusFunction calls, use the pre-compiled callback pointer
+	auto it = internalFunctionPtrs.find(opt->getFunctionName());
+	if (it != internalFunctionPtrs.end()) {
+		defaultRegisterFile[funcInfoRegister] = (int64_t) it->second;
+	} else {
+		defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
+	}
+
+	// For a captured-exception call site, invoke the captureThrowingCall<R,
+	// Args...> thunk — a real C++ frame — instead of the raw target, so the
+	// exception is caught before it crosses dyncall's assembly trampoline. The
+	// raw target becomes the thunk's first argument; the thunk is the callee.
+	// Internal Nautilus-function call targets (the pre-compiled callback in
+	// internalFunctionPtrs) are handled by the callee's own captured transport:
+	// no thunk here, the caller only runs the pending-exception check.
+	short calleeRegister = funcInfoRegister;
+	if (transport_.callNeedsCaptureThunk(opt)) {
+		void* thunk = opt->getCaptureFunc();
+		code.emplace_back(ByteCode::DYNCALL_arg_ptr, funcInfoRegister, -1, -1);
+		calleeRegister = registerProvider.allocPinnedRegister();
+		allocateRegister(calleeRegister);
+		defaultRegisterFile[calleeRegister] = (int64_t) thunk;
+	}
 
 	// 2. set dyncall arguments
 	for (auto& arg : arguments) {
@@ -1705,25 +1807,12 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	}
 	}
 
-	// The function pointer lives in the default register file and is
-	// read on every call site, potentially across loop iterations —
-	// pin to keep reuse from clobbering it.
-	auto funcInfoRegister = registerProvider.allocPinnedRegister();
-	allocateRegister(funcInfoRegister);
-	// For internal NautilusFunction calls, use the pre-compiled callback pointer
-	auto it = internalFunctionPtrs.find(opt->getFunctionName());
-	if (it != internalFunctionPtrs.end()) {
-		defaultRegisterFile[funcInfoRegister] = (int64_t) it->second;
-	} else {
-		defaultRegisterFile[funcInfoRegister] = (int64_t) opt->getFunctionPtr();
-	}
-
 	if (opt->getStamp() != Type::v) {
 		auto resultRegister = getResultRegister(opt, frame);
 		frame.setValue(opt->getIdentifier(), resultRegister);
-		code.emplace_back(bc, funcInfoRegister, -1, resultRegister);
+		code.emplace_back(bc, calleeRegister, -1, resultRegister);
 	} else {
-		code.emplace_back(bc, funcInfoRegister, -1, -1);
+		code.emplace_back(bc, calleeRegister, -1, -1);
 	}
 }
 

@@ -223,13 +223,13 @@ val<PtrElem> pointerPreIncrement(val<PtrElem*> ptr) {
 }
 
 inline val<int32_t> passCustomClass(val<CustomClass*> customClassPtr) {
-	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, customClassPtr);
+	return invoke<>(+[](CustomClass* ptr) noexcept { return ptr->x; }, customClassPtr);
 }
 
 inline val<int32_t> castCustomClass(val<BaseClass*> voidPtr) {
 	// cast base struct to custom struct
 	auto resultPtr = static_cast<val<CustomClass*>>(voidPtr);
-	return invoke<>(+[](CustomClass* ptr) { return ptr->x; }, resultPtr);
+	return invoke<>(+[](CustomClass* ptr) noexcept { return ptr->x; }, resultPtr);
 }
 
 struct FieldStruct {
@@ -263,7 +263,7 @@ class val<CustomStruct2*> : public base_ptr_val<CustomStruct2*> {
 public:
 	using base_ptr_val<CustomStruct2*>::base_ptr_val;
 	val<int32_t> getX() {
-		return invoke<>(+[](CustomStruct2* ptr) { return ptr->x; }, *this);
+		return invoke<>(+[](CustomStruct2* ptr) noexcept { return ptr->x; }, *this);
 	}
 };
 

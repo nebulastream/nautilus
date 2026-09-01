@@ -56,54 +56,152 @@ void dyncallArgPtr(const OpCode& op, RegisterFile& regs) {
 
 void dyncallCallV(const OpCode& op, RegisterFile& regs) {
 	auto value = readReg<void*>(regs, op.reg1);
-	Dyncall::getVM().callVoid(value);
+	try {
+		Dyncall::getVM().callVoid(value);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 }
 
 void dyncallCallB(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callB(address);
+	bool returnValue = false;
+	try {
+		returnValue = Dyncall::getVM().callB(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<bool>(regs, op.output, returnValue);
 }
 
 void dyncallCallI8(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI8(address);
+	int8_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI8(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<int8_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI16(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI16(address);
+	int16_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI16(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<int16_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI32(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI32(address);
+	int32_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI32(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<int32_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallI64(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callI64(address);
+	int64_t returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callI64(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<int64_t>(regs, op.output, returnValue);
 }
 
 void dyncallCallPtr(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callPtr(address);
+	void* returnValue = nullptr;
+	try {
+		returnValue = Dyncall::getVM().callPtr(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<void*>(regs, op.output, returnValue);
 }
 
 void dyncallCallf(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callF(address);
+	float returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callF(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<float>(regs, op.output, returnValue);
 }
 
 void dyncallCalld(const OpCode& op, RegisterFile& regs) {
 	auto address = readReg<void*>(regs, op.reg1);
-	auto returnValue = Dyncall::getVM().callD(address);
+	double returnValue = 0;
+	try {
+		returnValue = Dyncall::getVM().callD(address);
+	} catch (...) {
+		// No frame means nobody will rethrow this later, so let it propagate
+		// out of the interpreter rather than silently dropping it and handing
+		// back a zero result. Happens when the interpreter is driven directly
+		// (invokeGeneric, an embedder) instead of through Invocable.
+		if (!captureCurrentException()) {
+			throw;
+		}
+	}
 	writeReg<double>(regs, op.output, returnValue);
 }
 
@@ -595,8 +693,10 @@ void BCInterpreter::buildFlatCode() {
 
 BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
                            std::vector<std::unique_ptr<BCCallbackData>> callbackData,
-                           std::vector<BCClosureHandle> callbacks)
-    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)) {
+                           std::vector<BCClosureHandle> callbacks,
+                           std::unordered_set<std::string> functionsNeedingCapture)
+    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)),
+      functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
 BCExecutable::~BCExecutable() {
@@ -784,6 +884,38 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		return executeThreaded(regs);
 	}
 #endif
+	// Dispatches a single non-terminator opcode through the inlined switch,
+	// reading `c` (the current OpCode) and `regs` from the enclosing scope.
+	//
+	// Deliberately a macro, not a lambda or a helper function: the whole point
+	// of the switch path is that the dispatch is *inlined* into the loop, and a
+	// lambda called from the two loop variants below is large enough that clang
+	// emits it out of line and calls it once per bytecode instruction -- the
+	// exact non-inlined call per instruction this path exists to avoid (~1.4x on
+	// exec_bc_*_switch). Marking the lambda always_inline would fix it on clang
+	// but GCC ignores attributes in that position, so the regression would come
+	// back silently on the gcc-14 leg. A macro cannot be un-inlined by anyone.
+#define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
+	case ByteCode::name:                                                                                               \
+		__VA_ARGS__(c, regs);                                                                                          \
+		break;
+#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
+#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
+	// Terminator pseudo-opcodes never appear in a block's operation stream in
+	// the call/switch paths (they keep the structured terminators); those cases
+	// exist only so the switch covers the whole ByteCode enum.
+#define NAUTILUS_BC_DISPATCH_ONE()                                                                                     \
+	switch (c.op) {                                                                                                    \
+		NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)                                                               \
+	case ByteCode::JMP:                                                                                                \
+	case ByteCode::CJMP:                                                                                               \
+	case ByteCode::RET:                                                                                                \
+	case ByteCode::CHECK_PENDING_EXCEPTION:                                                                            \
+		NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)                                                        \
+		NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)                                                                   \
+		break;                                                                                                         \
+	}
+
 	// first block is always the entrypoint
 	auto* currentBlock = &code.blocks[0];
 	// Threaded falls here when computed goto is unavailable, behaving as Switch.
@@ -793,34 +925,57 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 		// run, so this branch is perfectly predicted; it picks between the legacy
 		// indirect-call table and the inlined switch (which avoids a non-inlined
 		// call per instruction and lets the compiler keep the register base hot).
+		//
+		// CHECK_PENDING_EXCEPTION is a control-flow pseudo-opcode handled inline:
+		// when the captured-exception transport has a pending exception it jumps
+		// to the block in reg1 (the landing pad), otherwise it falls through. Most
+		// blocks -- everywhere in a function with no exceptional call sites, and
+		// most blocks even in one that has some -- never contain this opcode, so
+		// `hasPendingCheck` (set once by the lowering, not scanned here) picks
+		// between a loop that tests for it and a tight loop that doesn't. Folding
+		// that test into every iteration of the common loop would cost one extra
+		// compare-and-branch per instruction, in every program, whether or not it
+		// ever uses exceptions.
+		bool jumped = false;
 		if (useSwitch) {
-			for (const auto& c : currentBlock->code) {
-				switch (c.op) {
-#define NAUTILUS_BC_SWITCH_CASE(name, ...)                                                                             \
-	case ByteCode::name:                                                                                               \
-		__VA_ARGS__(c, regs);                                                                                          \
-		break;
-					NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_SWITCH_CASE)
-#undef NAUTILUS_BC_SWITCH_CASE
-				// Terminator pseudo-opcodes never appear in a block's operation stream
-				// in the call/switch paths (they keep the structured terminators); these
-				// cases exist only so the switch covers the whole ByteCode enum.
-				case ByteCode::JMP:
-				case ByteCode::CJMP:
-				case ByteCode::RET:
-#define NAUTILUS_BC_FUSED_SWITCH(fused, src, ctype, cmp) case ByteCode::fused:
-					NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_SWITCH)
-#undef NAUTILUS_BC_FUSED_SWITCH
-#define NAUTILUS_BC_IMM_SWITCH(immOp, src, ctype, oper) case ByteCode::immOp:
-					NAUTILUS_BC_IMM_LIST(NAUTILUS_BC_IMM_SWITCH)
-#undef NAUTILUS_BC_IMM_SWITCH
-					break;
+			if (currentBlock->hasPendingCheck) {
+				for (const auto& c : currentBlock->code) {
+					if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+						if (hasPendingException()) {
+							currentBlock = &code.blocks[c.reg1];
+							jumped = true;
+							break;
+						}
+						continue;
+					}
+					NAUTILUS_BC_DISPATCH_ONE();
+				}
+			} else {
+				for (const auto& c : currentBlock->code) {
+					NAUTILUS_BC_DISPATCH_ONE();
 				}
 			}
 		} else {
-			for (const auto& c : currentBlock->code) {
-				OpTable[(int16_t) c.op](c, regs);
+			if (currentBlock->hasPendingCheck) {
+				for (const auto& c : currentBlock->code) {
+					if (c.op == ByteCode::CHECK_PENDING_EXCEPTION) {
+						if (hasPendingException()) {
+							currentBlock = &code.blocks[c.reg1];
+							jumped = true;
+							break;
+						}
+						continue;
+					}
+					OpTable[(int16_t) c.op](c, regs);
+				}
+			} else {
+				for (const auto& c : currentBlock->code) {
+					OpTable[(int16_t) c.op](c, regs);
+				}
 			}
+		}
+		if (jumped) {
+			continue;
 		}
 		// handle terminator
 		if (const auto* res = std::get_if<BranchOp>(&currentBlock->terminatorOp)) {
@@ -838,6 +993,10 @@ int64_t BCInterpreter::execute(RegisterFile& regs) const {
 			return regs[res->resultReg];
 		}
 	}
+#undef NAUTILUS_BC_DISPATCH_ONE
+#undef NAUTILUS_BC_IMM_SWITCH
+#undef NAUTILUS_BC_FUSED_SWITCH
+#undef NAUTILUS_BC_SWITCH_CASE
 }
 
 #ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO
@@ -864,7 +1023,7 @@ int64_t BCInterpreter::executeThreaded(RegisterFile& regs) const {
 	    NAUTILUS_BC_OPCODE_LIST(NAUTILUS_BC_LABEL)
 #undef NAUTILUS_BC_LABEL
 	        && L_JMP,
-	    &&L_CJMP, &&L_RET,
+	    &&L_CJMP, &&L_RET, &&L_CHECK_PENDING_EXCEPTION,
 	// Fused compare+branch labels, in the same order they were appended to the enum.
 #define NAUTILUS_BC_FUSED_LABEL(fused, src, ctype, cmp) &&L_##fused,
 	    NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_LABEL)
@@ -905,6 +1064,14 @@ L_RET:
 		return 0;
 	}
 	return regs[ip->reg1];
+
+L_CHECK_PENDING_EXCEPTION:
+	if (hasPendingException()) {
+		ip = base + blockStart_[ip->reg1];
+	} else {
+		++ip;
+	}
+	NAUTILUS_BC_NEXT();
 
 	// Fused compare+branch handlers (Step 5): read both operands, compare, and jump
 	// to the true/false block in one step. reg1 = left, reg2 = right, output = true

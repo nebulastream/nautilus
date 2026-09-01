@@ -4,8 +4,10 @@
 namespace nautilus::compiler::asmjit {
 
 AsmJitExecutable::AsmJitExecutable(std::unique_ptr<::asmjit::JitRuntime> runtime, void* basePtr,
-                                   std::unordered_map<std::string, void*> jitPtrs)
-    : runtime_(std::move(runtime)), basePtr_(basePtr), jitPtrs_(std::move(jitPtrs)) {
+                                   std::unordered_map<std::string, void*> jitPtrs,
+                                   std::unordered_set<std::string> functionsNeedingCapture)
+    : runtime_(std::move(runtime)), basePtr_(basePtr), jitPtrs_(std::move(jitPtrs)),
+      functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
 AsmJitExecutable::~AsmJitExecutable() {

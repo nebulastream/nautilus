@@ -11,19 +11,19 @@ B0($1:ptr,$2:ptr,$3:ui32)
 	ASSIGN	$12	$5	:ui32
 	ASSIGN	$13	$6	:ui32
 	ASSIGN	$14	$7	:ui32
-	CALL	$15	func_*($12,$13,$14)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$15	func_*($12,$13,$14)	:void
 	ASSIGN	$16	$9	:ui32
 	ASSIGN	$17	$10	:ui32
 	ASSIGN	$18	$11	:ui32
-	CALL	$19	func_*($16,$17,$18)	:void
-	CALL	$20	func_*($1,$2,$3)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$19	func_*($16,$17,$18)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$20	func_*($1,$2,$3)	:void
 	RETURN	$0	:void
 
 VECSCALE:
 B0($1:ptr,$2:ptr,$3:ui32)
 	ASSIGN	$4	$1	:ptr
 	ASSIGN	$5	$2	:ptr
-	CALL	$6	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$6	func_*()	:ui32
 	CAST	$7	$6	:i32
 	ASSIGN	$8	$4	:ptr
 	ASSIGN	$9	$7	:i32

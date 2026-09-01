@@ -398,9 +398,13 @@ enum class ByteCode : short {
 	JMP,  // unconditional jump: reg1 = target block index
 	CJMP, // conditional jump:   reg1 = condition reg, reg2 = true block, reg3 = false block
 	RET,  // return:             reg1 = result reg (< 0 for void)
-	      // Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
-	      // reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
-	      // after the plain terminators so earlier opcode values never shift.
+	      // Exception-transport check (captured host rethrow): reg1 = target block index.
+	      // If hasPendingException(), jump to reg1; else fall through. Handled by the
+	      // dispatch loops like a terminator-style pseudo-opcode, not via OpTable.
+	CHECK_PENDING_EXCEPTION,
+// Fused compare+branch pseudo-opcodes (Step 5), threaded path only. Packed as
+// reg1 = left, reg2 = right, output = true block, reg3 = false block. Appended
+// after the plain terminators so earlier opcode values never shift.
 #define NAUTILUS_BC_FUSED_ENUM_ENTRY(fused, src, ctype, cmp) fused,
 	NAUTILUS_BC_FUSED_BRANCH_LIST(NAUTILUS_BC_FUSED_ENUM_ENTRY)
 #undef NAUTILUS_BC_FUSED_ENUM_ENTRY
@@ -819,6 +823,16 @@ public:
 	// flattened threaded path uses these to fold the constant into the op (Step 6)
 	// when bc.immediates is enabled; call/switch ignore them.
 	std::vector<std::pair<uint32_t, int16_t>> foldableImmediates = {};
+
+	// True when this block's `code` contains a CHECK_PENDING_EXCEPTION opcode
+	// (set by the lowering when it emits one). The call/switch dispatch loops in
+	// BCInterpreter::execute() branch on this once per block, outside the
+	// per-instruction loop, so a block with no captured-exception call site pays
+	// no per-instruction cost at all -- only a block that actually needs the
+	// check runs the loop variant that tests for it. The threaded path is
+	// unaffected: CHECK_PENDING_EXCEPTION is already a distinct computed-goto
+	// label there, costing nothing extra either way.
+	bool hasPendingCheck = false;
 
 	friend std::ostream& operator<<(std::ostream& os, const CodeBlock& block);
 };

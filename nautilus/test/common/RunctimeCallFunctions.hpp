@@ -32,7 +32,7 @@ public:
 
 namespace nautilus::engine {
 
-void voidFunc(int32_t x, int32_t y) {
+void voidFunc(int32_t x, int32_t y) noexcept {
 	[[maybe_unused]] auto z = x + y;
 }
 
@@ -57,15 +57,15 @@ void multipleVoidReturnsFunction(val<int32_t*> x) {
 	*x = 42;
 }
 
-int32_t add(int32_t x, int32_t y) {
+int32_t add(int32_t x, int32_t y) noexcept {
 	return x + y;
 }
 
-int32_t sub(int32_t x, int32_t y) {
+int32_t sub(int32_t x, int32_t y) noexcept {
 	return x - y;
 }
 
-int32_t addAndSub(int32_t x, int32_t y) {
+int32_t addAndSub(int32_t x, int32_t y) noexcept {
 	return add(x, y) + sub(x, y);
 }
 
@@ -132,7 +132,7 @@ val<int32_t> loopDirectCall(val<int32_t> c, val<int32_t> x) {
 	return sum;
 }
 
-inline int32_t get42() {
+inline int32_t get42() noexcept {
 	return 42;
 }
 
@@ -159,11 +159,11 @@ val<int32_t> voidFuncCall(val<int32_t> x, val<int32_t> y) {
 }
 
 val<int32_t> lambdaRuntimeFunction(val<int32_t> x) {
-	return invoke<>(+[](int32_t x) { return x * 2; }, x);
+	return invoke<>(+[](int32_t x) noexcept { return x * 2; }, x);
 }
 
 val<int32_t> nestedLambdaRuntimeFunction(val<int32_t> x) {
-	return invoke<>(+[](int32_t x) { return x * 2; }, invoke<>(+[](int32_t x) { return x + 2; }, x));
+	return invoke<>(+[](int32_t x) noexcept { return x * 2; }, invoke<>(+[](int32_t x) noexcept { return x + 2; }, x));
 }
 
 val<int32_t> callSameFunction(val<int32_t> x) {
@@ -179,7 +179,7 @@ val<int32_t> callMemberFunction(val<Clazz*> x) {
 	return res;
 }
 
-inline int32_t countFuncCall(const bool isFirstCall) {
+inline int32_t countFuncCall(const bool isFirstCall) noexcept {
 	thread_local int32_t funcCallCount {0};
 	funcCallCount = isFirstCall ? 1 : (funcCallCount + 1);
 	return funcCallCount;
@@ -207,7 +207,7 @@ val<int32_t> incrementFuncCallFiveTimesWithRef(val<bool> isFirstCall) {
 	return invoke(funcAttr, countFuncCall, nautilus::val<bool>(false));
 }
 
-int16_t mixI16(int16_t x, int16_t y) {
+int16_t mixI16(int16_t x, int16_t y) noexcept {
 	// int promotion makes x * 3 + y well-defined; the cast wraps it back to
 	// 16 bits, so the interesting outputs are ones whose 32-bit intermediate
 	// (e.g. 25158 * 3 - 24951 = 50523) differs from the wrapped i16 result.
@@ -228,7 +228,7 @@ val<int16_t> i16NarrowCallReturnCompare(val<int16_t> x, val<int16_t> y) {
 	return result;
 }
 
-int16_t minI16(int16_t x, int16_t y) {
+int16_t minI16(int16_t x, int16_t y) noexcept {
 	return x < y ? x : y;
 }
 

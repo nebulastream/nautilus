@@ -16,6 +16,8 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         ConcurrentExecutionTest.cpp
         DumpHelperTest.cpp
         FunctionPtrExecutionTest.cpp
+		InvokeExceptionExecutionTest.cpp
+        NoThrowInferenceIntegrationTest.cpp
         ModuleLifecycleTest.cpp
         ModuleTest.cpp
         PostRAPeepholeTest.cpp
@@ -68,4 +70,3 @@ if (ENABLE_TRACING)
         message(WARNING "Tracing Tests are only available on clang-based compilers!")
     endif ()
 endif ()
-

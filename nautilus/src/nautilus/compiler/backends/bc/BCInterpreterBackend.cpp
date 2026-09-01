@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <nautilus/CompilationStatistics.hpp>
+#include <nautilus/compiler/backends/CapturedExceptionTransport.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreterBackend.hpp>
 #include <nautilus/compiler/backends/bc/BCLoweringProvider.hpp>
@@ -355,7 +356,8 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	}
 
 	return std::make_unique<BCExecutable>(std::move(functionPtrs), std::move(callbackDataStore),
-	                                      std::move(callbackPtrs));
+	                                      std::move(callbackPtrs),
+	                                      CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
 } // namespace nautilus::compiler::bc

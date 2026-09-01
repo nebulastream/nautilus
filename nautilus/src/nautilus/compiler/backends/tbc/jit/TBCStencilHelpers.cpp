@@ -1,4 +1,5 @@
 
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/compiler/backends/tbc/TBCVm.hpp"
 #include <cstddef>
 #include <exception>
@@ -55,6 +56,10 @@ extern "C" uint64_t tbcJitIndCall(VMContext* ctx, const void* site, uint64_t* fp
 		ctx->pendingException = std::current_exception();
 		return 0;
 	}
+}
+
+extern "C" bool tbcJitCheckPendingException() noexcept {
+	return nautilus::compiler::hasPendingException();
 }
 
 } // namespace nautilus::compiler::tbc
