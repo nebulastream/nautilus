@@ -74,7 +74,7 @@ static ::mlir::Value storeVecToAlloca(std::unique_ptr<::mlir::OpBuilder>& builde
 
 /// Binary vector operation: load two vectors, apply op, store result
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -101,7 +101,7 @@ bool vectorBinaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 
 /// Unary vector operation
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -126,7 +126,7 @@ bool vectorUnaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 
 /// Ternary vector operation (fma, blend)
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -155,7 +155,7 @@ bool vectorTernaryIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 
 /// Load: read from raw T* pointer into vector, return vector pointer
 template <typename ElemT, int64_t N>
-bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
 	auto srcPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -184,7 +184,7 @@ bool vectorLoadIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 
 /// Store: write vector data to raw T* pointer
 template <typename ElemT, int64_t N>
-bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
 	auto destPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto vecPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -207,7 +207,7 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 	// aligned to the full vector width).
 	::mlir::LLVM::StoreOp::create(*builder, builder->getUnknownLoc(), vec, destPtr, sizeof(ElemT));
 	// Store returns void, but we still need to set a value for the frame.
-	// The store_impl returns void, so the ProxyCallOp result may not be used.
+	// The store_impl returns void, so the CallOp result may not be used.
 	// We pass destPtr as the output so the frame has something valid.
 	frame.setValue(call->getIdentifier(), destPtr);
 	return true;
@@ -215,7 +215,7 @@ bool vectorStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const com
 
 /// Negate for float: 0 - x
 template <typename ElemT, int64_t N>
-bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                              MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -236,7 +236,7 @@ bool vectorNegFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const 
 
 /// Negate for int: 0 - x
 template <typename ElemT, int64_t N>
-bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -260,8 +260,7 @@ bool vectorNegIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 
 /// Reduce add for float types: llvm.vector.reduce.fadd
 template <typename ElemT, int64_t N>
-bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                   const compiler::ir::ProxyCallOperation* call,
+bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                    MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -285,8 +284,7 @@ bool vectorReduceAddFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Reduce add for int types: llvm.vector.reduce.add
 template <typename ElemT, int64_t N>
-bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                 const compiler::ir::ProxyCallOperation* call,
+bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -306,8 +304,8 @@ bool vectorReduceAddIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Reduce min/max for float types
 template <typename ReduceOp, typename ElemT, int64_t N>
-bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
+bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
+                                MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
 	::mlir::Type elemTy;
@@ -326,7 +324,7 @@ bool vectorReduceFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Reduce min/max for int types
 template <typename ReduceOp, typename ElemT, int64_t N>
-bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 
@@ -346,7 +344,7 @@ bool vectorReduceIntIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 
 /// Float comparison: FCmpOp → vector<NxI1> → sext to all-ones/zeros → bitcast to float
 template <::mlir::LLVM::FCmpPredicate Pred, typename ElemT, int64_t N>
-bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -380,7 +378,7 @@ bool vectorFCmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 
 /// Integer comparison: ICmpOp → vector<NxI1> → sext to all-ones/zeros
 template <::mlir::LLVM::ICmpPredicate Pred, typename ElemT, int64_t N>
-bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                          MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -409,8 +407,7 @@ bool vectorICmpIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const comp
 
 /// Float bitwise: bitcast to int, apply op, bitcast back
 template <typename MLIROp, typename ElemT, int64_t N>
-bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                 const compiler::ir::ProxyCallOperation* call,
+bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrA = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrB = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -445,7 +442,7 @@ bool vectorBitwiseFloatIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Blend: mask != 0 → i1 vector → select(mask, a, b)
 template <typename ElemT, int64_t N>
-bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorBlendIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                           MLIRLoweringProvider::ValueFrame& frame) {
 	auto ptrMask = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto ptrA = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -516,7 +513,7 @@ static ::mlir::Type getElemType(::mlir::OpBuilder& builder) {
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto scalar = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto loc = builder->getUnknownLoc();
@@ -543,7 +540,7 @@ bool vectorBroadcastIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
 	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -579,7 +576,7 @@ bool vectorGatherIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const co
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
 	auto basePtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto idxPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -621,8 +618,7 @@ bool vectorScatterIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                  const compiler::ir::ProxyCallOperation* call,
+bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                   MLIRLoweringProvider::ValueFrame& frame) {
 	auto dstPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto maskPtr = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -667,7 +663,7 @@ bool vectorCompressStoreIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                             MLIRLoweringProvider::ValueFrame& frame) {
 	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto idx = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -688,7 +684,7 @@ bool vectorExtractIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const c
 // ============================================================================
 
 template <typename ElemT, int64_t N>
-bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool vectorInsertIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                            MLIRLoweringProvider::ValueFrame& frame) {
 	auto vecPtr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());

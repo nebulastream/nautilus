@@ -18,4 +18,5 @@ add_source_files(nautilus
         LoopInvariantCodeMotionPass.cpp
         ExceptionRegionPreparationPass.cpp
         NoThrowInferencePass.cpp
+        FunctionAttributeInferencePass.cpp
 )

@@ -11,7 +11,7 @@ namespace nautilus::compiler::ir {
  * @brief Terminal pass that materializes exception-handling regions.
  *
  * Walks every FunctionOperation's basic blocks, collects every
- * potentially-throwing call (ProxyCallOperation / IndirectCallOperation with
+ * potentially-throwing call (CallOperation / IndirectCallOperation with
  * `noUnwind == false`), and interns each call's ordered destructor list into
  * a shared landing-pad block. The result is attached to the FunctionOperation
  * as a `FunctionExceptionRegion` side table (see ir/ExceptionRegion.hpp).

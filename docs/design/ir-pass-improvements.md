@@ -126,7 +126,7 @@ Infrastructure that already exists and that new passes must build on:
 - No new IR operation kinds (e.g. a GEP/load-with-offset op). Backend-local
   superinstruction fusion (tbc `LOAD_off`/`STORE_off`) stays in the backends.
 - No changes to backend register allocators or dispatch machinery.
-- No inlining (ProxyCall inlining is a separate, larger design).
+- No inlining (Call inlining is a separate, larger design).
 - No full sparse-conditional constant propagation; the folding pass stays
   syntactic.
 
@@ -394,7 +394,7 @@ and record the numbers in the pass header.
   support; `tbc` has a fused `SELECT`): promising but needs a cost heuristic;
   revisit after P0–P2 numbers exist.
 - Dominator-scoped CSE, load CSE / redundant-load elimination (needs an
-  aliasing story), ProxyCall inlining, sparse conditional constant
+  aliasing story), Call inlining, sparse conditional constant
   propagation.
 
 ### 4.4 Pipeline

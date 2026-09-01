@@ -1,4 +1,5 @@
 nautilus {
+declare external #0 func_*(ptr, ptr, ui64) :ptr
 execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
@@ -10,7 +11,7 @@ Block_0():
 	store($10, $7) :void
 	$14 = alloca[1] :ptr
 	$15 = 8 :ui64
-	$16 = func_*($14,$1,$15) :ptr
+	$16 = func_*#0($14,$1,$15) :ptr
 	$18 = 0 :ui64
 	$20 = 1 :ui64
 	$21 = $18 * $20 :ui64

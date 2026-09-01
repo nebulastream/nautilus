@@ -1,7 +1,8 @@
 nautilus {
+declare external #0 func_*() :void
 execute() :void {
 Block_0():
-	func_*() :void
+	func_*#0() :void
 	return :void
 }
 } //nautilus

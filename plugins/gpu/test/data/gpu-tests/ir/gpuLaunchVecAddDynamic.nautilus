@@ -1,4 +1,7 @@
 nautilus {
+declare external #0 func_*(ui32, ui32, ui32) :void
+declare external #1 func_*(ui32, ui32, ui32) :void
+declare external #4 func_*() :ui32
 execute($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$5 = 255 :ui32
@@ -10,14 +13,14 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$13 = 256 :ui32
 	$15 = 1 :ui32
 	$16 = 1 :ui32
-	func_*($8,$11,$12) :void
-	func_*($13,$15,$16) :void
-	func_*($1,$2,$3) :void
+	func_*#0($8,$11,$12) :void
+	func_*#1($13,$15,$16) :void
+	vecAdd($1,$2,$3) :void
 	return :void
 }
 vecAdd($1:ptr, $2:ptr, $3:ptr) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr):
-	$7 = func_*() :ui32
+	$7 = func_*#4() :ui32
 	$8 = $7 cast_to i32 :i32
 	$12 = 4 :ui64
 	$13 = $8 cast_to ui64 :ui64

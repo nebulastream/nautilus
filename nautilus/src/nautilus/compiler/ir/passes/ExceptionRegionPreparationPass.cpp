@@ -4,7 +4,7 @@
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -16,7 +16,7 @@ namespace nautilus::compiler::ir {
 
 namespace {
 
-/// A backend-agnostic view of one destructor. ProxyCallOperation::Destructor
+/// A backend-agnostic view of one destructor. CallOperation::Destructor
 /// and IndirectCallOperation::Destructor are distinct nested types; both are
 /// flattened into this so a single pad-interner can treat them uniformly.
 struct DestructorSpec {
@@ -33,7 +33,7 @@ struct RawCallSite {
 	std::vector<DestructorSpec> destructors;
 };
 
-std::vector<DestructorSpec> convertDestructors(const std::vector<ProxyCallOperation::Destructor>& in) {
+std::vector<DestructorSpec> convertDestructors(const std::vector<CallOperation::Destructor>& in) {
 	std::vector<DestructorSpec> out;
 	out.reserve(in.size());
 	for (const auto& d : in) {
@@ -83,7 +83,7 @@ struct VecLess {
 	}
 };
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
+bool applyToFunction(IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
 	if (fn.exceptionRegion.has_value()) {
 		return false;
 	}
@@ -92,7 +92,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 	std::vector<RawCallSite> rawSites;
 	for (auto* block : fn.getBasicBlocks()) {
 		for (auto* op : block->getOperations()) {
-			if (auto* proxy = dyn_cast<ProxyCallOperation>(op)) {
+			if (auto* proxy = dyn_cast<CallOperation>(op)) {
 				if (proxy->requiresExceptionHandling()) {
 					rawSites.push_back({op, convertDestructors(proxy->getDestructors())});
 				} else if (!proxy->getFunctionAttributes().noUnwind) {
@@ -155,10 +155,26 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 				FunctionAttributes dtorAttrs;
 				dtorAttrs.noUnwind = true;
 				std::vector<Operation*> args {dit->address};
-				padBlock->addOperation<ProxyCallOperation>(dit->functionSymbol, dit->functionName, dit->functionPtr,
-				                                           OperationIdentifier {nextOpId++},
-				                                           std::span<Operation* const>(args), Type::v, dtorAttrs,
-				                                           std::vector<ProxyCallOperation::Destructor> {}, false);
+
+				// A destructor call is synthesized here, not traced, so it was
+				// never interned by TraceToIRConversionPhase -- do it now. Every
+				// CallOperation must resolve through the table (IRVerifier V8),
+				// and two pads calling the same destructor should share one
+				// table entry rather than minting a duplicate.
+				CalleeDescriptor descriptor;
+				descriptor.kind = CalleeDescriptor::Kind::External;
+				descriptor.key = dit->functionPtr;
+				descriptor.mangledName = dit->functionSymbol;
+				descriptor.demangledName = dit->functionName;
+				descriptor.resultType = Type::v;
+				descriptor.paramTypes = {dit->address->getStamp()};
+				descriptor.attrs = dtorAttrs;
+				const auto calleeId = ir.internCallee(descriptor);
+
+				padBlock->addOperation<CallOperation>(dit->functionSymbol, dit->functionName, dit->functionPtr,
+				                                      OperationIdentifier {nextOpId++},
+				                                      std::span<Operation* const>(args), Type::v, dtorAttrs, calleeId,
+				                                      std::vector<CallOperation::Destructor> {}, false);
 			}
 			region.pads.push_back({padBlock});
 		}
@@ -176,7 +192,7 @@ bool ExceptionRegionPreparationPass::apply(IRGraph& ir) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(ir, *fn, arena);
 		}
 	}
 	return changed;

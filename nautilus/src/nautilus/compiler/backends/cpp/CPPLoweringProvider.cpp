@@ -82,7 +82,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	// common case has none. The generated shared library cannot link against
 	// nautilus, so these helpers are baked in as raw function addresses
 	// resolved in the host process (same mechanism as the external function
-	// pointers emitted for ProxyCall/IndirectCall).
+	// pointers emitted for Call/IndirectCall).
 	const bool moduleNeedsCapture = CapturedExceptionTransport::anyFunctionNeedsCapture(*ir);
 	if (moduleNeedsCapture) {
 		pipelineCode << "#include <exception>\n\n";
@@ -153,7 +153,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 		}
 
 		// Generate function code
-		pipelineCode << "extern \"C\" " << returnType << " " << functionOperation.getName() << "(";
+		pipelineCode << "extern \"C\" " << returnType << " " << ir->getEmissionName(&functionOperation) << "(";
 		for (size_t i = 0; i < arguments.size(); i++) {
 			if (i != 0) {
 				pipelineCode << ",";
@@ -191,7 +191,7 @@ std::stringstream CPPLoweringProvider::LoweringContext::process() {
 	for (const auto& functionOperation : functionOperations) {
 		const auto& functionBasicBlock = functionOperation->getFunctionBasicBlock();
 		pipelineCode << "extern \"C\" " << getType(functionOperation->getOutputArg()) << " "
-		             << functionOperation->getName() << "(";
+		             << ir->getEmissionName(functionOperation) << "(";
 		for (size_t i = 0; i < functionBasicBlock.getArguments().size(); i++) {
 			if (i != 0) {
 				pipelineCode << ",";
@@ -491,8 +491,7 @@ void CPPLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* retu
 	}
 }
 
-void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
-                                                          RegisterFrame& frame) {
+void CPPLoweringProvider::LoweringContext::visitCall(ir::CallOperation* opt, short blockIndex, RegisterFrame& frame) {
 
 	auto returnType = getType(opt->getStamp());
 	std::stringstream argTypes;
@@ -507,23 +506,26 @@ void CPPLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation
 		args << frame.getValue(arg->getIdentifier());
 		argTypes << getType(arg->getStamp());
 	}
-	// Check if this function is defined in the same compilation unit (i.e., a NautilusFunction).
-	// If so, call it directly by name instead of through a function pointer cast,
-	// because the stored ptr for NautilusFunction calls is not a valid function pointer.
-	bool isInternalFunction = ir->getFunctionOperation(opt->getFunctionName()) != nullptr;
+	// The callee's table entry says what this call is; nothing here needs to
+	// guess from a name. An internal target is called directly -- its stored
+	// pointer is a definition object, not code -- while a native one is called
+	// through its address.
+	const auto& target = ir->getFunctionTarget(opt->getCalleeId());
+	const bool isInternalFunction = target.getLinkage() == ir::Linkage::Internal;
+	const auto& emissionName = target.getName().forEmission();
 
-	if (!isInternalFunction && !functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto f_" << opt->getFunctionSymbol() << " = " << "(" << returnType << "(*)(" << argTypes.str()
-		          << "))" << opt->getFunctionPtr() << ";\n";
-		functionNames.emplace(opt->getFunctionSymbol());
+	if (!isInternalFunction && !functionNames.contains(emissionName)) {
+		functions << "auto f_" << emissionName << " = " << "(" << returnType << "(*)(" << argTypes.str() << "))"
+		          << target.getAddress() << ";\n";
+		functionNames.emplace(emissionName);
 	}
 
-	// The call expression: direct name for internal functions, f_<symbol> otherwise.
+	// The call expression: direct name for internal functions, f_<emission name> otherwise.
 	std::string callExpr;
 	if (isInternalFunction) {
-		callExpr = opt->getFunctionName();
+		callExpr = emissionName;
 	} else {
-		callExpr = "f_" + opt->getFunctionSymbol();
+		callExpr = "f_" + emissionName;
 	}
 	callExpr += "(" + args.str() + ")";
 
@@ -668,16 +670,16 @@ void CPPLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAd
 		blockArguments << "uint8_t* " << resultVar << ";\n";
 		frame.setValue(funcAddrOp->getIdentifier(), resultVar);
 	}
-	bool isInternalFunction = ir->getFunctionOperation(funcAddrOp->getFunctionName()) != nullptr;
-	if (isInternalFunction) {
-		blocks[blockIndex] << resultVar << " = (uint8_t*)&" << funcAddrOp->getFunctionName() << ";\n";
+	const auto& target = ir->getFunctionTarget(funcAddrOp->getCalleeId());
+	const auto& emissionName = target.getName().forEmission();
+	if (target.getLinkage() == ir::Linkage::Internal) {
+		blocks[blockIndex] << resultVar << " = (uint8_t*)&" << emissionName << ";\n";
 	} else {
-		if (!functionNames.contains(funcAddrOp->getFunctionSymbol())) {
-			functions << "auto f_" << funcAddrOp->getFunctionSymbol() << " = (void*)" << funcAddrOp->getFunctionPtr()
-			          << ";\n";
-			functionNames.emplace(funcAddrOp->getFunctionSymbol());
+		if (!functionNames.contains(emissionName)) {
+			functions << "auto f_" << emissionName << " = (void*)" << target.getAddress() << ";\n";
+			functionNames.emplace(emissionName);
 		}
-		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << funcAddrOp->getFunctionSymbol() << ";\n";
+		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << emissionName << ";\n";
 	}
 }
 

@@ -114,6 +114,12 @@ private:
 		void processStore(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 		void processAlloca(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
+		/// Interns @p call in the module function table and returns its id.
+		/// Keyed on identity -- a code address, or the definition pointer for
+		/// an internal callee -- never on a name.
+		compiler::ir::FunctionId internCallee(const FunctionCall& call, Type resultType,
+		                                      const std::vector<compiler::ir::Operation*>& arguments);
+
 		void processCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);
 
 		void processIndirectCall(ValueFrame& frame, compiler::ir::BasicBlock* currentBlock, TraceOperation& operation);

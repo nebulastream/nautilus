@@ -11,12 +11,12 @@ B0($1:i32)
 	JMP	$0	B3($2,$15,$1)	:void
 B1($2:ptr,$1:i32,$15:i32)
 	CONST	$19	1	:i32
-	CALL_WITH_EXCEPTION_HANDLING	$20	func_*($2,$19)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$20	incrementFieldA($2,$19)	:void
 	CONST	$21	1	:i32
 	ADD	$22	$15	$21	:i32
 	JMP	$0	B3($2,$22,$1)	:void
 B2($2:ptr)
-	CALL_WITH_EXCEPTION_HANDLING	$25	func_*($2)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$25	readFieldA($2)	:i32
 	RETURN	$0	$25	:i32
 B3($2:ptr,$15:i32,$1:i32) ControlFlowMerge
 	LT	$16	$15	$1	:bool

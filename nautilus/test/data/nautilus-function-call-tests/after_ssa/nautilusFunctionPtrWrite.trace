@@ -1,6 +1,6 @@
 EXECUTE:
 B0($1:ptr,$2:f64)
-	CALL_WITH_EXCEPTION_HANDLING	$3	func_*($1,$2)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$3	writeDouble($1,$2)	:void
 	LOAD	$6	$1	:f64
 	RETURN	$0	$6	:f64
 

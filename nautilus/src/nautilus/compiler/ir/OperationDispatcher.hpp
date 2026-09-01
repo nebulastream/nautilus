@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
@@ -25,7 +26,6 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
@@ -157,8 +157,8 @@ public:
 			return;
 
 		// Calls
-		case OT::ProxyCallOp:
-			d.visitProxyCall(as<ProxyCallOperation>(op), std::forward<Args>(args)...);
+		case OT::CallOp:
+			d.visitCall(as<CallOperation>(op), std::forward<Args>(args)...);
 			return;
 		case OT::IndirectCallOp:
 			d.visitIndirectCall(as<IndirectCallOperation>(op), std::forward<Args>(args)...);
@@ -286,8 +286,8 @@ public:
 		unhandled("SelectOp");
 	}
 	template <typename... Args>
-	void visitProxyCall(ProxyCallOperation*, Args&&...) {
-		unhandled("ProxyCallOp");
+	void visitCall(CallOperation*, Args&&...) {
+		unhandled("CallOp");
 	}
 	template <typename... Args>
 	void visitIndirectCall(IndirectCallOperation*, Args&&...) {

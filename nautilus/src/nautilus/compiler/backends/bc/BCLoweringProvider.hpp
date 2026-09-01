@@ -42,23 +42,26 @@ public:
 
 	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir);
 
-	/// Lower with a map of internal function name -> native function pointer.
-	/// Used when NautilusFunction calls have been pre-compiled to dyncallback thunks.
+	/// Lower with a map of FunctionId -> native function pointer, holding the
+	/// dyncallback thunk each in-module NautilusFunction was pre-compiled to.
+	/// Keyed on the callee's table id rather than its name: a name lookup that
+	/// missed used to hand dyncall a NautilusFunctionDefinition to invoke as
+	/// if it were code.
 	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir,
-	                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+	                                     const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs);
 
 	/// Lower a specific named function from the IRGraph.
 	std::tuple<Code, RegisterFile> lowerFunction(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName);
 
 	/// Lower a specific named function with resolved internal function pointers.
 	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
-	                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+	                                     const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs);
 
 	/// Lower a specific named function with resolved internal function
 	/// pointers and explicit lowering options (lets the caller disable
 	/// the linear register allocator, e.g. for benchmarking).
 	std::tuple<Code, RegisterFile> lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
-	                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs,
+	                                     const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs,
 	                                     LoweringOptions options);
 
 private:
@@ -111,11 +114,11 @@ private:
 	public:
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName = "execute");
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir,
-		                const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+		                const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs);
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
-		                const std::unordered_map<std::string, void*>& internalFunctionPtrs);
+		                const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs);
 		LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
-		                const std::unordered_map<std::string, void*>& internalFunctionPtrs, LoweringOptions options);
+		                const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs, LoweringOptions options);
 
 		std::tuple<Code, RegisterFile> process();
 
@@ -128,7 +131,7 @@ private:
 		Code program;
 		RegisterFile defaultRegisterFile;
 		std::shared_ptr<ir::IRGraph> ir;
-		std::unordered_map<std::string, void*> internalFunctionPtrs;
+		std::unordered_map<ir::FunctionId, void*> internalFunctionPtrs;
 		std::string targetFunctionName = "execute";
 		LoweringOptions loweringOptions;
 		RegisterProvider registerProvider;
@@ -156,7 +159,7 @@ private:
 		std::vector<short> functionAllocaSlots;
 
 		/// The function currently being lowered. Set in process() and consulted
-		/// by visitProxyCall/visitIndirectCall via CapturedExceptionTransport to
+		/// by visitCall/visitIndirectCall via CapturedExceptionTransport to
 		/// decide whether a call site needs a pending-exception check.
 		const ir::FunctionOperation* currentFunction_ = nullptr;
 		/// Captured-exception queries for `currentFunction_`, built once per
@@ -197,7 +200,7 @@ private:
 		void visitBranch(ir::BranchOperation* opt, short block, RegisterFrame& frame);
 		void visitLoad(ir::LoadOperation* opt, short block, RegisterFrame& frame);
 		void visitStore(ir::StoreOperation* opt, short block, RegisterFrame& frame);
-		void visitProxyCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void visitCall(ir::CallOperation* opt, short block, RegisterFrame& frame);
 		void visitIndirectCall(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
 		void visitOr(ir::OrOperation* opt, short block, RegisterFrame& frame);
 		void visitAnd(ir::AndOperation* opt, short block, RegisterFrame& frame);
@@ -215,7 +218,7 @@ private:
 		void visitConstBoolean(ir::ConstBooleanOperation* opt, short block, RegisterFrame& frame);
 		void visitConstPtr(ir::ConstPtrOperation* opt, short block, RegisterFrame& frame);
 
-		void processDynamicCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void processDynamicCall(ir::CallOperation* opt, short block, RegisterFrame& frame);
 
 		/// Returns true if @p call is a captured-exception call site (i.e. it
 		/// needs the capture thunk + a pending-exception check).

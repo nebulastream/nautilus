@@ -19,8 +19,8 @@ public:
 // ============================================================================
 
 /// Helper for memcpy intrinsic (3 arguments: dest, src, count)
-bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
+bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
+                                MLIRLoweringProvider::ValueFrame& frame) {
 	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
@@ -37,8 +37,7 @@ bool replaceWithMemcpyIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 }
 
 /// Helper for memmove intrinsic (3 arguments: dest, src, count)
-bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                 const compiler::ir::ProxyCallOperation* call,
+bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                  MLIRLoweringProvider::ValueFrame& frame) {
 	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto src = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -56,8 +55,8 @@ bool replaceWithMemmoveIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 }
 
 /// Helper for memset intrinsic (3 arguments: dest, value, count)
-bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                const compiler::ir::ProxyCallOperation* call, MLIRLoweringProvider::ValueFrame& frame) {
+bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
+                                MLIRLoweringProvider::ValueFrame& frame) {
 	auto dest = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
 	auto count = frame.getValue(call->getInputArguments()[2]->getIdentifier());
@@ -84,15 +83,15 @@ bool replaceWithMemsetIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 void MLIRMemoryIntrinsicPlugin::registerIntrinsics(MLIRIntrinsicManager& manager) {
 	// Register memcpy
 	manager.addIntrinsic(reinterpret_cast<void*>(static_cast<void* (*) (void*, const void*, size_t)>(&std::memcpy)),
-	                     replaceWithMemcpyIntrinsic);
+	                     replaceWithMemcpyIntrinsic, "memcpy");
 
 	// Register memmove
 	manager.addIntrinsic(reinterpret_cast<void*>(static_cast<void* (*) (void*, const void*, size_t)>(&std::memmove)),
-	                     replaceWithMemmoveIntrinsic);
+	                     replaceWithMemmoveIntrinsic, "memmove");
 
 	// Register memset
 	manager.addIntrinsic(reinterpret_cast<void*>(static_cast<void* (*) (void*, int, size_t)>(&std::memset)),
-	                     replaceWithMemsetIntrinsic);
+	                     replaceWithMemsetIntrinsic, "memset");
 }
 
 void RegisterMLIRMemoryIntrinsicPlugin() {

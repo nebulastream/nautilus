@@ -50,7 +50,7 @@ AsmJitLoweringProvider::LowerResult AsmJitLoweringProvider::lower(std::shared_pt
 
 	// Build the intrinsic manager from the global plugin registry. Gated by
 	// `asmjit.enableIntrinsics` (default true), mirroring `mlir.enableIntrinsics`.
-	// When disabled, the manager stays empty and every ProxyCall falls through
+	// When disabled, the manager stays empty and every Call falls through
 	// to the regular scalar invoke path.
 	AsmJitIntrinsicManager intrinsicManager;
 	if (options.getOptionOrDefault<bool>("asmjit.enableIntrinsics", true)) {
@@ -238,14 +238,16 @@ void AsmJitLoweringProvider::LoweringContext::processAll(std::string* asmjitIRDu
 		for (const auto& arg : entryArgs) {
 			sig.addArg(getTypeId(arg->getStamp()));
 		}
-		funcNodes_[funcOp->getName()] = cc.newFunc(sig);
+		auto* funcNode = cc.newFunc(sig);
+		funcNodes_[ir->getFunctionTable().findByDefinition(funcOp)] = funcNode;
+		funcNodesByName_[funcOp->getName()] = funcNode;
 	}
 
 	// Pass 2: emit each function body.
 	for (const auto& funcOp : functionOperations) {
 		const auto& funcBlock = funcOp->getFunctionBasicBlock();
 		const auto& entryArgs = funcBlock.getArguments();
-		auto* funcNode = funcNodes_.at(funcOp->getName());
+		auto* funcNode = funcNodes_.at(ir->getFunctionTable().findByDefinition(funcOp));
 
 		cc.addFunc(funcNode);
 
@@ -838,12 +840,16 @@ void AsmJitLoweringProvider::LoweringContext::visitAlloca(ir::AllocaOperation* o
 
 // ── External function calls ───────────────────────────────────────────────────
 
-void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame) {
+void AsmJitLoweringProvider::LoweringContext::visitCall(ir::CallOperation* op, RegisterFrame& frame) {
 	// Check the intrinsic manager first. A registered handler can fully
 	// replace the scalar function-call lowering with native NEON instructions
 	// (e.g. emit `add v0.4s, v1.4s, v2.4s` for vector_add_i32x4_impl). The
 	// handler is expected to bind the result identifier into the frame itself.
-	if (auto intrinsic = intrinsicManager_.getIntrinsic(op->getFunctionPtr())) {
+	// The linkage was decided when the callee was interned, so this is an id
+	// lookup rather than a match against the raw address. Finding no handler
+	// is not an error: the target keeps its address, and falling through
+	// emits the ordinary call to it.
+	if (auto intrinsic = intrinsicManager_.getIntrinsic(ir->getFunctionTable().get(op->getCalleeId()).getIntrinsic())) {
 		IntrinsicCallContext ctx {cc, op, frame};
 		if ((*intrinsic)(ctx)) {
 			return;
@@ -852,8 +858,8 @@ void AsmJitLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperat
 
 	// Internal Nautilus functions (resolved via a JIT label, whose function
 	// pointer is not a callable address) are never capture sites; only external
-	// calls need the capture thunk (mirrors X64's visitProxyCall).
-	auto it = funcNodes_.find(op->getFunctionName());
+	// calls need the capture thunk (mirrors X64's visitCall).
+	auto it = funcNodes_.find(op->getCalleeId());
 	const bool isInternal = it != funcNodes_.end();
 	const bool needsCapture = !isInternal && transport_.callNeedsCaptureThunk(op);
 	const bool needsCheck = callNeedsCapture(op);
@@ -942,7 +948,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 	InvokeNode* invokeNode = nullptr;
 	if (needsCapture) {
 		// Captured-exception call site: route through the capture thunk, with
-		// the runtime function pointer as its first argument (see visitProxyCall).
+		// the runtime function pointer as its first argument (see visitCall).
 		void* thunk = resolveCaptureThunk(op);
 		auto tmp = cc.newIntPtr();
 		cc.mov(tmp, reinterpret_cast<uint64_t>(thunk));
@@ -968,7 +974,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 			invokeNode->setRet(0, toVec(result));
 		} else {
 			invokeNode->setRet(0, toGp(result));
-			// See visitProxyCall: narrow integer returns arrive with
+			// See visitCall: narrow integer returns arrive with
 			// unspecified upper bits and must be re-extended.
 			narrowToStamp(toGp(result), op->getStamp());
 		}
@@ -983,7 +989,7 @@ void AsmJitLoweringProvider::LoweringContext::visitIndirectCall(ir::IndirectCall
 void AsmJitLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAddressOfOperation* op,
                                                                      RegisterFrame& frame) {
 	auto reg = allocReg(Type::ptr);
-	auto it = funcNodes_.find(op->getFunctionName());
+	auto it = funcNodes_.find(op->getCalleeId());
 	if (it != funcNodes_.end()) {
 		cc.adr(toGp(reg), it->second->label());
 	} else {
@@ -1120,7 +1126,7 @@ const ir::LandingPadBlock* AsmJitLoweringProvider::LoweringContext::getPadForCal
 }
 
 void* AsmJitLoweringProvider::LoweringContext::resolveCaptureThunk(const ir::Operation* call) const {
-	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
+	if (const auto* proxy = ir::dyn_cast<ir::CallOperation>(call)) {
 		return proxy->getCaptureFunc();
 	}
 	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {
@@ -1177,7 +1183,7 @@ void AsmJitLoweringProvider::LoweringContext::lowerExceptionPads(RegisterFrame& 
 	for (size_t padIndex = 0; padIndex < pads.size(); ++padIndex) {
 		const auto& pad = pads[padIndex];
 		cc.bind(getPadLabel(padIndex));
-		// Pads contain only destructor ProxyCallOperations (all noUnwind), so
+		// Pads contain only destructor CallOperations (all noUnwind), so
 		// lowering them through the normal dispatch emits plain external calls
 		// with no re-entrant capture.
 		for (auto* op : pad.block->getOperations()) {

@@ -45,6 +45,21 @@ struct AllocaSpec {
  * The caller is responsible for ensuring the pointed-to function is not unloaded
  * or deallocated while the trace or executable is in use.
  */
+/// Which kind of callee a FunctionCall names.
+///
+/// The tracer knows this for certain at the moment it records the call, and
+/// this is where it writes it down. Without it, everything downstream has to
+/// re-derive the answer by looking a name up in a side table -- which is what
+/// the function table exists to stop.
+enum class CalleeKind : uint8_t {
+	/// A native function reached through its real code address.
+	External,
+	/// Another Nautilus function, traced into this same module. `ptr` is its
+	/// NautilusFunctionDefinition, which is an identity, NOT a callable
+	/// address.
+	Internal,
+};
+
 struct FunctionCall {
 	struct Destructor {
 		TypedValueRef address;
@@ -56,9 +71,13 @@ struct FunctionCall {
 	std::string functionName;
 	std::string mangledName;
 	/**
-	 * @brief Non-owning pointer to the function being called.
+	 * @brief Non-owning pointer identifying the function being called.
 	 * @warning Must remain valid for the lifetime of the trace and compiled executable.
 	 * The caller is responsible for lifetime management.
+	 *
+	 * For CalleeKind::External this is a real code address. For
+	 * CalleeKind::Internal it is a NautilusFunctionDefinition* used purely as
+	 * an identity key -- calling it would execute a data object.
 	 */
 	void* ptr;
 	/**
@@ -69,6 +88,7 @@ struct FunctionCall {
 	 * Null for `noUnwind` calls.
 	 */
 	void* captureFunc = nullptr;
+	CalleeKind kind = CalleeKind::External;
 	std::vector<TypedValueRef> arguments;
 	FunctionAttributes fnAttrs;
 	std::vector<Destructor> destructors;

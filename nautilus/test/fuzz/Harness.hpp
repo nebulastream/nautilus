@@ -325,7 +325,7 @@ using MixedKernelSignature = val<T>(val<T*>, val<MixedSecondaryType<T>>, val<T>,
 
 /// Fixed narrow return type for the narrowReturn shape (see the module
 /// comment above); deliberately independent of T; used in the same historical
-/// direction (narrow int return) that already produced ProxyCall/IndirectCall
+/// direction (narrow int return) that already produced Call/IndirectCall
 /// ABI bugs for `Call` (see README.md "Known findings").
 using NarrowReturnType = int8_t;
 

@@ -100,7 +100,7 @@ simply pushes further frames at `sp`.
 
 ### Calls
 
-- **Internal** (`ProxyCall` to a function in the same module): resolved at
+- **Internal** (`Call` to a function in the same module): resolved at
   lowering to a function index; the `CALL` handler pushes a frame, copies the
   argument registers, and continues in the same dispatch loop. `RET` writes
   the result into the caller's destination register and pops. Entry frames

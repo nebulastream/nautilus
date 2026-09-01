@@ -12,7 +12,7 @@ add_source_files(nautilus
         ConstFloatOperation.cpp
         FunctionOperation.cpp
         IfOperation.cpp
-        ProxyCallOperation.cpp
+        CallOperation.cpp
         IndirectCallOperation.cpp
         FunctionAddressOfOperation.cpp
         ReturnOperation.cpp

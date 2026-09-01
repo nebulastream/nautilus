@@ -999,7 +999,7 @@ private:
 		return CapturedExceptionTransport::captureThunkFor(call);
 	}
 
-	void visitProxyCall(ir::ProxyCallOperation* opt, int block, RegisterFrame& frame) {
+	void visitCall(ir::CallOperation* opt, int block, RegisterFrame& frame) {
 		auto site = buildCallSite(opt->getInputArguments(), opt->getStamp(), frame);
 
 		uint16_t dst = kNoReg;
@@ -1010,8 +1010,8 @@ private:
 
 		// Calls to functions in the same module run interpreter-native: no FFI,
 		// just a frame push in the shared dispatch loop.
-		const auto it = program.functionIndex.find(opt->getFunctionName());
-		if (it != program.functionIndex.end()) {
+		const auto it = program.functionSlotById.find(opt->getCalleeId());
+		if (it != program.functionSlotById.end()) {
 			site.internalFnIdx = it->second;
 			const auto siteIdx = addCallSite(std::move(site));
 			emit(block, Op::CALL, dst, static_cast<uint16_t>(it->second), siteIdx);
@@ -1034,6 +1034,9 @@ private:
 			emitCheckPending(opt, block);
 			return;
 		}
+		// A miss is now genuinely external -- the predicate above is keyed on
+		// identity, not on a name that could fail to match an in-module
+		// function -- so the stored pointer really is a code address.
 		site.target = opt->getFunctionPtr();
 		const auto siteIdx = addCallSite(std::move(site));
 		emit(block, Op::CALL_EXT, dst, siteIdx);
@@ -1073,8 +1076,8 @@ private:
 		// usable both by CALL_IND and by external code (no runtime code
 		// generation involved — iOS-safe).
 		uint64_t value;
-		const auto it = program.functionIndex.find(opt->getFunctionName());
-		if (it != program.functionIndex.end()) {
+		const auto it = program.functionSlotById.find(opt->getCalleeId());
+		if (it != program.functionSlotById.end()) {
 			value = reinterpret_cast<uint64_t>(acquireTrampoline(&program, it->second));
 		} else {
 			value = reinterpret_cast<uint64_t>(opt->getFunctionPtr());

@@ -54,7 +54,7 @@ private:
  * ternary. The span is assigned once in the constructor and then only
  * the individual `Operation*` slots are mutated (by `setLeftInput` and
  * friends). Only `BasicBlockInvocation` (which grows via `addArgument`)
- * and `ProxyCallOperation::setInputArguments` ever re-seat the span
+ * and `CallOperation::setInputArguments` ever re-seat the span
  * itself; they do so by re-assigning the protected `inputs` member to
  * a span over a freshly allocated arena buffer.
  *
@@ -91,7 +91,7 @@ public:
 		MLIR_YIELD,
 		NegateOp,
 		OrOp,
-		ProxyCallOp,
+		CallOp,
 		IndirectCallOp,
 		ReturnOp,
 		SelectOp,
@@ -192,7 +192,7 @@ protected:
 	/// View into the arena-allocated inputs buffer. Fixed-arity ops leave
 	/// this span untouched after construction and only mutate the pointers
 	/// it refers to; the two re-sizing ops (BasicBlockInvocation,
-	/// ProxyCallOperation::setInputArguments) re-seat it onto a fresh
+	/// CallOperation::setInputArguments) re-seat it onto a fresh
 	/// arena buffer.
 	std::span<Operation*> inputs;
 	/// Back-pointer into the tag trie owned by the tracing arena: the call

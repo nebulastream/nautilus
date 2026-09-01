@@ -11,8 +11,8 @@ class CompilableFunction {
 
 public:
 	CompilableFunction(std::string_view name, wrapper_function function,
-	                   std::unordered_map<std::string, std::string> attributes = {})
-	    : name(name), function(function), attributes(std::move(attributes)) {
+	                   std::unordered_map<std::string, std::string> attributes = {}, const void* definition = nullptr)
+	    : name(name), function(function), attributes(std::move(attributes)), definition(definition) {
 	}
 
 	const std::string& getName() const {
@@ -28,10 +28,22 @@ public:
 		return attributes;
 	}
 
+	/// Identity of the NautilusFunctionDefinition this function was traced
+	/// from, or nullptr for the entry function (which nobody calls).
+	///
+	/// The function table binds a traced body to the id minted at its call
+	/// sites through this pointer. Binding by name instead would reintroduce
+	/// the aliasing bug the table removes: two distinct NautilusFunctions may
+	/// share a name.
+	const void* getDefinition() const {
+		return definition;
+	}
+
 private:
 	std::string name;
 	wrapper_function function;
 	std::unordered_map<std::string, std::string> attributes;
+	const void* definition = nullptr;
 };
 
 } // namespace nautilus::compiler

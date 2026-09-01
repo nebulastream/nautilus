@@ -17,13 +17,13 @@ Block_3($2:ptr, $15:i32, $1:i32):
 
 Block_1($2:ptr, $1:i32, $15:i32):
 	$19 = 1 :i32
-	func_*($2,$19) :void
+	incrementFieldA($2,$19) :void
 	$21 = 1 :i32
 	$22 = $15 + $21 :i32
 	br Block_3($2, $22, $1) :void
 
 Block_2($2:ptr):
-	$25 = func_*($2) :i32
+	$25 = readFieldA($2) :i32
 	return ($25) :i32
 }
 incrementFieldA($1:ptr, $2:i32) :void {

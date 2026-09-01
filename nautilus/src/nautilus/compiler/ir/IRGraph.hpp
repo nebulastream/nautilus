@@ -3,6 +3,7 @@
 
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/FunctionTable.hpp"
 #include <memory>
 #include <string>
 #include <string_view>
@@ -60,6 +61,47 @@ public:
 	FunctionOperation* addFunctionOperation(FunctionOperation* functionOperation);
 
 	/**
+	 * @brief Interns a callee, or returns the id it already has.
+	 *
+	 * Keyed on identity -- a code address for a native callee, the
+	 * NautilusFunctionDefinition pointer for an internal one -- never on a
+	 * name. This is the single place the "which kind of callee is this?"
+	 * question is answered; nothing downstream asks again.
+	 */
+	FunctionId internCallee(const CalleeDescriptor& descriptor);
+
+	/**
+	 * @brief Binds a traced body to an internal target minted earlier.
+	 *
+	 * A call to a NautilusFunction is traced before that function's own body
+	 * is, so the id exists before the FunctionOperation does. This closes
+	 * that window.
+	 */
+	void defineFunction(FunctionId id, FunctionOperation* functionOperation);
+
+	[[nodiscard]] const FunctionTable& getFunctionTable() const {
+		return functionTable;
+	}
+	[[nodiscard]] FunctionTable& getFunctionTableMut() {
+		return functionTable;
+	}
+
+	/// Convenience accessor for the common case of resolving a call's target.
+	[[nodiscard]] const FunctionTarget& getFunctionTarget(FunctionId id) const {
+		return functionTable.get(id);
+	}
+
+	/**
+	 * @brief The identifier a backend should emit @p functionOperation under.
+	 *
+	 * Always a valid identifier and unique across the module, unlike the
+	 * function's own name -- which is whatever a user chose, or a demangled
+	 * C++ signature. Definitions and their call sites both resolve through
+	 * here, so they cannot disagree.
+	 */
+	[[nodiscard]] const std::string& getEmissionName(const FunctionOperation* functionOperation) const;
+
+	/**
 	 * @brief Gets all function operations in the IR graph
 	 * @return Vector of function operations
 	 */
@@ -88,6 +130,7 @@ public:
 private:
 	common::ArenaPool::Handle arena_;
 	std::vector<FunctionOperation*> functionOperations;
+	FunctionTable functionTable;
 	// Name -> function pointer. The string_view is backed by the name field
 	// owned by FunctionOperation, which is stable for the lifetime of the
 	// graph (the FunctionOperation itself lives in the arena).

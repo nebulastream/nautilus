@@ -1,7 +1,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include <unordered_map>
 
 namespace nautilus::compiler::ir {
@@ -13,7 +13,7 @@ namespace {
 /// name (shouldn't happen for a well-formed module, but a missing target is
 /// treated the same as "unknown" -- conservatively throwing -- rather than
 /// asserting).
-const FunctionOperation* resolveCallee(const IRGraph& ir, const ProxyCallOperation& call) {
+const FunctionOperation* resolveCallee(const IRGraph& ir, const CallOperation& call) {
 	return ir.getFunctionOperation(call.getFunctionName());
 }
 
@@ -44,7 +44,7 @@ bool computeCanThrow(const FunctionOperation& fn, const IRGraph& ir,
                      const std::unordered_map<const FunctionOperation*, bool>& canThrow) {
 	for (const auto* block : fn.getBasicBlocks()) {
 		for (const auto* op : block->getOperations()) {
-			if (const auto* proxy = dyn_cast<ProxyCallOperation>(op)) {
+			if (const auto* proxy = dyn_cast<CallOperation>(op)) {
 				if (!isPotentiallyThrowing(*proxy)) {
 					continue;
 				}
@@ -105,7 +105,7 @@ bool NoThrowInferencePass::apply(IRGraph& ir) {
 		}
 		for (auto* block : fn->getBasicBlocks()) {
 			for (auto* op : block->getOperations()) {
-				auto* proxy = dyn_cast<ProxyCallOperation>(op);
+				auto* proxy = dyn_cast<CallOperation>(op);
 				if (proxy == nullptr || !proxy->isNautilusFunctionCall() || !isPotentiallyThrowing(*proxy)) {
 					continue;
 				}

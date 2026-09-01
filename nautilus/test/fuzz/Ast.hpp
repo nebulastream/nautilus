@@ -62,7 +62,7 @@ enum class Kind : uint8_t {
 	// its first value-domain kid, mirroring how Kind::Store evaluates to the
 	// value it wrote), and a pointer argument with an observable side
 	// effect. The native oracle calls the identical instantiation directly,
-	// so the differential surface is exactly the backend's ProxyCall
+	// so the differential surface is exactly the backend's Call
 	// lowering: argument count/type marshalling, narrow-integer ABI
 	// extension, float register passing, void-return handling, and pointer
 	// argument marshalling.

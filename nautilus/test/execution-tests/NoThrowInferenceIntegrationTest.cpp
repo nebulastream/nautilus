@@ -6,7 +6,7 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/nautilus_function.hpp"
@@ -22,7 +22,7 @@
 // tracing pipeline, rather than the hand-built graphs in
 // ir-pass-tests/NoThrowInferenceTest.cpp. This is what pins the parts the
 // synthetic tests cannot reach: that `FunctionCall::isNautilusCall` actually
-// survives tracing into `ProxyCallOperation`, and that a call's recorded
+// survives tracing into `CallOperation`, and that a call's recorded
 // function name really does resolve to the callee's FunctionOperation in the
 // same module.
 namespace nautilus::engine {
@@ -83,7 +83,7 @@ CallCounts countCalls(const compiler::ir::IRGraph& ir) {
 		}
 		for (const auto* block : fn->getBasicBlocks()) {
 			for (const auto* op : block->getOperations()) {
-				const auto* proxy = compiler::ir::dyn_cast<compiler::ir::ProxyCallOperation>(op);
+				const auto* proxy = compiler::ir::dyn_cast<compiler::ir::CallOperation>(op);
 				if (proxy == nullptr || !proxy->isNautilusFunctionCall()) {
 					continue;
 				}

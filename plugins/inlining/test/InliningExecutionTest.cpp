@@ -40,7 +40,7 @@ TEST_CASE("Inlining plugin installs backend hooks", "[inlining][smoke]") {
 	const auto& hooks = nautilus::compiler::mlir::getLLVMBackendHooks();
 	REQUIRE(static_cast<bool>(hooks.preOptModuleTransform));
 	REQUIRE(static_cast<bool>(hooks.jitSymbolContributor));
-	REQUIRE(static_cast<bool>(hooks.proxyCallNameOverride));
+	REQUIRE(static_cast<bool>(hooks.callNameOverride));
 }
 
 TEST_CASE("InlineFunctionRegistry contains annotated helpers", "[inlining][smoke]") {
@@ -145,20 +145,20 @@ TEST_CASE("Inlined Function Call Test") {
 // Additional coverage tests added in the plugin hardening pass.
 // --------------------------------------------------------------------------
 
-// The `proxyCallNameOverride` hook installed by the inlining plugin must
+// The `callNameOverride` hook installed by the inlining plugin must
 // produce a distinct, hex-formatted name per input pointer, and must return
 // nullopt for pointers whose bitcode isn't registered. This is the contract
 // the MLIR backend relies on when deciding whether to route a call through
 // the JIT-time inliner.
-TEST_CASE("proxyCallNameOverride hook returns stable hex names", "[inlining][unit]") {
+TEST_CASE("callNameOverride hook returns stable hex names", "[inlining][unit]") {
 	const auto& hooks = nautilus::compiler::mlir::getLLVMBackendHooks();
-	REQUIRE(static_cast<bool>(hooks.proxyCallNameOverride));
+	REQUIRE(static_cast<bool>(hooks.callNameOverride));
 
 	// An on-stack object cannot be a registered function pointer, so the
 	// hook must decline to rename it.
 	int localStackObject = 0;
 	void* unknownPtr = reinterpret_cast<void*>(&localStackObject);
-	REQUIRE_FALSE(hooks.proxyCallNameOverride(unknownPtr).has_value());
+	REQUIRE_FALSE(hooks.callNameOverride(unknownPtr).has_value());
 
 #if NAUTILUS_INLINING_EXPECTED_ACTIVE
 	// For a registered helper the hook must return a stable, non-empty
@@ -166,16 +166,16 @@ TEST_CASE("proxyCallNameOverride hook returns stable hex names", "[inlining][uni
 	// name is deterministic for the same pointer — format drift between
 	// call sites would break JIT inlining silently).
 	void* addAddr = reinterpret_cast<void*>(&add);
-	auto overriddenAdd = hooks.proxyCallNameOverride(addAddr);
+	auto overriddenAdd = hooks.callNameOverride(addAddr);
 	REQUIRE(overriddenAdd.has_value());
 	REQUIRE(!overriddenAdd->empty());
 	REQUIRE(overriddenAdd->rfind("0x", 0) == 0); // starts with "0x"
-	REQUIRE(*overriddenAdd == *hooks.proxyCallNameOverride(addAddr));
+	REQUIRE(*overriddenAdd == *hooks.callNameOverride(addAddr));
 
 	// Distinct registered functions must yield distinct names (address
 	// uniqueness must survive the hex encoding).
 	void* subAddr = reinterpret_cast<void*>(&sub);
-	auto overriddenSub = hooks.proxyCallNameOverride(subAddr);
+	auto overriddenSub = hooks.callNameOverride(subAddr);
 	REQUIRE(overriddenSub.has_value());
 	REQUIRE(*overriddenAdd != *overriddenSub);
 #endif

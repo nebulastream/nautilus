@@ -23,6 +23,17 @@ struct TraceFunctionDefinition {
 	std::string name;
 	std::unique_ptr<ExecutionTrace> trace;
 	std::unordered_map<std::string, std::string> attributes;
+	/// Every identity that denotes this body. Usually one: the
+	/// NautilusFunctionDefinition it was traced from, or nothing at all for a
+	/// module-registered entry function.
+	///
+	/// It can be more than one. A NautilusFunction may share a name with a
+	/// module-registered entry function -- the demo registers `factorial` both
+	/// ways -- and the trace loop then traces the body once and skips the
+	/// duplicate. Both identities still denote that single body, and all of
+	/// them must resolve to one function-table entry, or a call site and the
+	/// definition it targets end up under different names.
+	std::vector<const void*> definitions;
 };
 
 /**
@@ -63,6 +74,11 @@ public:
 	/// Associates generic attributes with a previously added function.
 	void setFunctionAttributes(const std::string& functionName,
 	                           const std::unordered_map<std::string, std::string>& attrs);
+
+	/// Records another identity that denotes @p functionName's body. Ignores
+	/// nullptr (a module-registered entry has no definition object) and
+	/// duplicates.
+	void addFunctionDefinition(const std::string& functionName, const void* definition);
 
 	/// Returns the TraceFunctionDefinition for a function, or nullptr if not found.
 	TraceFunctionDefinition* getFunctionDefinition(const std::string& functionName);

@@ -7,6 +7,7 @@
 #include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
@@ -15,7 +16,6 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
@@ -534,8 +534,13 @@ TEST_CASE("ConstantFolding: proxy call argument is rewired (#327)") {
 	auto* c3 = entry->addOperation<compiler::ir::ConstIntOperation>(OperationIdentifier {2}, int64_t {3}, Type::i32);
 	auto* add = entry->addOperation<compiler::ir::AddOperation>(OperationIdentifier {3}, c5, c3);
 	Operation* callArgs[] = {add};
-	auto* call = entry->addOperation<compiler::ir::ProxyCallOperation>(
-	    OperationIdentifier {4}, std::span<Operation* const> {callArgs, 1}, Type::i32);
+	compiler::ir::CalleeDescriptor callee;
+	callee.key = reinterpret_cast<void*>(0x1000);
+	callee.demangledName = "callConsumer";
+	callee.resultType = Type::i32;
+	callee.paramTypes = {Type::i32};
+	auto* call = entry->addOperation<compiler::ir::CallOperation>(
+	    OperationIdentifier {4}, std::span<Operation* const> {callArgs, 1}, Type::i32, ir->internCallee(callee));
 	entry->addOperation<compiler::ir::ReturnOperation>(call);
 	wrapInGraph(ir, entry);
 

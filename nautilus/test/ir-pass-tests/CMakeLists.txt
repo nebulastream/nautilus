@@ -19,6 +19,8 @@ add_executable(nautilus-ir-pass-tests
         LoopInvariantCodeMotionTest.cpp
         ExceptionRegionPreparationTest.cpp
         NoThrowInferenceTest.cpp
+        FunctionAttributeInferenceTest.cpp
+        IntrinsicLinkageTest.cpp
 )
 
 target_link_libraries(nautilus-ir-pass-tests PRIVATE nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)

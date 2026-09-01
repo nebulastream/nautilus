@@ -30,15 +30,15 @@ B0($1:i32)
 B1()
 	ASSIGN	$30	$2	:ptr
 	ASSIGN	$31	$2	:ptr
-	CALL_WITH_EXCEPTION_HANDLING	$32	func_*($31)	:i32
-	CALL_WITH_EXCEPTION_HANDLING	$33	func_*($30,$32)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$32	sumFields($31)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$33	incrementFieldA($30,$32)	:void
 	CONST	$34	1	:i32
 	ADD	$35	$27	$34	:i32
 	ASSIGN	$27	$35	:i32
 	JMP	$0	B3()	:void
 B2()
 	ASSIGN	$37	$2	:ptr
-	CALL_WITH_EXCEPTION_HANDLING	$38	func_*($37)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$38	readFieldA($37)	:i32
 	RETURN	$0	$38	:i32
 B3() ControlFlowMerge
 	LT	$28	$27	$1	:bool

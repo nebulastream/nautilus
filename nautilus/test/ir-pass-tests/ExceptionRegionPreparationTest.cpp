@@ -4,7 +4,7 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
@@ -24,7 +24,7 @@ using compiler::ir::FunctionOperation;
 using compiler::ir::IRGraph;
 using compiler::ir::Operation;
 using compiler::ir::OperationIdentifier;
-using compiler::ir::ProxyCallOperation;
+using compiler::ir::CallOperation;
 
 struct Fixture {
 	std::shared_ptr<IRGraph> ir;
@@ -49,14 +49,15 @@ void runPass(IRGraph& ir) {
 	mgr.run(ir);
 }
 
-ProxyCallOperation::Destructor makeDestructor(Operation* address) {
+CallOperation::Destructor makeDestructor(Operation* address) {
 	return {address, "dtorSym", "dtorName", nullptr};
 }
 
-ProxyCallOperation* addProxyCall(BasicBlock* block, OperationIdentifier id, FunctionAttributes attrs,
-                                 std::vector<ProxyCallOperation::Destructor> destructors, bool exceptionHandling) {
-	return block->addOperation<ProxyCallOperation>("sym", "name", nullptr, id, std::span<Operation* const> {}, Type::v,
-	                                               attrs, std::move(destructors), exceptionHandling);
+CallOperation* addCall(BasicBlock* block, OperationIdentifier id, FunctionAttributes attrs,
+                       std::vector<CallOperation::Destructor> destructors, bool exceptionHandling) {
+	return block->addOperation<CallOperation>("sym", "name", nullptr, id, std::span<Operation* const> {}, Type::v,
+	                                          attrs, compiler::ir::INVALID_FUNCTION_ID, std::move(destructors),
+	                                          exceptionHandling);
 }
 
 const compiler::ir::FunctionExceptionRegion& regionOf(const FunctionOperation& fn) {
@@ -70,7 +71,7 @@ TEST_CASE("ExceptionRegionPreparation: one alloc, one throwing call -> one pad w
 	Fixture f = makeFixture();
 
 	auto* addr = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {1}, nullptr);
-	auto* call = addProxyCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
+	auto* call = addCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -83,7 +84,7 @@ TEST_CASE("ExceptionRegionPreparation: one alloc, one throwing call -> one pad w
 	REQUIRE(region.callSites[0].call == call);
 	REQUIRE(region.callSites[0].padIndex == 0);
 
-	auto* dtorCall = compiler::ir::dyn_cast<ProxyCallOperation>(region.pads[0].block->getOperations().front());
+	auto* dtorCall = compiler::ir::dyn_cast<CallOperation>(region.pads[0].block->getOperations().front());
 	REQUIRE(dtorCall != nullptr);
 	REQUIRE(dtorCall->getInputArguments().size() == 1);
 	REQUIRE(dtorCall->getInputArguments()[0] == addr);
@@ -97,8 +98,8 @@ TEST_CASE("ExceptionRegionPreparation: two allocs -> pad has destructors in reve
 
 	auto* addrA = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {1}, nullptr);
 	auto* addrB = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {2}, nullptr);
-	std::vector<ProxyCallOperation::Destructor> dtors {makeDestructor(addrA), makeDestructor(addrB)};
-	addProxyCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, std::move(dtors), true);
+	std::vector<CallOperation::Destructor> dtors {makeDestructor(addrA), makeDestructor(addrB)};
+	addCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, std::move(dtors), true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -108,8 +109,8 @@ TEST_CASE("ExceptionRegionPreparation: two allocs -> pad has destructors in reve
 	REQUIRE(region.callSites.size() == 1);
 	auto* pad = region.pads[0].block;
 	REQUIRE(pad->getOperations().size() == 2);
-	auto* first = compiler::ir::dyn_cast<ProxyCallOperation>(pad->getOperations()[0]);
-	auto* second = compiler::ir::dyn_cast<ProxyCallOperation>(pad->getOperations()[1]);
+	auto* first = compiler::ir::dyn_cast<CallOperation>(pad->getOperations()[0]);
+	auto* second = compiler::ir::dyn_cast<CallOperation>(pad->getOperations()[1]);
 	REQUIRE(first != nullptr);
 	REQUIRE(second != nullptr);
 	REQUIRE(first->getInputArguments()[0] == addrB);
@@ -120,8 +121,8 @@ TEST_CASE("ExceptionRegionPreparation: two calls with same dtor set share a pad"
 	Fixture f = makeFixture();
 
 	auto* addr = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {1}, nullptr);
-	auto* call1 = addProxyCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
-	auto* call2 = addProxyCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, {makeDestructor(addr)}, true);
+	auto* call1 = addCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
+	auto* call2 = addCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, {makeDestructor(addr)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -140,8 +141,8 @@ TEST_CASE("ExceptionRegionPreparation: two calls with different dtor sets use di
 
 	auto* addrA = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {1}, nullptr);
 	auto* addrB = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {2}, nullptr);
-	auto* call1 = addProxyCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, {makeDestructor(addrA)}, true);
-	auto* call2 = addProxyCall(f.entry, OperationIdentifier {4}, FunctionAttributes {}, {makeDestructor(addrB)}, true);
+	auto* call1 = addCall(f.entry, OperationIdentifier {3}, FunctionAttributes {}, {makeDestructor(addrA)}, true);
+	auto* call2 = addCall(f.entry, OperationIdentifier {4}, FunctionAttributes {}, {makeDestructor(addrB)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -159,7 +160,7 @@ TEST_CASE("ExceptionRegionPreparation: two calls with different dtor sets use di
 TEST_CASE("ExceptionRegionPreparation: throwing call without destructors maps to a null pad") {
 	Fixture f = makeFixture();
 
-	auto* call = addProxyCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {}, false);
+	auto* call = addCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {}, false);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -176,7 +177,7 @@ TEST_CASE("ExceptionRegionPreparation: noUnwind call is absent from the region")
 
 	FunctionAttributes attrs;
 	attrs.noUnwind = true;
-	addProxyCall(f.entry, OperationIdentifier {2}, attrs, {}, false);
+	addCall(f.entry, OperationIdentifier {2}, attrs, {}, false);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -192,9 +193,10 @@ TEST_CASE("ExceptionRegionPreparation: a call not in the CFG is absent from the 
 
 	// Arena-allocated but never added to any basic block: unreachable.
 	auto* addr = arena.create<compiler::ir::ConstPtrOperation>(arena, OperationIdentifier {99}, nullptr);
-	arena.create<ProxyCallOperation>(arena, "sym", "name", nullptr, OperationIdentifier {100},
-	                                 std::span<Operation* const> {}, Type::v, FunctionAttributes {},
-	                                 std::vector<ProxyCallOperation::Destructor> {makeDestructor(addr)}, true);
+	arena.create<CallOperation>(arena, "sym", "name", nullptr, OperationIdentifier {100},
+	                            std::span<Operation* const> {}, Type::v, FunctionAttributes {},
+	                            compiler::ir::INVALID_FUNCTION_ID,
+	                            std::vector<CallOperation::Destructor> {makeDestructor(addr)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -219,7 +221,7 @@ TEST_CASE("ExceptionRegionPreparation: pad identifiers do not collide with main-
 	Fixture f = makeFixture();
 
 	auto* addr = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {7}, nullptr);
-	addProxyCall(f.entry, OperationIdentifier {8}, FunctionAttributes {}, {makeDestructor(addr)}, true);
+	addCall(f.entry, OperationIdentifier {8}, FunctionAttributes {}, {makeDestructor(addr)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -249,7 +251,7 @@ TEST_CASE("ExceptionRegionPreparation: is idempotent") {
 	Fixture f = makeFixture();
 
 	auto* addr = f.entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {1}, nullptr);
-	addProxyCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
+	addCall(f.entry, OperationIdentifier {2}, FunctionAttributes {}, {makeDestructor(addr)}, true);
 	f.entry->addOperation<compiler::ir::ReturnOperation>();
 
 	runPass(*f.ir);
@@ -285,7 +287,7 @@ TEST_CASE("ExceptionRegionPreparation: indirect call with a destructor is collec
 	REQUIRE(region.callSites.size() == 1);
 	REQUIRE(region.callSites[0].call == call);
 	REQUIRE(region.callSites[0].padIndex == 0);
-	auto* dtorCall = compiler::ir::dyn_cast<ProxyCallOperation>(region.pads[0].block->getOperations().front());
+	auto* dtorCall = compiler::ir::dyn_cast<CallOperation>(region.pads[0].block->getOperations().front());
 	REQUIRE(dtorCall != nullptr);
 	REQUIRE(dtorCall->getInputArguments()[0] == addr);
 }

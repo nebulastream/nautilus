@@ -12,7 +12,7 @@ Block_1($1:i32):
 	$12 = $9 * $11 :ui64
 	$13 = $5 + $12 :ptr
 	store($1, $13) :void
-	$20 = func_*($5) :i32
+	$20 = readFieldA($5) :i32
 	br Block_3($20) :void
 
 Block_3($20:i32):

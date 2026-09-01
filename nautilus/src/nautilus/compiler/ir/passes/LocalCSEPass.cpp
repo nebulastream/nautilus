@@ -1,7 +1,9 @@
 
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
+#include "nautilus/compiler/ir/OperationEffects.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/BinaryCompOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
@@ -26,9 +28,12 @@ using OpType = Operation::OperationType;
 /// duplication is already handled by constant folding + DCE, so the loss is
 /// small; deduping the *computed* redundancy (address arithmetic, compares,
 /// casts, ...) is where the payoff and the safety both are.
-bool isCseCandidate(const Operation* op) {
+bool isCseCandidate(const IRGraph& ir, const Operation* op) {
 	const auto type = op->getOperationType();
-	return isPureOp(type) && !isConstantOp(type);
+	// Purity is asked per operation rather than per opcode, so a call whose
+	// callee is known to touch no memory and to return is eligible. For every
+	// other opcode this is exactly what isPureOp(type) said.
+	return isPureOperation(ir, *op) && !isConstantOp(type);
 }
 
 /// Commutative operations may match regardless of operand order; their key
@@ -56,7 +61,10 @@ bool isCommutative(const Operation* op) {
 /// also agree on to be the same value: a compare's direction or a
 /// shift/bitwise op's kind. (A cast's target is its result stamp, already part
 /// of the key.) Structural equality of opType + stamp + operands is otherwise
-/// enough.
+/// enough -- except for a call, where the same argument values passed to two
+/// *different* callees are not the same value at all. The callee's table id is
+/// exactly the discriminator this key is missing: two calls only collide here
+/// when they are calls to the same function.
 int64_t payloadOf(const Operation* op) {
 	switch (op->getOperationType()) {
 	case OpType::CompareOp:
@@ -65,6 +73,8 @@ int64_t payloadOf(const Operation* op) {
 		return cast<BinaryCompOperation>(op)->getType();
 	case OpType::ShiftOp:
 		return cast<ShiftOperation>(op)->getType();
+	case OpType::CallOp:
+		return static_cast<int64_t>(cast<CallOperation>(op)->getCalleeId());
 	default:
 		return 0;
 	}
@@ -108,8 +118,8 @@ ValueKey makeKey(Operation* op) {
 	return key;
 }
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
+	FunctionRewriter rewriter(fn, arena, &ir);
 	bool changed = false;
 
 	for (auto* block : fn.getBasicBlocks()) {
@@ -119,7 +129,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 		for (auto* op : ops) {
 			// An earlier duplicate's erase may already have removed this op (it
 			// is then untracked); and only computed pure ops are numbered.
-			if (rewriter.definingBlock(op) == nullptr || !isCseCandidate(op)) {
+			if (rewriter.definingBlock(op) == nullptr || !isCseCandidate(ir, op)) {
 				continue;
 			}
 			auto [it, inserted] = table.try_emplace(makeKey(op), op);
@@ -150,7 +160,7 @@ bool LocalCSEPass::apply(IRGraph& ir) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(ir, *fn, arena);
 		}
 	}
 	return changed;

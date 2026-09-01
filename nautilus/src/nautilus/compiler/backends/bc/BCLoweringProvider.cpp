@@ -43,23 +43,24 @@ BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph
       usageCounts(), functionArgs() {
 }
 
-BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir,
-                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs)
+BCLoweringProvider::LoweringContext::LoweringContext(
+    std::shared_ptr<ir::IRGraph> ir, const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
       targetFunctionName("execute"), loweringOptions(), registerProvider(), activeBlocks(), usageCounts(),
       functionArgs() {
 }
 
-BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
-                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs)
+BCLoweringProvider::LoweringContext::LoweringContext(
+    std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
+    const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
       targetFunctionName(std::move(targetFunctionName)), loweringOptions(), registerProvider(), activeBlocks(),
       usageCounts(), functionArgs() {
 }
 
-BCLoweringProvider::LoweringContext::LoweringContext(std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
-                                                     const std::unordered_map<std::string, void*>& internalFunctionPtrs,
-                                                     LoweringOptions options)
+BCLoweringProvider::LoweringContext::LoweringContext(
+    std::shared_ptr<ir::IRGraph> ir, std::string targetFunctionName,
+    const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs, LoweringOptions options)
     : program(), defaultRegisterFile(), ir(std::move(ir)), internalFunctionPtrs(internalFunctionPtrs),
       targetFunctionName(std::move(targetFunctionName)), loweringOptions(options), registerProvider(), activeBlocks(),
       usageCounts(), functionArgs() {
@@ -72,7 +73,7 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::lower(std::shared_ptr<ir::IRG
 
 std::tuple<Code, RegisterFile>
 BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir,
-                          const std::unordered_map<std::string, void*>& internalFunctionPtrs) {
+                          const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs) {
 	auto ctx = LoweringContext(ir, internalFunctionPtrs);
 	return ctx.process();
 }
@@ -85,14 +86,15 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::lowerFunction(std::shared_ptr
 
 std::tuple<Code, RegisterFile>
 BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
-                          const std::unordered_map<std::string, void*>& internalFunctionPtrs) {
+                          const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs) {
 	auto ctx = LoweringContext(std::move(ir), std::string(functionName), internalFunctionPtrs);
 	return ctx.process();
 }
 
 std::tuple<Code, RegisterFile>
 BCLoweringProvider::lower(std::shared_ptr<ir::IRGraph> ir, const std::string& functionName,
-                          const std::unordered_map<std::string, void*>& internalFunctionPtrs, LoweringOptions options) {
+                          const std::unordered_map<ir::FunctionId, void*>& internalFunctionPtrs,
+                          LoweringOptions options) {
 	auto ctx = LoweringContext(std::move(ir), std::string(functionName), internalFunctionPtrs, options);
 	return ctx.process();
 }
@@ -208,7 +210,7 @@ std::tuple<Code, RegisterFile> BCLoweringProvider::LoweringContext::process() {
 		const short mainBlockCount = static_cast<short>(program.blocks.size());
 		const short exceptionalExitBlock = static_cast<short>(mainBlockCount + pads.size());
 
-		// Pad blocks contain only destructor ProxyCallOperations; lower them as
+		// Pad blocks contain only destructor CallOperations; lower them as
 		// plain BC blocks terminated by a jump to the exceptional exit block.
 		std::vector<short> padBlockIndices;
 		padBlockIndices.reserve(pads.size());
@@ -1509,8 +1511,7 @@ void BCLoweringProvider::LoweringContext::visitReturn(ir::ReturnOperation* retur
 	}
 }
 
-void BCLoweringProvider::LoweringContext::visitProxyCall(ir::ProxyCallOperation* opt, short block,
-                                                         RegisterFrame& frame) {
+void BCLoweringProvider::LoweringContext::visitCall(ir::CallOperation* opt, short block, RegisterFrame& frame) {
 	// create a dynamic call using dyncall.h
 	processDynamicCall(opt, block, frame);
 	emitCheckPendingException(opt, block);
@@ -1673,7 +1674,7 @@ void BCLoweringProvider::LoweringContext::emitCheckPendingException(const ir::Op
 	codeBlock.hasPendingCheck = true;
 }
 
-void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperation* opt, short block,
+void BCLoweringProvider::LoweringContext::processDynamicCall(ir::CallOperation* opt, short block,
                                                              RegisterFrame& frame) {
 	auto& code = program.blocks[block].code;
 	auto arguments = opt->getInputArguments();
@@ -1687,7 +1688,7 @@ void BCLoweringProvider::LoweringContext::processDynamicCall(ir::ProxyCallOperat
 	auto funcInfoRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(funcInfoRegister);
 	// For internal NautilusFunction calls, use the pre-compiled callback pointer
-	auto it = internalFunctionPtrs.find(opt->getFunctionName());
+	auto it = internalFunctionPtrs.find(opt->getCalleeId());
 	if (it != internalFunctionPtrs.end()) {
 		defaultRegisterFile[funcInfoRegister] = (int64_t) it->second;
 	} else {
@@ -2466,7 +2467,7 @@ void BCLoweringProvider::LoweringContext::visitFunctionAddressOf(ir::FunctionAdd
 	auto defaultRegister = registerProvider.allocPinnedRegister();
 	allocateRegister(defaultRegister);
 	// For internal NautilusFunction calls, use the pre-compiled callback pointer
-	auto it = internalFunctionPtrs.find(funcAddrOp->getFunctionName());
+	auto it = internalFunctionPtrs.find(funcAddrOp->getCalleeId());
 	if (it != internalFunctionPtrs.end()) {
 		defaultRegisterFile[defaultRegister] = (int64_t) it->second;
 	} else {

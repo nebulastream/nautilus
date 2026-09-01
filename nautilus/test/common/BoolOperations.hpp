@@ -132,7 +132,7 @@ val<bool> boolProbabilityTest(val<bool> x) {
 // --- Regression tests for bc backend register-slot zero-extension ---
 //
 // These exercise the case where a `bool` value is produced by a runtime
-// `invoke()` (a ProxyCall in the IR) and then returned from the JIT'd
+// `invoke()` (a Call in the IR) and then returned from the JIT'd
 // function. On the bc backend the bool value is written into a 64-bit
 // register slot. If only the low byte is written, stale upper bytes from
 // previous register use leak through the int64_t function-return path

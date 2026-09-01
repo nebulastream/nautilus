@@ -109,7 +109,7 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 		gpu::RegisterFrame rootFrame;
 		const auto& functionBasicBlock = func.getFunctionBasicBlock();
 
-		bool isKernel = kernelFunctions.contains(func.getName());
+		bool isKernel = isKernelFunction(&func);
 		std::vector<std::string> arguments;
 		for (auto i = 0ull; i < functionBasicBlock.getArguments().size(); i++) {
 			auto argument = functionBasicBlock.getArguments()[i];
@@ -197,14 +197,14 @@ MetalLoweringProvider::DeviceContext::Code MetalLoweringProvider::DeviceContext:
 
 	// Emit non-root functions that are kernels (use device intrinsics)
 	for (size_t i = 1; i < functionOperations.size(); i++) {
-		if (kernelFunctions.contains(functionOperations[i]->getName())) {
+		if (isKernelFunction(functionOperations[i])) {
 			emitFunction(*functionOperations[i]);
 		}
 	}
 	// Emit root only if it's a kernel
 	if (!functionOperations.empty()) {
 		const auto& rootFunc = *functionOperations[0];
-		if (kernelFunctions.contains(rootFunc.getName())) {
+		if (isKernelFunction(&rootFunc)) {
 			emitFunction(rootFunc);
 		}
 	}
@@ -220,15 +220,15 @@ void MetalLoweringProvider::DeviceContext::processOperation(ir::Operation* opt, 
 void MetalLoweringProvider::DeviceContext::processGPUOperation(ir::Operation* opt, short blockIndex,
                                                                gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
-	if (opt->getOperationType() == OT::ProxyCallOp) {
-		processProxyCall(ir::as<ir::ProxyCallOperation>(opt), blockIndex, frame);
+	if (opt->getOperationType() == OT::CallOp) {
+		processCall(ir::as<ir::CallOperation>(opt), blockIndex, frame);
 		return;
 	}
 	throw NotImplementedException("Operation is not implemented for Metal device backend");
 }
 
-void MetalLoweringProvider::DeviceContext::processProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
-                                                            gpu::RegisterFrame& frame) {
+void MetalLoweringProvider::DeviceContext::processCall(ir::CallOperation* opt, short blockIndex,
+                                                       gpu::RegisterFrame& frame) {
 	auto it = gpuIntrinsics.find(opt->getFunctionPtr());
 	if (it != gpuIntrinsics.end()) {
 		if (it->second(opt, blockIndex, frame, blockArguments, blocks, getVariable)) {
@@ -236,8 +236,8 @@ void MetalLoweringProvider::DeviceContext::processProxyCall(ir::ProxyCallOperati
 		}
 	}
 	// Internal function call (device helper)
-	bool isInternalFunction = ir->getFunctionOperation(opt->getFunctionName()) != nullptr;
-	if (isInternalFunction) {
+	const auto& target = ir->getFunctionTarget(opt->getCalleeId());
+	if (target.getLinkage() == ir::Linkage::Internal) {
 		std::stringstream args;
 		for (size_t i = 0; i < opt->getInputArguments().size(); i++) {
 			if (i != 0)
@@ -252,11 +252,11 @@ void MetalLoweringProvider::DeviceContext::processProxyCall(ir::ProxyCallOperati
 			}
 			blocks[blockIndex] << resultVar << " = ";
 		}
-		blocks[blockIndex] << opt->getFunctionName() << "(" << args.str() << ");\n";
+		blocks[blockIndex] << target.getName().forEmission() << "(" << args.str() << ");\n";
 		return;
 	}
 	throw NotImplementedException("External function calls are not supported in Metal kernels: " +
-	                              opt->getFunctionName());
+	                              target.getName().get());
 }
 
 // ============================================================================
@@ -384,15 +384,15 @@ void MetalLoweringProvider::HostContext::processOperation(ir::Operation* opt, sh
 void MetalLoweringProvider::HostContext::processGPUOperation(ir::Operation* opt, short blockIndex,
                                                              gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
-	if (opt->getOperationType() == OT::ProxyCallOp) {
-		processProxyCall(ir::as<ir::ProxyCallOperation>(opt), blockIndex, frame);
+	if (opt->getOperationType() == OT::CallOp) {
+		processCall(ir::as<ir::CallOperation>(opt), blockIndex, frame);
 		return;
 	}
 	throw NotImplementedException("Operation is not implemented for Metal host backend");
 }
 
-void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
-                                                          gpu::RegisterFrame& frame) {
+void MetalLoweringProvider::HostContext::processCall(ir::CallOperation* opt, short blockIndex,
+                                                     gpu::RegisterFrame& frame) {
 	// Check launch config intrinsics (setGrid/setBlock)
 	auto it = gpuIntrinsics.find(opt->getFunctionPtr());
 	if (it != gpuIntrinsics.end()) {
@@ -409,12 +409,14 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 		args << frame.getValue(opt->getInputArguments()[i]->getIdentifier());
 	}
 
-	bool isInternalFunction = ir->getFunctionOperation(opt->getFunctionName()) != nullptr;
-	bool isKernelCall = isInternalFunction && kernelFunctions.contains(opt->getFunctionName());
+	const auto& target = ir->getFunctionTarget(opt->getCalleeId());
+	const bool isInternalFunction = target.getLinkage() == ir::Linkage::Internal;
+	const auto& emissionName = target.getName().forEmission();
+	const bool isKernelCall = isInternalFunction && isKernelTarget(opt->getCalleeId());
 
 	if (isKernelCall) {
 		// Emit Metal API kernel dispatch
-		auto kernelName = opt->getFunctionName();
+		auto kernelName = emissionName;
 		auto argList = opt->getInputArguments();
 
 		blocks[blockIndex] << "// Metal kernel dispatch: " << kernelName << "\n";
@@ -487,7 +489,7 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 			}
 			blocks[blockIndex] << resultVar << " = ";
 		}
-		blocks[blockIndex] << opt->getFunctionName() << "(" << args.str() << ");\n";
+		blocks[blockIndex] << emissionName << "(" << args.str() << ");\n";
 		return;
 	}
 
@@ -499,10 +501,10 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 			argTypes << ",";
 		argTypes << getType(opt->getInputArguments()[i]->getStamp());
 	}
-	if (!functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto f_" << opt->getFunctionSymbol() << " = (" << returnTypeStr << "(*)(" << argTypes.str()
-		          << "))" << opt->getFunctionPtr() << ";\n";
-		functionNames.emplace(opt->getFunctionSymbol());
+	if (!functionNames.contains(emissionName)) {
+		functions << "auto f_" << emissionName << " = (" << returnTypeStr << "(*)(" << argTypes.str() << "))"
+		          << target.getAddress() << ";\n";
+		functionNames.emplace(emissionName);
 	}
 	if (opt->getStamp() != Type::v) {
 		auto resultVar = getVariable(opt->getIdentifier());
@@ -512,7 +514,7 @@ void MetalLoweringProvider::HostContext::processProxyCall(ir::ProxyCallOperation
 		}
 		blocks[blockIndex] << resultVar << " = ";
 	}
-	blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+	blocks[blockIndex] << "f_" << emissionName << "(" << args.str() << ");\n";
 }
 
 } // namespace nautilus::compiler::metal

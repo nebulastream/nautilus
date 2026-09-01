@@ -3,11 +3,11 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
@@ -151,18 +151,22 @@ TEST_CASE("DeadCodeElimination: unused Store is not removed") {
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ConstIntOp) == 1);
 }
 
-TEST_CASE("DeadCodeElimination: unused ProxyCall is not removed") {
+TEST_CASE("DeadCodeElimination: unused Call is not removed") {
 	auto ir = std::make_shared<IRGraph>("dce-call");
 	auto& arena = ir->getArena();
 	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
-	entry->addOperation<compiler::ir::ProxyCallOperation>(OperationIdentifier {1},
-	                                                      std::span<compiler::ir::Operation* const> {}, Type::v);
+	compiler::ir::CalleeDescriptor callee;
+	callee.key = reinterpret_cast<void*>(0x1000);
+	callee.demangledName = "sideEffectingCall";
+	callee.resultType = Type::v;
+	entry->addOperation<compiler::ir::CallOperation>(
+	    OperationIdentifier {1}, std::span<compiler::ir::Operation* const> {}, Type::v, ir->internCallee(callee));
 	entry->addOperation<compiler::ir::ReturnOperation>();
 	wrapInGraph(ir, entry, Type::v);
 
 	runPass(*ir);
 
-	REQUIRE(countOpsOfType(*ir, Operation::OperationType::ProxyCallOp) == 1);
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CallOp) == 1);
 }
 
 TEST_CASE("DeadCodeElimination: a pure op used only as an invocation argument is not removed") {
@@ -203,6 +207,43 @@ TEST_CASE("DeadCodeElimination: idempotent on an already-clean graph") {
 
 	auto result = compiler::ir::IRVerifier::verify(*ir);
 	REQUIRE(result.ok());
+}
+
+TEST_CASE("DeadCodeElimination: an unused call to a provably effect-free callee is removed") {
+	// The counterpart to "unused Call is not removed": identical shape,
+	// but the callee declares that it touches no memory, always returns and
+	// never unwinds. Nothing observable is lost by dropping it.
+	//
+	// This is the case the per-opcode flag table could never express -- it
+	// marks *both* call opcodes MayReadMem|MayWriteMem, so no attribute on any
+	// callee could make a call removable until effects became a per-operation
+	// question.
+	auto ir = std::make_shared<IRGraph>("dce-pure-call");
+	auto& arena = ir->getArena();
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+
+	compiler::ir::CalleeDescriptor callee;
+	callee.key = reinterpret_cast<void*>(0x2000);
+	callee.demangledName = "effectFreeCall";
+	callee.resultType = Type::i32;
+	callee.attrs.modRefInfo = ModRefInfo::NoModRef;
+	callee.attrs.willReturn = true;
+	callee.attrs.noUnwind = true;
+
+	FunctionAttributes callSiteAttrs;
+	callSiteAttrs.modRefInfo = ModRefInfo::NoModRef;
+	callSiteAttrs.willReturn = true;
+	callSiteAttrs.noUnwind = true;
+
+	entry->addOperation<compiler::ir::CallOperation>(
+	    "effectFreeCall", "effectFreeCall", reinterpret_cast<void*>(0x2000), OperationIdentifier {1},
+	    std::span<compiler::ir::Operation* const> {}, Type::i32, callSiteAttrs, ir->internCallee(callee));
+	entry->addOperation<compiler::ir::ReturnOperation>();
+	wrapInGraph(ir, entry, Type::v);
+
+	runPass(*ir);
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CallOp) == 0);
 }
 
 } // namespace nautilus::testing
