@@ -4,7 +4,7 @@
 
 // Extern "C" GPU runtime function declarations.
 // These serve as stable function pointer addresses for intrinsic matching
-// in GPU backends. The backends look up ProxyCallOperations by function
+// in GPU backends. The backends look up CallOperations by function
 // pointer and replace them with GPU-specific intrinsics (e.g. threadIdx.x).
 //
 // CPU fallback semantics:

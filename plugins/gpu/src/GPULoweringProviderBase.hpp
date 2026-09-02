@@ -14,6 +14,7 @@
 #include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
@@ -29,7 +30,6 @@
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
@@ -49,14 +49,14 @@
 namespace nautilus::compiler::gpu {
 
 using RegisterFrame = Frame<ir::OperationIdentifier, std::string>;
-using IntrinsicHandler = std::function<bool(ir::ProxyCallOperation*, short blockIndex, RegisterFrame& frame,
+using IntrinsicHandler = std::function<bool(ir::CallOperation*, short blockIndex, RegisterFrame& frame,
                                             std::stringstream& blockArgs, std::vector<std::stringstream>& blocks,
                                             std::string (*getVariable)(const ir::OperationIdentifier&))>;
 
 /// Helper: register a nullary GPU intrinsic that emits a platform expression.
 inline void registerNullaryIntrinsic(std::unordered_map<void*, IntrinsicHandler>& map, void* fnPtr,
                                      const std::string& expr, const std::string& resultType = "uint32_t") {
-	map[fnPtr] = [expr, resultType](ir::ProxyCallOperation* call, short blockIndex, RegisterFrame& frame,
+	map[fnPtr] = [expr, resultType](ir::CallOperation* call, short blockIndex, RegisterFrame& frame,
 	                                std::stringstream& blockArguments, std::vector<std::stringstream>& blocks,
 	                                std::string (*getVariable)(const ir::OperationIdentifier&)) -> bool {
 		auto resultVar = getVariable(call->getIdentifier());
@@ -72,7 +72,7 @@ inline void registerNullaryIntrinsic(std::unordered_map<void*, IntrinsicHandler>
 /// Helper: register a void GPU intrinsic that emits a platform statement.
 inline void registerVoidIntrinsic(std::unordered_map<void*, IntrinsicHandler>& map, void* fnPtr,
                                   const std::string& stmt) {
-	map[fnPtr] = [stmt](ir::ProxyCallOperation*, short blockIndex, RegisterFrame&, std::stringstream&,
+	map[fnPtr] = [stmt](ir::CallOperation*, short blockIndex, RegisterFrame&, std::stringstream&,
 	                    std::vector<std::stringstream>& blocks,
 	                    std::string (*)(const ir::OperationIdentifier&)) -> bool {
 		blocks[blockIndex] << stmt << ";\n";
@@ -84,7 +84,7 @@ inline void registerVoidIntrinsic(std::unordered_map<void*, IntrinsicHandler>& m
 /// the 3 argument variable names into the provided string references.
 inline void registerLaunchConfigIntrinsic(std::unordered_map<void*, IntrinsicHandler>& map, void* fnPtr,
                                           std::string& outX, std::string& outY, std::string& outZ, bool& hasConfig) {
-	map[fnPtr] = [&outX, &outY, &outZ, &hasConfig](ir::ProxyCallOperation* call, short, RegisterFrame& frame,
+	map[fnPtr] = [&outX, &outY, &outZ, &hasConfig](ir::CallOperation* call, short, RegisterFrame& frame,
 	                                               std::stringstream&, std::vector<std::stringstream>&,
 	                                               std::string (*)(const ir::OperationIdentifier&)) -> bool {
 		auto inputArgs = call->getInputArguments();
@@ -97,7 +97,7 @@ inline void registerLaunchConfigIntrinsic(std::unordered_map<void*, IntrinsicHan
 }
 
 /// CRTP base class for GPU lowering providers.
-/// Derived must implement: getType(), registerGPUIntrinsics(), processProxyCall(), processOperation() for
+/// Derived must implement: getType(), registerGPUIntrinsics(), processCall(), processOperation() for
 /// GPU-specific ops, and the main process() entry point.
 template <typename Derived>
 class GPULoweringProviderBase {
@@ -114,7 +114,7 @@ protected:
 	std::string returnType;
 	std::unordered_map<void*, IntrinsicHandler> gpuIntrinsics;
 	std::unordered_set<void*> deviceIntrinsics; // Only these mark a function as a kernel
-	std::unordered_set<std::string> kernelFunctions;
+	std::unordered_set<ir::FunctionId> kernelFunctions;
 	/// Variable names for the current function's alloca slots, indexed by
 	/// AllocaOperation::getIndex().  Populated by setupFunctionAllocaSlots()
 	/// at the start of every function lowering; cleared in resetFunctionState
@@ -138,9 +138,20 @@ protected:
 	void classifyKernelFunctions() {
 		for (const auto& func : ir->getFunctionOperations()) {
 			if (func->hasAttribute("kernel")) {
-				kernelFunctions.insert(func->getName());
+				kernelFunctions.insert(ir->getFunctionTable().findByDefinition(func));
 			}
 		}
+	}
+
+	/// True when @p func is a kernel. Keyed on the function's table id rather
+	/// than its name, so a call site and a definition agree by identity.
+	[[nodiscard]] bool isKernelFunction(const ir::FunctionOperation* func) const {
+		return kernelFunctions.contains(ir->getFunctionTable().findByDefinition(func));
+	}
+
+	/// True when the call target @p calleeId is a kernel.
+	[[nodiscard]] bool isKernelTarget(ir::FunctionId calleeId) const {
+		return kernelFunctions.contains(calleeId);
 	}
 
 	/// Returns the user-facing entry function, identified by the `entry`
@@ -503,7 +514,7 @@ protected:
 			return;
 		default:
 			// Delegate to derived class for backend-specific operations
-			// (ProxyCallOp, IndirectCallOp, FunctionAddressOfOp, etc.)
+			// (CallOp, IndirectCallOp, FunctionAddressOfOp, etc.)
 			static_cast<Derived*>(this)->processGPUOperation(opt, blockIndex, frame);
 			return;
 		}

@@ -360,7 +360,7 @@ instantiation:
   `T`; only the final result is cast down at the return boundary, on both the
   native and traced side. Exercises the same narrow-integer-return
   extension/truncation direction that previously produced real
-  `ProxyCall`/`IndirectCall` ABI bugs for `Call` (see "Known findings"), this
+  `Call`/`IndirectCall` ABI bugs for `Call` (see "Known findings"), this
   time at the kernel's own return rather than an internal helper call.
 * **`voidReturn`**: 3 `T`-typed parameters, `void` return -- a Store-only
   kernel. A `void`-returning kernel has no return-value ABI to compare, so
@@ -379,7 +379,7 @@ construction.
 
 This is the kernel-boundary twin of the `invoke()`-callee coverage fuzzed by
 `Kind::Call` (`Callees.hpp`): both marshal arguments/returns, but through
-different code paths (`registerFunction` entry vs. `ProxyCall`), so both are
+different code paths (`registerFunction` entry vs. `Call`), so both are
 worth fuzzing independently.
 
 ## Soundness model
@@ -684,7 +684,7 @@ returns); pinned by `u32WrapSubThenCompare` in
 
 The `Call` extension immediately surfaced the same invariant's fourth hole,
 in **both** AsmJit providers -- now fixed: narrow integer return values of
-`ProxyCall`/`IndirectCall` were bound without re-extension, but the ABI
+`Call`/`IndirectCall` were bound without re-extension, but the ABI
 (AAPCS64 and SysV alike) leaves the upper bits of a sub-register-width
 return unspecified. An `i16` helper returning a wrapped-negative value came
 back with its positive 32-bit intermediate still in the register, and the

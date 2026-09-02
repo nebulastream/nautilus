@@ -26,6 +26,7 @@
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
+#include "nautilus/compiler/ir/passes/FunctionAttributeInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
@@ -203,6 +204,19 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// empty-block elimination exposing a new copy-propagation
 		// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
 		const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
+
+		// Derive what each in-module function does to memory before the passes
+		// that could act on it. Every traced call to a Nautilus function
+		// declares the pessimistic default, so without this no call is ever
+		// eligible for CSE, hoisting or elimination.
+		//
+		// It runs first, on pre-cleanup IR, and that is safe in one direction
+		// only: the later passes remove and move operations, never add them,
+		// so a derived attribute can become stale by being *more* pessimistic
+		// than the final body -- which costs optimisation, never correctness.
+		if (!moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
+			passManager.addPass(std::make_unique<ir::FunctionAttributeInferencePass>());
+		}
 		passManager.addFixedPointGroup(std::move(group), maxIterations);
 		// Loop-invariant code motion runs once, after the cleanup group has
 		// canonicalized the CFG (single preheaders/latches), and stays opt-in

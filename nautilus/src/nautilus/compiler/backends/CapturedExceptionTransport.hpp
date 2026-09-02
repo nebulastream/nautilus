@@ -28,7 +28,7 @@ namespace nautilus::compiler {
  *
  * The capture wrapper itself (`captureThrowingCall<R, Args...>`) is generated
  * at the typed invoke() site and recorded on the IR call operation
- * (`ProxyCallOperation::getCaptureFunc()` / `IndirectCallOperation::getCaptureFunc()`);
+ * (`CallOperation::getCaptureFunc()` / `IndirectCallOperation::getCaptureFunc()`);
  * it is not resolved here.
  */
 class CapturedExceptionTransport {

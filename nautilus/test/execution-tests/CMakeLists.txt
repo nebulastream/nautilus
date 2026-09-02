@@ -10,6 +10,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         TBCJitWhiteBoxTest.cpp
         TBCMemoryOffsetTest.cpp
         BoolExecutionTest.cpp
+        CalleeConformanceTest.cpp
         CastExecutionTest.cpp
         CompilationStatisticsTest.cpp
         ConcurrentCompilationTest.cpp

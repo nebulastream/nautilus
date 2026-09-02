@@ -69,7 +69,14 @@ struct TBCProgram {
 	~TBCProgram();
 
 	std::vector<TBCFunction> functions;
+	/// Name -> function slot. Used by TBCExecutable to resolve a function the
+	/// *user* asks for by name; not a lowering-time predicate.
 	std::unordered_map<std::string, uint32_t> functionIndex;
+	/// FunctionId -> function slot. This is what lowering resolves calls
+	/// through, so an in-module call is recognised by identity rather than by
+	/// a name lookup that could miss (and dispatch through a definition
+	/// object as if it were code).
+	std::unordered_map<uint32_t, uint32_t> functionSlotById;
 	std::vector<CallSite> callsites;
 	uint64_t minStackSlots = 0;
 	DispatchMode dispatch = DispatchMode::Switch;

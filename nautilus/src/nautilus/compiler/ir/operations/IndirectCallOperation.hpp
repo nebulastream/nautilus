@@ -11,7 +11,7 @@ namespace nautilus::compiler::ir {
 
 /// IR operation representing a call through a runtime function pointer value.
 ///
-/// Unlike ProxyCallOperation (which embeds the target address as a constant),
+/// Unlike CallOperation (which embeds the target address as a constant),
 /// IndirectCallOperation takes the function pointer as an SSA operand — the
 /// first element of inputs[] — followed by the call arguments.
 class IndirectCallOperation : public Operation {

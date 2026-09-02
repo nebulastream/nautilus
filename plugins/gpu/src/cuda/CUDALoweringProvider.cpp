@@ -97,7 +97,7 @@ CUDALoweringProvider::LoweringContext::Code CUDALoweringProvider::LoweringContex
 
 	enum class Decoration { Kernel, EntryHost, HostDevice };
 	auto decorate = [&](const ir::FunctionOperation& func) {
-		if (kernelFunctions.contains(func.getName())) {
+		if (isKernelFunction(&func)) {
 			return Decoration::Kernel;
 		}
 		if (&func == entryFunc) {
@@ -175,8 +175,8 @@ void CUDALoweringProvider::LoweringContext::processGPUOperation(ir::Operation* o
                                                                 gpu::RegisterFrame& frame) {
 	using OT = ir::Operation::OperationType;
 	switch (opt->getOperationType()) {
-	case OT::ProxyCallOp:
-		processProxyCall(ir::as<ir::ProxyCallOperation>(opt), blockIndex, frame);
+	case OT::CallOp:
+		processCall(ir::as<ir::CallOperation>(opt), blockIndex, frame);
 		return;
 	case OT::IndirectCallOp:
 		processIndirectCall(ir::as<ir::IndirectCallOperation>(opt), blockIndex, frame);
@@ -189,8 +189,8 @@ void CUDALoweringProvider::LoweringContext::processGPUOperation(ir::Operation* o
 	}
 }
 
-void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperation* opt, short blockIndex,
-                                                             gpu::RegisterFrame& frame) {
+void CUDALoweringProvider::LoweringContext::processCall(ir::CallOperation* opt, short blockIndex,
+                                                        gpu::RegisterFrame& frame) {
 	// Check GPU intrinsics
 	auto it = gpuIntrinsics.find(opt->getFunctionPtr());
 	if (it != gpuIntrinsics.end()) {
@@ -210,13 +210,15 @@ void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperat
 		argTypes << getType(opt->getInputArguments()[i]->getStamp());
 	}
 
-	bool isInternalFunction = ir->getFunctionOperation(opt->getFunctionName()) != nullptr;
-	bool isKernelCall = isInternalFunction && kernelFunctions.contains(opt->getFunctionName());
+	const auto& target = ir->getFunctionTarget(opt->getCalleeId());
+	const bool isInternalFunction = target.getLinkage() == ir::Linkage::Internal;
+	const auto& emissionName = target.getName().forEmission();
+	const bool isKernelCall = isInternalFunction && isKernelTarget(opt->getCalleeId());
 
 	if (isKernelCall) {
 		if (hasLaunchConfig) {
 			// Use dynamic launch config from setGrid/setBlock intrinsics
-			blocks[blockIndex] << opt->getFunctionName() << "<<<dim3(" << pendingGridX << "," << pendingGridY << ","
+			blocks[blockIndex] << emissionName << "<<<dim3(" << pendingGridX << "," << pendingGridY << ","
 			                   << pendingGridZ << "),dim3(" << pendingBlockX << "," << pendingBlockY << ","
 			                   << pendingBlockZ << ")>>>(" << args.str() << ");\n";
 		} else {
@@ -227,8 +229,8 @@ void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperat
 			auto bx = options.getOptionOrDefault<int>("gpu.blockDimX", 256);
 			auto by = options.getOptionOrDefault<int>("gpu.blockDimY", 1);
 			auto bz = options.getOptionOrDefault<int>("gpu.blockDimZ", 1);
-			blocks[blockIndex] << opt->getFunctionName() << "<<<dim3(" << gx << "," << gy << "," << gz << "),dim3("
-			                   << bx << "," << by << "," << bz << ")>>>(" << args.str() << ");\n";
+			blocks[blockIndex] << emissionName << "<<<dim3(" << gx << "," << gy << "," << gz << "),dim3(" << bx << ","
+			                   << by << "," << bz << ")>>>(" << args.str() << ");\n";
 		}
 		blocks[blockIndex] << "cudaDeviceSynchronize();\n";
 		hasLaunchConfig = false; // consumed
@@ -236,10 +238,10 @@ void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperat
 	}
 
 	auto returnTypeStr = getType(opt->getStamp());
-	if (!isInternalFunction && !functionNames.contains(opt->getFunctionSymbol())) {
-		functions << "auto f_" << opt->getFunctionSymbol() << " = (" << returnTypeStr << "(*)(" << argTypes.str()
-		          << "))" << opt->getFunctionPtr() << ";\n";
-		functionNames.emplace(opt->getFunctionSymbol());
+	if (!isInternalFunction && !functionNames.contains(emissionName)) {
+		functions << "auto f_" << emissionName << " = (" << returnTypeStr << "(*)(" << argTypes.str() << "))"
+		          << target.getAddress() << ";\n";
+		functionNames.emplace(emissionName);
 	}
 	if (opt->getStamp() != Type::v) {
 		auto resultVar = getVariable(opt->getIdentifier());
@@ -250,9 +252,9 @@ void CUDALoweringProvider::LoweringContext::processProxyCall(ir::ProxyCallOperat
 		blocks[blockIndex] << resultVar << " = ";
 	}
 	if (isInternalFunction) {
-		blocks[blockIndex] << opt->getFunctionName() << "(" << args.str() << ");\n";
+		blocks[blockIndex] << emissionName << "(" << args.str() << ");\n";
 	} else {
-		blocks[blockIndex] << "f_" << opt->getFunctionSymbol() << "(" << args.str() << ");\n";
+		blocks[blockIndex] << "f_" << emissionName << "(" << args.str() << ");\n";
 	}
 }
 
@@ -291,16 +293,16 @@ void CUDALoweringProvider::LoweringContext::processFunctionAddressOf(ir::Functio
 		blockArguments << "uint8_t* " << resultVar << ";\n";
 		frame.setValue(funcAddrOp->getIdentifier(), resultVar);
 	}
-	bool isInternalFunction = ir->getFunctionOperation(funcAddrOp->getFunctionName()) != nullptr;
-	if (isInternalFunction) {
-		blocks[blockIndex] << resultVar << " = (uint8_t*)&" << funcAddrOp->getFunctionName() << ";\n";
+	const auto& target = ir->getFunctionTarget(funcAddrOp->getCalleeId());
+	const auto& emissionName = target.getName().forEmission();
+	if (target.getLinkage() == ir::Linkage::Internal) {
+		blocks[blockIndex] << resultVar << " = (uint8_t*)&" << emissionName << ";\n";
 	} else {
-		if (!functionNames.contains(funcAddrOp->getFunctionSymbol())) {
-			functions << "auto f_" << funcAddrOp->getFunctionSymbol() << " = (void*)" << funcAddrOp->getFunctionPtr()
-			          << ";\n";
-			functionNames.emplace(funcAddrOp->getFunctionSymbol());
+		if (!functionNames.contains(emissionName)) {
+			functions << "auto f_" << emissionName << " = (void*)" << target.getAddress() << ";\n";
+			functionNames.emplace(emissionName);
 		}
-		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << funcAddrOp->getFunctionSymbol() << ";\n";
+		blocks[blockIndex] << resultVar << " = (uint8_t*)f_" << emissionName << ";\n";
 	}
 }
 

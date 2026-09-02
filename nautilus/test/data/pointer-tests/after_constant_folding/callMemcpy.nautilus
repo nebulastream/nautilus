@@ -1,8 +1,9 @@
 nautilus {
+declare external #0 func_*(ptr, ptr, ui64) :ptr [nounwind]
 execute($1:ptr, $2:ptr) :void {
 Block_0($1:ptr, $2:ptr):
 	$3 = 0 :ui64
-	$4 = func_*($2,$1,$3) :ptr
+	$4 = call func_*#0($2,$1,$3) :ptr
 	return :void
 }
 } //nautilus

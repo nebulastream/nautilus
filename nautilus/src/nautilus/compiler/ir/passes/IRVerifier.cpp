@@ -1,5 +1,7 @@
 
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 #include "nautilus/compiler/ir/passes/Dominators.hpp"
@@ -448,6 +450,88 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 	checkEdgeStampAgreement(r, fn);  // V6
 }
 
+/// V8: every callee referenced by a call or an address-of resolves to an entry
+/// in the module's function table, and the call site agrees with what that
+/// entry says the callee looks like.
+///
+/// This is the check that turns "two call sites disagree about a signature"
+/// from two conflicting declarations emitted into the backend's output into
+/// one verifier error, and it is what keeps a FunctionId from outliving the
+/// table that minted it.
+void verifyCallTargets(VerificationResult& result, const IRGraph& ir, const FunctionOperation& fn) {
+	const auto& table = ir.getFunctionTable();
+
+	const auto checkId = [&](const BasicBlock* block, FunctionId calleeId, const char* what) -> const FunctionTarget* {
+		if (calleeId == INVALID_FUNCTION_ID) {
+			addError(result, &fn, block, fmt::format("{} has no callee id", what));
+			return nullptr;
+		}
+		if (!table.contains(calleeId)) {
+			addError(
+			    result, &fn, block,
+			    fmt::format("{} references function id {}, which this module's table never minted", what, calleeId));
+			return nullptr;
+		}
+		return &table.get(calleeId);
+	};
+
+	for (const auto* block : fn.getBasicBlocks()) {
+		if (block == nullptr) {
+			continue;
+		}
+		for (const auto* op : block->getOperations()) {
+			if (op == nullptr) {
+				continue;
+			}
+			if (const auto* call = dyn_cast<CallOperation>(op)) {
+				const auto* target = checkId(block, call->getCalleeId(), "call");
+				if (target == nullptr) {
+					continue;
+				}
+				// An internal target's body must have been bound by the end of
+				// conversion; otherwise a backend reads a null definition.
+				if (target->getLinkage() == Linkage::Internal && target->getDefinition() == nullptr) {
+					addError(result, &fn, block,
+					         fmt::format("call to internal function '{}' whose body was never traced",
+					                     target->getName().get()));
+					continue;
+				}
+				if (target->getLinkage() != Linkage::Internal && target->getAddress() == nullptr) {
+					addError(result, &fn, block,
+					         fmt::format("call to native function '{}' with no address -- an intrinsic without a "
+					                     "fallback address cannot degrade to an ordinary call",
+					                     target->getName().get()));
+					continue;
+				}
+				const auto params = target->getParamTypes();
+				const auto args = call->getInputArguments();
+				if (params.size() != args.size()) {
+					addError(result, &fn, block,
+					         fmt::format("call to '{}' passes {} argument(s) but the callee takes {}",
+					                     target->getName().get(), args.size(), params.size()));
+					continue;
+				}
+				for (size_t i = 0; i < args.size(); ++i) {
+					if (args[i] != nullptr && args[i]->getStamp() != params[i]) {
+						addError(result, &fn, block,
+						         fmt::format("call to '{}' passes {} for argument {}, but the callee declares {}",
+						                     target->getName().get(), toString(args[i]->getStamp()), i,
+						                     toString(params[i])));
+					}
+				}
+				if (call->getStamp() != target->getResultType()) {
+					addError(result, &fn, block,
+					         fmt::format("call to '{}' is stamped {} but the callee returns {}",
+					                     target->getName().get(), toString(call->getStamp()),
+					                     toString(target->getResultType())));
+				}
+			} else if (const auto* addrOf = dyn_cast<FunctionAddressOfOperation>(op)) {
+				checkId(block, addrOf->getCalleeId(), "function-address-of");
+			}
+		}
+	}
+}
+
 } // namespace
 
 VerificationResult IRVerifier::verify(const IRGraph& ir) {
@@ -460,6 +544,7 @@ VerificationResult IRVerifier::verify(const IRGraph& ir) {
 			continue;
 		}
 		verifyFunction(result, *fn);
+		verifyCallTargets(result, ir, *fn);
 	}
 	return result;
 }

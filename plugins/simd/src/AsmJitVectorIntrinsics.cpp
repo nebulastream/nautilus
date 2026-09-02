@@ -1,6 +1,6 @@
 
 // AsmJit vector intrinsic plugin. Mirrors plugins/simd/src/MLIRVectorIntrinsics.cpp:
-// intercepts vector_*_impl function-pointer ProxyCalls and replaces them with
+// intercepts vector_*_impl function-pointer Calls and replaces them with
 // native 128-bit SIMD instructions (XMM on x86-64, NEON on AArch64).
 //
 // Memory model is the same as the MLIR plugin: vectors flow through the IR as
@@ -18,7 +18,7 @@
 
 #include "AsmJitVectorIntrinsics.hpp"
 #include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "vector_impl.hpp"
 #include <cstdint>
 #include <type_traits>

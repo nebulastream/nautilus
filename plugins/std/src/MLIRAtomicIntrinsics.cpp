@@ -82,7 +82,7 @@ using TypeFactory = std::function<::mlir::Type(::mlir::OpBuilder&)>;
 }
 
 IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
-	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	                   MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto resultTy = tyFn(*b);
@@ -95,7 +95,7 @@ IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 }
 
 IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -107,7 +107,7 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 }
 
 IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
-	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	                    MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -118,7 +118,7 @@ IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 }
 
 IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* /*call*/,
+	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* /*call*/,
 	             MLIRLoweringProvider::ValueFrame& /*frame*/) -> bool {
 		::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
 		return true;

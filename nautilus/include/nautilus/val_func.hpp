@@ -21,7 +21,7 @@ namespace nautilus {
 ///   - Copy construction / copy assignment
 ///   - Calling through the pointer via operator() — delegates to invoke(),
 ///     which handles both tracing and non-tracing paths.  At trace time the
-///     concrete runtime address is used, so the traced ProxyCallOperation is
+///     concrete runtime address is used, so the traced CallOperation is
 ///     specialised for that specific address.
 ///   - Null check via explicit == nullptr / != nullptr (no implicit operator bool())
 ///   - Pointer equality: == and != with another val<FuncPtr> of the same type

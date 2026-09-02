@@ -1,7 +1,7 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 
 namespace nautilus::compiler {
 
@@ -34,7 +34,7 @@ const ir::LandingPadBlock* CapturedExceptionTransport::getPadForCall(const ir::O
 }
 
 void* CapturedExceptionTransport::captureThunkFor(const ir::Operation* call) {
-	if (const auto* proxy = ir::dyn_cast<ir::ProxyCallOperation>(call)) {
+	if (const auto* proxy = ir::dyn_cast<ir::CallOperation>(call)) {
 		return proxy->getCaptureFunc();
 	}
 	if (const auto* indirect = ir::dyn_cast<ir::IndirectCallOperation>(call)) {

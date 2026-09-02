@@ -1,6 +1,6 @@
 EXECUTE:
 B0($1:ptr)
-	CALL_WITH_EXCEPTION_HANDLING	$2	func_*($1)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$2	voidHelper($1)	:void
 	ASSIGN	$3	$1	:ptr
 	ASSIGN	$4	$3	:ptr
 	LOAD	$5	$4	:i32

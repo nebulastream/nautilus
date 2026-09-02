@@ -348,7 +348,21 @@ private:
 	std::vector<StaticVarHolder> staticVars; // Tracks static variable states for snapshot hashing
 	AliveVariableHash aliveVars;             // Tracks alive variables with incremental hash
 	std::list<compiler::CompilableFunction> functionsToTrace = std::list<compiler::CompilableFunction> {};
-	std::unordered_set<std::string> registeredFunctions;
+	/// Definition identity -> the name that definition is traced under.
+	///
+	/// Keyed on the NautilusFunctionDefinition, not on its name: two distinct
+	/// NautilusFunctions may share a name, and deduping by name meant the
+	/// second was never traced while every call to it dispatched into the
+	/// first one's body, with no diagnostic. The stored name is uniquified
+	/// against `usedFunctionNames` so both bodies get traced and emitted.
+	std::unordered_map<const void*, std::string> registeredFunctions;
+	std::unordered_set<std::string> usedFunctionNames;
+
+	/// Returns the trace-unique name for @p definition, registering it for
+	/// tracing on first sight. @p newlyRegistered reports whether this call
+	/// was the first.
+	const std::string& registerNautilusFunction(const NautilusFunctionDefinition* definition,
+	                                            std::function<void()> fwrapper, bool& newlyRegistered);
 };
 
 } // namespace nautilus::tracing

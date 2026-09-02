@@ -15,6 +15,8 @@
 
 namespace nautilus::compiler::ir {
 
+class IRGraph;
+
 class FunctionOperation;
 
 /**
@@ -58,7 +60,12 @@ public:
 		uint32_t operandIndex;
 	};
 
-	FunctionRewriter(FunctionOperation& fn, common::Arena& arena);
+	/// @param ir  Optional. When supplied, dead-code elimination resolves a
+	///            call's callee through the module function table and can drop
+	///            a call the callee proves has no observable effect. Without
+	///            it the rewriter falls back to the per-opcode answer, under
+	///            which no call is ever removable.
+	FunctionRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir = nullptr);
 
 	// ── Use queries (uniform over operand edges AND invocation arguments) ──
 
@@ -215,6 +222,7 @@ private:
 
 	FunctionOperation& fn_;
 	common::Arena& arena_;
+	const IRGraph* ir_ = nullptr;
 	std::unordered_map<const Operation*, std::vector<Use>> uses_;
 	std::unordered_map<const Operation*, BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;

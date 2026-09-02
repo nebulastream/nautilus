@@ -53,8 +53,7 @@ public:
 
 /// Generic helper for unary bit operations
 template <typename MLIROp>
-bool replaceWithUnaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                  const compiler::ir::ProxyCallOperation* call,
+bool replaceWithUnaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                   MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto result = MLIROp::create(*builder, builder->getUnknownLoc(), inputArg.getType(), inputArg);
@@ -64,8 +63,7 @@ bool replaceWithUnaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Generic helper for binary bit operations
 template <typename MLIROp>
-bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
-                                   const compiler::ir::ProxyCallOperation* call,
+bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                                    MLIRLoweringProvider::ValueFrame& frame) {
 	auto arg1 = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto arg2 = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -76,7 +74,7 @@ bool replaceWithBinaryBitIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder,
 
 /// Helper for CTLZ intrinsic (count leading zeros)
 /// LLVM CTLZ takes a second boolean argument indicating if zero is undefined
-bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	// Second argument: is_zero_undef = false (zero is defined)
@@ -89,7 +87,7 @@ bool replaceWithCtlzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 
 /// Helper for CTTZ intrinsic (count trailing zeros)
 /// LLVM CTTZ takes a second boolean argument indicating if zero is undefined
-bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto inputArg = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	// Second argument: is_zero_undef = false (zero is defined)
@@ -102,7 +100,7 @@ bool replaceWithCttzIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 
 /// Helper for rotate left using funnel shift
 /// rotl(x, s) = fshl(x, x, s)
-bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -114,7 +112,7 @@ bool replaceWithRotlIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const
 
 /// Helper for rotate right using funnel shift
 /// rotr(x, s) = fshr(x, x, s)
-bool replaceWithRotrIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool replaceWithRotrIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                               MLIRLoweringProvider::ValueFrame& frame) {
 	auto x = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	auto s = frame.getValue(call->getInputArguments()[1]->getIdentifier());

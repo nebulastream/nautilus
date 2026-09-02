@@ -136,7 +136,7 @@ private:
 	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
 
 	/// The Nautilus FunctionOperation currently being lowered. Set in
-	/// generateFunction so visitProxyCall/visitIndirectCall can read the
+	/// generateFunction so visitCall/visitIndirectCall can read the
 	/// exception-region side table.
 	const ir::FunctionOperation* currentFunction_ = nullptr;
 
@@ -214,7 +214,7 @@ private:
 	void visitCompare(ir::CompareOperation* compareOp, ValueFrame& frame);
 	void visitBranch(ir::BranchOperation* branchOp, ValueFrame& frame);
 	void visitReturn(ir::ReturnOperation* returnOp, ValueFrame& frame);
-	void visitProxyCall(ir::ProxyCallOperation* proxyCallOp, ValueFrame& frame);
+	void visitCall(ir::CallOperation* callOp, ValueFrame& frame);
 	void visitIndirectCall(ir::IndirectCallOperation* indirectCallOp, ValueFrame& frame);
 	void visitOr(ir::OrOperation* orOperation, ValueFrame& frame);
 	void visitAnd(ir::AndOperation* andOperation, ValueFrame& frame);
@@ -262,6 +262,11 @@ private:
 	 * NameLoc.  Otherwise returns the legacy Query_1:0:0 placeholder.
 	 */
 	::mlir::Location getNameLoc(const std::string& name);
+
+	/// The graph being lowered. Held for the duration of
+	/// generateModuleFromIR() so call lowering can resolve a callee's table
+	/// entry rather than probing the MLIR symbol table by name.
+	std::shared_ptr<ir::IRGraph> ir;
 
 	/**
 	 * @brief Get MLIR Type from a basic  type.

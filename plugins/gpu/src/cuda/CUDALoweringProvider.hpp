@@ -23,7 +23,7 @@ private:
 		const engine::Options& options;
 
 		void registerGPUIntrinsics();
-		void processProxyCall(ir::ProxyCallOperation* opt, short block, gpu::RegisterFrame& frame);
+		void processCall(ir::CallOperation* opt, short block, gpu::RegisterFrame& frame);
 		void processIndirectCall(ir::IndirectCallOperation* opt, short block, gpu::RegisterFrame& frame);
 		void processFunctionAddressOf(ir::FunctionAddressOfOperation* opt, short block, gpu::RegisterFrame& frame);
 	};

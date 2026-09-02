@@ -5,21 +5,24 @@
 #include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/ShiftOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
+#include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/NotOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
+#include <cassert>
 #include <fmt/format.h>
 #include <utility>
 
@@ -33,6 +36,134 @@ namespace {
 /// so the default `toString()` path produces byte-identical output to what
 /// it did before source-location support existed.
 thread_local const IRPrintOptions* currentPrintOptions = nullptr;
+
+/// The graph currently being formatted.  A call operation stores only its
+/// callee's FunctionId, and resolving that to a name and a linkage needs the
+/// module's function table -- which the per-Operation fmt formatter has no
+/// other way to reach.  Set for the duration of formatting the graph, so a
+/// bare `fmt::format("{}", someOperation)` outside that scope still prints
+/// exactly what it always did.
+thread_local const IRGraph* currentPrintGraph = nullptr;
+
+struct PrintGraphScope {
+	explicit PrintGraphScope(const IRGraph* graph) : previous(currentPrintGraph) {
+		currentPrintGraph = graph;
+	}
+	~PrintGraphScope() {
+		currentPrintGraph = previous;
+	}
+	PrintGraphScope(const PrintGraphScope&) = delete;
+	PrintGraphScope& operator=(const PrintGraphScope&) = delete;
+
+	const IRGraph* previous;
+};
+
+/// The exception region of the function currently being formatted, or nullptr
+/// before ExceptionRegionPreparationPass has run (or for a function with no
+/// exceptional call sites). A call operation knows only whether it *might*
+/// unwind (`requiresExceptionHandling()`); which landing pad it actually
+/// targets is decided later and lives in the enclosing FunctionOperation's
+/// side table, which the per-Operation fmt formatter has no other way to
+/// reach. Set for the duration of formatting one function's blocks.
+thread_local const FunctionExceptionRegion* currentPrintExceptionRegion = nullptr;
+
+struct PrintExceptionRegionScope {
+	explicit PrintExceptionRegionScope(const FunctionExceptionRegion* region) : previous(currentPrintExceptionRegion) {
+		currentPrintExceptionRegion = region;
+	}
+	~PrintExceptionRegionScope() {
+		currentPrintExceptionRegion = previous;
+	}
+	PrintExceptionRegionScope(const PrintExceptionRegionScope&) = delete;
+	PrintExceptionRegionScope& operator=(const PrintExceptionRegionScope&) = delete;
+
+	const FunctionExceptionRegion* previous;
+};
+
+/// The landing-pad suffix for @p call (` -> pad_N`), or empty when the region
+/// hasn't been computed yet, @p call isn't one of its exceptional call sites,
+/// or it is one with nothing to clean up on unwind (no pad to link to).
+/// Linear scan: this only runs while formatting IR for humans, and a
+/// function's call-site list is small.
+std::string padLinkSuffix(const Operation* call) {
+	if (currentPrintExceptionRegion == nullptr) {
+		return {};
+	}
+	for (const auto& site : currentPrintExceptionRegion->callSites) {
+		if (site.call == call) {
+			return site.hasPad() ? fmt::format(" -> pad_{}", site.padIndex) : "";
+		}
+	}
+	return {};
+}
+
+/// How a callee should be spelled at a call site.
+///
+/// An internal callee's name comes from the user (a NautilusFunction is
+/// constructed with it), so it is deterministic and safe to print into a
+/// checked-in reference dump. A native callee's name comes from dladdr and is
+/// a stringified address wherever that misses -- different on every machine,
+/// and on every run -- so it stays behind the address-logging flag, exactly as
+/// the whole call did before.
+std::string nativeSpelling(const std::string& storedName) {
+	return log::options::getLogAddresses() ? storedName : "func_*";
+}
+
+std::string calleeSpelling(FunctionId calleeId, const std::string& storedName) {
+	if (currentPrintGraph != nullptr && calleeId != INVALID_FUNCTION_ID &&
+	    currentPrintGraph->getFunctionTable().contains(calleeId)) {
+		const auto& target = currentPrintGraph->getFunctionTarget(calleeId);
+		if (target.getLinkage() == Linkage::Internal) {
+			return target.getName().get();
+		}
+		// A native callee's name is withheld for reproducibility, which leaves
+		// two distinct externals indistinguishable at their call sites. The id
+		// is the discriminator that survives: it ties the call to one line of
+		// the declaration region, and it is assigned deterministically.
+		return fmt::format("{}#{}", nativeSpelling(storedName), calleeId);
+	}
+	return nativeSpelling(storedName);
+}
+
+/// `[attr, attr, ...]` for whatever @p attrs asserts beyond the pessimistic
+/// default (ModRef, willReturn=false, noUnwind=false) -- empty when nothing
+/// does, so a callee no pass has looked at yet prints exactly as it always
+/// did. Names follow LLVM's own vocabulary for the same guarantees, since
+/// FunctionAttributes is explicitly modeled on it.
+std::string attributesSuffix(const FunctionAttributes& attrs) {
+	std::vector<std::string> tokens;
+	switch (attrs.modRefInfo) {
+	case ModRefInfo::NoModRef:
+		tokens.emplace_back("readnone");
+		break;
+	case ModRefInfo::Ref:
+		tokens.emplace_back("readonly");
+		break;
+	case ModRefInfo::Mod:
+		tokens.emplace_back("writeonly");
+		break;
+	case ModRefInfo::ModRef:
+		break;
+	}
+	if (attrs.willReturn) {
+		tokens.emplace_back("willreturn");
+	}
+	if (attrs.noUnwind) {
+		tokens.emplace_back("nounwind");
+	}
+	if (tokens.empty()) {
+		return {};
+	}
+	std::string out = " [";
+	for (size_t i = 0; i < tokens.size(); ++i) {
+		if (i > 0) {
+			out += ", ";
+		}
+		out += tokens[i];
+	}
+	out += "]";
+	return out;
+}
 
 struct PrintOptionsScope {
 	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
@@ -60,6 +191,20 @@ FunctionOperation* IRGraph::addFunctionOperation(FunctionOperation* functionOper
 	functionOperations.emplace_back(functionOperation);
 	functionOperationsByName.emplace(std::string_view {functionOperation->getName()}, functionOperation);
 	return functionOperation;
+}
+
+FunctionId IRGraph::internCallee(const CalleeDescriptor& descriptor) {
+	return functionTable.intern(descriptor);
+}
+
+void IRGraph::defineFunction(FunctionId id, FunctionOperation* functionOperation) {
+	functionTable.define(id, functionOperation);
+}
+
+const std::string& IRGraph::getEmissionName(const FunctionOperation* functionOperation) const {
+	const auto id = functionTable.findByDefinition(functionOperation);
+	assert(id != INVALID_FUNCTION_ID && "every FunctionOperation is bound to a table entry by defineFunction()");
+	return functionTable.get(id).getName().forEmission();
 }
 
 const std::vector<FunctionOperation*>& IRGraph::getFunctionOperations() const {
@@ -203,19 +348,15 @@ struct formatter<nautilus::compiler::ir::IfOperation> : formatter<std::string_vi
 };
 
 template <>
-struct formatter<nautilus::compiler::ir::ProxyCallOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::ProxyCallOperation& op,
+struct formatter<nautilus::compiler::ir::CallOperation> : formatter<std::string_view> {
+	static auto format(const nautilus::compiler::ir::CallOperation& op,
 	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 
 		if (op.getStamp() != nautilus::Type::v) {
 			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
 		}
-		if (nautilus::log::options::getLogAddresses()) {
-			fmt::format_to(out, "{}(", op.getFunctionName());
-		} else {
-			fmt::format_to(out, "func_*(");
-		}
+		fmt::format_to(out, "call {}(", nautilus::compiler::ir::calleeSpelling(op.getCalleeId(), op.getFunctionName()));
 		const auto args = op.getInputArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
@@ -292,9 +433,33 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	case OpType::ConstPtrOp:
 		fmt::format_to(out, "{} = *", op.getIdentifier());
 		break;
-	case OpType::ProxyCallOp:
-		fmt::format_to(out, "{}", *nautilus::compiler::ir::cast<ProxyCallOperation>(&op));
+	case OpType::CallOp:
+		fmt::format_to(out, "{}", *nautilus::compiler::ir::cast<CallOperation>(&op));
 		break;
+	case OpType::IndirectCallOp: {
+		// The callee is an SSA value, so there is no name to print -- the
+		// operand that holds the pointer is the whole story.
+		const auto* call = nautilus::compiler::ir::cast<IndirectCallOperation>(&op);
+		if (op.getStamp() != nautilus::Type::v) {
+			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
+		}
+		fmt::format_to(out, "call {}(", call->getFunctionPtrOperand()->getIdentifier());
+		const auto args = call->getInputArguments();
+		for (size_t i = 0; i < args.size(); ++i) {
+			if (i > 0) {
+				fmt::format_to(out, ",");
+			}
+			fmt::format_to(out, "{}", args[i]->getIdentifier());
+		}
+		fmt::format_to(out, ")");
+		break;
+	}
+	case OpType::FunctionAddressOfOp: {
+		const auto* addrOf = nautilus::compiler::ir::cast<FunctionAddressOfOperation>(&op);
+		fmt::format_to(out, "{} = func_addr {}", op.getIdentifier(),
+		               nautilus::compiler::ir::calleeSpelling(addrOf->getCalleeId(), addrOf->getFunctionName()));
+		break;
+	}
 	case OpType::CastOp: {
 		const auto* castOp = nautilus::compiler::ir::cast<CastOperation>(&op);
 		fmt::format_to(out, "{} = {} cast_to {}", op.getIdentifier(), castOp->getInput()->getIdentifier(),
@@ -334,6 +499,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		break;
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
+	fmt::format_to(out, "{}", nautilus::compiler::ir::padLinkSuffix(&op));
 
 	// Opt-in source-location trailer.  The TLS pointer is only non-null
 	// inside the scope of `IRGraph::toString(options)`.
@@ -409,27 +575,41 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 				}
 			}
 		}
-		fmt::format_to(out, ") :{} {{", toString(func.getOutputArg()));
-		for (const auto* block : func.getBasicBlocks()) {
-			fmt::format_to(out, "{}", *block);
+		fmt::format_to(out, ") :{}", toString(func.getOutputArg()));
+		// Derived by FunctionAttributeInferencePass (or absent before it runs);
+		// the internal FunctionOperation is its own declaration, so its
+		// attributes belong on this signature line rather than a separate one.
+		if (nautilus::compiler::ir::currentPrintGraph != nullptr) {
+			const auto id = nautilus::compiler::ir::currentPrintGraph->getFunctionTable().findByDefinition(&func);
+			if (id != nautilus::compiler::ir::INVALID_FUNCTION_ID &&
+			    nautilus::compiler::ir::currentPrintGraph->getFunctionTable().contains(id)) {
+				fmt::format_to(out, "{}",
+				               nautilus::compiler::ir::attributesSuffix(
+				                   nautilus::compiler::ir::currentPrintGraph->getFunctionTarget(id).getAttributes()));
+			}
 		}
+		fmt::format_to(out, " {{");
+		{
+			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
+			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
+			for (const auto* block : func.getBasicBlocks()) {
+				fmt::format_to(out, "{}", *block);
+			}
+		}
+		// Which pad each call targets is already inline on the call itself
+		// (padLinkSuffix, in the shared Operation trailer); this section is
+		// only the pads' own definitions -- the destructor calls a landing
+		// pad actually contains, which appear nowhere else in the dump. A
+		// function with only no-pad exceptional call sites has nothing left
+		// to say here: `-> (no_pad)` on the call already said it.
 		if (func.exceptionRegion.has_value()) {
 			const auto& region = *func.exceptionRegion;
-			if (!region.pads.empty() || !region.callSites.empty()) {
+			if (!region.pads.empty()) {
 				fmt::format_to(out, "exception_region:\n");
 				for (size_t i = 0; i < region.pads.size(); ++i) {
 					fmt::format_to(out, "\tpad_{}:\n", i);
 					for (const auto* op : region.pads[i].block->getOperations()) {
 						fmt::format_to(out, "\t\t{}\n", *op);
-					}
-				}
-				fmt::format_to(out, "\tcall_sites:\n");
-				for (const auto& site : region.callSites) {
-					fmt::format_to(out, "\t\t{} -> ", site.call->getIdentifier());
-					if (site.hasPad()) {
-						fmt::format_to(out, "pad_{}\n", site.padIndex);
-					} else {
-						fmt::format_to(out, "(no_pad)\n");
 					}
 				}
 			}
@@ -442,8 +622,38 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 
 auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph,
                                                              format_context& ctx) -> format_context::iterator {
+	// Make the module's function table reachable from the per-Operation
+	// formatter, so a call site can spell its callee rather than swallowing it.
+	nautilus::compiler::ir::PrintGraphScope graphScope(&graph);
+
 	auto out = ctx.out();
 	fmt::format_to(out, "nautilus {{\n");
+
+	// The declaration region: every callee this module reaches that is *not*
+	// defined here. An internal target is deliberately absent -- its
+	// FunctionOperation below is its declaration, and repeating it would let
+	// the two drift apart, which is the whole failure mode the function table
+	// exists to remove.
+	for (const auto& target : graph.getFunctionTable().getTargets()) {
+		if (target.getLinkage() == nautilus::compiler::ir::Linkage::Internal) {
+			continue;
+		}
+		// The id, not the name, identifies the entry: a native callee's name
+		// comes from dladdr and is a stringified address wherever that misses,
+		// so it is printed under the same rule as a call site.
+		fmt::format_to(out, "declare {} #{} {}(",
+		               target.getLinkage() == nautilus::compiler::ir::Linkage::Intrinsic ? "intrinsic" : "external",
+		               target.getId(), nautilus::compiler::ir::nativeSpelling(target.getName().get()));
+		const auto params = target.getParamTypes();
+		for (size_t i = 0; i < params.size(); ++i) {
+			if (i > 0) {
+				fmt::format_to(out, ", ");
+			}
+			fmt::format_to(out, "{}", toString(params[i]));
+		}
+		fmt::format_to(out, ") :{}{}\n", toString(target.getResultType()),
+		               nautilus::compiler::ir::attributesSuffix(target.getAttributes()));
+	}
 
 	// Print all function operations
 	for (const auto* func : graph.getFunctionOperations()) {

@@ -22,14 +22,14 @@ Block_3($2:ptr, $27:i32, $1:i32):
 	if $28 ? Block_1($2, $1, $27) : Block_2($2) :void
 
 Block_1($2:ptr, $1:i32, $27:i32):
-	$32 = func_*($2) :i32
-	func_*($2,$32) :void
+	$32 = call sumFields($2) :i32
+	call incrementFieldA($2,$32) :void
 	$34 = 1 :i32
 	$35 = $27 + $34 :i32
 	br Block_3($2, $35, $1) :void
 
 Block_2($2:ptr):
-	$38 = func_*($2) :i32
+	$38 = call readFieldA($2) :i32
 	return ($38) :i32
 }
 incrementFieldA($1:ptr, $2:i32) :void {

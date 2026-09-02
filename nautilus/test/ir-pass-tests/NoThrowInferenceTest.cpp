@@ -4,7 +4,7 @@
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
@@ -24,7 +24,7 @@ using compiler::ir::FunctionOperation;
 using compiler::ir::IRGraph;
 using compiler::ir::Operation;
 using compiler::ir::OperationIdentifier;
-using compiler::ir::ProxyCallOperation;
+using compiler::ir::CallOperation;
 
 struct Fixture {
 	std::shared_ptr<IRGraph> ir;
@@ -59,22 +59,22 @@ void runPass(IRGraph& ir) {
 /// traced pessimistically as exception-handling -- exactly what the C++
 /// trace-time heuristic produces for any lvalue-argument NautilusFunction
 /// call, regardless of whether the callee can actually throw.
-ProxyCallOperation* addNautilusCall(BasicBlock* block, OperationIdentifier id, const std::string& calleeName) {
-	return block->addOperation<ProxyCallOperation>(calleeName, calleeName, nullptr, id, std::span<Operation* const> {},
-	                                               Type::v, FunctionAttributes {},
-	                                               std::vector<ProxyCallOperation::Destructor> {},
-	                                               /*exceptionHandling=*/true, /*captureFunc=*/nullptr,
-	                                               /*isNautilusCall=*/true);
+CallOperation* addNautilusCall(BasicBlock* block, OperationIdentifier id, const std::string& calleeName) {
+	return block->addOperation<CallOperation>(calleeName, calleeName, nullptr, id, std::span<Operation* const> {},
+	                                          Type::v, FunctionAttributes {}, compiler::ir::INVALID_FUNCTION_ID,
+	                                          std::vector<CallOperation::Destructor> {},
+	                                          /*exceptionHandling=*/true, /*captureFunc=*/nullptr,
+	                                          /*isNautilusCall=*/true);
 }
 
 /// A raw external call (`isNautilusCall = false`) still marked
 /// exception-handling -- the accurate case: the callee is a real,
 /// non-noexcept C++ function, established correctly at trace time.
-ProxyCallOperation* addThrowingExternalCall(BasicBlock* block, OperationIdentifier id) {
-	return block->addOperation<ProxyCallOperation>("ext", "ext", nullptr, id, std::span<Operation* const> {}, Type::v,
-	                                               FunctionAttributes {},
-	                                               std::vector<ProxyCallOperation::Destructor> {},
-	                                               /*exceptionHandling=*/true);
+CallOperation* addThrowingExternalCall(BasicBlock* block, OperationIdentifier id) {
+	return block->addOperation<CallOperation>("ext", "ext", nullptr, id, std::span<Operation* const> {}, Type::v,
+	                                          FunctionAttributes {}, compiler::ir::INVALID_FUNCTION_ID,
+	                                          std::vector<CallOperation::Destructor> {},
+	                                          /*exceptionHandling=*/true);
 }
 
 } // namespace

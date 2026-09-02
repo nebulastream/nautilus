@@ -68,7 +68,7 @@ static auto makeEngine(bool inlineInvokeCalls, const char* label) {
 	// Single-threaded so the dumped IR is deterministic across runs.
 	options.setOption("mlir.enableMultithreading", false);
 	// This is the switch that tells the MLIR backend to consult the plugin's
-	// `preOptModuleTransform` / `proxyCallNameOverride` hooks and inline
+	// `preOptModuleTransform` / `callNameOverride` hooks and inline
 	// registered helper bodies at JIT time.
 	options.setOption("mlir.inline_invoke_calls", inlineInvokeCalls);
 	// Dump the generated LLVM IR so users can diff the two variants.

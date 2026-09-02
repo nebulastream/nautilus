@@ -1,12 +1,14 @@
+#pragma once
 
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/ir/FunctionTable.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
 #include <span>
 #include <string>
 #include <vector>
 
 namespace nautilus::compiler::ir {
-class ProxyCallOperation : public Operation {
+class CallOperation : public Operation {
 public:
 	struct Destructor {
 		Operation* address;
@@ -15,15 +17,16 @@ public:
 		void* functionPtr;
 	};
 
-	ProxyCallOperation(common::Arena& arena, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-	                   Type resultType);
+	CallOperation(common::Arena& arena, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
+	              Type resultType, FunctionId calleeId = INVALID_FUNCTION_ID);
 
-	ProxyCallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
-	                   void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
-	                   Type resultType, FunctionAttributes fnAttrs, std::vector<Destructor> destructors = {},
-	                   bool exceptionHandling = false, void* captureFunc = nullptr, bool isNautilusCall = false);
+	CallOperation(common::Arena& arena, const std::string& functionSymbol, const std::string& functionName,
+	              void* functionPtr, OperationIdentifier identifier, std::span<Operation* const> inputArguments,
+	              Type resultType, FunctionAttributes fnAttrs, FunctionId calleeId = INVALID_FUNCTION_ID,
+	              std::vector<Destructor> destructors = {}, bool exceptionHandling = false, void* captureFunc = nullptr,
+	              bool isNautilusCall = false);
 
-	~ProxyCallOperation() = default;
+	~CallOperation() = default;
 
 	std::span<Operation* const> getInputArguments() const;
 
@@ -54,6 +57,12 @@ public:
 	/// unwind.
 	void markNoThrow();
 
+	/// The callee's entry in the module function table. This -- not the name,
+	/// not the pointer -- is what a backend should switch on.
+	[[nodiscard]] FunctionId getCalleeId() const {
+		return calleeId;
+	}
+
 	static bool classof(const Operation* op);
 
 private:
@@ -65,5 +74,8 @@ private:
 	std::vector<Destructor> destructors;
 	bool exceptionHandling = false;
 	bool isNautilusCall = false;
+	/// Defaults to the sentinel so the arena-constructing overloads that do
+	/// not take one leave a value the verifier can flag, rather than garbage.
+	FunctionId calleeId = INVALID_FUNCTION_ID;
 };
 } // namespace nautilus::compiler::ir

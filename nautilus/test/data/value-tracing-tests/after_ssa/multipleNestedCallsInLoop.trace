@@ -16,13 +16,13 @@ B0($1:i32)
 	CONST	$27	0	:i32
 	JMP	$0	B3($2,$27,$1)	:void
 B1($2:ptr,$1:i32,$27:i32)
-	CALL_WITH_EXCEPTION_HANDLING	$32	func_*($2)	:i32
-	CALL_WITH_EXCEPTION_HANDLING	$33	func_*($2,$32)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$32	sumFields($2)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$33	incrementFieldA($2,$32)	:void
 	CONST	$34	1	:i32
 	ADD	$35	$27	$34	:i32
 	JMP	$0	B3($2,$35,$1)	:void
 B2($2:ptr)
-	CALL_WITH_EXCEPTION_HANDLING	$38	func_*($2)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$38	readFieldA($2)	:i32
 	RETURN	$0	$38	:i32
 B3($2:ptr,$27:i32,$1:i32) ControlFlowMerge
 	LT	$28	$27	$1	:bool

@@ -7,6 +7,7 @@
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/SubOperation.hpp"
 #include "nautilus/compiler/ir/operations/BinaryOperations/NegateOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
@@ -16,7 +17,6 @@
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/OrOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/SelectOperation.hpp"
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -40,6 +40,59 @@ OperationIdentifier createValueIdentifier(const InputVariant& val) {
 	throw NotImplementedException("wrong input variant");
 }
 
+namespace {
+
+/// Binds a traced body to the function-table entry its call sites minted.
+///
+/// A call to a Nautilus function is traced before that function's own body is,
+/// so by the time we get here the id usually already exists -- keyed on the
+/// definition pointer, never the name, so two functions sharing a name still
+/// resolve to two entries. Functions nobody calls (the entry point) simply
+/// intern here first.
+void bindDefinition(compiler::ir::IRGraph& ir, TraceModule& traceModule, const std::string& functionName,
+                    compiler::ir::FunctionOperation* functionOperation) {
+	const auto* traceDefinition = traceModule.getFunctionDefinition(functionName);
+	auto& table = ir.getFunctionTableMut();
+
+	// One body can be denoted by several identities: a NautilusFunction may
+	// share a name with a module-registered entry function, in which case the
+	// trace loop traced the body once and recorded both. Call sites have
+	// already minted an entry keyed on whichever identity they saw, so reuse
+	// that entry rather than minting a second one -- two entries would carry
+	// two emission names, and the call would look for a symbol the definition
+	// was not emitted under.
+	auto id = compiler::ir::INVALID_FUNCTION_ID;
+	if (traceDefinition != nullptr) {
+		for (const auto* definition : traceDefinition->definitions) {
+			if (const auto existing = table.find(const_cast<void*>(definition));
+			    existing != compiler::ir::INVALID_FUNCTION_ID) {
+				id = existing;
+				break;
+			}
+		}
+	}
+
+	if (id == compiler::ir::INVALID_FUNCTION_ID) {
+		compiler::ir::CalleeDescriptor descriptor;
+		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
+		descriptor.customName = functionName;
+		if (traceDefinition != nullptr && !traceDefinition->definitions.empty()) {
+			descriptor.key = const_cast<void*>(traceDefinition->definitions.front());
+		}
+		id = ir.internCallee(descriptor);
+	}
+
+	// Point every remaining identity at that one entry.
+	if (traceDefinition != nullptr) {
+		for (const auto* definition : traceDefinition->definitions) {
+			table.alias(const_cast<void*>(definition), id);
+		}
+	}
+	ir.defineFunction(id, functionOperation);
+}
+
+} // namespace
+
 std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceModule> traceModule,
                                                          const compiler::CompilationUnitID& id) {
 	auto ir = std::make_shared<compiler::ir::IRGraph>(id);
@@ -49,7 +102,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
+		auto* functionOperation = phaseContext.processFunction(functionName, attrs);
+		ir->addFunctionOperation(functionOperation);
+		bindDefinition(*ir, *traceModule, functionName, functionOperation);
 	}
 
 	return ir;
@@ -64,7 +119,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		ir->addFunctionOperation(phaseContext.processFunction(functionName, attrs));
+		auto* functionOperation = phaseContext.processFunction(functionName, attrs);
+		ir->addFunctionOperation(functionOperation);
+		bindDefinition(*ir, *traceModule, functionName, functionOperation);
 	}
 
 	return ir;
@@ -97,6 +154,13 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 	    "execute", std::move(currentBasicBlocks), std::vector<Type> {}, std::vector<std::string> {}, returnType,
 	    collectAllocaSpecs(), std::move(attributes));
 	ir->addFunctionOperation(functionOperation);
+	// Single-trace path: the entry function has no NautilusFunctionDefinition
+	// behind it (nothing calls it), so it interns with a null identity key and
+	// simply gets a fresh entry.
+	compiler::ir::CalleeDescriptor descriptor;
+	descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
+	descriptor.customName = "execute";
+	ir->defineFunction(ir->internCallee(descriptor), functionOperation);
 	return ir;
 }
 
@@ -423,6 +487,44 @@ void TraceToIRConversionPhase::IRConversionContext::processStore(ValueFrame& fra
 	currentBlock->addTaggedOperation<StoreOperation>(operation.tag.getTag(), value, address);
 }
 
+compiler::ir::FunctionId
+TraceToIRConversionPhase::IRConversionContext::internCallee(const FunctionCall& call, Type resultType,
+                                                            const std::vector<Operation*>& arguments) {
+	// Interning is idempotent, but building the descriptor is not free: it
+	// copies three names and a parameter-type vector. Conversion walks every
+	// call site, and a hot loop calls the same handful of functions over and
+	// over, so resolve an already-known identity before paying for any of it.
+	if (call.ptr != nullptr) {
+		if (const auto existing = ir->getFunctionTable().find(call.ptr);
+		    existing != compiler::ir::INVALID_FUNCTION_ID) {
+			return existing;
+		}
+	}
+
+	compiler::ir::CalleeDescriptor descriptor;
+	descriptor.key = call.ptr;
+	descriptor.resultType = resultType;
+	descriptor.attrs = call.fnAttrs;
+	descriptor.paramTypes.reserve(arguments.size());
+	for (const auto* argument : arguments) {
+		descriptor.paramTypes.push_back(argument->getStamp());
+	}
+
+	if (call.kind == CalleeKind::Internal) {
+		// `ptr` is a NautilusFunctionDefinition, not code. Its name is one a
+		// user chose, so it is a custom name rather than a symbol.
+		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
+		descriptor.customName = call.functionName;
+	} else {
+		descriptor.kind = compiler::ir::CalleeDescriptor::Kind::External;
+		descriptor.mangledName = call.mangledName;
+		// `functionName` is already rendered per the engine's naming options
+		// (demangled, raw, or normalised), which is exactly the display name.
+		descriptor.demangledName = call.functionName;
+	}
+	return ir->internCallee(descriptor);
+}
+
 void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& frame, BasicBlock* currentBlock,
                                                                 TraceOperation& operation) {
 	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
@@ -434,23 +536,24 @@ void TraceToIRConversionPhase::IRConversionContext::processCall(ValueFrame& fram
 
 	auto resultType = operation.resultType;
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
-	auto destructors = std::vector<ProxyCallOperation::Destructor> {};
+	auto destructors = std::vector<CallOperation::Destructor> {};
 	destructors.reserve(functionCallTarget.destructors.size());
 	for (const auto& destructor : functionCallTarget.destructors) {
-		destructors.push_back(ProxyCallOperation::Destructor {
+		destructors.push_back(CallOperation::Destructor {
 		    .address = frame.getValue(createValueIdentifier(destructor.address)),
 		    .functionSymbol = destructor.mangledName,
 		    .functionName = destructor.functionName,
 		    .functionPtr = destructor.ptr,
 		});
 	}
-	auto proxyCallOperation = currentBlock->addTaggedOperation<ProxyCallOperation>(
+	const auto calleeId = internCallee(functionCallTarget, resultType, inputArguments);
+	auto callOperation = currentBlock->addTaggedOperation<CallOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, std::move(destructors),
+	    resultIdentifier, inputArguments, resultType, functionCallTarget.fnAttrs, calleeId, std::move(destructors),
 	    operation.op == Op::CALL_WITH_EXCEPTION_HANDLING, functionCallTarget.captureFunc,
 	    functionCallTarget.isNautilusCall);
 	if (resultType != Type::v) {
-		frame.setValue(resultIdentifier, proxyCallOperation);
+		frame.setValue(resultIdentifier, callOperation);
 	}
 }
 
@@ -486,9 +589,13 @@ void TraceToIRConversionPhase::IRConversionContext::processFuncAddr(ValueFrame& 
                                                                     TraceOperation& operation) {
 	const FunctionCall& functionCallTarget = *std::get<FunctionCall*>(operation.input[0]);
 	auto resultIdentifier = createValueIdentifier(operation.resultRef);
+	// Taking an address interns the same target a call to it would, so the two
+	// share one table entry -- and so address-of resolves for every linkage,
+	// not just for functions defined in this module.
+	const auto calleeId = internCallee(functionCallTarget, Type::ptr, {});
 	auto funcAddrOp = currentBlock->addTaggedOperation<FunctionAddressOfOperation>(
 	    operation.tag.getTag(), functionCallTarget.mangledName, functionCallTarget.functionName, functionCallTarget.ptr,
-	    resultIdentifier);
+	    resultIdentifier, calleeId);
 	frame.setValue(resultIdentifier, funcAddrOp);
 }
 

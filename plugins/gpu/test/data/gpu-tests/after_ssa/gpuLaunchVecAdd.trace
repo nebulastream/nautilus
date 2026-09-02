@@ -8,7 +8,7 @@ B0($1:ptr,$2:ptr,$3:ptr)
 	CONST	$11	1	:ui32
 	CALL_WITH_EXCEPTION_HANDLING	$15	func_*($4,$6,$7)	:void
 	CALL_WITH_EXCEPTION_HANDLING	$19	func_*($8,$10,$11)	:void
-	CALL_WITH_EXCEPTION_HANDLING	$20	func_*($1,$2,$3)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$20	vecAdd($1,$2,$3)	:void
 	RETURN	$0	:void
 
 VECADD:

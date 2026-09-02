@@ -64,7 +64,7 @@ private:
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
 
 		/// Lowers an exception-region landing pad (a BasicBlock holding destructor
-		/// ProxyCallOperations) into the block stream under @p label.
+		/// CallOperations) into the block stream under @p label.
 		void processPad(const ir::BasicBlock* block, const std::string& label, RegisterFrame& frame);
 
 		/// Maps a landing-pad index to its generated label ("cleanup_pad_N"), or
@@ -97,7 +97,7 @@ private:
 		void visitBranch(ir::BranchOperation* opt, short block, RegisterFrame& frame);
 		void visitLoad(ir::LoadOperation* opt, short block, RegisterFrame& frame);
 		void visitStore(ir::StoreOperation* opt, short block, RegisterFrame& frame);
-		void visitProxyCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void visitCall(ir::CallOperation* opt, short block, RegisterFrame& frame);
 		void visitIndirectCall(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
 		void visitNegate(ir::NegateOperation* opt, short block, RegisterFrame& frame);
 		void visitNot(ir::NotOperation* opt, short block, RegisterFrame& frame);

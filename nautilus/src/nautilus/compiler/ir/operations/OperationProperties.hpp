@@ -61,7 +61,7 @@ constexpr std::array<uint8_t, kOpFlagTableSize> buildOpFlagTable() {
 	set(OpType::StoreOp, OpFlags::MayWriteMem);
 
 	// Calls may do anything.
-	set(OpType::ProxyCallOp, OpFlags::MayReadMem | OpFlags::MayWriteMem);
+	set(OpType::CallOp, OpFlags::MayReadMem | OpFlags::MayWriteMem);
 	set(OpType::IndirectCallOp, OpFlags::MayReadMem | OpFlags::MayWriteMem);
 
 	// The rest (alloca, function-op, function-address-of, block args/invocations, yield) have no flags.

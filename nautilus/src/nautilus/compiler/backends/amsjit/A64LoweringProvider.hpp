@@ -74,7 +74,7 @@ private:
 
 		/// Must be called after processAll() and before rt.add() to capture label offsets.
 		const std::unordered_map<std::string, ::asmjit::FuncNode*>& getFuncNodes() const {
-			return funcNodes_;
+			return funcNodesByName_;
 		}
 
 	private:
@@ -88,7 +88,15 @@ private:
 		/// the duration of the LoweringContext.
 		const AsmJitIntrinsicManager& intrinsicManager_;
 		/// Maps Nautilus function name → AsmJit FuncNode (stable label for forward calls).
-		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodes_;
+		/// FunctionId -> the AsmJit node emitting that in-module function.
+		/// Keyed on the callee's table id, not its name: a name lookup that
+		/// missed used to fall through to cc.invoke() on whatever the stored
+		/// pointer happened to be -- a definition object, for a Nautilus call.
+		std::unordered_map<ir::FunctionId, ::asmjit::FuncNode*> funcNodes_;
+		/// Name -> node, kept only so the caller can export compiled
+		/// addresses under the names a user asked for. Lowering never reads
+		/// it; resolution goes through funcNodes_ above.
+		std::unordered_map<std::string, ::asmjit::FuncNode*> funcNodesByName_;
 		std::unordered_map<ir::BlockIdentifier, ::asmjit::Label> blockLabels;
 		std::unordered_set<ir::BlockIdentifier> processedBlocks;
 		/// Pointer registers for the current function's alloca slots, indexed
@@ -177,7 +185,7 @@ private:
 		void visitLoad(ir::LoadOperation* op, RegisterFrame& frame);
 		void visitStore(ir::StoreOperation* op, RegisterFrame& frame);
 		void visitAlloca(ir::AllocaOperation* op, RegisterFrame& frame);
-		void visitProxyCall(ir::ProxyCallOperation* op, RegisterFrame& frame);
+		void visitCall(ir::CallOperation* op, RegisterFrame& frame);
 		void visitIndirectCall(ir::IndirectCallOperation* op, RegisterFrame& frame);
 		void visitFunctionAddressOf(ir::FunctionAddressOfOperation* op, RegisterFrame& frame);
 		void visitCast(ir::CastOperation* op, RegisterFrame& frame);

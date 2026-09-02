@@ -1,11 +1,9 @@
 nautilus {
+declare external #0 func_*() :void
 execute() :i32 {
 Block_0():
-	func_*() :void
+	call func_*#0() :void
 	$2 = 42 :i32
 	return ($2) :i32
-exception_region:
-	call_sites:
-		$1 -> (no_pad)
 }
 } //nautilus
