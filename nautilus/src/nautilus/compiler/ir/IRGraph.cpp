@@ -58,6 +58,44 @@ struct PrintGraphScope {
 	const IRGraph* previous;
 };
 
+/// The exception region of the function currently being formatted, or nullptr
+/// before ExceptionRegionPreparationPass has run (or for a function with no
+/// exceptional call sites). A call operation knows only whether it *might*
+/// unwind (`requiresExceptionHandling()`); which landing pad it actually
+/// targets is decided later and lives in the enclosing FunctionOperation's
+/// side table, which the per-Operation fmt formatter has no other way to
+/// reach. Set for the duration of formatting one function's blocks.
+thread_local const FunctionExceptionRegion* currentPrintExceptionRegion = nullptr;
+
+struct PrintExceptionRegionScope {
+	explicit PrintExceptionRegionScope(const FunctionExceptionRegion* region) : previous(currentPrintExceptionRegion) {
+		currentPrintExceptionRegion = region;
+	}
+	~PrintExceptionRegionScope() {
+		currentPrintExceptionRegion = previous;
+	}
+	PrintExceptionRegionScope(const PrintExceptionRegionScope&) = delete;
+	PrintExceptionRegionScope& operator=(const PrintExceptionRegionScope&) = delete;
+
+	const FunctionExceptionRegion* previous;
+};
+
+/// The landing-pad suffix for @p call (` -> pad_N` / ` -> (no_pad)`), or empty
+/// when the region hasn't been computed yet or @p call isn't one of its
+/// exceptional call sites. Linear scan: this only runs while formatting IR
+/// for humans, and a function's call-site list is small.
+std::string padLinkSuffix(const Operation* call) {
+	if (currentPrintExceptionRegion == nullptr) {
+		return {};
+	}
+	for (const auto& site : currentPrintExceptionRegion->callSites) {
+		if (site.call == call) {
+			return site.hasPad() ? fmt::format(" -> pad_{}", site.padIndex) : " -> (no_pad)";
+		}
+	}
+	return {};
+}
+
 /// How a callee should be spelled at a call site.
 ///
 /// An internal callee's name comes from the user (a NautilusFunction is
@@ -420,6 +458,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		break;
 	}
 	fmt::format_to(out, " :{}", toString(op.getStamp()));
+	fmt::format_to(out, "{}", nautilus::compiler::ir::padLinkSuffix(&op));
 
 	// Opt-in source-location trailer.  The TLS pointer is only non-null
 	// inside the scope of `IRGraph::toString(options)`.
@@ -496,8 +535,12 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 			}
 		}
 		fmt::format_to(out, ") :{} {{", toString(func.getOutputArg()));
-		for (const auto* block : func.getBasicBlocks()) {
-			fmt::format_to(out, "{}", *block);
+		{
+			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
+			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
+			for (const auto* block : func.getBasicBlocks()) {
+				fmt::format_to(out, "{}", *block);
+			}
 		}
 		if (func.exceptionRegion.has_value()) {
 			const auto& region = *func.exceptionRegion;

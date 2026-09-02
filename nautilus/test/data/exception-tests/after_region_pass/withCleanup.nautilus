@@ -6,7 +6,7 @@ execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
 	func_*#0($1) :void
-	func_*#1($1) :void
+	func_*#1($1) :void -> pad_0
 	$5 = 42 :i32
 	func_*#2($1) :void
 	return ($5) :i32
