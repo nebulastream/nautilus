@@ -1,11 +1,10 @@
 
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
-#include <catch2/catch_all.hpp>
-#ifdef ENABLE_TBC_JIT
 #include "nautilus/function.hpp"
 #include "nautilus/nautilus_function.hpp"
-
+#include <catch2/catch_all.hpp>
+#ifdef ENABLE_TBC_JIT
 namespace nautilus::compiler::tbc::jit {
 // Defined in libnautilus; gates the copy-and-patch benchmarks on builds
 // that can execute stitched code.
@@ -29,35 +28,34 @@ val<int32_t> fib(val<int32_t> n) {
 	}
 	return b;
 }
-#ifdef ENABLE_TBC_JIT
-// Call-heavy kernels for the copy-and-patch A/B: the loop kernels above never
-// leave one function, so they cannot show the cost of the JIT's frame-push
-// helper (internal CALL) or the dyncall bridge (external CALL_EXT).
-val<int64_t> tbcJitCalleeBody(val<int64_t> x, val<int64_t> y) {
+
+// Call-heavy kernels: the loop kernels above never leave one function, so
+// they cannot show the cost of an internal CALL (through a NautilusFunction)
+// or an external CALL_EXT (through invoke() into native code).
+val<int64_t> callCalleeBody(val<int64_t> x, val<int64_t> y) {
 	return x * 2 + y;
 }
-static auto tbcJitBenchCallee = NautilusFunction {"tbcJitBenchCallee", tbcJitCalleeBody};
+static auto callBenchCallee = NautilusFunction {"callBenchCallee", callCalleeBody};
 
 val<int64_t> internalCallLoop(val<int32_t> n) {
 	val<int64_t> acc = 0;
 	for (val<int32_t> i = 0; i < n; i = i + 1) {
-		acc = tbcJitBenchCallee(acc, val<int64_t>(1));
+		acc = callBenchCallee(acc, val<int64_t>(1));
 	}
 	return acc;
 }
 
-int64_t tbcJitNativeAdd(int64_t a, int64_t b) noexcept {
+int64_t nativeAdd(int64_t a, int64_t b) noexcept {
 	return a + b;
 }
 
 val<int64_t> externalCallLoop(val<int32_t> n) {
 	val<int64_t> acc = 0;
 	for (val<int32_t> i = 0; i < n; i = i + 1) {
-		acc = invoke(tbcJitNativeAdd, acc, val<int64_t>(1));
+		acc = invoke(nativeAdd, acc, val<int64_t>(1));
 	}
 	return acc;
 }
-#endif
 
 val<int32_t> sum(val<int32_t*> array, val<int32_t> length) {
 	val<int32_t> sum = val<int32_t>(0);
@@ -88,11 +86,25 @@ void runArraySumBenchmark(Catch::Benchmark::Chronometer& meter, Options& options
 	meter.measure([&] { return func(buffer, size / sizeof(int32_t)); });
 }
 
+void runInternalCallBenchmark(Catch::Benchmark::Chronometer& meter, Options& options) {
+	auto engine = engine::NautilusEngine(options);
+	auto func = engine.registerFunction(internalCallLoop);
+	meter.measure([&] { return func(10000); });
+}
+
+void runExternalCallBenchmark(Catch::Benchmark::Chronometer& meter, Options& options) {
+	auto engine = engine::NautilusEngine(options);
+	auto func = engine.registerFunction(externalCallLoop);
+	meter.measure([&] { return func(10000); });
+}
+
 static auto benchmarks =
     std::vector<std::tuple<std::string, std::function<void(Catch::Benchmark::Chronometer& meter, Options& options)>>> {
         {"add", runAddBenchmark},
         {"fibonacci", runFibBenchmark},
         {"sum", runArraySumBenchmark},
+        {"internalCall", runInternalCallBenchmark},
+        {"externalCall", runExternalCallBenchmark},
     };
 
 TEST_CASE("Execution Benchmark") {
@@ -102,7 +114,8 @@ TEST_CASE("Execution Benchmark") {
 	// per-flag A/B coverage lives in CompilationStatisticsTest and the
 	// *ModeTest execution tests). TBC is the exception -- it gets two
 	// configs, interpreted and copy-and-patch JIT, since that split is the
-	// point of having the backend.
+	// point of having the backend. Every workload above (including the two
+	// call-heavy kernels) runs against every config below.
 	std::vector<std::tuple<std::string, Options>> configs;
 
 #ifdef ENABLE_MLIR_BACKEND
@@ -176,51 +189,6 @@ TEST_CASE("Execution Benchmark") {
 			    .operator=([&func, &op](Catch::Benchmark::Chronometer meter) { func(meter, op); });
 		}
 	}
-
-#ifdef ENABLE_TBC_JIT
-	// Call-heavy A/B between the two TBC configs above: the loop kernels
-	// never leave one function, so they cannot show the cost of the JIT's
-	// frame-push helper (internal CALL) or the dyncall bridge (external
-	// CALL_EXT).
-	auto findConfig = [&configs](const std::string& configName) -> const Options* {
-		for (auto& [name, op] : configs) {
-			if (name == configName) {
-				return &op;
-			}
-		}
-		return nullptr;
-	};
-	if (const auto* jitOptions = findConfig("tbc_jit")) {
-		const auto* interpOptions = findConfig("tbc_interp");
-		auto callBenchmarks =
-		    std::vector<std::tuple<std::string, std::function<void(Catch::Benchmark::Chronometer&, Options&)>>> {
-		        {"internalCall",
-		         [](Catch::Benchmark::Chronometer& meter, Options& options) {
-			         auto engine = engine::NautilusEngine(options);
-			         auto func = engine.registerFunction(internalCallLoop);
-			         meter.measure([&] { return func(10000); });
-		         }},
-		        {"externalCall",
-		         [](Catch::Benchmark::Chronometer& meter, Options& options) {
-			         auto engine = engine::NautilusEngine(options);
-			         auto func = engine.registerFunction(externalCallLoop);
-			         meter.measure([&] { return func(10000); });
-		         }},
-		    };
-		std::vector<std::tuple<std::string, Options>> tbcCallConfigs = {
-		    {"interp", *interpOptions},
-		    {"jit", *jitOptions},
-		};
-		for (auto& [tbcName, op] : tbcCallConfigs) {
-			for (auto& test : callBenchmarks) {
-				auto func = std::get<1>(test);
-				auto testName = std::get<0>(test);
-				Catch::Benchmark::Benchmark("exec_tbc_" + testName + "_" + tbcName)
-				    .operator=([&func, &op](Catch::Benchmark::Chronometer meter) { func(meter, op); });
-			}
-		}
-	}
-#endif
 }
 
 } // namespace nautilus::engine
