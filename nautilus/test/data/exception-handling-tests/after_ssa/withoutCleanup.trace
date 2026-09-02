@@ -1,0 +1,5 @@
+EXECUTE:
+B0()
+	CALL_WITH_EXCEPTION_HANDLING	$1	func_*()	:void
+	CONST	$2	42	:i32
+	RETURN	$0	$2	:i32

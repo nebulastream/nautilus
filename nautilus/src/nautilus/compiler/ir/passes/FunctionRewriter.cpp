@@ -1,4 +1,5 @@
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
+#include "nautilus/compiler/ir/OperationEffects.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
@@ -38,7 +39,8 @@ std::vector<BasicBlockInvocation*> invocationsTargeting(BasicBlock* block) {
 
 } // namespace
 
-FunctionRewriter::FunctionRewriter(FunctionOperation& fn, common::Arena& arena) : fn_(fn), arena_(arena) {
+FunctionRewriter::FunctionRewriter(FunctionOperation& fn, common::Arena& arena, const IRGraph* ir)
+    : fn_(fn), arena_(arena), ir_(ir) {
 	uint32_t maxId = 0;
 	for (auto* block : fn_.getBasicBlocks()) {
 		for (auto* arg : block->getArguments()) {
@@ -158,7 +160,11 @@ size_t FunctionRewriter::eraseIfDead(Operation* op) {
 		if (cur == nullptr || !defBlock_.contains(cur)) {
 			continue; // not tracked: already erased, or never part of the function.
 		}
-		if (useCount(cur) != 0 || !isPureOp(cur->getOperationType())) {
+		// Purity per operation: a call whose callee provably touches no memory
+		// and returns is removable when its result is unused; every other
+		// opcode gets the same answer isPureOp(type) gave.
+		if (useCount(cur) != 0 ||
+		    (ir_ != nullptr ? !isPureOperation(*ir_, *cur) : !isPureOp(cur->getOperationType()))) {
 			continue;
 		}
 		std::vector<Operation*> operands(cur->getInputs().begin(), cur->getInputs().end());

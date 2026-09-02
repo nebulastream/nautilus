@@ -54,7 +54,7 @@ struct InliningPluginRegistrar {
 		// the plugin so that `hexToPtr` round-trips and `jitSymbolContributor`
 		// resolves the same symbol — using `ptrToHex` here keeps those
 		// formats in lock-step.
-		hooks.proxyCallNameOverride = [](void* functionPtr) -> std::optional<std::string> {
+		hooks.callNameOverride = [](void* functionPtr) -> std::optional<std::string> {
 			if (!InlineFunctionRegistry::instance().containsFunctionBitcode(functionPtr)) {
 				return std::nullopt;
 			}

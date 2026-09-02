@@ -30,7 +30,7 @@ struct LLVMBackendHooks {
 	// Called during MLIR lowering for external proxy calls. Returns an
 	// alternative function name to emit given the runtime address, or
 	// std::nullopt to use the default name.
-	std::function<std::optional<std::string>(void* functionPtr)> proxyCallNameOverride;
+	std::function<std::optional<std::string>(void* functionPtr)> callNameOverride;
 };
 
 // Meyers singleton - avoids static initialization-order issues between the

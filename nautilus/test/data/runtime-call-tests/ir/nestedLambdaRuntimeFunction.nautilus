@@ -1,8 +1,10 @@
 nautilus {
+declare external #0 func_*(i32) :i32 [nounwind]
+declare external #1 func_*(i32) :i32 [nounwind]
 execute($1:i32) :i32 {
 Block_0($1:i32):
-	$2 = func_*($1) :i32
-	$3 = func_*($2) :i32
+	$2 = call func_*#0($1) :i32
+	$3 = call func_*#1($2) :i32
 	return ($3) :i32
 }
 } //nautilus

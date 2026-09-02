@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
@@ -30,8 +31,14 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto resultRef = tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			                                    functionArgumentReferences, fnAttrs);
+			auto& resultRef =
+			    fnAttrs.noUnwind
+			        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+			                             functionArgumentReferences, fnAttrs)
+			        : tracing::traceCallWithExceptionHandling(
+			              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+			              functionArgumentReferences, fnAttrs,
+			              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
 			return val<R>(resultRef);
 		}
 #endif
@@ -45,7 +52,13 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
+			if (fnAttrs.noUnwind) {
+				tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
+			} else {
+				tracing::traceCallWithExceptionHandling(
+				    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
+				    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
+			}
 			return;
 		}
 #endif
@@ -63,6 +76,13 @@ private:
 };
 
 /// Invoke calls without attributes
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invoke(R (*fnptr)(FunctionArguments...) noexcept, ValueArguments&&... args) {
+	FunctionAttributes attrs;
+	attrs.noUnwind = true;
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, attrs)(std::forward<ValueArguments>(args)...);
+}
+
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
@@ -82,6 +102,12 @@ void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 
 /// Invoke calls with attributes
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
+auto invoke(FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...) noexcept, ValueArguments&&... args) {
+	fnAttrs.noUnwind = true;
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+}
+
+template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
 }
@@ -96,6 +122,13 @@ template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(const FunctionAttributes fnAttrs, void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr, fnAttrs);
 	func(std::forward<ValueArguments>(args)...);
+}
+
+template <typename R, typename... FunctionArguments>
+auto function(R (*fnptr)(FunctionArguments...) noexcept) {
+	FunctionAttributes attrs;
+	attrs.noUnwind = true;
+	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, attrs);
 }
 
 template <typename R, typename... FunctionArguments>

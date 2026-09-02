@@ -5,12 +5,12 @@
 #include "fmt/core.h"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IfOperation.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
 #include "nautilus/logging.hpp"
 #include <iomanip>
 #include <map>
@@ -444,8 +444,8 @@ protected:
 			return "neg";
 		case Operation::OperationType::OrOp:
 			return "||";
-		case Operation::OperationType::ProxyCallOp:
-			return static_cast<ProxyCallOperation*>(op)->getFunctionName();
+		case Operation::OperationType::CallOp:
+			return static_cast<CallOperation*>(op)->getFunctionName();
 		case Operation::OperationType::StoreOp:
 			return "store";
 		case Operation::OperationType::SubOp:
@@ -480,7 +480,7 @@ protected:
 		case Operation::OperationType::BinaryComp:
 			return "calc";
 		case Operation::OperationType::FunctionOp:
-		case Operation::OperationType::ProxyCallOp:
+		case Operation::OperationType::CallOp:
 		case Operation::OperationType::IndirectCallOp:
 		case Operation::OperationType::FunctionAddressOfOp:
 			return "call";
@@ -597,8 +597,8 @@ protected:
 			return "neg";
 		case Operation::OperationType::OrOp:
 			return "||";
-		case Operation::OperationType::ProxyCallOp:
-			return static_cast<ProxyCallOperation*>(op)->getFunctionName();
+		case Operation::OperationType::CallOp:
+			return static_cast<CallOperation*>(op)->getFunctionName();
 		case Operation::OperationType::StoreOp:
 			return "store";
 		case Operation::OperationType::SubOp:

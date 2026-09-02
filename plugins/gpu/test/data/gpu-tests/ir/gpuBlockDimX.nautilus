@@ -1,7 +1,8 @@
 nautilus {
+declare external #0 func_*() :ui32
 execute($1:ui32) :ui32 {
 Block_0($1:ui32):
-	$2 = func_*() :ui32
+	$2 = call func_*#0() :ui32
 	$3 = $2 + $1 :ui32
 	return ($3) :ui32
 }

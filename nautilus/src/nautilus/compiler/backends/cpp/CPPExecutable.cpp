@@ -4,7 +4,9 @@
 #include <utility>
 namespace nautilus::compiler::cpp {
 
-CPPExecutable::CPPExecutable(std::shared_ptr<SharedLibrary> obj) : obj(std::move(obj)) {
+CPPExecutable::CPPExecutable(std::shared_ptr<SharedLibrary> obj,
+                             std::unordered_set<std::string> functionsNeedingCapture)
+    : obj(std::move(obj)), functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
 void* CPPExecutable::getInvocableFunctionPtr(const std::string& member) {

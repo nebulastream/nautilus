@@ -5,9 +5,9 @@ namespace nautilus::compiler::ir {
 
 FunctionAddressOfOperation::FunctionAddressOfOperation(common::Arena& /*arena*/, const std::string& functionSymbol,
                                                        const std::string& functionName, void* functionPtr,
-                                                       OperationIdentifier identifier)
+                                                       OperationIdentifier identifier, FunctionId calleeId)
     : Operation(Operation::OperationType::FunctionAddressOfOp, identifier, Type::ptr), functionSymbol(functionSymbol),
-      functionName(functionName), functionPtr(functionPtr) {
+      functionName(functionName), functionPtr(functionPtr), calleeId(calleeId) {
 }
 
 const std::string& FunctionAddressOfOperation::getFunctionSymbol() const {

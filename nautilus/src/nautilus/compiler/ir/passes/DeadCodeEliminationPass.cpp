@@ -7,8 +7,8 @@ namespace nautilus::compiler::ir {
 
 namespace {
 
-bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
-	FunctionRewriter rewriter(fn, arena);
+bool applyToFunction(const IRGraph& ir, FunctionOperation& fn, common::Arena& arena) {
+	FunctionRewriter rewriter(fn, arena, &ir);
 	size_t erased = 0;
 	for (auto* block : fn.getBasicBlocks()) {
 		// Snapshot: `eraseIfDead` mutates the block's operation list as it
@@ -31,7 +31,7 @@ bool DeadCodeEliminationPass::apply(IRGraph& ir) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn, arena);
+			changed |= applyToFunction(ir, *fn, arena);
 		}
 	}
 	return changed;

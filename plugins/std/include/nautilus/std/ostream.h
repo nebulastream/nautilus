@@ -39,34 +39,34 @@ val<std::basic_ostream<_CharT, _Traits>>& flush(val<std::basic_ostream<_CharT, _
 }
 
 template <class _CharT, class _Traits>
-void callHex(std::basic_ostream<_CharT, _Traits>* ptr) {
+void callHex(std::basic_ostream<_CharT, _Traits>* ptr) noexcept {
 	std::hex(*ptr);
 }
 
 template <class _CharT, class _Traits>
-val<std::basic_ostream<_CharT, _Traits>>& hex(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+val<std::basic_ostream<_CharT, _Traits>>& hex(val<std::basic_ostream<_CharT, _Traits>>& __os) noexcept {
 	invoke(callHex<_CharT, _Traits>, __os.stream);
 	return __os;
 }
 
 template <class _CharT, class _Traits>
-void callDec(std::basic_ostream<_CharT, _Traits>* ptr) {
+void callDec(std::basic_ostream<_CharT, _Traits>* ptr) noexcept {
 	std::dec(*ptr);
 }
 
 template <class _CharT, class _Traits>
-val<std::basic_ostream<_CharT, _Traits>>& dec(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+val<std::basic_ostream<_CharT, _Traits>>& dec(val<std::basic_ostream<_CharT, _Traits>>& __os) noexcept {
 	invoke(callDec<_CharT, _Traits>, __os.stream);
 	return __os;
 }
 
 template <class _CharT, class _Traits>
-void callOct(std::basic_ostream<_CharT, _Traits>* ptr) {
+void callOct(std::basic_ostream<_CharT, _Traits>* ptr) noexcept {
 	std::oct(*ptr);
 }
 
 template <class _CharT, class _Traits>
-val<std::basic_ostream<_CharT, _Traits>>& oct(val<std::basic_ostream<_CharT, _Traits>>& __os) {
+val<std::basic_ostream<_CharT, _Traits>>& oct(val<std::basic_ostream<_CharT, _Traits>>& __os) noexcept {
 	invoke(callOct<_CharT, _Traits>, __os.stream);
 	return __os;
 }
@@ -122,15 +122,11 @@ private:
 	template <class T>
 	static void pipe(std::basic_ostream<CharT, Traits>* ptr, T value) {
 		auto& s = *ptr;
-		if constexpr (
-    		std::is_pointer_v<T> &&
-    		!std::is_same_v<std::remove_cv_t<T>, char*> &&
-    		!std::is_same_v<std::remove_cv_t<T>, const char*>
-		) {
-    		s << std::showbase << std::hex
-      		<< reinterpret_cast<const void*>(value);
+		if constexpr (std::is_pointer_v<T> && !std::is_same_v<std::remove_cv_t<T>, char*> &&
+		              !std::is_same_v<std::remove_cv_t<T>, const char*>) {
+			s << std::showbase << std::hex << reinterpret_cast<const void*>(value);
 		} else {
-    		s << value;
+			s << value;
 		}
 	}
 

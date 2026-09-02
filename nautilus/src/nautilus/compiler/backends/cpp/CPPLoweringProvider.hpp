@@ -1,6 +1,8 @@
 #pragma once
 
 #include "nautilus/compiler/Frame.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
+#include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
@@ -49,10 +51,31 @@ private:
 		/// prologue from FunctionOperation::getAllocaSpecs(); cleared per
 		/// function so indices from a previous function don't bleed through.
 		std::vector<std::string> functionAllocaSlots;
+		/// The FunctionOperation currently being lowered (set in process() before
+		/// dispatching its blocks). Provides access to the function's
+		/// exception-region side table from the per-call visit hooks.
+		const ir::FunctionOperation* currentFunction_ = nullptr;
+		/// Captured-exception queries for `currentFunction_`, rebuilt once per
+		/// function rather than once per call site.
+		CapturedExceptionTransport transport_;
 
 		std::string process(const ir::BasicBlock*, RegisterFrame& frame);
 
 		void process(const ir::BasicBlockInvocation& opt, short block, RegisterFrame& frame);
+
+		/// Lowers an exception-region landing pad (a BasicBlock holding destructor
+		/// CallOperations) into the block stream under @p label.
+		void processPad(const ir::BasicBlock* block, const std::string& label, RegisterFrame& frame);
+
+		/// Maps a landing-pad index to its generated label ("cleanup_pad_N"), or
+		/// "exceptional_exit" when @p padIndex is `ir::noLandingPad`.
+		static std::string getPadLabel(size_t padIndex);
+
+		/// Emits the captured-call epilogue: store the in-flight exception into
+		/// the host frame and branch to @p padIndex's label. @p resultAssign is
+		/// the "var = " prefix for a value-returning call, empty for void.
+		void emitCapturedCall(short blockIndex, const std::string& callExpr, const std::string& resultVar,
+		                      const std::string& returnType, size_t padIndex);
 
 		// Per-operation hooks invoked by OperationDispatcher::dispatch.
 		void visitAdd(ir::AddOperation* opt, short block, RegisterFrame& frame);
@@ -74,7 +97,7 @@ private:
 		void visitBranch(ir::BranchOperation* opt, short block, RegisterFrame& frame);
 		void visitLoad(ir::LoadOperation* opt, short block, RegisterFrame& frame);
 		void visitStore(ir::StoreOperation* opt, short block, RegisterFrame& frame);
-		void visitProxyCall(ir::ProxyCallOperation* opt, short block, RegisterFrame& frame);
+		void visitCall(ir::CallOperation* opt, short block, RegisterFrame& frame);
 		void visitIndirectCall(ir::IndirectCallOperation* opt, short block, RegisterFrame& frame);
 		void visitNegate(ir::NegateOperation* opt, short block, RegisterFrame& frame);
 		void visitNot(ir::NotOperation* opt, short block, RegisterFrame& frame);

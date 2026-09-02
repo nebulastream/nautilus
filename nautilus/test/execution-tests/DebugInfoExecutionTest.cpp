@@ -59,7 +59,7 @@ val<int32_t> debugModLoop(val<int32_t> n) {
 
 // A helper traced as a separate Nautilus function.  Wrapping it in a
 // NautilusFunction makes the call from `debugCaller` emit a
-// ProxyCallOperation — the caller and callee lower to two distinct
+// CallOperation — the caller and callee lower to two distinct
 // `func.func`s in the same MLIR module and exercise debug info across
 // function boundaries.
 val<int32_t> debugHelperImpl(val<int32_t> x, val<int32_t> y) {
@@ -757,7 +757,7 @@ TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per f
 
 TEST_CASE("Debug info: one Nautilus function calling another gets per-function debug info") {
 	// `debugCaller` invokes `debug_helper` via a NautilusFunction
-	// wrapper, which ends up as a ProxyCallOperation — so both
+	// wrapper, which ends up as a CallOperation — so both
 	// functions are compiled into the same MLIR module and the caller
 	// site lowers to a `func.call` inside `debugCaller`'s body.
 	// Verify that:
@@ -843,19 +843,25 @@ TEST_CASE("Debug info: one Nautilus function calling another gets per-function d
 
 					// Only capture the call from the CALLER — ignore
 					// the `_mlir_ciface_debug_helper` forwarder and any
-					// un-debugged `_mlir_*` wrapper.
-					if (currentFunction == "execute" && line.find("call i32 @debug_helper") != std::string::npos) {
+					// un-debugged `_mlir_*` wrapper. The nested call is
+					// lowered both as a plain `call` (noexcept path) and
+					// as an `invoke` (potentially-throwing path, whose
+					// `!dbg` sits on the `to label ...` continuation line).
+					if (currentFunction == "execute" &&
+					    (line.find("call i32 @debug_helper") != std::string::npos ||
+					     line.find("invoke i32 @debug_helper") != std::string::npos)) {
 						sawHelperCall = true;
+					}
+					if (sawHelperCall && callDbgScope.empty() &&
+					    line.find("!dbg !") != std::string::npos) {
 						const auto dbgKey = line.find("!dbg !");
-						if (dbgKey != std::string::npos) {
-							auto idStart = dbgKey + std::string("!dbg !").size();
-							auto idEnd = idStart;
-							while (idEnd < line.size() &&
-							       std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
-								++idEnd;
-							}
-							callDbgScope = line.substr(idStart, idEnd - idStart);
+						auto idStart = dbgKey + std::string("!dbg !").size();
+						auto idEnd = idStart;
+						while (idEnd < line.size() &&
+						       std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
+							++idEnd;
 						}
+						callDbgScope = line.substr(idStart, idEnd - idStart);
 						continue;
 					}
 					const auto bang = line.find('!');

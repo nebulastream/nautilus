@@ -6,14 +6,14 @@ B0($1:ptr,$2:ptr,$3:ptr)
 	CONST	$8	256	:ui32
 	CONST	$10	1	:ui32
 	CONST	$11	1	:ui32
-	CALL	$15	func_*($4,$6,$7)	:void
-	CALL	$19	func_*($8,$10,$11)	:void
-	CALL	$20	func_*($1,$2,$3)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$15	func_*($4,$6,$7)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$19	func_*($8,$10,$11)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$20	vecAdd($1,$2,$3)	:void
 	RETURN	$0	:void
 
 VECADD:
 B0($1:ptr,$2:ptr,$3:ptr)
-	CALL	$7	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$7	func_*()	:ui32
 	CAST	$8	$7	:i32
 	CONST	$12	4	:ui64
 	CAST	$13	$8	:ui64

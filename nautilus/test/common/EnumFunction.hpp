@@ -38,7 +38,7 @@ val<Color> getEnum() {
 	return Color::BLUE;
 }
 
-int32_t enumFunction(Color value) {
+int32_t enumFunction(Color value) noexcept {
 	switch (value) {
 	case BLUE:
 		return 42;
@@ -47,7 +47,7 @@ int32_t enumFunction(Color value) {
 	}
 }
 
-auto enumClassFunction(LogLevel level) {
+auto enumClassFunction(LogLevel level) noexcept {
 	switch (level) {
 	case LogLevel::LOG_NONE:
 		return 1;

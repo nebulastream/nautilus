@@ -104,15 +104,43 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                              const std::vector<tracing::TypedValueRef>& arguments,
+                                              FunctionAttributes fnAttrs, void* captureFunc) {
+	return activeTracer->traceCallWithExceptionHandling(fptn, resultType, arguments, fnAttrs, captureFunc);
+}
+
+void registerDestructor(const TypedValueRef& address, void* destructor) {
+	activeTracer->registerDestructor(address, destructor);
+}
+
+void unregisterDestructor(const TypedValueRef& address) {
+	activeTracer->unregisterDestructor(address);
+}
+
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
-	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
+                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+                                 void* captureFunc) {
+	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs, captureFunc);
+}
+
+TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs, void* captureFunc) {
+	return activeTracer->traceIndirectCallWithExceptionHandling(fnPtrRef, resultType, arguments, fnAttrs, captureFunc);
 }
 
 TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
                                  Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
                                  FunctionAttributes fnAttrs) {
 	return activeTracer->traceNautilusCall(definition, fwrapper, resultType, arguments, fnAttrs);
+}
+
+TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
+                                                      std::function<void()> fwrapper, Type resultType,
+                                                      const std::vector<tracing::TypedValueRef>& arguments,
+                                                      FunctionAttributes fnAttrs) {
+	return activeTracer->traceNautilusCallWithExceptionHandling(definition, fwrapper, resultType, arguments, fnAttrs);
 }
 
 TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper) {
@@ -144,8 +172,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
-                                                       format_context& ctx) const -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
+    -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

@@ -25,10 +25,13 @@
 #include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
 #include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
+#include "nautilus/compiler/ir/passes/FunctionAttributeInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
 #include "nautilus/compiler/ir/passes/LoopInvariantCodeMotionPass.hpp"
+#include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
 #include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
@@ -201,6 +204,19 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// empty-block elimination exposing a new copy-propagation
 		// opportunity for constant folding), capped at `ir.maxPipelineIterations`.
 		const auto maxIterations = static_cast<size_t>(moduleOptions.getOptionOrDefault("ir.maxPipelineIterations", 4));
+
+		// Derive what each in-module function does to memory before the passes
+		// that could act on it. Every traced call to a Nautilus function
+		// declares the pessimistic default, so without this no call is ever
+		// eligible for CSE, hoisting or elimination.
+		//
+		// It runs first, on pre-cleanup IR, and that is safe in one direction
+		// only: the later passes remove and move operations, never add them,
+		// so a derived attribute can become stale by being *more* pessimistic
+		// than the final body -- which costs optimisation, never correctness.
+		if (!moduleOptions.getOptionOrDefault("ir.disableAttributeInference", false)) {
+			passManager.addPass(std::make_unique<ir::FunctionAttributeInferencePass>());
+		}
 		passManager.addFixedPointGroup(std::move(group), maxIterations);
 		// Loop-invariant code motion runs once, after the cleanup group has
 		// canonicalized the CFG (single preheaders/latches), and stays opt-in
@@ -208,6 +224,16 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		if (moduleOptions.getOptionOrDefault("ir.enableLICM", false)) {
 			passManager.addPass(std::make_unique<ir::LoopInvariantCodeMotionPass>());
 		}
+		// Proves Nautilus-to-Nautilus calls noUnwind via whole-module
+		// call-graph analysis, downgrading calls the trace-time heuristic
+		// pessimistically marked exception-handling; see
+		// NoThrowInferencePass.hpp. Must run before exception-region
+		// preparation so a proven-noThrow function skips landing-pad
+		// construction entirely.
+		passManager.addPass(std::make_unique<ir::NoThrowInferencePass>());
+		// Exception-region preparation: collects cleanup metadata for backends.
+		// Terminal pass — runs once after all optimisation.
+		passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}

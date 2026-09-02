@@ -16,7 +16,9 @@ enum Op : uint8_t {
 	CAST,
 	FREE,
 	CALL,
+	CALL_WITH_EXCEPTION_HANDLING,
 	INDIRECT_CALL,
+	INDIRECT_CALL_WITH_EXCEPTION_HANDLING,
 	// Memory
 	LOAD,
 	STORE,
@@ -62,8 +64,12 @@ constexpr const char* toString(Op type) {
 		return "CAST";
 	case CALL:
 		return "CALL";
+	case CALL_WITH_EXCEPTION_HANDLING:
+		return "CALL_WITH_EXCEPTION_HANDLING";
 	case INDIRECT_CALL:
 		return "INDIRECT_CALL";
+	case INDIRECT_CALL_WITH_EXCEPTION_HANDLING:
+		return "INDIRECT_CALL_WITH_EXCEPTION_HANDLING";
 	case LOAD:
 		return "LOAD";
 	case STORE:
@@ -165,11 +171,13 @@ constexpr uint8_t inputCountFor(Op op, Type resultType) noexcept {
 	case BXOR:
 	case BAND:
 		return 2;
-	// Single-input ops: JMP, CALL, INDIRECT_CALL, ASSIGN, CONST, CAST, FREE,
-	// LOAD, NOT, NEGATE, ALLOCA, FUNC_ADDR.
+	// Single-input ops: JMP, CALL, CALL_WITH_EXCEPTION_HANDLING, INDIRECT_CALL, INDIRECT_CALL_WITH_EXCEPTION_HANDLING,
+	// ASSIGN, CONST, CAST, FREE, LOAD, NOT, NEGATE, ALLOCA, FUNC_ADDR.
 	case JMP:
 	case CALL:
+	case CALL_WITH_EXCEPTION_HANDLING:
 	case INDIRECT_CALL:
+	case INDIRECT_CALL_WITH_EXCEPTION_HANDLING:
 	case ASSIGN:
 	case CONST:
 	case CAST:

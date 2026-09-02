@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nautilus/common/ExceptionPropagation.hpp"
+#include "nautilus/common/ExceptionTransport.hpp"
 #include <any>
 #include <cstdint>
 #include <cstring>
@@ -60,12 +62,21 @@ public:
 	class Invocable {
 		using FunctionType = R(Args...);
 		std::variant<FunctionType*, std::unique_ptr<GenericInvocable>> func;
+		ExceptionPropagationMode exceptionMode = ExceptionPropagationMode::NativeUnwind;
 
 	public:
 		explicit Invocable(void* fptr) : func(reinterpret_cast<FunctionType*>(fptr)) {
 		}
 
 		explicit Invocable(std::unique_ptr<GenericInvocable> generic) : func(std::move(generic)) {
+		}
+
+		explicit Invocable(void* fptr, ExceptionPropagationMode mode)
+		    : func(reinterpret_cast<FunctionType*>(fptr)), exceptionMode(mode) {
+		}
+
+		explicit Invocable(std::unique_ptr<GenericInvocable> generic, ExceptionPropagationMode mode)
+		    : func(std::move(generic)), exceptionMode(mode) {
 		}
 
 		template <typename T>
@@ -223,36 +234,58 @@ public:
 		 * @return returns the result of the function if any
 		 */
 		R operator()(Args... arguments) {
-			if (std::holds_alternative<FunctionType*>(func)) {
-				auto fptr = std::get<FunctionType*>(func);
-				if constexpr (!std::is_void_v<R>) {
-					return fptr(std::forward<Args>(arguments)...);
+			// The guard pops on every exit path. Popping by hand after the call
+			// would be skipped whenever the call itself throws -- a bad_any_cast
+			// out of castGenericResult, or an interpreter propagating -- leaving
+			// the thread-local stack pointing at this destroyed frame for the
+			// rest of the thread's life.
+			ExceptionFrameScope frameScope(exceptionMode == ExceptionPropagationMode::CapturedHostRethrow);
+
+			auto doCall = [&]() -> R {
+				if (std::holds_alternative<FunctionType*>(func)) {
+					auto fptr = std::get<FunctionType*>(func);
+					if constexpr (!std::is_void_v<R>) {
+						return fptr(std::forward<Args>(arguments)...);
+					} else {
+						fptr(std::forward<Args>(arguments)...);
+					}
 				} else {
-					fptr(std::forward<Args>(arguments)...);
-				}
-			} else {
-				auto& genericFunction = std::get<std::unique_ptr<GenericInvocable>>(func);
-				// Allocation-free fast path: pass arguments as raw 64-bit
-				// slots on the stack. Backends that don't implement invokeRaw
-				// return false and take the boxed route below.
-				if constexpr (isRawSlotCompatible<R>() && (isRawSlotCompatible<Args>() && ...)) {
-					const uint64_t rawArgs[sizeof...(Args) + 1] = {toRawSlot(arguments)...};
-					uint64_t rawResult = 0;
-					if (genericFunction->invokeRaw(rawArgs, sizeof...(Args), &rawResult)) {
-						if constexpr (!std::is_void_v<R>) {
-							return fromRawSlot<R>(rawResult);
-						} else {
-							return;
+					auto& genericFunction = std::get<std::unique_ptr<GenericInvocable>>(func);
+					// Allocation-free fast path: pass arguments as raw 64-bit
+					// slots on the stack. Backends that don't implement invokeRaw
+					// return false and take the boxed route below.
+					if constexpr (isRawSlotCompatible<R>() && (isRawSlotCompatible<Args>() && ...)) {
+						const uint64_t rawArgs[sizeof...(Args) + 1] = {toRawSlot(arguments)...};
+						uint64_t rawResult = 0;
+						if (genericFunction->invokeRaw(rawArgs, sizeof...(Args), &rawResult)) {
+							if constexpr (!std::is_void_v<R>) {
+								return fromRawSlot<R>(rawResult);
+							} else {
+								return;
+							}
 						}
 					}
+					if constexpr (!std::is_void_v<R>) {
+						std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
+						auto res = genericFunction->invokeGeneric(inputs_);
+						return castGenericResult<R>(res);
+					} else {
+						std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
+						genericFunction->invokeGeneric(inputs_);
+					}
 				}
-				if constexpr (!std::is_void_v<R>) {
-					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
-					auto res = genericFunction->invokeGeneric(inputs_);
-					return castGenericResult<R>(res);
-				} else {
-					std::vector<std::any> inputs_ = {getGenericArg(arguments)...};
-					genericFunction->invokeGeneric(inputs_);
+			};
+
+			if constexpr (!std::is_void_v<R>) {
+				R result = doCall();
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
+				}
+				return result;
+			} else {
+				doCall();
+				if (frameScope.pending()) {
+					std::rethrow_exception(frameScope.pending());
 				}
 			}
 		}
@@ -267,10 +300,11 @@ public:
 	 */
 	template <typename R, typename... Args>
 	auto getInvocableMember(const std::string& member) {
+		auto mode = getExceptionPropagationMode(member);
 		if (hasInvocableFunctionPtr()) {
-			return Invocable<R, Args...>(getInvocableFunctionPtr(member));
+			return Invocable<R, Args...>(getInvocableFunctionPtr(member), mode);
 		} else {
-			return Invocable<R, Args...>(getGenericInvocable(member));
+			return Invocable<R, Args...>(getGenericInvocable(member), mode);
 		}
 	}
 
@@ -288,6 +322,28 @@ public:
 	 * @return bool
 	 */
 	virtual bool hasInvocableFunctionPtr() = 0;
+
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode() const {
+		return ExceptionPropagationMode::NativeUnwind;
+	}
+
+	/**
+	 * @brief Per-function refinement of getExceptionPropagationMode().
+	 *
+	 * A captured-host-rethrow backend (CPP/BC/TBC/AsmJit) still compiles most
+	 * functions with no exceptional call sites at all -- the common case, since
+	 * only a function that transitively invokes a non-noexcept call needs one.
+	 * Such a function never touches the ExceptionFrame machinery at runtime, so
+	 * it can be called through the raw function pointer with no frame active,
+	 * same as a NativeUnwind backend. Backends that track which of their
+	 * functions actually need capture (see
+	 * CapturedExceptionTransport::functionsNeedingCapture) override this to
+	 * answer per @p member instead of conservatively for the whole executable;
+	 * the default falls back to the executable-wide answer.
+	 */
+	[[nodiscard]] virtual ExceptionPropagationMode getExceptionPropagationMode(const std::string& /*member*/) const {
+		return getExceptionPropagationMode();
+	}
 
 	/**
 	 * @brief Returns an generic invocable function

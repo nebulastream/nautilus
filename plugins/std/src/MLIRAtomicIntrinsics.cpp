@@ -14,42 +14,42 @@
 extern "C" {
 
 #define NAUTILUS_DECL_PER_TYPE(T)                                                                                      \
-	T nautilus_atomic_load_##T##_seqcst(std::atomic<T>*);                                                              \
-	T nautilus_atomic_load_##T##_acquire(std::atomic<T>*);                                                             \
-	T nautilus_atomic_load_##T##_relaxed(std::atomic<T>*);                                                             \
-	void nautilus_atomic_store_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	void nautilus_atomic_store_##T##_release(std::atomic<T>*, T);                                                      \
-	void nautilus_atomic_store_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_exchange_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	T nautilus_atomic_exchange_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_add_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_add_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_sub_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_sub_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_and_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_and_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_fetch_or_##T##_seqcst(std::atomic<T>*, T);                                                       \
-	T nautilus_atomic_fetch_or_##T##_relaxed(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_xor_##T##_seqcst(std::atomic<T>*, T);                                                      \
-	T nautilus_atomic_fetch_xor_##T##_relaxed(std::atomic<T>*, T);                                                     \
-	T nautilus_atomic_ref_load_##T##_seqcst(T*);                                                                       \
-	T nautilus_atomic_ref_load_##T##_acquire(T*);                                                                      \
-	T nautilus_atomic_ref_load_##T##_relaxed(T*);                                                                      \
-	void nautilus_atomic_ref_store_##T##_seqcst(T*, T);                                                                \
-	void nautilus_atomic_ref_store_##T##_release(T*, T);                                                               \
-	void nautilus_atomic_ref_store_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_exchange_##T##_seqcst(T*, T);                                                                \
-	T nautilus_atomic_ref_exchange_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_add_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_add_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_sub_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_sub_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_and_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_and_##T##_relaxed(T*, T);                                                              \
-	T nautilus_atomic_ref_fetch_or_##T##_seqcst(T*, T);                                                                \
-	T nautilus_atomic_ref_fetch_or_##T##_relaxed(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_xor_##T##_seqcst(T*, T);                                                               \
-	T nautilus_atomic_ref_fetch_xor_##T##_relaxed(T*, T);
+	T nautilus_atomic_load_##T##_seqcst(std::atomic<T>*) noexcept;                                                     \
+	T nautilus_atomic_load_##T##_acquire(std::atomic<T>*) noexcept;                                                    \
+	T nautilus_atomic_load_##T##_relaxed(std::atomic<T>*) noexcept;                                                    \
+	void nautilus_atomic_store_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	void nautilus_atomic_store_##T##_release(std::atomic<T>*, T) noexcept;                                             \
+	void nautilus_atomic_store_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_exchange_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	T nautilus_atomic_exchange_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_add_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_add_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_sub_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_sub_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_and_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_and_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_fetch_or_##T##_seqcst(std::atomic<T>*, T) noexcept;                                              \
+	T nautilus_atomic_fetch_or_##T##_relaxed(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_xor_##T##_seqcst(std::atomic<T>*, T) noexcept;                                             \
+	T nautilus_atomic_fetch_xor_##T##_relaxed(std::atomic<T>*, T) noexcept;                                            \
+	T nautilus_atomic_ref_load_##T##_seqcst(T*) noexcept;                                                              \
+	T nautilus_atomic_ref_load_##T##_acquire(T*) noexcept;                                                             \
+	T nautilus_atomic_ref_load_##T##_relaxed(T*) noexcept;                                                             \
+	void nautilus_atomic_ref_store_##T##_seqcst(T*, T) noexcept;                                                       \
+	void nautilus_atomic_ref_store_##T##_release(T*, T) noexcept;                                                      \
+	void nautilus_atomic_ref_store_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_exchange_##T##_seqcst(T*, T) noexcept;                                                       \
+	T nautilus_atomic_ref_exchange_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_add_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_add_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_sub_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_sub_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_and_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_and_##T##_relaxed(T*, T) noexcept;                                                     \
+	T nautilus_atomic_ref_fetch_or_##T##_seqcst(T*, T) noexcept;                                                       \
+	T nautilus_atomic_ref_fetch_or_##T##_relaxed(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_xor_##T##_seqcst(T*, T) noexcept;                                                      \
+	T nautilus_atomic_ref_fetch_xor_##T##_relaxed(T*, T) noexcept;
 
 NAUTILUS_DECL_PER_TYPE(int32_t)
 NAUTILUS_DECL_PER_TYPE(int64_t)
@@ -57,11 +57,11 @@ NAUTILUS_DECL_PER_TYPE(uint32_t)
 NAUTILUS_DECL_PER_TYPE(uint64_t)
 #undef NAUTILUS_DECL_PER_TYPE
 
-void nautilus_atomic_thread_fence_seqcst();
-void nautilus_atomic_thread_fence_acquire();
-void nautilus_atomic_thread_fence_release();
-void nautilus_atomic_thread_fence_acq_rel();
-void nautilus_atomic_thread_fence_relaxed();
+void nautilus_atomic_thread_fence_seqcst() noexcept;
+void nautilus_atomic_thread_fence_acquire() noexcept;
+void nautilus_atomic_thread_fence_release() noexcept;
+void nautilus_atomic_thread_fence_acq_rel() noexcept;
+void nautilus_atomic_thread_fence_relaxed() noexcept;
 
 } // extern "C"
 
@@ -82,7 +82,7 @@ using TypeFactory = std::function<::mlir::Type(::mlir::OpBuilder&)>;
 }
 
 IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
-	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [ord, tyFn](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	                   MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto resultTy = tyFn(*b);
@@ -95,7 +95,7 @@ IntrinsicFunction makeAtomicLoadLowering(AtomicOrdering ord, TypeFactory tyFn) {
 }
 
 IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	             MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -107,7 +107,7 @@ IntrinsicFunction makeAtomicStoreLowering(AtomicOrdering ord) {
 }
 
 IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
-	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* call,
+	return [binOp, ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* call,
 	                    MLIRLoweringProvider::ValueFrame& frame) -> bool {
 		auto ptr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 		auto value = frame.getValue(call->getInputArguments()[1]->getIdentifier());
@@ -118,7 +118,7 @@ IntrinsicFunction makeAtomicRMWLowering(AtomicBinOp binOp, AtomicOrdering ord) {
 }
 
 IntrinsicFunction makeFenceLowering(AtomicOrdering ord) {
-	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::ProxyCallOperation* /*call*/,
+	return [ord](std::unique_ptr<::mlir::OpBuilder>& b, const compiler::ir::CallOperation* /*call*/,
 	             MLIRLoweringProvider::ValueFrame& /*frame*/) -> bool {
 		::mlir::LLVM::FenceOp::create(*b, b->getUnknownLoc(), ord);
 		return true;

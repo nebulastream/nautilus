@@ -10,7 +10,7 @@ B1($1:i32,$3:i32,$2:i32)
 	MUL	$13	$10	$12	:ui64
 	ADD	$14	$6	$13	:ptr
 	STORE	$19	$14	$3	:void
-	CALL	$21	func_*($6)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$21	readFieldA($6)	:i32
 	ADD	$22	$2	$21	:i32
 	CONST	$23	1	:i32
 	ADD	$24	$3	$23	:i32

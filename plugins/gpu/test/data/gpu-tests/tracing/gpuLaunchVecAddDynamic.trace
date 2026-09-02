@@ -15,12 +15,12 @@ B0($1:ptr,$2:ptr,$3:ptr,$4:ui32)
 	ASSIGN	$17	$10	:ui32
 	ASSIGN	$18	$11	:ui32
 	ASSIGN	$19	$12	:ui32
-	CALL	$20	func_*($17,$18,$19)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$20	func_*($17,$18,$19)	:void
 	ASSIGN	$21	$14	:ui32
 	ASSIGN	$22	$15	:ui32
 	ASSIGN	$23	$16	:ui32
-	CALL	$24	func_*($21,$22,$23)	:void
-	CALL	$25	func_*($1,$2,$3)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$24	func_*($21,$22,$23)	:void
+	CALL_WITH_EXCEPTION_HANDLING	$25	vecAdd($1,$2,$3)	:void
 	RETURN	$0	:void
 
 VECADD:
@@ -28,7 +28,7 @@ B0($1:ptr,$2:ptr,$3:ptr)
 	ASSIGN	$4	$1	:ptr
 	ASSIGN	$5	$2	:ptr
 	ASSIGN	$6	$3	:ptr
-	CALL	$7	func_*()	:ui32
+	CALL_WITH_EXCEPTION_HANDLING	$7	func_*()	:ui32
 	CAST	$8	$7	:i32
 	ASSIGN	$9	$4	:ptr
 	ASSIGN	$10	$8	:i32

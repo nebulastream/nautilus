@@ -7,9 +7,9 @@ Block_0($1:i32):
 }
 execute($1:i32) :i32 {
 Block_0($1:i32):
-	$2 = func_*($1) :i32
-	$3 = func_*($2) :i32
-	$4 = func_*($3) :i32
+	$2 = call add10($1) :i32
+	$3 = call multiply2($2) :i32
+	$4 = call subtract5($3) :i32
 	return ($4) :i32
 }
 multiply2($1:i32) :i32 {

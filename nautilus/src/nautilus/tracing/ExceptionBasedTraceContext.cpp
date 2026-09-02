@@ -8,6 +8,7 @@
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
 #include "symbolic_execution/TraceTerminationException.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cxxabi.h>
@@ -52,9 +53,26 @@ void ExceptionBasedTraceContext::resume() {
 
 	// Reset aliveVars to initial state (all counts to 0, hash to 0)
 	aliveVars.reset();
+	activeDestructors.clear();
 
 	// Note: state (with executionTrace and symbolicExecutionContext) is NOT reset here
 	// as it needs to persist across trace iterations
+}
+
+void TraceContextBase::registerDestructor(const TypedValueRef& address, void* destructor) {
+	auto mangledName = getMangledName(destructor);
+	activeDestructors.push_back(FunctionCall::Destructor {.address = address,
+	                                                      .functionName = getFunctionName(destructor, mangledName),
+	                                                      .mangledName = std::move(mangledName),
+	                                                      .ptr = destructor});
+}
+
+void TraceContextBase::unregisterDestructor(const TypedValueRef& address) {
+	auto it = std::find_if(activeDestructors.rbegin(), activeDestructors.rend(),
+	                       [&](const FunctionCall::Destructor& destructor) { return destructor.address == address; });
+	if (it != activeDestructors.rend()) {
+		activeDestructors.erase(std::next(it).base());
+	}
 }
 
 TypedValueRef& ExceptionBasedTraceContext::registerFunctionArgument(Type type, size_t index) {
@@ -187,54 +205,143 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 		                                                                        .mangledName = mangledName,
 		                                                                        .ptr = fptn,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = {}});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef&
+ExceptionBasedTraceContext::traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                                           const std::vector<tracing::TypedValueRef>& arguments,
+                                                           FunctionAttributes fnAttrs, void* captureFunc) {
+	auto mangledName = getMangledName(fptn);
+	auto functionName = getFunctionName(fptn, mangledName);
+	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = mangledName,
+		                                                                        .ptr = fptn,
+		                                                                        .captureFunc = captureFunc,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = activeDestructors});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                              const std::vector<tracing::TypedValueRef>& arguments,
-                                                             FunctionAttributes fnAttrs) {
+                                                             FunctionAttributes fnAttrs, void* captureFunc) {
 	auto op = Op::INDIRECT_CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* indirectCall = state->executionTrace.getArena().create<IndirectFunctionCall>(
-		    IndirectFunctionCall {.fnPtr = fnPtrRef, .arguments = arguments, .fnAttrs = fnAttrs});
+		    IndirectFunctionCall {.fnPtr = fnPtrRef,
+		                          .captureFunc = captureFunc,
+		                          .arguments = arguments,
+		                          .fnAttrs = fnAttrs,
+		                          .destructors = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {indirectCall});
 	});
+}
+
+TypedValueRef&
+ExceptionBasedTraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+                                                                   const std::vector<tracing::TypedValueRef>& arguments,
+                                                                   FunctionAttributes fnAttrs, void* captureFunc) {
+	auto op = Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto* functionArguments = state->executionTrace.getArena().create<IndirectFunctionCall>(
+		    IndirectFunctionCall {.fnPtr = fnPtrRef,
+		                          .captureFunc = captureFunc,
+		                          .arguments = arguments,
+		                          .fnAttrs = fnAttrs,
+		                          .destructors = activeDestructors});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+const std::string& ExceptionBasedTraceContext::registerNautilusFunction(const NautilusFunctionDefinition* definition,
+                                                                        std::function<void()> fwrapper,
+                                                                        bool& newlyRegistered) {
+	if (const auto it = registeredFunctions.find(definition); it != registeredFunctions.end()) {
+		newlyRegistered = false;
+		return it->second;
+	}
+	newlyRegistered = true;
+
+	// Uniquify against names already claimed by *other* definitions. Two
+	// NautilusFunctions may legitimately share a name; both must be traced,
+	// and each needs its own name so the trace module, the IR and every
+	// backend can tell them apart.
+	std::string name = definition->name();
+	if (usedFunctionNames.contains(name)) {
+		const std::string base = name;
+		uint32_t suffix = 1;
+		do {
+			++suffix;
+			name = base + "_" + std::to_string(suffix);
+		} while (usedFunctionNames.contains(name));
+		log::warn("Two distinct NautilusFunctions are named '{}'; tracing the second as '{}'. Give them distinct "
+		          "names to keep generated code readable.",
+		          base, name);
+	}
+	usedFunctionNames.insert(name);
+
+	const auto [inserted, _] = registeredFunctions.emplace(definition, std::move(name));
+	functionsToTrace.push_back(
+	    compiler::CompilableFunction(inserted->second, std::move(fwrapper), definition->attributes(), definition));
+	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", inserted->second,
+	           functionsToTrace.size());
+	return inserted->second;
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
                                                              std::function<void()> fwrapper, Type resultType,
                                                              const std::vector<tracing::TypedValueRef>& arguments,
                                                              FunctionAttributes fnAttrs) {
-	auto functionName = definition->name();
-	auto mangledName = getMangledName((void*) definition);
-	if (registeredFunctions.insert(functionName).second) {
-		functionsToTrace.push_back(compiler::CompilableFunction(functionName, fwrapper, definition->attributes()));
-		log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", functionName,
-		           functionsToTrace.size());
-	}
+	bool newlyRegistered = false;
+	const auto& functionName = registerNautilusFunction(definition, fwrapper, newlyRegistered);
 	auto op = Op::CALL;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
 		auto* functionArguments =
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
+		                                                                        .kind = CalleeKind::Internal,
 		                                                                        .arguments = arguments,
-		                                                                        .fnAttrs = fnAttrs});
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = {},
+		                                                                        .isNautilusCall = true});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
+TypedValueRef& ExceptionBasedTraceContext::traceNautilusCallWithExceptionHandling(
+    const NautilusFunctionDefinition* definition, std::function<void()> fwrapper, Type resultType,
+    const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	bool newlyRegistered = false;
+	const auto& functionName = registerNautilusFunction(definition, std::move(fwrapper), newlyRegistered);
+	auto op = Op::CALL_WITH_EXCEPTION_HANDLING;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto* functionArguments =
+		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
+		                                                                        .mangledName = functionName,
+		                                                                        .ptr = (void*) definition,
+		                                                                        .kind = CalleeKind::Internal,
+		                                                                        .arguments = arguments,
+		                                                                        .fnAttrs = fnAttrs,
+		                                                                        .destructors = activeDestructors,
+		                                                                        .isNautilusCall = true});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
 
 TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
                                                                     std::function<void()> fwrapper) {
-	auto functionName = definition->name();
-	if (registeredFunctions.insert(functionName).second) {
-		functionsToTrace.push_back(
-		    compiler::CompilableFunction(functionName, std::move(fwrapper), definition->attributes()));
-		log::debug("Added function '{}' to functionsToTrace list (via FUNC_ADDR). List now has {} functions",
-		           functionName, functionsToTrace.size());
-	}
+	bool newlyRegistered = false;
+	const auto& functionName = registerNautilusFunction(definition, std::move(fwrapper), newlyRegistered);
 	auto op = Op::FUNC_ADDR;
 	auto resultType = Type::ptr;
 	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
@@ -242,8 +349,10 @@ TypedValueRef& ExceptionBasedTraceContext::traceNautilusFunctionPtr(const Nautil
 		    state->executionTrace.getArena().create<FunctionCall>(FunctionCall {.functionName = functionName,
 		                                                                        .mangledName = functionName,
 		                                                                        .ptr = (void*) definition,
+		                                                                        .kind = CalleeKind::Internal,
 		                                                                        .arguments = {},
-		                                                                        .fnAttrs = {}});
+		                                                                        .fnAttrs = {},
+		                                                                        .destructors = {}});
 		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
 	});
 }
@@ -433,6 +542,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
+	usedFunctionNames.clear();
 	setActiveTracer(this);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// other than TraceTerminationException escapes the per-function loop below.
@@ -443,6 +553,12 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 		auto currentFunction = functionsToTrace.front();
 		functionsToTrace.pop_front();
 		if (traceModule->hasFunction(currentFunction.getName())) {
+			// Already traced under this name -- typically a NautilusFunction
+			// sharing a name with a module-registered entry function. Record
+			// this identity against the existing body anyway: its call sites
+			// mint a function-table entry keyed on it, and that entry has to
+			// resolve to the same function as the body's own.
+			traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
 			log::debug("Function '{}' already traced, skipping.", currentFunction.getName());
 			continue;
 		}
@@ -460,6 +576,9 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 			isFirstFunction = false;
 		}
 		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
+		// Carry the definition identity through to IR conversion, which uses it
+		// to bind this body to the function-table id its call sites minted.
+		traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

@@ -27,7 +27,7 @@ private:
 
 	private:
 		void registerGPUIntrinsics();
-		void processProxyCall(ir::ProxyCallOperation* opt, short block, gpu::RegisterFrame& frame);
+		void processCall(ir::CallOperation* opt, short block, gpu::RegisterFrame& frame);
 	};
 
 	/// Generates C++ host code with Metal API dispatch for kernel launches.
@@ -42,7 +42,7 @@ private:
 
 	private:
 		void registerHostIntrinsics();
-		void processProxyCall(ir::ProxyCallOperation* opt, short block, gpu::RegisterFrame& frame);
+		void processCall(ir::CallOperation* opt, short block, gpu::RegisterFrame& frame);
 	};
 };
 

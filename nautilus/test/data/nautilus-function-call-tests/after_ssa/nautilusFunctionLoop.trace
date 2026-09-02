@@ -4,7 +4,7 @@ B0($1:i32)
 	CONST	$3	0	:i32
 	JMP	$0	B3($2,$3,$1)	:void
 B1($1:i32,$2:i32,$3:i32)
-	CALL	$6	func_*($2)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$6	loopHelper($2)	:i32
 	CONST	$7	1	:i32
 	ADD	$8	$3	$7	:i32
 	JMP	$0	B3($6,$8,$1)	:void

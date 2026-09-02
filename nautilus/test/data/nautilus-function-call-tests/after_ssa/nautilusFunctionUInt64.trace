@@ -1,6 +1,6 @@
 EXECUTE:
 B0($1:ui64,$2:ui64)
-	CALL	$3	func_*($1,$2)	:ui64
+	CALL_WITH_EXCEPTION_HANDLING	$3	mulUInt64($1,$2)	:ui64
 	RETURN	$0	$3	:ui64
 
 MULUINT64:

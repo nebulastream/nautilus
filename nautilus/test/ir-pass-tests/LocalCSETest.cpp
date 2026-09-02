@@ -3,6 +3,8 @@
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
+#include "nautilus/compiler/ir/operations/ArithmeticOperations/MulOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/LoadOperation.hpp"
@@ -13,6 +15,7 @@
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
 #include "nautilus/options.hpp"
 #include <catch2/catch_all.hpp>
+#include <span>
 
 namespace nautilus::testing {
 
@@ -162,6 +165,74 @@ TEST_CASE("LocalCSE: idempotent -- a second run reports and produces no further 
 	LocalCSEPass pass;
 	REQUIRE_FALSE(pass.apply(*ir)); // no change on the second run
 	REQUIRE(countOpsOfType(*ir, Operation::OperationType::AddOp) == afterFirst);
+	REQUIRE(IRVerifier::verify(*ir).ok());
+}
+
+TEST_CASE("LocalCSE: calls to two different pure functions with identical arguments are NOT unified") {
+	// Same argument, same result stamp, both callees proven pure -- the only
+	// thing distinguishing `square(x)` from `cube(x)` is which function they
+	// call. A key that forgets the callee would treat them as one value and
+	// merge them, silently substituting one function's result for the
+	// other's.
+	auto ir = std::make_shared<IRGraph>("cse-calls");
+	auto& arena = ir->getArena();
+
+	auto* squareArg = arena.create<BasicBlockArgument>(OperationIdentifier {10}, Type::i32);
+	auto* squareBody =
+	    arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {squareArg});
+	auto* squareMul =
+	    squareBody->addOperation<compiler::ir::MulOperation>(OperationIdentifier {11}, squareArg, squareArg);
+	squareBody->addOperation<ReturnOperation>(squareMul);
+	auto* squareFn = arena.create<FunctionOperation>(
+	    "square", std::vector<BasicBlock*> {squareBody}, std::vector<Type> {}, std::vector<std::string> {}, Type::i32,
+	    std::vector<compiler::ir::AllocaSpec> {}, std::unordered_map<std::string, std::string> {});
+	ir->addFunctionOperation(squareFn);
+	compiler::ir::CalleeDescriptor squareDescriptor;
+	squareDescriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
+	squareDescriptor.customName = "square";
+	const auto squareId = ir->internCallee(squareDescriptor);
+	ir->defineFunction(squareId, squareFn);
+	ir->getFunctionTableMut().getMut(squareId).setDerivedAttributes(
+	    FunctionAttributes {.modRefInfo = ModRefInfo::NoModRef, .willReturn = true, .noUnwind = true});
+
+	auto* cubeArg = arena.create<BasicBlockArgument>(OperationIdentifier {20}, Type::i32);
+	auto* cubeBody = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {cubeArg});
+	auto* cubeSquare = cubeBody->addOperation<compiler::ir::MulOperation>(OperationIdentifier {21}, cubeArg, cubeArg);
+	auto* cubeMul = cubeBody->addOperation<compiler::ir::MulOperation>(OperationIdentifier {22}, cubeSquare, cubeArg);
+	cubeBody->addOperation<ReturnOperation>(cubeMul);
+	auto* cubeFn = arena.create<FunctionOperation>(
+	    "cube", std::vector<BasicBlock*> {cubeBody}, std::vector<Type> {}, std::vector<std::string> {}, Type::i32,
+	    std::vector<compiler::ir::AllocaSpec> {}, std::unordered_map<std::string, std::string> {});
+	ir->addFunctionOperation(cubeFn);
+	compiler::ir::CalleeDescriptor cubeDescriptor;
+	cubeDescriptor.kind = compiler::ir::CalleeDescriptor::Kind::Internal;
+	cubeDescriptor.customName = "cube";
+	const auto cubeId = ir->internCallee(cubeDescriptor);
+	ir->defineFunction(cubeId, cubeFn);
+	ir->getFunctionTableMut().getMut(cubeId).setDerivedAttributes(
+	    FunctionAttributes {.modRefInfo = ModRefInfo::NoModRef, .willReturn = true, .noUnwind = true});
+
+	auto* y = arena.create<BasicBlockArgument>(OperationIdentifier {1}, Type::i32);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {y});
+	std::vector<Operation*> yArg {y};
+	auto* callSquare = entry->addOperation<CallOperation>("square", "square", nullptr, OperationIdentifier {2},
+	                                                      std::span<Operation* const> {yArg}, Type::i32,
+	                                                      FunctionAttributes {}, squareId);
+	auto* callCube = entry->addOperation<CallOperation>("cube", "cube", nullptr, OperationIdentifier {3},
+	                                                    std::span<Operation* const> {yArg}, Type::i32,
+	                                                    FunctionAttributes {}, cubeId);
+	auto* r = entry->addOperation<AddOperation>(OperationIdentifier {4}, callSquare, callCube);
+	entry->addOperation<ReturnOperation>(r);
+	wrap(ir, entry, {Type::i32});
+
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CallOp) == 2);
+	runCSE(*ir);
+
+	// Both calls survive as distinct values, each still feeding its own
+	// operand of the add.
+	REQUIRE(countOpsOfType(*ir, Operation::OperationType::CallOp) == 2);
+	CHECK(r->getLeftInput() == callSquare);
+	CHECK(r->getRightInput() == callCube);
 	REQUIRE(IRVerifier::verify(*ir).ok());
 }
 

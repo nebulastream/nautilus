@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/backends/tbc/TBCBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
+#include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
@@ -86,6 +87,7 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 	for (size_t i = 0; i < functionOperations.size(); i++) {
 		const auto& funcOp = functionOperations[i];
 		program->functionIndex[funcOp->getName()] = static_cast<uint32_t>(i);
+		program->functionSlotById[ir->getFunctionTable().findByDefinition(funcOp)] = static_cast<uint32_t>(i);
 		auto& function = program->functions[i];
 		function.name = funcOp->getName();
 		function.returnType = funcOp->getOutputArg();
@@ -156,7 +158,8 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
-	return std::make_unique<TBCExecutable>(std::move(program));
+	return std::make_unique<TBCExecutable>(std::move(program),
+	                                       CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
 } // namespace nautilus::compiler::tbc

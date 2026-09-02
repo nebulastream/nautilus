@@ -642,7 +642,7 @@ TracedValue<T> evalNautilusGeneric(const Ast& ast, int idx, std::span<const Trac
 /// selected callee's CallDescriptor (Callees.hpp) -- identical layout logic
 /// to the generator and the native evaluator -- then invoke() the same
 /// instantiation the native oracle calls directly, so the differential
-/// surface is exactly the backend's ProxyCall/IndirectCall lowering:
+/// surface is exactly the backend's Call/IndirectCall lowering:
 /// argument count/type marshalling, narrow-integer ABI extension, float
 /// register passing, void-return handling, and pointer argument marshalling.
 template <typename T>

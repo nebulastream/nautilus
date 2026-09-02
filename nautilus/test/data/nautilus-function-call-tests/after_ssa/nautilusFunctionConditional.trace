@@ -10,7 +10,7 @@ B0($1:i32)
 	GT	$3	$1	$2	:bool
 	CMP	$4	$3	B1($1)	B2($1)	:void
 B1($1:i32)
-	CALL	$5	func_*($1)	:i32
+	CALL_WITH_EXCEPTION_HANDLING	$5	conditionalHelper($1)	:i32
 	JMP	$0	B3($5)	:void
 B2($1:i32)
 	JMP	$0	B3($1)	:void

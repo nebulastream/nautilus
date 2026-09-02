@@ -1,4 +1,5 @@
 #include "nautilus/compiler/ir/passes/LoopInvariantCodeMotionPass.hpp"
+#include "nautilus/compiler/ir/OperationEffects.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/DivOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
@@ -59,11 +60,14 @@ bool hasNonZeroConstantDivisor(Operation* op) {
 	return false;
 }
 
-bool isHoistable(Operation* op, const std::unordered_map<Operation*, BasicBlock*>& definingBlock,
+bool isHoistable(const IRGraph& ir, Operation* op, const std::unordered_map<Operation*, BasicBlock*>& definingBlock,
                  const std::unordered_set<BasicBlock*>& loopBody) {
 	const auto type = op->getOperationType();
-	if (isTerminatorOp(type) || !isPureOp(type)) {
-		return false; // loads/stores/calls/terminators are never moved.
+	// Purity per operation, not per opcode: a call to a callee that touches no
+	// memory and is known to return can leave the loop. Loads, stores and
+	// terminators still never move.
+	if (isTerminatorOp(type) || !isPureOperation(ir, *op)) {
+		return false;
 	}
 	if ((type == OpType::DivOp || type == OpType::ModOp) && !hasNonZeroConstantDivisor(op)) {
 		return false; // do not speculate a possibly-trapping division.
@@ -101,7 +105,7 @@ bool containsNestedLoop(const NaturalLoop& loop, const Dominators& dom) {
 	return false;
 }
 
-bool hoistLoop(const NaturalLoop& loop, std::unordered_map<Operation*, BasicBlock*>& definingBlock) {
+bool hoistLoop(const IRGraph& ir, const NaturalLoop& loop, std::unordered_map<Operation*, BasicBlock*>& definingBlock) {
 	BasicBlock* preheader = loop.preheader;
 	Operation* preheaderTerminator = preheader->getTerminatorOp();
 	bool changed = false;
@@ -116,7 +120,7 @@ bool hoistLoop(const NaturalLoop& loop, std::unordered_map<Operation*, BasicBloc
 			// Snapshot: hoisting mutates the block's operation list.
 			const auto ops = block->getOperations();
 			for (auto* op : ops) {
-				if (!isHoistable(op, definingBlock, loop.body)) {
+				if (!isHoistable(ir, op, definingBlock, loop.body)) {
 					continue;
 				}
 				block->removeOperation(op);
@@ -130,7 +134,7 @@ bool hoistLoop(const NaturalLoop& loop, std::unordered_map<Operation*, BasicBloc
 	return changed;
 }
 
-bool applyToFunction(FunctionOperation& fn) {
+bool applyToFunction(const IRGraph& ir, FunctionOperation& fn) {
 	auto loops = findNaturalLoops(fn);
 	if (loops.empty()) {
 		return false;
@@ -146,7 +150,7 @@ bool applyToFunction(FunctionOperation& fn) {
 		if (containsNestedLoop(loop, dom)) {
 			continue; // v1: only loops without a nested sub-loop are optimized.
 		}
-		changed |= hoistLoop(loop, definingBlock);
+		changed |= hoistLoop(ir, loop, definingBlock);
 	}
 	return changed;
 }
@@ -157,7 +161,7 @@ bool LoopInvariantCodeMotionPass::apply(IRGraph& ir) {
 	bool changed = false;
 	for (auto* fn : ir.getFunctionOperations()) {
 		if (fn != nullptr) {
-			changed |= applyToFunction(*fn);
+			changed |= applyToFunction(ir, *fn);
 		}
 	}
 	return changed;

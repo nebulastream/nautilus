@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/common/ExceptionTransport.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "nautilus/val_base.hpp"
@@ -20,7 +21,7 @@ namespace nautilus {
 ///   - Copy construction / copy assignment
 ///   - Calling through the pointer via operator() — delegates to invoke(),
 ///     which handles both tracing and non-tracing paths.  At trace time the
-///     concrete runtime address is used, so the traced ProxyCallOperation is
+///     concrete runtime address is used, so the traced CallOperation is
 ///     specialised for that specific address.
 ///   - Null check via explicit == nullptr / != nullptr (no implicit operator bool())
 ///   - Pointer equality: == and != with another val<FuncPtr> of the same type
@@ -143,12 +144,13 @@ public:
 		if (tracing::inTracer()) {
 			auto fnPtrRef = details::StateResolver<const val<void*>&>::getState(ptr);
 			auto argRefs = getArgumentReferences(std::forward<ValueArgs>(args)...);
+			auto captureFunc = reinterpret_cast<void*>(&compiler::captureThrowingCall<R, Args...>);
 			if constexpr (std::is_void_v<R>) {
-				tracing::traceIndirectCall(fnPtrRef, Type::v, argRefs, {});
+				tracing::traceIndirectCall(fnPtrRef, Type::v, argRefs, {}, captureFunc);
 				return;
 			} else {
 				auto& resultRef =
-				    tracing::traceIndirectCall(fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {});
+				    tracing::traceIndirectCall(fnPtrRef, tracing::TypeResolver<R>::to_type(), argRefs, {}, captureFunc);
 				return val<R>(resultRef);
 			}
 		}

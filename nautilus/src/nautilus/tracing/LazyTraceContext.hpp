@@ -6,6 +6,7 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace nautilus::tracing {
@@ -48,12 +49,24 @@ public:
 	void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) override;
 	TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                         FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
+	                                              const std::vector<tracing::TypedValueRef>& arguments,
+	                                              FunctionAttributes fnAttrs, void* captureFunc = nullptr) override;
 	TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-	                                 const std::vector<tracing::TypedValueRef>& arguments,
-	                                 FunctionAttributes fnAttrs) override;
+	                                 const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
+	                                 void* captureFunc = nullptr) override;
+
+	TypedValueRef& traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+	                                                      const std::vector<tracing::TypedValueRef>& arguments,
+	                                                      FunctionAttributes fnAttrs,
+	                                                      void* captureFunc = nullptr) override;
 	TypedValueRef& traceNautilusCall(const NautilusFunctionDefinition* definition, std::function<void()> fwrapper,
 	                                 Type resultType, const std::vector<tracing::TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) override;
+	TypedValueRef& traceNautilusCallWithExceptionHandling(const NautilusFunctionDefinition* definition,
+	                                                      std::function<void()> fwrapper, Type resultType,
+	                                                      const std::vector<tracing::TypedValueRef>& arguments,
+	                                                      FunctionAttributes fnAttrs) override;
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
@@ -127,7 +140,21 @@ private:
 
 	// Work-list for multi-function tracing
 	std::list<compiler::CompilableFunction> functionsToTrace;
-	std::unordered_set<std::string> registeredFunctions;
+	/// Definition identity -> the name that definition is traced under.
+	///
+	/// Keyed on the NautilusFunctionDefinition, not on its name: two distinct
+	/// NautilusFunctions may share a name, and deduping by name meant the
+	/// second was never traced while every call to it dispatched into the
+	/// first one's body, with no diagnostic. The stored name is uniquified
+	/// against `usedFunctionNames` so both bodies get traced and emitted.
+	std::unordered_map<const void*, std::string> registeredFunctions;
+	std::unordered_set<std::string> usedFunctionNames;
+
+	/// Returns the trace-unique name for @p definition, registering it for
+	/// tracing on first sight. @p newlyRegistered reports whether this call
+	/// was the first.
+	const std::string& registerNautilusFunction(const NautilusFunctionDefinition* definition,
+	                                            std::function<void()> fwrapper, bool& newlyRegistered);
 };
 
 } // namespace nautilus::tracing

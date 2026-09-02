@@ -196,7 +196,7 @@ val<int> nautilusFunctionMultipleInline(val<int> a, val<int> b) {
 
 // Test: getFuncPtr() — obtain a function pointer from a NautilusFunction
 // and pass it through invoke() to a runtime function that calls it.
-int32_t applyFnPtr(int32_t (*fn)(int32_t, int32_t), int32_t a, int32_t b) {
+int32_t applyFnPtr(int32_t (*fn)(int32_t, int32_t), int32_t a, int32_t b) noexcept {
 	return fn(a, b);
 }
 

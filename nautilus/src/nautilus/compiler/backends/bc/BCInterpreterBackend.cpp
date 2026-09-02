@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <nautilus/CompilationStatistics.hpp>
+#include <nautilus/compiler/backends/CapturedExceptionTransport.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreterBackend.hpp>
 #include <nautilus/compiler/backends/bc/BCLoweringProvider.hpp>
@@ -220,7 +221,14 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	const auto backendStart = std::chrono::steady_clock::now();
 	const auto& functionOperations = ir->getFunctionOperations();
 
+	// Name -> thunk, handed to BCExecutable so a caller can invoke a module
+	// function by the name they gave it.
 	std::unordered_map<std::string, void*> functionPtrs;
+	// FunctionId -> thunk, handed to lowering. Separate from the map above
+	// because lowering must resolve a callee by identity: a name lookup that
+	// missed used to fall through and hand dyncall a NautilusFunctionDefinition
+	// to call as if it were code.
+	std::unordered_map<ir::FunctionId, void*> internalPtrsById;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackDataStore;
 	std::vector<BCClosureHandle> callbackPtrs;
 
@@ -284,11 +292,13 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		}
 		data->code = code;
 		functionPtrs[funcOp->getName()] = code;
+		internalPtrsById[ir->getFunctionTable().findByDefinition(funcOp)] = code;
 		callbackPtrs.push_back(data->closure);
 #else
 		auto sig = buildDCSignature(data->argTypes, data->returnType);
 		auto* cb = dcbNewCallback(sig.c_str(), bcCallbackHandler, data.get());
 		functionPtrs[funcOp->getName()] = reinterpret_cast<void*>(cb);
+		internalPtrsById[ir->getFunctionTable().findByDefinition(funcOp)] = reinterpret_cast<void*>(cb);
 		callbackPtrs.push_back(cb);
 #endif
 		callbackDataStore.push_back(std::move(data));
@@ -314,7 +324,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	// All function pointers are now available, so every function can call any other.
 	for (size_t i = 0; i < functionOperations.size(); i++) {
 		const auto& funcOp = functionOperations[i];
-		auto result = BCLoweringProvider().lower(ir, funcOp->getName(), functionPtrs, loweringOptions);
+		auto result = BCLoweringProvider().lower(ir, funcOp->getName(), internalPtrsById, loweringOptions);
 		auto& code = std::get<0>(result);
 		auto& regFile = std::get<1>(result);
 
@@ -355,7 +365,8 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	}
 
 	return std::make_unique<BCExecutable>(std::move(functionPtrs), std::move(callbackDataStore),
-	                                      std::move(callbackPtrs));
+	                                      std::move(callbackPtrs),
+	                                      CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
 } // namespace nautilus::compiler::bc

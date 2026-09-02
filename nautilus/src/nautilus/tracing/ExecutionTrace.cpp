@@ -25,6 +25,20 @@ void TraceModule::setFunctionAttributes(const std::string& functionName,
 	}
 }
 
+void TraceModule::addFunctionDefinition(const std::string& functionName, const void* definition) {
+	if (definition == nullptr) {
+		return;
+	}
+	auto it = functions.find(functionName);
+	if (it == functions.end()) {
+		return;
+	}
+	auto& definitions = it->second.definitions;
+	if (std::find(definitions.begin(), definitions.end(), definition) == definitions.end()) {
+		definitions.push_back(definition);
+	}
+}
+
 TraceFunctionDefinition* TraceModule::getFunctionDefinition(const std::string& functionName) {
 	auto it = functions.find(functionName);
 	return it != functions.end() ? &it->second : nullptr;
@@ -353,8 +367,8 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
-    -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
+                                                 format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -376,8 +390,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
-	    -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
+	                   format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;
@@ -404,7 +418,13 @@ template <>
 struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> {
 	static auto format(const nautilus::tracing::FunctionCall& call, format_context& ctx) -> format_context::iterator {
 		auto out = ctx.out();
-		if (nautilus::log::options::getLogAddresses()) {
+		// An internal callee is named by the user -- a NautilusFunction is
+		// constructed with its name -- so the spelling is deterministic and
+		// safe to print into a checked-in reference dump. A native callee's
+		// name comes from dladdr and is a stringified address wherever that
+		// misses: different on every machine, so it stays behind the
+		// address-logging flag, as the whole call did before.
+		if (call.kind == nautilus::tracing::CalleeKind::Internal || nautilus::log::options::getLogAddresses()) {
 			fmt::format_to(out, "{}(", call.functionName);
 		} else {
 			fmt::format_to(out, "func_*(");
@@ -417,6 +437,21 @@ struct formatter<nautilus::tracing::FunctionCall> : formatter<std::string_view> 
 			fmt::format_to(out, "{}", call.arguments[i]);
 		}
 		fmt::format_to(out, ")");
+		if (!call.destructors.empty()) {
+			fmt::format_to(out, " unwind[");
+			for (size_t i = call.destructors.size(); i > 0; --i) {
+				if (i != call.destructors.size()) {
+					fmt::format_to(out, ",");
+				}
+				const auto& destructor = call.destructors[i - 1];
+				if (nautilus::log::options::getLogAddresses()) {
+					fmt::format_to(out, "{}({})", destructor.functionName, destructor.address);
+				} else {
+					fmt::format_to(out, "dtor_*({})", destructor.address);
+				}
+			}
+			fmt::format_to(out, "]");
+		}
 		return out;
 	}
 };
