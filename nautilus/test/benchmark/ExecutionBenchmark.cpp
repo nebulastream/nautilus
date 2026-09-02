@@ -96,257 +96,127 @@ static auto benchmarks =
     };
 
 TEST_CASE("Execution Benchmark") {
+	// One configuration per backend, with every optimization this suite
+	// knows about switched on: this tracks steady-state production
+	// performance rather than the marginal effect of any single flag (that
+	// per-flag A/B coverage lives in CompilationStatisticsTest and the
+	// *ModeTest execution tests). TBC is the exception -- it gets two
+	// configs, interpreted and copy-and-patch JIT, since that split is the
+	// point of having the backend.
+	std::vector<std::tuple<std::string, Options>> configs;
 
-	std::vector<std::string> backends = {};
 #ifdef ENABLE_MLIR_BACKEND
-	backends.emplace_back("mlir");
+	{
+		Options op;
+		op.setOption("engine.backend", std::string("mlir"));
+		// force synchronous compilation for the MLIR backend.
+		op.setOption("mlir.eager_compilation", true);
+		configs.emplace_back("mlir", op);
+	}
 #endif
 #ifdef ENABLE_C_BACKEND
-	backends.emplace_back("cpp");
+	{
+		Options op;
+		op.setOption("engine.backend", std::string("cpp"));
+		configs.emplace_back("cpp", op);
+	}
 #endif
 #ifdef ENABLE_BC_BACKEND
-	backends.emplace_back("bc");
+	{
+		Options op;
+		op.setOption("engine.backend", std::string("bc"));
+		op.setOption("ir.enableLICM", true);
+		op.setOption("ir.enableLocalCSE", true);
+		op.setOption("bc.registerAllocator", true);
+		op.setOption("bc.dispatch", std::string("threaded"));
+		op.setOption("bc.regfileReuse", true);
+		op.setOption("bc.superinstructions", true);
+		op.setOption("bc.immediates", true);
+		configs.emplace_back("bc", op);
+	}
+#endif
+#ifdef ENABLE_ASMJIT_BACKEND
+	{
+		Options op;
+		op.setOption("engine.backend", std::string("asmjit"));
+		op.setOption("ir.enableLICM", true);
+		op.setOption("ir.enableLocalCSE", true);
+		op.setOption("asmjit.enableBranchFusion", true);
+		op.setOption("asmjit.enableConstFolding", true);
+		op.setOption("asmjit.enableSelectCmov", true);
+		configs.emplace_back("asmjit", op);
+	}
 #endif
 #ifdef ENABLE_TBC_BACKEND
-	backends.emplace_back("tbc");
+	{
+		Options op;
+		op.setOption("engine.backend", std::string("tbc"));
+		op.setOption("ir.enableLICM", true);
+		op.setOption("ir.enableLocalCSE", true);
+		op.setOption("tbc.mode", std::string("interp"));
+		configs.emplace_back("tbc_interp", op);
+	}
+#ifdef ENABLE_TBC_JIT
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		Options op;
+		op.setOption("engine.backend", std::string("tbc"));
+		op.setOption("ir.enableLICM", true);
+		op.setOption("ir.enableLocalCSE", true);
+		op.setOption("tbc.mode", std::string("jit"));
+		configs.emplace_back("tbc_jit", op);
+	}
 #endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	backends.emplace_back("asmjit");
 #endif
-	for (auto& backend : backends) {
+
+	for (auto& [name, op] : configs) {
 		for (auto& test : benchmarks) {
 			auto func = std::get<1>(test);
-			auto name = std::get<0>(test);
-
-			Catch::Benchmark::Benchmark("exec_" + backend + "_" + name)
-			    .operator=([&func, backend](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    if (backend == "mlir") {
-					    // force compilation for the MLIR backend.
-					    op.setOption("mlir.eager_compilation", true);
-				    }
-				    op.setOption("engine.backend", backend);
-				    func(meter, op);
-			    });
+			auto testName = std::get<0>(test);
+			Catch::Benchmark::Benchmark("exec_" + name + "_" + testName)
+			    .operator=([&func, &op](Catch::Benchmark::Chronometer meter) { func(meter, op); });
 		}
 	}
-
-	// A/B: P2 IR passes (LICM + LocalCSE) off vs on, on every direct-lowering
-	// backend (bc/tbc/asmjit) -- the ones for which the IR pass pipeline is the
-	// whole optimizer. Measures the execution-time (dispatch/instruction-count)
-	// effect of the opt-in passes.
-	std::vector<std::string> abBackends = {};
-#ifdef ENABLE_BC_BACKEND
-	abBackends.emplace_back("bc");
-#endif
-#ifdef ENABLE_TBC_BACKEND
-	abBackends.emplace_back("tbc");
-#endif
-#ifdef ENABLE_ASMJIT_BACKEND
-	abBackends.emplace_back("asmjit");
-#endif
-	for (auto& backend : abBackends) {
-		for (auto& test : benchmarks) {
-			auto func = std::get<1>(test);
-			auto name = std::get<0>(test);
-			for (bool passesOn : {false, true}) {
-				std::string tag = passesOn ? "passesOn" : "passesOff";
-				Catch::Benchmark::Benchmark("exec_" + backend + "_" + name + "_" + tag)
-				    .operator=([&func, backend, passesOn](Catch::Benchmark::Chronometer meter) {
-					    auto op = engine::Options();
-					    if (backend == "mlir") {
-						    op.setOption("mlir.eager_compilation", true);
-					    }
-					    op.setOption("engine.backend", backend);
-					    op.setOption("ir.enableLICM", passesOn);
-					    op.setOption("ir.enableLocalCSE", passesOn);
-					    func(meter, op);
-				    });
-			}
-		}
-	}
-
-#ifdef ENABLE_BC_BACKEND
-	// BC-only A/B benchmark comparing execution with and without the
-	// linear register allocator. Lets us track the perf side of the
-	// "bc.registerAllocator" toggle next to the static-size effect that
-	// CompilationStatisticsTest measures (bc.registers.{total,max}).
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool allocOn : {false, true}) {
-			std::string tag = allocOn ? "regAlloc" : "noRegAlloc";
-			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + tag)
-			    .operator=([&func, allocOn](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("bc.registerAllocator", allocOn);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// BC-only A/B benchmark comparing the bytecode dispatch strategies:
-	// "call" indirect-calls through the OpTable, "switch" uses an inlined
-	// switch that removes the per-instruction non-inlined call.
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
-			Catch::Benchmark::Benchmark("exec_bc_" + name + "_" + dispatch)
-			    .operator=([&func, dispatch](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("bc.dispatch", dispatch);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// BC-only A/B benchmark for recycling the per-invocation register file from a
-	// thread-local pool (bc.regfileReuse) instead of heap-allocating a fresh copy.
-	// Most visible on the per-call-dominated "add" workload.
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool reuse : {false, true}) {
-			std::string tag = reuse ? "reuse" : "noReuse";
-			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
-			    .operator=([&func, reuse](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("bc.dispatch", std::string("threaded"));
-				    op.setOption("bc.regfileReuse", reuse);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// BC-only A/B for compare+branch superinstructions on the threaded path
-	// (bc.superinstructions). Most visible on branch-heavy loops (fibonacci).
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool super : {false, true}) {
-			std::string tag = super ? "superinstr" : "noSuperinstr";
-			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
-			    .operator=([&func, super](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("bc.dispatch", std::string("threaded"));
-				    op.setOption("bc.superinstructions", super);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// BC-only comparison of the threaded baseline against all threaded-path
-	// optimizations stacked (superinstructions + immediate folding).
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool allOpts : {false, true}) {
-			std::string tag = allOpts ? "allOpts" : "baseline";
-			Catch::Benchmark::Benchmark("exec_bc_" + name + "_threaded_" + tag)
-			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("bc"));
-				    op.setOption("bc.dispatch", std::string("threaded"));
-				    op.setOption("bc.superinstructions", allOpts);
-				    op.setOption("bc.immediates", allOpts);
-				    func(meter, op);
-			    });
-		}
-	}
-#endif
-
-#ifdef ENABLE_ASMJIT_BACKEND
-	// AsmJit-only A/B benchmark for the compare→branch fusion in the lowering
-	// (asmjit.enableBranchFusion). Most visible on branch-heavy loops
-	// (fibonacci), where fusion removes the setcc+movzx+test round-trip per
-	// iteration.
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool fusion : {false, true}) {
-			std::string tag = fusion ? "branchFusion" : "noBranchFusion";
-			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
-			    .operator=([&func, fusion](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("asmjit.enableBranchFusion", fusion);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// AsmJit-only A/B benchmark for constant deferral + immediate folding
-	// (asmjit.enableConstFolding). Most visible where loop bodies contain
-	// constant operands (i = i + 1, cmp i, n).
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool fold : {false, true}) {
-			std::string tag = fold ? "constFold" : "noConstFold";
-			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
-			    .operator=([&func, fold](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("asmjit.enableConstFolding", fold);
-				    func(meter, op);
-			    });
-		}
-	}
-
-	// AsmJit-only comparison of the lowering baseline against all lowering
-	// optimizations stacked (branch fusion + const folding + select cmov).
-	for (auto& test : benchmarks) {
-		auto func = std::get<1>(test);
-		auto name = std::get<0>(test);
-		for (bool allOpts : {false, true}) {
-			std::string tag = allOpts ? "allOpts" : "baseline";
-			Catch::Benchmark::Benchmark("exec_asmjit_" + name + "_" + tag)
-			    .operator=([&func, allOpts](Catch::Benchmark::Chronometer meter) {
-				    auto op = engine::Options();
-				    op.setOption("engine.backend", std::string("asmjit"));
-				    op.setOption("asmjit.enableBranchFusion", allOpts);
-				    op.setOption("asmjit.enableConstFolding", allOpts);
-				    op.setOption("asmjit.enableSelectCmov", allOpts);
-				    func(meter, op);
-			    });
-		}
-	}
-#endif
 
 #ifdef ENABLE_TBC_JIT
-	// TBC copy-and-patch A/B: identical bytecode executed by the interpreter
-	// (strongest dispatch skin) vs stitched native code (tbc.mode=jit). The
-	// shared loop kernels isolate the dispatch-elimination win; the two call
-	// kernels bound the frame-push helper (internal CALL) and dyncall bridge
-	// (CALL_EXT) overheads that the loop kernels never exercise.
-	if (compiler::tbc::jit::jitRuntimeAvailable()) {
-		auto tbcJitBenchmarks = benchmarks;
-		tbcJitBenchmarks.emplace_back("internalCall", [](Catch::Benchmark::Chronometer& meter, Options& options) {
-			auto engine = engine::NautilusEngine(options);
-			auto func = engine.registerFunction(internalCallLoop);
-			meter.measure([&] { return func(10000); });
-		});
-		tbcJitBenchmarks.emplace_back("externalCall", [](Catch::Benchmark::Chronometer& meter, Options& options) {
-			auto engine = engine::NautilusEngine(options);
-			auto func = engine.registerFunction(externalCallLoop);
-			meter.measure([&] { return func(10000); });
-		});
-		for (auto& test : tbcJitBenchmarks) {
-			auto func = std::get<1>(test);
-			auto name = std::get<0>(test);
-			for (const auto& mode : {std::string("interp"), std::string("jit")}) {
-				Catch::Benchmark::Benchmark("exec_tbc_" + name + "_" + mode)
-				    .operator=([&func, mode](Catch::Benchmark::Chronometer meter) {
-					    auto op = engine::Options();
-					    op.setOption("engine.backend", std::string("tbc"));
-					    op.setOption("tbc.mode", mode);
-					    func(meter, op);
-				    });
+	// Call-heavy A/B between the two TBC configs above: the loop kernels
+	// never leave one function, so they cannot show the cost of the JIT's
+	// frame-push helper (internal CALL) or the dyncall bridge (external
+	// CALL_EXT).
+	auto findConfig = [&configs](const std::string& configName) -> const Options* {
+		for (auto& [name, op] : configs) {
+			if (name == configName) {
+				return &op;
+			}
+		}
+		return nullptr;
+	};
+	if (const auto* jitOptions = findConfig("tbc_jit")) {
+		const auto* interpOptions = findConfig("tbc_interp");
+		auto callBenchmarks =
+		    std::vector<std::tuple<std::string, std::function<void(Catch::Benchmark::Chronometer&, Options&)>>> {
+		        {"internalCall",
+		         [](Catch::Benchmark::Chronometer& meter, Options& options) {
+			         auto engine = engine::NautilusEngine(options);
+			         auto func = engine.registerFunction(internalCallLoop);
+			         meter.measure([&] { return func(10000); });
+		         }},
+		        {"externalCall",
+		         [](Catch::Benchmark::Chronometer& meter, Options& options) {
+			         auto engine = engine::NautilusEngine(options);
+			         auto func = engine.registerFunction(externalCallLoop);
+			         meter.measure([&] { return func(10000); });
+		         }},
+		    };
+		std::vector<std::tuple<std::string, Options>> tbcCallConfigs = {
+		    {"interp", *interpOptions},
+		    {"jit", *jitOptions},
+		};
+		for (auto& [tbcName, op] : tbcCallConfigs) {
+			for (auto& test : callBenchmarks) {
+				auto func = std::get<1>(test);
+				auto testName = std::get<0>(test);
+				Catch::Benchmark::Benchmark("exec_tbc_" + testName + "_" + tbcName)
+				    .operator=([&func, &op](Catch::Benchmark::Chronometer meter) { func(meter, op); });
 			}
 		}
 	}
