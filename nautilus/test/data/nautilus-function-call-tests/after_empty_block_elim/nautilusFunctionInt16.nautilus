@@ -1,7 +1,7 @@
 nautilus {
 execute($1:i16, $2:i16) :i16 {
 Block_0($1:i16, $2:i16):
-	$3 = subInt16($1,$2) :i16
+	$3 = call subInt16($1,$2) :i16
 	return ($3) :i16
 }
 subInt16($1:i16, $2:i16) :i16 {

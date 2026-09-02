@@ -10,14 +10,14 @@ Block_0($1:ptr, $2:ptr, $3:ui32):
 	$8 = 256 :ui32
 	$10 = 1 :ui32
 	$11 = 1 :ui32
-	func_*#0($4,$6,$7) :void
-	func_*#1($8,$10,$11) :void
-	vecScale($1,$2,$3) :void
+	call func_*#0($4,$6,$7) :void
+	call func_*#1($8,$10,$11) :void
+	call vecScale($1,$2,$3) :void
 	return :void
 }
 vecScale($1:ptr, $2:ptr, $3:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ui32):
-	$6 = func_*#4() :ui32
+	$6 = call func_*#4() :ui32
 	$7 = $6 cast_to i32 :i32
 	$11 = 4 :ui64
 	$12 = $7 cast_to ui64 :ui64

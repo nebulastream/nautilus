@@ -1,22 +1,22 @@
 nautilus {
-declare external #0 func_*(ptr) :void
-declare external #1 func_*(ptr, ptr) :void
-declare external #2 func_*(ptr) :void
+declare external #0 func_*(ptr) :void [nounwind]
+declare external #1 func_*(ptr, ptr) :void [nounwind]
+declare external #2 func_*(ptr) :void [nounwind]
 execute() :i32 {
 Block_0():
 	$1 = alloca[0] :ptr
-	func_*#0($1) :void
+	call func_*#0($1) :void
 	$7 = 0 :ui64
 	$8 = $1 + $7 :ptr
 	$11 = 99 :i32
 	store($11, $8) :void
 	$15 = alloca[1] :ptr
-	func_*#1($15,$1) :void
+	call func_*#1($15,$1) :void
 	$21 = 0 :ui64
 	$22 = $15 + $21 :ptr
 	$25 = load($22) :i32
-	func_*#2($15) :void
-	func_*#2($1) :void
+	call func_*#2($15) :void
+	call func_*#2($1) :void
 	return ($25) :i32
 }
 } //nautilus

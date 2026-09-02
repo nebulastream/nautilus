@@ -15,17 +15,17 @@ Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
 	$13 = 256 :ui32
 	$15 = 1 :ui32
 	$16 = 1 :ui32
-	func_*#0($8,$11,$12) :void
-	func_*#1($13,$15,$16) :void
-	vecAddBounded($1,$2,$3,$4) :void
+	call func_*#0($8,$11,$12) :void
+	call func_*#1($13,$15,$16) :void
+	call vecAddBounded($1,$2,$3,$4) :void
 	return :void
 }
 vecAddBounded($1:ptr, $2:ptr, $3:ptr, $4:ui32) :void {
 Block_0($1:ptr, $2:ptr, $3:ptr, $4:ui32):
-	$8 = func_*#4() :ui32
-	$9 = func_*#5() :ui32
+	$8 = call func_*#4() :ui32
+	$9 = call func_*#5() :ui32
 	$10 = $8 * $9 :ui32
-	$11 = func_*#6() :ui32
+	$11 = call func_*#6() :ui32
 	$12 = $10 + $11 :ui32
 	$13 = $12 < $4 :bool
 	if $13 ? Block_1($12, $1, $2, $3) : Block_2() :void

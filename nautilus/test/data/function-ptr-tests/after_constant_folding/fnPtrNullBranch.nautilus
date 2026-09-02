@@ -13,7 +13,7 @@ Block_3($10:i32):
 	return ($10) :i32
 
 Block_2($1:ptr, $2:i32, $3:i32):
-	$14 = call_indirect $1($2,$3) :i32
+	$14 = call $1($2,$3) :i32
 	br Block_3($14) :void
 }
 } //nautilus

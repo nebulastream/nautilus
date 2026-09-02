@@ -10,7 +10,7 @@ Block_3($2:i32, $3:i32, $1:i32):
 	if $4 ? Block_1($1, $2, $3) : Block_2($2) :void
 
 Block_1($1:i32, $2:i32, $3:i32):
-	$6 = loopHelper($2) :i32
+	$6 = call loopHelper($2) :i32
 	$7 = 1 :i32
 	$8 = $3 + $7 :i32
 	br Block_3($6, $8, $1) :void

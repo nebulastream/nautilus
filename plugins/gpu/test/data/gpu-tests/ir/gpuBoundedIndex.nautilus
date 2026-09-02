@@ -4,10 +4,10 @@ declare external #1 func_*() :ui32
 declare external #2 func_*() :ui32
 execute($1:ui32) :ui32 {
 Block_0($1:ui32):
-	$2 = func_*#0() :ui32
-	$3 = func_*#1() :ui32
+	$2 = call func_*#0() :ui32
+	$3 = call func_*#1() :ui32
 	$4 = $2 * $3 :ui32
-	$5 = func_*#2() :ui32
+	$5 = call func_*#2() :ui32
 	$6 = $4 + $5 :ui32
 	$7 = $6 < $1 :bool
 	if $7 ? Block_1($6) : Block_2() :void

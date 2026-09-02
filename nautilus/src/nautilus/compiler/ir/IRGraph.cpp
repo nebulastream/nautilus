@@ -124,6 +124,46 @@ std::string calleeSpelling(FunctionId calleeId, const std::string& storedName) {
 	return nativeSpelling(storedName);
 }
 
+/// `[attr, attr, ...]` for whatever @p attrs asserts beyond the pessimistic
+/// default (ModRef, willReturn=false, noUnwind=false) -- empty when nothing
+/// does, so a callee no pass has looked at yet prints exactly as it always
+/// did. Names follow LLVM's own vocabulary for the same guarantees, since
+/// FunctionAttributes is explicitly modeled on it.
+std::string attributesSuffix(const FunctionAttributes& attrs) {
+	std::vector<std::string> tokens;
+	switch (attrs.modRefInfo) {
+	case ModRefInfo::NoModRef:
+		tokens.emplace_back("readnone");
+		break;
+	case ModRefInfo::Ref:
+		tokens.emplace_back("readonly");
+		break;
+	case ModRefInfo::Mod:
+		tokens.emplace_back("writeonly");
+		break;
+	case ModRefInfo::ModRef:
+		break;
+	}
+	if (attrs.willReturn) {
+		tokens.emplace_back("willreturn");
+	}
+	if (attrs.noUnwind) {
+		tokens.emplace_back("nounwind");
+	}
+	if (tokens.empty()) {
+		return {};
+	}
+	std::string out = " [";
+	for (size_t i = 0; i < tokens.size(); ++i) {
+		if (i > 0) {
+			out += ", ";
+		}
+		out += tokens[i];
+	}
+	out += "]";
+	return out;
+}
+
 struct PrintOptionsScope {
 	explicit PrintOptionsScope(const IRPrintOptions* opts) : previous(currentPrintOptions) {
 		currentPrintOptions = opts;
@@ -315,7 +355,7 @@ struct formatter<nautilus::compiler::ir::CallOperation> : formatter<std::string_
 		if (op.getStamp() != nautilus::Type::v) {
 			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
 		}
-		fmt::format_to(out, "{}(", nautilus::compiler::ir::calleeSpelling(op.getCalleeId(), op.getFunctionName()));
+		fmt::format_to(out, "call {}(", nautilus::compiler::ir::calleeSpelling(op.getCalleeId(), op.getFunctionName()));
 		const auto args = op.getInputArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
@@ -402,7 +442,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		if (op.getStamp() != nautilus::Type::v) {
 			fmt::format_to(out, "${} = ", op.getIdentifier().getId());
 		}
-		fmt::format_to(out, "call_indirect {}(", call->getFunctionPtrOperand()->getIdentifier());
+		fmt::format_to(out, "call {}(", call->getFunctionPtrOperand()->getIdentifier());
 		const auto args = call->getInputArguments();
 		for (size_t i = 0; i < args.size(); ++i) {
 			if (i > 0) {
@@ -534,7 +574,20 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 				}
 			}
 		}
-		fmt::format_to(out, ") :{} {{", toString(func.getOutputArg()));
+		fmt::format_to(out, ") :{}", toString(func.getOutputArg()));
+		// Derived by FunctionAttributeInferencePass (or absent before it runs);
+		// the internal FunctionOperation is its own declaration, so its
+		// attributes belong on this signature line rather than a separate one.
+		if (nautilus::compiler::ir::currentPrintGraph != nullptr) {
+			const auto id = nautilus::compiler::ir::currentPrintGraph->getFunctionTable().findByDefinition(&func);
+			if (id != nautilus::compiler::ir::INVALID_FUNCTION_ID &&
+			    nautilus::compiler::ir::currentPrintGraph->getFunctionTable().contains(id)) {
+				fmt::format_to(out, "{}",
+				               nautilus::compiler::ir::attributesSuffix(
+				                   nautilus::compiler::ir::currentPrintGraph->getFunctionTarget(id).getAttributes()));
+			}
+		}
+		fmt::format_to(out, " {{");
 		{
 			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
 			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
@@ -542,23 +595,20 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 				fmt::format_to(out, "{}", *block);
 			}
 		}
+		// Which pad each call targets is already inline on the call itself
+		// (padLinkSuffix, in the shared Operation trailer); this section is
+		// only the pads' own definitions -- the destructor calls a landing
+		// pad actually contains, which appear nowhere else in the dump. A
+		// function with only no-pad exceptional call sites has nothing left
+		// to say here: `-> (no_pad)` on the call already said it.
 		if (func.exceptionRegion.has_value()) {
 			const auto& region = *func.exceptionRegion;
-			if (!region.pads.empty() || !region.callSites.empty()) {
+			if (!region.pads.empty()) {
 				fmt::format_to(out, "exception_region:\n");
 				for (size_t i = 0; i < region.pads.size(); ++i) {
 					fmt::format_to(out, "\tpad_{}:\n", i);
 					for (const auto* op : region.pads[i].block->getOperations()) {
 						fmt::format_to(out, "\t\t{}\n", *op);
-					}
-				}
-				fmt::format_to(out, "\tcall_sites:\n");
-				for (const auto& site : region.callSites) {
-					fmt::format_to(out, "\t\t{} -> ", site.call->getIdentifier());
-					if (site.hasPad()) {
-						fmt::format_to(out, "pad_{}\n", site.padIndex);
-					} else {
-						fmt::format_to(out, "(no_pad)\n");
 					}
 				}
 			}
@@ -600,7 +650,8 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 			}
 			fmt::format_to(out, "{}", toString(params[i]));
 		}
-		fmt::format_to(out, ") :{}\n", toString(target.getResultType()));
+		fmt::format_to(out, ") :{}{}\n", toString(target.getResultType()),
+		               nautilus::compiler::ir::attributesSuffix(target.getAttributes()));
 	}
 
 	// Print all function operations

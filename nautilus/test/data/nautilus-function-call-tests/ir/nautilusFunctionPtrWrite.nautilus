@@ -1,7 +1,7 @@
 nautilus {
 execute($1:ptr, $2:f64) :f64 {
 Block_0($1:ptr, $2:f64):
-	writeDouble($1,$2) :void
+	call writeDouble($1,$2) :void
 	$6 = load($1) :f64
 	return ($6) :f64
 }
