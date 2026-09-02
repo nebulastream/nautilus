@@ -32,7 +32,7 @@ namespace {
 constexpr int32_t kDataCache = 1;
 
 template <int32_t Rw, int32_t Locality>
-bool prefetchIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::ProxyCallOperation* call,
+bool prefetchIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compiler::ir::CallOperation* call,
                        MLIRLoweringProvider::ValueFrame& frame) {
 	auto addr = frame.getValue(call->getInputArguments()[0]->getIdentifier());
 	::mlir::LLVM::Prefetch::create(*builder, builder->getUnknownLoc(), addr, builder->getI32IntegerAttr(Rw),

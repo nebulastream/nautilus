@@ -16,7 +16,7 @@
 
 #include "AsmJitPrefetchIntrinsics.hpp"
 #include "nautilus/compiler/backends/amsjit/intrinsics/AsmJitBackendIntrinsic.hpp"
-#include "nautilus/compiler/ir/operations/ProxyCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "prefetch_impl.hpp"
 
 namespace nautilus::compiler::asmjit {
