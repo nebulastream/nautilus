@@ -80,17 +80,18 @@ struct PrintExceptionRegionScope {
 	const FunctionExceptionRegion* previous;
 };
 
-/// The landing-pad suffix for @p call (` -> pad_N` / ` -> (no_pad)`), or empty
-/// when the region hasn't been computed yet or @p call isn't one of its
-/// exceptional call sites. Linear scan: this only runs while formatting IR
-/// for humans, and a function's call-site list is small.
+/// The landing-pad suffix for @p call (` -> pad_N`), or empty when the region
+/// hasn't been computed yet, @p call isn't one of its exceptional call sites,
+/// or it is one with nothing to clean up on unwind (no pad to link to).
+/// Linear scan: this only runs while formatting IR for humans, and a
+/// function's call-site list is small.
 std::string padLinkSuffix(const Operation* call) {
 	if (currentPrintExceptionRegion == nullptr) {
 		return {};
 	}
 	for (const auto& site : currentPrintExceptionRegion->callSites) {
 		if (site.call == call) {
-			return site.hasPad() ? fmt::format(" -> pad_{}", site.padIndex) : " -> (no_pad)";
+			return site.hasPad() ? fmt::format(" -> pad_{}", site.padIndex) : "";
 		}
 	}
 	return {};
