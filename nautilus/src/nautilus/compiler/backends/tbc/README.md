@@ -1,10 +1,10 @@
 # TBC — Threaded Bytecode Interpreter Backend
 
 `tbc` is a from-scratch bytecode interpreter backend built for high execution
-performance and portability. It runs on x86-64 and ARM64 (Linux/macOS) and —
-unlike the legacy `bc` backend — **never allocates executable memory** in its
-default mode, so it also works on platforms that forbid runtime code
-generation (iOS).
+performance and portability. It runs on x86-64 and ARM64 (Linux/macOS) and, in
+its default execution mode, generates **no machine code at runtime**: build it
+with `ENABLE_FFI_CLOSURES` and it allocates no executable memory at all, so it
+also works on platforms that forbid runtime code generation (iOS).
 
 Select it with `options.setOption("engine.backend", "tbc")`. It is built when
 `ENABLE_TBC_BACKEND` is on (default, dependent on `ENABLE_TRACING`).
@@ -35,7 +35,7 @@ the backend unusable on iOS.
 | internal calls | dyncall → dyncallback thunk → nested interpreter | native `CALL`/`RET` in the dispatch loop |
 | frames | full register-file copy, heap allocas | contiguous VM stack, in-frame allocas |
 | fusion / immediates | opt-in, threaded mode only | on by default |
-| executable memory | dyncallback trampolines | none |
+| executable memory | dyncallback trampolines | none under `ENABLE_FFI_CLOSURES` |
 
 Measured on the loop kernels of `test/benchmark/ExecutionBenchmark.cpp`
 (Release, x86-64): ~3–4× faster than `bc`'s default *and* best opt-in
@@ -110,24 +110,45 @@ simply pushes further frames at `sp`.
   drives the outgoing dyncall VM (arguments + call in one dispatch). Outgoing
   dyncall builds call frames dynamically without executable memory.
 - **Indirect** (`CALL_IND`): the target register always holds a real native
-  pointer (see trampolines below), so it uses the external path.
+  pointer (see native entry points below), so it uses the external path.
 
-### Escaping internal function pointers (`TBCTrampoline.hpp`)
+### Native entry points (`TBCClosure.hpp`)
 
-`FunctionAddressOf` of an internal function must produce something native
-code can call (e.g. `invoke(applyFnPtr, nautilusAdd.getFuncPtr(), …)`). `bc`
-fabricates a dyncallback thunk at runtime; `tbc` instead binds one of a fixed
-pool of **pre-compiled template trampolines** — 64 slots × arities 0–8, the
-slot index baked in as a template argument — that forward their integer-class
-arguments into the interpreter. Zero runtime code generation. Float-valued
-signatures throw a clear `NotImplementedException` (no current usage).
+Two things need a real C function pointer for a function that has no machine
+code: the module entry point, and `FunctionAddressOf` when a Nautilus function's
+address escapes to native code (e.g.
+`invoke(applyFnPtr, nautilusAdd.getFuncPtr(), …)`).
+
+Both come from one **`NativeClosure`** per function
+(`backends/NativeClosure.hpp`), built before lowering so calls and
+`FunctionAddressOf` resolve in any lowering order. The component is shared with
+`bc` and owns the mechanism choice in a single place:
+
+- default: a dyncall callback (`dcbNewCallback`), which writes a thunk into RWX
+  memory at runtime;
+- `ENABLE_FFI_CLOSURES`: a **libffi static-trampoline closure** — a read-only
+  code page plus a separate writable data page, no runtime `PROT_EXEC` — which
+  is what keeps the backend usable where runtime codegen is banned.
+
+Every argument and return type is supported, at any arity, in both execution
+modes: the closure body decodes its arguments into raw register slots and calls
+`invoke()`, which forks to stitched code by itself when the program was
+JIT-compiled.
 
 ### Entry path (`TBCExecutable.cpp`)
 
-`hasInvocableFunctionPtr()` is `false`; callers go through the
-`GenericInvocable` machinery in `include/nautilus/Executable.hpp`. The hot
-route is the allocation-free `invokeRaw` fast path (raw 64-bit slots on the
-stack); the boxed `std::any` route remains as fallback and for exotic types.
+`getInvocableFunctionPtr()` returns the function's closure pointer, but
+`hasInvocableFunctionPtr()` is deliberately `false`, so callers go through the
+`GenericInvocable` machinery in `include/nautilus/Executable.hpp`. The hot route
+is the allocation-free `invokeRaw` fast path (raw 64-bit slots on the stack);
+the boxed `std::any` route remains as fallback and for exotic types.
+
+Measured (Release, arm64, clang 21): entering through the closure instead costs
+~11 ns per call — `exec_tbc_add` 28.7 → 40.3 ns, ~1.4× — because every call then
+pays FFI argument marshalling. Loop and internal-call kernels are unaffected
+(`exec_tbc_sum`, `exec_tbc_internalCall` within 1.03–1.07×), confirming the cost
+is entry-only. Flip the flag if a caller ever needs a native-pointer entry more
+than it needs per-call latency.
 
 ### Lowering (`TBCLoweringProvider.cpp`)
 
@@ -272,8 +293,6 @@ after which the interpreter's per-instruction dispatch (indirect branch +
   Apple arm64 stack-argument packing rules; would remove the last third-party
   dependency. Would speed up `CALL_EXT` in both execution modes (the JIT's
   external-call benchmark shows dyncall marshalling dominating that path).
-- **Float-signature trampolines**: extend the escaping-function-pointer pool
-  beyond integer-class signatures if a use case appears.
 - **Instruction-stream prefetch hints / handler layout experiments** once
   real query workloads are profiled.
 

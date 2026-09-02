@@ -693,20 +693,10 @@ void BCInterpreter::buildFlatCode() {
 
 BCExecutable::BCExecutable(std::unordered_map<std::string, void*> functionPtrs,
                            std::vector<std::unique_ptr<BCCallbackData>> callbackData,
-                           std::vector<BCClosureHandle> callbacks,
+                           std::vector<std::unique_ptr<NativeClosure>> closures,
                            std::unordered_set<std::string> functionsNeedingCapture)
-    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), callbacks_(std::move(callbacks)),
+    : functionPtrs_(std::move(functionPtrs)), callbackData_(std::move(callbackData)), closures_(std::move(closures)),
       functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
-}
-
-BCExecutable::~BCExecutable() {
-	for (auto* cb : callbacks_) {
-#ifdef NAUTILUS_BC_LIBFFI
-		ffi_closure_free(cb);
-#else
-		dcbFreeCallback(cb);
-#endif
-	}
 }
 
 void* BCExecutable::getInvocableFunctionPtr(const std::string& member) {
@@ -745,8 +735,7 @@ void releaseRegisterFile(RegisterFile&& buf) {
 }
 } // namespace
 
-template <class Reader>
-int64_t BCInterpreter::invokeImpl(const std::vector<Type>& argTypes, Reader reader) {
+int64_t BCInterpreter::invoke(ClosureArgs& args, const std::vector<Type>& argTypes) {
 	// Per-invocation register file: a fresh copy by default, or one recycled from a
 	// thread-local pool when bc.regfileReuse is set. Both give each invocation its
 	// own buffer, so nested and concurrent calls remain correct.
@@ -771,112 +760,15 @@ int64_t BCInterpreter::invokeImpl(const std::vector<Type>& argTypes, Reader read
 		regs[reg] = reinterpret_cast<int64_t>(localAllocaBuffers[bufIdx].data());
 	}
 
-	// Load arguments into the local register file. The reader is the only part that
-	// differs between the dyncall and libffi entry points.
+	// Load arguments straight into the local register file. ClosureArgs is a
+	// sequential cursor, so consume the arguments in declaration order; it hands
+	// back exactly the normalized 64-bit slot the register file stores.
 	for (size_t i = 0; i < argTypes.size(); i++) {
-		reader(regs, code.arguments[i], argTypes[i], i);
+		regs[code.arguments[i]] = static_cast<int64_t>(args.next(argTypes[i]));
 	}
 
 	return execute(regs);
 }
-
-#ifdef NAUTILUS_BC_LIBFFI
-int64_t BCInterpreter::invoke(void** args, const std::vector<Type>& argTypes) {
-	// libffi passes each argument as a pointer to its native value in args[i].
-	return invokeImpl(argTypes, [args](RegisterFile& regs, short reg, Type type, size_t i) {
-		switch (type) {
-		case Type::b:
-			// bool is mapped to ffi_type_uint8; read a single byte.
-			writeReg<bool>(regs, reg, *reinterpret_cast<uint8_t*>(args[i]) != 0);
-			break;
-		case Type::i8:
-			writeReg<int8_t>(regs, reg, *reinterpret_cast<int8_t*>(args[i]));
-			break;
-		case Type::i16:
-			writeReg<int16_t>(regs, reg, *reinterpret_cast<int16_t*>(args[i]));
-			break;
-		case Type::i32:
-			writeReg<int32_t>(regs, reg, *reinterpret_cast<int32_t*>(args[i]));
-			break;
-		case Type::i64:
-			writeReg<int64_t>(regs, reg, *reinterpret_cast<int64_t*>(args[i]));
-			break;
-		case Type::ui8:
-			writeReg<uint8_t>(regs, reg, *reinterpret_cast<uint8_t*>(args[i]));
-			break;
-		case Type::ui16:
-			writeReg<uint16_t>(regs, reg, *reinterpret_cast<uint16_t*>(args[i]));
-			break;
-		case Type::ui32:
-			writeReg<uint32_t>(regs, reg, *reinterpret_cast<uint32_t*>(args[i]));
-			break;
-		case Type::ui64:
-			writeReg<uint64_t>(regs, reg, *reinterpret_cast<uint64_t*>(args[i]));
-			break;
-		case Type::f32:
-			writeReg<float>(regs, reg, *reinterpret_cast<float*>(args[i]));
-			break;
-		case Type::f64:
-			writeReg<double>(regs, reg, *reinterpret_cast<double*>(args[i]));
-			break;
-		case Type::ptr:
-			regs[reg] = reinterpret_cast<int64_t>(*reinterpret_cast<void**>(args[i]));
-			break;
-		default:
-			break;
-		}
-	});
-}
-#else
-int64_t BCInterpreter::invoke(DCArgs* args, const std::vector<Type>& argTypes) {
-	// dyncall reads arguments sequentially from the DCArgs cursor, so the reader must
-	// consume them in order; invokeImpl iterates argTypes in order.
-	return invokeImpl(argTypes, [args](RegisterFile& regs, short reg, Type type, size_t) {
-		switch (type) {
-		case Type::b:
-			// dyncall's dcbArgBool returns DCbool (int); mask to the low
-			// byte before converting to bool — see Dyncall::callB.
-			writeReg<bool>(regs, reg, (dcbArgBool(args) & 0xFF) != 0);
-			break;
-		case Type::i8:
-			writeReg<int8_t>(regs, reg, static_cast<int8_t>(dcbArgChar(args)));
-			break;
-		case Type::i16:
-			writeReg<int16_t>(regs, reg, static_cast<int16_t>(dcbArgShort(args)));
-			break;
-		case Type::i32:
-			writeReg<int32_t>(regs, reg, static_cast<int32_t>(dcbArgInt(args)));
-			break;
-		case Type::i64:
-			writeReg<int64_t>(regs, reg, static_cast<int64_t>(dcbArgLong(args)));
-			break;
-		case Type::ui8:
-			writeReg<uint8_t>(regs, reg, static_cast<uint8_t>(dcbArgUChar(args)));
-			break;
-		case Type::ui16:
-			writeReg<uint16_t>(regs, reg, static_cast<uint16_t>(dcbArgUShort(args)));
-			break;
-		case Type::ui32:
-			writeReg<uint32_t>(regs, reg, static_cast<uint32_t>(dcbArgUInt(args)));
-			break;
-		case Type::ui64:
-			writeReg<uint64_t>(regs, reg, static_cast<uint64_t>(dcbArgULong(args)));
-			break;
-		case Type::f32:
-			writeReg<float>(regs, reg, static_cast<float>(dcbArgFloat(args)));
-			break;
-		case Type::f64:
-			writeReg<double>(regs, reg, static_cast<double>(dcbArgDouble(args)));
-			break;
-		case Type::ptr:
-			regs[reg] = reinterpret_cast<int64_t>(dcbArgPointer(args));
-			break;
-		default:
-			break;
-		}
-	});
-}
-#endif
 
 int64_t BCInterpreter::execute(RegisterFile& regs) const {
 #ifdef NAUTILUS_BC_HAS_COMPUTED_GOTO

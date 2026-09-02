@@ -18,7 +18,12 @@ cmake_dependent_option(NAUTILUS_DOWNLOAD_MLIR "Download pre-built MLIR binaries"
 cmake_dependent_option(ENABLE_C_BACKEND "Enable the C compiler backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_BC_BACKEND "Enable the bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_TBC_BACKEND "Enable the threaded bytecode interpreter backend" ON "ENABLE_TRACING" OFF)
-cmake_dependent_option(ENABLE_BC_LIBFFI "Use libffi static-trampoline closures for the bytecode backend instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND" OFF)
+# Deprecated alias, kept so existing configures and CI scripts keep working.
+if (DEFINED ENABLE_BC_LIBFFI AND NOT DEFINED ENABLE_FFI_CLOSURES)
+    message(DEPRECATION "ENABLE_BC_LIBFFI is deprecated; use ENABLE_FFI_CLOSURES (it now governs every interpreting backend, not just bc).")
+    set(ENABLE_FFI_CLOSURES ${ENABLE_BC_LIBFFI} CACHE BOOL "" FORCE)
+endif ()
+cmake_dependent_option(ENABLE_FFI_CLOSURES "Use libffi static-trampoline closures for the interpreting backends (bc, tbc) instead of dyncall callbacks (iOS-safe: no runtime-generated executable memory)" OFF "ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_TBC_JIT "Enable the copy-and-patch JIT execution mode of the tbc backend (tbc.mode=jit)" ON "ENABLE_TBC_BACKEND" OFF)
 cmake_dependent_option(ENABLE_ASMJIT_BACKEND "Enable the asmjit interpreter backend" ON "ENABLE_TRACING" OFF)
 cmake_dependent_option(ENABLE_SHORT_CIRCUIT_BOOL "Trace val<bool> && / || with C++ short-circuit semantics (drops the operator overloads so the built-in operators route through val<bool>::operator bool())" OFF "ENABLE_TRACING" OFF)
@@ -178,9 +183,9 @@ if (ENABLE_BC_BACKEND OR ENABLE_TBC_BACKEND)
     add_subdirectory(${THIRD_PARTY_DIR}/dyncall)
     list(APPEND EXPORT_TARGETS dyncall_s)
 
-    if (ENABLE_BC_LIBFFI)
-        # The bytecode backend exposes each compiled function as a real C
-        # function pointer. By default this uses a dyncall callback, which
+    if (ENABLE_FFI_CLOSURES)
+        # The interpreting backends (bc, tbc) expose each compiled function as
+        # a real C function pointer. By default this uses a dyncall callback, which
         # writes a trampoline into RWX memory at runtime — forbidden on iOS.
         # libffi (>= 3.4) builds closures via static trampolines (a read-only
         # code page + a separate writable data page, no runtime PROT_EXEC), so

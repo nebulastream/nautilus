@@ -2,7 +2,7 @@
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
 #include "nautilus/compiler/Frame.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
-#include "nautilus/compiler/backends/tbc/TBCTrampoline.hpp"
+#include "nautilus/compiler/backends/NativeClosure.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -1071,14 +1071,13 @@ private:
 	}
 
 	void visitFunctionAddressOf(ir::FunctionAddressOfOperation* opt, int block, RegisterFrame& frame) {
-		// Internal functions have no machine code; hand out a pre-compiled
-		// trampoline bound to the function, which is a genuine native pointer
-		// usable both by CALL_IND and by external code (no runtime code
-		// generation involved — iOS-safe).
+		// Internal functions have no machine code; hand out the native closure
+		// built for them before lowering (see TBCClosure.hpp), which is a
+		// genuine native pointer usable both by CALL_IND and by external code.
 		uint64_t value;
 		const auto it = program.functionSlotById.find(opt->getCalleeId());
 		if (it != program.functionSlotById.end()) {
-			value = reinterpret_cast<uint64_t>(acquireTrampoline(&program, it->second));
+			value = reinterpret_cast<uint64_t>(program.closures[it->second]->code());
 		} else {
 			value = reinterpret_cast<uint64_t>(opt->getFunctionPtr());
 		}

@@ -1,13 +1,14 @@
 
 #include "nautilus/compiler/backends/tbc/TBCCode.hpp"
-#include "nautilus/compiler/backends/tbc/TBCTrampoline.hpp"
+#include "nautilus/compiler/backends/NativeClosure.hpp"
 #include <sstream>
 
 namespace nautilus::compiler::tbc {
 
-TBCProgram::~TBCProgram() {
-	releaseTrampolines(this);
-}
+// Out of line so TBCCode.hpp can forward-declare NativeClosure: the unique_ptr
+// members need the complete type, and only this file has it.
+TBCProgram::TBCProgram() = default;
+TBCProgram::~TBCProgram() = default;
 
 namespace {
 const char* const kOpNames[] = {
