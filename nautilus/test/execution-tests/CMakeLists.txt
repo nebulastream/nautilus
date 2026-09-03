@@ -19,6 +19,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         FunctionPtrExecutionTest.cpp
 		InvokeExceptionExecutionTest.cpp
         NoThrowInferenceIntegrationTest.cpp
+        MemoryIntrinsicExecutionTest.cpp
         ModuleLifecycleTest.cpp
         ModuleTest.cpp
         PostRAPeepholeTest.cpp
@@ -31,6 +32,12 @@ if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             DebugInfoExecutionTest.cpp)
 endif ()
+
+# NOT listed: BitIntrinsicExecutionTest.cpp. It is written against a bit
+# intrinsic API (popcount / countl_zero / byteswap / rotl / rotr on val<T>) and
+# a BitIntrinsicFunctions.hpp that Nautilus does not have -- unlike
+# val_memcpy.hpp, no val_bit.hpp was ever added. Building it needs that feature
+# first, not a source-list entry.
 
 add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
 

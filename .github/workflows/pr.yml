@@ -48,6 +48,14 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_GPU_PLUGIN=ON'
+          # The iOS-safe closure path: bc and tbc hand out native function
+          # pointers via libffi static trampolines instead of dyncall callbacks,
+          # so no runtime-executable memory is allocated. Built nowhere else, so
+          # without this leg the configuration silently rots.
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_FFI_CLOSURES=ON'
           - os: 'macos-26'
             cc: 'clang'
             cxx: 'clang++'
@@ -73,6 +81,9 @@ jobs:
       - name: Force apt to use IPv4
         if: startsWith(matrix.os, 'ubuntu')
         run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: Install libffi
+        if: startsWith(matrix.os, 'ubuntu') && contains(matrix.flags, 'ENABLE_FFI_CLOSURES=ON')
+        run: sudo apt-get update && sudo apt-get install -y libffi-dev
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: Cache MLIR binaries

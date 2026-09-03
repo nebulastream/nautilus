@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
+#include "nautilus/compiler/backends/NativeClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include <any>
@@ -159,11 +160,23 @@ TBCExecutable::TBCExecutable(std::shared_ptr<TBCProgram> program,
     : program(std::move(program)), functionsNeedingCapture_(std::move(functionsNeedingCapture)) {
 }
 
-void* TBCExecutable::getInvocableFunctionPtr(const std::string&) {
-	throw RuntimeException("tbc: no native function pointers; use the generic invocable");
+void* TBCExecutable::getInvocableFunctionPtr(const std::string& member) {
+	const auto it = program->functionIndex.find(member);
+	if (it == program->functionIndex.end()) {
+		throw RuntimeException("tbc: unknown function \"" + member + "\"");
+	}
+	return program->closures[it->second]->code();
 }
 
 bool TBCExecutable::hasInvocableFunctionPtr() {
+	// False on purpose, even though getInvocableFunctionPtr() now returns a real
+	// pointer. Routing the entry path through the closure costs ~11ns per call
+	// (28.7 -> 40.3ns on exec_tbc_add, ~1.4x) because every call then pays FFI
+	// argument marshalling, whereas invokeRaw writes raw 64-bit slots straight
+	// onto the stack. Loop and internal-call kernels are unaffected (exec_tbc_sum
+	// / internalCall within 1.03-1.07x), so the cost is entry-only -- which is
+	// exactly the path this flag selects. Flip to true if a caller ever needs the
+	// native-pointer entry more than it needs the per-call latency.
 	return false;
 }
 

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <nautilus/CompilationStatistics.hpp>
 #include <nautilus/compiler/backends/CapturedExceptionTransport.hpp>
+#include <nautilus/compiler/backends/NativeClosure.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreter.hpp>
 #include <nautilus/compiler/backends/bc/BCInterpreterBackend.hpp>
 #include <nautilus/compiler/backends/bc/BCLoweringProvider.hpp>
@@ -13,206 +14,16 @@
 #include <nautilus/config.hpp>
 #include <stdexcept>
 
-#ifdef NAUTILUS_BC_LIBFFI
-#include <ffi.h>
-#else
-#include <dyncall_callback.h>
-#endif
-
 namespace nautilus::compiler::bc {
 
-#ifdef NAUTILUS_BC_LIBFFI
-
-/// Map a nautilus Type to the libffi type used in the closure signature.
-static ffi_type* typeToFFIType(Type type) {
-	switch (type) {
-	case Type::b:
-		// C++ bool is one byte; there is no ffi_type_bool.
-		return &ffi_type_uint8;
-	case Type::i8:
-		return &ffi_type_sint8;
-	case Type::i16:
-		return &ffi_type_sint16;
-	case Type::i32:
-		return &ffi_type_sint32;
-	case Type::i64:
-		return &ffi_type_sint64;
-	case Type::ui8:
-		return &ffi_type_uint8;
-	case Type::ui16:
-		return &ffi_type_uint16;
-	case Type::ui32:
-		return &ffi_type_uint32;
-	case Type::ui64:
-		return &ffi_type_uint64;
-	case Type::f32:
-		return &ffi_type_float;
-	case Type::f64:
-		return &ffi_type_double;
-	case Type::ptr:
-		return &ffi_type_pointer;
-	case Type::v:
-		return &ffi_type_void;
-	}
-	return &ffi_type_void;
-}
-
-/// libffi closure handler: reads arguments from the libffi argument array into the
-/// interpreter's register file, executes, and writes the typed result to `ret`.
-static void bcFFIHandler(ffi_cif* /*cif*/, void* ret, void** args, void* userdata) {
+/// Closure body for one bytecode function: reads the incoming arguments straight
+/// into the interpreter's register file, executes, and returns the raw result
+/// slot. The typed return writeback and the argument decoding both live in the
+/// shared NativeClosure component.
+static uint64_t bcClosureBody(ClosureArgs& args, void* userdata) {
 	auto* data = static_cast<BCCallbackData*>(userdata);
-	auto raw = data->interpreter->invoke(args, data->argTypes);
-
-	switch (data->returnType) {
-	case Type::v:
-		return;
-	case Type::b:
-		// Integral/pointer returns must be written at ffi_arg width; cast through
-		// the concrete type first so libffi's truncation yields the right value.
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<bool>(raw));
-		return;
-	case Type::i8:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int8_t>(raw));
-		return;
-	case Type::i16:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int16_t>(raw));
-		return;
-	case Type::i32:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int32_t>(raw));
-		return;
-	case Type::i64:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<int64_t>(raw));
-		return;
-	case Type::ui8:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint8_t>(raw));
-		return;
-	case Type::ui16:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint16_t>(raw));
-		return;
-	case Type::ui32:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint32_t>(raw));
-		return;
-	case Type::ui64:
-		*static_cast<ffi_arg*>(ret) = static_cast<ffi_arg>(static_cast<uint64_t>(raw));
-		return;
-	case Type::f32: {
-		// The result register holds the float's bit pattern; reinterpret, do not
-		// numerically convert.
-		float value;
-		std::memcpy(&value, &raw, sizeof(float));
-		*static_cast<float*>(ret) = value;
-		return;
-	}
-	case Type::f64: {
-		double value;
-		std::memcpy(&value, &raw, sizeof(double));
-		*static_cast<double*>(ret) = value;
-		return;
-	}
-	case Type::ptr:
-		*static_cast<void**>(ret) = reinterpret_cast<void*>(raw);
-		return;
-	}
+	return static_cast<uint64_t>(data->interpreter->invoke(args, data->argTypes));
 }
-
-#else
-
-static char typeToDCSigChar(Type type) {
-	switch (type) {
-	case Type::b:
-		return DC_SIGCHAR_BOOL;
-	case Type::i8:
-		return DC_SIGCHAR_CHAR;
-	case Type::i16:
-		return DC_SIGCHAR_SHORT;
-	case Type::i32:
-		return DC_SIGCHAR_INT;
-	case Type::i64:
-		return DC_SIGCHAR_LONG;
-	case Type::ui8:
-		return DC_SIGCHAR_UCHAR;
-	case Type::ui16:
-		return DC_SIGCHAR_USHORT;
-	case Type::ui32:
-		return DC_SIGCHAR_UINT;
-	case Type::ui64:
-		return DC_SIGCHAR_ULONG;
-	case Type::f32:
-		return DC_SIGCHAR_FLOAT;
-	case Type::f64:
-		return DC_SIGCHAR_DOUBLE;
-	case Type::ptr:
-		return DC_SIGCHAR_POINTER;
-	case Type::v:
-		return DC_SIGCHAR_VOID;
-	}
-	return DC_SIGCHAR_VOID;
-}
-
-static std::string buildDCSignature(const std::vector<Type>& argTypes, Type returnType) {
-	std::string sig;
-	for (auto t : argTypes) {
-		sig += typeToDCSigChar(t);
-	}
-	sig += DC_SIGCHAR_ENDARG;
-	sig += typeToDCSigChar(returnType);
-	return sig;
-}
-
-/// dyncallback handler: reads arguments directly into the interpreter's register file, executes, and writes result.
-static DCsigchar bcCallbackHandler(DCCallback* /*pcb*/, DCArgs* args, DCValue* result, void* userdata) {
-	auto* data = static_cast<BCCallbackData*>(userdata);
-	auto raw = data->interpreter->invoke(args, data->argTypes);
-
-	// Zero the result union so the full 64-bit register value is clean.
-	// The dyncall ARM64 callback thunk loads all 8 bytes into x0 via "ldr x0, [sp, #offset]",
-	// so sub-32-bit fields (c, s, C, S) must not leave garbage in the upper bytes.
-	result->l = 0;
-
-	switch (data->returnType) {
-	case Type::b:
-		result->l = static_cast<bool>(raw);
-		return DC_SIGCHAR_BOOL;
-	case Type::i8:
-		result->l = static_cast<int8_t>(raw);
-		return DC_SIGCHAR_CHAR;
-	case Type::i16:
-		result->l = static_cast<int16_t>(raw);
-		return DC_SIGCHAR_SHORT;
-	case Type::i32:
-		result->l = static_cast<int32_t>(raw);
-		return DC_SIGCHAR_INT;
-	case Type::i64:
-		result->l = raw;
-		return DC_SIGCHAR_LONG;
-	case Type::ui8:
-		result->l = static_cast<uint8_t>(raw);
-		return DC_SIGCHAR_UCHAR;
-	case Type::ui16:
-		result->l = static_cast<uint16_t>(raw);
-		return DC_SIGCHAR_USHORT;
-	case Type::ui32:
-		result->l = static_cast<uint32_t>(raw);
-		return DC_SIGCHAR_UINT;
-	case Type::ui64:
-		result->l = static_cast<uint64_t>(raw);
-		return DC_SIGCHAR_ULONG;
-	case Type::f32:
-		result->f = *reinterpret_cast<float*>(&raw);
-		return DC_SIGCHAR_FLOAT;
-	case Type::f64:
-		result->d = *reinterpret_cast<double*>(&raw);
-		return DC_SIGCHAR_DOUBLE;
-	case Type::ptr:
-		result->p = reinterpret_cast<void*>(raw);
-		return DC_SIGCHAR_POINTER;
-	case Type::v:
-		return DC_SIGCHAR_VOID;
-	}
-	return DC_SIGCHAR_VOID;
-}
-
-#endif // NAUTILUS_BC_LIBFFI
 
 std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<ir::IRGraph>& ir,
                                                           const DumpHandler& dumpHandler,
@@ -230,7 +41,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 	// to call as if it were code.
 	std::unordered_map<ir::FunctionId, void*> internalPtrsById;
 	std::vector<std::unique_ptr<BCCallbackData>> callbackDataStore;
-	std::vector<BCClosureHandle> callbackPtrs;
+	std::vector<std::unique_ptr<NativeClosure>> closures;
 
 	// Lowering-time option: the simple linear register allocator is
 	// enabled by default but can be turned off via "bc.registerAllocator"
@@ -270,37 +81,10 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		}
 		data->returnType = funcOp->getOutputArg();
 
-#ifdef NAUTILUS_BC_LIBFFI
-		// Build a libffi closure with a static-trampoline thunk (no runtime RWX
-		// memory). The cif and its argument-type array are stored in `data` so they
-		// outlive the closure.
-		data->argFFITypes.reserve(data->argTypes.size());
-		for (auto argType : data->argTypes) {
-			data->argFFITypes.push_back(typeToFFIType(argType));
-		}
-		void* code = nullptr;
-		data->closure = static_cast<ffi_closure*>(ffi_closure_alloc(sizeof(ffi_closure), &code));
-		if (data->closure == nullptr) {
-			throw std::runtime_error("Failed to allocate libffi closure for bytecode function");
-		}
-		if (ffi_prep_cif(&data->cif, FFI_DEFAULT_ABI, static_cast<unsigned int>(data->argFFITypes.size()),
-		                 typeToFFIType(data->returnType), data->argFFITypes.data()) != FFI_OK) {
-			throw std::runtime_error("Failed to prepare libffi call interface for bytecode function");
-		}
-		if (ffi_prep_closure_loc(data->closure, &data->cif, bcFFIHandler, data.get(), code) != FFI_OK) {
-			throw std::runtime_error("Failed to prepare libffi closure for bytecode function");
-		}
-		data->code = code;
-		functionPtrs[funcOp->getName()] = code;
-		internalPtrsById[ir->getFunctionTable().findByDefinition(funcOp)] = code;
-		callbackPtrs.push_back(data->closure);
-#else
-		auto sig = buildDCSignature(data->argTypes, data->returnType);
-		auto* cb = dcbNewCallback(sig.c_str(), bcCallbackHandler, data.get());
-		functionPtrs[funcOp->getName()] = reinterpret_cast<void*>(cb);
-		internalPtrsById[ir->getFunctionTable().findByDefinition(funcOp)] = reinterpret_cast<void*>(cb);
-		callbackPtrs.push_back(cb);
-#endif
+		auto closure = std::make_unique<NativeClosure>(data->argTypes, data->returnType, bcClosureBody, data.get());
+		functionPtrs[funcOp->getName()] = closure->code();
+		internalPtrsById[ir->getFunctionTable().findByDefinition(funcOp)] = closure->code();
+		closures.push_back(std::move(closure));
 		callbackDataStore.push_back(std::move(data));
 	}
 
@@ -364,8 +148,7 @@ std::unique_ptr<Executable> BCInterpreterBackend::compile(const std::shared_ptr<
 		statistics->recordTimingMs("backend.totalMs", backendStart);
 	}
 
-	return std::make_unique<BCExecutable>(std::move(functionPtrs), std::move(callbackDataStore),
-	                                      std::move(callbackPtrs),
+	return std::make_unique<BCExecutable>(std::move(functionPtrs), std::move(callbackDataStore), std::move(closures),
 	                                      CapturedExceptionTransport::functionsNeedingCapture(*ir));
 }
 
