@@ -31,6 +31,7 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
 
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            ABIExtensionAttributeTest.cpp
             DebugInfoExecutionTest.cpp)
 endif ()
 
