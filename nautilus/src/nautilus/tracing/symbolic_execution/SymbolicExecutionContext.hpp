@@ -1,3 +1,4 @@
+#pragma once
 
 #include "SymbolicExecutionPath.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
@@ -26,7 +27,20 @@ struct RecordResult {
  */
 class SymbolicExecutionContext {
 public:
-	SymbolicExecutionContext();
+	/**
+	 * @brief Creates an exploration context sized for @p expectedTags branch tags.
+	 *
+	 * A whole function typically has many branches; the body of a single region
+	 * (docs/region.md) has a handful, and one is constructed per region scope, so
+	 * the default bucket count would be allocated once per region.
+	 */
+	explicit SymbolicExecutionContext(size_t expectedTags = 128);
+
+	/**
+	 * @brief Returns this context to its initial state, retaining the tag map's
+	 * bucket allocation so a pooled scope does not pay for it again.
+	 */
+	void reset();
 
 	// The number of iterations we want to spend maximally to explore executions.
 	static const uint64_t MAX_ITERATIONS = 100000;

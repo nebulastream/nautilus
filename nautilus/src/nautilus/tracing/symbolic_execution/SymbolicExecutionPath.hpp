@@ -1,3 +1,4 @@
+#pragma once
 
 #include "nautilus/tracing/ExecutionTrace.hpp"
 #include "nautilus/tracing/tag/Tag.hpp"
