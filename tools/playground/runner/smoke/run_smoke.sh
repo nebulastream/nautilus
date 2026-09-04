@@ -72,7 +72,7 @@ run_fixture() {
 }
 
 for backend in mlir cpp bc tbc asmjit; do
-	for fixture in basic.cpp loops.cpp branch_folding.cpp std_plugin.cpp; do
+	for fixture in basic.cpp loops.cpp branch_folding.cpp std_plugin.cpp exceptions.cpp; do
 		run_fixture "$fixture" "$backend" 0
 	done
 done

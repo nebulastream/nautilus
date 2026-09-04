@@ -2,9 +2,9 @@
 
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include <algorithm>
 #include <functional>
 #include <map>

@@ -1,7 +1,7 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
-#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
+#include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
 
 namespace nautilus::compiler {
 

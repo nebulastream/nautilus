@@ -36,11 +36,16 @@ struct StageMeta {
 
 // Canonical stage ordering. Frontend stage names come from
 // CompilationPipeline::compileToIR, per-pass names are "after_" + getName()
-// of each pass in the order IRPassManager's fixed-point group runs them,
-// graph names come from GraphVizUtil, and backend names from the backends'
-// dump calls. Per-pass files are only written when the pass changed the IR
-// and are overwritten each fixed-point iteration, so they show the state
-// after the LAST iteration in which the pass fired.
+// of each pass in the order IRPassManager runs them, graph names come from
+// GraphVizUtil, and backend names from the backends' dump calls. Per-pass
+// files are only written when the pass changed the IR and are overwritten
+// each fixed-point iteration, so they show the state after the LAST iteration
+// in which the pass fired.
+//
+// The two terminal passes below run once, after the fixed-point group and
+// after LICM. FunctionAttributeInferencePass, which runs before the group,
+// has no row: it only annotates the function table and always reports "no
+// change", so IRPassManager never dumps it.
 inline constexpr StageMeta STAGE_TABLE[] = {
     {"after_tracing", "frontend", "Execution trace", 0},
     {"after_ssa", "frontend", "Trace (SSA form)", 1},
@@ -57,6 +62,8 @@ inline constexpr StageMeta STAGE_TABLE[] = {
     {"after_DeadCodeElimination", "pass", "After dead code elimination", 17},
     {"after_BlockArgumentPruning", "pass", "After block argument pruning", 18},
     {"after_LoopInvariantCodeMotion", "pass", "After loop-invariant code motion", 19},
+    {"after_noThrowInference", "pass", "After no-throw inference", 20},
+    {"after_exceptionRegionPreparation", "pass", "After exception-region preparation", 21},
     {"after_ir_passes", "frontend", "IR (optimized)", 30},
     {"after_mlir_generation", "backend", "MLIR", 40},
     {"before_llvm_optimization", "backend", "LLVM IR (before optimization)", 41},

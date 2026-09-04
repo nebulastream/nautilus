@@ -11,6 +11,10 @@ mermaid.initialize({
 	securityLevel: 'strict',
 	flowchart: { htmlLabels: false },
 	theme: 'neutral',
+	// Mermaid's default cap is 500 edges, which the path-explosion stages blow
+	// past (chainedIf500 alone reaches it) — the CFG for exactly the functions
+	// worth looking at would fail to render.
+	maxEdges: 4000,
 });
 
 let renderCounter = 0;

@@ -73,9 +73,13 @@ then
     # clang-format
     # Playground gallery examples are display snippets hand-formatted for the
     # web editor; clang-format's continuation alignment hurts them.
+    # The GPU codegen references are generated host sources that
+    # GPUCodegenTest compares byte for byte -- reformatting them fails the
+    # test rather than the check.
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
       | grep --invert-match "^tools/playground/server/src/examples/" \
+      | grep --invert-match "^plugins/gpu/test/data/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" -i
 
     # newline at eof
@@ -100,6 +104,7 @@ else
     git ls-files -- '*.cpp' '*.hpp' \
       | grep --invert-match "^third_party" \
       | grep --invert-match "^tools/playground/server/src/examples/" \
+      | grep --invert-match "^plugins/gpu/test/data/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" --dry-run -Werror \
       || FAIL=1
 

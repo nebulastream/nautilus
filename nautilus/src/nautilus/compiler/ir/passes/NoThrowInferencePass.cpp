@@ -1,7 +1,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include <unordered_map>
 
 namespace nautilus::compiler::ir {

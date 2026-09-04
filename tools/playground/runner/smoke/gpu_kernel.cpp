@@ -6,11 +6,10 @@
 
 using namespace nautilus;
 
-static auto vecAddKernel =
-    gpu::NautilusKernelFunction {"vecAdd", [](val<float*> a, val<float*> b, val<float*> c) {
-	                                 auto tid = gpu::threadIdx_x();
-	                                 c[tid] = a[tid] + b[tid];
-                                 }};
+static auto vecAddKernel = gpu::NautilusKernelFunction {"vecAdd", [](val<float*> a, val<float*> b, val<float*> c) {
+	                                                        auto tid = gpu::threadIdx_x();
+	                                                        c[tid] = a[tid] + b[tid];
+                                                        }};
 
 void playground_register(engine::NautilusModule& m) {
 	m.registerFunction<void(val<float*>, val<float*>, val<float*>)>(
