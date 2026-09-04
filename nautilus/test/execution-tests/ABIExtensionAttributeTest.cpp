@@ -22,6 +22,19 @@ namespace {
 // generated `define` line directly -- that is the only thing standing between
 // a dropped extension attribute and a silent ABI regression.
 
+// Whether the host ABI has the caller extend narrow integer arguments, and so
+// whether the entry function is entitled to trust that it did. AAPCS64 leaves
+// the bits above a narrow argument unspecified; Darwin AArch64 and x86-64 SysV
+// require the caller to extend. Mirrors callerExtendsNarrowArguments() in
+// MLIRLoweringProvider.cpp -- annotating parameters on AAPCS64 makes the callee
+// read register bits nothing ever set, which is a wrong-answer bug and not a
+// missed optimization.
+#if defined(__aarch64__) && !defined(__APPLE__)
+constexpr bool kCallerExtendsNarrowArguments = false;
+#else
+constexpr bool kCallerExtendsNarrowArguments = true;
+#endif
+
 val<bool> abiBoolIdentity(val<bool> x) {
 	return x;
 }
@@ -138,8 +151,15 @@ void checkIdentitySignature(const std::string& define, std::string_view type, st
 	const auto params = parameterList(define);
 	REQUIRE(params.size() == 1);
 	CHECK(params[0].find(type) != std::string::npos);
-	CHECK(params[0].find(attr) != std::string::npos);
+	if (kCallerExtendsNarrowArguments) {
+		CHECK(params[0].find(attr) != std::string::npos);
+	} else {
+		CHECK(params[0].find(attr) == std::string::npos);
+	}
 
+	// The result side is unconditional: an extension attribute there is a
+	// promise the callee makes and keeps, so a caller that re-extends anyway is
+	// merely redundant. That is why #436's fix is safe on every ABI.
 	CHECK(define.rfind("define " + std::string(attr) + " " + std::string(type) + " ", 0) == 0);
 }
 
@@ -202,15 +222,21 @@ TEST_CASE("ABI: mixed-width parameters are annotated positionally") {
 	REQUIRE(params.size() == 4);
 
 	CHECK(params[0].find("i1") != std::string::npos);
-	CHECK(params[0].find("zeroext") != std::string::npos);
-
 	CHECK(params[1].find("i8") != std::string::npos);
-	CHECK(params[1].find("signext") != std::string::npos);
-
 	CHECK(params[2].find("i16") != std::string::npos);
-	CHECK(params[2].find("zeroext") != std::string::npos);
-
 	CHECK(params[3].find("i32") != std::string::npos);
+
+	if (kCallerExtendsNarrowArguments) {
+		CHECK(params[0].find("zeroext") != std::string::npos);
+		CHECK(params[1].find("signext") != std::string::npos);
+		CHECK(params[2].find("zeroext") != std::string::npos);
+	} else {
+		CHECK_FALSE(hasExtensionAttr(params[0]));
+		CHECK_FALSE(hasExtensionAttr(params[1]));
+		CHECK_FALSE(hasExtensionAttr(params[2]));
+	}
+
+	// A 32-bit argument is unannotated on every ABI.
 	CHECK_FALSE(hasExtensionAttr(params[3]));
 }
 

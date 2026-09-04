@@ -102,6 +102,35 @@ static const char* getNarrowIntExtensionAttr(Type stamp) {
 	}
 }
 
+/// Whether the host C ABI makes the *caller* responsible for extending a narrow
+/// integer argument, so that a callee may read the full register.
+///
+/// This is the difference between the two directions an extension attribute can
+/// be used in, and it is not symmetric:
+///
+///   * On a *call* Nautilus emits (insertExternalFunction), the attribute makes
+///     the JIT extend before calling a natively compiled callee. Extending when
+///     the callee did not need it is merely redundant, so that site annotates
+///     unconditionally.
+///   * On the *entry function's parameters*, the attribute makes the JIT trust
+///     that its caller already extended. Where the ABI does not require the
+///     caller to, that trust is misplaced and the callee reads whatever the
+///     register's upper bits held.
+///
+/// AAPCS64 (Linux/AArch64) leaves the bits above a narrow argument unspecified
+/// and clang accordingly emits no attribute for one, so the entry function must
+/// keep extending defensively there. Darwin AArch64 and x86-64 SysV do require
+/// the caller to extend. The JIT always targets the host and its callers are
+/// compiled into this same process, so the host ABI is the one that governs and
+/// a compile-time answer is exact.
+static constexpr bool callerExtendsNarrowArguments() {
+#if defined(__aarch64__) && !defined(__APPLE__)
+	return false;
+#else
+	return true;
+#endif
+}
+
 mlir::Value MLIRLoweringProvider::getConstInt(const std::string& location, Type stamp, int64_t value) {
 	auto type = getMLIRType(stamp);
 	return mlir::arith::ConstantOp::create(*builder, getNameLoc(location), type, builder->getIntegerAttr(type, value));
@@ -681,14 +710,20 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 	// interface: MLIRExecutable::getInvocableFunctionPtr resolves the bare
 	// symbol and Executable.hpp's Invocable calls it through a function pointer
 	// typed with the traced signature. Its parameters therefore sit on a real C
-	// ABI boundary, and the natively compiled caller on the other side extends
-	// narrow arguments as that ABI directs. Spelling the same contract out here
-	// makes the generated signature a faithful implementation of the C
-	// prototype it is invoked as, and lets LLVM drop the defensive re-extension
-	// it otherwise emits in the prologue for every narrow parameter.
-	for (size_t i = 0; i < inputStamps.size(); ++i) {
-		if (const char* extensionAttr = getNarrowIntExtensionAttr(inputStamps[i])) {
-			mlirFunction.setArgAttr(static_cast<unsigned>(i), extensionAttr, mlir::UnitAttr::get(context));
+	// ABI boundary, so where that ABI has the caller extend narrow arguments,
+	// saying so here makes the generated signature a faithful implementation of
+	// the C prototype it is invoked as and lets LLVM drop the defensive
+	// re-extension it otherwise emits in the prologue.
+	//
+	// Only where the caller is actually required to extend, though: this
+	// attribute makes the callee *trust* its caller, and under AAPCS64 nothing
+	// extended the argument, so trusting it reads unspecified upper bits. The
+	// defensive prologue extension is the correct code there.
+	if (callerExtendsNarrowArguments()) {
+		for (size_t i = 0; i < inputStamps.size(); ++i) {
+			if (const char* extensionAttr = getNarrowIntExtensionAttr(inputStamps[i])) {
+				mlirFunction.setArgAttr(static_cast<unsigned>(i), extensionAttr, mlir::UnitAttr::get(context));
+			}
 		}
 	}
 
