@@ -29,7 +29,12 @@ COPY --from=server-build /app/package.json /app/package-lock.json* /app/
 RUN npm install --omit=dev
 COPY --from=server-build /app/dist /app/dist
 COPY --from=web-build /repo/tools/playground/web/dist /app/web-dist
-ENV WEB_DIST=/app/web-dist \
+# Short commit SHA the image was built from — the build context has no .git
+# (deploys copy a source tree, not a checkout), so this must be passed in:
+#   docker build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) ...
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT \
+    WEB_DIST=/app/web-dist \
     PORT=8080
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

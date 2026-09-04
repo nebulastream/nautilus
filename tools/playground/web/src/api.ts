@@ -64,12 +64,24 @@ export interface Example {
 	source: string;
 }
 
+export interface Meta {
+	version: { commit: string; deployedAt: string };
+}
+
 export async function fetchExamples(): Promise<Example[]> {
 	const response = await fetch('/api/examples');
 	if (!response.ok) {
 		return [];
 	}
 	return (await response.json()) as Example[];
+}
+
+export async function fetchMeta(): Promise<Meta | null> {
+	const response = await fetch('/api/meta');
+	if (!response.ok) {
+		return null;
+	}
+	return (await response.json()) as Meta;
 }
 
 export class ApiError extends Error {}
