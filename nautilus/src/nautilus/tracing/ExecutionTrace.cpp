@@ -329,6 +329,17 @@ ValueRef ExecutionTrace::getNextValueRef() {
 	return ++lastValueRef;
 }
 
+uint32_t ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock) {
+	auto regionIndex = static_cast<uint32_t>(regions.size());
+	regions.push_back(RegionSpec {attributes, entryBlock, exitBlock});
+	getBlock(entryBlock).regionIndex = regionIndex;
+	return regionIndex;
+}
+
+const std::vector<RegionSpec>& ExecutionTrace::getRegions() const {
+	return regions;
+}
+
 operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 	currentOperationIndex = getCurrentBlock().operations.size() - 1;
 	return {currentBlockIndex, currentOperationIndex};
@@ -375,6 +386,12 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
                                                           fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
+		// A region owns no operation to print, so its attributes are printed as a comment
+		// line in front of the block its body starts in.
+		const auto regionIndex = trace.blocks[i]->regionIndex;
+		if (regionIndex < trace.regions.size()) {
+			fmt::format_to(out, "; region {}\n", trace.regions[regionIndex].attributes.toString());
+		}
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}
 	return out;

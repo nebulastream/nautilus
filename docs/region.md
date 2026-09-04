@@ -27,7 +27,53 @@ val<int64_t> escapingWrite() {
 }
 ```
 
-An optional debug label can be passed as the first argument (`nautilus::region("name", [&]() { ... })`); it is not recorded in the trace and has no effect on behavior.
+An optional name can be passed as the first argument (`nautilus::region("name", [&]() { ... })`). It is recorded, together with the call site's source location, as the region's *attributes* — see [Region attributes](#region-attributes) below.
+
+## Region attributes
+
+Every region carries two attributes describing the call site it was written at:
+
+- a **source location** — file, line, column and enclosing function, captured automatically via `std::source_location::current()`;
+- an **optional name** — whatever string was passed as the first argument, or none.
+
+```cpp
+nautilus::region("accumulate", [&]() { sum = sum + 42; });   // named
+nautilus::region([&]() { sum = sum + 42; });                 // unnamed, still located
+```
+
+Attributes are metadata. They never take part in tag or snapshot identity, never reach the IR or any backend, and a named region traces and compiles exactly like an unnamed one. What they do is make a region identifiable, in two places:
+
+**Diagnostics.** A region body that the tracer has to reject is reported against the call site the user wrote, instead of leaving them to find it:
+
+```
+Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the region
+body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
+```
+
+**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in. The body's entry block points back at its table entry through `Block::regionIndex`, and the trace dump prints the attributes in front of it:
+
+```
+; region "accumulate" at src/Query.cpp:42:9
+B1()
+	...
+```
+
+Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.
+
+### Naming a region from a helper
+
+A helper that wraps `region()` would otherwise report *its own* body as the call site, the same position for each of its callers. Passing the attributes explicitly lets it describe its caller instead:
+
+```cpp
+template <typename F>
+void accumulateRegion(const char* name, F&& fn,
+                      std::source_location location = std::source_location::current()) {
+    nautilus::region(nautilus::RegionAttributes {name, nautilus::SourceLocation::from(location)},
+                     std::forward<F>(fn));
+}
+```
+
+The name is stored, not copied — pass a string literal or another string that outlives the trace.
 
 ## Why use a region
 

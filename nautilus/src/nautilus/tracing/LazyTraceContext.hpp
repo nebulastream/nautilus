@@ -72,7 +72,7 @@ public:
 	TypedValueRef& traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
 	                                        std::function<void()> fwrapper) override;
 	bool traceBool(const TypedValueRef& value, double probability) override;
-	void traceRegion(std::function<void()>& regionFunction) override;
+	void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) override;
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;
 	void pushStaticVal(void* ptr, size_t size) override;
@@ -160,9 +160,11 @@ private:
 	 */
 	void traceScopeExit();
 
-	/// Prepares this (possibly pooled) context to trace the body of a region opened by
-	/// @p parent, recording into @p parent's trace between @p entry and @p exit.
-	void initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder);
+	/// Prepares this (possibly pooled) context to trace the body of the region @p attributes
+	/// describes, opened by @p parent and recorded into @p parent's trace between @p entry
+	/// and @p exit.
+	void initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
+	                     const RegionAttributes& attributes);
 
 	/// Returns the pooled context used for regions opened by this scope, creating it on
 	/// first use. Regions nest strictly LIFO and a scope traces at most one region at a
@@ -196,6 +198,12 @@ private:
 	struct RegionScopeState {
 		/// Region scopes only: the block the enclosing scope resumes in.
 		uint32_t exitBlock = 0;
+
+		/// Region scopes only: what the region() call site whose body this scope traces
+		/// said about itself -- its optional name and its source location (see
+		/// docs/region.md). Carried here so a body this scope has to reject can be
+		/// reported against the call site the user wrote.
+		RegionAttributes attributes;
 
 		/// Region scopes only: the exit snapshot of the first completed pass. Every later
 		/// completed pass must agree with it, or what escapes the region would depend on

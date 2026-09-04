@@ -4,6 +4,7 @@
 #include "Block.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "tag/TagRecorder.hpp"
 #include <initializer_list>
@@ -17,6 +18,21 @@ namespace nautilus::tracing {
 using Arena = common::Arena;
 
 class ExecutionTrace;
+
+/// One region (docs/region.md) recorded into a trace: what the region() call site said
+/// about itself, and the two blocks that bound the body it traced.
+///
+/// Metadata only. A region has no operation of its own and its blocks are ordinary
+/// blocks, so nothing downstream has to know about this table -- it exists so a trace can
+/// be read back against the source it came from, and so a malformed region can be
+/// reported against its call site.
+struct RegionSpec {
+	RegionAttributes attributes;
+	/// Block the region body starts in.
+	uint32_t entryBlock;
+	/// Block the enclosing scope continues in after the body.
+	uint32_t exitBlock;
+};
 
 /// Bundles a traced function's execution trace with its metadata.
 struct TraceFunctionDefinition {
@@ -310,6 +326,18 @@ public:
 	 */
 	ValueRef getNextValueRef();
 
+	/**
+	 * @brief Records a region traced into this trace and marks its entry block.
+	 * @return The new region's index in the region table.
+	 */
+	uint32_t addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
+
+	/**
+	 * @brief Returns every region recorded into this trace, in the order they were
+	 * entered. Empty for a trace produced by a tracer that inlines region bodies.
+	 */
+	const std::vector<RegionSpec>& getRegions() const;
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -338,6 +366,9 @@ public:
 	/// resulting FunctionOperation by TraceToIRConversionPhase so backends can
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
+
+	/// Region table; see RegionSpec. Indexed by Block::regionIndex.
+	std::vector<RegionSpec> regions;
 
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it

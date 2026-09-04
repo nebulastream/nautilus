@@ -537,7 +537,8 @@ LazyTraceContext& LazyTraceContext::acquireChildScope() {
 	return *region.childScope;
 }
 
-void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder) {
+void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
+                                       const RegionAttributes& attributes) {
 	parent_ = &parent;
 	session_ = parent.session_;
 	entryBlock_ = entry;
@@ -546,6 +547,7 @@ void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry,
 	aliveVars.reset();
 	auto& region = regionState();
 	region.exitBlock = exit;
+	region.attributes = attributes;
 	region.exitSnapshot.reset();
 	// Regions recorded by a previous engagement of this pooled scope belong to that
 	// engagement's body; their entries are unreachable from here.
@@ -579,7 +581,8 @@ void LazyTraceContext::traceScopeExit() {
 			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
 		});
 		throw RuntimeException(
-		    "Invalid region(): a value created inside the region body outlives it (" + escaped +
+		    "Invalid region() " + region.attributes.toString() +
+		    ": a value created inside the region body outlives it (" + escaped +
 		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it, or trace "
 		    "this function with engine.traceMode = \"exceptionBasedTracing\".");
 	}
@@ -591,10 +594,11 @@ void LazyTraceContext::traceScopeExit() {
 		// Same escape set, different snapshot: the remaining input to the hash is the
 		// static-variable stack, so a captured static_val was written inside the body.
 		throw RuntimeException(
-		    "Invalid region(): the state alive at the end of the region body differs between the paths through it, so "
-		    "what escapes the region would depend on which path was explored last. Build the escaping value on every "
-		    "path (assigning to a val<T> declared outside the region merges across branches), or trace this function "
-		    "with engine.traceMode = \"exceptionBasedTracing\".");
+		    "Invalid region() " + region.attributes.toString() +
+		    ": the state alive at the end of the region body differs between the paths through it, so what escapes the "
+		    "region would depend on which path was explored last. Build the escaping value on every path (assigning to "
+		    "a val<T> declared outside the region merges across branches), or trace this function with "
+		    "engine.traceMode = \"exceptionBasedTracing\".");
 	}
 	auto& trace = state->executionTrace;
 	if (!trace.checkTag(snapshot)) {
@@ -606,7 +610,7 @@ void LazyTraceContext::traceScopeExit() {
 	trace.addJumpOperation(snapshot, region.exitBlock);
 }
 
-void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
+void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
 	if (paused_) {
 		return;
 	}
@@ -623,9 +627,10 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
 		auto& memo = regionState().regionMemo;
 		auto memoized = memo.find(key);
 		if (memoized == memo.end()) {
-			throw RuntimeException("Invalid region(): replaying a recorded path reached a region() call site that was "
-			                       "not recorded there. Trace this function with engine.traceMode = "
-			                       "\"exceptionBasedTracing\", which traces region bodies inline.");
+			throw RuntimeException("Invalid region() " + attributes.toString() +
+			                       ": replaying a recorded path reached a region() call site that was not recorded "
+			                       "there. Trace this function with engine.traceMode = \"exceptionBasedTracing\", "
+			                       "which traces region bodies inline.");
 		}
 		trace.setCurrentBlock(memoized->second.exitBlock);
 		return;
@@ -650,7 +655,11 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
 	auto& recorder = session_->regionState().tagRecorders.emplace_back(
 	    reinterpret_cast<TagAddress>(__builtin_return_address(0)), trace.getArena());
 	auto& child = acquireChildScope();
-	child.initRegionScope(*this, entry, exit, recorder);
+	child.initRegionScope(*this, entry, exit, recorder, attributes);
+
+	// The region's attributes are metadata on the enclosing trace, not an operation in it:
+	// recorded once, here, against the blocks that bound the body about to be traced.
+	trace.addRegion(attributes, entry, exit);
 
 	setActiveTracer(&child);
 	try {
@@ -665,8 +674,9 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction) {
 		// No pass of the body ever ran to completion, so nothing reaches the block the
 		// enclosing scope is about to continue in. Diagnose it here rather than let a
 		// later phase fail on an unreachable block.
-		throw RuntimeException("Invalid region(): no path through the region body reached its end, so the enclosing "
-		                       "function cannot continue after it.");
+		throw RuntimeException("Invalid region() " + attributes.toString() +
+		                       ": no path through the region body reached its end, so the enclosing function cannot "
+		                       "continue after it.");
 	}
 
 	child.state.reset();

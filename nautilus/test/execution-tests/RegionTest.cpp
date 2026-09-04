@@ -6,7 +6,9 @@
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdint>
 #include <optional>
+#include <source_location>
 #include <string>
 #include <vector>
 
@@ -460,6 +462,25 @@ val<int64_t> regionNautilusCallThenBranch(val<int64_t> x) {
 	return sum;
 }
 
+// A helper that wraps region() would otherwise describe its own body as the region's
+// call site -- the same position for every caller. Building the attributes from the
+// caller's location instead is what the RegionAttributes overload of region() is for.
+template <typename F>
+void namedRegionHelper(const char* name, F&& fn, std::source_location location = std::source_location::current()) {
+	region(RegionAttributes {name, SourceLocation::from(location)}, std::forward<F>(fn));
+}
+
+/// Line of the region the helper below opens, captured next to the call site so the
+/// expectation cannot drift when this file is edited.
+uint32_t helperRegionLine = 0;
+
+val<int64_t> regionThroughHelper() {
+	val<int64_t> sum = 0;
+	helperRegionLine = __LINE__ + 1;
+	namedRegionHelper("helper", [&]() { sum = sum + 5; });
+	return sum + 1;
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -590,6 +611,11 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		auto fn = engine.registerFunction(regionNautilusCallThenBranch);
 		REQUIRE(fn(1) == 102);  // 1*2 + 100
 		REQUIRE(fn(-1) == 198); // -1*2 + 200
+	}
+
+	SECTION("region opened through a helper") {
+		auto fn = engine.registerFunction(regionThroughHelper);
+		REQUIRE(fn() == 6);
 	}
 
 	SECTION("region empty and unnamed") {
@@ -749,6 +775,130 @@ TEST_CASE("Region IR Matches Unregioned IR", "[region]") {
 	REQUIRE(regionedStats.numFunctions == unregionedStats.numFunctions);
 	REQUIRE(regionedStats.numBlocks == unregionedStats.numBlocks);
 	REQUIRE(regionedStats.numOperations <= unregionedStats.numOperations);
+}
+
+// --- Region attributes: what a region() call site says about itself. ---
+
+namespace {
+
+/// Lines of the region() call sites in regionAttributed below, captured next to each call
+/// so the expectations cannot drift when this file is edited.
+uint32_t outerRegionLine = 0;
+uint32_t innerRegionLine = 0;
+uint32_t unnamedRegionLine = 0;
+
+val<int64_t> regionAttributed() {
+	val<int64_t> sum = 0;
+	outerRegionLine = __LINE__ + 1;
+	region("accumulate", [&]() {
+		innerRegionLine = __LINE__ + 1;
+		region("inner", [&]() { sum = sum + 1; });
+		sum = sum + 41;
+	});
+	unnamedRegionLine = __LINE__ + 1;
+	region([&]() { sum = sum + 1; });
+	return sum;
+}
+
+/// A value created inside a *named* region and still alive at its end: rejected, and the
+/// diagnostic has to name the region the user wrote rather than leave them to find it.
+uint32_t rejectedRegionLine = 0;
+
+val<int64_t> regionNamedEscape() {
+	val<int64_t> out = 0;
+	std::vector<val<int64_t>> escaping;
+	rejectedRegionLine = __LINE__ + 1;
+	region("escaping", [&]() { escaping.push_back(val<int64_t>(7)); });
+	out = escaping[0];
+	return out;
+}
+
+std::unique_ptr<tracing::TraceModule> traceWithLazyTracer(const std::function<void()>& func, common::Arena& arena) {
+	std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", func)};
+	return tracing::LazyTraceContext::Trace(functions, engine::Options(), arena);
+}
+
+} // namespace
+
+// The attributes are recorded against the blocks the region body was traced into, so a
+// trace can be read back against the source it came from.
+TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+
+	const auto& regions = trace->getRegions();
+	INFO("trace:\n" << trace->toString());
+	// Recorded in the order the tracer entered them: the outer region, the inner one
+	// nested in its body, then the unnamed one after it.
+	REQUIRE(regions.size() == 3);
+
+	REQUIRE(regions[0].attributes.hasName());
+	REQUIRE(std::string(regions[0].attributes.name) == "accumulate");
+	REQUIRE(regions[0].attributes.location.line == outerRegionLine);
+	REQUIRE(std::string(regions[0].attributes.location.file).find("RegionTest.cpp") != std::string::npos);
+	REQUIRE(regions[0].attributes.location.column > 0);
+	REQUIRE(std::string(regions[0].attributes.location.function).find("regionAttributed") != std::string::npos);
+
+	REQUIRE(std::string(regions[1].attributes.name) == "inner");
+	REQUIRE(regions[1].attributes.location.line == innerRegionLine);
+
+	// An unnamed region still carries its position; only the name is absent.
+	REQUIRE_FALSE(regions[2].attributes.hasName());
+	REQUIRE(regions[2].attributes.name == nullptr);
+	REQUIRE(regions[2].attributes.location.line == unnamedRegionLine);
+
+	// Each region's attributes are reachable from the block its body starts in, and from
+	// nowhere else -- the exit block is an ordinary block.
+	for (uint32_t i = 0; i < regions.size(); i++) {
+		REQUIRE(trace->getBlock(regions[i].entryBlock).regionIndex == i);
+		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == tracing::Block::NO_REGION);
+	}
+	REQUIRE(trace->getBlock(0).regionIndex == tracing::Block::NO_REGION);
+
+	// And they are visible in the trace dump.
+	const auto dump = trace->toString();
+	REQUIRE(dump.find("region \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("region \"inner\" at ") != std::string::npos);
+}
+
+// A helper that opens regions on its callers' behalf can hand region() the caller's
+// position, so the recorded attributes point at the user's code and not at the helper.
+TEST_CASE("Region Attributes Can Be Supplied Explicitly", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionThroughHelper), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+
+	const auto& regions = trace->getRegions();
+	REQUIRE(regions.size() == 1);
+	REQUIRE(std::string(regions[0].attributes.name) == "helper");
+	REQUIRE(regions[0].attributes.location.line == helperRegionLine);
+	REQUIRE(std::string(regions[0].attributes.location.function).find("regionThroughHelper") != std::string::npos);
+}
+
+// The point of carrying the attributes into the tracer: a rejected region body is
+// reported against the call site the user wrote.
+TEST_CASE("Region Diagnostics Name The Region", "[region]") {
+	const auto backends = nautilus::testing::availableBackends();
+	if (backends.empty()) {
+		SKIP("no compilation backend available");
+	}
+	auto lazyEngine = nautilus::testing::makeEngine(backends.front(), [](engine::Options& opts) {
+		opts.setOption("engine.traceMode", std::string("lazyTracing"));
+	});
+
+	std::string diagnosis = "<no exception thrown>";
+	try {
+		lazyEngine.registerFunction(regionNamedEscape);
+	} catch (const std::exception& e) {
+		diagnosis = e.what();
+	}
+	INFO(diagnosis);
+	REQUIRE(diagnosis.find("region()") != std::string::npos);
+	REQUIRE(diagnosis.find("\"escaping\"") != std::string::npos);
+	REQUIRE(diagnosis.find("RegionTest.cpp:" + std::to_string(rejectedRegionLine)) != std::string::npos);
 }
 
 TEST_CASE("Region Compiler Test", "[region]") {
