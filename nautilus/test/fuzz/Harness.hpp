@@ -76,26 +76,22 @@ inline std::vector<Config> configs() {
 		// backend's 32767-register limit (see README.md "Config sweep"); these
 		// per-pass toggles keep constant folding on, so the IR stays bounded while
 		// still exercising the un-optimized path.
-		result.push_back({backend, "no-dead-code-elim", [](engine::Options& o) {
-			                  o.setOption("ir.disableDeadCodeElimination", true);
-		                  }});
-		result.push_back({backend, "no-const-branch-fold", [](engine::Options& o) {
-			                  o.setOption("ir.disableConstantBranchFolding", true);
-		                  }});
+		result.push_back({backend, "no-dead-code-elim",
+		                  [](engine::Options& o) { o.setOption("ir.disableDeadCodeElimination", true); }});
+		result.push_back({backend, "no-const-branch-fold",
+		                  [](engine::Options& o) { o.setOption("ir.disableConstantBranchFolding", true); }});
 		// A currently default-OFF pass flipped ON. This is exactly the
 		// "extended differential-fuzzer soak before the default flips" gate the
 		// IR-pass milestone (#343 and siblings) requires: point the fuzzer here
 		// to soak a not-yet-default pass against the oracle. StrengthReduction
 		// is the one opt-in pass wired today (see CompilationPipeline.cpp); add
 		// a sibling entry for the next pass you promote.
-		result.push_back({backend, "strength-reduction", [](engine::Options& o) {
-			                  o.setOption("ir.enableStrengthReduction", true);
-		                  }});
+		result.push_back({backend, "strength-reduction",
+		                  [](engine::Options& o) { o.setOption("ir.enableStrengthReduction", true); }});
 		// A default-ON P0 pass flipped OFF: differentially tests the
 		// un-simplified lowering path against the simplified default.
-		result.push_back({backend, "no-algebraic-simpl", [](engine::Options& o) {
-			                  o.setOption("ir.disableAlgebraicSimplification", true);
-		                  }});
+		result.push_back({backend, "no-algebraic-simpl",
+		                  [](engine::Options& o) { o.setOption("ir.disableAlgebraicSimplification", true); }});
 		for (auto& c : extra) {
 			result.push_back(std::move(c));
 		}
@@ -103,9 +99,8 @@ inline std::vector<Config> configs() {
 
 #ifdef ENABLE_MLIR_BACKEND
 	// MLIR-specific: intrinsic lowering off exercises the non-intrinsic path.
-	addCompiling("mlir", {{"mlir", "no-intrinsics", [](engine::Options& o) {
-		                       o.setOption("mlir.enableIntrinsics", false);
-	                       }}});
+	addCompiling("mlir",
+	             {{"mlir", "no-intrinsics", [](engine::Options& o) { o.setOption("mlir.enableIntrinsics", false); }}});
 #endif
 #ifdef ENABLE_C_BACKEND
 	addCompiling("cpp");
@@ -131,9 +126,8 @@ inline std::vector<Config> configs() {
 	// (e.g. "interpreter,tbc,tbc-jit" to bisect a finding to one backend).
 	if (const char* filter = std::getenv("NAUTILUS_FUZZ_BACKENDS")) {
 		const std::string list = std::string(",") + filter + ",";
-		std::erase_if(result, [&](const Config& config) {
-			return list.find("," + config.backend + ",") == std::string::npos;
-		});
+		std::erase_if(result,
+		              [&](const Config& config) { return list.find("," + config.backend + ",") == std::string::npos; });
 	}
 	return result;
 }

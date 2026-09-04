@@ -63,9 +63,9 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
 // LLVM IR suite reuses the exact same functions.
 using nautilus::testing::exceptionCallWithCleanup;
 using nautilus::testing::exceptionCallWithoutCleanup;
+using nautilus::testing::GoldenExceptionCleanup;
 using nautilus::testing::goldenThrowWithCleanup;
 using nautilus::testing::goldenThrowWithoutCleanup;
-using nautilus::testing::GoldenExceptionCleanup;
 
 void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// disable logging of addresses such that the trace is deterministic
