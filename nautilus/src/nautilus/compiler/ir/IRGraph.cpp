@@ -67,6 +67,26 @@ struct PrintGraphScope {
 /// reach. Set for the duration of formatting one function's blocks.
 thread_local const FunctionExceptionRegion* currentPrintExceptionRegion = nullptr;
 
+/// The region table of the function currently being formatted. An operation carries only
+/// the index of the region() it was traced inside; the attributes that index names live on
+/// the enclosing FunctionOperation, which the per-Operation fmt formatter has no other way
+/// to reach. Null outside the scope of formatting a function, which is why a bare
+/// `fmt::format("{}", someOperation)` prints exactly what it always did.
+thread_local const std::vector<RegionSpec>* currentPrintRegions = nullptr;
+
+struct PrintRegionScope {
+	explicit PrintRegionScope(const std::vector<RegionSpec>* regions) : previous(currentPrintRegions) {
+		currentPrintRegions = regions;
+	}
+	~PrintRegionScope() {
+		currentPrintRegions = previous;
+	}
+	PrintRegionScope(const PrintRegionScope&) = delete;
+	PrintRegionScope& operator=(const PrintRegionScope&) = delete;
+
+	const std::vector<RegionSpec>* previous;
+};
+
 struct PrintExceptionRegionScope {
 	explicit PrintExceptionRegionScope(const FunctionExceptionRegion* region) : previous(currentPrintExceptionRegion) {
 		currentPrintExceptionRegion = region;
@@ -503,6 +523,7 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 
 	// Opt-in source-location trailer.  The TLS pointer is only non-null
 	// inside the scope of `IRGraph::toString(options)`.
+	bool trailerStarted = false;
 	if (const auto* opts = nautilus::compiler::ir::currentPrintOptions;
 	    opts != nullptr && opts->showSourceLocations && opts->resolver != nullptr) {
 		if (const auto* tag = op.getSourceTag()) {
@@ -516,7 +537,24 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 				for (auto it = frames.rbegin() + 1; it != frames.rend(); ++it) {
 					fmt::format_to(out, "\n\t\t; inlined from {}:{} ({})", it->file, it->line, it->function);
 				}
+				trailerStarted = true;
 			}
+		}
+	}
+
+	// Region trailer (docs/region.md): the region() call site this operation was traced
+	// inside, then the ones enclosing it, innermost first.  Printed unconditionally --
+	// unlike the source locations above it needs no resolver, and an operation outside
+	// every region prints nothing, so IR that uses no region is unaffected.
+	const auto* regions = nautilus::compiler::ir::currentPrintRegions;
+	auto regionIndex = op.getRegionIndex();
+	if (regions != nullptr && regionIndex < regions->size()) {
+		const char* separator = trailerStarted ? "\n\t\t; region " : "  ; region ";
+		while (regionIndex < regions->size()) {
+			const auto& region = (*regions)[regionIndex];
+			fmt::format_to(out, "{}{}", separator, region.attributes.toString());
+			separator = "\n\t\t; nested in region ";
+			regionIndex = region.parent;
 		}
 	}
 	return out;
@@ -592,6 +630,7 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 		{
 			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
 			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
+			nautilus::compiler::ir::PrintRegionScope regionScope(&func.getRegionSpecs());
 			for (const auto* block : func.getBasicBlocks()) {
 				fmt::format_to(out, "{}", *block);
 			}

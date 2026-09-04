@@ -10,6 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <initializer_list>
+#include <limits>
 #include <nautilus/common/FunctionAttributes.hpp>
 #include <new>
 #include <span>
@@ -22,6 +23,11 @@ namespace nautilus::tracing {
 
 class None {};
 using BranchProbability = double;
+
+/// Index into ExecutionTrace::regions. Operations and blocks that belong to no
+/// region carry NO_REGION.
+using RegionIndex = uint32_t;
+inline constexpr RegionIndex NO_REGION = std::numeric_limits<RegionIndex>::max();
 
 /// Index into ExecutionTrace::allocaSpecs identifying which alloca slot this
 /// trace operation refers to.  Each Op::ALLOCA carries one of these as its
@@ -245,6 +251,13 @@ public:
 	/// View over the Arena-allocated input array.  The storage is adjacent to
 	/// (and has the same lifetime as) this TraceOperation.
 	std::span<InputVariant> input;
+	/// The innermost region (docs/region.md) this operation was recorded inside,
+	/// or NO_REGION for one recorded outside every region. Stamped by
+	/// ExecutionTrace from the region the tracer had open at the time, and
+	/// carried into the IR by TraceToIRConversionPhase -- which is why it lives
+	/// on the operation rather than on its block: the block that bounds a region
+	/// is collapsed by the block-cleanup passes, the operations are not.
+	RegionIndex regionIndex = NO_REGION;
 };
 
 namespace detail {

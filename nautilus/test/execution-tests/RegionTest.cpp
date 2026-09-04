@@ -35,9 +35,14 @@ val<int64_t> regionBasic() {
 	return sum;
 }
 
+/// Line of the region below; the unroll enters it once per iteration, so it is also the
+/// line the IR's single table entry for that call site must name.
+uint32_t staticUnrollRegionLine = 0;
+
 val<int64_t> regionStaticUnroll() {
 	val<int64_t> sum = 0;
 	for (static_val<int32_t> j = 0; j < 3; j++) {
+		staticUnrollRegionLine = __LINE__ + 1;
 		region([&]() { sum = sum + val<int32_t>(j); });
 	}
 	return sum;
@@ -853,14 +858,77 @@ TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
 	// nowhere else -- the exit block is an ordinary block.
 	for (uint32_t i = 0; i < regions.size(); i++) {
 		REQUIRE(trace->getBlock(regions[i].entryBlock).regionIndex == i);
-		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == tracing::Block::NO_REGION);
+		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == tracing::NO_REGION);
 	}
-	REQUIRE(trace->getBlock(0).regionIndex == tracing::Block::NO_REGION);
+	REQUIRE(trace->getBlock(0).regionIndex == tracing::NO_REGION);
 
 	// And they are visible in the trace dump.
 	const auto dump = trace->toString();
 	REQUIRE(dump.find("region \"accumulate\" at ") != std::string::npos);
 	REQUIRE(dump.find("region \"inner\" at ") != std::string::npos);
+}
+
+// What the attributes are for downstream: they survive the trace-to-IR conversion and the
+// block-cleanup passes that collapse a region's entry and exit block, because they ride on
+// the operations rather than on the blocks that bounded the body.
+TEST_CASE("Region Attributes Survive Into The IR", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionAttributed));
+	REQUIRE(ir->getFunctionOperations().size() == 1);
+	const auto* function = ir->getFunctionOperations().front();
+
+	// One entry per region() call site: the outer region, the one nested in it, and the
+	// unnamed one after it.
+	const auto& specs = function->getRegionSpecs();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(specs.size() == 3);
+	REQUIRE(std::string(specs[0].attributes.name) == "accumulate");
+	REQUIRE(specs[0].parent == compiler::ir::NO_REGION);
+	REQUIRE(specs[0].attributes.location.line == outerRegionLine);
+	REQUIRE(std::string(specs[1].attributes.name) == "inner");
+	// The nesting is recoverable from the table: the inner region names the outer one.
+	REQUIRE(specs[1].parent == 0);
+	REQUIRE(specs[1].attributes.location.line == innerRegionLine);
+	REQUIRE_FALSE(specs[2].attributes.hasName());
+	REQUIRE(specs[2].parent == compiler::ir::NO_REGION);
+
+	// Every operation the body produced points back at its region, and operations traced
+	// outside every region point at none.
+	std::vector<size_t> operationsPerRegion(specs.size(), 0);
+	size_t unattributed = 0;
+	for (const auto* block : function->getBasicBlocks()) {
+		for (const auto* operation : block->getOperations()) {
+			const auto index = operation->getRegionIndex();
+			if (index == compiler::ir::NO_REGION) {
+				unattributed++;
+				continue;
+			}
+			REQUIRE(function->findRegion(index) != nullptr);
+			operationsPerRegion[index]++;
+		}
+	}
+	for (size_t i = 0; i < specs.size(); i++) {
+		INFO("region " << i << ": " << specs[i].attributes.toString());
+		REQUIRE(operationsPerRegion[i] > 0);
+	}
+	// The function's own operations -- at least the return -- belong to no region.
+	REQUIRE(unattributed > 0);
+
+	// And the IR dump shows both attributes, with the nesting of the inner region.
+	const auto dump = ir->toString();
+	REQUIRE(dump.find("; region \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region \"inner\" at ") != std::string::npos);
+	REQUIRE(dump.find("; nested in region \"accumulate\" at ") != std::string::npos);
+}
+
+// One entry per call site, not one per traced engagement: a region in a statically
+// unrolled loop is entered once per iteration, and all of those are the same region().
+TEST_CASE("Region IR Table Holds One Entry Per Call Site", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionStaticUnroll));
+	REQUIRE(ir->getFunctionOperations().size() == 1);
+	const auto* function = ir->getFunctionOperations().front();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(function->getRegionSpecs().size() == 1);
+	REQUIRE(function->getRegionSpecs()[0].attributes.location.line == staticUnrollRegionLine);
 }
 
 // A helper that opens regions on its callers' behalf can hand region() the caller's

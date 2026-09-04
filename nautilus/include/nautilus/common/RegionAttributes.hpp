@@ -21,8 +21,8 @@ struct SourceLocation {
 	uint32_t column = 0;
 
 	static SourceLocation from(const std::source_location& location) {
-		return SourceLocation {location.file_name(), location.function_name(),
-		                       static_cast<uint32_t>(location.line()), static_cast<uint32_t>(location.column())};
+		return SourceLocation {location.file_name(), location.function_name(), static_cast<uint32_t>(location.line()),
+		                       static_cast<uint32_t>(location.column())};
 	}
 
 	bool isKnown() const {

@@ -28,6 +28,9 @@ class ExecutionTrace;
 /// reported against its call site.
 struct RegionSpec {
 	RegionAttributes attributes;
+	/// The region this one was opened inside, or NO_REGION for a region opened directly
+	/// in the function body.
+	RegionIndex parent = NO_REGION;
 	/// Block the region body starts in.
 	uint32_t entryBlock;
 	/// Block the enclosing scope continues in after the body.
@@ -327,16 +330,27 @@ public:
 	ValueRef getNextValueRef();
 
 	/**
-	 * @brief Records a region traced into this trace and marks its entry block.
+	 * @brief Records a region traced into this trace and marks its entry block. The
+	 * region open at the time becomes the new region's parent.
 	 * @return The new region's index in the region table.
 	 */
-	uint32_t addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
+	RegionIndex addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
 
 	/**
 	 * @brief Returns every region recorded into this trace, in the order they were
 	 * entered. Empty for a trace produced by a tracer that inlines region bodies.
 	 */
 	const std::vector<RegionSpec>& getRegions() const;
+
+	/**
+	 * @brief Sets the region every operation recorded from now on belongs to, and
+	 * returns the previous one so the caller can restore it when the region ends.
+	 *
+	 * The tracer brackets a region body with this; everything recorded in between --
+	 * by this scope or by any nested one, since they all record into this trace --
+	 * is stamped with @p regionIndex.
+	 */
+	RegionIndex setCurrentRegion(RegionIndex regionIndex);
 
 private:
 	/**
@@ -367,8 +381,12 @@ public:
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
 
-	/// Region table; see RegionSpec. Indexed by Block::regionIndex.
+	/// Region table; see RegionSpec. Indexed by TraceOperation::regionIndex and by a
+	/// region entry block's Block::regionIndex.
 	std::vector<RegionSpec> regions;
+
+	/// The region operations recorded right now belong to; see setCurrentRegion.
+	RegionIndex currentRegion = NO_REGION;
 
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it

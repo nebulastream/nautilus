@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/compiler/ir/ExceptionRegion.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/Operation.hpp"
@@ -18,12 +19,27 @@ struct AllocaSpec {
 	size_t align;
 };
 
+/// Per-function record of one region() call site (docs/region.md) whose body was traced
+/// into this function: what the call site said about itself, and which region encloses it.
+///
+/// Operations reference these by index through Operation::getRegionIndex(). The region's
+/// boundary blocks are deliberately not part of this: by the time the block-cleanup passes
+/// are done, the entry and exit block a region added are merged away, while the operations
+/// that came out of the body keep pointing here.
+struct RegionSpec {
+	RegionAttributes attributes;
+	/// The region this one sits inside, or NO_REGION for a region opened directly in the
+	/// function body. Walking this chain gives an operation's full region nesting.
+	RegionIndex parent = NO_REGION;
+};
+
 class FunctionOperation : public Operation {
 public:
 	explicit FunctionOperation(std::string name, std::vector<BasicBlock*> functionBasicBlocks,
 	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg,
 	                           std::vector<AllocaSpec> allocaSpecs = {},
-	                           std::unordered_map<std::string, std::string> attributes = {});
+	                           std::unordered_map<std::string, std::string> attributes = {},
+	                           std::vector<RegionSpec> regionSpecs = {});
 
 	~FunctionOperation() = default;
 
@@ -57,6 +73,15 @@ public:
 	/// in this function's body reference entries by index.
 	[[nodiscard]] const std::vector<AllocaSpec>& getAllocaSpecs() const;
 
+	/// Returns the function's region table.  Empty for a function traced without
+	/// region(), or traced by a tracer that inlines region bodies; otherwise indexed by
+	/// Operation::getRegionIndex().
+	[[nodiscard]] const std::vector<RegionSpec>& getRegionSpecs() const;
+
+	/// Returns the region @p index describes, or nullptr for NO_REGION and for an index
+	/// this function has no entry for.
+	[[nodiscard]] const RegionSpec* findRegion(RegionIndex index) const;
+
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
 
@@ -74,5 +99,6 @@ private:
 	std::vector<std::string> inputArgNames;
 	std::vector<AllocaSpec> allocaSpecs;
 	std::unordered_map<std::string, std::string> attributes;
+	std::vector<RegionSpec> regionSpecs;
 };
 } // namespace nautilus::compiler::ir

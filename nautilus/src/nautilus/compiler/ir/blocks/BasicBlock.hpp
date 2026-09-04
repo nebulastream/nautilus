@@ -95,13 +95,15 @@ public:
 		return op;
 	}
 
-	/// Variant of @ref addOperation that stamps the freshly created op with
-	/// the source tag from a `TraceOperation`.  Folds the addOperation +
-	/// setSourceTag pair every conversion-phase call site otherwise repeats.
+	/// Variant of @ref addOperation that stamps the freshly created op with the
+	/// provenance of the `TraceOperation` it came from -- its source tag and its
+	/// region.  Folds the addOperation + stamping every conversion-phase call site
+	/// otherwise repeats.
 	template <typename T, typename... Args>
-	T* addTaggedOperation(const tracing::Tag* sourceTag, Args&&... args) {
+	T* addTaggedOperation(OperationProvenance provenance, Args&&... args) {
 		auto* op = addOperation<T>(std::forward<Args>(args)...);
-		op->setSourceTag(sourceTag);
+		op->setSourceTag(provenance.sourceTag);
+		op->setRegionIndex(provenance.region);
 		return op;
 	}
 

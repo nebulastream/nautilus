@@ -659,16 +659,22 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const 
 
 	// The region's attributes are metadata on the enclosing trace, not an operation in it:
 	// recorded once, here, against the blocks that bound the body about to be traced.
-	trace.addRegion(attributes, entry, exit);
+	auto regionIndex = trace.addRegion(attributes, entry, exit);
 
+	// Everything recorded until the body is done belongs to this region -- by the child
+	// scope, and by any region nested inside it, since every scope records into this one
+	// trace. The enclosing region (NO_REGION at function level) is restored afterwards.
+	auto enclosingRegion = trace.setCurrentRegion(regionIndex);
 	setActiveTracer(&child);
 	try {
 		child.runScope(regionFunction);
 	} catch (...) {
 		setActiveTracer(this);
+		trace.setCurrentRegion(enclosingRegion);
 		throw;
 	}
 	setActiveTracer(this);
+	trace.setCurrentRegion(enclosingRegion);
 
 	if (trace.getBlock(exit).predecessors.empty()) {
 		// No pass of the body ever ran to completion, so nothing reaches the block the

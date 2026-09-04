@@ -41,7 +41,7 @@ nautilus::region("accumulate", [&]() { sum = sum + 42; });   // named
 nautilus::region([&]() { sum = sum + 42; });                 // unnamed, still located
 ```
 
-Attributes are metadata. They never take part in tag or snapshot identity, never reach the IR or any backend, and a named region traces and compiles exactly like an unnamed one. What they do is make a region identifiable, in two places:
+Attributes are metadata. They never take part in tag or snapshot identity, and a named region traces and compiles exactly like an unnamed one. What they do is make a region identifiable, in three places:
 
 **Diagnostics.** A region body that the tracer has to reject is reported against the call site the user wrote, instead of leaving them to find it:
 
@@ -50,7 +50,7 @@ Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the 
 body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
 ```
 
-**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in. The body's entry block points back at its table entry through `Block::regionIndex`, and the trace dump prints the attributes in front of it:
+**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. The body's entry block points back at its table entry through `Block::regionIndex`, every operation recorded inside the body points at it through `TraceOperation::regionIndex`, and the trace dump prints the attributes in front of the entry block:
 
 ```
 ; region "accumulate" at src/Query.cpp:42:9
@@ -59,6 +59,19 @@ B1()
 ```
 
 Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.
+
+**The IR.** `TraceToIRConversionPhase` carries both attributes across: each function's `FunctionOperation` gets a region table (`getRegionSpecs()`), and every IR operation names the innermost region it was traced inside through `Operation::getRegionIndex()`, with `RegionSpec::parent` giving the enclosing chain. The IR dump prints them as a trailer on each operation:
+
+```
+	$4 = $1 + $3 :i64  ; region "inner" at src/Query.cpp:44:3
+		; nested in region "accumulate" at src/Query.cpp:42:9
+```
+
+The metadata rides on the *operations*, not on their blocks, and that is what makes it survive the pipeline: the entry and exit block a region adds are single-predecessor seams that `EmptyBlockEliminationPass` and `BlockMergingPass` collapse (see [How regions trace branches](#how-regions-trace-branches)), while the operations that came out of the body live on — in whatever block they end up in — still naming their region. Passes that mint new operations leave them unattributed; constant folding hands the folded operation the provenance of the one it replaced.
+
+The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
+
+No backend reads any of this today; it is provenance for reading, verifying and debugging the IR.
 
 ### Naming a region from a helper
 
@@ -84,7 +97,7 @@ The name is stored, not copied — pass a string literal or another string that 
 
 All four come from the region-local exploration loop, so all four require `engine.traceMode = "lazyTracing"` (the default). Under `"exceptionBasedTracing"` a region is a no-op: the body is traced inline, into the enclosing function's trace, exactly as if `region()` were not there. That tracer restarts the whole enclosing function on every unresolved branch, so there is nothing for a region to bound. Both tracers produce an equivalent trace either way; the difference is only how much work tracing does to get there.
 
-None of this requires a function boundary: region blocks are ordinary basic blocks and region entry/exit are ordinary jumps. There is no region-specific operation anywhere in the trace, the IR, or any backend.
+None of this requires a function boundary: region blocks are ordinary basic blocks and region entry/exit are ordinary jumps. There is no region-specific operation anywhere in the trace, the IR, or any backend — a region is metadata on ordinary operations, never an operation of its own.
 
 ## Nesting
 

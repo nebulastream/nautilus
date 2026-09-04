@@ -4,7 +4,6 @@
 #include "TraceOperation.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include <cinttypes>
-#include <limits>
 #include <vector>
 
 namespace nautilus::tracing {
@@ -83,19 +82,15 @@ public:
 	std::vector<uint32_t> predecessors;
 
 	/**
-	 * @brief Value of regionIndex for a block that does not open a region.
-	 */
-	static constexpr uint32_t NO_REGION = std::numeric_limits<uint32_t>::max();
-
-	/**
 	 * @brief Index into ExecutionTrace::regions of the region whose body starts here.
 	 *
 	 * Set on a region's entry block only; every other block, the region's exit block
-	 * included, keeps NO_REGION. A region is not an operation and not a block type -- this
-	 * is pure metadata (see docs/region.md), read by the trace dump and by anything that
-	 * wants to relate traced code back to the region() call site it came from.
+	 * included, keeps NO_REGION. It marks the region *boundary*, which is a property of
+	 * the trace's block structure and does not survive into the IR -- the IR's copy of
+	 * the same metadata rides on the operations instead (see TraceOperation::regionIndex
+	 * and docs/region.md).
 	 */
-	uint32_t regionIndex = NO_REGION;
+	RegionIndex regionIndex = NO_REGION;
 };
 
 } // namespace nautilus::tracing

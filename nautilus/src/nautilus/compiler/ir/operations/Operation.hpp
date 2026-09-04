@@ -7,6 +7,7 @@
 #include <compare>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -19,6 +20,26 @@ using Tag = TrieNode<TagAddress>;
 } // namespace nautilus::tracing
 
 namespace nautilus::compiler::ir {
+
+/// Index into FunctionOperation::getRegionSpecs(). Operations that were not traced
+/// inside a region() carry NO_REGION, and so do operations minted by passes rather
+/// than by the trace-to-IR conversion.
+///
+/// Sixteen bits: the index has to fit the two bytes of padding Operation already
+/// carries (see the field-order comment there), and the IR table holds one entry per
+/// region() call site per enclosing chain rather than one per traced engagement, so it
+/// stays orders of magnitude below the limit. Conversion refuses to grow the table past
+/// it and leaves the overflow unattributed rather than aliasing a wrong region.
+using RegionIndex = uint16_t;
+inline constexpr RegionIndex NO_REGION = std::numeric_limits<RegionIndex>::max();
+
+/// Everything the trace knows about where an operation came from: the call stack
+/// captured at trace time, and the region() it was traced inside (docs/region.md).
+/// Stamped as one unit onto every operation the trace-to-IR conversion mints.
+struct OperationProvenance {
+	const tracing::Tag* sourceTag = nullptr;
+	RegionIndex region = NO_REGION;
+};
 
 class OperationIdentifier {
 public:
@@ -161,6 +182,16 @@ public:
 		return sourceTag;
 	}
 
+	/// The innermost region() this operation was traced inside; see docs/region.md.
+	/// Indexes the region table of the FunctionOperation this operation belongs to.
+	void setRegionIndex(RegionIndex index) noexcept {
+		regionIndex = index;
+	}
+
+	[[nodiscard]] RegionIndex getRegionIndex() const noexcept {
+		return regionIndex;
+	}
+
 	template <typename OP>
 	const OP* dynCast() const {
 		return OP::classof(this) ? static_cast<const OP*>(this) : nullptr;
@@ -188,6 +219,10 @@ protected:
 	// pre-sourceTag layout (32 B on a 64-bit target).
 	const OperationType opType;
 	const Type stamp;
+	/// Region provenance (docs/region.md).  Occupies the two bytes of padding
+	/// between the two one-byte fields above and the four-byte identifier, so
+	/// carrying it costs the IR nothing.
+	RegionIndex regionIndex = NO_REGION;
 	const OperationIdentifier identifier;
 	/// View into the arena-allocated inputs buffer. Fixed-arity ops leave
 	/// this span untouched after construction and only mutate the pointers
