@@ -140,6 +140,18 @@ TypedValueRef& ExceptionBasedTraceContext::traceCall(void* fptn, Type resultType
 	});
 }
 
+TypedValueRef& ExceptionBasedTraceContext::traceCall(std::string_view symbolName, Type resultType,
+                                                     const std::vector<tracing::TypedValueRef>& arguments,
+                                                     FunctionAttributes fnAttrs) {
+	auto name = std::string(symbolName);
+	auto op = Op::CALL;
+	return traceOperation(op, [&](Snapshot& tag) -> TypedValueRef& {
+		auto* functionArguments = state->executionTrace.getArena().create<FunctionCall>(FunctionCall {
+		    .functionName = name, .mangledName = name, .ptr = nullptr, .arguments = arguments, .fnAttrs = fnAttrs});
+		return state->executionTrace.addOperationWithResult(tag, op, resultType, {functionArguments});
+	});
+}
+
 TypedValueRef& ExceptionBasedTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                                              const std::vector<tracing::TypedValueRef>& arguments,
                                                              FunctionAttributes fnAttrs) {

@@ -1,9 +1,14 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -15,6 +20,57 @@ class JITEventListener;
 } // namespace llvm
 
 namespace nautilus::engine {
+
+/**
+ * Engine-scoped registry for externally supplied LLVM bitcode functions.
+ *
+ * A snapshot is attached to every compilation, so later registrations on the
+ * same engine cannot change the meaning of a compilation already in flight.
+ */
+class UDFRegistry {
+public:
+	using Entries = std::unordered_map<std::string, std::string>;
+	using Snapshot = std::shared_ptr<const Entries>;
+
+	UDFRegistry() = default;
+
+	UDFRegistry(const UDFRegistry&) = delete;
+	UDFRegistry& operator=(const UDFRegistry&) = delete;
+
+	UDFRegistry(UDFRegistry&& other) noexcept {
+		std::lock_guard lock(other.mutex_);
+		entries_ = std::move(other.entries_);
+	}
+
+	UDFRegistry& operator=(UDFRegistry&&) = delete;
+
+	void registerUDF(std::string_view symbolName, std::string bitcode) {
+		if (symbolName.empty()) {
+			throw std::invalid_argument("UDF symbol name must not be empty");
+		}
+
+		std::lock_guard lock(mutex_);
+		const auto name = std::string(symbolName);
+		auto [_, inserted] = entries_.try_emplace(name, std::move(bitcode));
+		if (!inserted) {
+			throw std::invalid_argument("UDF '" + name + "' is already registered in this engine");
+		}
+	}
+
+	[[nodiscard]] bool contains(std::string_view symbolName) const {
+		std::lock_guard lock(mutex_);
+		return entries_.contains(std::string(symbolName));
+	}
+
+	[[nodiscard]] Snapshot snapshot() const {
+		std::lock_guard lock(mutex_);
+		return std::make_shared<const Entries>(entries_);
+	}
+
+private:
+	mutable std::mutex mutex_;
+	Entries entries_;
+};
 
 using OptionValue = std::variant<int, double, std::string, bool>;
 
@@ -67,6 +123,14 @@ public:
 		return mlir_jit_event_listeners_;
 	}
 
+	void setUDFRegistrySnapshot(UDFRegistry::Snapshot snapshot) {
+		udfRegistrySnapshot_ = std::move(snapshot);
+	}
+
+	[[nodiscard]] const UDFRegistry::Snapshot& getUDFRegistrySnapshot() const {
+		return udfRegistrySnapshot_;
+	}
+
 	/**
 	 * @brief Apply every option value (and JIT listener) set in @p other on
 	 * top of this one; values present in @p other win.
@@ -96,6 +160,7 @@ public:
 private:
 	std::unordered_map<std::string, OptionValue> options;
 	std::vector<llvm::JITEventListener*> mlir_jit_event_listeners_;
+	UDFRegistry::Snapshot udfRegistrySnapshot_;
 };
 
 /**

@@ -4,6 +4,9 @@
 #include "nautilus/val.hpp"
 #include "nautilus/val_ptr.hpp"
 #include <functional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -62,10 +65,63 @@ private:
 	R (*fnptr)(FunctionArguments...);
 };
 
+/// A compiler-resolved function identified by its LLVM symbol rather than a
+/// host function pointer. Symbolic calls can only be evaluated while Nautilus
+/// is tracing; a compiler plugin must provide their implementation before the
+/// generated program is executed.
+template <typename R>
+class CallableNamedRuntimeFunction {
+public:
+	explicit CallableNamedRuntimeFunction(std::string_view symbolName, FunctionAttributes fnAttrs = {})
+	    : symbolName(symbolName), fnAttrs(fnAttrs) {
+		if (symbolName.empty()) {
+			throw std::invalid_argument("A symbolic function name must not be empty");
+		}
+	}
+
+	template <typename... ValueArguments>
+	    requires(!std::is_void_v<R>)
+	val<R> operator()(ValueArguments&&... args) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto arguments = getArgumentReferences(std::forward<ValueArguments>(args)...);
+			auto result = tracing::traceCall(symbolName, tracing::TypeResolver<R>::to_type(), arguments, fnAttrs);
+			return val<R>(result);
+		}
+#endif
+		throw std::logic_error("A symbolic function can only be invoked while tracing");
+	}
+
+	template <typename... ValueArguments>
+	    requires std::is_void_v<R>
+	void operator()(ValueArguments&&... args) {
+#ifdef ENABLE_TRACING
+		if (tracing::inTracer()) {
+			auto arguments = getArgumentReferences(std::forward<ValueArguments>(args)...);
+			tracing::traceCall(symbolName, Type::v, arguments, fnAttrs);
+			return;
+		}
+#endif
+		throw std::logic_error("A symbolic function can only be invoked while tracing");
+	}
+
+private:
+	std::string symbolName;
+	FunctionAttributes fnAttrs;
+};
+
 /// Invoke calls without attributes
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
+}
+
+/// Invoke a compiler-resolved function by LLVM symbol name. The return type
+/// is explicit because there is no C++ function pointer from which to infer it:
+/// `invoke<int64_t>("python_udf", value)`.
+template <typename R, typename... ValueArguments>
+auto invoke(std::string_view symbolName, ValueArguments&&... args) {
+	return CallableNamedRuntimeFunction<R>(symbolName)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
@@ -84,6 +140,11 @@ void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+}
+
+template <typename R, typename... ValueArguments>
+auto invoke(const FunctionAttributes fnAttrs, std::string_view symbolName, ValueArguments&&... args) {
+	return CallableNamedRuntimeFunction<R>(symbolName, fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>

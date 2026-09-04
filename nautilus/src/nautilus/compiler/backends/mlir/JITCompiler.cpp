@@ -35,6 +35,13 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
 		auto symbolMap = llvm::orc::SymbolMap();
 		for (int i = 0; i < (int) jitProxyFunctionSymbols.size(); ++i) {
 			auto address = jitProxyFunctionTargetAddresses.at(i);
+			// A symbolic invoke has no host address. Its declaration is resolved
+			// by a compiler plugin linking a definition into the module. Registering
+			// an absolute symbol at address zero would both shadow that definition
+			// and make ORC reject it as a duplicate.
+			if (address == nullptr) {
+				continue;
+			}
 			symbolMap[interner(jitProxyFunctionSymbols.at(i))] = {llvm::orc::ExecutorAddr::fromPtr(address),
 			                                                      llvm::JITSymbolFlags::Exported};
 		}

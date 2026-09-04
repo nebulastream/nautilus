@@ -4,6 +4,10 @@
 #include <optional>
 #include <string>
 
+namespace nautilus::engine {
+class EngineOptions;
+}
+
 namespace llvm {
 class Module;
 } // namespace llvm
@@ -21,7 +25,7 @@ using SymbolContributor = std::function<void(const std::string& name, void* addr
 struct LLVMBackendHooks {
 	// Runs on the generated llvm::Module once, immediately before the LLVM
 	// optimizer pipeline is applied.
-	std::function<void(llvm::Module&)> preOptModuleTransform;
+	std::function<void(llvm::Module&, const engine::EngineOptions&)> preOptModuleTransform;
 
 	// Invoked inside the JIT's symbol-map closure. The contributor adds
 	// (name, address) pairs into the ORC symbol map.

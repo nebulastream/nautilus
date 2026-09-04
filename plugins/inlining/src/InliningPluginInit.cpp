@@ -10,6 +10,7 @@
 // the static archive. That in turn carries the file-scope static registrar
 // below into the final link, so the hooks actually get installed.
 #include "nautilus/inline.hpp"
+#include "nautilus/options.hpp"
 
 #ifdef NAUTILUS_INLINING_MLIR_ENABLED
 #include "LLVMInliningUtils.hpp"
@@ -30,8 +31,8 @@ struct InliningPluginRegistrar {
 
 		// Hook 1: run the JIT-time inliner on the generated llvm::Module
 		// immediately before the LLVM optimizer pipeline.
-		hooks.preOptModuleTransform = [](llvm::Module& module) {
-			nautilus::compiler::mlir::inlineFunctions(module);
+		hooks.preOptModuleTransform = [](llvm::Module& module, const nautilus::engine::EngineOptions& options) {
+			nautilus::compiler::mlir::inlineFunctions(module, options.getUDFRegistrySnapshot());
 		};
 
 		// Hook 2: contribute the inline registry's (name -> address) pairs
@@ -47,13 +48,9 @@ struct InliningPluginRegistrar {
 			}
 		};
 
-		// Hook 3: when lowering an external proxy call whose target has
-		// registered bitcode, emit the hex-formatted pointer address as the
-		// MLIR function name so the JIT-time inliner can pick it up. The
-		// name must match the format produced by `ptrToHex` elsewhere in
-		// the plugin so that `hexToPtr` round-trips and `jitSymbolContributor`
-		// resolves the same symbol — using `ptrToHex` here keeps those
-		// formats in lock-step.
+		// Hook 3: pointer-backed inline functions keep using their address as
+		// the proxy name. Name-backed UDF calls retain their original name;
+		// their declaration is resolved when the UDF module is merged.
 		hooks.proxyCallNameOverride = [](void* functionPtr) -> std::optional<std::string> {
 			if (!InlineFunctionRegistry::instance().containsFunctionBitcode(functionPtr)) {
 				return std::nullopt;

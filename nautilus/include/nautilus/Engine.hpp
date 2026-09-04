@@ -175,6 +175,20 @@ public:
 	NautilusEngine(NautilusEngine&&) noexcept;
 	NautilusEngine& operator=(NautilusEngine&&) noexcept = delete;
 
+	/**
+	 * Register an LLVM bitcode UDF for this engine. The symbol must be the
+	 * module's only externally visible definition; all helper definitions must
+	 * have internal or private linkage. Registering the same name more than
+	 * once in one engine throws std::invalid_argument.
+	 */
+	void registerUDF(std::string_view symbolName, std::string bitcode) {
+		udfRegistry_.registerUDF(symbolName, std::move(bitcode));
+	}
+
+	[[nodiscard]] bool containsUDF(std::string_view symbolName) const {
+		return udfRegistry_.contains(symbolName);
+	}
+
 	/// Register and compile a single function pointer. Defined after NautilusModule.
 	template <typename R, is_val... FunctionArguments>
 	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const;
@@ -233,6 +247,7 @@ private:
 	 */
 	std::unique_ptr<common::ArenaPool> irArenaPool_;
 	std::unique_ptr<compiler::JITCompiler> jit_;
+	UDFRegistry udfRegistry_;
 	const Options options;
 };
 
@@ -255,11 +270,13 @@ private:
 class NautilusModule {
 public:
 #ifdef ENABLE_TRACING
-	NautilusModule(const compiler::JITCompiler& jit, bool compiled, ModuleOptions moduleOptions)
-	    : moduleOptions_(std::move(moduleOptions)), jit_(jit), compiled_(compiled) {
+	NautilusModule(const compiler::JITCompiler& jit, const UDFRegistry& udfRegistry, bool compiled,
+	               ModuleOptions moduleOptions)
+	    : moduleOptions_(std::move(moduleOptions)), jit_(jit), udfRegistry_(udfRegistry), compiled_(compiled) {
 	}
 #else
-	NautilusModule(const compiler::JITCompiler& /*jit*/, bool /*compiled*/, ModuleOptions moduleOptions)
+	NautilusModule(const compiler::JITCompiler& /*jit*/, const UDFRegistry& /*udfRegistry*/, bool /*compiled*/,
+	               ModuleOptions moduleOptions)
 	    : moduleOptions_(std::move(moduleOptions)) {
 	}
 #endif
@@ -337,6 +354,7 @@ public:
 	CompiledModule compile() {
 #ifdef ENABLE_TRACING
 		if (compiled_) {
+			moduleOptions_.setUDFRegistrySnapshot(udfRegistry_.snapshot());
 			auto executable = jit_.compile(functions_, moduleOptions_);
 			auto module = CompiledModule(std::move(executable), std::move(interpretedFunctions_));
 
@@ -358,19 +376,20 @@ private:
 	ModuleOptions moduleOptions_;
 #ifdef ENABLE_TRACING
 	const compiler::JITCompiler& jit_;
+	const UDFRegistry& udfRegistry_;
 	bool compiled_;
 	std::list<compiler::CompilableFunction> functions_;
 #endif
 };
 
 inline NautilusModule NautilusEngine::createModule() const {
-	return NautilusModule(*jit_, isCompiled(), options.deriveModuleOptions());
+	return NautilusModule(*jit_, udfRegistry_, isCompiled(), options.deriveModuleOptions());
 }
 
 inline NautilusModule NautilusEngine::createModule(ModuleOptions overrides) const {
 	auto moduleOptions = options.deriveModuleOptions();
 	moduleOptions.applyOverrides(overrides);
-	return NautilusModule(*jit_, isCompiled(), std::move(moduleOptions));
+	return NautilusModule(*jit_, udfRegistry_, isCompiled(), std::move(moduleOptions));
 }
 
 namespace details {

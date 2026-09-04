@@ -25,6 +25,31 @@ The `invoke()` function:
 - Returns `val<R>` wrapping the result
 - At runtime, calls the native function directly
 
+## Invoking Registered LLVM Bitcode by Name
+
+Code generators that do not expose a host function pointer can register an LLVM bitcode module under a symbol name:
+
+```cpp
+nautilus::engine::NautilusEngine engine(options);
+engine.registerUDF("python_udf", bitcodeBytes);
+
+val<int64_t> callPythonUdf(val<int64_t> value) {
+    return invoke<int64_t>("python_udf", value);
+}
+```
+
+The bitcode module must expose exactly one externally linked definition: the entry function named in `registerUDF()`. Its ABI must match the explicit return type and argument types used by `invoke()`. All defined helper functions, globals, aliases, and indirect functions must use `internal` or `private` linkage. External declarations are allowed for runtime dependencies.
+
+The name-based form is symbolic: it can only be called while Nautilus is tracing and currently requires the MLIR backend with inlining enabled:
+
+```cpp
+options.setOption("mlir.inline_invoke_calls", true);
+```
+
+UDF registrations are scoped to the `NautilusEngine`. Registering the same name twice in one engine throws `std::invalid_argument`, while separate engines may register different implementations under the same logical name. The registry is released with the engine; no explicit unregister operation is needed. Each compilation uses a stable snapshot of the engine registry.
+
+`registerUDF()` copies or moves the supplied `std::string`, so binary bitcode containing null bytes is supported. During lowering, Nautilus validates and merges the complete UDF module into the generated LLVM module. The entry keeps its registered name; LLVM's local linkage keeps helper definitions isolated from helpers in other UDF modules. The existing function-pointer form of `invoke()` remains available for calls that need a native fallback.
+
 ## Void Functions
 
 Functions that return `void` can also be called with `invoke()`:

@@ -7,6 +7,7 @@
 #include "nautilus/tracing/Types.hpp"
 #include <cstddef>
 #include <functional>
+#include <string_view>
 #include <vector>
 
 namespace nautilus {
@@ -64,6 +65,11 @@ public:
 	/// Trace a runtime function call.
 	virtual TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<TypedValueRef>& arguments,
 	                                 FunctionAttributes fnAttrs) = 0;
+
+	/// Trace a symbolic runtime function call. The symbol must be supplied by
+	/// a compiler plugin before the generated code is executed.
+	virtual TypedValueRef& traceCall(std::string_view symbolName, Type resultType,
+	                                 const std::vector<TypedValueRef>& arguments, FunctionAttributes fnAttrs) = 0;
 
 	/// Trace a call through a runtime function pointer value (indirect call).
 	virtual TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,

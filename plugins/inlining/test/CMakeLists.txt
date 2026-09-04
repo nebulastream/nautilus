@@ -7,6 +7,29 @@ add_executable(nautilus-inlining-tests
         RegistryThreadSafetyTest.cpp
 )
 
+find_program(LLVM_AS_EXECUTABLE NAMES llvm-as-21 llvm-as HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+set(PYTHON_UDF_BITCODE ${CMAKE_CURRENT_BINARY_DIR}/fixtures/python-add-export.bc)
+set(ISOLATED_ADD_UDF_BITCODE ${CMAKE_CURRENT_BINARY_DIR}/fixtures/isolated-add.bc)
+set(ISOLATED_SUB_UDF_BITCODE ${CMAKE_CURRENT_BINARY_DIR}/fixtures/isolated-sub.bc)
+add_custom_command(
+		OUTPUT ${PYTHON_UDF_BITCODE} ${ISOLATED_ADD_UDF_BITCODE} ${ISOLATED_SUB_UDF_BITCODE}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/fixtures
+		COMMAND ${LLVM_AS_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/python-add-export.ll -o ${PYTHON_UDF_BITCODE}
+		COMMAND ${LLVM_AS_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/isolated-add.ll -o ${ISOLATED_ADD_UDF_BITCODE}
+		COMMAND ${LLVM_AS_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/isolated-sub.ll -o ${ISOLATED_SUB_UDF_BITCODE}
+		DEPENDS
+			${CMAKE_CURRENT_SOURCE_DIR}/fixtures/python-add-export.ll
+			${CMAKE_CURRENT_SOURCE_DIR}/fixtures/isolated-add.ll
+			${CMAKE_CURRENT_SOURCE_DIR}/fixtures/isolated-sub.ll
+		VERBATIM)
+add_custom_target(nautilus-python-udf-bitcode DEPENDS
+		${PYTHON_UDF_BITCODE} ${ISOLATED_ADD_UDF_BITCODE} ${ISOLATED_SUB_UDF_BITCODE})
+add_dependencies(nautilus-inlining-tests nautilus-python-udf-bitcode)
+target_compile_definitions(nautilus-inlining-tests PRIVATE
+		NAUTILUS_PYTHON_UDF_BITCODE_PATH="${PYTHON_UDF_BITCODE}"
+		NAUTILUS_ISOLATED_ADD_UDF_BITCODE_PATH="${ISOLATED_ADD_UDF_BITCODE}"
+		NAUTILUS_ISOLATED_SUB_UDF_BITCODE_PATH="${ISOLATED_SUB_UDF_BITCODE}")
+
 nautilus_inline(nautilus-inlining-tests)
 
 target_link_libraries(nautilus-inlining-tests PUBLIC nautilus-inlining Catch2::Catch2WithMain nautilus-sanitizer-suppressions)

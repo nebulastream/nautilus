@@ -3,16 +3,101 @@
 #include "nautilus/inline.hpp"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DebugInfo.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/Linker/Linker.h"
-#include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
-#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
-#include <llvm/Support/FileCollector.h>
-#include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Support/Error.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <stdexcept>
 
 namespace nautilus::compiler::mlir {
+
+namespace {
+
+[[noreturn]] void throwInvalidUDF(llvm::StringRef entryPoint, llvm::StringRef reason) {
+	throw std::runtime_error(fmt::format("Invalid LLVM module for UDF '{}': {}", entryPoint, reason));
+}
+
+std::unique_ptr<llvm::Module> parseUDFModule(llvm::StringRef entryPoint, const std::string& bitcode,
+                                             llvm::LLVMContext& context) {
+	auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcode.data(), bitcode.size()), "", false);
+	auto moduleOrError = llvm::parseBitcodeFile(buffer->getMemBufferRef(), context);
+	if (!moduleOrError) {
+		throwInvalidUDF(entryPoint, llvm::toString(moduleOrError.takeError()));
+	}
+	return std::move(*moduleOrError);
+}
+
+void validateUDFModule(llvm::StringRef entryPoint, const llvm::Module& udfModule, const llvm::Module& targetModule) {
+	const auto* entryFunction = udfModule.getFunction(entryPoint);
+	if (entryFunction == nullptr || entryFunction->isDeclaration()) {
+		throwInvalidUDF(entryPoint, "the named entry point is not defined");
+	}
+	if (entryFunction->hasLocalLinkage()) {
+		throwInvalidUDF(entryPoint, "the entry point must have external linkage");
+	}
+
+	for (const auto& function : udfModule) {
+		if (!function.isDeclaration() && &function != entryFunction && !function.hasLocalLinkage()) {
+			throwInvalidUDF(entryPoint,
+			                fmt::format("helper function '{}' must be internal or private", function.getName()));
+		}
+	}
+	for (const auto& global : udfModule.globals()) {
+		if (!global.isDeclaration() && !global.hasLocalLinkage() && !global.getName().starts_with("llvm.")) {
+			throwInvalidUDF(entryPoint, fmt::format("global '{}' must be internal or private", global.getName()));
+		}
+	}
+	for (const auto& alias : udfModule.aliases()) {
+		if (!alias.hasLocalLinkage()) {
+			throwInvalidUDF(entryPoint, fmt::format("alias '{}' must be internal or private", alias.getName()));
+		}
+	}
+	for (const auto& ifunc : udfModule.ifuncs()) {
+		if (!ifunc.hasLocalLinkage()) {
+			throwInvalidUDF(entryPoint,
+			                fmt::format("indirect function '{}' must be internal or private", ifunc.getName()));
+		}
+	}
+
+	if (const auto* existing = targetModule.getFunction(entryPoint)) {
+		if (!existing->isDeclaration()) {
+			throwInvalidUDF(entryPoint, "the generated module already defines that symbol");
+		}
+		if (existing->getFunctionType() != entryFunction->getFunctionType()) {
+			throwInvalidUDF(entryPoint, "the entry-point signature does not match the invoke declaration");
+		}
+	}
+}
+
+void mergeUDFModules(llvm::Module& targetModule, const engine::UDFRegistry::Snapshot& registry) {
+	if (registry == nullptr) {
+		return;
+	}
+
+	for (const auto& [entryPoint, bitcode] : *registry) {
+		auto udfModule = parseUDFModule(entryPoint, bitcode, targetModule.getContext());
+		validateUDFModule(entryPoint, *udfModule, targetModule);
+
+		// The UDF is compiled for this process. Adopt the generated module's
+		// target metadata and let LLVM uniquify local helper symbols.
+		udfModule->setTargetTriple(targetModule.getTargetTriple());
+		udfModule->setDataLayout(targetModule.getDataLayout().getStringRepresentation());
+		if (llvm::Linker::linkModules(targetModule, std::move(udfModule))) {
+			throwInvalidUDF(entryPoint, "LLVM could not merge the module");
+		}
+
+		auto* mergedEntry = targetModule.getFunction(entryPoint);
+		if (mergedEntry == nullptr || mergedEntry->isDeclaration()) {
+			throwInvalidUDF(entryPoint, "the entry point disappeared while merging the module");
+		}
+		mergedEntry->addFnAttr(llvm::Attribute::AlwaysInline);
+		mergedEntry->removeFnAttr(llvm::Attribute::NoInline);
+		mergedEntry->removeFnAttr(llvm::Attribute::OptimizeNone);
+	}
+}
+
+} // namespace
 
 void* hexToPtr(const llvm::StringRef& hexString) {
 	if (hexString.starts_with("0x")) {
@@ -28,26 +113,21 @@ std::string ptrToHex(const void* ptr) {
 	return fmt::format("0x{:X}", reinterpret_cast<uintptr_t>(ptr));
 }
 
-// look up invoked function in the bitcode registry and retrieve if available
 std::optional<std::unique_ptr<llvm::Module>>
 loadBitcodeIfAvailable(void* fnPtr, llvm::LLVMContext& ctx, const std::unordered_map<std::string, void*>& symbolTable) {
-	// look up the function pointer in the bitcode registry
 	auto bitcodeStr = InlineFunctionRegistry::instance().getBitcode(fnPtr);
 	if (!bitcodeStr.has_value()) {
-		return std::nullopt; // function not found in registry, cant inline
+		return std::nullopt;
 	}
 
-	// deserialize bitcode module
 	auto buffer = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(bitcodeStr->data(), bitcodeStr->size()), "", false);
-	llvm::Expected<std::unique_ptr<llvm::Module>> moduleOrErr = llvm::parseBitcodeFile(buffer->getMemBufferRef(), ctx);
+	auto moduleOrErr = llvm::parseBitcodeFile(buffer->getMemBufferRef(), ctx);
 	if (!moduleOrErr) {
 		logAllUnhandledErrors(moduleOrErr.takeError(), llvm::errs(), "Bitcode parse error: ");
-		return std::nullopt; // if deserialization fails, fall back to regular invocation
+		return std::nullopt;
 	}
 
 	auto& inlineModule = **moduleOrErr;
-
-	// rewrite names of function dependencies to runtime addresses for linkage + recursive inlining
 	for (auto& func : inlineModule) {
 		if (!func.isDeclaration() || func.isIntrinsic()) {
 			continue;
@@ -67,7 +147,6 @@ loadBitcodeIfAvailable(void* fnPtr, llvm::LLVMContext& ctx, const std::unordered
 		}
 	}
 
-	// same for external global variables
 	for (auto& globalVar : inlineModule.globals()) {
 		if (!globalVar.isDeclaration()) {
 			continue;
@@ -91,54 +170,36 @@ loadBitcodeIfAvailable(void* fnPtr, llvm::LLVMContext& ctx, const std::unordered
 }
 
 void fixFunctionNameConflicts(const llvm::Module& moduleToOptimize, llvm::Module& inlineModule) {
-	/* inlining may introduce symbol conflicts that don't occur in the host program
-	 * e.g. two internally linked functions from different source files with the same mangled name
-	 * If that's the case, we need to update function names to avoid conflicts
-	 * target functions that refer to the same host function are correctly deduplicated before using the function ptr
-	 */
-	// Snapshot the host module's function names once. Each subsequent rename
-	// checks the set in O(1); with n `is_target` functions this replaces the
-	// previous O(n * hostFnCount) scan.
 	llvm::StringSet<> hostFunctionNames;
 	for (const auto& func : moduleToOptimize) {
 		hostFunctionNames.insert(func.getName());
 	}
 
-	for (auto& func1 : inlineModule) {
-		if (!func1.hasFnAttribute("is_target")) {
+	for (auto& func : inlineModule) {
+		if (!func.hasFnAttribute("is_target") || !hostFunctionNames.contains(func.getName())) {
 			continue;
 		}
-		if (!hostFunctionNames.contains(func1.getName())) {
-			continue;
-		}
-		auto originalName = func1.getName().str();
+		auto originalName = func.getName().str();
 		for (int i = 0;; ++i) {
 			auto newName = originalName + "_" + std::to_string(i);
 			if (!hostFunctionNames.contains(newName)) {
-				func1.setName(newName);
+				func.setName(newName);
 				break;
 			}
 		}
 	}
 }
 
-// Safety cap for the fixed-point inlining loop below. Recursive inlining
-// converges in practice well under this bound; if it doesn't, we prefer to
-// emit a diagnostic and fall back to the partially-inlined state rather
-// than hang the JIT.
 constexpr int MAX_INLINE_ITERATIONS = 32;
 
-void inlineFunctions(llvm::Module& moduleToOptimize) {
-	// Snapshot the symbol table once per inlining call: the table is
-	// populated by static initializers at program startup and by
-	// `dlopen`-loaded shared object ctors; snapshotting avoids holding the
-	// registry mutex across llvm::Linker and keeps repeated lookups cheap.
-	const auto symbolTable = InlineFunctionRegistry::instance().getSymbolTable();
+void inlineFunctions(llvm::Module& moduleToOptimize, const engine::UDFRegistry::Snapshot& udfRegistry) {
+	// A symbolic invoke already emitted a declaration with the UDF's public
+	// entry-point name. Merging resolves it; local helper names stay isolated.
+	mergeUDFModules(moduleToOptimize, udfRegistry);
 
-	// repeat until module wasnt modified during an iteration
-	// this is key for recursive inlining, where inlinable candidates may appear later during processing
+	const auto symbolTable = InlineFunctionRegistry::instance().getSymbolTable();
 	std::unordered_map<void*, llvm::Function*> inlinedFunctions {};
-	bool doAnotherIteration; // true if there could still be inlinable functions
+	bool doAnotherIteration;
 	int iteration = 0;
 	do {
 		if (++iteration > MAX_INLINE_ITERATIONS) {
@@ -148,95 +209,68 @@ void inlineFunctions(llvm::Module& moduleToOptimize) {
 		}
 		doAnotherIteration = false;
 		std::vector<llvm::Function*> functionListView;
-		for (auto& F : moduleToOptimize) {
-			functionListView.push_back(&F);
+		for (auto& function : moduleToOptimize) {
+			functionListView.push_back(&function);
 		}
 
-		// iterate over all function calls in the LLVM module
-		for (auto originalFunction : functionListView) {
+		for (auto* originalFunction : functionListView) {
 			if (originalFunction->isIntrinsic() || !originalFunction->isDeclaration()) {
 				continue;
 			}
 
-			// try to parse function name into a function pointer
-			// (the name of an inlinable function will represent the runtime address of the function in hex notation)
 			void* fnPtr = hexToPtr(originalFunction->getName());
 			if (!fnPtr) {
-				continue; // not a valid pointer, cant be inlined
+				continue;
 			}
-
-			// deduplicate functions that were previously retrieved already
 			if (auto it = inlinedFunctions.find(fnPtr); it != inlinedFunctions.end()) {
 				originalFunction->replaceAllUsesWith(it->second);
 				originalFunction->removeFromParent();
 				continue;
 			}
 
-			// try to load bitcode for the current function
 			auto optInlineModule = loadBitcodeIfAvailable(fnPtr, moduleToOptimize.getContext(), symbolTable);
 			if (!optInlineModule.has_value()) {
 				continue;
 			}
 			auto inlineModule = std::move(optInlineModule.value());
-
 			fixFunctionNameConflicts(moduleToOptimize, *inlineModule);
 
-			// find the function counterpart inside the deserialized llvm module
-			std::string inlinableFunctionFName;
-			for (auto& func : *inlineModule) {
-				if (!func.isDeclaration() && func.hasFnAttribute("is_target")) {
-					inlinableFunctionFName = func.getName().str();
+			std::string inlinableFunctionName;
+			for (auto& function : *inlineModule) {
+				if (!function.isDeclaration() && function.hasFnAttribute("is_target")) {
+					inlinableFunctionName = function.getName().str();
 					break;
 				}
 			}
 
-			// suppress some warnings
 			inlineModule->setTargetTriple(moduleToOptimize.getTargetTriple());
 			inlineModule->setDataLayout(moduleToOptimize.getDataLayout().getStringRepresentation());
-
-			if (moduleToOptimize.getFunction(inlinableFunctionFName) != nullptr) {
-				// Should not happen if fixFunctionNameConflicts did its job,
-				// but if it does we prefer to skip this candidate (falling
-				// back to the non-inlined proxy-call path) rather than abort
-				// the entire JIT compile by throwing out of this hook.
-				llvm::errs() << "Inlining skipped: symbol '" << inlinableFunctionFName << "' doubly defined.\n";
+			if (moduleToOptimize.getFunction(inlinableFunctionName) != nullptr) {
+				llvm::errs() << "Inlining skipped: symbol '" << inlinableFunctionName << "' doubly defined.\n";
 				continue;
 			}
-
-			// link original module with the inline function module (merges two llvm modules)
 			if (llvm::Linker::linkModules(moduleToOptimize, std::move(inlineModule))) {
 				llvm::errs() << "Failed to link modules\n";
 				continue;
 			}
 
-			// find the inlinable function in the original module after linking
-			llvm::Function* inlinableFunction = nullptr;
-			for (auto& func : moduleToOptimize) {
-				if (!func.isDeclaration() && func.getName().str() == inlinableFunctionFName) {
-					inlinableFunction = &func;
-					break;
-				}
-			}
-			if (inlinableFunction == nullptr) {
-				llvm::errs() << "Failed to find inline function after linking modules'" << inlinableFunctionFName
+			auto* inlinableFunction = moduleToOptimize.getFunction(inlinableFunctionName);
+			if (inlinableFunction == nullptr || inlinableFunction->isDeclaration()) {
+				llvm::errs() << "Failed to find inline function after linking modules '" << inlinableFunctionName
 				             << "'\n";
 				continue;
 			}
-
-			// set function attributes for inlining
-			inlinableFunction->addFnAttr(
-			    llvm::Attribute::AlwaysInline); // TODO maybe use inline hint + tuned threshold instead
+			inlinableFunction->addFnAttr(llvm::Attribute::AlwaysInline);
 			inlinableFunction->removeFnAttr(llvm::Attribute::NoInline);
 			inlinableFunction->removeFnAttr(llvm::Attribute::OptimizeNone);
 			inlinedFunctions.insert({fnPtr, inlinableFunction});
 
-			// replace uses of original function with inlinable version and give inlining instruction to optimizer
 			originalFunction->replaceAllUsesWith(inlinableFunction);
 			originalFunction->removeFromParent();
 			doAnotherIteration = true;
 		}
 	} while (doAnotherIteration);
 
-	StripDebugInfo(moduleToOptimize); // suppress more warnings from function cloning
+	StripDebugInfo(moduleToOptimize);
 }
 } // namespace nautilus::compiler::mlir

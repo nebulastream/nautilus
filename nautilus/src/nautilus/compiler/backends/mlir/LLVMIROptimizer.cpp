@@ -85,7 +85,7 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// (e.g. the inlining plugin's JIT-time LLVM inliner).
 		if (options.getOptionOrDefault("mlir.inline_invoke_calls", false)) {
 			if (const auto& hook = getLLVMBackendHooks().preOptModuleTransform) {
-				hook(*llvmIRModule);
+				hook(*llvmIRModule, options);
 			}
 		}
 

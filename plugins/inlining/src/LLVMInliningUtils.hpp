@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/options.hpp"
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -14,6 +15,6 @@ void* hexToPtr(const llvm::StringRef& hexString);
 std::string ptrToHex(const void* ptr);
 
 // find inlinable functions in the module and replace them with defined function from the bitcode registry
-void inlineFunctions(llvm::Module& moduleToOptimize);
+void inlineFunctions(llvm::Module& moduleToOptimize, const engine::UDFRegistry::Snapshot& udfRegistry);
 
 } // namespace nautilus::compiler::mlir

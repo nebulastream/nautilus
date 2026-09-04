@@ -2,10 +2,13 @@
 #include "RuntimeCallFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include <catch2/catch_all.hpp>
+#include <fstream>
+#include <iterator>
 
 #if defined(ENABLE_TRACING) && defined(ENABLE_MLIR_BACKEND)
 #include "InliningTestAnchors.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
+#include "nautilus/function.hpp"
 #include "nautilus/inline.hpp"
 #endif
 
@@ -31,6 +34,14 @@ TEST_CASE("Inlining plugin: linkable", "[inlining][smoke]") {
 #else
 #define NAUTILUS_INLINING_EXPECTED_ACTIVE 0
 #endif
+
+val<int64_t> symbolicPythonUdfCall(val<int64_t> x, val<int64_t> y) {
+	return invoke<int64_t>("add_export", x, y);
+}
+
+val<int32_t> isolatedUdfCall(val<int32_t> x, val<int32_t> y) {
+	return invoke<int32_t>("same_name", x, y);
+}
 
 // Defense-in-depth smoke test: if inlining is actually active, the Clang
 // pass plugin registered bitcode for the annotated helpers at program load
@@ -64,6 +75,26 @@ TEST_CASE("InlineFunctionRegistry contains annotated helpers", "[inlining][smoke
 	(void) haveAddBitcode;
 	(void) haveSubBitcode;
 #endif
+}
+
+std::string loadUDFBitcode(const char* path) {
+	std::ifstream bitcodeFile(path, std::ios::binary);
+	REQUIRE(bitcodeFile.is_open());
+	std::string bitcode {std::istreambuf_iterator<char>(bitcodeFile), std::istreambuf_iterator<char>()};
+	REQUIRE_FALSE(bitcode.empty());
+	return bitcode;
+}
+
+TEST_CASE("Numba LLVM bitcode can be invoked by its exported name", "[inlining][symbolic][python]") {
+	auto engine = nautilus::testing::makeEngine("mlir", [](engine::Options& opts) {
+		opts.setOption("engine.Compilation", true);
+		opts.setOption("mlir.enableMultithreading", false);
+		opts.setOption("mlir.inline_invoke_calls", true);
+	});
+	engine.registerUDF("add_export", loadUDFBitcode(NAUTILUS_PYTHON_UDF_BITCODE_PATH));
+	auto f = engine.registerFunction(symbolicPythonUdfCall);
+	REQUIRE(f(10, 20) == 30);
+	REQUIRE(f(-4, 1) == -3);
 }
 
 // Drives the annotated helper functions through the engine, exercising the
@@ -192,6 +223,27 @@ TEST_CASE("InlineFunctionRegistry reports misses distinctly", "[inlining][unit]"
 	const auto bitcode = InlineFunctionRegistry::instance().getBitcode(unknownPtr);
 	REQUIRE_FALSE(bitcode.has_value());
 	REQUIRE_FALSE(InlineFunctionRegistry::instance().containsFunctionBitcode(unknownPtr));
+}
+
+TEST_CASE("UDF registrations are isolated by engine", "[inlining][symbolic][registry]") {
+	const auto enableInlining = [](engine::Options& opts) {
+		opts.setOption("mlir.enableMultithreading", false);
+		opts.setOption("mlir.inline_invoke_calls", true);
+	};
+	auto first = nautilus::testing::makeEngine("mlir", enableInlining);
+	auto second = nautilus::testing::makeEngine("mlir", enableInlining);
+
+	first.registerUDF("same_name", loadUDFBitcode(NAUTILUS_ISOLATED_ADD_UDF_BITCODE_PATH));
+	second.registerUDF("same_name", loadUDFBitcode(NAUTILUS_ISOLATED_SUB_UDF_BITCODE_PATH));
+	REQUIRE(first.containsUDF("same_name"));
+	REQUIRE(second.containsUDF("same_name"));
+	REQUIRE_THROWS_AS(first.registerUDF("same_name", "replacement"), std::invalid_argument);
+	REQUIRE_THROWS_AS(first.registerUDF("", "bitcode"), std::invalid_argument);
+
+	auto firstFunction = first.registerFunction(isolatedUdfCall);
+	auto secondFunction = second.registerFunction(isolatedUdfCall);
+	REQUIRE(firstFunction(20, 5) == 25);
+	REQUIRE(secondFunction(20, 5) == 15);
 }
 
 // When `mlir.inline_invoke_calls` is disabled, the engine must still be

@@ -104,6 +104,11 @@ TypedValueRef& traceCall(void* fptn, Type resultType, const std::vector<tracing:
 	return activeTracer->traceCall(fptn, resultType, arguments, fnAttrs);
 }
 
+TypedValueRef& traceCall(std::string_view symbolName, Type resultType,
+                         const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
+	return activeTracer->traceCall(symbolName, resultType, arguments, fnAttrs);
+}
+
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
 	return activeTracer->traceIndirectCall(fnPtrRef, resultType, arguments, fnAttrs);
