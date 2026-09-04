@@ -20,6 +20,7 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
+#include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -805,6 +806,36 @@ val<int64_t> regionAttributed() {
 	return sum;
 }
 
+val<int64_t> regionedCalleeBody(val<int64_t> x) {
+	val<int64_t> doubled = 0;
+	region("callee", [&]() { doubled = x * 2; });
+	return doubled;
+}
+static auto regionedCallee = NautilusFunction {"regionedCallee", regionedCalleeBody};
+
+/// Two functions in one module, each with its own region: their table indexes both start
+/// at zero, their ids must not.
+val<int64_t> regionedCaller(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region("caller", [&]() { sum = regionedCallee(x) + 1; });
+	return sum;
+}
+
+/// A branch inside a region: the arms are blocks of their own, and unlike the region's
+/// entry and exit seams they survive the block-cleanup passes -- so they are what a
+/// block-level region is for.
+val<int64_t> regionedBranch(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region("branching", [&]() {
+		if (x > 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+	});
+	return sum + 1;
+}
+
 /// A value created inside a *named* region and still alive at its end: rejected, and the
 /// diagnostic has to name the region the user wrote rather than leave them to find it.
 uint32_t rejectedRegionLine = 0;
@@ -854,12 +885,14 @@ TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
 	REQUIRE(regions[2].attributes.name == nullptr);
 	REQUIRE(regions[2].attributes.location.line == unnamedRegionLine);
 
-	// Each region's attributes are reachable from the block its body starts in, and from
-	// nowhere else -- the exit block is an ordinary block.
+	// A block names the region it belongs to: the entry block is the first block of the
+	// body, while the exit block is where the *enclosing* scope resumes -- for the inner
+	// region that is the outer region, for the outer ones the function body.
 	for (uint32_t i = 0; i < regions.size(); i++) {
 		REQUIRE(trace->getBlock(regions[i].entryBlock).regionIndex == i);
-		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == tracing::NO_REGION);
+		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == regions[i].parent);
 	}
+	REQUIRE(regions[1].parent == 0);
 	REQUIRE(trace->getBlock(0).regionIndex == tracing::NO_REGION);
 
 	// And they are visible in the trace dump.
@@ -913,11 +946,82 @@ TEST_CASE("Region Attributes Survive Into The IR", "[region]") {
 	// The function's own operations -- at least the return -- belong to no region.
 	REQUIRE(unattributed > 0);
 
+	// Every region carries an id of its own, and the ids are handed out by the module.
+	REQUIRE(specs[0].id != specs[1].id);
+	REQUIRE(specs[1].id != specs[2].id);
+	REQUIRE(specs[0].id != specs[2].id);
+
+	// This body is straight-line, so the cleanup passes merge all of it into one block.
+	// That block holds code from three regions and from outside them, so it claims none
+	// of them -- while each operation still names the region it came from exactly.
+	REQUIRE(function->getBasicBlocks().size() == 1);
+	REQUIRE(function->getEntryBlock()->getRegionIndex() == compiler::ir::NO_REGION);
+
+	// The metadata is self-consistent after the pipeline, which the verifier checks.
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+
 	// And the IR dump shows both attributes, with the nesting of the inner region.
 	const auto dump = ir->toString();
-	REQUIRE(dump.find("; region \"accumulate\" at ") != std::string::npos);
-	REQUIRE(dump.find("; region \"inner\" at ") != std::string::npos);
-	REQUIRE(dump.find("; nested in region \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region #") != std::string::npos);
+	REQUIRE(dump.find("\"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("\"inner\" at ") != std::string::npos);
+	REQUIRE(dump.find("; nested in region #") != std::string::npos);
+}
+
+// A block that is wholly inside a region says so once, instead of every operation in it
+// repeating the answer -- and a block outside every region still says nothing.
+TEST_CASE("Region Blocks Name Their Region", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionedBranch));
+	const auto* function = ir->getFunctionOperations().front();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(function->getRegionSpecs().size() == 1);
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+
+	// The two arms of the branch inside the region are blocks of their own; both belong
+	// to the region, and every operation in them agrees with the block.
+	size_t blocksInRegion = 0;
+	size_t blocksOutside = 0;
+	for (const auto* block : function->getBasicBlocks()) {
+		if (block->getRegionIndex() == 0) {
+			blocksInRegion++;
+			for (const auto* operation : block->getOperations()) {
+				// Operations a pass minted -- the branches these blocks now end in --
+				// carry no region; the traced ones must agree with their block.
+				if (operation->getRegionIndex() != compiler::ir::NO_REGION) {
+					REQUIRE(function->isRegionNestedIn(operation->getRegionIndex(), block->getRegionIndex()));
+				}
+			}
+		} else {
+			REQUIRE(block->getRegionIndex() == compiler::ir::NO_REGION);
+			blocksOutside++;
+		}
+	}
+	REQUIRE(blocksInRegion >= 2);
+	// The entry block, at least: the function's own code is outside the region.
+	REQUIRE(blocksOutside >= 1);
+
+	// A block that carries a region states it on its own line, so the operations under it
+	// need not repeat it.
+	const auto dump = ir->toString();
+	REQUIRE(dump.find("): ; region #") != std::string::npos);
+	REQUIRE(dump.find("\"branching\" at ") != std::string::npos);
+}
+
+// Region ids identify a region across the whole module: two functions each opening one
+// region both index their own table at zero, and the ids are what tells them apart.
+TEST_CASE("Region Ids Are Unique Across The Module", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionedCaller));
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(ir->getFunctionOperations().size() == 2);
+
+	std::vector<uint32_t> ids;
+	for (const auto* function : ir->getFunctionOperations()) {
+		REQUIRE(function->getRegionSpecs().size() == 1);
+		ids.push_back(function->getRegionSpecs()[0].id);
+	}
+	REQUIRE(ids.size() == 2);
+	REQUIRE(ids[0] != ids[1]);
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
 }
 
 // One entry per call site, not one per traced engagement: a region in a statically

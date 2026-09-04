@@ -31,6 +31,11 @@ struct RegionSpec {
 	/// The region this one sits inside, or NO_REGION for a region opened directly in the
 	/// function body. Walking this chain gives an operation's full region nesting.
 	RegionIndex parent = NO_REGION;
+	/// Identity of this region within the module, assigned once by the trace-to-IR
+	/// conversion and never reused. Operations and blocks reference a region by its
+	/// index in *this* function's table, which says nothing outside the function; the id
+	/// is what a diagnostic, a dump or a cross-function report can name a region by.
+	uint32_t id = 0;
 };
 
 class FunctionOperation : public Operation {
@@ -81,6 +86,17 @@ public:
 	/// Returns the region @p index describes, or nullptr for NO_REGION and for an index
 	/// this function has no entry for.
 	[[nodiscard]] const RegionSpec* findRegion(RegionIndex index) const;
+
+	/// True when @p inner is @p outer or is nested inside it. NO_REGION is the outermost
+	/// scope -- the function body -- so everything is nested in it.
+	[[nodiscard]] bool isRegionNestedIn(RegionIndex inner, RegionIndex outer) const;
+
+	/// The innermost region containing both @p first and @p second: their nearest common
+	/// ancestor in the nesting, NO_REGION if they share none.
+	///
+	/// This is what a block's region has to widen to when code from two regions ends up
+	/// in one block -- which is what the block-cleanup passes do to a region's seams.
+	[[nodiscard]] RegionIndex commonRegionAncestor(RegionIndex first, RegionIndex second) const;
 
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;

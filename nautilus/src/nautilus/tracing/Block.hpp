@@ -82,13 +82,13 @@ public:
 	std::vector<uint32_t> predecessors;
 
 	/**
-	 * @brief Index into ExecutionTrace::regions of the region whose body starts here.
+	 * @brief Index into ExecutionTrace::regions of the region this block belongs to, or
+	 * NO_REGION for a block of the function body itself.
 	 *
-	 * Set on a region's entry block only; every other block, the region's exit block
-	 * included, keeps NO_REGION. It marks the region *boundary*, which is a property of
-	 * the trace's block structure and does not survive into the IR -- the IR's copy of
-	 * the same metadata rides on the operations instead (see TraceOperation::regionIndex
-	 * and docs/region.md).
+	 * Every block created while a region was being traced carries it -- the body's own
+	 * blocks and the blocks of any branch or loop inside it -- so a block always names
+	 * the innermost region containing its code. Which block *opens* a region is a
+	 * separate question, answered by RegionSpec::entryBlock.
 	 */
 	RegionIndex regionIndex = NO_REGION;
 };

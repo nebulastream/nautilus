@@ -246,6 +246,11 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 uint32_t ExecutionTrace::createBlock() {
 	auto blockId = static_cast<uint32_t>(blocks.size());
 	auto* block = arena->create<Block>(blockId);
+	// A block belongs to whichever region was open when it was created: the region's own
+	// blocks, the blocks of the branches and loops inside it, and the merge blocks the
+	// tracer synthesises along the way. The one exception is a region's entry block,
+	// which is created by the enclosing scope and re-stamped by addRegion below.
+	block->regionIndex = currentRegion;
 	blocks.push_back(block);
 	return block->blockId;
 }
@@ -340,6 +345,9 @@ RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32
 	// The region open at the moment this one is entered is its parent, which is what
 	// makes a nested region's chain of enclosing regions recoverable from the table.
 	regions.push_back(RegionSpec {attributes, currentRegion, entryBlock, exitBlock});
+	// The entry block was created by the enclosing scope, but it is the first block of
+	// the body -- it belongs to the new region. The exit block keeps the enclosing
+	// region: that is where the enclosing scope continues.
 	getBlock(entryBlock).regionIndex = regionIndex;
 	return regionIndex;
 }

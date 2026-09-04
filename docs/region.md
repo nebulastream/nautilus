@@ -50,7 +50,7 @@ Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the 
 body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
 ```
 
-**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. The body's entry block points back at its table entry through `Block::regionIndex`, every operation recorded inside the body points at it through `TraceOperation::regionIndex`, and the trace dump prints the attributes in front of the entry block:
+**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump prints the attributes in front of the entry block:
 
 ```
 ; region "accumulate" at src/Query.cpp:42:9
@@ -60,14 +60,24 @@ B1()
 
 Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.
 
-**The IR.** `TraceToIRConversionPhase` carries both attributes across: each function's `FunctionOperation` gets a region table (`getRegionSpecs()`), and every IR operation names the innermost region it was traced inside through `Operation::getRegionIndex()`, with `RegionSpec::parent` giving the enclosing chain. The IR dump prints them as a trailer on each operation:
+**The IR.** `TraceToIRConversionPhase` carries both attributes across: each function's `FunctionOperation` gets a region table (`getRegionSpecs()`), and both operations and blocks name a region in it.
+
+- **`Operation::getRegionIndex()`** is exact: the innermost region that operation was traced inside.
+- **`BasicBlock::getRegionIndex()`** is a summary: the innermost region containing *every* operation in the block. A block starts out as the region its code was traced in and widens to the nearest common ancestor (`FunctionOperation::commonRegionAncestor`) whenever a pass moves operations from another region into it.
+- **`RegionSpec::parent`** gives the enclosing chain, and **`RegionSpec::id`** is the region's identity: unique across the module, assigned once at conversion and never reused, so a diagnostic that spans functions can name a region unambiguously — the index alone means nothing outside its function.
+
+The IR dump states a block's region once on the block, and an operation adds a trailer only where its own region is deeper than its block's:
 
 ```
-	$4 = $1 + $3 :i64  ; region "inner" at src/Query.cpp:44:3
-		; nested in region "accumulate" at src/Query.cpp:42:9
+Block_3($2:i64): ; region #0 "branching" at src/Query.cpp:42:9
+	$7 = 10 :i32
+	$9 = $2 + $8 :i64
+	br Block_2($9) :void
 ```
 
-The metadata rides on the *operations*, not on their blocks, and that is what makes it survive the pipeline: the entry and exit block a region adds are single-predecessor seams that `EmptyBlockEliminationPass` and `BlockMergingPass` collapse (see [How regions trace branches](#how-regions-trace-branches)), while the operations that came out of the body live on — in whatever block they end up in — still naming their region. Passes that mint new operations leave them unattributed; constant folding hands the folded operation the provenance of the one it replaced.
+Attributing the operations is what makes the metadata survive the pipeline: the entry and exit block a region adds are single-predecessor seams that `EmptyBlockEliminationPass` and `BlockMergingPass` collapse (see [How regions trace branches](#how-regions-trace-branches)), and a block that swallows a region's code widens to the region containing both — while the operations themselves keep naming their own region wherever they end up. Blocks that survive whole, like the arms of a branch inside a region body, keep naming it directly. Operations a pass mints carry no region at all; constant folding hands the folded operation the provenance of the one it replaced.
+
+`IRVerifier` checks the result: every index names a region of its function, parent chains terminate, and every attributed operation is from the region its block claims or from one nested inside it. A pass that moves code between regions without widening the block it moves into is caught there.
 
 The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
 

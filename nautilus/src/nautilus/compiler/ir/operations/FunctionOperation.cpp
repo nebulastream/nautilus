@@ -60,6 +60,39 @@ const RegionSpec* FunctionOperation::findRegion(RegionIndex index) const {
 	return &regionSpecs[index];
 }
 
+bool FunctionOperation::isRegionNestedIn(RegionIndex inner, RegionIndex outer) const {
+	if (outer == NO_REGION) {
+		return true;
+	}
+	for (auto current = inner; current != NO_REGION;) {
+		if (current == outer) {
+			return true;
+		}
+		const auto* spec = findRegion(current);
+		if (spec == nullptr) {
+			return false;
+		}
+		current = spec->parent;
+	}
+	return false;
+}
+
+RegionIndex FunctionOperation::commonRegionAncestor(RegionIndex first, RegionIndex second) const {
+	// Walking `first`'s chain and testing each link against `second` costs at most
+	// depth^2 comparisons on a nesting that is a handful of levels deep in practice.
+	for (auto current = first; current != NO_REGION;) {
+		if (isRegionNestedIn(second, current)) {
+			return current;
+		}
+		const auto* spec = findRegion(current);
+		if (spec == nullptr) {
+			break;
+		}
+		current = spec->parent;
+	}
+	return NO_REGION;
+}
+
 BasicBlock* FunctionOperation::getEntryBlock() const {
 	return functionBasicBlocks.empty() ? nullptr : functionBasicBlocks.front();
 }

@@ -67,25 +67,60 @@ struct PrintGraphScope {
 /// reach. Set for the duration of formatting one function's blocks.
 thread_local const FunctionExceptionRegion* currentPrintExceptionRegion = nullptr;
 
-/// The region table of the function currently being formatted. An operation carries only
-/// the index of the region() it was traced inside; the attributes that index names live on
-/// the enclosing FunctionOperation, which the per-Operation fmt formatter has no other way
-/// to reach. Null outside the scope of formatting a function, which is why a bare
-/// `fmt::format("{}", someOperation)` prints exactly what it always did.
-thread_local const std::vector<RegionSpec>* currentPrintRegions = nullptr;
+/// The function currently being formatted, for its region table (docs/region.md). A block
+/// and an operation each carry only a region index; the attributes it names live on the
+/// enclosing FunctionOperation, which the per-Block and per-Operation fmt formatters have
+/// no other way to reach. Null outside the scope of formatting a function, which is why a
+/// bare `fmt::format("{}", someOperation)` prints exactly what it always did.
+thread_local const FunctionOperation* currentPrintFunction = nullptr;
 
 struct PrintRegionScope {
-	explicit PrintRegionScope(const std::vector<RegionSpec>* regions) : previous(currentPrintRegions) {
-		currentPrintRegions = regions;
+	explicit PrintRegionScope(const FunctionOperation* function) : previous(currentPrintFunction) {
+		currentPrintFunction = function;
 	}
 	~PrintRegionScope() {
-		currentPrintRegions = previous;
+		currentPrintFunction = previous;
 	}
 	PrintRegionScope(const PrintRegionScope&) = delete;
 	PrintRegionScope& operator=(const PrintRegionScope&) = delete;
 
-	const std::vector<RegionSpec>* previous;
+	const FunctionOperation* previous;
 };
+
+/// The region of the block currently being formatted. An operation prints its own region
+/// only when it differs from this, which is how a block whose code is all from one region
+/// states that once instead of on every line.
+thread_local RegionIndex currentPrintBlockRegion = NO_REGION;
+
+struct PrintBlockRegionScope {
+	explicit PrintBlockRegionScope(RegionIndex region) : previous(currentPrintBlockRegion) {
+		currentPrintBlockRegion = region;
+	}
+	~PrintBlockRegionScope() {
+		currentPrintBlockRegion = previous;
+	}
+	PrintBlockRegionScope(const PrintBlockRegionScope&) = delete;
+	PrintBlockRegionScope& operator=(const PrintBlockRegionScope&) = delete;
+
+	RegionIndex previous;
+};
+
+/// Formats a region and the ones enclosing it, innermost first, as
+/// `#3 "inner" at f.cpp:44:3` followed by `<nestedPrefix>#1 "accumulate" at f.cpp:42:9`.
+/// Writes nothing for NO_REGION or outside a function scope.
+template <typename Out>
+void formatRegionChain(Out& out, RegionIndex index, const char* firstPrefix, const char* nestedPrefix) {
+	const auto* function = currentPrintFunction;
+	if (function == nullptr) {
+		return;
+	}
+	const char* prefix = firstPrefix;
+	while (const auto* region = function->findRegion(index)) {
+		fmt::format_to(out, "{}#{} {}", prefix, region->id, region->attributes.toString());
+		prefix = nestedPrefix;
+		index = region->parent;
+	}
+}
 
 struct PrintExceptionRegionScope {
 	explicit PrintExceptionRegionScope(const FunctionExceptionRegion* region) : previous(currentPrintExceptionRegion) {
@@ -542,20 +577,15 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 		}
 	}
 
-	// Region trailer (docs/region.md): the region() call site this operation was traced
-	// inside, then the ones enclosing it, innermost first.  Printed unconditionally --
-	// unlike the source locations above it needs no resolver, and an operation outside
-	// every region prints nothing, so IR that uses no region is unaffected.
-	const auto* regions = nautilus::compiler::ir::currentPrintRegions;
-	auto regionIndex = op.getRegionIndex();
-	if (regions != nullptr && regionIndex < regions->size()) {
-		const char* separator = trailerStarted ? "\n\t\t; region " : "  ; region ";
-		while (regionIndex < regions->size()) {
-			const auto& region = (*regions)[regionIndex];
-			fmt::format_to(out, "{}{}", separator, region.attributes.toString());
-			separator = "\n\t\t; nested in region ";
-			regionIndex = region.parent;
-		}
+	// Region trailer (docs/region.md).  The block already states the region its code is
+	// in, so this only fires for an operation that came from deeper in the nesting than
+	// its block -- after the block-cleanup passes have merged a region's seams away, that
+	// is exactly the operation whose origin the block no longer tells you.  Needs no
+	// resolver, unlike the source locations above, but an operation whose region is its
+	// block's prints nothing, so IR that uses no region is unaffected.
+	if (op.getRegionIndex() != nautilus::compiler::ir::currentPrintBlockRegion) {
+		nautilus::compiler::ir::formatRegionChain(
+		    out, op.getRegionIndex(), trailerStarted ? "\n\t\t; region " : "  ; region ", "\n\t\t; nested in region ");
 	}
 	return out;
 }
@@ -574,7 +604,11 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 				               toString(args.at(i)->getStamp()));
 			}
 		}
-		fmt::format_to(out, "):\n");
+		fmt::format_to(out, "):");
+		nautilus::compiler::ir::formatRegionChain(out, block.getRegionIndex(), " ; region ", "\n\t; nested in region ");
+		fmt::format_to(out, "\n");
+		// Operations print their own region only where it differs from the block's.
+		nautilus::compiler::ir::PrintBlockRegionScope blockRegionScope(block.getRegionIndex());
 		for (auto* operation : block.getOperations()) {
 			fmt::format_to(out, "\t{}\n", *operation);
 		}
@@ -630,7 +664,7 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 		{
 			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
 			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
-			nautilus::compiler::ir::PrintRegionScope regionScope(&func.getRegionSpecs());
+			nautilus::compiler::ir::PrintRegionScope regionScope(&func);
 			for (const auto* block : func.getBasicBlocks()) {
 				fmt::format_to(out, "{}", *block);
 			}

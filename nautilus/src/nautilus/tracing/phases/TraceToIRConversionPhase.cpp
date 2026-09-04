@@ -214,7 +214,7 @@ compiler::ir::RegionIndex TraceToIRConversionPhase::IRConversionContext::mapRegi
 		return compiler::ir::NO_REGION;
 	} else {
 		index = static_cast<compiler::ir::RegionIndex>(currentRegionSpecs.size());
-		currentRegionSpecs.push_back(compiler::ir::RegionSpec {spec.attributes, parent});
+		currentRegionSpecs.push_back(compiler::ir::RegionSpec {spec.attributes, parent, ir->nextRegionId()});
 		regionKeys[key] = index;
 	}
 	regionMap[traceRegion] = index;
@@ -255,6 +255,10 @@ BasicBlock* TraceToIRConversionPhase::IRConversionContext::processBlock(Block& b
 		blockArguments.emplace_back(blockArgument);
 	}
 	auto* irBasicBlockPtr = arena.create<BasicBlock>(arena, block.blockId, std::move(blockArguments));
+	// Straight from the trace: at this point a block still holds exactly the code of one
+	// region, so the block's region is that region. The block-cleanup passes widen it
+	// again when they merge blocks from different regions together.
+	irBasicBlockPtr->setRegionIndex(mapRegion(block.regionIndex));
 	currentBasicBlocks.emplace_back(irBasicBlockPtr);
 
 	blockMap[block.blockId] = irBasicBlockPtr;
