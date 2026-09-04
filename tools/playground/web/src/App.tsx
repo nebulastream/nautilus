@@ -4,7 +4,17 @@ import { parse } from '@nautilus-ir/parser';
 import { makeTextDocument } from './lib/vscodeShim';
 import { splitTraceSections } from './lib/traceSections';
 import { decodeShareHash, encodeShareHash } from './lib/permalink';
-import { compile, fetchExamples, type Backend, type CompileOptions, type CompileResult, type Example, type Stage } from './api';
+import {
+	compile,
+	fetchExamples,
+	fetchMeta,
+	type Backend,
+	type CompileOptions,
+	type CompileResult,
+	type Example,
+	type Meta,
+	type Stage,
+} from './api';
 import { Editor, type EditorMarker } from './components/Editor';
 import { Toolbar, type StatusKind } from './components/Toolbar';
 import { StageTabs } from './components/StageTabs';
@@ -33,6 +43,7 @@ export function App() {
 	const [backend, setBackend] = useState<Backend>('mlir');
 	const [options, setOptions] = useState<CompileOptions>({});
 	const [examples, setExamples] = useState<Example[]>([]);
+	const [meta, setMeta] = useState<Meta | null>(null);
 	const [exampleId, setExampleId] = useState('');
 	const [result, setResult] = useState<CompileResult | null>(null);
 	const [status, setStatus] = useState('loading…');
@@ -94,6 +105,10 @@ export function App() {
 	// automatically so a visitor lands on a live pipeline. The server-side
 	// result cache makes this effectively free; the guard keeps user edits
 	// untouched.
+	useEffect(() => {
+		void fetchMeta().then(setMeta);
+	}, []);
+
 	useEffect(() => {
 		void fetchExamples().then((loaded) => {
 			setExamples(loaded);
@@ -233,6 +248,18 @@ export function App() {
 					)}
 				</section>
 			</main>
+			{meta && (
+				<footer className="footer">
+					<a
+						href={`https://github.com/nebulastream/nautilus/commit/${meta.version.commit}`}
+						target="_blank"
+						rel="noreferrer"
+					>
+						commit {meta.version.commit}
+					</a>
+					<span> · deployed {new Date(meta.version.deployedAt).toLocaleString()}</span>
+				</footer>
+			)}
 		</div>
 	);
 }
