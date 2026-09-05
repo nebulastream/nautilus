@@ -79,7 +79,18 @@ Attributing the operations is what makes the metadata survive the pipeline: the 
 
 `IRVerifier` checks the result: every index names a region of its function, parent chains terminate, and every attributed operation is from the region its block claims or from one nested inside it. A pass that moves code between regions without widening the block it moves into is caught there.
 
-What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`, plus the same fixture traced by `exceptionBasedTracing` for comparison (`regionNested_inlined`, where no region appears at all). The dumps record the line each `region()` was written at, so editing that header means regenerating them: delete the affected files and run the tracing tests twice. They are compared with the source path reduced to a file name and the column dropped, because a compiler picks the column itself — for one and the same call GCC reports the callee's closing position and Clang the start of the expression.
+What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`, plus the same fixture traced by `exceptionBasedTracing` for comparison (`regionNested_inlined`, where no region appears at all). Those dumps are printed with source locations turned off (see below), so they name regions without naming a machine or a compiler; which line each `region()` sits on is asserted in `RegionTest.cpp` instead.
+
+### Turning the source location off
+
+`log::options::setLogSourceLocations(false)` drops the ` at file:line:column` half of every region marker, in both the trace and the IR dump:
+
+```
+Block_3($2:i64): ; region #1 "inner"
+	; nested in region #0 "outer"
+```
+
+It is on by default, because relating traced code back to the source is the point of recording the location at all. Turn it off when a dump has to be identical across machines and compilers — a checked-in golden trace, as above — since the path is wherever the build compiled from and the column is the compiler's own choice: for one and the same `region()` call GCC reports the callee's closing position and Clang the start of the expression. The name, and in the IR the id, are printed either way, so a dump without locations still says which region every block and operation belongs to. The flag changes printing only; the attributes themselves, and the diagnostics that quote them, always carry the full location.
 
 The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
 

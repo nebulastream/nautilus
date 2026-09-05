@@ -2,7 +2,7 @@ EXECUTE:
 B0($1:i64)
 	CONST	$2	0	:i64
 	JMP	$0	B1($1)	:void
-; region "accumulate" at RegionFunctions.hpp:22
+; region "accumulate"
 B1($1:i64)
 	CONST	$3	42	:i32
 	CAST	$4	$3	:i64

@@ -5,15 +5,11 @@
 
 /// Fixtures for the region golden traces (test/data/region-tests).
 ///
-/// Every region() call site records the position it was written at (docs/region.md), so
-/// the line numbers below are part of the checked-in dumps. Editing this file shifts them:
-/// delete the affected files under test/data/region-tests and re-run the tracing tests
-/// twice -- the first run rewrites them, the second passes.
-///
-/// The golden comparison normalises the source path to its file name and drops the column,
-/// because a compiler chooses the column itself: for one and the same call, GCC reports the
-/// callee's closing position and Clang the start of the expression. See
-/// testing::normalizeSourceLocations.
+/// Every region() call site records the position it was written at (docs/region.md), but
+/// the golden dumps deliberately omit it: the tracing tests print with
+/// log::options::setLogSourceLocations(false), so a path from the build machine and a
+/// column from the compiler never reach a checked-in file. Editing this file therefore
+/// does not invalidate the dumps -- only changing what a fixture *traces* does.
 namespace nautilus::engine {
 
 /// The simplest region there is: a name, a location, and one traced operation inside.

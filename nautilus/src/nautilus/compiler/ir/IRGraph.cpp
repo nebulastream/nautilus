@@ -115,8 +115,9 @@ void formatRegionChain(Out& out, RegionIndex index, const char* firstPrefix, con
 		return;
 	}
 	const char* prefix = firstPrefix;
+	const bool withLocation = log::options::getLogSourceLocations();
 	while (const auto* region = function->findRegion(index)) {
-		fmt::format_to(out, "{}#{} {}", prefix, region->id, region->attributes.toString());
+		fmt::format_to(out, "{}#{} {}", prefix, region->id, region->attributes.toString(withLocation));
 		prefix = nestedPrefix;
 		index = region->parent;
 	}

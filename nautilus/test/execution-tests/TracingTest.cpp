@@ -41,6 +41,7 @@ namespace nautilus::log::options {
 
 bool getLogAddresses();
 void setLogAddresses(bool);
+void setLogSourceLocations(bool);
 
 } // namespace nautilus::log::options
 namespace nautilus::engine {
@@ -86,6 +87,11 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
                    const std::vector<std::tuple<std::string, TraceFn>>& contexts = traceContexts) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
+	// and of source locations, so a checked-in dump does not depend on where the build
+	// compiled from or on which compiler produced it (see setLogSourceLocations). Region
+	// names and ids survive, which is what these dumps are pinning; the exact line each
+	// region() sits on is asserted in RegionTest.cpp instead.
+	nautilus::log::options::setLogSourceLocations(false);
 	for (auto& [ctxName, traceFn] : contexts) {
 		DYNAMIC_SECTION(ctxName) {
 			for (auto& [name, func] : tests) {
@@ -171,6 +177,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 
 TEST_CASE("Exception handling call trace golden") {
 	nautilus::log::options::setLogAddresses(false);
+	nautilus::log::options::setLogSourceLocations(false);
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"withoutCleanup", details::createFunctionWrapper(exceptionCallWithoutCleanup)},
 	    {"withCleanup", details::createFunctionWrapper(exceptionCallWithCleanup)},
@@ -832,10 +839,9 @@ TEST_CASE("Path Explosion Trace Test") {
 // the region markers in the trace, and the block- and operation-level regions the IR
 // carries after conversion and after the passes that collapse a region's seams.
 //
-// The dumps record the line each region() was written at, so editing RegionFunctions.hpp
-// means regenerating these files; the golden comparison drops the column and the
-// directory, which are the compiler's and the checkout's business respectively (see
-// testing::normalizeSourceLocations).
+// The dumps carry each region's name (and, in the IR, its id) but not its source
+// location: runTraceTests turns those off precisely so these files stay identical across
+// checkouts and compilers. Which line a region() sits on is pinned by RegionTest.cpp.
 TEST_CASE("Region Trace Test") {
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"regionNamed", details::createFunctionWrapper(regionNamed)},

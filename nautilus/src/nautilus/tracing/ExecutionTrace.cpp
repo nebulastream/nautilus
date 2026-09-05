@@ -412,7 +412,9 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 		// line in front of the block its body starts in.
 		const auto regionIndex = trace.blocks[i]->regionIndex;
 		if (regionIndex < trace.regions.size()) {
-			fmt::format_to(out, "; region {}\n", trace.regions[regionIndex].attributes.toString());
+			fmt::format_to(
+			    out, "; region {}\n",
+			    trace.regions[regionIndex].attributes.toString(nautilus::log::options::getLogSourceLocations()));
 		}
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}

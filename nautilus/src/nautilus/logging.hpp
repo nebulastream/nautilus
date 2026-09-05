@@ -63,5 +63,16 @@ void setLogAddresses(bool);
 bool getLogStaticVars();
 void setLogStaticVars(bool);
 
+/// Whether a dump spells out the source location a region() call site was written at
+/// (docs/region.md). On by default: the location is what relates traced code back to the
+/// source. Turn it off for a dump that has to be stable across machines and compilers --
+/// the path is wherever the build compiled from, and the column is the compiler's own
+/// choice (for one and the same call GCC reports the callee's closing position and Clang
+/// the start of the expression). The region's name and, in the IR, its id are printed
+/// either way, so a dump without locations still says which region each block and
+/// operation belongs to.
+bool getLogSourceLocations();
+void setLogSourceLocations(bool);
+
 } // namespace options
 } // namespace nautilus::log

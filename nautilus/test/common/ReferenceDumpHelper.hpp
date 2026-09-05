@@ -4,36 +4,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <unistd.h>
 
 namespace nautilus::testing {
-
-/**
- * @brief Rewrites the source locations a dump may carry into a portable form:
- * `at /abs/path/File.hpp:41:9` becomes `at File.hpp:41`.
- *
- * Only region attributes (docs/region.md) put a source location in a dump today. Both
- * halves of the rewrite are needed for a checked-in dump to be comparable at all:
- *
- *  - the path is wherever the build happened to compile from, which differs between a
- *    developer checkout and a CI runner;
- *  - the column is the compiler's own choice. For one and the same `region(...)` call
- *    GCC reports the callee's closing position and Clang the start of the expression
- *    (column 8 vs 2 on the same line), so a dump with columns could only ever match the
- *    compiler that produced it.
- *
- * The file name and line survive, so a dump still pins which call site each region came
- * from.
- */
-inline std::string normalizeSourceLocations(const std::string& dump) {
-	// " at <path>:<line>:<column>" -- the path is everything up to the line number that is
-	// neither a colon nor a newline, so a leading directory is optional.
-	static const std::regex location(R"( at ([^\s:]*[/\\])?([^\s:/\\]+):(\d+):\d+)");
-	return std::regex_replace(dump, location, " at $2:$3");
-}
 
 /**
  * @brief Reference-dump helper lifted out of the tracing tests so both the
@@ -58,11 +33,8 @@ inline std::string normalizeSourceLocations(const std::string& dump) {
  * with the actual dump so the next run picks it up — same auto-init flow as
  * the default-fixture case.
  */
-inline bool checkReferenceDump(const std::string& rawActual, const std::string& category, const std::string& group,
+inline bool checkReferenceDump(const std::string& actual, const std::string& category, const std::string& group,
                                const std::string& name, const std::string& extension = ".trace") {
-	// Compare (and store) the portable form; see normalizeSourceLocations. A dump without
-	// a source location in it passes through untouched.
-	const std::string actual = normalizeSourceLocations(rawActual);
 	auto groupDir = std::string(TEST_DATA_FOLDER) + category + "/" + group + "/";
 	if (!std::filesystem::exists(groupDir)) {
 		std::filesystem::create_directories(groupDir);

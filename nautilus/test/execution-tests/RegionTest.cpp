@@ -21,6 +21,7 @@
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/logging.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -849,6 +850,22 @@ val<int64_t> regionNamedEscape() {
 	return out;
 }
 
+/// Restores log::options::setLogSourceLocations on scope exit: it is process-wide state,
+/// and every other test in this binary that dumps a trace or IR would inherit a leaked
+/// value.
+struct SourceLocationPrintingGuard {
+	explicit SourceLocationPrintingGuard(bool enabled) : previous(log::options::getLogSourceLocations()) {
+		log::options::setLogSourceLocations(enabled);
+	}
+	~SourceLocationPrintingGuard() {
+		log::options::setLogSourceLocations(previous);
+	}
+	SourceLocationPrintingGuard(const SourceLocationPrintingGuard&) = delete;
+	SourceLocationPrintingGuard& operator=(const SourceLocationPrintingGuard&) = delete;
+
+	bool previous;
+};
+
 std::unique_ptr<tracing::TraceModule> traceWithLazyTracer(const std::function<void()>& func, common::Arena& arena) {
 	std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", func)};
 	return tracing::LazyTraceContext::Trace(functions, engine::Options(), arena);
@@ -1033,6 +1050,61 @@ TEST_CASE("Region IR Table Holds One Entry Per Call Site", "[region]") {
 	INFO("ir:\n" << ir->toString());
 	REQUIRE(function->getRegionSpecs().size() == 1);
 	REQUIRE(function->getRegionSpecs()[0].attributes.location.line == staticUnrollRegionLine);
+}
+
+// Printing the source location is a choice, not a property of the metadata. A dump that
+// has to be identical across machines and compilers -- a checked-in golden trace, say --
+// turns it off, and the region is still named in every place it was named before.
+TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionAttributed));
+
+	std::string traceWithLocations;
+	std::string irWithLocations;
+	{
+		// On by default, so this is also what a user reading a dump sees.
+		SourceLocationPrintingGuard guard(true);
+		REQUIRE(log::options::getLogSourceLocations());
+		traceWithLocations = trace->toString();
+		irWithLocations = ir->toString();
+	}
+	INFO("trace with locations:\n" << traceWithLocations << "\nir with locations:\n" << irWithLocations);
+	REQUIRE(traceWithLocations.find("RegionTest.cpp:" + std::to_string(outerRegionLine)) != std::string::npos);
+	REQUIRE(irWithLocations.find("RegionTest.cpp:" + std::to_string(innerRegionLine)) != std::string::npos);
+
+	std::string traceWithout;
+	std::string irWithout;
+	{
+		SourceLocationPrintingGuard guard(false);
+		traceWithout = trace->toString();
+		irWithout = ir->toString();
+	}
+	INFO("trace without locations:\n" << traceWithout << "\nir without locations:\n" << irWithout);
+
+	// Nothing of the call site's position survives -- no file, no line, no column.
+	REQUIRE(traceWithout.find("RegionTest.cpp") == std::string::npos);
+	REQUIRE(irWithout.find("RegionTest.cpp") == std::string::npos);
+	REQUIRE(traceWithout.find(" at ") == std::string::npos);
+	REQUIRE(irWithout.find(" at ") == std::string::npos);
+
+	// What identifies a region does survive: its name everywhere, its id in the IR, and
+	// the nesting of the inner region inside the outer one.
+	REQUIRE(traceWithout.find("; region \"accumulate\"") != std::string::npos);
+	REQUIRE(traceWithout.find("; region \"inner\"") != std::string::npos);
+	REQUIRE(irWithout.find("; region #0 \"accumulate\"") != std::string::npos);
+	REQUIRE(irWithout.find("; nested in region #0 \"accumulate\"") != std::string::npos);
+	// An unnamed region has neither a name nor a location left, so it says so.
+	REQUIRE(traceWithout.find("; region <unnamed>") != std::string::npos);
+
+	// The flag is a printing choice: the attributes themselves are untouched by it.
+	REQUIRE(std::string(trace->getRegions()[0].attributes.name) == "accumulate");
+	REQUIRE(trace->getRegions()[0].attributes.location.line == outerRegionLine);
+
+	// And the guard put the process-wide default back.
+	REQUIRE(log::options::getLogSourceLocations());
 }
 
 // A helper that opens regions on its callers' behalf can hand region() the caller's

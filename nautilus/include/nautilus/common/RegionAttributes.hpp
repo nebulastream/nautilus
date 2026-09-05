@@ -57,10 +57,21 @@ struct RegionAttributes {
 	/// A one-line description for diagnostics and dumps: `"accumulate" at src/Query.cpp:42:2`
 	/// for a named region, `at src/Query.cpp:42:2` for an unnamed one. Callers supply the
 	/// word "region" themselves, so the description reads as part of their sentence.
-	std::string toString() const {
+	///
+	/// Pass @p withLocation false to describe the region by name alone (`"accumulate"`, or
+	/// `<unnamed>` for a region that has none). A dump that has to be identical across
+	/// machines and compilers needs that: see log::options::setLogSourceLocations, which is
+	/// what the dump formatters consult. A diagnostic always wants the location.
+	std::string toString(bool withLocation = true) const {
 		std::string description;
 		if (hasName()) {
-			description += "\"" + std::string(name) + "\" ";
+			description += "\"" + std::string(name) + "\"";
+		}
+		if (!withLocation) {
+			return description.empty() ? "<unnamed>" : description;
+		}
+		if (!description.empty()) {
+			description += " ";
 		}
 		description += "at " + location.toString();
 		return description;
