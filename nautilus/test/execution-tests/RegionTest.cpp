@@ -6,7 +6,9 @@
 #include "nautilus/static.hpp"
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
+#include <cstdint>
 #include <optional>
+#include <source_location>
 #include <string>
 #include <vector>
 
@@ -18,6 +20,8 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
+#include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/logging.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -33,9 +37,14 @@ val<int64_t> regionBasic() {
 	return sum;
 }
 
+/// Line of the region below; the unroll enters it once per iteration, so it is also the
+/// line the IR's single table entry for that call site must name.
+uint32_t staticUnrollRegionLine = 0;
+
 val<int64_t> regionStaticUnroll() {
 	val<int64_t> sum = 0;
 	for (static_val<int32_t> j = 0; j < 3; j++) {
+		staticUnrollRegionLine = __LINE__ + 1;
 		region([&]() { sum = sum + val<int32_t>(j); });
 	}
 	return sum;
@@ -460,6 +469,25 @@ val<int64_t> regionNautilusCallThenBranch(val<int64_t> x) {
 	return sum;
 }
 
+// A helper that wraps region() would otherwise describe its own body as the region's
+// call site -- the same position for every caller. Building the attributes from the
+// caller's location instead is what the RegionAttributes overload of region() is for.
+template <typename F>
+void namedRegionHelper(const char* name, F&& fn, std::source_location location = std::source_location::current()) {
+	region(RegionAttributes {name, SourceLocation::from(location)}, std::forward<F>(fn));
+}
+
+/// Line of the region the helper below opens, captured next to the call site so the
+/// expectation cannot drift when this file is edited.
+uint32_t helperRegionLine = 0;
+
+val<int64_t> regionThroughHelper() {
+	val<int64_t> sum = 0;
+	helperRegionLine = __LINE__ + 1;
+	namedRegionHelper("helper", [&]() { sum = sum + 5; });
+	return sum + 1;
+}
+
 val<int64_t> regionEmptyAndUnnamed() {
 	val<int64_t> sum = 0;
 	region("empty", [&]() {});
@@ -590,6 +618,11 @@ void runRegionTests(engine::NautilusEngine& engine) {
 		auto fn = engine.registerFunction(regionNautilusCallThenBranch);
 		REQUIRE(fn(1) == 102);  // 1*2 + 100
 		REQUIRE(fn(-1) == 198); // -1*2 + 200
+	}
+
+	SECTION("region opened through a helper") {
+		auto fn = engine.registerFunction(regionThroughHelper);
+		REQUIRE(fn() == 6);
 	}
 
 	SECTION("region empty and unnamed") {
@@ -749,6 +782,374 @@ TEST_CASE("Region IR Matches Unregioned IR", "[region]") {
 	REQUIRE(regionedStats.numFunctions == unregionedStats.numFunctions);
 	REQUIRE(regionedStats.numBlocks == unregionedStats.numBlocks);
 	REQUIRE(regionedStats.numOperations <= unregionedStats.numOperations);
+}
+
+// --- Region attributes: what a region() call site says about itself. ---
+
+namespace {
+
+/// Lines of the region() call sites in regionAttributed below, captured next to each call
+/// so the expectations cannot drift when this file is edited.
+uint32_t outerRegionLine = 0;
+uint32_t innerRegionLine = 0;
+uint32_t unnamedRegionLine = 0;
+
+val<int64_t> regionAttributed() {
+	val<int64_t> sum = 0;
+	outerRegionLine = __LINE__ + 1;
+	region("accumulate", [&]() {
+		innerRegionLine = __LINE__ + 1;
+		region("inner", [&]() { sum = sum + 1; });
+		sum = sum + 41;
+	});
+	unnamedRegionLine = __LINE__ + 1;
+	region([&]() { sum = sum + 1; });
+	return sum;
+}
+
+val<int64_t> regionedCalleeBody(val<int64_t> x) {
+	val<int64_t> doubled = 0;
+	region("callee", [&]() { doubled = x * 2; });
+	return doubled;
+}
+static auto regionedCallee = NautilusFunction {"regionedCallee", regionedCalleeBody};
+
+/// Two functions in one module, each with its own region: their table indexes both start
+/// at zero, their ids must not.
+val<int64_t> regionedCaller(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region("caller", [&]() { sum = regionedCallee(x) + 1; });
+	return sum;
+}
+
+/// A branch inside a region: the arms are blocks of their own, and unlike the region's
+/// entry and exit seams they survive the block-cleanup passes -- so they are what a
+/// block-level region is for.
+val<int64_t> regionedBranch(val<int64_t> x) {
+	val<int64_t> sum = 0;
+	region("branching", [&]() {
+		if (x > 0) {
+			sum = sum + 10;
+		} else {
+			sum = sum + 20;
+		}
+	});
+	return sum + 1;
+}
+
+/// A value created inside a *named* region and still alive at its end: rejected, and the
+/// diagnostic has to name the region the user wrote rather than leave them to find it.
+uint32_t rejectedRegionLine = 0;
+
+val<int64_t> regionNamedEscape() {
+	val<int64_t> out = 0;
+	std::vector<val<int64_t>> escaping;
+	rejectedRegionLine = __LINE__ + 1;
+	region("escaping", [&]() { escaping.push_back(val<int64_t>(7)); });
+	out = escaping[0];
+	return out;
+}
+
+/// Restores log::options::setLogSourceLocations on scope exit: it is process-wide state,
+/// and every other test in this binary that dumps a trace or IR would inherit a leaked
+/// value.
+struct SourceLocationPrintingGuard {
+	explicit SourceLocationPrintingGuard(bool enabled) : previous(log::options::getLogSourceLocations()) {
+		log::options::setLogSourceLocations(enabled);
+	}
+	~SourceLocationPrintingGuard() {
+		log::options::setLogSourceLocations(previous);
+	}
+	SourceLocationPrintingGuard(const SourceLocationPrintingGuard&) = delete;
+	SourceLocationPrintingGuard& operator=(const SourceLocationPrintingGuard&) = delete;
+
+	bool previous;
+};
+
+std::unique_ptr<tracing::TraceModule> traceWithLazyTracer(const std::function<void()>& func, common::Arena& arena) {
+	std::list<compiler::CompilableFunction> functions {compiler::CompilableFunction("execute", func)};
+	return tracing::LazyTraceContext::Trace(functions, engine::Options(), arena);
+}
+
+} // namespace
+
+// The attributes are recorded against the blocks the region body was traced into, so a
+// trace can be read back against the source it came from.
+TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+
+	const auto& regions = trace->getRegions();
+	INFO("trace:\n" << trace->toString());
+	// Recorded in the order the tracer entered them: the outer region, the inner one
+	// nested in its body, then the unnamed one after it.
+	REQUIRE(regions.size() == 3);
+
+	REQUIRE(regions[0].attributes.hasName());
+	REQUIRE(std::string(regions[0].attributes.name) == "accumulate");
+	REQUIRE(regions[0].attributes.location.line == outerRegionLine);
+	REQUIRE(std::string(regions[0].attributes.location.file).find("RegionTest.cpp") != std::string::npos);
+	REQUIRE(regions[0].attributes.location.column > 0);
+	REQUIRE(std::string(regions[0].attributes.location.function).find("regionAttributed") != std::string::npos);
+
+	REQUIRE(std::string(regions[1].attributes.name) == "inner");
+	REQUIRE(regions[1].attributes.location.line == innerRegionLine);
+
+	// An unnamed region still carries its position; only the name is absent.
+	REQUIRE_FALSE(regions[2].attributes.hasName());
+	REQUIRE(regions[2].attributes.name == nullptr);
+	REQUIRE(regions[2].attributes.location.line == unnamedRegionLine);
+
+	// A block names the region it belongs to: the entry block is the first block of the
+	// body, while the exit block is where the *enclosing* scope resumes -- for the inner
+	// region that is the outer region, for the outer ones the function body.
+	for (uint32_t i = 0; i < regions.size(); i++) {
+		REQUIRE(trace->getBlock(regions[i].entryBlock).regionIndex == i);
+		REQUIRE(trace->getBlock(regions[i].exitBlock).regionIndex == regions[i].parent);
+	}
+	REQUIRE(regions[1].parent == 0);
+	REQUIRE(trace->getBlock(0).regionIndex == tracing::NO_REGION);
+
+	// And they are visible in the trace dump.
+	const auto dump = trace->toString();
+	REQUIRE(dump.find("region \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("region \"inner\" at ") != std::string::npos);
+}
+
+// What the attributes are for downstream: they survive the trace-to-IR conversion and the
+// block-cleanup passes that collapse a region's entry and exit block, because they ride on
+// the operations rather than on the blocks that bounded the body.
+TEST_CASE("Region Attributes Survive Into The IR", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionAttributed));
+	REQUIRE(ir->getFunctionOperations().size() == 1);
+	const auto* function = ir->getFunctionOperations().front();
+
+	// One entry per region() call site: the outer region, the one nested in it, and the
+	// unnamed one after it.
+	const auto& specs = function->getRegionSpecs();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(specs.size() == 3);
+	REQUIRE(std::string(specs[0].attributes.name) == "accumulate");
+	REQUIRE(specs[0].parent == compiler::ir::NO_REGION);
+	REQUIRE(specs[0].attributes.location.line == outerRegionLine);
+	REQUIRE(std::string(specs[1].attributes.name) == "inner");
+	// The nesting is recoverable from the table: the inner region names the outer one.
+	REQUIRE(specs[1].parent == 0);
+	REQUIRE(specs[1].attributes.location.line == innerRegionLine);
+	REQUIRE_FALSE(specs[2].attributes.hasName());
+	REQUIRE(specs[2].parent == compiler::ir::NO_REGION);
+
+	// Every operation the body produced points back at its region, and operations traced
+	// outside every region point at none.
+	std::vector<size_t> operationsPerRegion(specs.size(), 0);
+	size_t unattributed = 0;
+	for (const auto* block : function->getBasicBlocks()) {
+		for (const auto* operation : block->getOperations()) {
+			const auto index = operation->getRegionIndex();
+			if (index == compiler::ir::NO_REGION) {
+				unattributed++;
+				continue;
+			}
+			REQUIRE(function->findRegion(index) != nullptr);
+			operationsPerRegion[index]++;
+		}
+	}
+	for (size_t i = 0; i < specs.size(); i++) {
+		INFO("region " << i << ": " << specs[i].attributes.toString());
+		REQUIRE(operationsPerRegion[i] > 0);
+	}
+	// The function's own operations -- at least the return -- belong to no region.
+	REQUIRE(unattributed > 0);
+
+	// Every region carries an id of its own, and the ids are handed out by the module.
+	REQUIRE(specs[0].id != specs[1].id);
+	REQUIRE(specs[1].id != specs[2].id);
+	REQUIRE(specs[0].id != specs[2].id);
+
+	// This body is straight-line, so the cleanup passes merge all of it into one block.
+	// That block holds code from three regions and from outside them, so it claims none
+	// of them -- while each operation still names the region it came from exactly.
+	REQUIRE(function->getBasicBlocks().size() == 1);
+	REQUIRE(function->getEntryBlock()->getRegionIndex() == compiler::ir::NO_REGION);
+
+	// The metadata is self-consistent after the pipeline, which the verifier checks.
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+
+	// The IR dump refers to a region by id where the code is, and defines what that id
+	// means once, in the legend at the end of the module.
+	const auto dump = ir->toString();
+	REQUIRE(dump.find("; region #") != std::string::npos);
+	const auto legend = dump.find("; region #0 = ");
+	REQUIRE(legend != std::string::npos);
+	REQUIRE(dump.find("; region #0 = \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region #1 = \"inner\" at ") != std::string::npos);
+	// The nesting is stated there too, by id, instead of at every block in the region.
+	REQUIRE(dump.find(", nested in #0") != std::string::npos);
+	// The legend closes the module: every block and operation comes before it.
+	REQUIRE(legend > dump.find("Block_0"));
+	REQUIRE(legend < dump.find("} //nautilus"));
+}
+
+// A block that is wholly inside a region says so once, instead of every operation in it
+// repeating the answer -- and a block outside every region still says nothing.
+TEST_CASE("Region Blocks Name Their Region", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionedBranch));
+	const auto* function = ir->getFunctionOperations().front();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(function->getRegionSpecs().size() == 1);
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+
+	// The two arms of the branch inside the region are blocks of their own; both belong
+	// to the region, and every operation in them agrees with the block.
+	size_t blocksInRegion = 0;
+	size_t blocksOutside = 0;
+	for (const auto* block : function->getBasicBlocks()) {
+		if (block->getRegionIndex() == 0) {
+			blocksInRegion++;
+			for (const auto* operation : block->getOperations()) {
+				// Operations a pass minted -- the branches these blocks now end in --
+				// carry no region; the traced ones must agree with their block.
+				if (operation->getRegionIndex() != compiler::ir::NO_REGION) {
+					REQUIRE(function->isRegionNestedIn(operation->getRegionIndex(), block->getRegionIndex()));
+				}
+			}
+		} else {
+			REQUIRE(block->getRegionIndex() == compiler::ir::NO_REGION);
+			blocksOutside++;
+		}
+	}
+	REQUIRE(blocksInRegion >= 2);
+	// The entry block, at least: the function's own code is outside the region.
+	REQUIRE(blocksOutside >= 1);
+
+	// A block that carries a region names it in its header, by id alone, so neither the
+	// operations under it nor the header itself carry the description.
+	const auto dump = ir->toString();
+	REQUIRE(dump.find("): ; region #0\n") != std::string::npos);
+	REQUIRE(dump.find("; region #0 = \"branching\" at ") != std::string::npos);
+}
+
+// Region ids identify a region across the whole module: two functions each opening one
+// region both index their own table at zero, and the ids are what tells them apart.
+TEST_CASE("Region Ids Are Unique Across The Module", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionedCaller));
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(ir->getFunctionOperations().size() == 2);
+
+	std::vector<uint32_t> ids;
+	for (const auto* function : ir->getFunctionOperations()) {
+		REQUIRE(function->getRegionSpecs().size() == 1);
+		ids.push_back(function->getRegionSpecs()[0].id);
+	}
+	REQUIRE(ids.size() == 2);
+	REQUIRE(ids[0] != ids[1]);
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+}
+
+// One entry per call site, not one per traced engagement: a region in a statically
+// unrolled loop is entered once per iteration, and all of those are the same region().
+TEST_CASE("Region IR Table Holds One Entry Per Call Site", "[region]") {
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionStaticUnroll));
+	REQUIRE(ir->getFunctionOperations().size() == 1);
+	const auto* function = ir->getFunctionOperations().front();
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(function->getRegionSpecs().size() == 1);
+	REQUIRE(function->getRegionSpecs()[0].attributes.location.line == staticUnrollRegionLine);
+}
+
+// Printing the source location is a choice, not a property of the metadata. A dump that
+// has to be identical across machines and compilers -- a checked-in golden trace, say --
+// turns it off, and the region is still named in every place it was named before.
+TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionAttributed), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+	auto ir = traceToCleanedIr(details::createFunctionWrapper(regionAttributed));
+
+	std::string traceWithLocations;
+	std::string irWithLocations;
+	{
+		// On by default, so this is also what a user reading a dump sees.
+		SourceLocationPrintingGuard guard(true);
+		REQUIRE(log::options::getLogSourceLocations());
+		traceWithLocations = trace->toString();
+		irWithLocations = ir->toString();
+	}
+	INFO("trace with locations:\n" << traceWithLocations << "\nir with locations:\n" << irWithLocations);
+	REQUIRE(traceWithLocations.find("RegionTest.cpp:" + std::to_string(outerRegionLine)) != std::string::npos);
+	REQUIRE(irWithLocations.find("RegionTest.cpp:" + std::to_string(innerRegionLine)) != std::string::npos);
+
+	std::string traceWithout;
+	std::string irWithout;
+	{
+		SourceLocationPrintingGuard guard(false);
+		traceWithout = trace->toString();
+		irWithout = ir->toString();
+	}
+	INFO("trace without locations:\n" << traceWithout << "\nir without locations:\n" << irWithout);
+
+	// Nothing of the call site's position survives -- no file, no line, no column.
+	REQUIRE(traceWithout.find("RegionTest.cpp") == std::string::npos);
+	REQUIRE(irWithout.find("RegionTest.cpp") == std::string::npos);
+	REQUIRE(traceWithout.find(" at ") == std::string::npos);
+	REQUIRE(irWithout.find(" at ") == std::string::npos);
+
+	// What identifies a region does survive: its name everywhere, its id in the IR, and
+	// the nesting of the inner region inside the outer one.
+	REQUIRE(traceWithout.find("; region \"accumulate\"") != std::string::npos);
+	REQUIRE(traceWithout.find("; region \"inner\"") != std::string::npos);
+	REQUIRE(irWithout.find("; region #0 = \"accumulate\"\n") != std::string::npos);
+	REQUIRE(irWithout.find("; region #1 = \"inner\", nested in #0") != std::string::npos);
+	// An unnamed region has neither a name nor a location left, so it says so.
+	REQUIRE(traceWithout.find("; region <unnamed>") != std::string::npos);
+
+	// The flag is a printing choice: the attributes themselves are untouched by it.
+	REQUIRE(std::string(trace->getRegions()[0].attributes.name) == "accumulate");
+	REQUIRE(trace->getRegions()[0].attributes.location.line == outerRegionLine);
+
+	// And the guard put the process-wide default back.
+	REQUIRE(log::options::getLogSourceLocations());
+}
+
+// A helper that opens regions on its callers' behalf can hand region() the caller's
+// position, so the recorded attributes point at the user's code and not at the helper.
+TEST_CASE("Region Attributes Can Be Supplied Explicitly", "[region]") {
+	common::Arena arena;
+	auto module = traceWithLazyTracer(details::createFunctionWrapper(regionThroughHelper), arena);
+	auto* trace = module->getFunction("execute");
+	REQUIRE(trace != nullptr);
+
+	const auto& regions = trace->getRegions();
+	REQUIRE(regions.size() == 1);
+	REQUIRE(std::string(regions[0].attributes.name) == "helper");
+	REQUIRE(regions[0].attributes.location.line == helperRegionLine);
+	REQUIRE(std::string(regions[0].attributes.location.function).find("regionThroughHelper") != std::string::npos);
+}
+
+// The point of carrying the attributes into the tracer: a rejected region body is
+// reported against the call site the user wrote.
+TEST_CASE("Region Diagnostics Name The Region", "[region]") {
+	const auto backends = nautilus::testing::availableBackends();
+	if (backends.empty()) {
+		SKIP("no compilation backend available");
+	}
+	auto lazyEngine = nautilus::testing::makeEngine(backends.front(), [](engine::Options& opts) {
+		opts.setOption("engine.traceMode", std::string("lazyTracing"));
+	});
+
+	std::string diagnosis = "<no exception thrown>";
+	try {
+		lazyEngine.registerFunction(regionNamedEscape);
+	} catch (const std::exception& e) {
+		diagnosis = e.what();
+	}
+	INFO(diagnosis);
+	REQUIRE(diagnosis.find("region()") != std::string::npos);
+	REQUIRE(diagnosis.find("\"escaping\"") != std::string::npos);
+	REQUIRE(diagnosis.find("RegionTest.cpp:" + std::to_string(rejectedRegionLine)) != std::string::npos);
 }
 
 TEST_CASE("Region Compiler Test", "[region]") {

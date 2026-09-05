@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/TracingInterface.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
@@ -97,8 +98,9 @@ TypedValueRef& registerFunctionArgument(Type type, size_t index);
 
 void traceReturnOperation(Type type, const TypedValueRef& ref);
 
-/// Traces @p regionFunction as an isolated tracing region; see docs/region.md.
-void traceRegion(std::function<void()>& regionFunction);
+/// Traces @p regionFunction as an isolated tracing region described by @p attributes;
+/// see docs/region.md.
+void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes);
 
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();

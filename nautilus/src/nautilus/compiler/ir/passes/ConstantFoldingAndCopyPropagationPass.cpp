@@ -400,6 +400,7 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 			continue;
 		}
 		folded->setSourceTag(op->getSourceTag());
+		folded->setRegionIndex(op->getRegionIndex());
 		changed = true;
 
 		// Snapshot op's consumers before replaceAllUses moves them onto

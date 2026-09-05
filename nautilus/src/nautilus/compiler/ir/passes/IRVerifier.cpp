@@ -532,6 +532,64 @@ void verifyCallTargets(VerificationResult& result, const IRGraph& ir, const Func
 	}
 }
 
+/// Region metadata is consistent (docs/region.md): every index actually names a region of
+/// this function, and every operation sits inside the region its block claims.
+///
+/// The second half is what keeps the metadata honest as passes move code around: a block's
+/// region is the innermost region containing *all* of its operations, so an operation may
+/// be from that region or from one nested deeper inside it, never from somewhere else. A
+/// pass that moves an operation into a block of an unrelated region has to widen that
+/// block's region (see FunctionOperation::commonRegionAncestor); this is what catches one
+/// that forgets.
+void verifyRegions(VerificationResult& result, const FunctionOperation& fn) {
+	const auto& specs = fn.getRegionSpecs();
+	for (RegionIndex index = 0; index < specs.size(); index++) {
+		const auto parent = specs[index].parent;
+		if (parent != NO_REGION && parent >= specs.size()) {
+			addError(
+			    result, &fn, nullptr,
+			    fmt::format("region {} names parent region {}, which this function has no entry for", index, parent));
+		} else if (parent != NO_REGION && !fn.isRegionNestedIn(parent, NO_REGION)) {
+			addError(result, &fn, nullptr, fmt::format("region {} has a cyclic parent chain", index));
+		}
+	}
+
+	for (const auto* block : fn.getBasicBlocks()) {
+		if (block == nullptr) {
+			continue;
+		}
+		const auto blockRegion = block->getRegionIndex();
+		if (blockRegion != NO_REGION && fn.findRegion(blockRegion) == nullptr) {
+			addError(result, &fn, block,
+			         fmt::format("block claims region {}, which this function has no entry for", blockRegion));
+			continue;
+		}
+		for (const auto* op : block->getOperations()) {
+			if (op == nullptr) {
+				continue;
+			}
+			const auto opRegion = op->getRegionIndex();
+			if (opRegion == NO_REGION) {
+				// Unattributed: an operation a pass minted rather than one the conversion
+				// stamped. That is missing metadata, not wrong metadata -- an operation
+				// created inside a region's block is no less part of that block.
+				continue;
+			}
+			if (fn.findRegion(opRegion) == nullptr) {
+				addError(result, &fn, block,
+				         fmt::format("operation claims region {}, which this function has no entry for", opRegion));
+				continue;
+			}
+			if (!fn.isRegionNestedIn(opRegion, blockRegion)) {
+				addError(
+				    result, &fn, block,
+				    fmt::format("operation is from region {} but its block is region {}, which does not contain it",
+				                opRegion, blockRegion));
+			}
+		}
+	}
+}
+
 } // namespace
 
 VerificationResult IRVerifier::verify(const IRGraph& ir) {
@@ -545,6 +603,7 @@ VerificationResult IRVerifier::verify(const IRGraph& ir) {
 		}
 		verifyFunction(result, *fn);
 		verifyCallTargets(result, ir, *fn);
+		verifyRegions(result, *fn);
 	}
 	return result;
 }

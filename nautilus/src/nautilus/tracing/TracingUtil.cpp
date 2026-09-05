@@ -36,9 +36,9 @@ void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, T
 	}
 }
 
-void traceRegion(std::function<void()>& regionFunction) {
+void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
 	if (activeTracer) {
-		activeTracer->traceRegion(regionFunction);
+		activeTracer->traceRegion(regionFunction, attributes);
 	} else {
 		regionFunction();
 	}
@@ -180,8 +180,8 @@ struct formatter<nautilus::ConstantLiteral> : formatter<std::string_view> {
 };
 } // namespace fmt
 
-auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit, format_context& ctx) const
-    -> format_context::iterator {
+auto fmt::formatter<nautilus::ConstantLiteral>::format(nautilus::ConstantLiteral lit,
+                                                       format_context& ctx) const -> format_context::iterator {
 	auto out = ctx.out();
 	std::visit(
 	    [&](auto&& value) {

@@ -27,7 +27,97 @@ val<int64_t> escapingWrite() {
 }
 ```
 
-An optional debug label can be passed as the first argument (`nautilus::region("name", [&]() { ... })`); it is not recorded in the trace and has no effect on behavior.
+An optional name can be passed as the first argument (`nautilus::region("name", [&]() { ... })`). It is recorded, together with the call site's source location, as the region's *attributes* — see [Region attributes](#region-attributes) below.
+
+## Region attributes
+
+Every region carries two attributes describing the call site it was written at:
+
+- a **source location** — file, line, column and enclosing function, captured automatically via `std::source_location::current()`;
+- an **optional name** — whatever string was passed as the first argument, or none.
+
+```cpp
+nautilus::region("accumulate", [&]() { sum = sum + 42; });   // named
+nautilus::region([&]() { sum = sum + 42; });                 // unnamed, still located
+```
+
+Attributes are metadata. They never take part in tag or snapshot identity, and a named region traces and compiles exactly like an unnamed one. What they do is make a region identifiable, in three places:
+
+**Diagnostics.** A region body that the tracer has to reject is reported against the call site the user wrote, instead of leaving them to find it:
+
+```
+Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the region
+body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
+```
+
+**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump prints the attributes in front of the entry block:
+
+```
+; region "accumulate" at src/Query.cpp:42:9
+B1()
+	...
+```
+
+Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.
+
+**The IR.** `TraceToIRConversionPhase` carries both attributes across: each function's `FunctionOperation` gets a region table (`getRegionSpecs()`), and both operations and blocks name a region in it.
+
+- **`Operation::getRegionIndex()`** is exact: the innermost region that operation was traced inside.
+- **`BasicBlock::getRegionIndex()`** is a summary: the innermost region containing *every* operation in the block. A block starts out as the region its code was traced in and widens to the nearest common ancestor (`FunctionOperation::commonRegionAncestor`) whenever a pass moves operations from another region into it.
+- **`RegionSpec::parent`** gives the enclosing chain, and **`RegionSpec::id`** is the region's identity: unique across the module, assigned once at conversion and never reused, so a diagnostic that spans functions can name a region unambiguously — the index alone means nothing outside its function.
+
+The IR dump refers to a region by id where the code is — a block in its header, an operation only where its own region is deeper than its block's — and defines what those ids mean once, in a legend closing the module, the way LLVM defines the metadata its instructions attach:
+
+```
+Block_3($2:i64): ; region #1
+	$7 = 10 :i32
+	$9 = $2 + $8 :i64
+	br Block_2($9) :void
+}
+; region #0 = "scan" at src/Query.cpp:38:2
+; region #1 = "branching" at src/Query.cpp:42:9, nested in #0
+} //nautilus
+```
+
+Because the ids are unique across the module, one legend serves every function, and the nesting is stated there rather than restated by every block in a region.
+
+Attributing the operations is what makes the metadata survive the pipeline: the entry and exit block a region adds are single-predecessor seams that `EmptyBlockEliminationPass` and `BlockMergingPass` collapse (see [How regions trace branches](#how-regions-trace-branches)), and a block that swallows a region's code widens to the region containing both — while the operations themselves keep naming their own region wherever they end up. Blocks that survive whole, like the arms of a branch inside a region body, keep naming it directly. Operations a pass mints carry no region at all; constant folding hands the folded operation the provenance of the one it replaced.
+
+`IRVerifier` checks the result: every index names a region of its function, parent chains terminate, and every attributed operation is from the region its block claims or from one nested inside it. A pass that moves code between regions without widening the block it moves into is caught there.
+
+What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`, plus the same fixture traced by `exceptionBasedTracing` for comparison (`regionNested_inlined`, where no region appears at all). Those dumps are printed with source locations turned off (see below), so they name regions without naming a machine or a compiler; which line each `region()` sits on is asserted in `RegionTest.cpp` instead.
+
+### Turning the source location off
+
+`log::options::setLogSourceLocations(false)` drops the ` at file:line:column` half of every region description, in the trace dump and in the IR's legend:
+
+```
+; region #0 = "outer"
+; region #1 = "inner", nested in #0
+```
+
+It is on by default, because relating traced code back to the source is the point of recording the location at all. Turn it off when a dump has to be identical across machines and compilers — a checked-in golden trace, as above — since the path is wherever the build compiled from and the column is the compiler's own choice: for one and the same `region()` call GCC reports the callee's closing position and Clang the start of the expression. The name, and in the IR the id, are printed either way, so a dump without locations still says which region every block and operation belongs to. The flag changes printing only; the attributes themselves, and the diagnostics that quote them, always carry the full location.
+
+The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
+
+No backend reads any of this today; it is provenance for reading, verifying and debugging the IR.
+
+### Naming a region from a helper
+
+A helper that wraps `region()` would otherwise report *its own* body as the call site, the same position for each of its callers. Passing the attributes explicitly lets it describe its caller instead:
+
+```cpp
+template <typename F>
+void accumulateRegion(const char* name, F&& fn,
+                      std::source_location location = std::source_location::current()) {
+    nautilus::region(nautilus::RegionAttributes {name, nautilus::SourceLocation::from(location)},
+                     std::forward<F>(fn));
+}
+```
+
+The name is stored, not copied — pass a string literal or another string that outlives the trace.
+
+`example/src/DemoRegions.cpp` is a runnable version of all of this: three nested regions (`scan` > `classify` > `accumulate`, the innermost opened through exactly such a helper) over a small aggregation, with the trace and IR dumps printed so each stage can be read against the source it came from. Build and run it with `cmake --build build --target demo_regions && ./demo_regions` from `example/`.
 
 ## Why use a region
 
@@ -38,7 +128,7 @@ An optional debug label can be passed as the first argument (`nautilus::region("
 
 All four come from the region-local exploration loop, so all four require `engine.traceMode = "lazyTracing"` (the default). Under `"exceptionBasedTracing"` a region is a no-op: the body is traced inline, into the enclosing function's trace, exactly as if `region()` were not there. That tracer restarts the whole enclosing function on every unresolved branch, so there is nothing for a region to bound. Both tracers produce an equivalent trace either way; the difference is only how much work tracing does to get there.
 
-None of this requires a function boundary: region blocks are ordinary basic blocks and region entry/exit are ordinary jumps. There is no region-specific operation anywhere in the trace, the IR, or any backend.
+None of this requires a function boundary: region blocks are ordinary basic blocks and region entry/exit are ordinary jumps. There is no region-specific operation anywhere in the trace, the IR, or any backend — a region is metadata on ordinary operations, never an operation of its own.
 
 ## Nesting
 

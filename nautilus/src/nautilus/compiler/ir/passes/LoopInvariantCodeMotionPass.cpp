@@ -105,7 +105,8 @@ bool containsNestedLoop(const NaturalLoop& loop, const Dominators& dom) {
 	return false;
 }
 
-bool hoistLoop(const IRGraph& ir, const NaturalLoop& loop, std::unordered_map<Operation*, BasicBlock*>& definingBlock) {
+bool hoistLoop(const IRGraph& ir, const FunctionOperation& fn, const NaturalLoop& loop,
+               std::unordered_map<Operation*, BasicBlock*>& definingBlock) {
 	BasicBlock* preheader = loop.preheader;
 	Operation* preheaderTerminator = preheader->getTerminatorOp();
 	bool changed = false;
@@ -125,6 +126,9 @@ bool hoistLoop(const IRGraph& ir, const NaturalLoop& loop, std::unordered_map<Op
 				}
 				block->removeOperation(op);
 				preheader->addOperationBefore(preheaderTerminator, op);
+				// The preheader now holds an operation from inside the loop, which may
+				// be a different region; widen its region to cover both.
+				preheader->setRegionIndex(fn.commonRegionAncestor(preheader->getRegionIndex(), op->getRegionIndex()));
 				definingBlock[op] = preheader;
 				roundChanged = true;
 				changed = true;
@@ -150,7 +154,7 @@ bool applyToFunction(const IRGraph& ir, FunctionOperation& fn) {
 		if (containsNestedLoop(loop, dom)) {
 			continue; // v1: only loops without a nested sub-loop are optimized.
 		}
-		changed |= hoistLoop(ir, loop, definingBlock);
+		changed |= hoistLoop(ir, fn, loop, definingBlock);
 	}
 	return changed;
 }
