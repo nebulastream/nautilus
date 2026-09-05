@@ -1,0 +1,31 @@
+nautilus {
+execute($1:i64) :i64 {
+Block_0($1:i64):
+	$2 = 0 :i64
+	br Block_1($2, $1) :void
+
+Block_1($2:i64, $1:i64): ; region #0 "branching" at RegionFunctions.hpp:47
+	$3 = 0 :i32
+	$4 = $3 cast_to i64 :i64
+	$5 = $1 > $4 :bool
+	if $5 ? Block_3($2) : Block_4($2) :void
+
+Block_3($2:i64): ; region #0 "branching" at RegionFunctions.hpp:47
+	$7 = 10 :i32
+	$8 = $7 cast_to i64 :i64
+	$9 = $2 + $8 :i64
+	br Block_2($9) :void
+
+Block_2($2:i64):
+	$13 = 1 :i32
+	$14 = $13 cast_to i64 :i64
+	$15 = $2 + $14 :i64
+	return ($15) :i64
+
+Block_4($2:i64): ; region #0 "branching" at RegionFunctions.hpp:47
+	$10 = 20 :i32
+	$11 = $10 cast_to i64 :i64
+	$12 = $2 + $11 :i64
+	br Block_2($12) :void
+}
+} //nautilus

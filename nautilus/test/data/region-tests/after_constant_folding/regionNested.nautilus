@@ -1,0 +1,26 @@
+nautilus {
+execute($1:i64) :i64 {
+Block_0($1:i64):
+	$2 = 0 :i64
+	br Block_1($1) :void
+
+Block_1($1:i64): ; region #0 "outer" at RegionFunctions.hpp:36
+	br Block_3($1) :void
+
+Block_3($1:i64): ; region #1 "inner" at RegionFunctions.hpp:37
+	; nested in region #0 "outer" at RegionFunctions.hpp:36
+	$3 = 1 :i32
+	$4 = $3 cast_to i64 :i64
+	$5 = $1 + $4 :i64
+	br Block_4($5) :void
+
+Block_4($2:i64): ; region #0 "outer" at RegionFunctions.hpp:36
+	$6 = 2 :i32
+	$7 = $6 cast_to i64 :i64
+	$8 = $2 + $7 :i64
+	br Block_2($8) :void
+
+Block_2($2:i64):
+	return ($2) :i64
+}
+} //nautilus

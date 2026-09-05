@@ -79,6 +79,8 @@ Attributing the operations is what makes the metadata survive the pipeline: the 
 
 `IRVerifier` checks the result: every index names a region of its function, parent chains terminate, and every attributed operation is from the region its block claims or from one nested inside it. A pass that moves code between regions without widening the block it moves into is caught there.
 
+What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`, plus the same fixture traced by `exceptionBasedTracing` for comparison (`regionNested_inlined`, where no region appears at all). The dumps record the line each `region()` was written at, so editing that header means regenerating them: delete the affected files and run the tracing tests twice. They are compared with the source path reduced to a file name and the column dropped, because a compiler picks the column itself — for one and the same call GCC reports the callee's closing position and Clang the start of the expression.
+
 The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
 
 No backend reads any of this today; it is provenance for reading, verifying and debugging the IR.
