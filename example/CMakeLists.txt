@@ -37,6 +37,9 @@ target_link_libraries(demo_backends PRIVATE nautilus)
 add_executable(demo_runtime_calls src/DemoRuntimeCalls.cpp)
 target_link_libraries(demo_runtime_calls PRIVATE nautilus)
 
+add_executable(demo_regions src/DemoRegions.cpp)
+target_link_libraries(demo_regions PRIVATE nautilus)
+
 # Plugin demos — each links the plugin library it exercises.
 # All plugin libraries use --whole-archive (on GNU/Clang) to force their
 # static initializer translation units (e.g. StdPluginInit.cpp,

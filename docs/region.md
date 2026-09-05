@@ -111,6 +111,8 @@ void accumulateRegion(const char* name, F&& fn,
 
 The name is stored, not copied — pass a string literal or another string that outlives the trace.
 
+`example/src/DemoRegions.cpp` is a runnable version of all of this: three nested regions (`scan` > `classify` > `accumulate`, the innermost opened through exactly such a helper) over a small aggregation, with the trace and IR dumps printed so each stage can be read against the source it came from. Build and run it with `cmake --build build --target demo_regions && ./demo_regions` from `example/`.
+
 ## Why use a region
 
 - **Liveness isolation.** Intermediate values created inside the region don't extend the liveness of unrelated values around it.
