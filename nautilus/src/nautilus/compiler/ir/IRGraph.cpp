@@ -22,9 +22,11 @@
 #include "nautilus/compiler/ir/operations/StoreOperation.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
+#include <algorithm>
 #include <cassert>
 #include <fmt/format.h>
 #include <utility>
+#include <vector>
 
 namespace nautilus::compiler::ir {
 
@@ -105,21 +107,20 @@ struct PrintBlockRegionScope {
 	RegionIndex previous;
 };
 
-/// Formats a region and the ones enclosing it, innermost first, as
-/// `#3 "inner" at f.cpp:44:3` followed by `<nestedPrefix>#1 "accumulate" at f.cpp:42:9`.
-/// Writes nothing for NO_REGION or outside a function scope.
+/// Writes the region reference an annotated block or operation carries -- `#3`, the id
+/// the module's region legend defines at the bottom of the dump. What that region is
+/// called, where it was written and what it is nested in is said once, there, rather than
+/// repeated at every block and operation that belongs to it.
+///
+/// Writes nothing for NO_REGION, or outside the scope of formatting a function.
 template <typename Out>
-void formatRegionChain(Out& out, RegionIndex index, const char* firstPrefix, const char* nestedPrefix) {
+void formatRegionReference(Out& out, RegionIndex index, const char* prefix) {
 	const auto* function = currentPrintFunction;
 	if (function == nullptr) {
 		return;
 	}
-	const char* prefix = firstPrefix;
-	const bool withLocation = log::options::getLogSourceLocations();
-	while (const auto* region = function->findRegion(index)) {
-		fmt::format_to(out, "{}#{} {}", prefix, region->id, region->attributes.toString(withLocation));
-		prefix = nestedPrefix;
-		index = region->parent;
+	if (const auto* region = function->findRegion(index)) {
+		fmt::format_to(out, "{}#{}", prefix, region->id);
 	}
 }
 
@@ -585,8 +586,8 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	// resolver, unlike the source locations above, but an operation whose region is its
 	// block's prints nothing, so IR that uses no region is unaffected.
 	if (op.getRegionIndex() != nautilus::compiler::ir::currentPrintBlockRegion) {
-		nautilus::compiler::ir::formatRegionChain(
-		    out, op.getRegionIndex(), trailerStarted ? "\n\t\t; region " : "  ; region ", "\n\t\t; nested in region ");
+		nautilus::compiler::ir::formatRegionReference(out, op.getRegionIndex(),
+		                                              trailerStarted ? "\n\t\t; region " : "  ; region ");
 	}
 	return out;
 }
@@ -606,7 +607,7 @@ struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_vie
 			}
 		}
 		fmt::format_to(out, "):");
-		nautilus::compiler::ir::formatRegionChain(out, block.getRegionIndex(), " ; region ", "\n\t; nested in region ");
+		nautilus::compiler::ir::formatRegionReference(out, block.getRegionIndex(), " ; region ");
 		fmt::format_to(out, "\n");
 		// Operations print their own region only where it differs from the block's.
 		nautilus::compiler::ir::PrintBlockRegionScope blockRegionScope(block.getRegionIndex());
@@ -732,6 +733,33 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 	// Print all function operations
 	for (const auto* func : graph.getFunctionOperations()) {
 		fmt::format_to(out, "{}", *func);
+	}
+
+	// The region legend: what each `; region #N` above refers to (docs/region.md), defined
+	// once at the end of the module the way LLVM defines the metadata its instructions
+	// attach. Region ids are unique across the module, so one list serves every function,
+	// and a region names its parent by id instead of every block restating the chain.
+	// A module that opens no region prints nothing here.
+	{
+		std::vector<
+		    std::pair<const nautilus::compiler::ir::FunctionOperation*, const nautilus::compiler::ir::RegionSpec*>>
+		    regions;
+		for (const auto* func : graph.getFunctionOperations()) {
+			for (const auto& spec : func->getRegionSpecs()) {
+				regions.emplace_back(func, &spec);
+			}
+		}
+		std::sort(regions.begin(), regions.end(),
+		          [](const auto& left, const auto& right) { return left.second->id < right.second->id; });
+		const bool withLocation = nautilus::log::options::getLogSourceLocations();
+		for (const auto& [func, spec] : regions) {
+			fmt::format_to(out, "; region #{} = {}", spec->id, spec->attributes.toString(withLocation));
+			// The parent index is this function's; the id it resolves to is the module's.
+			if (const auto* parent = func->findRegion(spec->parent)) {
+				fmt::format_to(out, ", nested in #{}", parent->id);
+			}
+			fmt::format_to(out, "\n");
+		}
 	}
 
 	fmt::format_to(out, "}} //nautilus\n");

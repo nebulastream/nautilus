@@ -977,12 +977,19 @@ TEST_CASE("Region Attributes Survive Into The IR", "[region]") {
 	// The metadata is self-consistent after the pipeline, which the verifier checks.
 	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
 
-	// And the IR dump shows both attributes, with the nesting of the inner region.
+	// The IR dump refers to a region by id where the code is, and defines what that id
+	// means once, in the legend at the end of the module.
 	const auto dump = ir->toString();
 	REQUIRE(dump.find("; region #") != std::string::npos);
-	REQUIRE(dump.find("\"accumulate\" at ") != std::string::npos);
-	REQUIRE(dump.find("\"inner\" at ") != std::string::npos);
-	REQUIRE(dump.find("; nested in region #") != std::string::npos);
+	const auto legend = dump.find("; region #0 = ");
+	REQUIRE(legend != std::string::npos);
+	REQUIRE(dump.find("; region #0 = \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region #1 = \"inner\" at ") != std::string::npos);
+	// The nesting is stated there too, by id, instead of at every block in the region.
+	REQUIRE(dump.find(", nested in #0") != std::string::npos);
+	// The legend closes the module: every block and operation comes before it.
+	REQUIRE(legend > dump.find("Block_0"));
+	REQUIRE(legend < dump.find("} //nautilus"));
 }
 
 // A block that is wholly inside a region says so once, instead of every operation in it
@@ -1017,11 +1024,11 @@ TEST_CASE("Region Blocks Name Their Region", "[region]") {
 	// The entry block, at least: the function's own code is outside the region.
 	REQUIRE(blocksOutside >= 1);
 
-	// A block that carries a region states it on its own line, so the operations under it
-	// need not repeat it.
+	// A block that carries a region names it in its header, by id alone, so neither the
+	// operations under it nor the header itself carry the description.
 	const auto dump = ir->toString();
-	REQUIRE(dump.find("): ; region #") != std::string::npos);
-	REQUIRE(dump.find("\"branching\" at ") != std::string::npos);
+	REQUIRE(dump.find("): ; region #0\n") != std::string::npos);
+	REQUIRE(dump.find("; region #0 = \"branching\" at ") != std::string::npos);
 }
 
 // Region ids identify a region across the whole module: two functions each opening one
@@ -1094,8 +1101,8 @@ TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
 	// the nesting of the inner region inside the outer one.
 	REQUIRE(traceWithout.find("; region \"accumulate\"") != std::string::npos);
 	REQUIRE(traceWithout.find("; region \"inner\"") != std::string::npos);
-	REQUIRE(irWithout.find("; region #0 \"accumulate\"") != std::string::npos);
-	REQUIRE(irWithout.find("; nested in region #0 \"accumulate\"") != std::string::npos);
+	REQUIRE(irWithout.find("; region #0 = \"accumulate\"\n") != std::string::npos);
+	REQUIRE(irWithout.find("; region #1 = \"inner\", nested in #0") != std::string::npos);
 	// An unnamed region has neither a name nor a location left, so it says so.
 	REQUIRE(traceWithout.find("; region <unnamed>") != std::string::npos);
 

@@ -66,14 +66,20 @@ Under `exceptionBasedTracing` a region body is traced inline into the enclosing 
 - **`BasicBlock::getRegionIndex()`** is a summary: the innermost region containing *every* operation in the block. A block starts out as the region its code was traced in and widens to the nearest common ancestor (`FunctionOperation::commonRegionAncestor`) whenever a pass moves operations from another region into it.
 - **`RegionSpec::parent`** gives the enclosing chain, and **`RegionSpec::id`** is the region's identity: unique across the module, assigned once at conversion and never reused, so a diagnostic that spans functions can name a region unambiguously — the index alone means nothing outside its function.
 
-The IR dump states a block's region once on the block, and an operation adds a trailer only where its own region is deeper than its block's:
+The IR dump refers to a region by id where the code is — a block in its header, an operation only where its own region is deeper than its block's — and defines what those ids mean once, in a legend closing the module, the way LLVM defines the metadata its instructions attach:
 
 ```
-Block_3($2:i64): ; region #0 "branching" at src/Query.cpp:42:9
+Block_3($2:i64): ; region #1
 	$7 = 10 :i32
 	$9 = $2 + $8 :i64
 	br Block_2($9) :void
+}
+; region #0 = "scan" at src/Query.cpp:38:2
+; region #1 = "branching" at src/Query.cpp:42:9, nested in #0
+} //nautilus
 ```
+
+Because the ids are unique across the module, one legend serves every function, and the nesting is stated there rather than restated by every block in a region.
 
 Attributing the operations is what makes the metadata survive the pipeline: the entry and exit block a region adds are single-predecessor seams that `EmptyBlockEliminationPass` and `BlockMergingPass` collapse (see [How regions trace branches](#how-regions-trace-branches)), and a block that swallows a region's code widens to the region containing both — while the operations themselves keep naming their own region wherever they end up. Blocks that survive whole, like the arms of a branch inside a region body, keep naming it directly. Operations a pass mints carry no region at all; constant folding hands the folded operation the provenance of the one it replaced.
 
@@ -83,11 +89,11 @@ What all of this looks like at each stage of the pipeline is checked in under `n
 
 ### Turning the source location off
 
-`log::options::setLogSourceLocations(false)` drops the ` at file:line:column` half of every region marker, in both the trace and the IR dump:
+`log::options::setLogSourceLocations(false)` drops the ` at file:line:column` half of every region description, in the trace dump and in the IR's legend:
 
 ```
-Block_3($2:i64): ; region #1 "inner"
-	; nested in region #0 "outer"
+; region #0 = "outer"
+; region #1 = "inner", nested in #0
 ```
 
 It is on by default, because relating traced code back to the source is the point of recording the location at all. Turn it off when a dump has to be identical across machines and compilers — a checked-in golden trace, as above — since the path is wherever the build compiled from and the column is the compiler's own choice: for one and the same `region()` call GCC reports the callee's closing position and Clang the start of the expression. The name, and in the IR the id, are printed either way, so a dump without locations still says which region every block and operation belongs to. The flag changes printing only; the attributes themselves, and the diagnostics that quote them, always carry the full location.

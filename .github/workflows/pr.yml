@@ -193,8 +193,9 @@ jobs:
           # "accumulate" through the stage() helper, which is the point of that overload
           echo "$out" | grep -q 'region "scan" at .*DemoRegions.cpp:'
           echo "$out" | grep -q 'region "classify" at .*DemoRegions.cpp:'
-          echo "$out" | grep -q 'region #2 "accumulate" at .*DemoRegions.cpp:'
-          echo "$out" | grep -q 'nested in region #1 "classify" at .*DemoRegions.cpp:'
+          # the IR refers to regions by id and defines them in the legend closing the module
+          echo "$out" | grep -q '): ; region #2$'
+          echo "$out" | grep -q '; region #2 = "accumulate" at .*DemoRegions.cpp:.*, nested in #1'
 
       - name: run demo_backends
         shell: bash

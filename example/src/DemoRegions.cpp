@@ -78,22 +78,24 @@ int main(int, char*[]) {
 	auto result = function(6, values, 8);
 	delete[] values;
 
-	std::cout << "\nsummarize(threshold=8) = " << result << "  (total=" << result / 100
-	          << ", kept=" << result % 100 << ")\n\n";
+	std::cout << "\nsummarize(threshold=8) = " << result << "  (total=" << result / 100 << ", kept=" << result % 100
+	          << ")\n\n";
 
 	std::cout << "What the dumps above show:\n"
 	          << "  * every block of the trace that belongs to a region is preceded by\n"
 	          << "      ; region \"name\" at DemoRegions.cpp:<line>:<column>\n"
-	          << "  * in the IR a block states its region once, with the enclosing chain under\n"
-	          << "    it, and an operation adds its own only where it came from deeper in the\n"
-	          << "    nesting than the block it ended up in:\n"
-	          << "      Block_N(...): ; region #2 \"accumulate\" at DemoRegions.cpp:<line>:<column>\n"
-	          << "                    ; nested in region #1 \"classify\" ...\n"
-	          << "                    ; nested in region #0 \"scan\" ...\n"
+	          << "  * the IR names a region by id where the code is -- a block in its header,\n"
+	          << "    an operation only where it came from deeper in the nesting than its block:\n"
+	          << "      Block_N(...): ; region #2\n"
+	          << "  * and says once, in the legend closing the module, what each id means:\n"
+	          << "      ; region #0 = \"scan\" at DemoRegions.cpp:<line>:<column>\n"
+	          << "      ; region #1 = \"classify\" at ..., nested in #0\n"
+	          << "      ; region #2 = \"accumulate\" at ..., nested in #1\n"
+	          << "    which is the shape LLVM gives the metadata its instructions attach\n"
 	          << "  * \"accumulate\" is named at its call site inside summarize(), not inside the\n"
 	          << "    stage() helper that opened it -- that is what passing RegionAttributes does\n"
-	          << "  * region ids (#0, #1, #2) are unique across the module; the index each block\n"
-	          << "    and operation stores is only meaningful within its own function\n"
+	          << "  * region ids are unique across the module; the index each block and\n"
+	          << "    operation stores is only meaningful within its own function\n"
 	          << "  * the regions leave no trace in the generated code: their entry and exit\n"
 	          << "    blocks are seams the IR passes collapse, and no backend reads any of this\n";
 	return 0;

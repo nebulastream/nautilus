@@ -4,7 +4,7 @@ Block_0($1:i64):
 	$2 = 0 :i64
 	br Block_1($1) :void
 
-Block_1($1:i64): ; region #0 "accumulate"
+Block_1($1:i64): ; region #0
 	$3 = 42 :i32
 	$4 = $3 cast_to i64 :i64
 	$5 = $1 + $4 :i64
@@ -13,4 +13,5 @@ Block_1($1:i64): ; region #0 "accumulate"
 Block_2($2:i64):
 	return ($2) :i64
 }
+; region #0 = "accumulate"
 } //nautilus
