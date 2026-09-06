@@ -80,6 +80,17 @@ public:
 	 * @brief Indicates successors of this block.
 	 */
 	std::vector<uint32_t> predecessors;
+
+	/**
+	 * @brief Index into ExecutionTrace::regions of the region this block belongs to, or
+	 * NO_REGION for a block of the function body itself.
+	 *
+	 * Every block created while a region was being traced carries it -- the body's own
+	 * blocks and the blocks of any branch or loop inside it -- so a block always names
+	 * the innermost region containing its code. Which block *opens* a region is a
+	 * separate question, answered by RegionSpec::entryBlock.
+	 */
+	RegionIndex regionIndex = NO_REGION;
 };
 
 } // namespace nautilus::tracing

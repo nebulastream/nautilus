@@ -4,6 +4,7 @@
 #include "Block.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "tag/TagRecorder.hpp"
 #include <initializer_list>
@@ -17,6 +18,24 @@ namespace nautilus::tracing {
 using Arena = common::Arena;
 
 class ExecutionTrace;
+
+/// One region (docs/region.md) recorded into a trace: what the region() call site said
+/// about itself, and the two blocks that bound the body it traced.
+///
+/// Metadata only. A region has no operation of its own and its blocks are ordinary
+/// blocks, so nothing downstream has to know about this table -- it exists so a trace can
+/// be read back against the source it came from, and so a malformed region can be
+/// reported against its call site.
+struct RegionSpec {
+	RegionAttributes attributes;
+	/// The region this one was opened inside, or NO_REGION for a region opened directly
+	/// in the function body.
+	RegionIndex parent = NO_REGION;
+	/// Block the region body starts in.
+	uint32_t entryBlock;
+	/// Block the enclosing scope continues in after the body.
+	uint32_t exitBlock;
+};
 
 /// Bundles a traced function's execution trace with its metadata.
 struct TraceFunctionDefinition {
@@ -310,6 +329,29 @@ public:
 	 */
 	ValueRef getNextValueRef();
 
+	/**
+	 * @brief Records a region traced into this trace and marks its entry block. The
+	 * region open at the time becomes the new region's parent.
+	 * @return The new region's index in the region table.
+	 */
+	RegionIndex addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
+
+	/**
+	 * @brief Returns every region recorded into this trace, in the order they were
+	 * entered. Empty for a trace produced by a tracer that inlines region bodies.
+	 */
+	const std::vector<RegionSpec>& getRegions() const;
+
+	/**
+	 * @brief Sets the region every operation recorded from now on belongs to, and
+	 * returns the previous one so the caller can restore it when the region ends.
+	 *
+	 * The tracer brackets a region body with this; everything recorded in between --
+	 * by this scope or by any nested one, since they all record into this trace --
+	 * is stamped with @p regionIndex.
+	 */
+	RegionIndex setCurrentRegion(RegionIndex regionIndex);
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -338,6 +380,13 @@ public:
 	/// resulting FunctionOperation by TraceToIRConversionPhase so backends can
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
+
+	/// Region table; see RegionSpec. Indexed by TraceOperation::regionIndex and by a
+	/// region entry block's Block::regionIndex.
+	std::vector<RegionSpec> regions;
+
+	/// The region operations recorded right now belong to; see setCurrentRegion.
+	RegionIndex currentRegion = NO_REGION;
 
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it

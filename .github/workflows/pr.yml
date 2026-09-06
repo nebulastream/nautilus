@@ -164,7 +164,7 @@ jobs:
         shell: bash
         working-directory: example
         run: |
-          cmake --build build --target demo demo_modules demo_backends demo_runtime_calls demo_std_plugin demo_simd_plugin demo_specialization_plugin
+          cmake --build build --target demo demo_modules demo_backends demo_runtime_calls demo_regions demo_std_plugin demo_simd_plugin demo_specialization_plugin
       - name: run demo (baseline conditionalSum)
         shell: bash
         working-directory: example/build
@@ -182,6 +182,21 @@ jobs:
           echo "$out" | grep -q "mul(3, 4)      = 12"
           echo "$out" | grep -q "factorial(5)   = 120"
           echo "$out" | grep -q "factorial(10)  = 3628800"
+      - name: run demo_regions
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_regions)
+          echo "$out"
+          echo "$out" | grep -q "summarize(threshold=8) = 6503"
+          # the three nested regions, each named at the call site that opened it --
+          # "accumulate" through the stage() helper, which is the point of that overload
+          echo "$out" | grep -q 'region "scan" at .*DemoRegions.cpp:'
+          echo "$out" | grep -q 'region "classify" at .*DemoRegions.cpp:'
+          # the IR refers to regions by id and defines them in the legend closing the module
+          echo "$out" | grep -q '): ; region #2$'
+          echo "$out" | grep -q '; region #2 = "accumulate" at .*DemoRegions.cpp:.*, nested in #1'
+
       - name: run demo_backends
         shell: bash
         working-directory: example/build

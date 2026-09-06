@@ -1,0 +1,14 @@
+EXECUTE:
+B0($1:i64)
+	CONST	$2	0	:i64
+	JMP	$0	B1()	:void
+; region <unnamed>
+B1()
+	CONST	$3	42	:i32
+	CAST	$4	$3	:i64
+	ADD	$5	$1	$4	:i64
+	ASSIGN	$2	$5	:i64
+	JMP	$0	B2()	:void
+B2()
+	RETURN	$0	$2	:i64
+

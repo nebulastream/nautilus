@@ -614,7 +614,9 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 // every unresolved branch, so there is nothing for a region to bound. The body is traced
 // inline, into the enclosing function's trace, exactly as if region() were not there.
 // See docs/region.md.
-void ExceptionBasedTraceContext::traceRegion(std::function<void()>& regionFunction) {
+void ExceptionBasedTraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes&) {
+	// The attributes are dropped with the boundary itself: an inlined body has no entry
+	// and exit block to record them against.
 	regionFunction();
 }
 

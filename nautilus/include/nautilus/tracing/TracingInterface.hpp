@@ -2,6 +2,7 @@
 #pragma once
 
 #include "nautilus/common/FunctionAttributes.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/tracing/Operations.hpp"
 #include "nautilus/tracing/TypedValueRef.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -117,10 +118,11 @@ public:
 	/// Trace a conditional branch. Returns the taken branch direction.
 	virtual bool traceBool(const TypedValueRef& value, double probability) = 0;
 
-	/// Trace @p regionFunction as an isolated tracing region at the current call site.
-	/// See docs/region.md. Implementations that do not scope tracing state per region
-	/// simply invoke the body inline, which traces it into the enclosing function.
-	virtual void traceRegion(std::function<void()>& regionFunction) = 0;
+	/// Trace @p regionFunction as an isolated tracing region at the current call site,
+	/// described by @p attributes. See docs/region.md. Implementations that do not scope
+	/// tracing state per region simply invoke the body inline, which traces it into the
+	/// enclosing function.
+	virtual void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) = 0;
 
 	/// Increment the reference count of a value.
 	virtual void allocateValRef(ValueRef ref) = 0;

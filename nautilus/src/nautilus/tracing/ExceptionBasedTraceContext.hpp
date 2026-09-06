@@ -323,7 +323,7 @@ public:
 
 	bool traceBool(const TypedValueRef& value, double probability) override;
 
-	void traceRegion(std::function<void()>& regionFunction) override;
+	void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) override;
 
 	void allocateValRef(ValueRef ref) override;
 	void freeValRef(ValueRef ref) override;

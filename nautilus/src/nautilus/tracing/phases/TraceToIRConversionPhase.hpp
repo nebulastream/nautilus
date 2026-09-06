@@ -135,6 +135,39 @@ private:
 		/// FunctionOperation.
 		std::vector<compiler::ir::AllocaSpec> collectAllocaSpecs() const;
 
+		/// Returns the provenance to stamp on every IR operation created from
+		/// @p operation: its trace-time call stack and its region.
+		compiler::ir::OperationProvenance provenanceOf(const TraceOperation& operation);
+
+		/// Applies @p operation's provenance to an IR operation built outside
+		/// `addTaggedOperation` (a branch terminator, an if).
+		void stampProvenance(compiler::ir::Operation& irOperation, const TraceOperation& operation);
+
+		/// Maps a region of the trace onto this function's region table, adding an entry
+		/// (and its enclosing chain) on first sight.
+		///
+		/// The mapping is many-to-one: the trace records one region per *engagement* of a
+		/// call site -- a region in an unrolled loop is entered once per iteration -- while
+		/// the IR wants one entry per call site, so engagements that agree on their
+		/// attributes and their enclosing region collapse into a single entry.
+		compiler::ir::RegionIndex mapRegion(RegionIndex traceRegion);
+
+		/// Key identifying one region() call site within an enclosing region: what the
+		/// call site said about itself, plus where it sits in the nesting.
+		struct RegionKey {
+			const char* name;
+			const char* file;
+			uint32_t line;
+			uint32_t column;
+			compiler::ir::RegionIndex parent;
+
+			bool operator==(const RegionKey&) const = default;
+		};
+
+		struct RegionKeyHash {
+			size_t operator()(const RegionKey& key) const noexcept;
+		};
+
 		void createBlockArguments(ValueFrame& frame, compiler::ir::BasicBlockInvocation& blockInvocation,
 		                          const BlockRef& val);
 
@@ -153,6 +186,12 @@ private:
 		std::shared_ptr<compiler::ir::IRGraph> ir;
 		std::unordered_map<uint32_t, compiler::ir::BasicBlock*> blockMap;
 		std::vector<compiler::ir::BasicBlock*> currentBasicBlocks;
+		/// Region table of the function currently being built, and the two indexes into
+		/// it: by the trace region it came from, and by call site (see mapRegion). All
+		/// three are cleared per function, like blockMap.
+		std::vector<compiler::ir::RegionSpec> currentRegionSpecs;
+		std::unordered_map<RegionIndex, compiler::ir::RegionIndex> regionMap;
+		std::unordered_map<RegionKey, compiler::ir::RegionIndex, RegionKeyHash> regionKeys;
 	};
 };
 

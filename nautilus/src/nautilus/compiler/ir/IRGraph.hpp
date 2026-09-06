@@ -114,6 +114,14 @@ public:
 	 */
 	const FunctionOperation* getFunctionOperation(const std::string& name) const;
 
+	/// Hands out the next region id for this module. Regions are numbered per module and
+	/// never reused, so an id identifies one region() call site's IR scope unambiguously
+	/// in a diagnostic that spans functions. Assignment happens once, during trace-to-IR
+	/// conversion, which walks functions in a deterministic order.
+	uint32_t nextRegionId() {
+		return regionIdCounter++;
+	}
+
 	std::string toString() const;
 
 	std::string toString(const IRPrintOptions& options) const;
@@ -136,6 +144,8 @@ private:
 	// graph (the FunctionOperation itself lives in the arena).
 	std::unordered_map<std::string_view, FunctionOperation*> functionOperationsByName;
 	const CompilationUnitID id;
+	/// Next region id to hand out; see nextRegionId().
+	uint32_t regionIdCounter = 0;
 };
 
 } // namespace nautilus::compiler::ir

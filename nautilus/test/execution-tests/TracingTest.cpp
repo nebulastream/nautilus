@@ -11,6 +11,7 @@
 #include "PathExplosionFunctions.hpp"
 #include "PointerFunctions.hpp"
 #include "ReferenceDumpHelper.hpp"
+#include "RegionFunctions.hpp"
 #include "RunctimeCallFunctions.hpp"
 #include "SelectOperations.hpp"
 #include "StaticLoopFunctions.hpp"
@@ -40,6 +41,7 @@ namespace nautilus::log::options {
 
 bool getLogAddresses();
 void setLogAddresses(bool);
+void setLogSourceLocations(bool);
 
 } // namespace nautilus::log::options
 namespace nautilus::engine {
@@ -59,6 +61,20 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
     {"LazyTraceContext", tracing::LazyTraceContext::Trace},
 };
 
+/// The two tracers agree on the trace of an ordinary function, which is why the fixtures
+/// below share one dump per stage. A region is the exception: only lazyTracing scopes a
+/// region body, so only its dumps carry the region blocks and attributes, while
+/// exceptionBasedTracing inlines the body and produces the dump of the same function
+/// written without region() at all (docs/region.md). Each tracer therefore gets its own
+/// golden for the region fixtures.
+static auto lazyTraceContext = std::vector<std::tuple<std::string, TraceFn>> {
+    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
+};
+
+static auto exceptionBasedTraceContext = std::vector<std::tuple<std::string, TraceFn>> {
+    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
+};
+
 // Exception-handling trace fixtures live in the shared common header so the
 // LLVM IR suite reuses the exact same functions.
 using nautilus::testing::exceptionCallWithCleanup;
@@ -67,10 +83,16 @@ using nautilus::testing::GoldenExceptionCleanup;
 using nautilus::testing::goldenThrowWithCleanup;
 using nautilus::testing::goldenThrowWithoutCleanup;
 
-void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
+void runTraceTests(const std::string& category, std::vector<std::tuple<std::string, std::function<void()>>>& tests,
+                   const std::vector<std::tuple<std::string, TraceFn>>& contexts = traceContexts) {
 	// disable logging of addresses such that the trace is deterministic
 	nautilus::log::options::setLogAddresses(false);
-	for (auto& [ctxName, traceFn] : traceContexts) {
+	// and of source locations, so a checked-in dump does not depend on where the build
+	// compiled from or on which compiler produced it (see setLogSourceLocations). Region
+	// names and ids survive, which is what these dumps are pinning; the exact line each
+	// region() sits on is asserted in RegionTest.cpp instead.
+	nautilus::log::options::setLogSourceLocations(false);
+	for (auto& [ctxName, traceFn] : contexts) {
 		DYNAMIC_SECTION(ctxName) {
 			for (auto& [name, func] : tests) {
 				DYNAMIC_SECTION(name) {
@@ -155,6 +177,7 @@ void runTraceTests(const std::string& category, std::vector<std::tuple<std::stri
 
 TEST_CASE("Exception handling call trace golden") {
 	nautilus::log::options::setLogAddresses(false);
+	nautilus::log::options::setLogSourceLocations(false);
 	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
 	    {"withoutCleanup", details::createFunctionWrapper(exceptionCallWithoutCleanup)},
 	    {"withCleanup", details::createFunctionWrapper(exceptionCallWithCleanup)},
@@ -810,6 +833,33 @@ TEST_CASE("Path Explosion Trace Test") {
 	    {"pathExplosion_constraintBlind_dead", details::createFunctionWrapper(pathExplosion_constraintBlind_dead)},
 	};
 	runTraceTests("path-explosion-tests", tests);
+}
+
+// Golden dumps of the region metadata (docs/region.md) at every stage of the pipeline:
+// the region markers in the trace, and the block- and operation-level regions the IR
+// carries after conversion and after the passes that collapse a region's seams.
+//
+// The dumps carry each region's name (and, in the IR, its id) but not its source
+// location: runTraceTests turns those off precisely so these files stay identical across
+// checkouts and compilers. Which line a region() sits on is pinned by RegionTest.cpp.
+TEST_CASE("Region Trace Test") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"regionNamed", details::createFunctionWrapper(regionNamed)},
+	    {"regionUnnamed", details::createFunctionWrapper(regionUnnamed)},
+	    {"regionNested", details::createFunctionWrapper(regionNested)},
+	    {"regionBranch", details::createFunctionWrapper(regionBranch)},
+	};
+	runTraceTests("region-tests", tests, lazyTraceContext);
+}
+
+// The other half of the claim: under exceptionBasedTracing a region is not there at all.
+// Same fixture, its own dumps -- no region blocks, no attributes, nothing that says a
+// region() was ever written.
+TEST_CASE("Region Trace Test - exceptionBasedTracing inlines regions") {
+	auto tests = std::vector<std::tuple<std::string, std::function<void()>>> {
+	    {"regionNested_inlined", details::createFunctionWrapper(regionNested)},
+	};
+	runTraceTests("region-tests", tests, exceptionBasedTraceContext);
 }
 
 TEST_CASE("Nautilus Function Call Trace Test") {

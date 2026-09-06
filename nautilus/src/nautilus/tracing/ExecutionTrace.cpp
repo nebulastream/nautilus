@@ -152,6 +152,7 @@ void ExecutionTrace::addJumpOperation(Snapshot& snapshot, uint32_t targetBlock) 
 	auto op = Op::JMP;
 	auto* jump =
 	    makeTraceOp(*arena, snapshot, op, Type::v, TypedValueRef(0, Type::v), arena->create<BlockRef>(targetBlock));
+	jump->regionIndex = currentRegion;
 	operations.push_back(jump);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -169,6 +170,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	} else {
 		newOp = makeTraceOp(*arena, snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
 	}
+	newOp->regionIndex = currentRegion;
 	operations.push_back(newOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -184,6 +186,7 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto op = ASSIGN;
 	auto* operation = makeTraceOp(*arena, snapshot, op, resultType, targetRef, srcRef);
+	operation->regionIndex = currentRegion;
 	operations.push_back(operation);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -196,6 +199,7 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initia
 	}
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* newOp = makeTraceOp(*arena, snapshot, operation, Type::v, TypedValueRef(0, Type::v), inputs);
+	newOp->regionIndex = currentRegion;
 	operations.push_back(newOp);
 }
 
@@ -208,6 +212,7 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	to->regionIndex = currentRegion;
 	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
@@ -232,6 +237,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto* falseBlockRef = arena->create<BlockRef>(falseBlock);
 	auto* cmpOp = makeTraceOp(*arena, snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
 	                          trueBlockRef, falseBlockRef, probability);
+	cmpOp->regionIndex = currentRegion;
 	operations.push_back(cmpOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -240,6 +246,11 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 uint32_t ExecutionTrace::createBlock() {
 	auto blockId = static_cast<uint32_t>(blocks.size());
 	auto* block = arena->create<Block>(blockId);
+	// A block belongs to whichever region was open when it was created: the region's own
+	// blocks, the blocks of the branches and loops inside it, and the merge blocks the
+	// tracer synthesises along the way. The one exception is a region's entry block,
+	// which is created by the enclosing scope and re-stamped by addRegion below.
+	block->regionIndex = currentRegion;
 	blocks.push_back(block);
 	return block->blockId;
 }
@@ -329,6 +340,28 @@ ValueRef ExecutionTrace::getNextValueRef() {
 	return ++lastValueRef;
 }
 
+RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock) {
+	auto regionIndex = static_cast<RegionIndex>(regions.size());
+	// The region open at the moment this one is entered is its parent, which is what
+	// makes a nested region's chain of enclosing regions recoverable from the table.
+	regions.push_back(RegionSpec {attributes, currentRegion, entryBlock, exitBlock});
+	// The entry block was created by the enclosing scope, but it is the first block of
+	// the body -- it belongs to the new region. The exit block keeps the enclosing
+	// region: that is where the enclosing scope continues.
+	getBlock(entryBlock).regionIndex = regionIndex;
+	return regionIndex;
+}
+
+const std::vector<RegionSpec>& ExecutionTrace::getRegions() const {
+	return regions;
+}
+
+RegionIndex ExecutionTrace::setCurrentRegion(RegionIndex regionIndex) {
+	auto previous = currentRegion;
+	currentRegion = regionIndex;
+	return previous;
+}
+
 operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 	currentOperationIndex = getCurrentBlock().operations.size() - 1;
 	return {currentBlockIndex, currentOperationIndex};
@@ -375,6 +408,14 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
                                                           fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
+		// A region owns no operation to print, so its attributes are printed as a comment
+		// line in front of the block its body starts in.
+		const auto regionIndex = trace.blocks[i]->regionIndex;
+		if (regionIndex < trace.regions.size()) {
+			fmt::format_to(
+			    out, "; region {}\n",
+			    trace.regions[regionIndex].attributes.toString(nautilus::log::options::getLogSourceLocations()));
+		}
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}
 	return out;
