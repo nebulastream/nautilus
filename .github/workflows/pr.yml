@@ -32,6 +32,13 @@ jobs:
             cc: 'gcc-14'
             cxx: 'g++-14'
             flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
+          # Tag identity is derived from a frame-pointer walk, so -O0 vs -O3 is an axis
+          # tracing can legitimately behave differently on; every other leg above builds
+          # Release, which left a whole class of Debug-only tracing bugs uncaught (#450).
+          - os: 'ubuntu-24.04'
+            cc: 'gcc-14'
+            cxx: 'g++-14'
+            flags: '-DCMAKE_BUILD_TYPE=Debug'
           - os: 'ubuntu-24.04'
             cc: 'clang-19'
             cxx: 'clang++-19'

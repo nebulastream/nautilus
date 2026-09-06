@@ -100,7 +100,25 @@ void traceReturnOperation(Type type, const TypedValueRef& ref);
 
 /// Traces @p regionFunction as an isolated tracing region described by @p attributes;
 /// see docs/region.md.
-void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes);
+///
+/// Forced inline (like TagRecorder::createTag(), for the same reason) so this dispatch never
+/// shows up as its own stack frame: LazyTraceContext::traceRegion roots a new region scope's
+/// tags at __builtin_return_address(0), which is only call-site-specific if its immediate
+/// caller is region()'s own (per-lambda) instantiation. A real, out-of-line frame for this
+/// forwarder sits at the exact same address for every region() call in the program regardless
+/// of optimization level, since it is not templated on the region body -- and since whether
+/// the compiler collapses that frame away is otherwise optimization-level-dependent, two
+/// sibling region() calls opened directly inside another region's body could root their tags
+/// at that one shared address and collide (issue #450), which only surfaced in unoptimized
+/// builds.
+[[gnu::always_inline]] inline void traceRegion(std::function<void()>& regionFunction,
+                                               const RegionAttributes& attributes) {
+	if (auto* tracer = getActiveTracer()) {
+		tracer->traceRegion(regionFunction, attributes);
+	} else {
+		regionFunction();
+	}
+}
 
 void pushStaticVal(void* ptr, size_t size);
 void popStaticVal();

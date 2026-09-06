@@ -36,14 +36,6 @@ void traceAssignment(const TypedValueRef& target, const TypedValueRef& source, T
 	}
 }
 
-void traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
-	if (activeTracer) {
-		activeTracer->traceRegion(regionFunction, attributes);
-	} else {
-		regionFunction();
-	}
-}
-
 TypedValueRef traceCopy(const TypedValueRef& ref) {
 	if (activeTracer) {
 		return activeTracer->traceCopy(ref);
