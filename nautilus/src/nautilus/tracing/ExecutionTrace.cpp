@@ -25,6 +25,13 @@ void TraceModule::setFunctionAttributes(const std::string& functionName,
 	}
 }
 
+void TraceModule::setFunctionLocation(const std::string& functionName, const SourceLocation& location) {
+	auto it = functions.find(functionName);
+	if (it != functions.end()) {
+		it->second.location = location;
+	}
+}
+
 void TraceModule::addFunctionDefinition(const std::string& functionName, const void* definition) {
 	if (definition == nullptr) {
 		return;
@@ -64,6 +71,11 @@ TraceModule::getFunctionAttributes(const std::string& functionName) const {
 	static const std::unordered_map<std::string, std::string> empty;
 	auto it = functions.find(functionName);
 	return it != functions.end() ? it->second.attributes : empty;
+}
+
+SourceLocation TraceModule::getFunctionLocation(const std::string& functionName) const {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? it->second.location : SourceLocation {};
 }
 
 std::string TraceModule::toString() const {

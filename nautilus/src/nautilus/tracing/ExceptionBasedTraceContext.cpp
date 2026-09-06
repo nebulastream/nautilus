@@ -290,8 +290,8 @@ const std::string& ExceptionBasedTraceContext::registerNautilusFunction(const Na
 	usedFunctionNames.insert(name);
 
 	const auto [inserted, _] = registeredFunctions.emplace(definition, std::move(name));
-	functionsToTrace.push_back(
-	    compiler::CompilableFunction(inserted->second, std::move(fwrapper), definition->attributes(), definition));
+	functionsToTrace.push_back(compiler::CompilableFunction(
+	    inserted->second, std::move(fwrapper), definition->attributes(), definition, definition->location()));
 	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", inserted->second,
 	           functionsToTrace.size());
 	return inserted->second;
@@ -576,6 +576,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 			isFirstFunction = false;
 		}
 		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
+		traceModule->setFunctionLocation(currentFunction.getName(), currentFunction.getLocation());
 		// Carry the definition identity through to IR conversion, which uses it
 		// to bind this body to the function-table id its call sites minted.
 		traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());

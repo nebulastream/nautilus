@@ -41,12 +41,24 @@ void LazyTraceContext::resume() {
 	paused_ = false;
 }
 
+std::string LazyTraceContext::describeCurrentFunction() const {
+	if (session_->currentFunctionName_.empty()) {
+		return {};
+	}
+	std::string description = " in function '" + session_->currentFunctionName_ + "'";
+	if (session_->currentFunctionLocation_.isKnown()) {
+		description += " (registered at " + session_->currentFunctionLocation_.toString() + ")";
+	}
+	return description;
+}
+
 TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
 	}
 	if (parent_ != nullptr) {
-		throw RuntimeException("Invalid region(): a region body has no arguments of its own.");
+		throw RuntimeException("Invalid region()" + describeCurrentFunction() +
+		                       ": a region body has no arguments of its own.");
 	}
 	return state->executionTrace.setArgument(type, index);
 }
@@ -283,8 +295,8 @@ const std::string& LazyTraceContext::registerNautilusFunction(const NautilusFunc
 	session_->usedFunctionNames.insert(name);
 
 	const auto [inserted, _] = session_->registeredFunctions.emplace(definition, std::move(name));
-	session_->functionsToTrace.push_back(
-	    compiler::CompilableFunction(inserted->second, std::move(fwrapper), definition->attributes(), definition));
+	session_->functionsToTrace.push_back(compiler::CompilableFunction(
+	    inserted->second, std::move(fwrapper), definition->attributes(), definition, definition->location()));
 	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", inserted->second,
 	           session_->functionsToTrace.size());
 	return inserted->second;
@@ -404,7 +416,8 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 		return;
 	}
 	if (parent_ != nullptr) {
-		throw RuntimeException("Invalid region(): a region body returns void and cannot return from the enclosing "
+		throw RuntimeException("Invalid region()" + describeCurrentFunction() +
+		                       ": a region body returns void and cannot return from the enclosing "
 		                       "function; assign to a val<T> captured by reference instead.");
 	}
 	if (isFollowing()) {
@@ -581,7 +594,7 @@ void LazyTraceContext::traceScopeExit() {
 			escaped += (escaped.empty() ? "" : ", ") + std::string("$") + std::to_string(ref);
 		});
 		throw RuntimeException(
-		    "Invalid region() " + region.attributes.toString() +
+		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
 		    ": a value created inside the region body outlives it (" + escaped +
 		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it, or trace "
 		    "this function with engine.traceMode = \"exceptionBasedTracing\".");
@@ -594,7 +607,7 @@ void LazyTraceContext::traceScopeExit() {
 		// Same escape set, different snapshot: the remaining input to the hash is the
 		// static-variable stack, so a captured static_val was written inside the body.
 		throw RuntimeException(
-		    "Invalid region() " + region.attributes.toString() +
+		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
 		    ": the state alive at the end of the region body differs between the paths through it, so what escapes the "
 		    "region would depend on which path was explored last. Build the escaping value on every path (assigning to "
 		    "a val<T> declared outside the region merges across branches), or trace this function with "
@@ -627,7 +640,7 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const 
 		auto& memo = regionState().regionMemo;
 		auto memoized = memo.find(key);
 		if (memoized == memo.end()) {
-			throw RuntimeException("Invalid region() " + attributes.toString() +
+			throw RuntimeException("Invalid region() " + attributes.toString() + describeCurrentFunction() +
 			                       ": replaying a recorded path reached a region() call site that was not recorded "
 			                       "there. Trace this function with engine.traceMode = \"exceptionBasedTracing\", "
 			                       "which traces region bodies inline.");
@@ -680,7 +693,7 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const 
 		// No pass of the body ever ran to completion, so nothing reaches the block the
 		// enclosing scope is about to continue in. Diagnose it here rather than let a
 		// later phase fail on an unreachable block.
-		throw RuntimeException("Invalid region() " + attributes.toString() +
+		throw RuntimeException("Invalid region() " + attributes.toString() + describeCurrentFunction() +
 		                       ": no path through the region body reached its end, so the enclosing function cannot "
 		                       "continue after it.");
 	}
@@ -772,9 +785,12 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 			isFirstFunction = false;
 		}
 		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
+		traceModule->setFunctionLocation(currentFunction.getName(), currentFunction.getLocation());
 		// Carry the definition identity through to IR conversion, which uses it
 		// to bind this body to the function-table id its call sites minted.
 		traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
+		session_->currentFunctionName_ = currentFunction.getName();
+		session_->currentFunctionLocation_ = currentFunction.getLocation();
 		auto wrapperFunc = currentFunction.getFunction();
 
 		auto rootAddress = __builtin_return_address(0);

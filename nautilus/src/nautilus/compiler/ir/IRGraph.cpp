@@ -662,6 +662,14 @@ struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::str
 				                   nautilus::compiler::ir::currentPrintGraph->getFunctionTarget(id).getAttributes()));
 			}
 		}
+		// Where this function was registered (docs/engine.md), not where its body is
+		// defined -- for a NautilusFunction those usually coincide, for
+		// engine.registerFunction(myKernel) the location is the registration call site.
+		// Gated behind the same flag as the region legend below, so a dump that has to
+		// stay identical across machines and compilers can turn it off.
+		if (nautilus::log::options::getLogSourceLocations() && func.getLocation().isKnown()) {
+			fmt::format_to(out, "  ; at {}", func.getLocation().toString());
+		}
 		fmt::format_to(out, " {{");
 		{
 			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(

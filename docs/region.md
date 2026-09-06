@@ -100,6 +100,8 @@ It is on by default, because relating traced code back to the source is the poin
 
 The IR table holds one entry per region() call site per enclosing chain, not one per traced engagement: a region inside a statically unrolled loop is entered once per iteration, and all of those iterations are the same `region()` in the source. The one thing the IR does not keep is the region *boundary* — after the cleanup passes there is no block that starts a region, which is exactly the point of a region costing nothing in the generated code.
 
+The same flag governs a sibling piece of provenance: where the *function* around these regions was registered (`docs/engine.md#registration-source-location`), printed on its IR signature line and named in a rejected region's diagnostic alongside the region's own location.
+
 No backend reads any of this today; it is provenance for reading, verifying and debugging the IR.
 
 ### Naming a region from a helper

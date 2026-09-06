@@ -80,11 +80,13 @@ private:
 		 * @brief Processes a single function trace and returns a FunctionOperation
 		 * @param functionName The name of the function being processed
 		 * @param attributes Generic key-value attributes to attach to the FunctionOperation
+		 * @param location Where this function was registered (docs/engine.md)
 		 * @return Arena-allocated pointer to the generated FunctionOperation
 		 */
 		compiler::ir::FunctionOperation*
 		processFunction(const std::string& functionName,
-		                const std::unordered_map<std::string, std::string>& attributes = {});
+		                const std::unordered_map<std::string, std::string>& attributes = {},
+		                const SourceLocation& location = {});
 
 	private:
 		compiler::ir::BasicBlock* processBlock(Block& block);

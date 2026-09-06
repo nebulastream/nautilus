@@ -44,7 +44,7 @@ public:
 	                           std::vector<Type> inputArgs, std::vector<std::string> inputArgNames, Type outputArg,
 	                           std::vector<AllocaSpec> allocaSpecs = {},
 	                           std::unordered_map<std::string, std::string> attributes = {},
-	                           std::vector<RegionSpec> regionSpecs = {});
+	                           std::vector<RegionSpec> regionSpecs = {}, SourceLocation location = {});
 
 	~FunctionOperation() = default;
 
@@ -101,6 +101,10 @@ public:
 	[[nodiscard]] bool hasAttribute(const std::string& key) const;
 	[[nodiscard]] std::optional<std::string> getAttribute(const std::string& key) const;
 
+	/// Where this function was registered (docs/engine.md), or an unknown location for a
+	/// function traced without going through a registration entry point that captures one.
+	[[nodiscard]] const SourceLocation& getLocation() const;
+
 	/// Exception-region side table, populated by
 	/// ExceptionRegionPreparationPass (terminal pass). Empty until that pass
 	/// runs; `std::nullopt` means the pass has not yet visited this function.
@@ -116,5 +120,6 @@ private:
 	std::vector<AllocaSpec> allocaSpecs;
 	std::unordered_map<std::string, std::string> attributes;
 	std::vector<RegionSpec> regionSpecs;
+	SourceLocation location;
 };
 } // namespace nautilus::compiler::ir

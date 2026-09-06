@@ -4,12 +4,14 @@
 #include "nautilus/Executable.hpp"
 #include "nautilus/JITCompiler.hpp"
 #include "nautilus/Module.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/core.hpp"
 #include "nautilus/options.hpp"
 #include <any>
 #include <functional>
 #include <memory>
+#include <source_location>
 
 #ifdef ENABLE_TRACING
 #include "nautilus/CompilableFunction.hpp"
@@ -176,12 +178,19 @@ public:
 	NautilusEngine& operator=(NautilusEngine&&) noexcept = delete;
 
 	/// Register and compile a single function pointer. Defined after NautilusModule.
+	/// @param location Where this call was written; captured for free and shown on the
+	/// compiled function's IR signature line and in diagnostics raised while tracing it
+	/// (docs/engine.md). Note this is the registration call site, not @p fnptr's own
+	/// definition -- they usually coincide but need not.
 	template <typename R, is_val... FunctionArguments>
-	auto registerFunction(R (*fnptr)(val<FunctionArguments>...)) const;
+	auto registerFunction(R (*fnptr)(val<FunctionArguments>...),
+	                      std::source_location location = std::source_location::current()) const;
 
 	/// Register and compile a single std::function. Defined after NautilusModule.
+	/// @param location See the function-pointer overload above.
 	template <typename R, typename... FunctionArguments>
-	auto registerFunction(std::function<R(val<FunctionArguments>...)> func) const;
+	auto registerFunction(std::function<R(val<FunctionArguments>...)> func,
+	                      std::source_location location = std::source_location::current()) const;
 
 	/**
 	 * @brief Creates a new module for registering multiple functions to be compiled together.
@@ -288,26 +297,31 @@ public:
 	 * @tparam F Callable type (lambda, functor)
 	 * @param name Unique name for this function in the module
 	 * @param func The callable to register
+	 * @param location Where this call was written (docs/engine.md).
 	 */
 	template <typename Signature, typename F>
-	void registerFunction(const std::string& name, F&& func) {
+	void registerFunction(const std::string& name, F&& func,
+	                      std::source_location location = std::source_location::current()) {
 		using function_type = std::function<Signature>;
 		function_type stdFunc(std::forward<F>(func));
-		registerFunction(name, std::move(stdFunc));
+		registerFunction(name, std::move(stdFunc), location);
 	}
 
 	/**
 	 * @brief Register a function from a std::function.
 	 * @param name Unique name for this function in the module
 	 * @param func The std::function to register
+	 * @param location Where this call was written (docs/engine.md).
 	 */
 	template <typename R, typename... FunctionArguments>
-	void registerFunction(const std::string& name, std::function<R(val<FunctionArguments>...)> func) {
+	void registerFunction(const std::string& name, std::function<R(val<FunctionArguments>...)> func,
+	                      std::source_location location = std::source_location::current()) {
 		interpretedFunctions_[name] = func;
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(std::move(func));
-			functions_.emplace_back(name, std::move(wrapper));
+			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
+			                        SourceLocation::from(location));
 		}
 #endif
 	}
@@ -316,15 +330,18 @@ public:
 	 * @brief Register a function from a function pointer.
 	 * @param name Unique name for this function in the module
 	 * @param fnptr The function pointer to register
+	 * @param location Where this call was written (docs/engine.md).
 	 */
 	template <typename R, is_val... FunctionArguments>
-	void registerFunction(const std::string& name, R (*fnptr)(val<FunctionArguments>...)) {
+	void registerFunction(const std::string& name, R (*fnptr)(val<FunctionArguments>...),
+	                      std::source_location location = std::source_location::current()) {
 		std::function<R(val<FunctionArguments>...)> func = fnptr;
 		interpretedFunctions_[name] = func;
 #ifdef ENABLE_TRACING
 		if (compiled_) {
 			auto wrapper = details::createFunctionWrapper(fnptr);
-			functions_.emplace_back(name, std::move(wrapper));
+			functions_.emplace_back(name, std::move(wrapper), std::unordered_map<std::string, std::string> {}, nullptr,
+			                        SourceLocation::from(location));
 		}
 #endif
 	}
@@ -389,18 +406,19 @@ using raw_return_type_t = typename raw_return_type<T>::type;
 } // namespace details
 
 template <typename R, is_val... FunctionArguments>
-auto NautilusEngine::registerFunction(R (*fnptr)(val<FunctionArguments>...)) const {
+auto NautilusEngine::registerFunction(R (*fnptr)(val<FunctionArguments>...), std::source_location location) const {
 	using RawR = details::raw_return_type_t<R>;
 	auto module = createModule();
-	module.registerFunction("execute", fnptr);
+	module.registerFunction("execute", fnptr, location);
 	return CompiledFunction<RawR(FunctionArguments...)>(module.compile());
 }
 
 template <typename R, typename... FunctionArguments>
-auto NautilusEngine::registerFunction(std::function<R(val<FunctionArguments>...)> func) const {
+auto NautilusEngine::registerFunction(std::function<R(val<FunctionArguments>...)> func,
+                                      std::source_location location) const {
 	using RawR = details::raw_return_type_t<R>;
 	auto module = createModule();
-	module.registerFunction("execute", std::move(func));
+	module.registerFunction("execute", std::move(func), location);
 	return CompiledFunction<RawR(FunctionArguments...)>(module.compile());
 }
 
