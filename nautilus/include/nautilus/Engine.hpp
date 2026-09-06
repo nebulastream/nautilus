@@ -315,7 +315,7 @@ public:
 	 */
 	template <typename R, typename... FunctionArguments>
 	void registerFunction(const std::string& name, std::function<R(val<FunctionArguments>...)> func,
-	                      std::source_location location = std::source_location::current()) {
+	                      [[maybe_unused]] std::source_location location = std::source_location::current()) {
 		interpretedFunctions_[name] = func;
 #ifdef ENABLE_TRACING
 		if (compiled_) {
@@ -334,7 +334,7 @@ public:
 	 */
 	template <typename R, is_val... FunctionArguments>
 	void registerFunction(const std::string& name, R (*fnptr)(val<FunctionArguments>...),
-	                      std::source_location location = std::source_location::current()) {
+	                      [[maybe_unused]] std::source_location location = std::source_location::current()) {
 		std::function<R(val<FunctionArguments>...)> func = fnptr;
 		interpretedFunctions_[name] = func;
 #ifdef ENABLE_TRACING
