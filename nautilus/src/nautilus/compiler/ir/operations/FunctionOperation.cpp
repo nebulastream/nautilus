@@ -10,11 +10,11 @@ FunctionOperation::FunctionOperation(std::string name, std::vector<BasicBlock*> 
                                      std::vector<Type> inputArgs, std::vector<std::string> inputArgNames,
                                      Type outputArg, std::vector<AllocaSpec> allocaSpecs,
                                      std::unordered_map<std::string, std::string> attributes,
-                                     std::vector<RegionSpec> regionSpecs)
+                                     std::vector<RegionSpec> regionSpecs, SourceLocation location)
     : Operation(OperationType::FunctionOp, outputArg), name(std::move(name)),
       functionBasicBlocks(std::move(functionBasicBlocks)), inputArgs(std::move(inputArgs)),
       inputArgNames(std::move(inputArgNames)), allocaSpecs(std::move(allocaSpecs)), attributes(std::move(attributes)),
-      regionSpecs(std::move(regionSpecs)) {
+      regionSpecs(std::move(regionSpecs)), location(location) {
 }
 
 const std::string& FunctionOperation::getName() const {
@@ -117,6 +117,10 @@ std::optional<std::string> FunctionOperation::getAttribute(const std::string& ke
 		return it->second;
 	}
 	return std::nullopt;
+}
+
+const SourceLocation& FunctionOperation::getLocation() const {
+	return location;
 }
 
 } // namespace nautilus::compiler::ir

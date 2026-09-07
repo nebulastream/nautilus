@@ -42,6 +42,9 @@ struct TraceFunctionDefinition {
 	std::string name;
 	std::unique_ptr<ExecutionTrace> trace;
 	std::unordered_map<std::string, std::string> attributes;
+	/// Where this function was registered (docs/engine.md); unknown for a function traced
+	/// without going through a registration entry point that captures one.
+	SourceLocation location;
 	/// Every identity that denotes this body. Usually one: the
 	/// NautilusFunctionDefinition it was traced from, or nothing at all for a
 	/// module-registered entry function.
@@ -94,6 +97,9 @@ public:
 	void setFunctionAttributes(const std::string& functionName,
 	                           const std::unordered_map<std::string, std::string>& attrs);
 
+	/// Records where a previously added function was registered (docs/engine.md).
+	void setFunctionLocation(const std::string& functionName, const SourceLocation& location);
+
 	/// Records another identity that denotes @p functionName's body. Ignores
 	/// nullptr (a module-registered entry has no definition object) and
 	/// duplicates.
@@ -109,6 +115,10 @@ public:
 
 	/// Convenience: returns the attributes for a function (empty map if none).
 	const std::unordered_map<std::string, std::string>& getFunctionAttributes(const std::string& functionName) const;
+
+	/// Convenience: returns where a function was registered, or an unknown location if it
+	/// has none or the function does not exist.
+	SourceLocation getFunctionLocation(const std::string& functionName) const;
 
 	bool hasFunction(const std::string& functionName) const;
 

@@ -277,6 +277,18 @@ private:
 	std::unordered_map<const void*, std::string> registeredFunctions;
 	std::unordered_set<std::string> usedFunctionNames;
 
+	/// Name and registration site of the function whose body is currently being traced
+	/// (session-owned; see session_). Read by the "Invalid region()" diagnostics so a
+	/// rejected region body says which enclosing function it came from, not just where the
+	/// region() call site itself sits.
+	std::string currentFunctionName_;
+	SourceLocation currentFunctionLocation_;
+
+	/// " in function 'name' (registered at file:line:column)" for the function currently
+	/// being traced, or empty before any function has started. Used to extend an
+	/// "Invalid region()" diagnostic with the enclosing function's identity.
+	std::string describeCurrentFunction() const;
+
 	/// Returns the trace-unique name for @p definition, registering it for
 	/// tracing on first sight. @p newlyRegistered reports whether this call
 	/// was the first.

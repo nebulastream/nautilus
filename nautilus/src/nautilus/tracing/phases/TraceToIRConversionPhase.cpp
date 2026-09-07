@@ -101,8 +101,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
+		auto location = traceModule->getFunctionLocation(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		auto* functionOperation = phaseContext.processFunction(functionName, attrs);
+		auto* functionOperation = phaseContext.processFunction(functionName, attrs, location);
 		ir->addFunctionOperation(functionOperation);
 		bindDefinition(*ir, *traceModule, functionName, functionOperation);
 	}
@@ -118,8 +119,9 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::apply(std::shared_ptr<TraceMo
 	for (const auto& functionName : traceModule->getFunctionNames()) {
 		auto* trace = traceModule->getFunction(functionName);
 		auto& attrs = traceModule->getFunctionAttributes(functionName);
+		auto location = traceModule->getFunctionLocation(functionName);
 		auto phaseContext = IRConversionContext(trace, ir, id);
-		auto* functionOperation = phaseContext.processFunction(functionName, attrs);
+		auto* functionOperation = phaseContext.processFunction(functionName, attrs, location);
 		ir->addFunctionOperation(functionOperation);
 		bindDefinition(*ir, *traceModule, functionName, functionOperation);
 	}
@@ -165,7 +167,8 @@ std::shared_ptr<IRGraph> TraceToIRConversionPhase::IRConversionContext::process(
 }
 
 FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunction(
-    const std::string& functionName, const std::unordered_map<std::string, std::string>& attributes) {
+    const std::string& functionName, const std::unordered_map<std::string, std::string>& attributes,
+    const SourceLocation& location) {
 	// Clear state for this function
 	currentBasicBlocks.clear();
 	blockMap.clear();
@@ -180,7 +183,7 @@ FunctionOperation* TraceToIRConversionPhase::IRConversionContext::processFunctio
 	// Create and return the function operation
 	return ir->getArena().create<FunctionOperation>(functionName, std::move(currentBasicBlocks), std::vector<Type> {},
 	                                                std::vector<std::string> {}, returnType, collectAllocaSpecs(),
-	                                                attributes, std::move(currentRegionSpecs));
+	                                                attributes, std::move(currentRegionSpecs), location);
 }
 
 size_t TraceToIRConversionPhase::IRConversionContext::RegionKeyHash::operator()(const RegionKey& key) const noexcept {
