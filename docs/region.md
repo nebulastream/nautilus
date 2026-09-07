@@ -50,12 +50,12 @@ Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the 
 body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
 ```
 
-**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump prints the attributes in front of the entry block:
+**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump follows the same layout the IR dump uses (see below): a block names its region by index at the end of its header line, and the attributes those indices refer to are listed once in a legend at the end of the trace:
 
 ```
-; region "accumulate" at src/Query.cpp:42:9
-B1()
+B1() ; region #0
 	...
+; region #0 = "accumulate" at src/Query.cpp:42:9
 ```
 
 Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.

@@ -420,15 +420,20 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
                                                           fmt::format_context& ctx) -> format_context::iterator {
 	auto out = ctx.out();
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
-		// A region owns no operation to print, so its attributes are printed as a comment
-		// line in front of the block its body starts in.
-		const auto regionIndex = trace.blocks[i]->regionIndex;
-		if (regionIndex < trace.regions.size()) {
-			fmt::format_to(
-			    out, "; region {}\n",
-			    trace.regions[regionIndex].attributes.toString(nautilus::log::options::getLogSourceLocations()));
-		}
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
+	}
+	// The region legend: what each `; region #N` above refers to (docs/region.md), printed
+	// once at the end of the trace -- the same layout the nautilus IR dump uses for its
+	// region legend (see IRGraph.cpp), rather than repeating a region's name in line every
+	// time a block opens or re-enters it.
+	const bool withLocation = nautilus::log::options::getLogSourceLocations();
+	for (size_t i = 0; i < trace.regions.size(); i++) {
+		const auto& region = trace.regions[i];
+		fmt::format_to(out, "; region #{} = {}", i, region.attributes.toString(withLocation));
+		if (region.parent != nautilus::tracing::NO_REGION) {
+			fmt::format_to(out, ", nested in #{}", region.parent);
+		}
+		fmt::format_to(out, "\n");
 	}
 	return out;
 }
@@ -446,6 +451,11 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 	fmt::format_to(out, ")");
 	if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
 		fmt::format_to(out, " ControlFlowMerge");
+	}
+	// Region reference: just the index, resolved against the legend the ExecutionTrace
+	// formatter prints once at the end of the trace (mirrors the nautilus IR block header).
+	if (block.regionIndex != nautilus::tracing::NO_REGION) {
+		fmt::format_to(out, " ; region #{}", block.regionIndex);
 	}
 	fmt::format_to(out, "\n");
 	for (const auto* operation : block.operations) {

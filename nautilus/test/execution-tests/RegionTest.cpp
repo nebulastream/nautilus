@@ -912,10 +912,11 @@ TEST_CASE("Region Attributes Are Recorded In The Trace", "[region]") {
 	REQUIRE(regions[1].parent == 0);
 	REQUIRE(trace->getBlock(0).regionIndex == tracing::NO_REGION);
 
-	// And they are visible in the trace dump.
+	// And they are visible in the trace dump, named once in the legend at the end (the
+	// same layout the IR dump uses), with each block naming its region by index.
 	const auto dump = trace->toString();
-	REQUIRE(dump.find("region \"accumulate\" at ") != std::string::npos);
-	REQUIRE(dump.find("region \"inner\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region #0 = \"accumulate\" at ") != std::string::npos);
+	REQUIRE(dump.find("; region #1 = \"inner\" at ") != std::string::npos);
 }
 
 // What the attributes are for downstream: they survive the trace-to-IR conversion and the
@@ -1097,14 +1098,16 @@ TEST_CASE("Region Dumps Can Omit The Source Location", "[region]") {
 	REQUIRE(traceWithout.find(" at ") == std::string::npos);
 	REQUIRE(irWithout.find(" at ") == std::string::npos);
 
-	// What identifies a region does survive: its name everywhere, its id in the IR, and
-	// the nesting of the inner region inside the outer one.
-	REQUIRE(traceWithout.find("; region \"accumulate\"") != std::string::npos);
-	REQUIRE(traceWithout.find("; region \"inner\"") != std::string::npos);
+	// What identifies a region does survive: its name everywhere, its id in the trace and
+	// the IR, and the nesting of the inner region inside the outer one -- both dumps name
+	// a region by index where the code is and spell out what the index means once, in a
+	// legend at the end.
+	REQUIRE(traceWithout.find("; region #0 = \"accumulate\"\n") != std::string::npos);
+	REQUIRE(traceWithout.find("; region #1 = \"inner\", nested in #0") != std::string::npos);
 	REQUIRE(irWithout.find("; region #0 = \"accumulate\"\n") != std::string::npos);
 	REQUIRE(irWithout.find("; region #1 = \"inner\", nested in #0") != std::string::npos);
 	// An unnamed region has neither a name nor a location left, so it says so.
-	REQUIRE(traceWithout.find("; region <unnamed>") != std::string::npos);
+	REQUIRE(traceWithout.find("; region #2 = <unnamed>") != std::string::npos);
 
 	// The flag is a printing choice: the attributes themselves are untouched by it.
 	REQUIRE(std::string(trace->getRegions()[0].attributes.name) == "accumulate");
