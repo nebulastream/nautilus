@@ -82,12 +82,12 @@ int main(int, char*[]) {
 	          << ")\n\n";
 
 	std::cout << "What the dumps above show:\n"
-	          << "  * every block of the trace that belongs to a region is preceded by\n"
-	          << "      ; region \"name\" at DemoRegions.cpp:<line>:<column>\n"
-	          << "  * the IR names a region by id where the code is -- a block in its header,\n"
-	          << "    an operation only where it came from deeper in the nesting than its block:\n"
-	          << "      Block_N(...): ; region #2\n"
-	          << "  * and says once, in the legend closing the module, what each id means:\n"
+	          << "  * both the trace and the IR name a region by id where the code is -- a\n"
+	          << "    block in its header, an operation only where it came from deeper in the\n"
+	          << "    nesting than its block:\n"
+	          << "      B1() ; region #0            (trace)\n"
+	          << "      Block_N(...): ; region #2   (IR)\n"
+	          << "  * and each says once, in a legend closing it, what each id means:\n"
 	          << "      ; region #0 = \"scan\" at DemoRegions.cpp:<line>:<column>\n"
 	          << "      ; region #1 = \"classify\" at ..., nested in #0\n"
 	          << "      ; region #2 = \"accumulate\" at ..., nested in #1\n"
