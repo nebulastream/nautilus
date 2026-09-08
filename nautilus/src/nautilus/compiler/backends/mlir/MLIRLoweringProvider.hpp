@@ -6,12 +6,15 @@
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
+#include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <memory>
 #include <mlir/IR/PatternMatch.h>
+#include <optional>
 #include <span>
 #include <unordered_set>
 
@@ -140,6 +143,22 @@ private:
 	/// exception-region side table.
 	const ir::FunctionOperation* currentFunction_ = nullptr;
 
+	/// Per-function cache of region-scope chains (see RegionScopeInfo.hpp),
+	/// keyed by RegionIndex into currentFunction_->getRegionSpecs(). Cleared in
+	/// generateFunction: region indices restart at 0 per function exactly like
+	/// `$N` ids do, so a global cache would collide between caller and callee.
+	std::unordered_map<ir::RegionIndex, ::mlir::LocationAttr> regionScopeLocs_;
+
+	/// Returns the region-scope chain for @p index (see RegionScopeInfo.hpp),
+	/// building and memoizing it from currentFunction_->findRegion() on first
+	/// use. Returns a null LocationAttr for NO_REGION or when currentFunction_
+	/// is unset.
+	::mlir::LocationAttr getRegionScopeLoc(ir::RegionIndex index);
+
+	/// Fuses the region-scope chain for @p regionIndex onto @p loc via
+	/// attachRegionScope(). Returns @p loc unchanged for NO_REGION.
+	::mlir::Location wrapWithRegionScope(::mlir::Location loc, ir::RegionIndex regionIndex);
+
 	/// Captured-exception queries for `currentFunction_`, built once per
 	/// function in generateFunction rather than once per call site.
 	CapturedExceptionTransport transport_;
@@ -184,7 +203,22 @@ private:
 	/// of the given identifier.  Returns a plain NameLoc("arg") location
 	/// when debug info is disabled so the caller can use the result
 	/// unconditionally.
-	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName);
+	///
+	/// @p regionIndexOverride names the region to fuse onto the result
+	/// explicitly, for callers where currentOp_ is not the right source of
+	/// truth:
+	///   * generateMLIR's post-dispatch shadow-store call, where currentOp_
+	///     is already cleared by then (see its own comment for why), so
+	///     region-wrapping would otherwise silently see NO_REGION regardless
+	///     of the operation the shadow store is actually for.
+	///   * generateBasicBlock's block-argument tagging, where currentOp_ is
+	///     the branch reaching this block first -- not necessarily the
+	///     target block's own region, since a branch can cross a region
+	///     boundary in either direction.
+	/// Callers with a live, correctly-scoped currentOp_ can omit it and keep
+	/// deriving the region from currentOp_ as before.
+	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName,
+	                               std::optional<ir::RegionIndex> regionIndexOverride = std::nullopt);
 
 	/// Lazily create an `llvm.alloca` at the entry block of the currently
 	/// enclosing `func.func` for shadow-storing $N's value.  The alloca

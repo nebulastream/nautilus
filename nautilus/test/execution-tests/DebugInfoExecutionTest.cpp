@@ -5,6 +5,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/nautilus_function.hpp"
+#include "nautilus/region.hpp"
 #include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cctype>
@@ -75,6 +76,18 @@ val<int32_t> debugCaller(val<int32_t> a, val<int32_t> b) {
 		acc = acc + debugHelper(a, i);
 	}
 	return acc;
+}
+
+// Wraps the loop body in a named region() so the MLIR backend has region
+// metadata (docs/region.md) to lower to a DWARF lexical scope (#455).
+val<int32_t> debugRegionSum(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	region("accumulate", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			agg = agg + i;
+		}
+	});
+	return agg;
 }
 
 val<int32_t> debugNestedControlFlow(val<int32_t> limit) {
@@ -601,6 +614,182 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 	REQUIRE(foundLexBlock);
 	REQUIRE(lexicalBlockCount >= 2);
 	REQUIRE(varsScopedToLexBlock >= 1);
+}
+
+TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shared across blocks") {
+	// Issue #455: a region() call site (docs/region.md) should surface as its
+	// own entry in `bt`, the same way gdb shows an -O2-inlined C++ function as
+	// its own backtrace frame -- not merely as a lexical scope that narrows
+	// variable visibility. That requires a synthetic DISubprogram (the
+	// "abstract origin") for the region plus a DILocation `inlinedAt` chain,
+	// i.e. a DW_TAG_inlined_subroutine, not a DW_TAG_lexical_block: gdb only
+	// ever prints one source line per stack frame, and a lexical block is
+	// never a frame boundary of its own, so no amount of nesting a plain
+	// DILexicalBlock would make it appear as a separate `bt` line. This was
+	// verified against a real compiled binary under gdb (readelf shows a
+	// DW_TAG_inlined_subroutine with DW_AT_abstract_origin, and `bt` shows
+	// "#0 accumulate () / #1 execute ()" consistently at every instruction
+	// address across the region's extent, with the frame disappearing again
+	// exactly at the region's boundary) -- this test checks the underlying
+	// static structure that makes that behavior possible:
+	//
+	//   * A synthetic DISubprogram named after the region exists, filed under
+	//     the SAME file as the enclosing function's own DISubprogram (a
+	//     DILocation has no file of its own, so a mismatched file here would
+	//     silently reinterpret unrelated source lines).
+	//   * At least two structurally different ops -- one from what was
+	//     originally the loop-condition block and one from the loop body --
+	//     resolve to that same synthetic subprogram, i.e. the region's scope
+	//     is shared across the Nautilus basic blocks traced inside it, not
+	//     re-created per block.
+	//   * Those ops carry an `inlinedAt` location whose own scope resolves
+	//     back to the enclosing function's real DISubprogram -- the chain
+	//     that lets LLVM's verifier (and gdb) recognize this as "inlined into
+	//     execute" rather than a dangling scope.
+	//   * No DILexicalBlockFile is ever emitted for it (see
+	//     RegionScopeInfo.hpp for why that attribute can never surface as its
+	//     own DWARF scope, region or not).
+	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
+	std::set<std::filesystem::path> existing;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
+			existing.insert(e.path());
+		}
+	}
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("dump.before_llvm_optimization", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugRegionSum);
+	REQUIRE(fn(5) == 10);
+
+	std::map<std::string, std::string> subprogramName; // id -> name
+	std::map<std::string, std::string> subprogramFile; // id -> file id
+	std::map<std::string, std::string> locScope;       // DILocation id -> scope id
+	std::map<std::string, std::string> locInlinedAt;   // DILocation id -> inlinedAt DILocation id (if any)
+	bool sawLexicalBlockFile = false;
+	std::string dbgIdOnIcmp;    // !dbg id attached to the loop-condition `icmp`
+	std::string dbgIdOnBodyAdd; // !dbg id attached to the loop-body accumulation `add`
+
+	auto extractRef = [](const std::string& line, const std::string& key) -> std::string {
+		auto pos = line.find(key);
+		if (pos == std::string::npos) {
+			return {};
+		}
+		auto start = pos + key.size();
+		auto end = start;
+		while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+			++end;
+		}
+		return line.substr(start, end - start);
+	};
+	auto extractDbgId = [](const std::string& line) -> std::string {
+		auto pos = line.rfind("!dbg !");
+		if (pos == std::string::npos) {
+			return {};
+		}
+		auto start = pos + std::string("!dbg !").size();
+		auto end = start;
+		while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+			++end;
+		}
+		return line.substr(start, end - start);
+	};
+
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
+			if (existing.count(dir.path())) {
+				continue;
+			}
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+				if (!entry.is_regular_file() || entry.path().filename() != "before_llvm_optimization.ll") {
+					continue;
+				}
+				auto contents = readFile(entry.path().string());
+				std::istringstream iss(contents);
+				std::string line;
+				while (std::getline(iss, line)) {
+					if (line.find("!DILexicalBlockFile(") != std::string::npos) {
+						sawLexicalBlockFile = true;
+					}
+					if (dbgIdOnIcmp.empty() && line.find("icmp slt") != std::string::npos) {
+						dbgIdOnIcmp = extractDbgId(line);
+					}
+					if (dbgIdOnBodyAdd.empty() && line.find("add i32 %10, %11") != std::string::npos) {
+						dbgIdOnBodyAdd = extractDbgId(line);
+					}
+
+					auto bang = line.find('!');
+					auto idEnd = line.find(' ', bang);
+					if (bang == std::string::npos || idEnd == std::string::npos) {
+						continue;
+					}
+					auto metaId = line.substr(bang + 1, idEnd - bang - 1);
+
+					if (line.find("!DISubprogram(") != std::string::npos) {
+						auto nameKey = line.find("name: \"");
+						if (nameKey != std::string::npos) {
+							auto nameStart = nameKey + std::string("name: \"").size();
+							auto nameEnd = line.find('"', nameStart);
+							subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
+						}
+						subprogramFile[metaId] = extractRef(line, "file: !");
+					} else if (line.find("!DILocation(") != std::string::npos) {
+						locScope[metaId] = extractRef(line, "scope: !");
+						auto inlinedAtPos = line.find("inlinedAt: !");
+						if (inlinedAtPos != std::string::npos) {
+							locInlinedAt[metaId] = extractRef(line, "inlinedAt: !");
+						}
+					}
+				}
+				break;
+			}
+			if (!subprogramName.empty()) {
+				break;
+			}
+		}
+	}
+
+	REQUIRE_FALSE(sawLexicalBlockFile);
+	REQUIRE_FALSE(dbgIdOnIcmp.empty());
+	REQUIRE_FALSE(dbgIdOnBodyAdd.empty());
+
+	std::string executeId;
+	std::string accumulateId;
+	for (const auto& kv : subprogramName) {
+		if (kv.second == "execute") {
+			executeId = kv.first;
+		} else if (kv.second == "accumulate") {
+			accumulateId = kv.first;
+		}
+	}
+	REQUIRE_FALSE(executeId.empty());
+	REQUIRE_FALSE(accumulateId.empty());
+
+	// The region's synthetic subprogram must stay on execute's own file (see
+	// the DILexicalBlockFile-transparency / file-inheritance rationale above).
+	REQUIRE(subprogramFile[accumulateId] == subprogramFile[executeId]);
+
+	// A shared scope, not one re-created per block: the loop-condition icmp
+	// (originally in the loop-header block) and the accumulation add
+	// (originally in the loop-body block) resolve to the very same
+	// "accumulate" subprogram.
+	REQUIRE(locScope[dbgIdOnIcmp] == accumulateId);
+	REQUIRE(locScope[dbgIdOnBodyAdd] == accumulateId);
+
+	// Both carry an inlinedAt chain that nests back into execute's own scope,
+	// i.e. this is recognizable as "accumulate inlined into execute" rather
+	// than a dangling/unreachable scope.
+	for (const auto& dbgId : {dbgIdOnIcmp, dbgIdOnBodyAdd}) {
+		auto inlinedAtIt = locInlinedAt.find(dbgId);
+		REQUIRE(inlinedAtIt != locInlinedAt.end());
+		REQUIRE_FALSE(inlinedAtIt->second.empty());
+		REQUIRE(locScope[inlinedAtIt->second] == executeId);
+	}
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {
