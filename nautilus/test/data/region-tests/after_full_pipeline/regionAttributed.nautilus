@@ -1,0 +1,17 @@
+nautilus {
+execute() :i64 [readnone, willreturn, nounwind] {
+Block_0():
+	$2 = 1 :i32  ; region #1
+	$3 = $2 cast_to i64 :i64  ; region #1
+	$5 = 41 :i32  ; region #0
+	$6 = $5 cast_to i64 :i64  ; region #0
+	$7 = $3 + $6 :i64  ; region #0
+	$8 = 1 :i32  ; region #2
+	$9 = $8 cast_to i64 :i64  ; region #2
+	$10 = $7 + $9 :i64  ; region #2
+	return ($10) :i64
+}
+; region #0 = "accumulate"
+; region #1 = "inner", nested in #0
+; region #2 = <unnamed>
+} //nautilus

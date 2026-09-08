@@ -395,12 +395,13 @@ bool applyToFunction(FunctionOperation& fn, common::Arena& arena) {
 		if (rewriter.definingBlock(op) == nullptr) {
 			continue; // already erased by an earlier fold's cascade.
 		}
+		// `tryFold` always mints `folded` via `FunctionRewriter::createBefore(op, ...)`
+		// (through the make*Const helpers above), which already stamps it with `op`'s
+		// own provenance (issue #453) -- no separate copy needed here.
 		Operation* folded = tryFold(rewriter, op);
 		if (folded == nullptr) {
 			continue;
 		}
-		folded->setSourceTag(op->getSourceTag());
-		folded->setRegionIndex(op->getRegionIndex());
 		changed = true;
 
 		// Snapshot op's consumers before replaceAllUses moves them onto

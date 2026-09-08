@@ -329,6 +329,113 @@ TEST_CASE("FunctionRewriter M6: createBefore lands immediately before the given 
 	REQUIRE(*std::prev(it) == fresh);
 }
 
+// ── Region provenance (issue #453) ────────────────────────────────────────
+//
+// A two-region fixture shared by the three tests below: region 100 (index 0, outer) and
+// region 101 (index 1, nested in it). `entry` (block 0) is itself region 0 -- every
+// operation in it is either from region 0 directly or nested deeper -- and holds one
+// operation truly from region 1 (`c1`) alongside one that carries no region at all (`c2`,
+// standing in for a tracer- or pass-synthesized operation that never got attributed).
+// `exit` (block 1) sits outside every region.
+
+namespace {
+
+std::shared_ptr<IRGraph> makeTwoRegionFixture(ConstIntOperation** c1Out, ConstIntOperation** c2Out) {
+	auto irGraph = std::make_shared<IRGraph>("region-provenance-test");
+	auto& arena = irGraph->getArena();
+
+	auto* exit = arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {});
+	exit->addOperation<ReturnOperation>(exit->addOperation<ConstIntOperation>(OperationIdentifier {10}, 99, Type::i32));
+
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {});
+	auto* c1 = entry->addOperation<ConstIntOperation>(OperationIdentifier {1}, 5, Type::i32);
+	c1->setRegionIndex(1);
+	auto* c2 = entry->addOperation<ConstIntOperation>(OperationIdentifier {2}, 7, Type::i32);
+	// c2 stays NO_REGION: a pass-minted or tracer-synthesized operation with nothing to
+	// attribute it to.
+	entry->addNextBlock(exit, {});
+	// entry's terminator stays NO_REGION too, same reasoning -- but the block itself is
+	// known to be (at least) region 0, since c1 is from a region nested inside it.
+	entry->setRegionIndex(0);
+
+	std::vector<RegionSpec> regionSpecs {RegionSpec {RegionAttributes {}, NO_REGION, 100},
+	                                     RegionSpec {RegionAttributes {}, 0, 101}};
+	auto* fn = arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, exit}, std::vector<Type> {},
+	                                           std::vector<std::string> {}, Type::i32, std::vector<AllocaSpec> {},
+	                                           std::unordered_map<std::string, std::string> {}, regionSpecs);
+	irGraph->addFunctionOperation(fn);
+	rebuildPredecessorLists(*irGraph);
+	requireVerifierClean(*irGraph);
+
+	*c1Out = c1;
+	*c2Out = c2;
+	return irGraph;
+}
+
+} // namespace
+
+TEST_CASE("FunctionRewriter region: createBefore falls back to the anchor's block when the anchor is unattributed") {
+	ConstIntOperation* c1 = nullptr;
+	ConstIntOperation* c2 = nullptr;
+	auto ir = makeTwoRegionFixture(&c1, &c2);
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	// Anchored on c1 (region 1 directly): the replacement inherits it precisely.
+	auto* fromAttributed = rewriter.createBefore<ConstIntOperation>(c1, rewriter.freshId(), 1, Type::i32);
+	REQUIRE(fromAttributed->getRegionIndex() == RegionIndex {1});
+
+	// Anchored on c2 (NO_REGION): nothing to copy, so the fallback is c2's own block's
+	// region (0) -- not NO_REGION outright.
+	auto* fromUnattributed = rewriter.createBefore<ConstIntOperation>(c2, rewriter.freshId(), 2, Type::i32);
+	REQUIRE(fromUnattributed->getRegionIndex() == RegionIndex {0});
+}
+
+TEST_CASE(
+    "FunctionRewriter region: createBeforeTerminator falls back to the block's region absent setCurrentProvenance") {
+	ConstIntOperation* c1 = nullptr;
+	ConstIntOperation* c2 = nullptr;
+	auto ir = makeTwoRegionFixture(&c1, &c2);
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	// No setCurrentProvenance call yet: falls back to entry's own region.
+	auto* fallback = rewriter.createBeforeTerminator<ConstIntOperation>(entry, rewriter.freshId(), 3, Type::i32);
+	REQUIRE(fallback->getRegionIndex() == RegionIndex {0});
+
+	// setCurrentProvenance is more precise than the fallback when a pass has it.
+	rewriter.setCurrentProvenance(c1);
+	auto* precise = rewriter.createBeforeTerminator<ConstIntOperation>(entry, rewriter.freshId(), 4, Type::i32);
+	REQUIRE(precise->getRegionIndex() == RegionIndex {1});
+
+	// Resetting to nullptr goes back to unattributed-source behavior: still the block's
+	// region, not NO_REGION.
+	rewriter.setCurrentProvenance(nullptr);
+	auto* fallbackAgain = rewriter.createBeforeTerminator<ConstIntOperation>(entry, rewriter.freshId(), 5, Type::i32);
+	REQUIRE(fallbackAgain->getRegionIndex() == RegionIndex {0});
+}
+
+TEST_CASE(
+    "FunctionRewriter region: replaceTerminator falls back to the block's region when the old terminator has none") {
+	ConstIntOperation* c1 = nullptr;
+	ConstIntOperation* c2 = nullptr;
+	auto ir = makeTwoRegionFixture(&c1, &c2);
+	auto* fn = const_cast<FunctionOperation*>(ir->getFunctionOperations().front());
+	auto* entry = findBlock(*fn, 0);
+	auto* exit = findBlock(*fn, 1);
+	FunctionRewriter rewriter(*fn, ir->getArena());
+
+	REQUIRE(entry->getTerminatorOp()->getRegionIndex() == NO_REGION);
+
+	auto& arena = ir->getArena();
+	auto* newTerminator = arena.create<BranchOperation>();
+	newTerminator->getNextBlockInvocation().setBlock(exit);
+	rewriter.replaceTerminator(entry, newTerminator);
+
+	REQUIRE(newTerminator->getRegionIndex() == RegionIndex {0});
+}
+
 // ── M7: atomic block-argument removal ───────────────────────────────────
 
 TEST_CASE("FunctionRewriter M7: removeBlockArgument shrinks the block and every targeting invocation") {
