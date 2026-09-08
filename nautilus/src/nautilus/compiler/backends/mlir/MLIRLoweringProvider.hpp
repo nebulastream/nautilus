@@ -6,9 +6,11 @@
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
+#include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
+#include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <memory>
 #include <mlir/IR/PatternMatch.h>
@@ -139,6 +141,22 @@ private:
 	/// generateFunction so visitCall/visitIndirectCall can read the
 	/// exception-region side table.
 	const ir::FunctionOperation* currentFunction_ = nullptr;
+
+	/// Per-function cache of region-scope chains (see RegionScopeInfo.hpp),
+	/// keyed by RegionIndex into currentFunction_->getRegionSpecs(). Cleared in
+	/// generateFunction: region indices restart at 0 per function exactly like
+	/// `$N` ids do, so a global cache would collide between caller and callee.
+	std::unordered_map<ir::RegionIndex, ::mlir::LocationAttr> regionScopeLocs_;
+
+	/// Returns the region-scope chain for @p index (see RegionScopeInfo.hpp),
+	/// building and memoizing it from currentFunction_->findRegion() on first
+	/// use. Returns a null LocationAttr for NO_REGION or when currentFunction_
+	/// is unset.
+	::mlir::LocationAttr getRegionScopeLoc(ir::RegionIndex index);
+
+	/// Fuses the region-scope chain for @p regionIndex onto @p loc via
+	/// attachRegionScope(). Returns @p loc unchanged for NO_REGION.
+	::mlir::Location wrapWithRegionScope(::mlir::Location loc, ir::RegionIndex regionIndex);
 
 	/// Captured-exception queries for `currentFunction_`, built once per
 	/// function in generateFunction rather than once per call site.

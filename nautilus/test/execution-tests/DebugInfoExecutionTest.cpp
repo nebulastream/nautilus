@@ -5,6 +5,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/nautilus_function.hpp"
+#include "nautilus/region.hpp"
 #include <algorithm>
 #include <catch2/catch_all.hpp>
 #include <cctype>
@@ -75,6 +76,18 @@ val<int32_t> debugCaller(val<int32_t> a, val<int32_t> b) {
 		acc = acc + debugHelper(a, i);
 	}
 	return acc;
+}
+
+// Wraps the loop body in a named region() so the MLIR backend has region
+// metadata (docs/region.md) to lower to a DWARF lexical scope (#455).
+val<int32_t> debugRegionSum(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	region("accumulate", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			agg = agg + i;
+		}
+	});
+	return agg;
 }
 
 val<int32_t> debugNestedControlFlow(val<int32_t> limit) {
@@ -601,6 +614,102 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 	REQUIRE(foundLexBlock);
 	REQUIRE(lexicalBlockCount >= 2);
 	REQUIRE(varsScopedToLexBlock >= 1);
+}
+
+TEST_CASE("Debug info: region() scopes lower to nested DILexicalBlocks") {
+	// Issue #455: a region() call site (docs/region.md) should surface as
+	// an additional lexical scope sitting between a Nautilus basic
+	// block's own DILexicalBlock and the function's DISubprogram. Before
+	// this, EmitDbgValuePass always parented a block's DILexicalBlock
+	// directly on the DISubprogram, so region metadata reached the IR
+	// (#448) but no backend consumed it.
+	//
+	// In "nautilus-ir" source mode the region's recorded file (the real
+	// C++ source) differs from the subprogram's file (the synthesized IR
+	// dump), so the region surfaces as a DILexicalBlockFile rather than a
+	// plain DILexicalBlock -- both count as an extra scope level here.
+	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
+	std::set<std::filesystem::path> existing;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
+			existing.insert(e.path());
+		}
+	}
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("dump.before_llvm_optimization", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugRegionSum);
+	REQUIRE(fn(5) == 10);
+
+	// Maps every DILexicalBlock's own metadata id to its `scope: !M`
+	// parent, and separately tracks the id of every lexical scope node
+	// (DILexicalBlock or DILexicalBlockFile) seen.
+	std::map<std::string, std::string> lexBlockParent;
+	std::set<std::string> lexicalScopeIds;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
+			if (existing.count(dir.path())) {
+				continue;
+			}
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+				if (!entry.is_regular_file() || entry.path().filename() != "before_llvm_optimization.ll") {
+					continue;
+				}
+				auto contents = readFile(entry.path().string());
+				std::istringstream iss(contents);
+				std::string line;
+				while (std::getline(iss, line)) {
+					const bool isLexBlock = line.find("!DILexicalBlock(") != std::string::npos;
+					const bool isLexBlockFile = line.find("!DILexicalBlockFile(") != std::string::npos;
+					if (!isLexBlock && !isLexBlockFile) {
+						continue;
+					}
+					auto bang = line.find('!');
+					auto idEnd = line.find(' ', bang);
+					if (bang == std::string::npos || idEnd == std::string::npos) {
+						continue;
+					}
+					auto metaId = line.substr(bang + 1, idEnd - bang - 1);
+					lexicalScopeIds.insert(metaId);
+					auto scopeKey = line.find("scope: !");
+					if (scopeKey == std::string::npos) {
+						continue;
+					}
+					auto scopeStart = scopeKey + std::string("scope: !").size();
+					auto scopeEnd = scopeStart;
+					while (scopeEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
+						++scopeEnd;
+					}
+					if (isLexBlock) {
+						lexBlockParent[metaId] = line.substr(scopeStart, scopeEnd - scopeStart);
+					}
+				}
+				break;
+			}
+			if (!lexBlockParent.empty()) {
+				break;
+			}
+		}
+	}
+
+	REQUIRE_FALSE(lexBlockParent.empty());
+
+	// At least one DILexicalBlock must be parented on ANOTHER lexical
+	// scope (the region's DILexicalBlock/DILexicalBlockFile) instead of
+	// resolving directly to the DISubprogram -- that extra nesting level
+	// is what region() contributes.
+	int nestedLexicalBlocks = 0;
+	for (const auto& kv : lexBlockParent) {
+		if (lexicalScopeIds.count(kv.second)) {
+			++nestedLexicalBlocks;
+		}
+	}
+	REQUIRE(nestedLexicalBlocks >= 1);
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {

@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/debug/EmitDbgValuePass.hpp"
+#include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/StringRef.h>
@@ -154,10 +155,23 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 				}
 				return 0;
 			};
+			// A block's own DILexicalBlock nests inside the Nautilus
+			// region() (docs/region.md) its ops were traced under, if
+			// any -- see RegionScopeInfo.hpp -- falling back to the
+			// subprogram directly for a block with no enclosing region,
+			// which keeps today's flat scoping unchanged.
+			auto regionScopeFor = [&](::mlir::Block& block) -> ::mlir::LLVM::DIScopeAttr {
+				for (auto& op : block) {
+					if (auto chain = findRegionScopeChain(op.getLoc())) {
+						return resolveRegionScope(ctx, chain, subprogram, file);
+					}
+				}
+				return subprogram;
+			};
 			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DILexicalBlockAttr> blockScopes;
 			for (auto& block : funcOp.getBody()) {
-				blockScopes[&block] =
-				    ::mlir::LLVM::DILexicalBlockAttr::get(ctx, subprogram, file, firstLineIn(block), /*column=*/1);
+				blockScopes[&block] = ::mlir::LLVM::DILexicalBlockAttr::get(ctx, regionScopeFor(block), file,
+				                                                            firstLineIn(block), /*column=*/1);
 			}
 			for (auto& block : funcOp.getBody()) {
 				auto scope = blockScopes[&block];

@@ -102,7 +102,7 @@ The IR table holds one entry per region() call site per enclosing chain, not one
 
 The same flag governs a sibling piece of provenance: where the *function* around these regions was registered (`docs/engine.md#registration-source-location`), printed on its IR signature line and named in a rejected region's diagnostic alongside the region's own location.
 
-No backend reads any of this today; it is provenance for reading, verifying and debugging the IR.
+The MLIR backend reads it: when `mlir.debug.enable` is on, each region in a function's table becomes an `LLVM::DILexicalBlockAttr` (nested per the region's `parent` chain, and an `LLVM::DILexicalBlockFileAttr` layer where a region's recorded file differs from the function's own), and an operation's DWARF scope is its region's rather than the function's directly. A GDB/LLDB session backed by that debug info therefore shows `scan` / `classify` / `accumulate` as real nested lexical scopes instead of one flat function frame. The other backends (`cpp`, `bc`, `tbc`, `asmjit`) do not read region metadata yet; for them it remains provenance for reading, verifying and debugging the IR.
 
 ### Naming a region from a helper
 
