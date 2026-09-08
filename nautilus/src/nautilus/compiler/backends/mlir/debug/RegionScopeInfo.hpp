@@ -41,11 +41,18 @@ namespace nautilus::compiler::mlir {
 ::mlir::LocationAttr findRegionScopeChain(::mlir::Location loc);
 
 // Resolves a region chain (as produced by buildRegionScopeChain) into a DWARF
-// scope: one DILexicalBlockAttr per nesting level, or a DILexicalBlockFileAttr
-// for a level whose recorded source file differs from `functionFile`. The
-// outermost level is parented on `subprogram`. Returns `subprogram` itself for
-// a null chain, so a block or op with no enclosing region keeps today's
-// behaviour unchanged.
+// scope: one DILexicalBlockAttr per nesting level, always filed under
+// `functionFile` -- deliberately never DILexicalBlockFileAttr (which looks
+// like the obvious fit for a scope whose file differs from its parent's, but
+// which LLVM's LexicalScopes builder unwraps unconditionally via
+// DILocalScope::getNonLexicalBlockFileScope() before constructing the DWARF
+// scope tree, so it can never surface as its own DW_TAG_lexical_block), and
+// deliberately never the region's own real source file either: a DILocation
+// has no file of its own, so every op nested under this scope would have its
+// dump-relative line silently reinterpreted as a line in that unrelated real
+// file. The outermost level is parented on `subprogram`. Returns `subprogram`
+// itself for a null chain, so a block or op with no enclosing region keeps
+// today's behaviour unchanged.
 ::mlir::LLVM::DIScopeAttr resolveRegionScope(::mlir::MLIRContext* ctx, ::mlir::LocationAttr regionChain,
                                              ::mlir::LLVM::DISubprogramAttr subprogram,
                                              ::mlir::LLVM::DIFileAttr functionFile);

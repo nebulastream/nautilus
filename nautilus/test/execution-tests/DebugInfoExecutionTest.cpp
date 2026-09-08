@@ -616,18 +616,34 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 	REQUIRE(varsScopedToLexBlock >= 1);
 }
 
-TEST_CASE("Debug info: region() scopes lower to nested DILexicalBlocks") {
-	// Issue #455: a region() call site (docs/region.md) should surface as
-	// an additional lexical scope sitting between a Nautilus basic
-	// block's own DILexicalBlock and the function's DISubprogram. Before
-	// this, EmitDbgValuePass always parented a block's DILexicalBlock
-	// directly on the DISubprogram, so region metadata reached the IR
-	// (#448) but no backend consumed it.
+TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared across blocks") {
+	// Issue #455: a region() call site (docs/region.md) should surface as a
+	// real DWARF lexical scope, shared by every Nautilus basic block traced
+	// inside it. Two correctness properties here are non-obvious and were
+	// only caught by attaching gdb to a real compiled binary rather than just
+	// reading this text dump:
 	//
-	// In "nautilus-ir" source mode the region's recorded file (the real
-	// C++ source) differs from the subprogram's file (the synthesized IR
-	// dump), so the region surfaces as a DILexicalBlockFile rather than a
-	// plain DILexicalBlock -- both count as an extra scope level here.
+	//   * The region's own scope must be a PLAIN DILexicalBlock, never a
+	//     DILexicalBlockFile. A DILexicalBlockFile looks like the natural
+	//     fit for "the region's real source file differs from the
+	//     function's", but LLVM's DWARF backend treats DILexicalBlockFile as
+	//     completely transparent -- LexicalScopes::getOrCreateRegularScope
+	//     unwraps it via DILocalScope::getNonLexicalBlockFileScope() before
+	//     building the scope tree -- so it can never surface as its own
+	//     scope in a compiled program; ops "scoped to the region" would
+	//     silently end up scoped to the whole function instead, exactly as
+	//     if region() had never been called.
+	//   * The region's DILexicalBlock must stay on the SAME file as the
+	//     function's own DISubprogram. A DILocation has no file of its own;
+	//     giving the region scope the region's real (different) source file
+	//     would silently reinterpret every nested op's dump-relative line as
+	//     a line in that unrelated file instead.
+	//
+	// debugRegionSum wraps a loop in region("accumulate", ...): the loop
+	// header (dump line 8) and loop body (dump line 13) are two separate
+	// Nautilus basic blocks. If the region scope is real and shared, some
+	// single DILexicalBlock's ops span both lines; if it were pruned away
+	// (or never merged), no single scope would show both.
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
 	std::set<std::filesystem::path> existing;
 	if (std::filesystem::exists(dumpRoot)) {
@@ -646,11 +662,26 @@ TEST_CASE("Debug info: region() scopes lower to nested DILexicalBlocks") {
 	auto fn = engine.registerFunction(debugRegionSum);
 	REQUIRE(fn(5) == 10);
 
-	// Maps every DILexicalBlock's own metadata id to its `scope: !M`
-	// parent, and separately tracks the id of every lexical scope node
-	// (DILexicalBlock or DILexicalBlockFile) seen.
-	std::map<std::string, std::string> lexBlockParent;
-	std::set<std::string> lexicalScopeIds;
+	std::map<std::string, std::string> subprogramName;  // id -> name
+	std::map<std::string, std::string> subprogramFile;  // id -> file id
+	std::map<std::string, std::string> lexBlockScope;   // id -> scope id
+	std::map<std::string, std::string> lexBlockFile;    // id -> file id
+	std::map<std::string, std::set<int>> linesForScope; // scope id -> lines seen on it
+	bool sawLexicalBlockFile = false;
+
+	auto extractRef = [](const std::string& line, const std::string& key) -> std::string {
+		auto pos = line.find(key);
+		if (pos == std::string::npos) {
+			return {};
+		}
+		auto start = pos + key.size();
+		auto end = start;
+		while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+			++end;
+		}
+		return line.substr(start, end - start);
+	};
+
 	if (std::filesystem::exists(dumpRoot)) {
 		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
 			if (existing.count(dir.path())) {
@@ -664,9 +695,8 @@ TEST_CASE("Debug info: region() scopes lower to nested DILexicalBlocks") {
 				std::istringstream iss(contents);
 				std::string line;
 				while (std::getline(iss, line)) {
-					const bool isLexBlock = line.find("!DILexicalBlock(") != std::string::npos;
-					const bool isLexBlockFile = line.find("!DILexicalBlockFile(") != std::string::npos;
-					if (!isLexBlock && !isLexBlockFile) {
+					if (line.find("!DILexicalBlockFile(") != std::string::npos) {
+						sawLexicalBlockFile = true;
 						continue;
 					}
 					auto bang = line.find('!');
@@ -675,41 +705,65 @@ TEST_CASE("Debug info: region() scopes lower to nested DILexicalBlocks") {
 						continue;
 					}
 					auto metaId = line.substr(bang + 1, idEnd - bang - 1);
-					lexicalScopeIds.insert(metaId);
-					auto scopeKey = line.find("scope: !");
-					if (scopeKey == std::string::npos) {
-						continue;
-					}
-					auto scopeStart = scopeKey + std::string("scope: !").size();
-					auto scopeEnd = scopeStart;
-					while (scopeEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
-						++scopeEnd;
-					}
-					if (isLexBlock) {
-						lexBlockParent[metaId] = line.substr(scopeStart, scopeEnd - scopeStart);
+
+					if (line.find("!DISubprogram(") != std::string::npos) {
+						auto nameKey = line.find("name: \"");
+						if (nameKey != std::string::npos) {
+							auto nameStart = nameKey + std::string("name: \"").size();
+							auto nameEnd = line.find('"', nameStart);
+							subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
+						}
+						subprogramFile[metaId] = extractRef(line, "file: !");
+					} else if (line.find("!DILexicalBlock(") != std::string::npos) {
+						lexBlockScope[metaId] = extractRef(line, "scope: !");
+						lexBlockFile[metaId] = extractRef(line, "file: !");
+					} else if (line.find("!DILocation(") != std::string::npos) {
+						auto lineKey = line.find("line: ");
+						auto scopeId = extractRef(line, "scope: !");
+						if (lineKey != std::string::npos && !scopeId.empty()) {
+							auto lineStart = lineKey + std::string("line: ").size();
+							auto lineEnd = lineStart;
+							while (lineEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[lineEnd]))) {
+								++lineEnd;
+							}
+							linesForScope[scopeId].insert(std::stoi(line.substr(lineStart, lineEnd - lineStart)));
+						}
 					}
 				}
 				break;
 			}
-			if (!lexBlockParent.empty()) {
+			if (!subprogramName.empty()) {
 				break;
 			}
 		}
 	}
 
-	REQUIRE_FALSE(lexBlockParent.empty());
+	REQUIRE_FALSE(sawLexicalBlockFile);
 
-	// At least one DILexicalBlock must be parented on ANOTHER lexical
-	// scope (the region's DILexicalBlock/DILexicalBlockFile) instead of
-	// resolving directly to the DISubprogram -- that extra nesting level
-	// is what region() contributes.
-	int nestedLexicalBlocks = 0;
-	for (const auto& kv : lexBlockParent) {
-		if (lexicalScopeIds.count(kv.second)) {
-			++nestedLexicalBlocks;
+	std::string executeId;
+	for (const auto& kv : subprogramName) {
+		if (kv.second == "execute") {
+			executeId = kv.first;
 		}
 	}
-	REQUIRE(nestedLexicalBlocks >= 1);
+	REQUIRE_FALSE(executeId.empty());
+	const auto& executeFile = subprogramFile[executeId];
+	REQUIRE_FALSE(executeFile.empty());
+
+	bool foundSharedRegionScope = false;
+	for (const auto& kv : lexBlockScope) {
+		const auto& blockId = kv.first;
+		const auto& scopeId = kv.second;
+		if (scopeId != executeId || lexBlockFile[blockId] != executeFile) {
+			continue;
+		}
+		const auto& lines = linesForScope[blockId];
+		if (lines.count(8) && lines.count(13)) {
+			foundSharedRegionScope = true;
+			break;
+		}
+	}
+	REQUIRE(foundSharedRegionScope);
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {

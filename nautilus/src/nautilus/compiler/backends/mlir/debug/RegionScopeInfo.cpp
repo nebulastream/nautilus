@@ -1,6 +1,5 @@
 
 #include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
-#include <llvm/Support/Path.h>
 #include <mlir/IR/BuiltinAttributes.h>
 
 namespace nautilus::compiler::mlir {
@@ -79,14 +78,31 @@ namespace {
 	::mlir::LLVM::DIScopeAttr parentScope =
 	    parentChain ? resolveChainNode(ctx, parentChain, subprogram, functionFile) : subprogram;
 
-	llvm::StringRef regionFileName = fileLineCol.getFilename().getValue();
-	if (regionFileName.empty() || regionFileName == functionFile.getName().getValue()) {
-		return ::mlir::LLVM::DILexicalBlockAttr::get(ctx, parentScope, functionFile, fileLineCol.getLine(),
-		                                             fileLineCol.getColumn());
-	}
-	auto regionFile = ::mlir::LLVM::DIFileAttr::get(ctx, llvm::sys::path::filename(regionFileName),
-	                                                llvm::sys::path::parent_path(regionFileName));
-	return ::mlir::LLVM::DILexicalBlockFileAttr::get(ctx, parentScope, regionFile, /*discriminator=*/0);
+	// Deliberately always DILexicalBlockAttr parented with `functionFile` --
+	// never DILexicalBlockFileAttr, and never the region's own real source
+	// file either, even though that file is exactly what a user would expect
+	// to see on this scope.
+	//
+	// DILexicalBlockFileAttr looks like the obvious fit for "this scope's
+	// file differs from its enclosing one", but LLVM's LexicalScopes builder
+	// unwraps it unconditionally via DILocalScope::getNonLexicalBlockFileScope()
+	// before constructing the DWARF scope tree -- whether it is used as an
+	// op's own scope or only as another scope's parent -- so it can never
+	// surface as its own DW_TAG_lexical_block.
+	//
+	// A plain DILexicalBlockAttr does materialize, but a DILocation has no
+	// file of its own: every op nested under this scope resolves its file by
+	// walking up to here, and those ops' line numbers are always relative to
+	// the function's own file (the Nautilus IR dump or MLIR snapshot -- see
+	// DebugInfoOptions.hpp), never to the region's real source file. Giving
+	// this scope the region's real file would silently reinterpret every
+	// nested op's dump-relative line as a line in that unrelated file instead
+	// (verified: GDB then "steps" through arbitrary lines of the user's C++
+	// source that have nothing to do with the region). The region's real
+	// file/line is still readable in a plain MLIR dump via the chain's own
+	// NameLoc (see attachRegionScope) -- it just cannot safely become this
+	// scope's DWARF file.
+	return ::mlir::LLVM::DILexicalBlockAttr::get(ctx, parentScope, functionFile, /*line=*/0, /*column=*/0);
 }
 
 } // namespace

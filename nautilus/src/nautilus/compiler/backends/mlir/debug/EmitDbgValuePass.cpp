@@ -155,23 +155,40 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 				}
 				return 0;
 			};
-			// A block's own DILexicalBlock nests inside the Nautilus
-			// region() (docs/region.md) its ops were traced under, if
-			// any -- see RegionScopeInfo.hpp -- falling back to the
-			// subprogram directly for a block with no enclosing region,
-			// which keeps today's flat scoping unchanged.
+			// Resolves the DWARF scope of the Nautilus region() (docs/region.md)
+			// that @p block's ops were traced under, or a null DIScopeAttr for a
+			// block with no enclosing region -- see RegionScopeInfo.hpp.
 			auto regionScopeFor = [&](::mlir::Block& block) -> ::mlir::LLVM::DIScopeAttr {
 				for (auto& op : block) {
 					if (auto chain = findRegionScopeChain(op.getLoc())) {
 						return resolveRegionScope(ctx, chain, subprogram, file);
 					}
 				}
-				return subprogram;
+				return {};
 			};
-			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DILexicalBlockAttr> blockScopes;
+			// A block whose ops were traced inside a region() shares that
+			// region's own DWARF scope directly rather than nesting a further
+			// per-block DILexicalBlock inside it. LLVM's DWARF emitter only
+			// keeps a lexical-block DIE alive when some instruction's location
+			// resolves to it directly; a region scope used purely as another
+			// scope's *parent* -- never any op's own scope -- is silently
+			// pruned, so the region never shows up in the compiled debug info.
+			// Sharing the scope directly also means several Nautilus basic
+			// blocks belonging to the same region() (a loop's header and body,
+			// say) correctly collapse into that region's one (non-contiguous)
+			// PC range in DWARF, instead of each carving out its own
+			// indistinguishable per-block sub-scope. A block with no enclosing
+			// region keeps today's behaviour: its own DILexicalBlock, parented
+			// directly on the subprogram.
+			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DIScopeAttr> blockScopes;
 			for (auto& block : funcOp.getBody()) {
-				blockScopes[&block] = ::mlir::LLVM::DILexicalBlockAttr::get(ctx, regionScopeFor(block), file,
-				                                                            firstLineIn(block), /*column=*/1);
+				if (auto regionScope = regionScopeFor(block)) {
+					blockScopes[&block] = regionScope;
+				} else {
+					blockScopes[&block] =
+					    ::mlir::LLVM::DILexicalBlockAttr::get(ctx, subprogram, file, firstLineIn(block),
+					                                          /*column=*/1);
+				}
 			}
 			for (auto& block : funcOp.getBody()) {
 				auto scope = blockScopes[&block];
