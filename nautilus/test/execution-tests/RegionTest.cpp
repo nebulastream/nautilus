@@ -15,12 +15,21 @@
 #ifdef ENABLE_TRACING
 // Only the white-box tests below reach past the engine API into the tracer and the IR
 // pipeline, and they only exist when there is a tracer to drive.
+#include "ReferenceDumpHelper.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/compiler/ir/passes/AlgebraicSimplificationPass.hpp"
+#include "nautilus/compiler/ir/passes/BlockArgumentPruningPass.hpp"
 #include "nautilus/compiler/ir/passes/BlockMergingPass.hpp"
+#include "nautilus/compiler/ir/passes/ConstantBranchFoldingPass.hpp"
+#include "nautilus/compiler/ir/passes/ConstantFoldingAndCopyPropagationPass.hpp"
+#include "nautilus/compiler/ir/passes/DeadCodeEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
+#include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
+#include "nautilus/compiler/ir/passes/FunctionAttributeInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
+#include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/logging.hpp"
 #include "nautilus/tracing/LazyTraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
@@ -722,6 +731,44 @@ std::shared_ptr<compiler::ir::IRGraph> traceToCleanedIr(const std::function<void
 	return ir;
 }
 
+/// Traces @p func with the lazy tracer and returns its IR after the whole
+/// default IR pass pipeline `CompilationPipeline::compileToIR` runs -- every
+/// default-on pass, not just the two block-cleanup ones `traceToCleanedIr`
+/// stops after. Region provenance is stamped once, by the trace-to-IR
+/// conversion; the point of running the full pipeline here (rather than the
+/// two-pass subset above) is to catch a later pass that mints a replacement
+/// operation and leaves it unattributed instead of inheriting the provenance
+/// of the code it replaces (issue #453).
+std::shared_ptr<compiler::ir::IRGraph> traceToFullPipelineIr(const std::function<void()>& func) {
+	auto rootFunction = compiler::CompilableFunction("execute", func);
+	std::list<compiler::CompilableFunction> functionsToTrace;
+	functionsToTrace.push_back(rootFunction);
+	common::Arena arena;
+	auto traceModule = tracing::LazyTraceContext::Trace(functionsToTrace, engine::Options(), arena);
+	auto ssa = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(traceModule)));
+	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(ssa));
+
+	engine::Options passOpts;
+	compiler::ir::IRPassManager passManager(passOpts);
+	// Mirrors CompilationPipeline::compileToIR's default-on pass set and order
+	// exactly (LocalCSE, StrengthReduction and LICM stay opt-in there and are
+	// left out here too).
+	passManager.addPass(std::make_unique<compiler::ir::FunctionAttributeInferencePass>());
+	std::vector<std::unique_ptr<compiler::ir::IRPass>> group;
+	group.push_back(std::make_unique<compiler::ir::ConstantFoldingAndCopyPropagationPass>());
+	group.push_back(std::make_unique<compiler::ir::AlgebraicSimplificationPass>());
+	group.push_back(std::make_unique<compiler::ir::ConstantBranchFoldingPass>());
+	group.push_back(std::make_unique<compiler::ir::EmptyBlockEliminationPass>());
+	group.push_back(std::make_unique<compiler::ir::BlockMergingPass>());
+	group.push_back(std::make_unique<compiler::ir::DeadCodeEliminationPass>());
+	group.push_back(std::make_unique<compiler::ir::BlockArgumentPruningPass>());
+	passManager.addFixedPointGroup(std::move(group), 4);
+	passManager.addPass(std::make_unique<compiler::ir::NoThrowInferencePass>());
+	passManager.addPass(std::make_unique<compiler::ir::ExceptionRegionPreparationPass>());
+	passManager.run(*ir);
+	return ir;
+}
+
 } // namespace
 
 // The reason regions exist: a branch inside a region is resolved by re-running only that
@@ -991,6 +1038,27 @@ TEST_CASE("Region Attributes Survive Into The IR", "[region]") {
 	// The legend closes the module: every block and operation comes before it.
 	REQUIRE(legend > dump.find("Block_0"));
 	REQUIRE(legend < dump.find("} //nautilus"));
+}
+
+// Region attribution has to survive more than the two block-cleanup passes
+// `traceToCleanedIr` stops after -- it has to survive whatever the *rest* of the default
+// pipeline does too, including passes that mint replacement operations rather than just
+// moving existing ones around (issue #453). A checked-in golden dump is what turns a pass
+// that starts leaving its replacements unattributed into a diff here, instead of a fact
+// nobody notices until an IR dump taken late in the pipeline is unexpectedly thin on
+// region information.
+TEST_CASE("Region Attributes Survive The Full Pass Pipeline", "[region]") {
+	SourceLocationPrintingGuard guard(false);
+	const bool addressesWereLogged = log::options::getLogAddresses();
+	log::options::setLogAddresses(false);
+
+	auto ir = traceToFullPipelineIr(details::createFunctionWrapper(regionAttributed));
+	INFO("ir:\n" << ir->toString());
+	REQUIRE(compiler::ir::IRVerifier::verify(*ir).ok());
+	REQUIRE(testing::checkReferenceDump(ir->toString(), "region-tests", "after_full_pipeline", "regionAttributed",
+	                                    ".nautilus"));
+
+	log::options::setLogAddresses(addressesWereLogged);
 }
 
 // A block that is wholly inside a region says so once, instead of every operation in it

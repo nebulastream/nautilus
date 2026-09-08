@@ -271,6 +271,12 @@ void FunctionRewriter::setInvocationTarget(BasicBlockInvocation& inv, BasicBlock
 void FunctionRewriter::replaceTerminator(BasicBlock* block, Operation* newTerminator) {
 	if (!block->getOperations().empty()) {
 		Operation* oldTerminator = block->getTerminatorOp();
+		// The replacement inherits what it replaces (issue #453): a terminator built
+		// standalone (e.g. `ConstantBranchFoldingPass` folding an `IfOp` down to a
+		// `BranchOp`) does not go through `createBefore`/`createBeforeTerminator`, so
+		// it arrives here carrying no provenance of its own.
+		newTerminator->setSourceTag(oldTerminator->getSourceTag());
+		newTerminator->setRegionIndex(oldTerminator->getRegionIndex());
 		unregisterUser(oldTerminator);
 		for (auto* inv : getSuccessorInvocations(*oldTerminator)) {
 			unregisterUser(inv);

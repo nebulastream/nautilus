@@ -100,14 +100,31 @@ public:
 
 	// ── Creation & insertion ──
 
+	/// Sets the region provenance (docs/region.md) that @ref createBeforeTerminator
+	/// stamps onto every operation it mints from now on, until the next call. Pass
+	/// authors call this with the operation being replaced or compensated for
+	/// immediately before minting code that has no anchor operation of its own to
+	/// inherit from (`createBefore` needs no such call -- it always inherits from
+	/// its @p anchor directly, see below). Passing `nullptr` resets to `NO_REGION`
+	/// / no source tag, which is the right call for genuinely new code that has no
+	/// traced ancestor (issue #453: "unattributed" should mean "no traced origin",
+	/// not "nobody bothered").
+	void setCurrentProvenance(const Operation* source) noexcept {
+		currentProvenance_ = source != nullptr ? OperationProvenance {source->getSourceTag(), source->getRegionIndex()}
+		                                       : OperationProvenance {};
+	}
+
 	/// Arena-allocates a `T` (injecting the arena as the first constructor
 	/// argument, matching `BasicBlock::addOperation`'s convention -- callers
 	/// pass the identifier, typically `freshId()`, as part of @p args like
-	/// any other constructor parameter), registers its operand uses, and
-	/// inserts it immediately before @p block's terminator.
+	/// any other constructor parameter), stamps it with the provenance set via
+	/// @ref setCurrentProvenance, registers its operand uses, and inserts it
+	/// immediately before @p block's terminator.
 	template <typename T, typename... Args>
 	T* createBeforeTerminator(BasicBlock* block, Args&&... args) {
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
+		op->setSourceTag(currentProvenance_.sourceTag);
+		op->setRegionIndex(currentProvenance_.region);
 		Operation* terminator = block->getTerminatorOp();
 		block->addOperationBefore(terminator, op);
 		defBlock_[op] = block;
@@ -115,12 +132,17 @@ public:
 		return op;
 	}
 
-	/// As above, but inserts immediately before @p anchor (which must
-	/// already be tracked by this session, i.e. a live operation in the
-	/// function).
+	/// As above, but inserts immediately before @p anchor (which must already be
+	/// tracked by this session, i.e. a live operation in the function) and takes
+	/// @p anchor's own provenance rather than the one set via
+	/// @ref setCurrentProvenance -- every call site across the codebase uses
+	/// @p anchor as the operation being replaced, so this is the "replacement
+	/// inherits what it replaces" rule (issue #453) applied automatically.
 	template <typename T, typename... Args>
 	T* createBefore(Operation* anchor, Args&&... args) {
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
+		op->setSourceTag(anchor->getSourceTag());
+		op->setRegionIndex(anchor->getRegionIndex());
 		BasicBlock* block = definingBlock(anchor);
 		block->addOperationBefore(anchor, op);
 		defBlock_[op] = block;
@@ -226,6 +248,10 @@ private:
 	std::unordered_map<const Operation*, std::vector<Use>> uses_;
 	std::unordered_map<const Operation*, BasicBlock*> defBlock_;
 	uint32_t nextId_ = 0;
+	/// Provenance @ref createBeforeTerminator stamps its next mint with; see
+	/// @ref setCurrentProvenance. Defaults to unattributed (`NO_REGION`, no source
+	/// tag), matching every operation's default construction.
+	OperationProvenance currentProvenance_;
 };
 
 } // namespace nautilus::compiler::ir

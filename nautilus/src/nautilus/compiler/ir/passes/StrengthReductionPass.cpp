@@ -213,6 +213,12 @@ int64_t wrappingMul(int64_t a, int64_t b) {
 }
 
 void applyCandidate(FunctionRewriter& rewriter, common::Arena& arena, const Candidate& c) {
+	// Every operation minted below (via `createBeforeTerminator`) computes, through a
+	// different sequence of instructions, exactly the pointer value `add2` used to
+	// compute inside the loop body each iteration; attribute it there rather than
+	// leaving it unattributed (issue #453).
+	rewriter.setCurrentProvenance(c.add2);
+
 	// New loop-carried pointer argument on the header. Built directly
 	// (rather than through `FunctionRewriter::addBlockArgument`) because
 	// `latchAdd` below must reference `ptrArg` itself, so `ptrArg` has to
@@ -258,6 +264,8 @@ void applyCandidate(FunctionRewriter& rewriter, common::Arena& arena, const Cand
 	// multiply's own identifier means any (unexpected) stray reference to it
 	// still resolves to a valid, harmless value instead of a dangling one.
 	auto* zeroConst = arena.create<ConstIntOperation>(arena, c.mul->getIdentifier(), 0, c.mul->getStamp());
+	zeroConst->setSourceTag(c.mul->getSourceTag());
+	zeroConst->setRegionIndex(c.mul->getRegionIndex());
 	c.add2->setLeftInput(ptrArg);
 	c.add2->setRightInput(zeroConst);
 	c.mulBlock->replaceOperation(findOperationIndex(c.mulBlock, c.mul), zeroConst);
