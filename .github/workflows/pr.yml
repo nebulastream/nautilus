@@ -196,10 +196,13 @@ jobs:
           out=$(./demo_regions)
           echo "$out"
           echo "$out" | grep -q "summarize(threshold=8) = 6503"
-          # the three nested regions, each named at the call site that opened it --
-          # "accumulate" through the stage() helper, which is the point of that overload
-          echo "$out" | grep -q 'region "scan" at .*DemoRegions.cpp:'
-          echo "$out" | grep -q 'region "classify" at .*DemoRegions.cpp:'
+          # the trace names a region by index where a block belongs to it, and defines
+          # the three nested regions -- each named at the call site that opened it,
+          # "accumulate" through the stage() helper, which is the point of that overload --
+          # once in a legend closing the trace
+          echo "$out" | grep -q ') ; region #0$'
+          echo "$out" | grep -q '; region #0 = "scan" at .*DemoRegions.cpp:'
+          echo "$out" | grep -q '; region #1 = "classify" at .*DemoRegions.cpp:'
           # the IR refers to regions by id and defines them in the legend closing the module
           echo "$out" | grep -q '): ; region #2$'
           echo "$out" | grep -q '; region #2 = "accumulate" at .*DemoRegions.cpp:.*, nested in #1'
