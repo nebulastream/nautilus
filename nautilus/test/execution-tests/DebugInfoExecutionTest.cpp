@@ -616,34 +616,39 @@ TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibil
 	REQUIRE(varsScopedToLexBlock >= 1);
 }
 
-TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared across blocks") {
-	// Issue #455: a region() call site (docs/region.md) should surface as a
-	// real DWARF lexical scope, shared by every Nautilus basic block traced
-	// inside it. Two correctness properties here are non-obvious and were
-	// only caught by attaching gdb to a real compiled binary rather than just
-	// reading this text dump:
+TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shared across blocks") {
+	// Issue #455: a region() call site (docs/region.md) should surface as its
+	// own entry in `bt`, the same way gdb shows an -O2-inlined C++ function as
+	// its own backtrace frame -- not merely as a lexical scope that narrows
+	// variable visibility. That requires a synthetic DISubprogram (the
+	// "abstract origin") for the region plus a DILocation `inlinedAt` chain,
+	// i.e. a DW_TAG_inlined_subroutine, not a DW_TAG_lexical_block: gdb only
+	// ever prints one source line per stack frame, and a lexical block is
+	// never a frame boundary of its own, so no amount of nesting a plain
+	// DILexicalBlock would make it appear as a separate `bt` line. This was
+	// verified against a real compiled binary under gdb (readelf shows a
+	// DW_TAG_inlined_subroutine with DW_AT_abstract_origin, and `bt` shows
+	// "#0 accumulate () / #1 execute ()" consistently at every instruction
+	// address across the region's extent, with the frame disappearing again
+	// exactly at the region's boundary) -- this test checks the underlying
+	// static structure that makes that behavior possible:
 	//
-	//   * The region's own scope must be a PLAIN DILexicalBlock, never a
-	//     DILexicalBlockFile. A DILexicalBlockFile looks like the natural
-	//     fit for "the region's real source file differs from the
-	//     function's", but LLVM's DWARF backend treats DILexicalBlockFile as
-	//     completely transparent -- LexicalScopes::getOrCreateRegularScope
-	//     unwraps it via DILocalScope::getNonLexicalBlockFileScope() before
-	//     building the scope tree -- so it can never surface as its own
-	//     scope in a compiled program; ops "scoped to the region" would
-	//     silently end up scoped to the whole function instead, exactly as
-	//     if region() had never been called.
-	//   * The region's DILexicalBlock must stay on the SAME file as the
-	//     function's own DISubprogram. A DILocation has no file of its own;
-	//     giving the region scope the region's real (different) source file
-	//     would silently reinterpret every nested op's dump-relative line as
-	//     a line in that unrelated file instead.
-	//
-	// debugRegionSum wraps a loop in region("accumulate", ...): the loop
-	// header (dump line 8) and loop body (dump line 13) are two separate
-	// Nautilus basic blocks. If the region scope is real and shared, some
-	// single DILexicalBlock's ops span both lines; if it were pruned away
-	// (or never merged), no single scope would show both.
+	//   * A synthetic DISubprogram named after the region exists, filed under
+	//     the SAME file as the enclosing function's own DISubprogram (a
+	//     DILocation has no file of its own, so a mismatched file here would
+	//     silently reinterpret unrelated source lines).
+	//   * At least two structurally different ops -- one from what was
+	//     originally the loop-condition block and one from the loop body --
+	//     resolve to that same synthetic subprogram, i.e. the region's scope
+	//     is shared across the Nautilus basic blocks traced inside it, not
+	//     re-created per block.
+	//   * Those ops carry an `inlinedAt` location whose own scope resolves
+	//     back to the enclosing function's real DISubprogram -- the chain
+	//     that lets LLVM's verifier (and gdb) recognize this as "inlined into
+	//     execute" rather than a dangling scope.
+	//   * No DILexicalBlockFile is ever emitted for it (see
+	//     RegionScopeInfo.hpp for why that attribute can never surface as its
+	//     own DWARF scope, region or not).
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
 	std::set<std::filesystem::path> existing;
 	if (std::filesystem::exists(dumpRoot)) {
@@ -662,12 +667,13 @@ TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared acro
 	auto fn = engine.registerFunction(debugRegionSum);
 	REQUIRE(fn(5) == 10);
 
-	std::map<std::string, std::string> subprogramName;  // id -> name
-	std::map<std::string, std::string> subprogramFile;  // id -> file id
-	std::map<std::string, std::string> lexBlockScope;   // id -> scope id
-	std::map<std::string, std::string> lexBlockFile;    // id -> file id
-	std::map<std::string, std::set<int>> linesForScope; // scope id -> lines seen on it
+	std::map<std::string, std::string> subprogramName; // id -> name
+	std::map<std::string, std::string> subprogramFile; // id -> file id
+	std::map<std::string, std::string> locScope;       // DILocation id -> scope id
+	std::map<std::string, std::string> locInlinedAt;   // DILocation id -> inlinedAt DILocation id (if any)
 	bool sawLexicalBlockFile = false;
+	std::string dbgIdOnIcmp;    // !dbg id attached to the loop-condition `icmp`
+	std::string dbgIdOnBodyAdd; // !dbg id attached to the loop-body accumulation `add`
 
 	auto extractRef = [](const std::string& line, const std::string& key) -> std::string {
 		auto pos = line.find(key);
@@ -675,6 +681,18 @@ TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared acro
 			return {};
 		}
 		auto start = pos + key.size();
+		auto end = start;
+		while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+			++end;
+		}
+		return line.substr(start, end - start);
+	};
+	auto extractDbgId = [](const std::string& line) -> std::string {
+		auto pos = line.rfind("!dbg !");
+		if (pos == std::string::npos) {
+			return {};
+		}
+		auto start = pos + std::string("!dbg !").size();
 		auto end = start;
 		while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
 			++end;
@@ -697,8 +715,14 @@ TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared acro
 				while (std::getline(iss, line)) {
 					if (line.find("!DILexicalBlockFile(") != std::string::npos) {
 						sawLexicalBlockFile = true;
-						continue;
 					}
+					if (dbgIdOnIcmp.empty() && line.find("icmp slt") != std::string::npos) {
+						dbgIdOnIcmp = extractDbgId(line);
+					}
+					if (dbgIdOnBodyAdd.empty() && line.find("add i32 %10, %11") != std::string::npos) {
+						dbgIdOnBodyAdd = extractDbgId(line);
+					}
+
 					auto bang = line.find('!');
 					auto idEnd = line.find(' ', bang);
 					if (bang == std::string::npos || idEnd == std::string::npos) {
@@ -714,19 +738,11 @@ TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared acro
 							subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
 						}
 						subprogramFile[metaId] = extractRef(line, "file: !");
-					} else if (line.find("!DILexicalBlock(") != std::string::npos) {
-						lexBlockScope[metaId] = extractRef(line, "scope: !");
-						lexBlockFile[metaId] = extractRef(line, "file: !");
 					} else if (line.find("!DILocation(") != std::string::npos) {
-						auto lineKey = line.find("line: ");
-						auto scopeId = extractRef(line, "scope: !");
-						if (lineKey != std::string::npos && !scopeId.empty()) {
-							auto lineStart = lineKey + std::string("line: ").size();
-							auto lineEnd = lineStart;
-							while (lineEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[lineEnd]))) {
-								++lineEnd;
-							}
-							linesForScope[scopeId].insert(std::stoi(line.substr(lineStart, lineEnd - lineStart)));
+						locScope[metaId] = extractRef(line, "scope: !");
+						auto inlinedAtPos = line.find("inlinedAt: !");
+						if (inlinedAtPos != std::string::npos) {
+							locInlinedAt[metaId] = extractRef(line, "inlinedAt: !");
 						}
 					}
 				}
@@ -739,31 +755,41 @@ TEST_CASE("Debug info: region() scopes get their own DILexicalBlock, shared acro
 	}
 
 	REQUIRE_FALSE(sawLexicalBlockFile);
+	REQUIRE_FALSE(dbgIdOnIcmp.empty());
+	REQUIRE_FALSE(dbgIdOnBodyAdd.empty());
 
 	std::string executeId;
+	std::string accumulateId;
 	for (const auto& kv : subprogramName) {
 		if (kv.second == "execute") {
 			executeId = kv.first;
+		} else if (kv.second == "accumulate") {
+			accumulateId = kv.first;
 		}
 	}
 	REQUIRE_FALSE(executeId.empty());
-	const auto& executeFile = subprogramFile[executeId];
-	REQUIRE_FALSE(executeFile.empty());
+	REQUIRE_FALSE(accumulateId.empty());
 
-	bool foundSharedRegionScope = false;
-	for (const auto& kv : lexBlockScope) {
-		const auto& blockId = kv.first;
-		const auto& scopeId = kv.second;
-		if (scopeId != executeId || lexBlockFile[blockId] != executeFile) {
-			continue;
-		}
-		const auto& lines = linesForScope[blockId];
-		if (lines.count(8) && lines.count(13)) {
-			foundSharedRegionScope = true;
-			break;
-		}
+	// The region's synthetic subprogram must stay on execute's own file (see
+	// the DILexicalBlockFile-transparency / file-inheritance rationale above).
+	REQUIRE(subprogramFile[accumulateId] == subprogramFile[executeId]);
+
+	// A shared scope, not one re-created per block: the loop-condition icmp
+	// (originally in the loop-header block) and the accumulation add
+	// (originally in the loop-body block) resolve to the very same
+	// "accumulate" subprogram.
+	REQUIRE(locScope[dbgIdOnIcmp] == accumulateId);
+	REQUIRE(locScope[dbgIdOnBodyAdd] == accumulateId);
+
+	// Both carry an inlinedAt chain that nests back into execute's own scope,
+	// i.e. this is recognizable as "accumulate inlined into execute" rather
+	// than a dangling/unreachable scope.
+	for (const auto& dbgId : {dbgIdOnIcmp, dbgIdOnBodyAdd}) {
+		auto inlinedAtIt = locInlinedAt.find(dbgId);
+		REQUIRE(inlinedAtIt != locInlinedAt.end());
+		REQUIRE_FALSE(inlinedAtIt->second.empty());
+		REQUIRE(locScope[inlinedAtIt->second] == executeId);
 	}
-	REQUIRE(foundSharedRegionScope);
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {

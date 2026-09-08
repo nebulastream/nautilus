@@ -14,6 +14,7 @@
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <memory>
 #include <mlir/IR/PatternMatch.h>
+#include <optional>
 #include <span>
 #include <unordered_set>
 
@@ -202,7 +203,22 @@ private:
 	/// of the given identifier.  Returns a plain NameLoc("arg") location
 	/// when debug info is disabled so the caller can use the result
 	/// unconditionally.
-	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName);
+	///
+	/// @p regionIndexOverride names the region to fuse onto the result
+	/// explicitly, for callers where currentOp_ is not the right source of
+	/// truth:
+	///   * generateMLIR's post-dispatch shadow-store call, where currentOp_
+	///     is already cleared by then (see its own comment for why), so
+	///     region-wrapping would otherwise silently see NO_REGION regardless
+	///     of the operation the shadow store is actually for.
+	///   * generateBasicBlock's block-argument tagging, where currentOp_ is
+	///     the branch reaching this block first -- not necessarily the
+	///     target block's own region, since a branch can cross a region
+	///     boundary in either direction.
+	/// Callers with a live, correctly-scoped currentOp_ can omit it and keep
+	/// deriving the region from currentOp_ as before.
+	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName,
+	                               std::optional<ir::RegionIndex> regionIndexOverride = std::nullopt);
 
 	/// Lazily create an `llvm.alloca` at the entry block of the currently
 	/// enclosing `func.func` for shadow-storing $N's value.  The alloca

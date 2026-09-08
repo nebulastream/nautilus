@@ -10,8 +10,7 @@ namespace {
 // findRegionScopeChain() can find it unambiguously among any other fused
 // location metadata a Location tree may carry (e.g. the DISubprogramAttr
 // that DIScopeForLLVMFuncOpPass later attaches to the function's own
-// location, or the per-block DILexicalBlockAttr EmitDbgValuePass fuses onto
-// every op once block scoping has been resolved).
+// location, or the scope FusedLocs wrapOpForRegionInlining() itself builds).
 constexpr llvm::StringLiteral kRegionScopeMarker = "nautilus.region.scope";
 
 } // namespace
@@ -53,67 +52,94 @@ constexpr llvm::StringLiteral kRegionScopeMarker = "nautilus.region.scope";
 
 namespace {
 
-// Resolves one region chain node -- either the bare leaf NameLoc a region
-// with no parent builds, or the FusedLoc(leaf, parentChain) a nested region
-// builds -- into its DWARF scope, recursing into the parent chain first so
-// outer regions are always constructed before the scopes that nest in them.
-::mlir::LLVM::DIScopeAttr resolveChainNode(::mlir::MLIRContext* ctx, ::mlir::LocationAttr chain,
-                                           ::mlir::LLVM::DISubprogramAttr subprogram,
-                                           ::mlir::LLVM::DIFileAttr functionFile) {
-	::mlir::LocationAttr parentChain;
-	auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(chain);
-	if (!nameLoc) {
-		auto fused = llvm::dyn_cast<::mlir::FusedLoc>(chain);
-		if (!fused || fused.getLocations().size() != 2) {
-			return subprogram;
-		}
-		nameLoc = llvm::dyn_cast<::mlir::NameLoc>(fused.getLocations()[0]);
-		parentChain = fused.getLocations()[1];
-	}
-	auto fileLineCol =
-	    nameLoc ? llvm::dyn_cast<::mlir::FileLineColLoc>(nameLoc.getChildLoc()) : ::mlir::FileLineColLoc();
-	if (!fileLineCol) {
-		return subprogram;
-	}
-	::mlir::LLVM::DIScopeAttr parentScope =
-	    parentChain ? resolveChainNode(ctx, parentChain, subprogram, functionFile) : subprogram;
+// One region chain node, split into its leaf NameLoc (name + FileLineColLoc)
+// and, when nested, the parent's own chain node. `leaf` is null when `chain`
+// isn't shaped like something buildRegionScopeChain() would produce.
+struct ChainNode {
+	::mlir::NameLoc leaf;
+	::mlir::LocationAttr parent;
+};
 
-	// Deliberately always DILexicalBlockAttr parented with `functionFile` --
-	// never DILexicalBlockFileAttr, and never the region's own real source
-	// file either, even though that file is exactly what a user would expect
-	// to see on this scope.
-	//
-	// DILexicalBlockFileAttr looks like the obvious fit for "this scope's
-	// file differs from its enclosing one", but LLVM's LexicalScopes builder
-	// unwraps it unconditionally via DILocalScope::getNonLexicalBlockFileScope()
-	// before constructing the DWARF scope tree -- whether it is used as an
-	// op's own scope or only as another scope's parent -- so it can never
-	// surface as its own DW_TAG_lexical_block.
-	//
-	// A plain DILexicalBlockAttr does materialize, but a DILocation has no
-	// file of its own: every op nested under this scope resolves its file by
-	// walking up to here, and those ops' line numbers are always relative to
-	// the function's own file (the Nautilus IR dump or MLIR snapshot -- see
-	// DebugInfoOptions.hpp), never to the region's real source file. Giving
-	// this scope the region's real file would silently reinterpret every
-	// nested op's dump-relative line as a line in that unrelated file instead
-	// (verified: GDB then "steps" through arbitrary lines of the user's C++
-	// source that have nothing to do with the region). The region's real
-	// file/line is still readable in a plain MLIR dump via the chain's own
-	// NameLoc (see attachRegionScope) -- it just cannot safely become this
-	// scope's DWARF file.
-	return ::mlir::LLVM::DILexicalBlockAttr::get(ctx, parentScope, functionFile, /*line=*/0, /*column=*/0);
+ChainNode decomposeChain(::mlir::LocationAttr chain) {
+	if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(chain)) {
+		return {nameLoc, nullptr};
+	}
+	if (auto fused = llvm::dyn_cast<::mlir::FusedLoc>(chain); fused && fused.getLocations().size() == 2) {
+		if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(fused.getLocations()[0])) {
+			return {nameLoc, fused.getLocations()[1]};
+		}
+	}
+	return {};
 }
 
 } // namespace
 
-::mlir::LLVM::DIScopeAttr resolveRegionScope(::mlir::MLIRContext* ctx, ::mlir::LocationAttr regionChain,
-                                             ::mlir::LLVM::DISubprogramAttr subprogram,
-                                             ::mlir::LLVM::DIFileAttr functionFile) {
+::mlir::LLVM::DISubprogramAttr resolveInnermostRegionSubprogram(::mlir::MLIRContext* ctx,
+                                                                ::mlir::LocationAttr regionChain,
+                                                                ::mlir::LLVM::DISubprogramAttr subprogram,
+                                                                ::mlir::LLVM::DIFileAttr functionFile,
+                                                                RegionSubprogramCache& cache) {
 	if (!regionChain) {
 		return subprogram;
 	}
-	return resolveChainNode(ctx, regionChain, subprogram, functionFile);
+	if (auto it = cache.find(regionChain); it != cache.end()) {
+		return it->second;
+	}
+	auto node = decomposeChain(regionChain);
+	if (!node.leaf) {
+		return subprogram;
+	}
+	llvm::StringRef name = node.leaf.getName().strref();
+	auto displayName = ::mlir::StringAttr::get(ctx, name.empty() ? llvm::StringRef("<region>") : name);
+	auto subroutineType = ::mlir::LLVM::DISubroutineTypeAttr::get(ctx, /*types=*/ {});
+	auto regionSubprogram = ::mlir::LLVM::DISubprogramAttr::get(
+	    ctx, ::mlir::DistinctAttr::create(::mlir::UnitAttr::get(ctx)), subprogram.getCompileUnit(),
+	    /*scope=*/functionFile, displayName, /*linkageName=*/displayName, functionFile, subprogram.getLine(),
+	    subprogram.getLine(), ::mlir::LLVM::DISubprogramFlags::Definition, subroutineType,
+	    /*retainedNodes=*/ {}, /*annotations=*/ {});
+	cache[regionChain] = regionSubprogram;
+	return regionSubprogram;
+}
+
+namespace {
+
+// Builds the synthetic "call site" location for one ancestor region level.
+// There is no real per-transition call line to recover -- region() bodies
+// are traced inline, not called -- so every level reuses `subprogram`'s own
+// safe entry line, always filed under `functionFile` (see
+// resolveInnermostRegionSubprogram's doc comment for why).
+::mlir::Location buildCallerChain(::mlir::MLIRContext* ctx, ::mlir::LocationAttr regionChain,
+                                  ::mlir::LLVM::DISubprogramAttr subprogram, ::mlir::LLVM::DIFileAttr functionFile,
+                                  RegionSubprogramCache& cache) {
+	auto entryLoc = ::mlir::FileLineColLoc::get(functionFile.getName(), subprogram.getLine(), 1);
+	if (!regionChain) {
+		return ::mlir::FusedLoc::get({::mlir::Location(entryLoc)}, subprogram, ctx);
+	}
+	auto node = decomposeChain(regionChain);
+	if (!node.leaf) {
+		return ::mlir::FusedLoc::get({::mlir::Location(entryLoc)}, subprogram, ctx);
+	}
+	auto regionSubprogram = resolveInnermostRegionSubprogram(ctx, regionChain, subprogram, functionFile, cache);
+	auto callerLoc = buildCallerChain(ctx, node.parent, subprogram, functionFile, cache);
+	return ::mlir::CallSiteLoc::get(::mlir::FusedLoc::get({::mlir::Location(entryLoc)}, regionSubprogram, ctx),
+	                                callerLoc);
+}
+
+} // namespace
+
+::mlir::Location wrapOpForRegionInlining(::mlir::MLIRContext* ctx, ::mlir::Location opLoc,
+                                         ::mlir::LocationAttr regionChain, ::mlir::LLVM::DISubprogramAttr subprogram,
+                                         ::mlir::LLVM::DIFileAttr functionFile, RegionSubprogramCache& cache) {
+	if (!regionChain) {
+		return ::mlir::FusedLoc::get({opLoc}, subprogram, ctx);
+	}
+	auto node = decomposeChain(regionChain);
+	if (!node.leaf) {
+		return ::mlir::FusedLoc::get({opLoc}, subprogram, ctx);
+	}
+	auto regionSubprogram = resolveInnermostRegionSubprogram(ctx, regionChain, subprogram, functionFile, cache);
+	auto callerLoc = buildCallerChain(ctx, node.parent, subprogram, functionFile, cache);
+	return ::mlir::CallSiteLoc::get(::mlir::FusedLoc::get({opLoc}, regionSubprogram, ctx), callerLoc);
 }
 
 } // namespace nautilus::compiler::mlir

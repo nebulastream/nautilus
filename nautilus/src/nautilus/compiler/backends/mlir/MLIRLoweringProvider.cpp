@@ -210,7 +210,8 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(name), baseLocation), regionIndex);
 }
 
-mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef fallbackName) {
+mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef fallbackName,
+                                                   std::optional<ir::RegionIndex> regionIndexOverride) {
 	if (!debugInfo_.enable || irSourceMap_ == nullptr || currentFunctionLines_ == nullptr) {
 		return getNameLoc(fallbackName.str());
 	}
@@ -221,7 +222,9 @@ mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef 
 	auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 	auto fileLine = mlir::FileLineColLoc::get(fileAttr, line, 1);
 	auto baseLoc = mlir::NameLoc::get(builder->getStringAttr("$" + std::to_string(id)), fileLine);
-	const ir::RegionIndex regionIndex = currentOp_ != nullptr ? currentOp_->getRegionIndex() : ir::NO_REGION;
+	const ir::RegionIndex regionIndex = regionIndexOverride
+	                                        ? *regionIndexOverride
+	                                        : (currentOp_ != nullptr ? currentOp_->getRegionIndex() : ir::NO_REGION);
 	return wrapWithRegionScope(baseLoc, regionIndex);
 }
 
@@ -636,7 +639,11 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 		if (debugInfo_.enable && frame.contains(operation->getIdentifier())) {
 			const uint32_t id = operation->getIdentifier().getId();
 			if (auto produced = resolveOperand(operation, frame)) {
-				storeDebugValue(id, produced, makeDollarLoc(id, "debug.store"));
+				// currentOp_ was just cleared above, so pass operation's
+				// region explicitly rather than let makeDollarLoc fall
+				// back to NO_REGION regardless of which region this
+				// shadow store is actually for.
+				storeDebugValue(id, produced, makeDollarLoc(id, "debug.store", operation->getRegionIndex()));
 			}
 		}
 		++opIdx;
@@ -1402,10 +1409,17 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// Tag each block arg with a `$N` NameLoc (when debug info is on)
 	// so the store at block entry below and the dbg.declare emitted by
 	// EmitDbgValuePass line up with the right shadow alloca.
+	//
+	// The region tag comes from the target block's own region, not
+	// currentOp_ (the op of whichever branch happens to be the first to
+	// reach this not-yet-created block): a branch can cross a region
+	// boundary in either direction (e.g. a loop back-edge from inside
+	// region() to a header outside it, or vice versa), so the branching
+	// op's region and the target block's region can legitimately differ.
 	auto& targetBlockArguments = targetBlock->getArguments();
 	for (auto& blockArg : targetBlockArguments) {
 		auto argLoc = debugInfo_.enable && irSourceMap_ != nullptr
-		                  ? makeDollarLoc(blockArg->getIdentifier().getId(), "arg")
+		                  ? makeDollarLoc(blockArg->getIdentifier().getId(), "arg", targetBlock->getRegionIndex())
 		                  : getNameLoc("arg");
 		mlirBasicBlock->addArgument(getMLIRType(blockArg->getStamp()), argLoc);
 	}
@@ -1428,7 +1442,8 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 			blockLine = it->second;
 		}
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-		auto storeLoc = mlir::FileLineColLoc::get(fileAttr, blockLine, 1);
+		auto storeLoc =
+		    wrapWithRegionScope(mlir::FileLineColLoc::get(fileAttr, blockLine, 1), targetBlock->getRegionIndex());
 		for (uint32_t i = 0; i < targetBlockArguments.size(); i++) {
 			const uint32_t id = targetBlockArguments[i]->getIdentifier().getId();
 			storeDebugValue(id, mlirBasicBlock->getArgument(i), storeLoc);
