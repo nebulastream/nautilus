@@ -274,9 +274,14 @@ void FunctionRewriter::replaceTerminator(BasicBlock* block, Operation* newTermin
 		// The replacement inherits what it replaces (issue #453): a terminator built
 		// standalone (e.g. `ConstantBranchFoldingPass` folding an `IfOp` down to a
 		// `BranchOp`) does not go through `createBefore`/`createBeforeTerminator`, so
-		// it arrives here carrying no provenance of its own.
+		// it arrives here carrying no provenance of its own. When `oldTerminator`
+		// itself is unattributed, fall back to `block`'s own region rather than
+		// `NO_REGION` outright -- same fallback `createBefore`/`createBeforeTerminator`
+		// apply, and for the same reason: `block` already knows a region every
+		// operation in it belongs to.
 		newTerminator->setSourceTag(oldTerminator->getSourceTag());
-		newTerminator->setRegionIndex(oldTerminator->getRegionIndex());
+		newTerminator->setRegionIndex(oldTerminator->getRegionIndex() != NO_REGION ? oldTerminator->getRegionIndex()
+		                                                                           : block->getRegionIndex());
 		unregisterUser(oldTerminator);
 		for (auto* inv : getSuccessorInvocations(*oldTerminator)) {
 			unregisterUser(inv);

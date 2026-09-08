@@ -265,7 +265,11 @@ void applyCandidate(FunctionRewriter& rewriter, common::Arena& arena, const Cand
 	// still resolves to a valid, harmless value instead of a dangling one.
 	auto* zeroConst = arena.create<ConstIntOperation>(arena, c.mul->getIdentifier(), 0, c.mul->getStamp());
 	zeroConst->setSourceTag(c.mul->getSourceTag());
-	zeroConst->setRegionIndex(c.mul->getRegionIndex());
+	// Falls back to the block's own region when `c.mul` is itself unattributed, same as
+	// `FunctionRewriter::createBefore`'s rule (issue #453) -- `c.mulBlock` already knows a
+	// region every operation in it belongs to.
+	zeroConst->setRegionIndex(c.mul->getRegionIndex() != NO_REGION ? c.mul->getRegionIndex()
+	                                                               : c.mulBlock->getRegionIndex());
 	c.add2->setLeftInput(ptrArg);
 	c.add2->setRightInput(zeroConst);
 	c.mulBlock->replaceOperation(findOperationIndex(c.mulBlock, c.mul), zeroConst);

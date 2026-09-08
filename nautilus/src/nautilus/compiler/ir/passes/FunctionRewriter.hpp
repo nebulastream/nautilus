@@ -120,11 +120,21 @@ public:
 	/// any other constructor parameter), stamps it with the provenance set via
 	/// @ref setCurrentProvenance, registers its operand uses, and inserts it
 	/// immediately before @p block's terminator.
+	///
+	/// A region has no source tag of its own to fall back on, but it does have a
+	/// region: when @ref setCurrentProvenance was never called, or was called with
+	/// a source that is itself unattributed, the minted op still gets *some*
+	/// region rather than the blanket `NO_REGION` sentinel -- @p block's own,
+	/// since that is the innermost region every operation in @p block is already
+	/// known to belong to (`BasicBlock::getRegionIndex`'s doc comment). Only a
+	/// block with no region of its own (itself `NO_REGION`) leaves the op that way
+	/// too.
 	template <typename T, typename... Args>
 	T* createBeforeTerminator(BasicBlock* block, Args&&... args) {
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
 		op->setSourceTag(currentProvenance_.sourceTag);
-		op->setRegionIndex(currentProvenance_.region);
+		op->setRegionIndex(currentProvenance_.region != NO_REGION ? currentProvenance_.region
+		                                                          : block->getRegionIndex());
 		Operation* terminator = block->getTerminatorOp();
 		block->addOperationBefore(terminator, op);
 		defBlock_[op] = block;
@@ -137,13 +147,16 @@ public:
 	/// @p anchor's own provenance rather than the one set via
 	/// @ref setCurrentProvenance -- every call site across the codebase uses
 	/// @p anchor as the operation being replaced, so this is the "replacement
-	/// inherits what it replaces" rule (issue #453) applied automatically.
+	/// inherits what it replaces" rule (issue #453) applied automatically. When
+	/// @p anchor is itself unattributed, the fallback is the same as
+	/// @ref createBeforeTerminator's: @p anchor's own block's region, not
+	/// `NO_REGION` outright.
 	template <typename T, typename... Args>
 	T* createBefore(Operation* anchor, Args&&... args) {
 		T* op = arena_.create<T>(arena_, std::forward<Args>(args)...);
-		op->setSourceTag(anchor->getSourceTag());
-		op->setRegionIndex(anchor->getRegionIndex());
 		BasicBlock* block = definingBlock(anchor);
+		op->setSourceTag(anchor->getSourceTag());
+		op->setRegionIndex(anchor->getRegionIndex() != NO_REGION ? anchor->getRegionIndex() : block->getRegionIndex());
 		block->addOperationBefore(anchor, op);
 		defBlock_[op] = block;
 		registerUses(op);
