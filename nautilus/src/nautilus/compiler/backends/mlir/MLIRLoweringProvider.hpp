@@ -5,9 +5,9 @@
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
 #include "nautilus/compiler/backends/mlir/ProxyFunctions.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
-#include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/IRLocationMap.hpp"
 #include "nautilus/compiler/ir/OperationDispatcher.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
@@ -60,7 +60,8 @@ public:
 	 * is responsible for having written `sourceMap->text` to
 	 * `debugInfo.sourceFile` before invoking generateModuleFromIR.
 	 */
-	void setDebugInfo(DebugInfoOptions debugInfo, std::shared_ptr<const IRSourceMap> sourceMap);
+	void setDebugInfo(DebugInfoOptions debugInfo, std::shared_ptr<const ir::IRLocationMap> locationMap);
+
 
 	/**
 	 * @return std::vector<std::string>: All proxy function symbols used in the module.
@@ -98,17 +99,16 @@ private:
 	// paths are no-ops and the lowering produces byte-identical output
 	// to a build without debug support.
 	DebugInfoOptions debugInfo_;
-	std::shared_ptr<const IRSourceMap> irSourceMap_;
+	/// Where every IR object sits in the dump written to disk, and the region
+	/// nesting of each, computed once by ir::computeIRLocations() after the
+	/// last IR pass. The backend reads positions from here; it never derives
+	/// one itself.
+	std::shared_ptr<const ir::IRLocationMap> locationMap_;
 	// The Nautilus IR op currently being lowered.  Set in generateMLIR
 	// just before each dispatch() so that the ~73 existing
 	// getNameLoc(name) call sites automatically produce a FileLineColLoc
 	// pointing at the correct Nautilus IR line.
 	const ir::Operation* currentOp_ = nullptr;
-	// Dump line of the currently-lowered op — set positionally from
-	// the enclosing block's blockOpLines.  Provides a line to
-	// terminator ops (`br`, `if`, `return`) that have no `$N` id to
-	// look up in `operationLines`, so GDB can stop on the terminator.
-	uint32_t currentOpLine_ = 0;
 	// One shadow alloca per Nautilus $N id used in the current function.
 	// Allocated at function entry when debug info is active, refreshed
 	// by a store at every site that (re)defines the identifier (function
@@ -131,33 +131,27 @@ private:
 	// entry rather than jumping through each variable's eventual
 	// declaration line during the prologue.
 	uint32_t currentFunctionHeaderLine_ = 0;
-	// Per-function line tables for the function currently being
-	// lowered.  Nautilus IR re-uses `$N` ids and `Block_N` indices
-	// across functions, so we must scope lookups to the current
-	// function — consulting the global IRSourceMap by id alone would
-	// return the wrong caller/callee line.
-	const IRSourceMap::FunctionLines* currentFunctionLines_ = nullptr;
 
 	/// The Nautilus FunctionOperation currently being lowered. Set in
 	/// generateFunction so visitCall/visitIndirectCall can read the
 	/// exception-region side table.
 	const ir::FunctionOperation* currentFunction_ = nullptr;
 
-	/// Per-function cache of region-scope chains (see RegionScopeInfo.hpp),
-	/// keyed by RegionIndex into currentFunction_->getRegionSpecs(). Cleared in
-	/// generateFunction: region indices restart at 0 per function exactly like
-	/// `$N` ids do, so a global cache would collide between caller and callee.
-	std::unordered_map<ir::RegionIndex, ::mlir::LocationAttr> regionScopeLocs_;
+	/// Cache of region-scope chains (see RegionScopeInfo.hpp) keyed by the
+	/// location map's chain index. Chain indices are interned per module, not
+	/// per function, so unlike the RegionIndex-keyed cache this replaces it
+	/// needs no clearing between functions -- a caller and its callee that
+	/// share a region legitimately share the entry.
+	std::vector<::mlir::LocationAttr> regionScopeLocs_;
 
-	/// Returns the region-scope chain for @p index (see RegionScopeInfo.hpp),
-	/// building and memoizing it from currentFunction_->findRegion() on first
-	/// use. Returns a null LocationAttr for NO_REGION or when currentFunction_
-	/// is unset.
-	::mlir::LocationAttr getRegionScopeLoc(ir::RegionIndex index);
+	/// Returns the region-scope chain for the location map's chain @p index
+	/// (see RegionScopeInfo.hpp), building and memoizing it on first use.
+	/// Returns a null LocationAttr for IRLocationMap::NO_CHAIN.
+	::mlir::LocationAttr getRegionScopeLoc(uint32_t index);
 
 	/// Fuses the region-scope chain for @p regionIndex onto @p loc via
 	/// attachRegionScope(). Returns @p loc unchanged for NO_REGION.
-	::mlir::Location wrapWithRegionScope(::mlir::Location loc, ir::RegionIndex regionIndex);
+	::mlir::Location wrapWithRegionScope(::mlir::Location loc, uint32_t chainIndex);
 
 	/// Captured-exception queries for `currentFunction_`, built once per
 	/// function in generateFunction rather than once per call site.
@@ -204,7 +198,7 @@ private:
 	/// when debug info is disabled so the caller can use the result
 	/// unconditionally.
 	///
-	/// @p regionIndexOverride names the region to fuse onto the result
+	/// @p chainIndexOverride names the region chain to fuse onto the result
 	/// explicitly, for callers where currentOp_ is not the right source of
 	/// truth:
 	///   * generateMLIR's post-dispatch shadow-store call, where currentOp_
@@ -217,19 +211,19 @@ private:
 	///     boundary in either direction.
 	/// Callers with a live, correctly-scoped currentOp_ can omit it and keep
 	/// deriving the region from currentOp_ as before.
-	::mlir::Location makeDollarLoc(uint32_t id, llvm::StringRef fallbackName,
-	                               std::optional<ir::RegionIndex> regionIndexOverride = std::nullopt);
+	::mlir::Location makeDollarLoc(const ir::Operation* definition, llvm::StringRef fallbackName,
+	                               std::optional<uint32_t> chainIndexOverride = std::nullopt);
 
 	/// Lazily create an `llvm.alloca` at the entry block of the currently
 	/// enclosing `func.func` for shadow-storing $N's value.  The alloca
 	/// is cached in `debugAllocas_` so subsequent stores reuse the same
 	/// slot.  No-op when `debugInfo_.enable` is false.
-	::mlir::Value ensureDebugAlloca(uint32_t id, ::mlir::Type type);
+	::mlir::Value ensureDebugAlloca(const ir::Operation* definition, ::mlir::Type type);
 
 	/// Emit a store of `value` into $id's shadow alloca at the builder's
 	/// current insertion point.  Creates the alloca on first use.  No-op
 	/// when `debugInfo_.enable` is false.
-	void storeDebugValue(uint32_t id, ::mlir::Value value, ::mlir::Location loc);
+	void storeDebugValue(const ir::Operation* definition, ::mlir::Value value, ::mlir::Location loc);
 
 	// Per-operation hooks invoked by OperationDispatcher::dispatch.
 	void visitConstInt(ir::ConstIntOperation* constIntOp, ValueFrame& frame);

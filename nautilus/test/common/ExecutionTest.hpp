@@ -119,6 +119,10 @@ inline void forEachBackendWithTraceMode(Body&& body, const OptionsTweak& tweak =
 			DYNAMIC_SECTION(backend + "_" + traceMode) {
 				auto engine = makeEngine(backend, [&](engine::Options& opts) {
 					opts.setOption("engine.traceMode", traceMode);
+					opts.setOption("engine.backend", std::string("mlir"));
+					opts.setOption("mlir.debug.enable", true);
+					opts.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+
 					if (tweak) {
 						tweak(opts);
 					}

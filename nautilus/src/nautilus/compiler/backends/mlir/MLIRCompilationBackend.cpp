@@ -8,10 +8,10 @@
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/debug/DebugInfoOptions.hpp"
-#include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
+#include "nautilus/compiler/ir/IRLocationMap.hpp"
 #include <chrono>
 #include <fstream>
 #include <llvm/Support/TargetSelect.h>
@@ -73,18 +73,22 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// "nautilus-ir" mode.  The file must exist before lowering runs so
 	// the FileLineColLocs attached by MLIRLoweringProvider point at real
 	// content that GDB/LLDB can read on `list`.
-	std::shared_ptr<IRSourceMap> irSourceMap;
+	//
+	// computeIRLocations() must run after the last pass that mutates `ir`:
+	// it records where each operation lands in this rendering, and an
+	// operation minted or removed afterwards would invalidate every line.
+	std::shared_ptr<ir::IRLocationMap> locationMap;
 	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir") {
-		irSourceMap = std::make_shared<IRSourceMap>(dumpIRWithSourceMap(*ir));
+		locationMap = std::make_shared<ir::IRLocationMap>(ir::computeIRLocations(*ir, ir::IRPrintOptions {}));
 		if (!debugInfo.sourceFile.empty()) {
 			std::ofstream out(debugInfo.sourceFile);
-			out << irSourceMap->text;
+			out << locationMap->text;
 		}
 	}
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
-	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir" && irSourceMap) {
-		loweringProvider->setDebugInfo(debugInfo, irSourceMap);
+	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir" && locationMap) {
+		loweringProvider->setDebugInfo(debugInfo, locationMap);
 	}
 
 	const auto loweringStart = std::chrono::steady_clock::now();
@@ -139,7 +143,8 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// dbg.value operands live on the stack rather than in registers.
 	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
 	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel);
+	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
+	                                            debugInfo.enable && debugInfo.registerWithDebugger);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

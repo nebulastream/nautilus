@@ -32,6 +32,7 @@ if (ENABLE_MLIR_BACKEND)
             LLVMOrcJIT
             LLVMExecutionEngine
             LLVMJITLink                            # JITLink-based object linking
+            LLVMOrcDebugging                       # enableDebuggerSupport (GDB JIT interface)
             ${nautilus_llvm_native_libs}
             # Dialects
             MLIRMathToLLVM

@@ -13,3 +13,6 @@ Testing/
 /.superpowers/
 /docs/superpowers/
 /.worktrees/
+# Debug "source" dumps, written next to the process when debug info is enabled
+nautilus_debug_*.ir
+nautilus_debug_*.mlir

@@ -12,6 +12,7 @@ add_library(nautilus-sanitizer-suppressions OBJECT
 
 add_subdirectory(benchmark)
 add_subdirectory(common)
+add_subdirectory(debugger-tests)
 add_subdirectory(execution-tests)
 if (ENABLE_TRACING)
     add_subdirectory(ir-pass-tests)

@@ -92,4 +92,16 @@ using RegionSubprogramCache = llvm::DenseMap<::mlir::Attribute, ::mlir::LLVM::DI
                                          ::mlir::LocationAttr regionChain, ::mlir::LLVM::DISubprogramAttr subprogram,
                                          ::mlir::LLVM::DIFileAttr functionFile, RegionSubprogramCache& cache);
 
+// Removes the region-scope marker attachRegionScope() added, returning the
+// op's plain underlying location.
+//
+// The marker FusedLoc holds two children: the op's real location and the
+// region chain (which points at the region's *C++* source position). MLIR's
+// debug translation cannot pick a line from a multi-child FusedLoc and emits
+// `line: 0` for it, so handing a still-marked location to
+// wrapOpForRegionInlining costs every op inside a region its line number --
+// and a debugger then attributes those instructions to the inlinedAt call
+// site, collapsing the whole region onto one line. Strip first, wrap second.
+::mlir::Location stripRegionScope(::mlir::Location loc);
+
 } // namespace nautilus::compiler::mlir

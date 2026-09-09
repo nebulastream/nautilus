@@ -1,12 +1,13 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRLoweringProvider.hpp"
 #include "nautilus/compiler/backends/mlir/LLVMBackendHooks.hpp"
-#include "nautilus/compiler/backends/mlir/debug/IRSourceMap.hpp"
 #include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRBackendIntrinsic.hpp"
+#include "nautilus/compiler/ir/IRLocationMap.hpp"
 #include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/ModOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
+#include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "nautilus/tracing/Types.hpp"
@@ -142,29 +143,32 @@ mlir::Value MLIRLoweringProvider::getConstBool(const std::string& location, bool
 	                                      builder->getIntegerAttr(builder->getIndexType(), value));
 }
 
-mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(ir::RegionIndex index) {
-	if (index == ir::NO_REGION || currentFunction_ == nullptr) {
+mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
+	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
 	}
-	if (auto it = regionScopeLocs_.find(index); it != regionScopeLocs_.end()) {
-		return it->second;
+	if (index < regionScopeLocs_.size() && regionScopeLocs_[index]) {
+		return regionScopeLocs_[index];
 	}
-	const ir::RegionSpec* spec = currentFunction_->findRegion(index);
-	if (spec == nullptr) {
-		return {};
+	// The chain arrives already flattened and outermost-first from
+	// computeIRLocations(), so this only re-expresses it in MLIR's encoding --
+	// it does not rediscover the nesting.
+	const ir::RegionChain& chain = locationMap_->chains[index];
+	::mlir::LocationAttr scope;
+	for (const auto& region : chain) {
+		llvm::StringRef file =
+		    region.file.empty() ? llvm::StringRef(debugInfo_.sourceFile) : llvm::StringRef(region.file);
+		scope = buildRegionScopeChain(context, region.name, file, region.line, region.column, scope);
 	}
-	llvm::StringRef name = spec->attributes.hasName() ? llvm::StringRef(spec->attributes.name) : "<region>";
-	llvm::StringRef file = spec->attributes.location.isKnown() ? llvm::StringRef(spec->attributes.location.file)
-	                                                           : llvm::StringRef(debugInfo_.sourceFile);
-	auto parentChain = getRegionScopeLoc(spec->parent);
-	auto chain = buildRegionScopeChain(context, name, file, spec->attributes.location.line,
-	                                   spec->attributes.location.column, parentChain);
-	regionScopeLocs_[index] = chain;
-	return chain;
+	if (index >= regionScopeLocs_.size()) {
+		regionScopeLocs_.resize(index + 1);
+	}
+	regionScopeLocs_[index] = scope;
+	return scope;
 }
 
-mlir::Location MLIRLoweringProvider::wrapWithRegionScope(mlir::Location loc, ir::RegionIndex regionIndex) {
-	return attachRegionScope(context, loc, getRegionScopeLoc(regionIndex));
+mlir::Location MLIRLoweringProvider::wrapWithRegionScope(mlir::Location loc, uint32_t chainIndex) {
+	return attachRegionScope(context, loc, getRegionScopeLoc(chainIndex));
 }
 
 mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
@@ -181,54 +185,49 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	// location is additionally fused with that region's scope chain (see
 	// RegionScopeInfo.hpp) — regardless of whether debug info is enabled,
 	// so a plain `dump.mlir` also carries readable region nesting.
-	const ir::RegionIndex regionIndex = currentOp_ != nullptr ? currentOp_->getRegionIndex() : ir::NO_REGION;
-	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-		if (currentOp_ != nullptr && currentFunctionLines_ != nullptr) {
-			const uint32_t id = currentOp_->getIdentifier().getId();
-			if (auto it = currentFunctionLines_->operationLines.find(id);
-			    it != currentFunctionLines_->operationLines.end()) {
-				const std::string dollarName = "$" + std::to_string(id);
-				auto baseLocation = mlir::FileLineColLoc::get(fileAttr, it->second, 1);
-				return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(dollarName), baseLocation),
-				                           regionIndex);
-			}
-		}
-		// Terminators (br / if / return) have no `$N = ...` line to
-		// consult, but `generateMLIR` set `currentOpLine_` from the
-		// block's positional op-line list.  Use it so the translated
-		// instruction carries a real !dbg and GDB stops on the
-		// terminator line rather than skipping the whole block.
-		if (currentOpLine_ != 0) {
-			auto baseLocation = mlir::FileLineColLoc::get(fileAttr, currentOpLine_, 1);
-			return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(name), baseLocation), regionIndex);
-		}
-		auto baseLocation = mlir::FileLineColLoc::get(fileAttr, 0, 0);
-		return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(name), baseLocation), regionIndex);
+	if (locationMap_ == nullptr) {
+		// No map: "mlir" source mode, or debug info off entirely. Region
+		// nesting is unavailable here -- it is computed as part of the map --
+		// so a plain `dump.mlir` carries no region annotations unless
+		// `mlir.debug.enable` is set.
+		auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
+		return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
 	}
-	auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
-	return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(name), baseLocation), regionIndex);
+	// One lookup for every operation, terminators included: the map is keyed
+	// by IR node, so a `br`/`if`/`return` needs no positional fallback to get
+	// a line the way it did when lines were parsed back out of the dump.
+	::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
+	const uint32_t line = locationMap_->lineOf(currentOp_);
+	// `$N` only for operations that actually define one in the dump. The label
+	// is not cosmetic -- EmitDbgValuePass treats a `$N` NameLoc as naming a
+	// value's shadow slot, so labelling a `br` would be a lie about what it
+	// holds. Two kinds of operation carry an identifier they never spell: one
+	// with a void stamp (a store, a void call), and a terminator -- including
+	// `return ($N)`, whose stamp is the *returned value's*, not one it defines.
+	const bool definesValue = currentOp_ != nullptr && currentOp_->getStamp() != Type::v &&
+	                          !ir::isTerminatorOp(currentOp_->getOperationType());
+	const std::string label =
+	    definesValue ? "$" + std::to_string(currentOp_->getIdentifier().getId()) : std::string(name);
+	auto baseLocation = mlir::FileLineColLoc::get(fileAttr, line, line != 0 ? 1 : 0);
+	return wrapWithRegionScope(mlir::NameLoc::get(builder->getStringAttr(label), baseLocation),
+	                           locationMap_->chainIndexOf(currentOp_));
 }
 
-mlir::Location MLIRLoweringProvider::makeDollarLoc(uint32_t id, llvm::StringRef fallbackName,
-                                                   std::optional<ir::RegionIndex> regionIndexOverride) {
-	if (!debugInfo_.enable || irSourceMap_ == nullptr || currentFunctionLines_ == nullptr) {
+mlir::Location MLIRLoweringProvider::makeDollarLoc(const ir::Operation* definition, llvm::StringRef fallbackName,
+                                                   std::optional<uint32_t> chainIndexOverride) {
+	if (!debugInfo_.enable || locationMap_ == nullptr || definition == nullptr) {
 		return getNameLoc(fallbackName.str());
 	}
-	uint32_t line = 0;
-	if (auto it = currentFunctionLines_->operationLines.find(id); it != currentFunctionLines_->operationLines.end()) {
-		line = it->second;
-	}
+	const uint32_t id = definition->getIdentifier().getId();
 	auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-	auto fileLine = mlir::FileLineColLoc::get(fileAttr, line, 1);
+	auto fileLine = mlir::FileLineColLoc::get(fileAttr, locationMap_->lineOf(definition), 1);
 	auto baseLoc = mlir::NameLoc::get(builder->getStringAttr("$" + std::to_string(id)), fileLine);
-	const ir::RegionIndex regionIndex = regionIndexOverride
-	                                        ? *regionIndexOverride
-	                                        : (currentOp_ != nullptr ? currentOp_->getRegionIndex() : ir::NO_REGION);
-	return wrapWithRegionScope(baseLoc, regionIndex);
+	const uint32_t chainIndex = chainIndexOverride ? *chainIndexOverride : locationMap_->chainIndexOf(currentOp_);
+	return wrapWithRegionScope(baseLoc, chainIndex);
 }
 
-mlir::Value MLIRLoweringProvider::ensureDebugAlloca(uint32_t id, mlir::Type type) {
+mlir::Value MLIRLoweringProvider::ensureDebugAlloca(const ir::Operation* definition, mlir::Type type) {
+	const uint32_t id = definition->getIdentifier().getId();
 	if (auto it = debugAllocas_.find(id); it != debugAllocas_.end()) {
 		return it->second;
 	}
@@ -253,14 +252,8 @@ mlir::Value MLIRLoweringProvider::ensureDebugAlloca(uint32_t id, mlir::Type type
 	//  * declLine — where the variable was introduced in the IR dump;
 	//    surfaces as DILocalVariable.line, attached below as a side
 	//    attribute so EmitDbgValuePass can find it without needing a
-	//    handle to the IRSourceMap.
-	uint32_t declLine = 0;
-	if (currentFunctionLines_ != nullptr) {
-		if (auto it = currentFunctionLines_->operationLines.find(id);
-		    it != currentFunctionLines_->operationLines.end()) {
-			declLine = it->second;
-		}
-	}
+	//    handle to the location map.
+	const uint32_t declLine = locationMap_ != nullptr ? locationMap_->lineOf(definition) : 0;
 	const uint32_t prologueLine = currentFunctionHeaderLine_ != 0 ? currentFunctionHeaderLine_ : declLine;
 
 	auto savedIP = builder->saveInsertionPoint();
@@ -278,20 +271,21 @@ mlir::Value MLIRLoweringProvider::ensureDebugAlloca(uint32_t id, mlir::Type type
 	return alloca.getResult();
 }
 
-void MLIRLoweringProvider::storeDebugValue(uint32_t id, mlir::Value value, mlir::Location loc) {
-	if (!debugInfo_.enable || !value) {
+void MLIRLoweringProvider::storeDebugValue(const ir::Operation* definition, mlir::Value value, mlir::Location loc) {
+	if (!debugInfo_.enable || !value || definition == nullptr) {
 		return;
 	}
-	auto alloca = ensureDebugAlloca(id, value.getType());
+	auto alloca = ensureDebugAlloca(definition, value.getType());
 	if (!alloca) {
 		return;
 	}
 	mlir::LLVM::StoreOp::create(*builder, loc, value, alloca);
 }
 
-void MLIRLoweringProvider::setDebugInfo(DebugInfoOptions debugInfo, std::shared_ptr<const IRSourceMap> sourceMap) {
+void MLIRLoweringProvider::setDebugInfo(DebugInfoOptions debugInfo,
+                                        std::shared_ptr<const ir::IRLocationMap> locationMap) {
 	debugInfo_ = std::move(debugInfo);
-	irSourceMap_ = std::move(sourceMap);
+	locationMap_ = std::move(locationMap);
 	// Retag the already-created ModuleOp with a location pointing at the
 	// IR source dump.  DIScopeForLLVMFuncOpPass derives the
 	// DICompileUnit's DW_AT_name / DW_AT_comp_dir from the module's
@@ -611,17 +605,6 @@ mlir::OwningOpRef<mlir::ModuleOp> MLIRLoweringProvider::generateModuleFromIR(std
 }
 
 void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueFrame& frame) {
-	// Pull the positional op-line list for this block — used to give
-	// terminators (`br`, `if`, `return`) a non-zero !dbg even though
-	// they have no `$N` id to look up in operationLines.
-	const std::vector<uint32_t>* opLines = nullptr;
-	if (debugInfo_.enable && currentFunctionLines_ != nullptr) {
-		if (auto it = currentFunctionLines_->blockOpLines.find(basicBlock->getIdentifier().getId());
-		    it != currentFunctionLines_->blockOpLines.end()) {
-			opLines = &it->second;
-		}
-	}
-	size_t opIdx = 0;
 	for (auto* operation : basicBlock->getOperations()) {
 		// Record which Nautilus op is currently being lowered so
 		// getNameLoc() can produce a FileLineColLoc pointing at the
@@ -629,24 +612,20 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 		// helper ops created outside the visitXxx hooks don't inherit
 		// a stale location.
 		currentOp_ = operation;
-		currentOpLine_ = (opLines && opIdx < opLines->size()) ? (*opLines)[opIdx] : 0;
 		dispatch(operation, frame);
 		currentOp_ = nullptr;
-		currentOpLine_ = 0;
 
 		// Shadow-store the op's result into its $N alloca.  Control-flow
 		// ops (branch, return) don't register a value and are skipped.
 		if (debugInfo_.enable && frame.contains(operation->getIdentifier())) {
-			const uint32_t id = operation->getIdentifier().getId();
 			if (auto produced = resolveOperand(operation, frame)) {
-				// currentOp_ was just cleared above, so pass operation's
-				// region explicitly rather than let makeDollarLoc fall
-				// back to NO_REGION regardless of which region this
-				// shadow store is actually for.
-				storeDebugValue(id, produced, makeDollarLoc(id, "debug.store", operation->getRegionIndex()));
+				// currentOp_ was just cleared above, so pass the operation's
+				// chain explicitly rather than let makeDollarLoc fall back to
+				// NO_CHAIN regardless of which region this store is for.
+				storeDebugValue(operation, produced,
+				                makeDollarLoc(operation, "debug.store", locationMap_->chainIndexOf(operation)));
 			}
 		}
-		++opIdx;
 	}
 }
 
@@ -721,14 +700,11 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 	// source dump.  Without this, DIScopeForLLVMFuncOpPass synthesizes a
 	// DISubprogram with `line: 0`, which DWARF treats as "no location" —
 	// GDB's `step` cannot land inside the function even though per-op
-	// !dbg metadata on the body is correct.  `functionLines` is populated
-	// by dumpIRWithSourceMap for exactly this purpose.
+	// !dbg metadata on the body is correct.  The location map records the
+	// function's own line for exactly this purpose.
 	::mlir::Location loc = getNameLoc("EntryPoint");
-	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		uint32_t line = 0;
-		if (auto it = irSourceMap_->functionLines.find(functionOp.getName()); it != irSourceMap_->functionLines.end()) {
-			line = it->second;
-		}
+	if (debugInfo_.enable && locationMap_ != nullptr) {
+		const uint32_t line = locationMap_->lineOf(&functionOp);
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		auto fileLoc = mlir::FileLineColLoc::get(fileAttr, line, 1);
 		loc = mlir::NameLoc::get(builder->getStringAttr(functionOp.getName()), fileLoc);
@@ -794,19 +770,9 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	inductionVars.clear();
 	debugAllocas_.clear();
 	functionAllocaSlots_.clear();
-	regionScopeLocs_.clear();
 	currentFunction_ = &functionOp;
 	transport_ = CapturedExceptionTransport(functionOp);
-	currentFunctionHeaderLine_ = 0;
-	currentFunctionLines_ = nullptr;
-	if (debugInfo_.enable && irSourceMap_ != nullptr) {
-		if (auto it = irSourceMap_->functionLines.find(functionOp.getName()); it != irSourceMap_->functionLines.end()) {
-			currentFunctionHeaderLine_ = it->second;
-		}
-		if (auto it = irSourceMap_->functions.find(functionOp.getName()); it != irSourceMap_->functions.end()) {
-			currentFunctionLines_ = &it->second;
-		}
-	}
+	currentFunctionHeaderLine_ = locationMap_ != nullptr ? locationMap_->lineOf(&functionOp) : 0;
 
 	// add entry block for the function
 	mlirFunction.addEntryBlock();
@@ -845,13 +811,12 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 		// store's !dbg points at the function header line — we want the
 		// prologue (allocas + param saves) to collapse into one GDB
 		// stop instead of bouncing through each param's later decl line.
-		if (debugInfo_.enable && irSourceMap_ != nullptr) {
-			const uint32_t id = irArgs.at(i)->getIdentifier().getId();
-			auto argNameLoc = makeDollarLoc(id, "arg");
+		if (debugInfo_.enable && locationMap_ != nullptr) {
+			auto argNameLoc = makeDollarLoc(irArgs.at(i), "arg");
 			mlirFunction.getArgument(i).setLoc(argNameLoc);
 			auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 			auto storeLoc = mlir::FileLineColLoc::get(fileAttr, currentFunctionHeaderLine_, 1);
-			storeDebugValue(id, mlirFunction.getArgument(i), storeLoc);
+			storeDebugValue(irArgs.at(i), mlirFunction.getArgument(i), storeLoc);
 		}
 	}
 
@@ -1348,8 +1313,8 @@ void MLIRLoweringProvider::visitIf(ir::IfOperation* ifOp, ValueFrame& frame) {
 
 	// Capture the branch's source location BEFORE generating the
 	// successor blocks — those recursions will reassign
-	// `currentOpLine_` as they lower each nested op and leave it at 0
-	// by the time control returns here.
+	// `currentOp_` as they lower each nested op and leave it null by the
+	// time control returns here.
 	auto branchLoc = getNameLoc("branch");
 
 	// create true block and set block arguments
@@ -1418,8 +1383,8 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// op's region and the target block's region can legitimately differ.
 	auto& targetBlockArguments = targetBlock->getArguments();
 	for (auto& blockArg : targetBlockArguments) {
-		auto argLoc = debugInfo_.enable && irSourceMap_ != nullptr
-		                  ? makeDollarLoc(blockArg->getIdentifier().getId(), "arg", targetBlock->getRegionIndex())
+		auto argLoc = debugInfo_.enable && locationMap_ != nullptr
+		                  ? makeDollarLoc(blockArg, "arg", locationMap_->chainIndexOf(targetBlock))
 		                  : getNameLoc("arg");
 		mlirBasicBlock->addArgument(getMLIRType(blockArg->getStamp()), argLoc);
 	}
@@ -1435,18 +1400,13 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// with the block's header line — not the variable's original decl
 	// line — so GDB advances to the block header on branch-in rather
 	// than jumping back to wherever $N was first introduced.
-	if (debugInfo_.enable && currentFunctionLines_ != nullptr) {
-		uint32_t blockLine = 0;
-		if (auto it = currentFunctionLines_->blockHeaderLines.find(targetBlock->getIdentifier().getId());
-		    it != currentFunctionLines_->blockHeaderLines.end()) {
-			blockLine = it->second;
-		}
+	if (debugInfo_.enable && locationMap_ != nullptr) {
+		const uint32_t blockLine = locationMap_->lineOf(targetBlock);
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-		auto storeLoc =
-		    wrapWithRegionScope(mlir::FileLineColLoc::get(fileAttr, blockLine, 1), targetBlock->getRegionIndex());
+		auto storeLoc = wrapWithRegionScope(mlir::FileLineColLoc::get(fileAttr, blockLine, 1),
+		                                    locationMap_->chainIndexOf(targetBlock));
 		for (uint32_t i = 0; i < targetBlockArguments.size(); i++) {
-			const uint32_t id = targetBlockArguments[i]->getIdentifier().getId();
-			storeDebugValue(id, mlirBasicBlock->getArgument(i), storeLoc);
+			storeDebugValue(targetBlockArguments[i], mlirBasicBlock->getArgument(i), storeLoc);
 		}
 	}
 

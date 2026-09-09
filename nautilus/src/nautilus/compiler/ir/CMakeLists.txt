@@ -5,5 +5,5 @@ add_subdirectory(passes)
 add_subdirectory(util)
 #add_subdirectory(Types)
 
-add_source_files(nautilus IRGraph.cpp Usages.cpp FunctionName.cpp FunctionTable.cpp OperationEffects.cpp
+add_source_files(nautilus IRGraph.cpp IRLocationMap.cpp Usages.cpp FunctionName.cpp FunctionTable.cpp OperationEffects.cpp
         IntrinsicRegistry.cpp)
