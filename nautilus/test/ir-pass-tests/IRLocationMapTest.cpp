@@ -75,8 +75,7 @@ TEST_CASE("IRLocationMap: every operation is recorded on a line that contains it
 					// value: non-void stamp, and not a terminator. A store and
 					// a void call have a void stamp; `return ($N)` has the
 					// returned value's stamp but defines nothing of its own.
-					if (operation->getStamp() != Type::v &&
-					    !ir::isTerminatorOp(operation->getOperationType())) {
+					if (operation->getStamp() != Type::v && !ir::isTerminatorOp(operation->getOperationType())) {
 						REQUIRE(text.find(dollar) != std::string::npos);
 					}
 				}
@@ -116,8 +115,7 @@ TEST_CASE("IRLocationMap: operation lines increase in block order") {
 				uint32_t previous = map.lineOf(block);
 				for (const auto* operation : block->getOperations()) {
 					const uint32_t line = map.lineOf(operation);
-					INFO("block " << block->getIdentifier().getId() << ", op $"
-					              << operation->getIdentifier().getId());
+					INFO("block " << block->getIdentifier().getId() << ", op $" << operation->getIdentifier().getId());
 					REQUIRE(line > previous);
 					previous = line;
 				}

@@ -62,7 +62,6 @@ public:
 	 */
 	void setDebugInfo(DebugInfoOptions debugInfo, std::shared_ptr<const ir::IRLocationMap> locationMap);
 
-
 	/**
 	 * @return std::vector<std::string>: All proxy function symbols used in the module.
 	 */
@@ -142,7 +141,7 @@ private:
 	/// per function, so unlike the RegionIndex-keyed cache this replaces it
 	/// needs no clearing between functions -- a caller and its callee that
 	/// share a region legitimately share the entry.
-	std::vector<::mlir::LocationAttr> regionScopeLocs_;
+	std::vector<std::optional<::mlir::LocationAttr>> regionScopeLocs_;
 
 	/// Returns the region-scope chain for the location map's chain @p index
 	/// (see RegionScopeInfo.hpp), building and memoizing it on first use.

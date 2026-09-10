@@ -147,8 +147,11 @@ mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (locationMap_ == nullptr || index == ir::IRLocationMap::NO_CHAIN) {
 		return {};
 	}
-	if (index < regionScopeLocs_.size() && regionScopeLocs_[index]) {
-		return regionScopeLocs_[index];
+	// Presence in the cache, not truthiness of the entry, decides a hit: a chain
+	// may legitimately resolve to a null LocationAttr, and that result is worth
+	// memoizing too.
+	if (index < regionScopeLocs_.size() && regionScopeLocs_[index].has_value()) {
+		return *regionScopeLocs_[index];
 	}
 	// The chain arrives already flattened and outermost-first from
 	// computeIRLocations(), so this only re-expresses it in MLIR's encoding --
@@ -617,7 +620,7 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 
 		// Shadow-store the op's result into its $N alloca.  Control-flow
 		// ops (branch, return) don't register a value and are skipped.
-		if (debugInfo_.enable && frame.contains(operation->getIdentifier())) {
+		if (debugInfo_.enable && locationMap_ != nullptr && frame.contains(operation->getIdentifier())) {
 			if (auto produced = resolveOperand(operation, frame)) {
 				// currentOp_ was just cleared above, so pass the operation's
 				// chain explicitly rather than let makeDollarLoc fall back to
