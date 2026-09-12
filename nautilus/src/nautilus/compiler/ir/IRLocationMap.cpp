@@ -43,11 +43,8 @@ private:
 using RegionKey = std::pair<const FunctionOperation*, RegionIndex>;
 
 /// Returns the index in `map.chains` of @p index's flattened nesting chain,
-/// building it (and its ancestors) on first request.
-///
-/// One entry per region, not per operation: every operation in a region shares
-/// the chain, which is what lets a backend cache whatever it derives from a
-/// chain -- a DWARF subprogram, say -- by index.
+/// building it (and its ancestors) on first request. One entry per region, so
+/// every operation in a region shares a chain index.
 uint32_t internChain(const FunctionOperation& function, RegionIndex index, IRLocationMap& map,
                      std::map<RegionKey, uint32_t>& cache) {
 	const RegionKey key {&function, index};
@@ -56,9 +53,8 @@ uint32_t internChain(const FunctionOperation& function, RegionIndex index, IRLoc
 	}
 
 	const RegionSpec* spec = function.findRegion(index);
-	// A dangling index cannot name a chain; treat it as no nesting rather than
-	// inventing one. Cached so a malformed graph costs one lookup, not one per
-	// operation.
+	// A dangling index cannot name a chain; treat it as no nesting. Cached so a
+	// malformed graph costs one lookup, not one per operation.
 	if (spec == nullptr) {
 		const auto chainIndex = static_cast<uint32_t>(map.chains.size());
 		map.chains.emplace_back();
@@ -66,8 +62,7 @@ uint32_t internChain(const FunctionOperation& function, RegionIndex index, IRLoc
 		return chainIndex;
 	}
 
-	// Outermost first, so a consumer reads the chain the way the nesting was
-	// written. The parent's chain is a prefix of this one by construction.
+	// Outermost first; the parent's chain is a prefix of this one.
 	RegionChain chain;
 	if (spec->parent != NO_REGION) {
 		chain = map.chains[internChain(function, spec->parent, map, cache)];
@@ -146,16 +141,15 @@ uint32_t IRLocationMap::chainIndexOf(const BasicBlock* block) const {
 IRLocationMap computeIRLocations(const IRGraph& graph, const IRPrintOptions& options) {
 	IRLocationMap map;
 
-	// Rendering and recording are one traversal: the line numbers below exist
-	// only because the renderer emitted those lines.
+	// Rendering and recording are one traversal, so the tables cannot describe
+	// a layout the text does not have.
 	RecordingSink sink(map);
 	IRPrintOptions renderOptions = options;
 	renderOptions.sink = &sink;
 	map.text = graph.toString(renderOptions);
 
-	// The regions are a second, independent walk -- they come from the region
-	// table, not from the text -- but they belong to the same snapshot, so both
-	// halves are produced here rather than left to the caller to assemble.
+	// Regions come from the region table rather than the text, so they need a
+	// second walk over the same snapshot.
 	std::map<RegionKey, uint32_t> chainCache;
 	for (const auto* function : graph.getFunctionOperations()) {
 		for (const auto* block : function->getBasicBlocks()) {

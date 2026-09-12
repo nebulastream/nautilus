@@ -153,9 +153,8 @@ mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	if (index < regionScopeLocs_.size() && regionScopeLocs_[index].has_value()) {
 		return *regionScopeLocs_[index];
 	}
-	// The chain arrives already flattened and outermost-first from
-	// computeIRLocations(), so this only re-expresses it in MLIR's encoding --
-	// it does not rediscover the nesting.
+	// The chain arrives flattened and outermost-first from computeIRLocations();
+	// this only re-expresses it in MLIR's encoding.
 	const ir::RegionChain& chain = locationMap_->chains[index];
 	::mlir::LocationAttr scope;
 	for (const auto& region : chain) {
@@ -196,17 +195,15 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 		auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
 		return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
 	}
-	// One lookup for every operation, terminators included: the map is keyed
-	// by IR node, so a `br`/`if`/`return` needs no positional fallback to get
-	// a line the way it did when lines were parsed back out of the dump.
+	// One lookup for every operation, terminators included: the map is keyed by
+	// IR node, so a `br`/`if`/`return` needs no positional fallback.
 	::mlir::StringAttr fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 	const uint32_t line = locationMap_->lineOf(currentOp_);
-	// `$N` only for operations that actually define one in the dump. The label
-	// is not cosmetic -- EmitDbgValuePass treats a `$N` NameLoc as naming a
-	// value's shadow slot, so labelling a `br` would be a lie about what it
-	// holds. Two kinds of operation carry an identifier they never spell: one
-	// with a void stamp (a store, a void call), and a terminator -- including
-	// `return ($N)`, whose stamp is the *returned value's*, not one it defines.
+	// `$N` only for operations that actually define one in the dump:
+	// EmitDbgValuePass treats a `$N` NameLoc as naming a value's shadow slot.
+	// Two kinds of operation carry an identifier they never spell -- one with a
+	// void stamp (a store, a void call), and a terminator, including
+	// `return ($N)`, whose stamp is the returned value's, not one it defines.
 	const bool definesValue = currentOp_ != nullptr && currentOp_->getStamp() != Type::v &&
 	                          !ir::isTerminatorOp(currentOp_->getOperationType());
 	const std::string label =

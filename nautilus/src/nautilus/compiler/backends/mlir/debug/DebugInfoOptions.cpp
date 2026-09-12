@@ -23,13 +23,10 @@ std::string tempDir() {
 	return "/tmp";
 }
 
-// Directory the synthesized source file is written to: the process's working
-// directory by default, since a debugger (and the IDE driving it) resolves a
-// path there far more reliably than one under the per-user $TMPDIR — on macOS
-// that is a /var/folders/... path an IDE will not have in its source roots, and
-// it differs between a terminal run and an IDE-launched one. Falls back to the
-// temp directory when the working directory is unusable (deleted, or not
-// writable), which is where the file used to live unconditionally.
+// Directory the synthesized source file is written to. The working directory by
+// default: an IDE resolves a path there far more reliably than one under the
+// per-user $TMPDIR (on macOS, a /var/folders/... path outside its source roots).
+// Falls back to the temp directory when the working directory is unusable.
 std::filesystem::path sourceDir(const engine::Options& options) {
 	auto configured = options.getOptionOrDefault<std::string>("mlir.debug.source_dir", "");
 	if (!configured.empty()) {
@@ -54,8 +51,6 @@ std::string synthesizeSourcePath(const engine::Options& options, const std::stri
 
 // DWARF that names a relative file leaves the debugger resolving it against
 // DW_AT_comp_dir, which for a JIT module is not a directory the user controls.
-// Anchoring every path to the working directory up front removes that whole
-// class of "source not found" from the IDE side.
 std::string makeAbsolute(const std::string& path) {
 	std::error_code ec;
 	auto absolute = std::filesystem::absolute(path, ec);

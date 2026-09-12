@@ -30,13 +30,8 @@ enum class IRLineKind : uint8_t {
 };
 
 /// Receives the line number of every named object the renderer emits, at the
-/// moment it emits it.
-///
-/// This is the only way a line number is ever produced: the renderer owns the
-/// counter, so a position cannot disagree with the text it points into. The
-/// alternative -- printing the dump and parsing line numbers back out of it --
-/// makes the pretty-printer a load-bearing wire format, where any change to the
-/// layout silently degrades every position rather than failing.
+/// moment it emits it. The renderer owns the counter, so a position cannot
+/// disagree with the text it points into.
 class IRLineSink {
 public:
 	virtual ~IRLineSink() = default;

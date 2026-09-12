@@ -599,13 +599,11 @@ namespace nautilus::compiler::ir {
 namespace {
 
 /// Accumulates the rendered dump while tracking which line the next character
-/// will land on, so every IR object can be recorded at the line it starts on
-/// without anyone ever reading the text back.
+/// lands on, so every IR object can be recorded at the line it starts on.
 ///
 /// The renderers below are the single implementation of the module's layout:
-/// `fmt::formatter<IRGraph>` drives them with no sink attached and
-/// `computeIRLocations()` drives them with one, so a recorded line and the
-/// printed dump cannot describe different layouts.
+/// `fmt::formatter<IRGraph>` drives them without a sink, `computeIRLocations()`
+/// with one, so a recorded line and the printed dump cannot disagree.
 class LineWriter {
 public:
 	explicit LineWriter(IRLineSink* sink) : sink(sink) {
@@ -653,10 +651,9 @@ std::string regionReferenceString(RegionIndex index, const char* prefix) {
 void renderOperation(LineWriter& w, const Operation* operation, std::string_view indent) {
 	w.append(indent);
 	w.mark(operation, IRLineKind::Operation);
-	// An operation's own rendering may span several lines (a source-location
-	// or region trailer continues on its own line), which is exactly why the
-	// writer counts newlines in what it is handed rather than assuming one
-	// line per operation. The operation is recorded at the first of them.
+	// An operation's rendering may span several lines (a source-location or
+	// region trailer), so the writer counts newlines in what it is handed
+	// rather than assuming one line per operation; the first is recorded.
 	w.append(fmt::to_string(*operation));
 	w.append("\n");
 }

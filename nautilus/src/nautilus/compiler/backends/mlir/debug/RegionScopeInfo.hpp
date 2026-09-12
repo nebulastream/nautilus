@@ -96,12 +96,9 @@ using RegionSubprogramCache = llvm::DenseMap<::mlir::Attribute, ::mlir::LLVM::DI
 // op's plain underlying location.
 //
 // The marker FusedLoc holds two children: the op's real location and the
-// region chain (which points at the region's *C++* source position). MLIR's
-// debug translation cannot pick a line from a multi-child FusedLoc and emits
-// `line: 0` for it, so handing a still-marked location to
-// wrapOpForRegionInlining costs every op inside a region its line number --
-// and a debugger then attributes those instructions to the inlinedAt call
-// site, collapsing the whole region onto one line. Strip first, wrap second.
+// region chain. MLIR's debug translation cannot pick a line from a multi-child
+// FusedLoc and emits `line: 0`, so a still-marked location costs every op in
+// the region its line number. Strip first, wrap second.
 ::mlir::Location stripRegionScope(::mlir::Location loc);
 
 } // namespace nautilus::compiler::mlir
