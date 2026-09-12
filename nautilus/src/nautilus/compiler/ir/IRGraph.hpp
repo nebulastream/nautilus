@@ -16,13 +16,45 @@ class SourceLocationResolver;
 namespace nautilus::compiler::ir {
 
 class FunctionOperation;
+class BasicBlock;
+class Operation;
+
+/// What a line reported to an `IRLineSink` belongs to.
+enum class IRLineKind : uint8_t {
+	/// A function signature line; `owner` is a `const FunctionOperation*`.
+	Function,
+	/// A block header line; `owner` is a `const BasicBlock*`.
+	Block,
+	/// The first line of an operation; `owner` is a `const Operation*`.
+	Operation,
+};
+
+/// Receives the line number of every named object the renderer emits, at the
+/// moment it emits it. The renderer owns the counter, so a position cannot
+/// disagree with the text it points into.
+class IRLineSink {
+public:
+	virtual ~IRLineSink() = default;
+
+	/// @p lineNo is 1-based and names the line @p owner's text starts on.
+	virtual void line(uint32_t lineNo, const void* owner, IRLineKind kind) = 0;
+};
 
 /// Options that control how `IRGraph::toString` renders the graph.  Default-
 /// constructed options reproduce the historic output byte-for-byte.
 struct IRPrintOptions {
 	bool showSourceLocations = false;
 	tracing::SourceLocationResolver* resolver = nullptr;
+	/// When set, receives the line number of every function, block and
+	/// operation rendered. Does not affect the rendered text.
+	IRLineSink* sink = nullptr;
 };
+
+/// Renders @p graph exactly as `IRGraph::toString` does, reporting every
+/// function, block and operation to @p sink as it is emitted. The single
+/// implementation of the dump's layout; `fmt::formatter<IRGraph>` is a wrapper
+/// around it with no sink.
+std::string renderIRGraph(const IRGraph& graph, IRLineSink* sink);
 
 /**
  * @brief The IRGraph represents a fragment of nautilus ir.

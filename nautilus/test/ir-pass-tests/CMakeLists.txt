@@ -21,6 +21,7 @@ add_executable(nautilus-ir-pass-tests
         NoThrowInferenceTest.cpp
         FunctionAttributeInferenceTest.cpp
         IntrinsicLinkageTest.cpp
+        IRLocationMapTest.cpp
 )
 
 target_link_libraries(nautilus-ir-pass-tests PRIVATE nautilus Catch2::Catch2WithMain nautilus-sanitizer-suppressions)

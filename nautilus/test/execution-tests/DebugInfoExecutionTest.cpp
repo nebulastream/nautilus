@@ -188,6 +188,150 @@ TEST_CASE("Debug info: default source path is synthesized when none provided") {
 	REQUIRE(fn(10) == 11);
 }
 
+TEST_CASE("Debug info: the synthesized source file lands in the working directory") {
+	// A debugger resolves a path next to the running process far more
+	// reliably than one under the per-user $TMPDIR, which on macOS is a
+	// /var/folders/... path no IDE has in its source roots.
+	const auto cwd = std::filesystem::current_path();
+	std::set<std::filesystem::path> before;
+	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
+		before.insert(e.path());
+	}
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	std::vector<std::filesystem::path> created;
+	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
+		if (!before.count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
+		    e.path().extension() == ".ir") {
+			created.push_back(e.path());
+		}
+	}
+	REQUIRE_FALSE(created.empty());
+	for (const auto& path : created) {
+		std::filesystem::remove(path);
+	}
+}
+
+TEST_CASE("Debug info: source_dir redirects the synthesized source file") {
+	const auto dir = std::filesystem::temp_directory_path() / ("nautilus_src_dir_" + std::to_string(::getpid()));
+	std::filesystem::remove_all(dir);
+	std::filesystem::create_directories(dir);
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("mlir.debug.source_dir", dir.string());
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator {}) > 0);
+	std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Debug info: a relative source_file is recorded as an absolute path") {
+	// A relative name in the DWARF would be resolved against DW_AT_comp_dir,
+	// which for a JIT module is not a directory the user controls — the
+	// debugger then reports the source as missing.
+	const auto relative = "nautilus_relative_" + std::to_string(::getpid()) + ".ir";
+	const auto expected = std::filesystem::current_path() / relative;
+	std::filesystem::remove(expected);
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("mlir.debug.source_file", relative);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(std::filesystem::exists(expected));
+	// The IR dump names itself by the absolute path the DWARF points at.
+	std::filesystem::remove(expected);
+}
+
+// The GDB JIT interface: the debugger sets a breakpoint on
+// `__jit_debug_register_code` and walks `__jit_debug_descriptor`'s linked list
+// to find the in-memory objects it should read DWARF from.  LLVM's
+// GDBJITDebugInfoRegistrationPlugin (installed by
+// `llvm::orc::enableDebuggerSupport`) owns both symbols in this process, so the
+// descriptor's entry list is what a debugger would actually see.
+extern "C" {
+struct jit_code_entry {
+	jit_code_entry* next_entry;
+	jit_code_entry* prev_entry;
+	const char* symfile_addr;
+	uint64_t symfile_size;
+};
+struct jit_descriptor {
+	uint32_t version;
+	uint32_t action_flag;
+	jit_code_entry* relevant_entry;
+	jit_code_entry* first_entry;
+};
+extern jit_descriptor __jit_debug_descriptor;
+}
+
+namespace {
+
+size_t jitDebugEntryCount() {
+	size_t count = 0;
+	for (auto* e = __jit_debug_descriptor.first_entry; e != nullptr; e = e->next_entry) {
+		++count;
+	}
+	return count;
+}
+
+} // namespace
+
+TEST_CASE("Debug info: JIT-linked objects are registered with the debugger") {
+	const auto before = jitDebugEntryCount();
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("mlir.eager_compilation", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	// Without the registration plugin the DWARF is emitted but never handed
+	// to the debugger, and this list stays empty no matter how much debug
+	// info the object carries.
+	REQUIRE(jitDebugEntryCount() > before);
+}
+
+TEST_CASE("Debug info: debugger registration can be disabled") {
+	const auto before = jitDebugEntryCount();
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("mlir.debug.register_with_debugger", false);
+	options.setOption("mlir.eager_compilation", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(jitDebugEntryCount() == before);
+}
+
 TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N DILocalVariable") {
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
 	std::set<std::filesystem::path> existing;
@@ -296,7 +440,7 @@ TEST_CASE("Debug info: nautilus-ir mode emits DISubprogram with non-zero line") 
 	// NameLoc whose nested FileLineColLoc had line 0.  DWARF treats line 0
 	// as "no location", so GDB's `step` could not land inside the function.
 	// The lowering now looks the function's header line up in
-	// IRSourceMap::functionLines, which must surface as a non-zero `line:`
+	// the location map's function line, which must surface as a non-zero `line:`
 	// attribute on every emitted DISubprogram.
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
 	std::set<std::filesystem::path> existing;
@@ -671,6 +815,7 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	std::map<std::string, std::string> subprogramFile; // id -> file id
 	std::map<std::string, std::string> locScope;       // DILocation id -> scope id
 	std::map<std::string, std::string> locInlinedAt;   // DILocation id -> inlinedAt DILocation id (if any)
+	std::map<std::string, int> locLine;                // DILocation id -> line
 	bool sawLexicalBlockFile = false;
 	std::string dbgIdOnIcmp;    // !dbg id attached to the loop-condition `icmp`
 	std::string dbgIdOnBodyAdd; // !dbg id attached to the loop-body accumulation `add`
@@ -740,6 +885,8 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 						subprogramFile[metaId] = extractRef(line, "file: !");
 					} else if (line.find("!DILocation(") != std::string::npos) {
 						locScope[metaId] = extractRef(line, "scope: !");
+						auto lineDigits = extractRef(line, "line: ");
+						locLine[metaId] = lineDigits.empty() ? 0 : std::stoi(lineDigits);
 						auto inlinedAtPos = line.find("inlinedAt: !");
 						if (inlinedAtPos != std::string::npos) {
 							locInlinedAt[metaId] = extractRef(line, "inlinedAt: !");
@@ -790,6 +937,19 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 		REQUIRE_FALSE(inlinedAtIt->second.empty());
 		REQUIRE(locScope[inlinedAtIt->second] == executeId);
 	}
+
+	// The right scope is not enough to step: an op inside a region must also
+	// keep its own IR line. `line: 0` means "compiler-generated, no source
+	// position", and a debugger attributes such an instruction to the
+	// inlinedAt call site instead -- which collapses every line of the region
+	// onto the function header and makes stepping through the region body
+	// impossible. The two ops also sit on different IR lines, so a single
+	// shared location for the whole region is wrong by construction.
+	REQUIRE(locLine.count(dbgIdOnIcmp) == 1);
+	REQUIRE(locLine.count(dbgIdOnBodyAdd) == 1);
+	REQUIRE(locLine[dbgIdOnIcmp] != 0);
+	REQUIRE(locLine[dbgIdOnBodyAdd] != 0);
+	REQUIRE(locLine[dbgIdOnIcmp] != locLine[dbgIdOnBodyAdd]);
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {

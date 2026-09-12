@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <cassert>
 #include <fmt/format.h>
+#include <iterator>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -592,125 +594,172 @@ auto fmt::formatter<nautilus::compiler::ir::Operation>::format(const nautilus::c
 	return out;
 }
 
-template <>
-struct formatter<nautilus::compiler::ir::BasicBlock> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::BasicBlock& block, format_context& ctx)
-	    -> format_context::iterator {
-		auto out = ctx.out();
-		fmt::format_to(out, "\nBlock_{}(", block.getIdentifier());
-		const auto& args = block.getArguments();
-		if (!args.empty()) {
-			fmt::format_to(out, "{}:{}", args.at(0)->getIdentifier().toString(), toString(args.at(0)->getStamp()));
-			for (size_t i = 1; i < args.size(); ++i) {
-				fmt::format_to(out, ", {}:{}", args.at(i)->getIdentifier().toString(),
-				               toString(args.at(i)->getStamp()));
-			}
-		}
-		fmt::format_to(out, "):");
-		nautilus::compiler::ir::formatRegionReference(out, block.getRegionIndex(), " ; region ");
-		fmt::format_to(out, "\n");
-		// Operations print their own region only where it differs from the block's.
-		nautilus::compiler::ir::PrintBlockRegionScope blockRegionScope(block.getRegionIndex());
-		for (auto* operation : block.getOperations()) {
-			fmt::format_to(out, "\t{}\n", *operation);
-		}
-		return out;
-	}
-};
-
-template <>
-struct formatter<nautilus::compiler::ir::FunctionOperation> : formatter<std::string_view> {
-	static auto format(const nautilus::compiler::ir::FunctionOperation& func, format_context& ctx)
-	    -> format_context::iterator {
-		auto out = ctx.out();
-		fmt::format_to(out, "{}(", func.getName());
-		// The trace-to-IR conversion leaves `inputArgs`/`inputArgNames` empty;
-		// the parameters live on the entry block. Fall back to those.
-		const auto& argTypes = func.getInputArgs();
-		const auto& argNames = func.getInputArgNames();
-		const auto* entry = func.getEntryBlock();
-		if (entry != nullptr && argTypes.empty() && argNames.empty()) {
-			const auto& blockArgs = entry->getArguments();
-			for (size_t i = 0; i < blockArgs.size(); ++i) {
-				if (i > 0) {
-					fmt::format_to(out, ", ");
-				}
-				fmt::format_to(out, "{}:{}", blockArgs[i]->getIdentifier(), toString(blockArgs[i]->getStamp()));
-			}
-		} else {
-			for (size_t i = 0; i < argTypes.size(); ++i) {
-				if (i > 0) {
-					fmt::format_to(out, ", ");
-				}
-				if (i < argNames.size()) {
-					fmt::format_to(out, "{}:{}", argNames[i], toString(argTypes[i]));
-				} else {
-					fmt::format_to(out, "{}", toString(argTypes[i]));
-				}
-			}
-		}
-		fmt::format_to(out, ") :{}", toString(func.getOutputArg()));
-		// Derived by FunctionAttributeInferencePass (or absent before it runs);
-		// the internal FunctionOperation is its own declaration, so its
-		// attributes belong on this signature line rather than a separate one.
-		if (nautilus::compiler::ir::currentPrintGraph != nullptr) {
-			const auto id = nautilus::compiler::ir::currentPrintGraph->getFunctionTable().findByDefinition(&func);
-			if (id != nautilus::compiler::ir::INVALID_FUNCTION_ID &&
-			    nautilus::compiler::ir::currentPrintGraph->getFunctionTable().contains(id)) {
-				fmt::format_to(out, "{}",
-				               nautilus::compiler::ir::attributesSuffix(
-				                   nautilus::compiler::ir::currentPrintGraph->getFunctionTarget(id).getAttributes()));
-			}
-		}
-		// Where this function was registered (docs/engine.md), not where its body is
-		// defined -- for a NautilusFunction those usually coincide, for
-		// engine.registerFunction(myKernel) the location is the registration call site.
-		// Gated behind the same flag as the region legend below, so a dump that has to
-		// stay identical across machines and compilers can turn it off.
-		if (nautilus::log::options::getLogSourceLocations() && func.getLocation().isKnown()) {
-			fmt::format_to(out, "  ; at {}", func.getLocation().toString());
-		}
-		fmt::format_to(out, " {{");
-		{
-			nautilus::compiler::ir::PrintExceptionRegionScope exceptionScope(
-			    func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
-			nautilus::compiler::ir::PrintRegionScope regionScope(&func);
-			for (const auto* block : func.getBasicBlocks()) {
-				fmt::format_to(out, "{}", *block);
-			}
-		}
-		// Which pad each call targets is already inline on the call itself
-		// (padLinkSuffix, in the shared Operation trailer); this section is
-		// only the pads' own definitions -- the destructor calls a landing
-		// pad actually contains, which appear nowhere else in the dump. A
-		// function with only no-pad exceptional call sites has nothing left
-		// to say here: `-> (no_pad)` on the call already said it.
-		if (func.exceptionRegion.has_value()) {
-			const auto& region = *func.exceptionRegion;
-			if (!region.pads.empty()) {
-				fmt::format_to(out, "exception_region:\n");
-				for (size_t i = 0; i < region.pads.size(); ++i) {
-					fmt::format_to(out, "\tpad_{}:\n", i);
-					for (const auto* op : region.pads[i].block->getOperations()) {
-						fmt::format_to(out, "\t\t{}\n", *op);
-					}
-				}
-			}
-		}
-		fmt::format_to(out, "}}\n");
-		return out;
-	}
-};
 } // namespace fmt
+namespace nautilus::compiler::ir {
+namespace {
 
-auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph,
-                                                             format_context& ctx) -> format_context::iterator {
+/// Accumulates the rendered dump while tracking which line the next character
+/// lands on, so every IR object can be recorded at the line it starts on.
+///
+/// The renderers below are the single implementation of the module's layout:
+/// `fmt::formatter<IRGraph>` drives them without a sink, `computeIRLocations()`
+/// with one, so a recorded line and the printed dump cannot disagree.
+class LineWriter {
+public:
+	explicit LineWriter(IRLineSink* sink) : sink(sink) {
+	}
+
+	void append(std::string_view text) {
+		out.append(text);
+		line += static_cast<uint32_t>(std::count(text.begin(), text.end(), '\n'));
+	}
+
+	template <typename... Args>
+	void format(fmt::format_string<Args...> spec, Args&&... args) {
+		append(fmt::format(spec, std::forward<Args>(args)...));
+	}
+
+	/// Records that @p owner's text begins at the current line. Call it after
+	/// emitting whatever precedes the object on its own line (a leading
+	/// newline, an indent) and before emitting the object itself.
+	void mark(const void* owner, IRLineKind kind) {
+		if (sink != nullptr) {
+			sink->line(line, owner, kind);
+		}
+	}
+
+	[[nodiscard]] const std::string& str() const {
+		return out;
+	}
+
+private:
+	std::string out;
+	/// 1-based line the next appended character lands on.
+	uint32_t line = 1;
+	IRLineSink* sink;
+};
+
+/// `formatRegionReference` as a string, for the renderers, which append to a
+/// LineWriter rather than to an fmt output iterator.
+std::string regionReferenceString(RegionIndex index, const char* prefix) {
+	std::string buffer;
+	auto out = std::back_inserter(buffer);
+	formatRegionReference(out, index, prefix);
+	return buffer;
+}
+
+void renderOperation(LineWriter& w, const Operation* operation, std::string_view indent) {
+	w.append(indent);
+	w.mark(operation, IRLineKind::Operation);
+	// An operation's rendering may span several lines (a source-location or
+	// region trailer), so the writer counts newlines in what it is handed
+	// rather than assuming one line per operation; the first is recorded.
+	w.append(fmt::to_string(*operation));
+	w.append("\n");
+}
+
+void renderBlock(LineWriter& w, const BasicBlock& block) {
+	w.append("\n");
+	w.mark(&block, IRLineKind::Block);
+	w.format("Block_{}(", block.getIdentifier());
+	const auto& args = block.getArguments();
+	if (!args.empty()) {
+		w.format("{}:{}", args.at(0)->getIdentifier().toString(), toString(args.at(0)->getStamp()));
+		for (size_t i = 1; i < args.size(); ++i) {
+			w.format(", {}:{}", args.at(i)->getIdentifier().toString(), toString(args.at(i)->getStamp()));
+		}
+	}
+	w.append("):");
+	w.append(regionReferenceString(block.getRegionIndex(), " ; region "));
+	w.append("\n");
+	// Operations print their own region only where it differs from the block's.
+	PrintBlockRegionScope blockRegionScope(block.getRegionIndex());
+	for (auto* operation : block.getOperations()) {
+		renderOperation(w, operation, "\t");
+	}
+}
+
+void renderFunction(LineWriter& w, const FunctionOperation& func) {
+	w.mark(&func, IRLineKind::Function);
+	w.format("{}(", func.getName());
+	// The trace-to-IR conversion leaves `inputArgs`/`inputArgNames` empty;
+	// the parameters live on the entry block. Fall back to those.
+	const auto& argTypes = func.getInputArgs();
+	const auto& argNames = func.getInputArgNames();
+	const auto* entry = func.getEntryBlock();
+	if (entry != nullptr && argTypes.empty() && argNames.empty()) {
+		const auto& blockArgs = entry->getArguments();
+		for (size_t i = 0; i < blockArgs.size(); ++i) {
+			if (i > 0) {
+				w.append(", ");
+			}
+			w.format("{}:{}", blockArgs[i]->getIdentifier(), toString(blockArgs[i]->getStamp()));
+		}
+	} else {
+		for (size_t i = 0; i < argTypes.size(); ++i) {
+			if (i > 0) {
+				w.append(", ");
+			}
+			if (i < argNames.size()) {
+				w.format("{}:{}", argNames[i], toString(argTypes[i]));
+			} else {
+				w.format("{}", toString(argTypes[i]));
+			}
+		}
+	}
+	w.format(") :{}", toString(func.getOutputArg()));
+	// Derived by FunctionAttributeInferencePass (or absent before it runs);
+	// the internal FunctionOperation is its own declaration, so its
+	// attributes belong on this signature line rather than a separate one.
+	if (currentPrintGraph != nullptr) {
+		const auto id = currentPrintGraph->getFunctionTable().findByDefinition(&func);
+		if (id != INVALID_FUNCTION_ID && currentPrintGraph->getFunctionTable().contains(id)) {
+			w.format("{}", attributesSuffix(currentPrintGraph->getFunctionTarget(id).getAttributes()));
+		}
+	}
+	// Where this function was registered (docs/engine.md), not where its body is
+	// defined -- for a NautilusFunction those usually coincide, for
+	// engine.registerFunction(myKernel) the location is the registration call site.
+	// Gated behind the same flag as the region legend below, so a dump that has to
+	// stay identical across machines and compilers can turn it off.
+	if (log::options::getLogSourceLocations() && func.getLocation().isKnown()) {
+		w.format("  ; at {}", func.getLocation().toString());
+	}
+	w.append(" {");
+	{
+		PrintExceptionRegionScope exceptionScope(func.exceptionRegion.has_value() ? &*func.exceptionRegion : nullptr);
+		PrintRegionScope regionScope(&func);
+		for (const auto* block : func.getBasicBlocks()) {
+			renderBlock(w, *block);
+		}
+	}
+	// Which pad each call targets is already inline on the call itself
+	// (padLinkSuffix, in the shared Operation trailer); this section is
+	// only the pads' own definitions -- the destructor calls a landing
+	// pad actually contains, which appear nowhere else in the dump. A
+	// function with only no-pad exceptional call sites has nothing left
+	// to say here: `-> (no_pad)` on the call already said it.
+	if (func.exceptionRegion.has_value()) {
+		const auto& region = *func.exceptionRegion;
+		if (!region.pads.empty()) {
+			w.append("exception_region:\n");
+			for (size_t i = 0; i < region.pads.size(); ++i) {
+				w.format("\tpad_{}:\n", i);
+				for (const auto* op : region.pads[i].block->getOperations()) {
+					renderOperation(w, op, "\t\t");
+				}
+			}
+		}
+	}
+	w.append("}\n");
+}
+
+void renderGraph(LineWriter& w, const IRGraph& graph) {
 	// Make the module's function table reachable from the per-Operation
 	// formatter, so a call site can spell its callee rather than swallowing it.
-	nautilus::compiler::ir::PrintGraphScope graphScope(&graph);
+	PrintGraphScope graphScope(&graph);
 
-	auto out = ctx.out();
-	fmt::format_to(out, "nautilus {{\n");
+	w.append("nautilus {\n");
 
 	// The declaration region: every callee this module reaches that is *not*
 	// defined here. An internal target is deliberately absent -- its
@@ -718,29 +767,27 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 	// the two drift apart, which is the whole failure mode the function table
 	// exists to remove.
 	for (const auto& target : graph.getFunctionTable().getTargets()) {
-		if (target.getLinkage() == nautilus::compiler::ir::Linkage::Internal) {
+		if (target.getLinkage() == Linkage::Internal) {
 			continue;
 		}
 		// The id, not the name, identifies the entry: a native callee's name
 		// comes from dladdr and is a stringified address wherever that misses,
 		// so it is printed under the same rule as a call site.
-		fmt::format_to(out, "declare {} #{} {}(",
-		               target.getLinkage() == nautilus::compiler::ir::Linkage::Intrinsic ? "intrinsic" : "external",
-		               target.getId(), nautilus::compiler::ir::nativeSpelling(target.getName().get()));
+		w.format("declare {} #{} {}(", target.getLinkage() == Linkage::Intrinsic ? "intrinsic" : "external",
+		         target.getId(), nativeSpelling(target.getName().get()));
 		const auto params = target.getParamTypes();
 		for (size_t i = 0; i < params.size(); ++i) {
 			if (i > 0) {
-				fmt::format_to(out, ", ");
+				w.append(", ");
 			}
-			fmt::format_to(out, "{}", toString(params[i]));
+			w.format("{}", toString(params[i]));
 		}
-		fmt::format_to(out, ") :{}{}\n", toString(target.getResultType()),
-		               nautilus::compiler::ir::attributesSuffix(target.getAttributes()));
+		w.format(") :{}{}\n", toString(target.getResultType()), attributesSuffix(target.getAttributes()));
 	}
 
 	// Print all function operations
 	for (const auto* func : graph.getFunctionOperations()) {
-		fmt::format_to(out, "{}", *func);
+		renderFunction(w, *func);
 	}
 
 	// The region legend: what each `; region #N` above refers to (docs/region.md), defined
@@ -749,9 +796,7 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 	// and a region names its parent by id instead of every block restating the chain.
 	// A module that opens no region prints nothing here.
 	{
-		std::vector<
-		    std::pair<const nautilus::compiler::ir::FunctionOperation*, const nautilus::compiler::ir::RegionSpec*>>
-		    regions;
+		std::vector<std::pair<const FunctionOperation*, const RegionSpec*>> regions;
 		for (const auto* func : graph.getFunctionOperations()) {
 			for (const auto& spec : func->getRegionSpecs()) {
 				regions.emplace_back(func, &spec);
@@ -759,19 +804,35 @@ auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::com
 		}
 		std::sort(regions.begin(), regions.end(),
 		          [](const auto& left, const auto& right) { return left.second->id < right.second->id; });
-		const bool withLocation = nautilus::log::options::getLogSourceLocations();
+		const bool withLocation = log::options::getLogSourceLocations();
 		for (const auto& [func, spec] : regions) {
-			fmt::format_to(out, "; region #{} = {}", spec->id, spec->attributes.toString(withLocation));
+			w.format("; region #{} = {}", spec->id, spec->attributes.toString(withLocation));
 			// The parent index is this function's; the id it resolves to is the module's.
 			if (const auto* parent = func->findRegion(spec->parent)) {
-				fmt::format_to(out, ", nested in #{}", parent->id);
+				w.format(", nested in #{}", parent->id);
 			}
-			fmt::format_to(out, "\n");
+			w.append("\n");
 		}
 	}
 
-	fmt::format_to(out, "}} //nautilus\n");
-	return out;
+	w.append("} //nautilus\n");
+}
+
+} // namespace
+
+std::string renderIRGraph(const IRGraph& graph, IRLineSink* sink) {
+	LineWriter writer(sink);
+	renderGraph(writer, graph);
+	return writer.str();
+}
+
+} // namespace nautilus::compiler::ir
+
+auto fmt::formatter<nautilus::compiler::ir::IRGraph>::format(const nautilus::compiler::ir::IRGraph& graph,
+                                                             format_context& ctx) -> format_context::iterator {
+	const auto* options = nautilus::compiler::ir::currentPrintOptions;
+	auto text = nautilus::compiler::ir::renderIRGraph(graph, options != nullptr ? options->sink : nullptr);
+	return fmt::format_to(ctx.out(), "{}", text);
 }
 
 std::string nautilus::compiler::ir::IRGraph::toString() const {

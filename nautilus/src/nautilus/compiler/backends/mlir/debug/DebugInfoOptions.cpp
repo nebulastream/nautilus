@@ -23,15 +23,41 @@ std::string tempDir() {
 	return "/tmp";
 }
 
-// Generate a path like
-// `$TMPDIR/nautilus_debug_<pid>_<counter>.<ext>` that is unique
-// across parallel compilations within the same process.
-std::string synthesizeSourcePath(const std::string& extension) {
+// Directory the synthesized source file is written to. The working directory by
+// default: an IDE resolves a path there far more reliably than one under the
+// per-user $TMPDIR (on macOS, a /var/folders/... path outside its source roots).
+// Falls back to the temp directory when the working directory is unusable.
+std::filesystem::path sourceDir(const engine::Options& options) {
+	auto configured = options.getOptionOrDefault<std::string>("mlir.debug.source_dir", "");
+	if (!configured.empty()) {
+		return configured;
+	}
+	std::error_code ec;
+	auto cwd = std::filesystem::current_path(ec);
+	if (ec) {
+		return tempDir();
+	}
+	return cwd;
+}
+
+// Generate a path like `<dir>/nautilus_debug_<pid>_<counter>.<ext>` that is
+// unique across parallel compilations within the same process.
+std::string synthesizeSourcePath(const engine::Options& options, const std::string& extension) {
 	static std::atomic<uint64_t> counter {0};
-	std::filesystem::path dir = tempDir();
 	auto name =
 	    "nautilus_debug_" + std::to_string(::getpid()) + "_" + std::to_string(counter.fetch_add(1)) + "." + extension;
-	return (dir / name).string();
+	return (sourceDir(options) / name).string();
+}
+
+// DWARF that names a relative file leaves the debugger resolving it against
+// DW_AT_comp_dir, which for a JIT module is not a directory the user controls.
+std::string makeAbsolute(const std::string& path) {
+	std::error_code ec;
+	auto absolute = std::filesystem::absolute(path, ec);
+	if (ec) {
+		return path;
+	}
+	return absolute.lexically_normal().string();
 }
 
 } // namespace
@@ -43,10 +69,14 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	opts.sourceFile = options.getOptionOrDefault<std::string>("mlir.debug.source_file", "");
 	opts.producer = options.getOptionOrDefault<std::string>("mlir.debug.producer", "Nautilus JIT");
 	opts.dwarfVersion = options.getOptionOrDefault("mlir.debug.dwarf_version", 4);
+	opts.registerWithDebugger = options.getOptionOrDefault("mlir.debug.register_with_debugger", true);
 
-	if (opts.enable && opts.sourceFile.empty()) {
-		const std::string ext = (opts.sourceMode == "nautilus-ir") ? "ir" : "mlir";
-		opts.sourceFile = synthesizeSourcePath(ext);
+	if (opts.enable) {
+		if (opts.sourceFile.empty()) {
+			const std::string ext = (opts.sourceMode == "nautilus-ir") ? "ir" : "mlir";
+			opts.sourceFile = synthesizeSourcePath(options, ext);
+		}
+		opts.sourceFile = makeAbsolute(opts.sourceFile);
 	}
 	return opts;
 }

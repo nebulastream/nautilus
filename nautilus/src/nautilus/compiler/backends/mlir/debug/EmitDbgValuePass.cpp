@@ -189,8 +189,13 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 			for (auto& block : funcOp.getBody()) {
 				for (auto& op : block) {
 					if (auto chain = findRegionScopeChain(op.getLoc())) {
-						op.setLoc(
-						    wrapOpForRegionInlining(ctx, op.getLoc(), chain, subprogram, file, regionSubprogramCache));
+						// The marker has to come off first: it fuses the op's
+						// location with the region chain, and a multi-child
+						// FusedLoc translates to `line: 0` -- which would cost
+						// every op in the region its line and make the region
+						// unsteppable.
+						op.setLoc(wrapOpForRegionInlining(ctx, stripRegionScope(op.getLoc()), chain, subprogram, file,
+						                                  regionSubprogramCache));
 					} else {
 						op.setLoc(::mlir::FusedLoc::get({op.getLoc()}, blockScopes[&block], ctx));
 					}

@@ -34,6 +34,19 @@ constexpr llvm::StringLiteral kRegionScopeMarker = "nautilus.region.scope";
 	                             ::mlir::StringAttr::get(ctx, kRegionScopeMarker), ctx);
 }
 
+::mlir::Location stripRegionScope(::mlir::Location loc) {
+	if (auto fused = llvm::dyn_cast<::mlir::FusedLoc>(loc)) {
+		if (auto marker = llvm::dyn_cast_or_null<::mlir::StringAttr>(fused.getMetadata())) {
+			if (marker.getValue() == kRegionScopeMarker && !fused.getLocations().empty()) {
+				// Recurse: an op whose base location was itself wrapped (a
+				// nested region) carries more than one marker layer.
+				return stripRegionScope(fused.getLocations()[0]);
+			}
+		}
+	}
+	return loc;
+}
+
 ::mlir::LocationAttr findRegionScopeChain(::mlir::Location loc) {
 	::mlir::LocationAttr result;
 	loc->walk([&](::mlir::Location inner) {
