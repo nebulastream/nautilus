@@ -545,7 +545,7 @@ test-category/
 ### CI/CD Pipeline (.github/workflows/)
 
 **PR/Push Workflow** (`pr.yml`):
-- **Format Check**: clang-format-18, newline validation
+- **Format Check**: clang-format-21, newline validation (runs `./format.sh` in a dedicated `format-check` job)
 - **Build Matrix**:
   - GCC 14, Clang 19, Clang 21
   - Ubuntu 24.04

@@ -140,6 +140,21 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
+  format-check:
+    runs-on: ubuntu-24.04
+    name: Format Check (clang-format-21)
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: Install clang-format-21
+        uses: ./.github/actions/install-clang-format
+        with:
+          llvm-version: "21"
+      - name: Check formatting
+        shell: bash
+        run: ./format.sh
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)
