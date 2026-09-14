@@ -30,6 +30,13 @@ public:
 	struct Options {
 		llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive;
 		llvm::function_ref<llvm::Error(llvm::Module*)> transformer = nullptr;
+
+		// Register linked objects with the debugger through the GDB JIT
+		// interface so GDB/LLDB (and the IDEs driving them) can resolve the
+		// emitted DWARF and step into JIT-compiled frames.  Off by default:
+		// the registration plugin keeps a copy of every debug object alive
+		// for the lifetime of the JIT.
+		bool enableDebuggerSupport = false;
 	};
 
 	~MLIRJit();

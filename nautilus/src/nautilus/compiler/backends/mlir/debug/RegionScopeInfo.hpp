@@ -40,8 +40,14 @@ namespace nautilus::compiler::mlir {
 // enclosing region's own chain (built by a previous call to this function),
 // or a null LocationAttr for a region opened directly in the function body --
 // i.e. one whose RegionSpec::parent is NO_REGION.
+//
+// `irFile`/`irLine` are where the region opens in the Nautilus-IR dump. That
+// is the region's call site for DWARF purposes -- the line the *enclosing*
+// frame shows while execution is inside this region -- and it is carried
+// alongside the C++ position, which stays for dump readability.
 ::mlir::LocationAttr buildRegionScopeChain(::mlir::MLIRContext* ctx, llvm::StringRef name, llvm::StringRef file,
-                                           unsigned line, unsigned column, ::mlir::LocationAttr parentChain);
+                                           unsigned line, unsigned column, ::mlir::LocationAttr parentChain,
+                                           llvm::StringRef irFile = {}, unsigned irLine = 0);
 
 // Fuses `regionChain` onto `base` so the region nesting travels with the op's
 // location. Returns `base` unchanged when `regionChain` is null (NO_REGION),
@@ -91,5 +97,14 @@ using RegionSubprogramCache = llvm::DenseMap<::mlir::Attribute, ::mlir::LLVM::DI
 ::mlir::Location wrapOpForRegionInlining(::mlir::MLIRContext* ctx, ::mlir::Location opLoc,
                                          ::mlir::LocationAttr regionChain, ::mlir::LLVM::DISubprogramAttr subprogram,
                                          ::mlir::LLVM::DIFileAttr functionFile, RegionSubprogramCache& cache);
+
+// Removes the region-scope marker attachRegionScope() added, returning the
+// op's plain underlying location.
+//
+// The marker FusedLoc holds two children: the op's real location and the
+// region chain. MLIR's debug translation cannot pick a line from a multi-child
+// FusedLoc and emits `line: 0`, so a still-marked location costs every op in
+// the region its line number. Strip first, wrap second.
+::mlir::Location stripRegionScope(::mlir::Location loc);
 
 } // namespace nautilus::compiler::mlir

@@ -19,4 +19,5 @@ add_source_files(nautilus
         ExceptionRegionPreparationPass.cpp
         NoThrowInferencePass.cpp
         FunctionAttributeInferencePass.cpp
+        IRLocationPass.cpp
 )

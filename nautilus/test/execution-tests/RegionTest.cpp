@@ -7,9 +7,11 @@
 #include "nautilus/val.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <source_location>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #ifdef ENABLE_TRACING
@@ -1175,8 +1177,20 @@ namespace {
 /// never traces at all, which would make every one of these checks vacuously pass.
 template <typename F>
 void requireRejectedByLazyTracing(const std::string& backend, const char* name, F fn) {
-	auto lazyEngine = nautilus::testing::makeEngine(
-	    backend, [](engine::Options& opts) { opts.setOption("engine.traceMode", std::string("lazyTracing")); });
+	auto lazyEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
+		const auto sourcePath =
+		    (std::filesystem::temp_directory_path() / ("nautilus_debug_cf_test_" + std::to_string(::getpid()) + ".ir"))
+		        .string();
+		std::filesystem::remove(sourcePath);
+
+		opts.setOption("engine.backend", std::string("mlir"));
+		opts.setOption("mlir.debug.enable", true);
+		opts.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+		opts.setOption("mlir.debug.source_file", sourcePath);
+		opts.setOption("dump.before_llvm_optimization", true);
+
+		opts.setOption("engine.traceMode", std::string("lazyTracing"));
+	});
 	std::string diagnosis = "<no exception thrown>";
 	try {
 		lazyEngine.registerFunction(fn);
@@ -1197,9 +1211,18 @@ TEST_CASE("Region Rejects Values Outliving The Body", "[region]") {
 	if (backends.empty()) {
 		SKIP("no compilation backend available");
 	}
+	const auto sourcePath =
+	    (std::filesystem::temp_directory_path() / ("nautilus_debug_cf_test_" + std::to_string(::getpid()) + ".ir"))
+	        .string();
+	std::filesystem::remove(sourcePath);
 	const auto& backend = backends.front();
-	auto ebEngine = nautilus::testing::makeEngine(backend, [](engine::Options& opts) {
+	auto ebEngine = nautilus::testing::makeEngine(backend, [sourcePath](engine::Options& opts) {
 		opts.setOption("engine.traceMode", std::string("exceptionBasedTracing"));
+		opts.setOption("engine.backend", std::string("mlir"));
+		opts.setOption("mlir.debug.enable", true);
+		opts.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+		opts.setOption("mlir.debug.source_file", sourcePath);
+		opts.setOption("dump.before_llvm_optimization", true);
 	});
 
 	SECTION("exceptionBasedTracing traces them") {
