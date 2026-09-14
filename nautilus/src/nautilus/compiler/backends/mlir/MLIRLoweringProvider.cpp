@@ -815,7 +815,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 			mlirFunction.getArgument(i).setLoc(argNameLoc);
 			auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 			const uint32_t argLine = locationMap_->lineOf(irArgs.at(i)) != 0 ? locationMap_->lineOf(irArgs.at(i))
-			                                                                : currentFunctionHeaderLine_;
+			                                                                 : currentFunctionHeaderLine_;
 			auto storeLoc = mlir::FileLineColLoc::get(fileAttr, argLine, 1);
 			storeDebugValue(irArgs.at(i), mlirFunction.getArgument(i), storeLoc);
 		}

@@ -144,9 +144,9 @@ namespace {
 // reached from. The outermost level (the function itself) therefore shows
 // where the first region opens, and falls back to the function's own line only
 // when nothing supplied one.
-::mlir::Location buildCallerChain(::mlir::MLIRContext* ctx, ::mlir::LocationAttr regionChain,
-                                  unsigned calleeOpenLine, ::mlir::LLVM::DISubprogramAttr subprogram,
-                                  ::mlir::LLVM::DIFileAttr functionFile, RegionSubprogramCache& cache) {
+::mlir::Location buildCallerChain(::mlir::MLIRContext* ctx, ::mlir::LocationAttr regionChain, unsigned calleeOpenLine,
+                                  ::mlir::LLVM::DISubprogramAttr subprogram, ::mlir::LLVM::DIFileAttr functionFile,
+                                  RegionSubprogramCache& cache) {
 	const unsigned line = calleeOpenLine != 0 ? calleeOpenLine : subprogram.getLine();
 	auto entryLoc = ::mlir::FileLineColLoc::get(functionFile.getName(), line, 1);
 	if (!regionChain) {

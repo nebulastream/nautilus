@@ -1,0 +1,38 @@
+name: Install clang-format
+description: >-
+  Install a clang-format binary from apt.llvm.org for Ubuntu runners without
+  letting apt hang. Mirrors the timeout-bounded apt pattern used by
+  install-llvm, but installs only the clang-format-<ver> package since
+  format-checking doesn't need a full clang/LLVM toolchain.
+
+inputs:
+  llvm-version:
+    description: clang-format version to install, e.g. 19, 21 or 22.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install clang-format-${{ inputs.llvm-version }} (timeout-bounded apt)
+      shell: bash
+      run: |
+        set -u
+        UBUNTU_CODENAME=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME}")
+        LLVM_VERSION="${{ inputs.llvm-version }}"
+        APTOPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60"
+        for i in 1 2 3 4 5; do
+          if timeout 180 sudo apt-get update ${APTOPTS} \
+            && timeout 60 sudo wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add - \
+            && printf 'deb http://apt.llvm.org/%s/ llvm-toolchain-%s-%s main\n' \
+                 "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${LLVM_VERSION}" \
+                 | sudo tee /etc/apt/sources.list.d/llvm-${LLVM_VERSION}.list \
+            && timeout 180 sudo apt-get update ${APTOPTS} \
+            && timeout 300 sudo apt-get install -y --no-install-recommends \
+                 clang-format-${LLVM_VERSION} ${APTOPTS}; then
+            clang-format-${LLVM_VERSION} --version
+            exit 0
+          fi
+          echo "apt install of clang-format-${LLVM_VERSION} failed (attempt $i/5), retrying in 15s..."
+          sleep 15
+        done
+        exit 1
