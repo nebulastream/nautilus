@@ -1,9 +1,9 @@
 #include "IRGraphFixtures.hpp"
 #include "nautilus/compiler/ir/IRLocationMap.hpp"
-#include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
+#include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include <catch2/catch_all.hpp>
 #include <string>
 #include <vector>
@@ -148,7 +148,6 @@ TEST_CASE("IRLocationMap: an unknown node resolves to no line and no chain") {
 	REQUIRE(map.lineOf(static_cast<const ir::Operation*>(nullptr)) == 0);
 	REQUIRE(map.chainOf(static_cast<const ir::Operation*>(nullptr)).empty());
 }
-
 
 // The pass is the only entry point the pipeline and the MLIR backend use, so
 // what it produces must be what computeIRLocations() produces directly.

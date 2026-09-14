@@ -197,7 +197,7 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 			for (auto& block : funcOp.getBody()) {
 				const unsigned scopeLine = (&block == entryBlock) ? subprogram.getLine() : firstLineIn(block);
 				blockScopes[&block] = ::mlir::LLVM::DILexicalBlockAttr::get(ctx, subprogram, file, scopeLine,
-				                                                           /*column=*/1);
+				                                                            /*column=*/1);
 			}
 			// A block's region chain, captured before the rewrite below consumes
 			// the markers. A Nautilus block belongs to one region, so the first
@@ -230,9 +230,9 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 					// The declare's own !dbg has to agree with the variable's
 					// scope, so it gets the same inlined-call-site chain the
 					// block's ops get.
-					blockDeclLocs.try_emplace(&block,
-					                          ::mlir::LocationAttr(wrapOpForRegionInlining(
-					                              ctx, plainLoc, chain, subprogram, file, regionSubprogramCache)));
+					blockDeclLocs.try_emplace(
+					    &block, ::mlir::LocationAttr(wrapOpForRegionInlining(ctx, plainLoc, chain, subprogram, file,
+					                                                         regionSubprogramCache)));
 				} else {
 					blockVarScopes[&block] = blockScopes[&block];
 					blockDeclLocs.try_emplace(

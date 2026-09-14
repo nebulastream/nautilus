@@ -13,9 +13,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
-#include <functional>
 #include <sstream>
 #include <string_view>
 #include <unistd.h>
@@ -151,8 +151,8 @@ struct DebugIr {
 		int line = 0;
 	};
 
-	std::string text;       // the emitted LLVM IR
-	std::string sourceText; // the Nautilus-IR dump the DWARF points at
+	std::string text;                                  // the emitted LLVM IR
+	std::string sourceText;                            // the Nautilus-IR dump the DWARF points at
 	std::map<std::string, Subprogram> subprograms;     // metadata id -> subprogram
 	std::map<std::string, LexicalBlock> lexicalBlocks; // metadata id -> lexical block
 	std::map<std::string, Location> locations;         // metadata id -> location
@@ -353,7 +353,7 @@ DebugIr parseDebugIr(std::string text) {
 		} else if (line.find("!DILocation(") != std::string::npos) {
 			ir.locations[id] = {intAfter(line, "line: "), refAfter(line, "scope: !"),
 			                    line.find("inlinedAt: !") != std::string::npos ? refAfter(line, "inlinedAt: !")
-			                                                                  : std::string {}};
+			                                                                   : std::string {}};
 		} else if (line.find("!DILocalVariable(") != std::string::npos) {
 			DebugIr::LocalVariable variable;
 			auto nameKey = line.find("name: \"");
@@ -429,10 +429,10 @@ DebugIr compileDebugIr(const std::string& functionName, Body&& body, const Optio
 	// A path of our own, so the Nautilus-IR dump the DWARF points at can be
 	// read back as part of the result instead of hunting for it.
 	static std::atomic<unsigned> sourceCounter {0};
-	const auto sourcePath = (std::filesystem::temp_directory_path() /
-	                         ("nautilus_debug_test_" + std::to_string(::getpid()) + "_" +
-	                          std::to_string(sourceCounter.fetch_add(1)) + ".ir"))
-	                            .string();
+	const auto sourcePath =
+	    (std::filesystem::temp_directory_path() / ("nautilus_debug_test_" + std::to_string(::getpid()) + "_" +
+	                                               std::to_string(sourceCounter.fetch_add(1)) + ".ir"))
+	        .string();
 	std::filesystem::remove(sourcePath);
 
 	auto options = debugOptions([&](Options& o) {

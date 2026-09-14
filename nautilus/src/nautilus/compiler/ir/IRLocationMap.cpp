@@ -3,7 +3,6 @@
 
 namespace nautilus::compiler::ir {
 
-
 uint32_t IRLocationMap::lineOf(const Operation* operation) const {
 	auto it = operationLines.find(operation);
 	return it != operationLines.end() ? it->second : 0;
