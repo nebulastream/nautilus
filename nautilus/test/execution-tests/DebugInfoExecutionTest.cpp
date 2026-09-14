@@ -84,6 +84,15 @@ val<int32_t> debugRegionSum(val<int32_t> upperLimit) {
 	val<int32_t> agg = val<int32_t>(0);
 	region("accumulate", [&]() {
 		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			region("agg if", [&]() {
+				if (i < 100) {
+					agg = agg + i;
+				}
+			});
+		}
+	});
+	region("accumulate2", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
 			agg = agg + i;
 		}
 	});
@@ -781,11 +790,15 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	//     the SAME file as the enclosing function's own DISubprogram (a
 	//     DILocation has no file of its own, so a mismatched file here would
 	//     silently reinterpret unrelated source lines).
-	//   * At least two structurally different ops -- one from what was
-	//     originally the loop-condition block and one from the loop body --
+	//   * At least two structurally different ops -- the loop condition and
+	//     the induction increment, which land in different Nautilus blocks --
 	//     resolve to that same synthetic subprogram, i.e. the region's scope
-	//     is shared across the Nautilus basic blocks traced inside it, not
-	//     re-created per block.
+	//     is shared across the blocks traced inside it, not re-created per
+	//     block.
+	//   * A region nested inside another (`agg if` inside `accumulate`) gets
+	//     its own subprogram, and the accumulation traced inside it is scoped
+	//     to the inner one, with an inlinedAt chain running inner -> outer ->
+	//     execute.
 	//   * Those ops carry an `inlinedAt` location whose own scope resolves
 	//     back to the enclosing function's real DISubprogram -- the chain
 	//     that lets LLVM's verifier (and gdb) recognize this as "inlined into
@@ -806,10 +819,10 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	options.setOption("mlir.debug.enable", true);
 	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
 	options.setOption("dump.before_llvm_optimization", true);
-
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(debugRegionSum);
-	REQUIRE(fn(5) == 10);
+	// Two regions each accumulate 0..4.
+	REQUIRE(fn(5) == 20);
 
 	std::map<std::string, std::string> subprogramName; // id -> name
 	std::map<std::string, std::string> subprogramFile; // id -> file id
@@ -817,8 +830,15 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	std::map<std::string, std::string> locInlinedAt;   // DILocation id -> inlinedAt DILocation id (if any)
 	std::map<std::string, int> locLine;                // DILocation id -> line
 	bool sawLexicalBlockFile = false;
-	std::string dbgIdOnIcmp;    // !dbg id attached to the loop-condition `icmp`
-	std::string dbgIdOnBodyAdd; // !dbg id attached to the loop-body accumulation `add`
+	// `line: 0` means "compiler-generated, no source position". Anything the
+	// region lowers -- a block argument's phi included -- that keeps a
+	// still-marked region location translates to exactly that, and a debugger
+	// then attributes the instruction to the inlinedAt call site instead.
+	bool sawLineZeroLocation = false;
+	std::vector<std::string> variableScopes; // DILocalVariable -> scope id
+	std::string dbgIdOnIcmp;      // !dbg id attached to the loop-condition `icmp`
+	std::string dbgIdOnBodyAdd;   // !dbg id attached to the loop-body accumulation `add`
+	std::string dbgIdOnIncrement; // !dbg id attached to the latch's `i = i + 1`
 
 	auto extractRef = [](const std::string& line, const std::string& key) -> std::string {
 		auto pos = line.find(key);
@@ -861,11 +881,28 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 					if (line.find("!DILexicalBlockFile(") != std::string::npos) {
 						sawLexicalBlockFile = true;
 					}
+					if (line.find("!DILocation(line: 0,") != std::string::npos) {
+						sawLineZeroLocation = true;
+					}
+					if (line.find("!DILocalVariable(") != std::string::npos) {
+						variableScopes.push_back(extractRef(line, "scope: !"));
+					}
 					if (dbgIdOnIcmp.empty() && line.find("icmp slt") != std::string::npos) {
 						dbgIdOnIcmp = extractDbgId(line);
 					}
-					if (dbgIdOnBodyAdd.empty() && line.find("add i32 %10, %11") != std::string::npos) {
+					// The accumulation, not the induction increment: both are
+					// `add i32`, but `i = i + 1` has a literal second operand.
+					// Matched by shape rather than by SSA register number, which
+					// shifts whenever the traced body changes.
+					if (dbgIdOnBodyAdd.empty() && line.find("add i32 %") != std::string::npos &&
+					    line.find(", %") != std::string::npos) {
 						dbgIdOnBodyAdd = extractDbgId(line);
+					}
+					// The induction increment, in the latch block: same region as
+					// the loop condition, different block.
+					if (dbgIdOnIncrement.empty() && line.find("add i32 %") != std::string::npos &&
+					    line.find(", 1,") != std::string::npos) {
+						dbgIdOnIncrement = extractDbgId(line);
 					}
 
 					auto bang = line.find('!');
@@ -902,41 +939,90 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	}
 
 	REQUIRE_FALSE(sawLexicalBlockFile);
+	REQUIRE_FALSE(sawLineZeroLocation);
 	REQUIRE_FALSE(dbgIdOnIcmp.empty());
 	REQUIRE_FALSE(dbgIdOnBodyAdd.empty());
+	REQUIRE_FALSE(dbgIdOnIncrement.empty());
 
 	std::string executeId;
 	std::string accumulateId;
+	std::string aggIfId;
 	for (const auto& kv : subprogramName) {
 		if (kv.second == "execute") {
 			executeId = kv.first;
 		} else if (kv.second == "accumulate") {
 			accumulateId = kv.first;
+		} else if (kv.second == "agg if") {
+			aggIfId = kv.first;
 		}
 	}
 	REQUIRE_FALSE(executeId.empty());
 	REQUIRE_FALSE(accumulateId.empty());
+	REQUIRE_FALSE(aggIfId.empty());
 
-	// The region's synthetic subprogram must stay on execute's own file (see
-	// the DILexicalBlockFile-transparency / file-inheritance rationale above).
+	// Every region's synthetic subprogram stays on execute's own file (see the
+	// DILexicalBlockFile-transparency / file-inheritance rationale above).
 	REQUIRE(subprogramFile[accumulateId] == subprogramFile[executeId]);
+	REQUIRE(subprogramFile[aggIfId] == subprogramFile[executeId]);
 
 	// A shared scope, not one re-created per block: the loop-condition icmp
-	// (originally in the loop-header block) and the accumulation add
-	// (originally in the loop-body block) resolve to the very same
-	// "accumulate" subprogram.
+	// (loop-header block) and the induction increment (latch block) sit in two
+	// different Nautilus blocks and resolve to the very same "accumulate"
+	// subprogram.
 	REQUIRE(locScope[dbgIdOnIcmp] == accumulateId);
-	REQUIRE(locScope[dbgIdOnBodyAdd] == accumulateId);
+	REQUIRE(locScope[dbgIdOnIncrement] == accumulateId);
 
-	// Both carry an inlinedAt chain that nests back into execute's own scope,
-	// i.e. this is recognizable as "accumulate inlined into execute" rather
-	// than a dangling/unreachable scope.
-	for (const auto& dbgId : {dbgIdOnIcmp, dbgIdOnBodyAdd}) {
+	// The accumulation is one region deeper -- inside `region("agg if")` --
+	// so it belongs to that region's subprogram, not to the enclosing one.
+	// A nested region that collapsed into its parent would show accumulateId
+	// here and make the inner frame invisible in a backtrace.
+	REQUIRE(locScope[dbgIdOnBodyAdd] == aggIfId);
+
+	// Ops directly inside "accumulate" carry an inlinedAt chain one level
+	// deep, nesting back into execute's own scope: recognizable as
+	// "accumulate inlined into execute" rather than a dangling scope.
+	for (const auto& dbgId : {dbgIdOnIcmp, dbgIdOnIncrement}) {
 		auto inlinedAtIt = locInlinedAt.find(dbgId);
 		REQUIRE(inlinedAtIt != locInlinedAt.end());
 		REQUIRE_FALSE(inlinedAtIt->second.empty());
 		REQUIRE(locScope[inlinedAtIt->second] == executeId);
 	}
+
+	// The nested region's chain is two deep, and in order: the accumulation's
+	// inlinedAt is scoped to "accumulate", whose own inlinedAt is scoped to
+	// execute. That is what makes `bt` read agg if / accumulate / execute.
+	auto innerInlinedAt = locInlinedAt.find(dbgIdOnBodyAdd);
+	REQUIRE(innerInlinedAt != locInlinedAt.end());
+	REQUIRE(locScope[innerInlinedAt->second] == accumulateId);
+	auto outerInlinedAt = locInlinedAt.find(innerInlinedAt->second);
+	REQUIRE(outerInlinedAt != locInlinedAt.end());
+	REQUIRE(locScope[outerInlinedAt->second] == executeId);
+
+	// A region is an inlined frame, and a debugger stopped in one looks for
+	// variables in *its* scope tree. Scope them all to the enclosing function
+	// and `info locals` comes back empty inside every region, even though the
+	// variables exist -- so each region's subprogram must own the variables of
+	// the blocks traced inside it.
+	REQUIRE(std::count(variableScopes.begin(), variableScopes.end(), accumulateId) > 0);
+	REQUIRE(std::count(variableScopes.begin(), variableScopes.end(), aggIfId) > 0);
+
+	// Each enclosing frame is located where the region below it opens, not at
+	// the function header: stopped in the accumulation, gdb shows "agg if" at
+	// the add's own line, "accumulate" at the line "agg if" opens on, and
+	// "execute" at the line "accumulate" opens on. Collapsing any of these
+	// onto the function header -- which is what a missing call-site line does
+	// -- makes every region frame in a backtrace point at the same place.
+	const int functionHeaderLine = 2;
+	const int innerLine = locLine[innerInlinedAt->second];
+	const int outerLine = locLine[outerInlinedAt->second];
+	INFO("agg if at " << locLine[dbgIdOnBodyAdd] << ", accumulate at " << innerLine << ", execute at " << outerLine);
+	REQUIRE(outerLine != 0);
+	REQUIRE(innerLine != 0);
+	REQUIRE(outerLine != functionHeaderLine);
+	REQUIRE(innerLine != functionHeaderLine);
+	// Outermost opens first, then the nested region, then the op itself.
+	REQUIRE(outerLine < innerLine);
+	REQUIRE(innerLine < locLine[dbgIdOnBodyAdd]);
 
 	// The right scope is not enough to step: an op inside a region must also
 	// keep its own IR line. `line: 0` means "compiler-generated, no source
@@ -950,6 +1036,113 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	REQUIRE(locLine[dbgIdOnIcmp] != 0);
 	REQUIRE(locLine[dbgIdOnBodyAdd] != 0);
 	REQUIRE(locLine[dbgIdOnIcmp] != locLine[dbgIdOnBodyAdd]);
+}
+
+TEST_CASE("Debug info: the entry block's scope is the function's own, not a variable's decl line") {
+	// The prologue's shadow allocas each carry the line of the variable they
+	// stand for, so the entry block's DILexicalBlock must not be derived from
+	// its first op. DILexicalBlock is uniqued by (scope, file, line, column):
+	// give the entry block some variable's decl line and it merges with the
+	// block that really starts there, moving every entry-block variable into a
+	// scope whose PC range lies elsewhere -- which is what "no variable data
+	// available" looks like in a debugger.
+	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
+	std::set<std::filesystem::path> existing;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
+			existing.insert(e.path());
+		}
+	}
+
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("dump.before_llvm_optimization", true);
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugNestedControlFlow);
+	REQUIRE(fn(6) == fn(6));
+
+	std::string contents;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
+			if (existing.count(dir.path())) {
+				continue;
+			}
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+				if (entry.is_regular_file() && entry.path().filename() == "before_llvm_optimization.ll") {
+					contents = readFile(entry.path().string());
+					break;
+				}
+			}
+			if (!contents.empty()) {
+				break;
+			}
+		}
+	}
+	REQUIRE_FALSE(contents.empty());
+
+	// Only the lexical blocks parented on execute's own DISubprogram matter:
+	// the `_mlir_ciface_` wrapper in the same module has an entry block of its
+	// own, and counting that one would let the bug through.
+	std::string executeId;
+	int subprogramLine = 0;
+	std::map<std::string, int> lexicalBlockLine; // block id -> line
+	std::map<std::string, std::string> lexicalBlockScope;
+	std::istringstream iss(contents);
+	std::string line;
+	auto valueAfter = [](const std::string& text, const std::string& key) -> std::string {
+		auto pos = text.find(key);
+		if (pos == std::string::npos) {
+			return {};
+		}
+		auto start = pos + key.size();
+		auto end = start;
+		while (end < text.size() && (std::isdigit(static_cast<unsigned char>(text[end])))) {
+			++end;
+		}
+		return text.substr(start, end - start);
+	};
+	while (std::getline(iss, line)) {
+		auto bang = line.find('!');
+		auto idEnd = line.find(' ', bang);
+		if (bang == std::string::npos || idEnd == std::string::npos) {
+			continue;
+		}
+		auto metaId = line.substr(bang + 1, idEnd - bang - 1);
+		if (line.find("!DISubprogram(") != std::string::npos && line.find("name: \"execute\"") != std::string::npos &&
+		    executeId.empty()) {
+			executeId = metaId;
+			subprogramLine = std::stoi(valueAfter(line, "line: "));
+		} else if (line.find("!DILexicalBlock(") != std::string::npos) {
+			lexicalBlockScope[metaId] = valueAfter(line, "scope: !");
+			lexicalBlockLine[metaId] = std::stoi(valueAfter(line, "line: "));
+		}
+	}
+	REQUIRE_FALSE(executeId.empty());
+	REQUIRE(subprogramLine != 0);
+
+	std::vector<int> executeBlockLines;
+	for (const auto& kv : lexicalBlockScope) {
+		if (kv.second == executeId) {
+			executeBlockLines.push_back(lexicalBlockLine[kv.first]);
+		}
+	}
+	REQUIRE(executeBlockLines.size() > 1);
+
+	// Exactly one of execute's blocks -- the entry block -- sits on the
+	// function's own line. With the entry block taking its first op's line
+	// instead, none does, and it collides with whichever block really starts
+	// on that variable's decl line.
+	INFO("execute's lexical block lines must include the function line " << subprogramLine);
+	REQUIRE(std::count(executeBlockLines.begin(), executeBlockLines.end(), subprogramLine) == 1);
+
+	// No two of execute's blocks share a line: DILexicalBlock is uniqued by
+	// (scope, file, line, column), so a shared line is a shared scope, and the
+	// variables of one block end up ranged over the other.
+	auto sorted = executeBlockLines;
+	std::sort(sorted.begin(), sorted.end());
+	REQUIRE(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {

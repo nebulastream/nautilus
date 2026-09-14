@@ -23,6 +23,11 @@ struct ResolvedRegion {
 	std::string file;
 	uint32_t line = 0;
 	uint32_t column = 0;
+	/// The line in the IR dump where this region opens -- the first block or
+	/// operation traced inside it. This is the region's "call site" as far as
+	/// DWARF is concerned: the line a debugger shows for the enclosing frame
+	/// when stopped inside the region. 0 when the region contains nothing.
+	uint32_t irLine = 0;
 };
 
 /// A region nesting chain, outermost first. Empty for an operation that was not
@@ -85,11 +90,5 @@ struct IRLocationMap {
 	[[nodiscard]] uint32_t chainIndexOf(const Operation* operation) const;
 	[[nodiscard]] uint32_t chainIndexOf(const BasicBlock* block) const;
 };
-
-/// Renders @p graph and returns where everything in it landed, together with
-/// the flattened region chain of every operation.
-///
-/// Must run after the last pass that mutates @p graph -- see IRLocationMap.
-IRLocationMap computeIRLocations(const IRGraph& graph, const IRPrintOptions& options);
 
 } // namespace nautilus::compiler::ir

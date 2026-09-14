@@ -40,8 +40,14 @@ namespace nautilus::compiler::mlir {
 // enclosing region's own chain (built by a previous call to this function),
 // or a null LocationAttr for a region opened directly in the function body --
 // i.e. one whose RegionSpec::parent is NO_REGION.
+//
+// `irFile`/`irLine` are where the region opens in the Nautilus-IR dump. That
+// is the region's call site for DWARF purposes -- the line the *enclosing*
+// frame shows while execution is inside this region -- and it is carried
+// alongside the C++ position, which stays for dump readability.
 ::mlir::LocationAttr buildRegionScopeChain(::mlir::MLIRContext* ctx, llvm::StringRef name, llvm::StringRef file,
-                                           unsigned line, unsigned column, ::mlir::LocationAttr parentChain);
+                                           unsigned line, unsigned column, ::mlir::LocationAttr parentChain,
+                                           llvm::StringRef irFile = {}, unsigned irLine = 0);
 
 // Fuses `regionChain` onto `base` so the region nesting travels with the op's
 // location. Returns `base` unchanged when `regionChain` is null (NO_REGION),

@@ -160,7 +160,8 @@ mlir::LocationAttr MLIRLoweringProvider::getRegionScopeLoc(uint32_t index) {
 	for (const auto& region : chain) {
 		llvm::StringRef file =
 		    region.file.empty() ? llvm::StringRef(debugInfo_.sourceFile) : llvm::StringRef(region.file);
-		scope = buildRegionScopeChain(context, region.name, file, region.line, region.column, scope);
+		scope = buildRegionScopeChain(context, region.name, file, region.line, region.column, scope,
+		                              debugInfo_.sourceFile, region.irLine);
 	}
 	if (index >= regionScopeLocs_.size()) {
 		regionScopeLocs_.resize(index + 1);
@@ -244,17 +245,15 @@ mlir::Value MLIRLoweringProvider::ensureDebugAlloca(const ir::Operation* definit
 	}
 	auto& entryBlock = llvm::cast<mlir::func::FuncOp>(funcOp).getBody().front();
 
-	// Two lines matter here:
-	//  * prologueLine — the !dbg line on the alloca itself, kept at the
-	//    function header so GDB collapses every alloca into a single
-	//    "function entry" stop rather than bouncing between each
-	//    variable's later decl line.
-	//  * declLine — where the variable was introduced in the IR dump;
-	//    surfaces as DILocalVariable.line, attached below as a side
-	//    attribute so EmitDbgValuePass can find it without needing a
-	//    handle to the location map.
+	// declLine is where the variable was introduced in the IR dump. It is used
+	// twice: as DILocalVariable.line (attached below as a side attribute so
+	// EmitDbgValuePass can find it without a handle to the location map), and
+	// as the !dbg line of the alloca itself, so that every instruction traces
+	// back to the IR line it belongs to rather than collapsing onto the
+	// function header. The function header is only a fallback for a value the
+	// map has no line for.
 	const uint32_t declLine = locationMap_ != nullptr ? locationMap_->lineOf(definition) : 0;
-	const uint32_t prologueLine = currentFunctionHeaderLine_ != 0 ? currentFunctionHeaderLine_ : declLine;
+	const uint32_t prologueLine = declLine != 0 ? declLine : currentFunctionHeaderLine_;
 
 	auto savedIP = builder->saveInsertionPoint();
 	builder->setInsertionPointToStart(&entryBlock);
@@ -807,15 +806,17 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 	for (int i = 0; i < (int) irArgs.size(); ++i) {
 		bind(frame, irArgs.at(i), valueMapIterator[i]);
 		// When debug info is active, tag the entry-block argument with a
-		// `$N` NameLoc and emit a store into its shadow alloca.  The
-		// store's !dbg points at the function header line — we want the
-		// prologue (allocas + param saves) to collapse into one GDB
-		// stop instead of bouncing through each param's later decl line.
+		// `$N` NameLoc and emit a store into its shadow alloca. The store is
+		// attributed to the line the argument is printed on -- the entry
+		// block's header -- not to the function header, so it points at the
+		// `$N` it actually saves.
 		if (debugInfo_.enable && locationMap_ != nullptr) {
 			auto argNameLoc = makeDollarLoc(irArgs.at(i), "arg");
 			mlirFunction.getArgument(i).setLoc(argNameLoc);
 			auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
-			auto storeLoc = mlir::FileLineColLoc::get(fileAttr, currentFunctionHeaderLine_, 1);
+			const uint32_t argLine = locationMap_->lineOf(irArgs.at(i)) != 0 ? locationMap_->lineOf(irArgs.at(i))
+			                                                                : currentFunctionHeaderLine_;
+			auto storeLoc = mlir::FileLineColLoc::get(fileAttr, argLine, 1);
 			storeDebugValue(irArgs.at(i), mlirFunction.getArgument(i), storeLoc);
 		}
 	}

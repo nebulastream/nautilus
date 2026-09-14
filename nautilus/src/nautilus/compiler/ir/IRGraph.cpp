@@ -663,9 +663,14 @@ void renderBlock(LineWriter& w, const BasicBlock& block) {
 	w.mark(&block, IRLineKind::Block);
 	w.format("Block_{}(", block.getIdentifier());
 	const auto& args = block.getArguments();
+	// Block arguments are printed here, on the header line, and recorded at it:
+	// each one lowers to a phi, and without a line of its own that phi would
+	// fall back to `line: 0`.
 	if (!args.empty()) {
+		w.mark(args.at(0), IRLineKind::Operation);
 		w.format("{}:{}", args.at(0)->getIdentifier().toString(), toString(args.at(0)->getStamp()));
 		for (size_t i = 1; i < args.size(); ++i) {
+			w.mark(args.at(i), IRLineKind::Operation);
 			w.format(", {}:{}", args.at(i)->getIdentifier().toString(), toString(args.at(i)->getStamp()));
 		}
 	}

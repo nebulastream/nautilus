@@ -56,6 +56,8 @@ struct IRPrintOptions {
 /// around it with no sink.
 std::string renderIRGraph(const IRGraph& graph, IRLineSink* sink);
 
+struct IRLocationMap;
+
 /**
  * @brief The IRGraph represents a fragment of nautilus ir.
  *
@@ -113,6 +115,18 @@ public:
 
 	[[nodiscard]] const FunctionTable& getFunctionTable() const {
 		return functionTable;
+	}
+
+	/// The locations recorded by the last `IRLocationPass` run, or nullptr if
+	/// it has not run. Set by that pass so a backend can consume the map the
+	/// pass manager produced instead of re-rendering the graph itself; it
+	/// describes this graph as it stood when the pass ran, so any later
+	/// mutation invalidates it.
+	[[nodiscard]] const std::shared_ptr<const IRLocationMap>& getLocationMap() const {
+		return locationMap;
+	}
+	void setLocationMap(std::shared_ptr<const IRLocationMap> map) {
+		locationMap = std::move(map);
 	}
 	[[nodiscard]] FunctionTable& getFunctionTableMut() {
 		return functionTable;
@@ -178,6 +192,7 @@ private:
 	const CompilationUnitID id;
 	/// Next region id to hand out; see nextRegionId().
 	uint32_t regionIdCounter = 0;
+	std::shared_ptr<const IRLocationMap> locationMap;
 };
 
 } // namespace nautilus::compiler::ir

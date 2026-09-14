@@ -1,5 +1,6 @@
 #include "IRGraphFixtures.hpp"
 #include "nautilus/compiler/ir/IRLocationMap.hpp"
+#include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
@@ -146,6 +147,49 @@ TEST_CASE("IRLocationMap: an unknown node resolves to no line and no chain") {
 	const auto map = ir::computeIRLocations(*ir, ir::IRPrintOptions {});
 	REQUIRE(map.lineOf(static_cast<const ir::Operation*>(nullptr)) == 0);
 	REQUIRE(map.chainOf(static_cast<const ir::Operation*>(nullptr)).empty());
+}
+
+
+// The pass is the only entry point the pipeline and the MLIR backend use, so
+// what it produces must be what computeIRLocations() produces directly.
+TEST_CASE("IRLocationPass: produces the same map as computeIRLocations, and reports no change") {
+	for (const auto& ir : allFixtures()) {
+		ir::IRLocationPass pass;
+		REQUIRE(pass.apply(*ir) == false);
+		REQUIRE(pass.getResult() != nullptr);
+		REQUIRE(pass.getResult()->text == ir::computeIRLocations(*ir, ir::IRPrintOptions {}).text);
+	}
+}
+
+// An analysis pass must leave the graph byte-identical, otherwise registering
+// it last would still change what the backend lowers.
+TEST_CASE("IRLocationPass: leaves the graph untouched") {
+	for (const auto& ir : allFixtures()) {
+		const auto before = ir->toString();
+		ir::IRLocationPass pass;
+		pass.apply(*ir);
+		REQUIRE(ir->toString() == before);
+	}
+}
+
+// Block arguments lower to phis, and a phi without a line of its own falls back
+// to `line: 0` in the DWARF -- so they must be recorded, at the block header
+// line they are printed on.
+TEST_CASE("IRLocationMap: block arguments are recorded at their block's header line") {
+	for (const auto& ir : allFixtures()) {
+		const auto map = ir::computeIRLocations(*ir, ir::IRPrintOptions {});
+		for (const auto* function : ir->getFunctionOperations()) {
+			for (const auto* block : function->getBasicBlocks()) {
+				for (const auto* argument : block->getArguments()) {
+					INFO("block " << block->getIdentifier().getId() << ", argument $"
+					              << argument->getIdentifier().getId());
+					REQUIRE(map.lineOf(argument) == map.lineOf(block));
+					REQUIRE(lineAt(map.text, map.lineOf(argument))
+					            .find("$" + std::to_string(argument->getIdentifier().getId())) != std::string::npos);
+				}
+			}
+		}
+	}
 }
 
 } // namespace nautilus::testing

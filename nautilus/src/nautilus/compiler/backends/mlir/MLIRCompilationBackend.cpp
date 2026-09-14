@@ -12,6 +12,7 @@
 #include "nautilus/compiler/backends/mlir/intrinsics/MLIRMemoryIntrinsics.hpp"
 #include "nautilus/compiler/ir/IRGraph.hpp"
 #include "nautilus/compiler/ir/IRLocationMap.hpp"
+#include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include <chrono>
 #include <fstream>
 #include <llvm/Support/TargetSelect.h>
@@ -77,9 +78,17 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// computeIRLocations() must run after the last pass that mutates `ir`:
 	// it records where each operation lands in this rendering, and an
 	// operation minted or removed afterwards would invalidate every line.
-	std::shared_ptr<ir::IRLocationMap> locationMap;
+	std::shared_ptr<const ir::IRLocationMap> locationMap;
 	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir") {
-		locationMap = std::make_shared<ir::IRLocationMap>(ir::computeIRLocations(*ir, ir::IRPrintOptions {}));
+		// Normally computed by IRLocationPass as the pipeline's last pass and
+		// published on the graph. Falling back keeps a direct compileIR() call
+		// (one that never ran the pipeline's passes) working.
+		locationMap = ir->getLocationMap();
+		if (locationMap == nullptr) {
+			ir::IRLocationPass locationPass;
+			locationPass.apply(*ir);
+			locationMap = locationPass.getResult();
+		}
 		if (!debugInfo.sourceFile.empty()) {
 			std::ofstream out(debugInfo.sourceFile);
 			out << locationMap->text;
