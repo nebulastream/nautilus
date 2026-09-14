@@ -142,16 +142,16 @@ jobs:
           ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
   format-check:
     runs-on: ubuntu-24.04
-    name: Format Check (clang-format-21)
+    name: Format Check (clang-format-22)
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Force apt to use IPv4
         run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
-      - name: Install clang-format-21
+      - name: Install clang-format-22
         uses: ./.github/actions/install-clang-format
         with:
-          llvm-version: "21"
+          llvm-version: "22"
       - name: Check formatting
         shell: bash
         run: ./format.sh
