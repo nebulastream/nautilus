@@ -20,9 +20,9 @@ struct DebugInfoOptions {
 	std::string sourceMode = "mlir";
 
 	// Absolute path where the "source" file is written.  When empty, a unique
-	// path in the working directory (or `mlir.debug.source_dir`) is
-	// synthesized per compilation.  A relative path given by the user is made
-	// absolute, so the DWARF never depends on the debugger's DW_AT_comp_dir.
+	// path in the temp directory (or `mlir.debug.source_dir`) is synthesized
+	// per compilation.  A relative path given by the user is made absolute, so
+	// the DWARF never depends on the debugger's DW_AT_comp_dir.
 	std::string sourceFile;
 
 	// DW_AT_producer string that shows up in DWARF (e.g. `gdb` calls this

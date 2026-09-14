@@ -197,14 +197,19 @@ TEST_CASE("Debug info: default source path is synthesized when none provided") {
 	REQUIRE(fn(10) == 11);
 }
 
-TEST_CASE("Debug info: the synthesized source file lands in the working directory") {
-	// A debugger resolves a path next to the running process far more
-	// reliably than one under the per-user $TMPDIR, which on macOS is a
-	// /var/folders/... path no IDE has in its source roots.
-	const auto cwd = std::filesystem::current_path();
+TEST_CASE("Debug info: the synthesized source file lands in the temp directory") {
+	// The default keeps generated files out of the user's tree. An IDE that
+	// cannot open a $TMPDIR path -- on macOS a /var/folders/... one, outside
+	// its source roots -- points `mlir.debug.source_dir` somewhere it can.
+	const auto tempDir = std::filesystem::temp_directory_path();
 	std::set<std::filesystem::path> before;
-	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
+	for (const auto& e : std::filesystem::directory_iterator(tempDir)) {
 		before.insert(e.path());
+	}
+	const auto cwd = std::filesystem::current_path();
+	std::set<std::filesystem::path> cwdBefore;
+	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
+		cwdBefore.insert(e.path());
 	}
 
 	Options options;
@@ -216,15 +221,23 @@ TEST_CASE("Debug info: the synthesized source file lands in the working director
 	auto fn = engine.registerFunction(debugAddOne);
 	REQUIRE(fn(10) == 11);
 
-	std::vector<std::filesystem::path> created;
-	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
-		if (!before.count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
-		    e.path().extension() == ".ir") {
-			created.push_back(e.path());
+	auto newDumps = [](const std::filesystem::path& dir, const std::set<std::filesystem::path>& seen) {
+		std::vector<std::filesystem::path> created;
+		for (const auto& e : std::filesystem::directory_iterator(dir)) {
+			if (!seen.count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
+			    e.path().extension() == ".ir") {
+				created.push_back(e.path());
+			}
 		}
-	}
-	REQUIRE_FALSE(created.empty());
-	for (const auto& path : created) {
+		return created;
+	};
+
+	const auto inTemp = newDumps(tempDir, before);
+	REQUIRE_FALSE(inTemp.empty());
+	// And nothing dropped into the working directory.
+	REQUIRE(newDumps(cwd, cwdBefore).empty());
+
+	for (const auto& path : inTemp) {
 		std::filesystem::remove(path);
 	}
 }

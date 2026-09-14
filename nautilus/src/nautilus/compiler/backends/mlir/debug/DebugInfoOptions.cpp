@@ -23,21 +23,20 @@ std::string tempDir() {
 	return "/tmp";
 }
 
-// Directory the synthesized source file is written to. The working directory by
-// default: an IDE resolves a path there far more reliably than one under the
-// per-user $TMPDIR (on macOS, a /var/folders/... path outside its source roots).
-// Falls back to the temp directory when the working directory is unusable.
+// Directory the synthesized source file is written to: the temp directory,
+// unless `mlir.debug.source_dir` names one.
+//
+// Pointing it at the working directory (`mlir.debug.source_dir=.`) is worth
+// knowing about when driving the debugger from an IDE: a per-user $TMPDIR path
+// -- on macOS a /var/folders/... one -- is typically outside the IDE's source
+// roots, so it cannot open the file the DWARF names. The default stays in the
+// temp directory so that a compile leaves nothing behind in the user's tree.
 std::filesystem::path sourceDir(const engine::Options& options) {
 	auto configured = options.getOptionOrDefault<std::string>("mlir.debug.source_dir", "");
 	if (!configured.empty()) {
 		return configured;
 	}
-	std::error_code ec;
-	auto cwd = std::filesystem::current_path(ec);
-	if (ec) {
-		return tempDir();
-	}
-	return cwd;
+	return tempDir();
 }
 
 // Generate a path like `<dir>/nautilus_debug_<pid>_<counter>.<ext>` that is
