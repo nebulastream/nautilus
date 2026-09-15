@@ -68,18 +68,22 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	}
 
 	// Build debug-info options once; downstream steps read from this struct.
-	const auto debugInfo = debugInfoOptionsFromEngineOptions(options);
+	// Not const: a source-file write failure below patches `sourceFile` to a
+	// fallback path before lowering ever reads it.
+	auto debugInfo = debugInfoOptionsFromEngineOptions(options);
 
 	// Prepare the Nautilus-IR "source file" used for debugging in
 	// "nautilus-ir" mode.  The file must exist before lowering runs so
 	// the FileLineColLocs attached by MLIRLoweringProvider point at real
-	// content that GDB/LLDB can read on `list`.
+	// content that GDB/LLDB (or, in perf-only mode, `perf annotate`) can
+	// read.  `emitDebugInfo()` rather than `enableDebug`: a perf-only
+	// compile needs this file just as much as a debug one.
 	//
 	// computeIRLocations() must run after the last pass that mutates `ir`:
 	// it records where each operation lands in this rendering, and an
 	// operation minted or removed afterwards would invalidate every line.
 	std::shared_ptr<const ir::IRLocationMap> locationMap;
-	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir") {
+	if (debugInfo.emitDebugInfo() && debugInfo.sourceMode == "nautilus-ir") {
 		// Normally computed by IRLocationPass as the pipeline's last pass and
 		// published on the graph. Falling back keeps a direct compileIR() call
 		// (one that never ran the pipeline's passes) working.
@@ -92,11 +96,28 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 		if (!debugInfo.sourceFile.empty()) {
 			std::ofstream out(debugInfo.sourceFile);
 			out << locationMap->text;
+			// $TMPDIR is almost always writable; the perf-only default (the
+			// working directory -- see DebugInfoOptions.cpp) need not be (a
+			// daemon, a read-only container). An unchecked failure here would
+			// leave the DWARF naming a file that was never written, and
+			// `perf annotate` / GDB's `list` would silently show nothing.
+			// This must happen BEFORE loweringProvider->setDebugInfo() below:
+			// the path is baked into every op's FileLineColLoc during
+			// lowering and cannot be patched up afterwards.
+			if (!out) {
+				const std::string ext = debugInfo.sourceMode == "nautilus-ir" ? "ir" : "mlir";
+				const auto fallback = debugSourceFallbackPath(ext);
+				llvm::errs() << "nautilus: could not write debug source file '" << debugInfo.sourceFile
+				             << "'; falling back to '" << fallback << "'\n";
+				debugInfo.sourceFile = fallback;
+				std::ofstream fallbackOut(debugInfo.sourceFile);
+				fallbackOut << locationMap->text;
+			}
 		}
 	}
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
-	if (debugInfo.enable && debugInfo.sourceMode == "nautilus-ir" && locationMap) {
+	if (debugInfo.emitDebugInfo() && debugInfo.sourceMode == "nautilus-ir" && locationMap) {
 		loweringProvider->setDebugInfo(debugInfo, locationMap);
 	}
 
@@ -150,11 +171,14 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// same physical register.  `None` triggers fast-regalloc which
 	// spills every SSA value and confuses LLVM's DWARF asmprinter when
 	// dbg.value operands live on the stack rather than in registers.
-	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
+	// Keyed on `enableDebug` alone: perf-only mode keeps the codegen level
+	// the rest of the pipeline chose.
+	const auto jitCodeGenLevel =
+	    debugInfo.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
 	auto engine =
 	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
 	                                  loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
-	                                  debugInfo.enable && debugInfo.registerWithDebugger, debugInfo.enablePerf,
+	                                  debugInfo.enableDebug && debugInfo.registerWithDebugger, debugInfo.enablePerf,
 	                                  debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");

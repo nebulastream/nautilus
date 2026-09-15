@@ -39,12 +39,17 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
                                                 const DebugInfoOptions& debugInfo) {
 	mlir::PassManager passManager(module->getContext());
 
-	const bool debugEnabled = debugInfo.enable;
+	const bool debugEnabled = debugInfo.enableDebug;
 	// Tier 1 ("nautilus-ir" mode) depends on FileLineColLocs attached by
 	// MLIRLoweringProvider that reference positions in the Nautilus IR dump.
-	// MLIR's inliner rewrites locations into inlinedAt chains and the
-	// interaction with a non-MLIR source file is not yet validated, so we
-	// skip the inliner in that mode to keep stepping predictable.
+	// MLIR's inliner rewrites locations into inlinedAt chains; the
+	// interaction with a non-MLIR source file is validated for perf-only use
+	// (region ops already produce CallSiteLoc chains -- see docs/region.md --
+	// so inlining one function into another nests one inlinedAt chain inside
+	// another, which is exactly what a caller with regions plus a callee with
+	// regions looks like), but stepping wants predictable, un-inlined frames,
+	// so `enableDebug` alone -- not `emitDebugInfo()` -- keeps the skip for a
+	// debugger session. A perf-only compile keeps the inliner.
 	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
 
 	if (!skipInliner) {
@@ -79,18 +84,36 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// tables.  For "nautilus-ir" mode MLIRLoweringProvider may already
 	// have attached a DISubprogramAttr; this pass is a no-op on functions
 	// that already have one.
-	if (debugEnabled) {
-		// Request Full emission (not the default LineTablesOnly) so
-		// the DWARF emitter keeps DILocalVariables / dbg.value
-		// records that EmitDbgValuePass is about to insert.  With
-		// LineTablesOnly, GDB sees line info but `info scope` / `p $N`
-		// report nothing.
+	//
+	// NOT simply `emitDebugInfo()`: these passes need *real* per-op locations
+	// to fuse scopes onto, and there are only two sources of those --
+	// LocationSnapshot just above (`enableDebug`, either source mode) or
+	// MLIRLoweringProvider's locationMap_-driven FileLineColLocs
+	// (`sourceMode == "nautilus-ir"`, either axis). A perf-only compile in
+	// "mlir" mode has neither -- `mlir` source mode is explicitly out of
+	// scope for perf (see the issue) and MLIRCompilationBackend never calls
+	// setDebugInfo() for it -- so every op still carries the placeholder
+	// `Query_1`/line-0 location getNameLoc() falls back to. Running
+	// EmitDbgValuePass over that (fusing per-op scopes, wrapping region
+	// CallSiteLoc chains, building a `DILexicalBlockAttr` per block) produces
+	// malformed metadata -- verified to crash MLIR->LLVM translation, not
+	// just emit an empty line table.
+	const bool hasRealLocations = debugEnabled || debugInfo.sourceMode == "nautilus-ir";
+	if (debugInfo.emitDebugInfo() && hasRealLocations) {
+		// Full emission (not the default LineTablesOnly) is only needed
+		// when stepping: it keeps the DILocalVariables / dbg.value records
+		// EmitDbgValuePass is about to insert for `$N`. A perf-only compile
+		// has no such records to keep, and jitdump only reads line tables,
+		// so LineTablesOnly is both sufficient and cheaper there.
 		mlir::LLVM::DIScopeForLLVMFuncOpPassOptions scopeOpts;
-		scopeOpts.emissionKind = mlir::LLVM::DIEmissionKind::Full;
+		scopeOpts.emissionKind =
+		    debugEnabled ? mlir::LLVM::DIEmissionKind::Full : mlir::LLVM::DIEmissionKind::LineTablesOnly;
 		passManager.addPass(mlir::LLVM::createDIScopeForLLVMFuncOpPass(scopeOpts));
 		// Emit llvm.intr.dbg.value intrinsics for each Nautilus SSA
-		// value so GDB/LLDB can resolve `p $N` at a breakpoint.  Must
-		// run after the subprogram pass because dbg.value's
+		// value so GDB/LLDB can resolve `p $N` at a breakpoint (when
+		// `enableDebug`), and/or fuse per-block and region() scopes onto
+		// every op so a line table exists at all (always, when this pass
+		// runs).  Must run after the subprogram pass because dbg.value's
 		// DILocalVariable requires a DISubprogram scope.
 		passManager.addPass(createEmitDbgValuePass());
 	}

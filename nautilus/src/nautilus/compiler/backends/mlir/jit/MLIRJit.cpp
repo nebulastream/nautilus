@@ -57,9 +57,9 @@ void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
 	// PostFixup pass builds a DWARFContext from them, so without this
 	// preservation pass it silently emits JIT_CODE_LOAD records with no
 	// JIT_CODE_DEBUG_INFO alongside -- symbols but no source attribution.
-	if (emitDebugInfo) {
-		layer.addPlugin(std::make_shared<llvm::orc::DebugInfoPreservationPlugin>());
-	}
+	// Installed unconditionally (not just when `emitDebugInfo` is set):
+	// preservation is a cheap, idempotent PrePrune pass either way.
+	layer.addPlugin(std::make_shared<llvm::orc::DebugInfoPreservationPlugin>());
 	layer.addPlugin(std::make_shared<llvm::orc::PerfSupportPlugin>(
 	    session.getExecutorProcessControl(), llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
 	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
