@@ -45,6 +45,12 @@ public:
 		bool enablePerfSupport = false;
 		bool perfEmitDebugInfo = true;
 		bool perfEmitUnwindInfo = true;
+
+		// Name each region() scope as its own jitdump symbol
+		// (`execute::outer::hot`), recovered from the DWARF inline stack.
+		// Requires `perfEmitDebugInfo`; without it there is no scope
+		// information to recover.
+		bool perfRegionSymbols = true;
 	};
 
 	~MLIRJit();

@@ -175,11 +175,11 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// the rest of the pipeline chose.
 	const auto jitCodeGenLevel =
 	    debugInfo.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
-	auto engine =
-	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                  loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
-	                                  debugInfo.enableDebug && debugInfo.registerWithDebugger, debugInfo.enablePerf,
-	                                  debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo);
+	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
+	                                            debugInfo.enableDebug && debugInfo.registerWithDebugger,
+	                                            debugInfo.enablePerf, debugInfo.perfEmitDebugInfo,
+	                                            debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {
