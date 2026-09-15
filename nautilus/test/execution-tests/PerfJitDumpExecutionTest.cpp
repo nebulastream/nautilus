@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -333,34 +334,26 @@ TEST_CASE("Perf jitdump: JIT_CODE_DEBUG_INFO carries a multi-line line table") {
 	REQUIRE(lines.size() > 1);
 }
 
-// Both tests below are tagged [!shouldfail]: they assert what a correct
-// jitdump must look like, and both currently fail. Catch2 inverts the result,
-// so the suite stays green while the defect stands *and* turns red the moment
-// either is fixed -- at which point the tag comes off and the test becomes an
-// ordinary regression guard. They are written this way because both defects
-// are silent: symbols still appear in `perf report`, so nothing looks broken.
-
-TEST_CASE("Perf jitdump: each JIT_CODE_DEBUG_INFO immediately precedes its own JIT_CODE_LOAD", "[!shouldfail]") {
+TEST_CASE("Perf jitdump: each JIT_CODE_DEBUG_INFO immediately precedes its own JIT_CODE_LOAD") {
 	// `perf inject --jit` pairs the two record kinds *positionally*, not by
 	// code_addr: it keeps a single pending line table, overwrites it with each
 	// new JIT_CODE_DEBUG_INFO, and hands whatever is pending to the next
 	// JIT_CODE_LOAD, then drops it. So a debug record only reaches its
 	// function if it is the record immediately before that function's load.
 	//
-	// LLVM's PerfSupportPlugin batches a whole object into one
-	// PerfJITRecordBatch of two separate vectors (DebugInfoRecords,
-	// CodeLoadRecords) and JITLoaderPerf writes every debug record first, then
-	// every code record. With more than one debug record in a batch -- which
-	// is every Nautilus compile, since even a trivial kernel emits `execute`
-	// plus its `_mlir_ciface_*` trampolines -- the pairing is wrong for all of
-	// them.
+	// This is why Nautilus writes the jitdump itself (PerfJitDumpPlugin)
+	// rather than using LLVM's PerfSupportPlugin: that one batches a whole
+	// object into a PerfJITRecordBatch of two separate vectors
+	// (DebugInfoRecords, CodeLoadRecords) and JITLoaderPerf writes every debug
+	// record before every code record. With more than one debug record in a
+	// batch -- every Nautilus compile, since even a trivial kernel emits
+	// `execute` plus its `_mlir_ciface_*` trampolines -- the pairing came out
+	// wrong for all of them: of 8 JIT_CODE_LOADs exactly one generated ELF had
+	// a .debug_line section, and it held the *wrong* function's line table,
+	// while `execute`, owning 42 of the line entries, got none.
 	//
-	// Measured on this fixture: of 8 JIT_CODE_LOADs, exactly one generated ELF
-	// came out with a .debug_line section, and it was the *wrong* function's
-	// line table; `execute`, the kernel that owns 42 of the line entries, got
-	// none. Re-ordering the records by hand and re-running `perf inject`
-	// gives every function its correct table, which is what pins the cause to
-	// ordering rather than to the line tables themselves.
+	// Nothing about that was visible in the dump's contents, only in its
+	// record order -- which is what this test checks.
 	auto dump = compilePerfJitDump();
 	REQUIRE_FALSE(dump.debugInfos.empty());
 
@@ -378,7 +371,7 @@ TEST_CASE("Perf jitdump: each JIT_CODE_DEBUG_INFO immediately precedes its own J
 	}
 }
 
-TEST_CASE("Perf jitdump: region() scopes are visible to perf", "[!shouldfail]") {
+TEST_CASE("Perf jitdump: region() scopes are visible to perf") {
 	// region() lowers to a DWARF DW_TAG_inlined_subroutine (docs/region.md,
 	// and "Debug info: region() scopes lower to a DWARF inlined subroutine"
 	// in DebugInfoExecutionTest.cpp), which is what makes each region its own
@@ -397,19 +390,18 @@ TEST_CASE("Perf jitdump: region() scopes are visible to perf", "[!shouldfail]") 
 	// showed only `execute` (50.7%) and `perfHelper` (27.8%): every region
 	// collapses into the enclosing function's box in a flame graph.
 	//
-	// What survives is line numbers, so the attribution is *recoverable* --
-	// mapping the hot addresses back through the line table onto the Nautilus
-	// IR dump's region legend put 63.9% of `execute`'s samples in "hot" --
-	// but only by hand, and only while that IR dump still exists (it lands in
-	// a temp directory by default). No profiler does this on its own.
+	// Only line numbers survived that trip, so the attribution was
+	// *recoverable* -- mapping hot addresses back through the line table onto
+	// the Nautilus IR dump's region legend put 63.9% of `execute`'s samples in
+	// "hot" -- but only by hand, and only while that IR dump still existed.
 	//
-	// The fix has to put the region into something perf does read. The
-	// cheapest is a JIT_CODE_LOAD per contiguous region range under a
-	// qualified name (execute::outer::hot), which makes regions sibling
-	// symbols rather than nested frames; ranges must be disjoint, so the
-	// function's own symbol has to be split around them. This test asserts
-	// only the outcome -- the region is nameable in a profile -- not the
-	// mechanism, so it holds for whichever fix lands.
+	// So PerfJitDumpPlugin puts the region into the one channel the format
+	// does carry: symbol names. Each contiguous run of code sharing a region
+	// stack becomes its own JIT_CODE_LOAD under a qualified name
+	// (`execute::outer::hot`), which makes regions sibling symbols rather than
+	// nested frames, and splits the function's own symbol around them so the
+	// ranges stay disjoint as the format requires. This test asserts only the
+	// outcome -- a region is nameable in a profile -- not the mechanism.
 	auto dump = compilePerfJitDump();
 	REQUIRE_FALSE(dump.codeLoads.empty());
 
@@ -421,6 +413,36 @@ TEST_CASE("Perf jitdump: region() scopes are visible to perf", "[!shouldfail]") 
 	REQUIRE(namesAnyRegion("outer"));
 	REQUIRE(namesAnyRegion("hot"));
 	REQUIRE(namesAnyRegion("mix"));
+}
+
+TEST_CASE("Perf jitdump: a region is one symbol, not one per inlined callee") {
+	// A jitdump range is contiguous, so a region is split into as many records
+	// as it has contiguous runs -- and perf keys a symbol by its address, not
+	// its name, so it does not recombine same-named ranges (`--sort sym`
+	// included). Fragmentation is therefore directly visible as a shattered
+	// profile.
+	//
+	// The thing that shatters a region is not the optimizer reordering blocks
+	// but the inline stack: a Nautilus-to-Nautilus call inside a region is
+	// inlined at -O3, and naming that callee's frame too would alternate
+	// `...::hot` / `...::hot::perfHelper` over and over. Measured on this
+	// fixture before PerfJitDumpPlugin filtered non-region frames out, "hot"
+	// came to 10 separate records; after, it is 1.
+	auto dump = compilePerfJitDump();
+
+	std::map<std::string, int> fragments;
+	for (const auto& entry : dump.codeLoads) {
+		++fragments[entry.name];
+	}
+	// The kernel's own `execute` symbol is legitimately split around the
+	// regions carved out of it, so only the region symbols are checked here.
+	for (const auto& [name, count] : fragments) {
+		if (name.find("::hot") == std::string::npos && name.find("::mix") == std::string::npos) {
+			continue;
+		}
+		INFO("region symbol " << name << " split into " << count << " jitdump records");
+		REQUIRE(count == 1);
+	}
 }
 
 TEST_CASE("Perf jitdump: emit_debug_info=false omits JIT_CODE_DEBUG_INFO") {

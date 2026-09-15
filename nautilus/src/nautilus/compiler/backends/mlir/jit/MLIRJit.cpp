@@ -12,8 +12,8 @@
 #include <mlir/Target/LLVMIR/Export.h>
 
 #if defined(__linux__)
+#include "nautilus/compiler/backends/mlir/debug/PerfJitDumpPlugin.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebugInfoSupport.h>
-#include <llvm/ExecutionEngine/Orc/Debugging/PerfSupportPlugin.h>
 #include <llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h>
 #endif
 
@@ -36,17 +36,22 @@ llvm::Error makeStringError(const llvm::Twine& message) {
 // `#ifdef __linux__`), so referencing them from a TU built for another
 // platform would fail to link.
 //
-// We deliberately do not use `PerfSupportPlugin::Create`: it resolves the
-// three loader entry points via a JITDylib symbol lookup that falls through
-// to `dlsym` on the current process. Nothing in a statically linked Nautilus
-// binary references `JITLoaderPerf.o`, so the archive member implementing
-// them is never pulled into the link at all, and `dlsym` would also need
-// `-rdynamic` even if it were. Taking their addresses directly forces the
-// archive member in and sidesteps the lookup entirely.
+// The writer is Nautilus's own PerfJitDumpPlugin rather than LLVM's
+// PerfSupportPlugin: the latter emits a whole object's debug records ahead of
+// its code records, which `perf inject --jit` mis-pairs, and it has no way to
+// surface region() scopes at all. See PerfJitDumpPlugin.hpp.
+//
+// Either way the three loader entry points are referenced by address rather
+// than resolved through `PerfSupportPlugin::Create`, which looks them up via a
+// JITDylib lookup falling through to `dlsym` on the current process. Nothing
+// in a statically linked Nautilus binary references `JITLoaderPerf.o`, so the
+// archive member implementing them is never pulled into the link at all, and
+// `dlsym` would also need `-rdynamic` even if it were. Taking their addresses
+// directly forces the archive member in and sidesteps the lookup entirely.
 void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
                         [[maybe_unused]] llvm::orc::ExecutionSession& session,
                         [[maybe_unused]] const llvm::Triple& targetTriple, [[maybe_unused]] bool emitDebugInfo,
-                        [[maybe_unused]] bool emitUnwindInfo) {
+                        [[maybe_unused]] bool emitUnwindInfo, [[maybe_unused]] bool emitRegionSymbols) {
 #if defined(__linux__)
 	if (!targetTriple.isOSBinFormatELF()) {
 		llvm::errs() << "nautilus: mlir.perf.enable is set but the target is not ELF; perf jitdump support is "
@@ -60,10 +65,11 @@ void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
 	// Installed unconditionally (not just when `emitDebugInfo` is set):
 	// preservation is a cheap, idempotent PrePrune pass either way.
 	layer.addPlugin(std::make_shared<llvm::orc::DebugInfoPreservationPlugin>());
-	layer.addPlugin(std::make_shared<llvm::orc::PerfSupportPlugin>(
+	layer.addPlugin(std::make_shared<PerfJitDumpPlugin>(
 	    session.getExecutorProcessControl(), llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
 	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
-	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl), emitDebugInfo, emitUnwindInfo));
+	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl), emitDebugInfo, emitUnwindInfo,
+	    emitRegionSymbols));
 #else
 	llvm::errs() << "nautilus: mlir.perf.enable is set but perf jitdump support is Linux-only; skipping.\n";
 #endif
@@ -108,7 +114,8 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	// misordered cleanups when exceptions cross JIT frames.
 	auto objectLinkingLayerCreator =
 	    [&targetTriple = llvmModule->getTargetTriple(), enablePerfSupport = options.enablePerfSupport,
-	     perfEmitDebugInfo = options.perfEmitDebugInfo, perfEmitUnwindInfo = options.perfEmitUnwindInfo](
+	     perfEmitDebugInfo = options.perfEmitDebugInfo, perfEmitUnwindInfo = options.perfEmitUnwindInfo,
+	     perfRegionSymbols = options.perfRegionSymbols](
 	        llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
 		auto layer = std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
 
@@ -120,7 +127,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 
 		if (enablePerfSupport) {
-			installPerfSupport(*layer, session, targetTriple, perfEmitDebugInfo, perfEmitUnwindInfo);
+			installPerfSupport(*layer, session, targetTriple, perfEmitDebugInfo, perfEmitUnwindInfo, perfRegionSymbols);
 		}
 
 		return layer;
