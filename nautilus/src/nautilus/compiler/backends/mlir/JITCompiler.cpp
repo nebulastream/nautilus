@@ -15,7 +15,8 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
                                                        const std::vector<std::string>& jitProxyFunctionSymbols,
                                                        const std::vector<void*>& jitProxyFunctionTargetAddresses,
                                                        llvm::CodeGenOptLevel codeGenOptLevel,
-                                                       bool enableDebuggerSupport) {
+                                                       bool enableDebuggerSupport, bool enablePerfSupport,
+                                                       bool perfEmitDebugInfo, bool perfEmitUnwindInfo) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
@@ -26,6 +27,9 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
 	jitOptions.codeGenOptLevel = codeGenOptLevel;
 	jitOptions.transformer = optPipeline;
 	jitOptions.enableDebuggerSupport = enableDebuggerSupport;
+	jitOptions.enablePerfSupport = enablePerfSupport;
+	jitOptions.perfEmitDebugInfo = perfEmitDebugInfo;
+	jitOptions.perfEmitUnwindInfo = perfEmitUnwindInfo;
 
 	auto maybeJit = MLIRJit::create(*mlirModule, jitOptions);
 	assert(maybeJit && "failed to construct an execution engine");

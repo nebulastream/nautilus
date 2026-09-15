@@ -23,6 +23,7 @@ public:
 	    ::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
 	    const std::vector<std::string>& jitProxyFunctionSymbols,
 	    const std::vector<void*>& jitProxyFunctionTargetAddresses,
-	    llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive, bool enableDebuggerSupport = false);
+	    llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive, bool enableDebuggerSupport = false,
+	    bool enablePerfSupport = false, bool perfEmitDebugInfo = true, bool perfEmitUnwindInfo = true);
 };
 } // namespace nautilus::compiler::mlir
