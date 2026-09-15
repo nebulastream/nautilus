@@ -216,7 +216,7 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 
 mlir::Location MLIRLoweringProvider::makeDollarLoc(const ir::Operation* definition, llvm::StringRef fallbackName,
                                                    std::optional<uint32_t> chainIndexOverride) {
-	if (!debugInfo_.enable || locationMap_ == nullptr || definition == nullptr) {
+	if (!debugInfo_.enableDebug || locationMap_ == nullptr || definition == nullptr) {
 		return getNameLoc(fallbackName.str());
 	}
 	const uint32_t id = definition->getIdentifier().getId();
@@ -271,7 +271,7 @@ mlir::Value MLIRLoweringProvider::ensureDebugAlloca(const ir::Operation* definit
 }
 
 void MLIRLoweringProvider::storeDebugValue(const ir::Operation* definition, mlir::Value value, mlir::Location loc) {
-	if (!debugInfo_.enable || !value || definition == nullptr) {
+	if (!debugInfo_.enableDebug || !value || definition == nullptr) {
 		return;
 	}
 	auto alloca = ensureDebugAlloca(definition, value.getType());
@@ -290,8 +290,11 @@ void MLIRLoweringProvider::setDebugInfo(DebugInfoOptions debugInfo,
 	// DICompileUnit's DW_AT_name / DW_AT_comp_dir from the module's
 	// location, and without this step it would inherit the "Query_1"
 	// placeholder that getNameLoc() produced at construction time, which
-	// breaks GDB's ability to resolve the compilation-unit source path.
-	if (debugInfo_.enable && !debugInfo_.sourceFile.empty() && theModule) {
+	// breaks GDB's ability to resolve the compilation-unit source path. A
+	// perf-only compile needs the same DICompileUnit naming for `perf
+	// annotate` to resolve the source file, so this keys on `emitDebugInfo()`
+	// rather than `enableDebug` alone.
+	if (debugInfo_.emitDebugInfo() && !debugInfo_.sourceFile.empty() && theModule) {
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		auto loc = mlir::FileLineColLoc::get(fileAttr, 1, 1);
 		theModule->setLoc(loc);
@@ -616,7 +619,7 @@ void MLIRLoweringProvider::generateMLIR(const ir::BasicBlock* basicBlock, ValueF
 
 		// Shadow-store the op's result into its $N alloca.  Control-flow
 		// ops (branch, return) don't register a value and are skipped.
-		if (debugInfo_.enable && locationMap_ != nullptr && frame.contains(operation->getIdentifier())) {
+		if (debugInfo_.enableDebug && locationMap_ != nullptr && frame.contains(operation->getIdentifier())) {
 			if (auto produced = resolveOperand(operation, frame)) {
 				// currentOp_ was just cleared above, so pass the operation's
 				// chain explicitly rather than let makeDollarLoc fall back to
@@ -702,7 +705,10 @@ void MLIRLoweringProvider::visitAnd(ir::AndOperation* andOperation, ValueFrame& 
 	// !dbg metadata on the body is correct.  The location map records the
 	// function's own line for exactly this purpose.
 	::mlir::Location loc = getNameLoc("EntryPoint");
-	if (debugInfo_.enable && locationMap_ != nullptr) {
+	// `emitDebugInfo()`: without a real function line here, the DISubprogram
+	// gets `line: 0`, which costs a perf-only compile source attribution on
+	// the function entry just as much as it costs GDB's `step`.
+	if (debugInfo_.emitDebugInfo() && locationMap_ != nullptr) {
 		const uint32_t line = locationMap_->lineOf(&functionOp);
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		auto fileLoc = mlir::FileLineColLoc::get(fileAttr, line, 1);
@@ -810,7 +816,7 @@ void MLIRLoweringProvider::generateFunction(mlir::func::FuncOp& mlirFunction, co
 		// attributed to the line the argument is printed on -- the entry
 		// block's header -- not to the function header, so it points at the
 		// `$N` it actually saves.
-		if (debugInfo_.enable && locationMap_ != nullptr) {
+		if (debugInfo_.enableDebug && locationMap_ != nullptr) {
 			auto argNameLoc = makeDollarLoc(irArgs.at(i), "arg");
 			mlirFunction.getArgument(i).setLoc(argNameLoc);
 			auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
@@ -1384,7 +1390,7 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// op's region and the target block's region can legitimately differ.
 	auto& targetBlockArguments = targetBlock->getArguments();
 	for (auto& blockArg : targetBlockArguments) {
-		auto argLoc = debugInfo_.enable && locationMap_ != nullptr
+		auto argLoc = debugInfo_.enableDebug && locationMap_ != nullptr
 		                  ? makeDollarLoc(blockArg, "arg", locationMap_->chainIndexOf(targetBlock))
 		                  : getNameLoc("arg");
 		mlirBasicBlock->addArgument(getMLIRType(blockArg->getStamp()), argLoc);
@@ -1401,7 +1407,7 @@ mlir::Block* MLIRLoweringProvider::generateBasicBlock(ir::BasicBlockInvocation& 
 	// with the block's header line — not the variable's original decl
 	// line — so GDB advances to the block header on branch-in rather
 	// than jumping back to wherever $N was first introduced.
-	if (debugInfo_.enable && locationMap_ != nullptr) {
+	if (debugInfo_.enableDebug && locationMap_ != nullptr) {
 		const uint32_t blockLine = locationMap_->lineOf(targetBlock);
 		auto fileAttr = builder->getStringAttr(debugInfo_.sourceFile);
 		auto storeLoc = wrapWithRegionScope(mlir::FileLineColLoc::get(fileAttr, blockLine, 1),
