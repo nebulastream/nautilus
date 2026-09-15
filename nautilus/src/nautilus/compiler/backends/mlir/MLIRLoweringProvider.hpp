@@ -94,7 +94,7 @@ private:
 	    blockMapping; // Keeps track of already created basic blocks.
 	const engine::Options* options;
 
-	// Debug-info state.  When debugInfo_.enable is false, all debug
+	// Debug-info state.  When debugInfo_.emitDebugInfo() is false, all debug
 	// paths are no-ops and the lowering produces byte-identical output
 	// to a build without debug support.
 	DebugInfoOptions debugInfo_;
@@ -216,12 +216,12 @@ private:
 	/// Lazily create an `llvm.alloca` at the entry block of the currently
 	/// enclosing `func.func` for shadow-storing $N's value.  The alloca
 	/// is cached in `debugAllocas_` so subsequent stores reuse the same
-	/// slot.  No-op when `debugInfo_.enable` is false.
+	/// slot.  No-op when `debugInfo_.enableDebug` is false.
 	::mlir::Value ensureDebugAlloca(const ir::Operation* definition, ::mlir::Type type);
 
 	/// Emit a store of `value` into $id's shadow alloca at the builder's
 	/// current insertion point.  Creates the alloca on first use.  No-op
-	/// when `debugInfo_.enable` is false.
+	/// when `debugInfo_.enableDebug` is false.
 	void storeDebugValue(const ir::Operation* definition, ::mlir::Value value, ::mlir::Location loc);
 
 	// Per-operation hooks invoked by OperationDispatcher::dispatch.

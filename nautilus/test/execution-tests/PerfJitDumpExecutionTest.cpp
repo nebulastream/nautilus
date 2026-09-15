@@ -11,8 +11,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -319,6 +321,90 @@ TEST_CASE("Perf jitdump: emit_debug_info=false omits JIT_CODE_DEBUG_INFO") {
 	});
 	REQUIRE_FALSE(dump.codeLoads.empty());
 	REQUIRE(dump.debugInfos.empty());
+}
+
+TEST_CASE("Perf jitdump: mlir source mode is out of scope for perf but does not crash") {
+	// Regression test: `mlir` source mode never gets a locationMap_ from
+	// MLIRLoweringProvider::setDebugInfo() (MLIRCompilationBackend only calls
+	// it for "nautilus-ir"), so every op keeps the placeholder
+	// Query_1/line-0 location getNameLoc() falls back to. Once
+	// DIScopeForLLVMFuncOpPass + EmitDbgValuePass were changed to run
+	// whenever *any* debug info is wanted (`emitDebugInfo()`) rather than
+	// only for a real debugger session, this combination -- perf enabled,
+	// source mode left at its "mlir" default -- started running those
+	// passes over that placeholder metadata and crashed MLIR->LLVM
+	// translation. The fix additionally requires real per-op locations
+	// (`enableDebug`, which drives LocationSnapshot for "mlir" mode, or
+	// `sourceMode == "nautilus-ir"`) before running them; this compiles
+	// (rather than crashing) and simply produces no source attribution,
+	// which is the documented, acceptable outcome for an out-of-scope
+	// source mode.
+	auto dump = compilePerfJitDump([](Options& o) { o.setOption("mlir.perf.enable", true); });
+	REQUIRE_FALSE(dump.codeLoads.empty());
+	REQUIRE(dump.debugInfos.empty());
+}
+
+TEST_CASE("Perf jitdump: the four debug/perf cells all compile") {
+	// debug=false, perf=false: the default, no jitdump at all.
+	REQUIRE_FALSE(compileWithJitDumpDir([](Options&) {}).has_value());
+
+	// debug=true, perf=false: unchanged pre-existing behavior (exhaustively
+	// covered by DebugInfoExecutionTest.cpp); confirm perf support itself
+	// stays off.
+	REQUIRE_FALSE(compileWithJitDumpDir([](Options& o) { o.setOption("mlir.debug.enable", true); }).has_value());
+
+	// debug=false, perf=true: perf-only, keeps optimizing, still gets a real
+	// jitdump line table (the point of this whole feature).
+	{
+		auto dump = compilePerfJitDump();
+		REQUIRE_FALSE(dump.codeLoads.empty());
+		REQUIRE_FALSE(dump.debugInfos.empty());
+	}
+
+	// debug=true, perf=true: debug's clamp composes literally (still `-O0`),
+	// but the compile still succeeds and still produces a jitdump with a
+	// line table -- see the "one-time warning" test for the diagnostic this
+	// combination prints.
+	{
+		auto dump = compilePerfJitDump([](Options& o) {
+			o.setOption("mlir.debug.enable", true);
+			o.setOption("mlir.perf.enable", true);
+			o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+		});
+		REQUIRE_FALSE(dump.codeLoads.empty());
+		REQUIRE_FALSE(dump.debugInfos.empty());
+	}
+}
+
+TEST_CASE("Perf jitdump: debug+perf together warns at most once per process") {
+	// The warning is printed through a process-wide std::atomic_flag (see
+	// DebugInfoOptions.cpp's warnOnce()), so a different test earlier in
+	// this binary may have already consumed it -- this asserts the
+	// invariant that actually matters (never more than one warning appears
+	// across two triggering compiles in a row), which holds regardless of
+	// what ran before.
+	std::ostringstream captured;
+	auto* originalBuf = std::cerr.rdbuf(captured.rdbuf());
+	auto restoreCerr = [&](void*) {
+		std::cerr.rdbuf(originalBuf);
+	};
+	std::unique_ptr<void, decltype(restoreCerr)> cerrGuard(&captured, restoreCerr);
+
+	auto tweak = [](Options& o) {
+		o.setOption("mlir.debug.enable", true);
+		o.setOption("mlir.perf.enable", true);
+		o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	};
+	(void) compileWithJitDumpDir(tweak);
+	(void) compileWithJitDumpDir(tweak);
+
+	const std::string output = captured.str();
+	const std::string needle = "mlir.debug.enable and mlir.perf.enable are both set";
+	size_t count = 0;
+	for (size_t pos = output.find(needle); pos != std::string::npos; pos = output.find(needle, pos + needle.size())) {
+		++count;
+	}
+	REQUIRE(count <= 1);
 }
 
 } // namespace nautilus::engine

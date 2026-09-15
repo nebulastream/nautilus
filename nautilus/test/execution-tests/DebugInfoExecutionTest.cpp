@@ -690,6 +690,35 @@ TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N D
 	REQUIRE(ir.contains("= alloca i32"));
 }
 
+TEST_CASE("Debug info: perf-only mode gets a line table but no $N shadow allocas") {
+	// mlir.perf.enable alone (mlir.debug.enable off) is Axis B off / Axis A
+	// on: MLIRLoweringProvider only ever creates a $N shadow alloca (and the
+	// dbg.declare/dbg.value machinery this test's sibling above checks for)
+	// when `enableDebug` clamps for stepping, so a perf-only compile should
+	// keep the codegen-distorting side of debug info off entirely while
+	// still getting a real DISubprogram line table for jitdump to read.
+	auto ir = compileDebugIr(
+	    "execute",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugSumThree);
+		    REQUIRE(fn(1, 2, 3) == 6);
+	    },
+	    [](Options& options) {
+		    options.setOption("mlir.debug.enable", false);
+		    options.setOption("mlir.perf.enable", true);
+	    });
+
+	REQUIRE_FALSE(ir.subprograms.empty());
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
+	}
+	REQUIRE(ir.variables.empty());
+	REQUIRE_FALSE(ir.contains("#dbg_declare"));
+	REQUIRE_FALSE(ir.contains("@llvm.dbg.declare"));
+	REQUIRE_FALSE(ir.contains("= alloca i32"));
+}
+
 TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
 	auto ir = compileDebugIr(
 	    "execute",

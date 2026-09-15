@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>
@@ -24,28 +25,61 @@ std::string tempDir() {
 }
 
 // Directory the synthesized source file is written to: the temp directory,
-// unless `mlir.debug.source_dir` names one.
+// unless `mlir.debug.source_dir` names one, or this is a perf-only compile
+// (see below).
 //
 // Pointing it at the working directory (`mlir.debug.source_dir=.`) is worth
 // knowing about when driving the debugger from an IDE: a per-user $TMPDIR path
 // -- on macOS a /var/folders/... one -- is typically outside the IDE's source
 // roots, so it cannot open the file the DWARF names. The default stays in the
 // temp directory so that a compile leaves nothing behind in the user's tree.
-std::filesystem::path sourceDir(const engine::Options& options) {
+//
+// A perf-only compile (`enablePerf` without `enableDebug`) needs the opposite
+// default: the IR dump has to outlive the compile and be findable next to
+// perf.data when `perf inject` / `perf annotate` run, minutes or hours later
+// -- and $TMPDIR is routinely cleaned between record and report. So it
+// defaults to the working directory instead, matching the comment above's own
+// recommendation for a long-lived consumer. An explicit `mlir.debug.source_dir`
+// always wins over either default.
+std::filesystem::path sourceDir(const engine::Options& options, const DebugInfoOptions& opts) {
 	auto configured = options.getOptionOrDefault<std::string>("mlir.debug.source_dir", "");
 	if (!configured.empty()) {
 		return configured;
+	}
+	if (opts.enablePerf && !opts.enableDebug) {
+		return std::filesystem::current_path();
 	}
 	return tempDir();
 }
 
 // Generate a path like `<dir>/nautilus_debug_<pid>_<counter>.<ext>` that is
 // unique across parallel compilations within the same process.
-std::string synthesizeSourcePath(const engine::Options& options, const std::string& extension) {
+std::string synthesizeSourcePathIn(const std::filesystem::path& dir, const std::string& extension) {
 	static std::atomic<uint64_t> counter {0};
 	auto name =
 	    "nautilus_debug_" + std::to_string(::getpid()) + "_" + std::to_string(counter.fetch_add(1)) + "." + extension;
-	return (sourceDir(options) / name).string();
+	return (dir / name).string();
+}
+
+std::string synthesizeSourcePath(const engine::Options& options, const DebugInfoOptions& opts,
+                                 const std::string& extension) {
+	return synthesizeSourcePathIn(sourceDir(options, opts), extension);
+}
+
+// Cell 4 (`enableDebug=true, enablePerf=true`) composes literally: the debug
+// clamp wins, so a jitdump produced this way profiles -O0 code -- not a
+// correctness problem (an explicit `mlir.optimizationLevel` still overrides
+// it), but exactly the trap this issue is otherwise about avoiding. Warn once
+// per process rather than refuse: inspecting the jitdump of a build you are
+// also stepping through is a legitimate thing to want.
+void warnOnce() {
+	static std::atomic_flag warned = ATOMIC_FLAG_INIT;
+	if (!warned.test_and_set()) {
+		std::cerr << "nautilus: mlir.debug.enable and mlir.perf.enable are both set; the optimization level stays "
+		             "clamped to what mlir.debug.enable requests (-O0 by default), so the jitdump profiles "
+		             "debug-clamped code, not production-optimized code. Set mlir.optimizationLevel explicitly to "
+		             "override, or drop mlir.debug.enable for a representative profile.\n";
+	}
 }
 
 // DWARF that names a relative file leaves the debugger resolving it against
@@ -63,7 +97,7 @@ std::string makeAbsolute(const std::string& path) {
 
 DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& options) {
 	DebugInfoOptions opts;
-	opts.enable = options.getOptionOrDefault("mlir.debug.enable", false);
+	opts.enableDebug = options.getOptionOrDefault("mlir.debug.enable", false);
 	opts.sourceMode = options.getOptionOrDefault<std::string>("mlir.debug.source_mode", "mlir");
 	opts.sourceFile = options.getOptionOrDefault<std::string>("mlir.debug.source_file", "");
 	opts.producer = options.getOptionOrDefault<std::string>("mlir.debug.producer", "Nautilus JIT");
@@ -73,22 +107,24 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	opts.enablePerf = options.getOptionOrDefault("mlir.perf.enable", false);
 	opts.perfEmitDebugInfo = options.getOptionOrDefault("mlir.perf.emit_debug_info", true);
 	opts.perfEmitUnwindInfo = options.getOptionOrDefault("mlir.perf.emit_unwind_info", true);
-	// Interim: perf mode implies debug-info emission so jitdump's
-	// JIT_CODE_DEBUG_INFO records have line tables to draw from. Follow-up
-	// work decouples "emit metadata" from "clamp optimization for stepping"
-	// so a perf-only compile stays at the user's chosen optimization level.
-	if (opts.enablePerf) {
-		opts.enable = true;
+	opts.perfFramePointers = options.getOptionOrDefault("mlir.perf.frame_pointers", true);
+
+	if (opts.enableDebug && opts.enablePerf) {
+		warnOnce();
 	}
 
-	if (opts.enable) {
+	if (opts.emitDebugInfo()) {
 		if (opts.sourceFile.empty()) {
 			const std::string ext = (opts.sourceMode == "nautilus-ir") ? "ir" : "mlir";
-			opts.sourceFile = synthesizeSourcePath(options, ext);
+			opts.sourceFile = synthesizeSourcePath(options, opts, ext);
 		}
 		opts.sourceFile = makeAbsolute(opts.sourceFile);
 	}
 	return opts;
+}
+
+std::string debugSourceFallbackPath(const std::string& extension) {
+	return synthesizeSourcePathIn(tempDir(), extension);
 }
 
 } // namespace nautilus::compiler::mlir
