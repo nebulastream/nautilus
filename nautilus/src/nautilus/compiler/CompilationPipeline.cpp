@@ -242,9 +242,17 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		//
 		// Opt-in, because it renders the whole module to a string: only when
 		// the MLIR backend is going to point DWARF line numbers at a
-		// Nautilus-IR dump.
+		// Nautilus-IR dump. `mlir.perf.enable` needs this exactly as much as
+		// `mlir.debug.enable` does -- both are the MLIR backend's
+		// DebugInfoOptions::emitDebugInfo() axis, mirrored here via raw
+		// options since this file is backend-agnostic and cannot depend on
+		// the MLIR backend's headers. Skipping it when only perf is set would
+		// not break correctness (MLIRCompilationBackend falls back to
+		// computing the map itself for a locationMap-less graph), only
+		// duplicate the work IRLocationPass would otherwise have cached.
 		const bool writesDwarfSource =
-		    moduleOptions.getOptionOrDefault("mlir.debug.enable", false) &&
+		    (moduleOptions.getOptionOrDefault("mlir.debug.enable", false) ||
+		     moduleOptions.getOptionOrDefault("mlir.perf.enable", false)) &&
 		    moduleOptions.getOptionOrDefault<std::string>("mlir.debug.source_mode", "mlir") == "nautilus-ir";
 		if (writesDwarfSource) {
 			passManager.addPass(std::make_unique<ir::IRLocationPass>());

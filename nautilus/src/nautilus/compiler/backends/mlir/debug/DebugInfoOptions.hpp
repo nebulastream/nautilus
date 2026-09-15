@@ -9,9 +9,11 @@ namespace nautilus::compiler::mlir {
 // Populated from the public engine::Options by fromEngineOptions() so the rest
 // of the backend does not depend on the string-keyed Options header.
 struct DebugInfoOptions {
-	// When false, all debug-related plumbing is a no-op and the backend
-	// behaves identically to a build with no debug support.
-	bool enable = false;
+	// Axis B: prioritise stepping fidelity over performance. When true, LLVM
+	// optimization is clamped to -O0, the MLIR inliner is skipped in
+	// "nautilus-ir" source mode, and every `$N` gets a shadow alloca +
+	// dbg.declare so a debugger can print it. `mlir.debug.enable`.
+	bool enableDebug = false;
 
 	// "mlir" snapshots the post-inline MLIR to disk and uses its line numbers
 	// as "source" locations.  "nautilus-ir" dumps the Nautilus IR to disk
@@ -36,11 +38,50 @@ struct DebugInfoOptions {
 	// Register every JIT-linked object with the debugger via the GDB JIT
 	// interface (__jit_debug_register_code).  Without this the emitted DWARF
 	// is present in the object but invisible to GDB/LLDB, so IDEs cannot
-	// step into JIT-compiled code.  Only honoured when `enable` is true.
+	// step into JIT-compiled code.  Only honoured when `enableDebug` is true.
 	bool registerWithDebugger = true;
+
+	// Emit perf jitdump records (JIT_CODE_LOAD / JIT_CODE_DEBUG_INFO /
+	// JIT_CODE_UNWINDING_INFO) for every JIT-linked object and keep the
+	// requested optimization level, so `perf record` can symbolize and
+	// attribute samples inside *production-optimized* JIT-compiled code.
+	// Linux/ELF only; a no-op with a warning elsewhere. Unlike `enableDebug`,
+	// this never clamps anything itself -- it only pulls in Axis A metadata
+	// (below) and installs the jitdump writer. `mlir.perf.enable`.
+	bool enablePerf = false;
+
+	// Whether perf jitdump records include DWARF-derived line tables
+	// (JIT_CODE_DEBUG_INFO). Only meaningful when `enablePerf` is true.
+	bool perfEmitDebugInfo = true;
+
+	// Whether perf jitdump records include .eh_frame-derived unwind info
+	// (JIT_CODE_UNWINDING_INFO), needed for `perf record --call-graph dwarf`
+	// to walk out of a JIT frame. Only meaningful when `enablePerf` is true.
+	bool perfEmitUnwindInfo = true;
+
+	// Add the `frame-pointer=all` function attribute to every generated
+	// function when perf support is active, so the default frame-pointer
+	// based unwinder (`perf record -g`) can walk out of a JIT frame -- at
+	// -O3 LLVM omits frame pointers by default. `mlir.perf.frame_pointers`.
+	// Only honoured when `enablePerf` is true.
+	bool perfFramePointers = true;
+
+	// Axis A: whether *any* debug metadata is emitted at all -- line tables,
+	// per-op scopes, region() inlined-subroutines. Cheap: no codegen impact
+	// of its own. Both `enableDebug` (for a debugger) and `enablePerf` (for
+	// perf's jitdump line tables) need this; only `enableDebug` additionally
+	// wants the fidelity measures gated on it directly (see above).
+	[[nodiscard]] bool emitDebugInfo() const {
+		return enableDebug || enablePerf;
+	}
 };
 
 // Build a DebugInfoOptions from the string-keyed engine::Options.
 DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& options);
+
+// Synthesizes a path under the temp directory (ignoring `mlir.debug.source_dir`
+// and the perf-only cwd default), for use when the configured source
+// directory turns out not to be writable.
+std::string debugSourceFallbackPath(const std::string& extension);
 
 } // namespace nautilus::compiler::mlir

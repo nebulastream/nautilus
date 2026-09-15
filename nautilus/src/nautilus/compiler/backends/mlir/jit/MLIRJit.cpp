@@ -7,8 +7,15 @@
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
 #include <mlir/Target/LLVMIR/Export.h>
+
+#if defined(__linux__)
+#include <llvm/ExecutionEngine/Orc/Debugging/DebugInfoSupport.h>
+#include <llvm/ExecutionEngine/Orc/Debugging/PerfSupportPlugin.h>
+#include <llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h>
+#endif
 
 namespace nautilus::compiler::mlir {
 
@@ -19,6 +26,47 @@ namespace {
 // for llvm::ErrorInfoBase, which LLVM (built with -fno-rtti) does not export.
 llvm::Error makeStringError(const llvm::Twine& message) {
 	return llvm::createStringError(llvm::inconvertibleErrorCode(), message);
+}
+
+// Installs perf jitdump support (llvm::orc::PerfSupportPlugin) on `layer`, so
+// `perf record` can read symbols (and, when `emitDebugInfo` is set, line
+// tables) for every object it links. Linux/ELF only -- `PerfSupportPlugin`
+// itself refuses non-ELF targets, and the jitdump writer entry points below
+// are compiled only on Linux (LLVMOrcTargetProcess's JITLoaderPerf.cpp is
+// `#ifdef __linux__`), so referencing them from a TU built for another
+// platform would fail to link.
+//
+// We deliberately do not use `PerfSupportPlugin::Create`: it resolves the
+// three loader entry points via a JITDylib symbol lookup that falls through
+// to `dlsym` on the current process. Nothing in a statically linked Nautilus
+// binary references `JITLoaderPerf.o`, so the archive member implementing
+// them is never pulled into the link at all, and `dlsym` would also need
+// `-rdynamic` even if it were. Taking their addresses directly forces the
+// archive member in and sidesteps the lookup entirely.
+void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
+                        [[maybe_unused]] llvm::orc::ExecutionSession& session,
+                        [[maybe_unused]] const llvm::Triple& targetTriple, [[maybe_unused]] bool emitDebugInfo,
+                        [[maybe_unused]] bool emitUnwindInfo) {
+#if defined(__linux__)
+	if (!targetTriple.isOSBinFormatELF()) {
+		llvm::errs() << "nautilus: mlir.perf.enable is set but the target is not ELF; perf jitdump support is "
+		                "Linux/ELF-only and will be skipped.\n";
+		return;
+	}
+	// JITLink prunes .debug_* sections before PostFixup; PerfSupportPlugin's
+	// PostFixup pass builds a DWARFContext from them, so without this
+	// preservation pass it silently emits JIT_CODE_LOAD records with no
+	// JIT_CODE_DEBUG_INFO alongside -- symbols but no source attribution.
+	// Installed unconditionally (not just when `emitDebugInfo` is set):
+	// preservation is a cheap, idempotent PrePrune pass either way.
+	layer.addPlugin(std::make_shared<llvm::orc::DebugInfoPreservationPlugin>());
+	layer.addPlugin(std::make_shared<llvm::orc::PerfSupportPlugin>(
+	    session.getExecutorProcessControl(), llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
+	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
+	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl), emitDebugInfo, emitUnwindInfo));
+#else
+	llvm::errs() << "nautilus: mlir.perf.enable is set but perf jitdump support is Linux-only; skipping.\n";
+#endif
 }
 
 } // namespace
@@ -59,7 +107,8 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	// the legacy RuntimeDyld layer cannot relocate these and causes crashes or
 	// misordered cleanups when exceptions cross JIT frames.
 	auto objectLinkingLayerCreator =
-	    [&targetTriple = llvmModule->getTargetTriple()](
+	    [&targetTriple = llvmModule->getTargetTriple(), enablePerfSupport = options.enablePerfSupport,
+	     perfEmitDebugInfo = options.perfEmitDebugInfo, perfEmitUnwindInfo = options.perfEmitUnwindInfo](
 	        llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
 		auto layer = std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
 
@@ -68,6 +117,10 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		if (targetTriple.isOSBinFormatCOFF()) {
 			layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
 			layer->setAutoClaimResponsibilityForObjectSymbols(true);
+		}
+
+		if (enablePerfSupport) {
+			installPerfSupport(*layer, session, targetTriple, perfEmitDebugInfo, perfEmitUnwindInfo);
 		}
 
 		return layer;
