@@ -151,9 +151,11 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// spills every SSA value and confuses LLVM's DWARF asmprinter when
 	// dbg.value operands live on the stack rather than in registers.
 	const auto jitCodeGenLevel = debugInfo.enable ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
-	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
-	                                            debugInfo.enable && debugInfo.registerWithDebugger);
+	auto engine =
+	    JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	                                  loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
+	                                  debugInfo.enable && debugInfo.registerWithDebugger, debugInfo.enablePerf,
+	                                  debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

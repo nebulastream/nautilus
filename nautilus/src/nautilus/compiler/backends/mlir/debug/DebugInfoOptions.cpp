@@ -70,6 +70,17 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	opts.dwarfVersion = options.getOptionOrDefault("mlir.debug.dwarf_version", 4);
 	opts.registerWithDebugger = options.getOptionOrDefault("mlir.debug.register_with_debugger", true);
 
+	opts.enablePerf = options.getOptionOrDefault("mlir.perf.enable", false);
+	opts.perfEmitDebugInfo = options.getOptionOrDefault("mlir.perf.emit_debug_info", true);
+	opts.perfEmitUnwindInfo = options.getOptionOrDefault("mlir.perf.emit_unwind_info", true);
+	// Interim: perf mode implies debug-info emission so jitdump's
+	// JIT_CODE_DEBUG_INFO records have line tables to draw from. Follow-up
+	// work decouples "emit metadata" from "clamp optimization for stepping"
+	// so a perf-only compile stays at the user's chosen optimization level.
+	if (opts.enablePerf) {
+		opts.enable = true;
+	}
+
 	if (opts.enable) {
 		if (opts.sourceFile.empty()) {
 			const std::string ext = (opts.sourceMode == "nautilus-ir") ? "ir" : "mlir";

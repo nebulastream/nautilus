@@ -37,6 +37,14 @@ public:
 		// the registration plugin keeps a copy of every debug object alive
 		// for the lifetime of the JIT.
 		bool enableDebuggerSupport = false;
+
+		// Emit perf jitdump records (see llvm::orc::PerfSupportPlugin) for
+		// every JIT-linked object, so `perf record` can symbolize JIT frames
+		// and -- when `perfEmitDebugInfo` is set -- attribute samples down to
+		// source lines. Linux/ELF only; a no-op with a warning elsewhere.
+		bool enablePerfSupport = false;
+		bool perfEmitDebugInfo = true;
+		bool perfEmitUnwindInfo = true;
 	};
 
 	~MLIRJit();

@@ -38,6 +38,27 @@ struct DebugInfoOptions {
 	// is present in the object but invisible to GDB/LLDB, so IDEs cannot
 	// step into JIT-compiled code.  Only honoured when `enable` is true.
 	bool registerWithDebugger = true;
+
+	// Emit perf jitdump records (JIT_CODE_LOAD / JIT_CODE_DEBUG_INFO /
+	// JIT_CODE_UNWINDING_INFO) for every JIT-linked object, so `perf record`
+	// can symbolize and attribute samples inside JIT-compiled code.
+	// Linux/ELF only; a no-op with a warning elsewhere.
+	//
+	// Phase 1 interim: setting this also forces `enable` on, so line tables
+	// exist for the jitdump's debug-info records. This does not yet get the
+	// production-optimized code the issue asks for -- `enable` still clamps
+	// the optimization level to -O0 (see LLVMIROptimizer.cpp) -- decoupling
+	// that is tracked as follow-up work.
+	bool enablePerf = false;
+
+	// Whether perf jitdump records include DWARF-derived line tables
+	// (JIT_CODE_DEBUG_INFO). Only meaningful when `enablePerf` is true.
+	bool perfEmitDebugInfo = true;
+
+	// Whether perf jitdump records include .eh_frame-derived unwind info
+	// (JIT_CODE_UNWINDING_INFO), needed for `perf record --call-graph dwarf`
+	// to walk out of a JIT frame. Only meaningful when `enablePerf` is true.
+	bool perfEmitUnwindInfo = true;
 };
 
 // Build a DebugInfoOptions from the string-keyed engine::Options.
