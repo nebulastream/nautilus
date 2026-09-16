@@ -55,14 +55,30 @@ A few of these are not optional:
 
 ## What you get
 
-`perf report -g --inline` groups samples by `region()`: a function that wraps
-its hot loop in `region("hot", ...)` shows `hot` as a nested frame under the
-function's own frame, exactly as `-O2`-inlined C++ shows up in a normal
-native profile (see `docs/region.md` for how this is implemented as DWARF
-inlined subroutines). `perf annotate` attributes cycles down to individual
-Nautilus IR operations, including inside those region bodies -- per-op line
-numbers are preserved there; only each enclosing region *frame* shares one
-line, not the operations inside it (docs/region.md has the full explanation).
+`perf report` groups samples by `region()`: a function that wraps its hot loop
+in `region("hot", ...)` gets a `execute::outer::hot` symbol, and the region's
+share of the profile is its own row.
+
+Regions appear as **sibling symbols, not nested frames**, and this is worth
+knowing before reading a flame graph. The DWARF inlined subroutines that give a
+region its own frame in a GDB backtrace (`docs/region.md`) cannot reach perf at
+all: perf never reads the JIT-registered object holding that DWARF, and the
+jitdump it does read has no scope tree to put them in -- its debug record is a
+flat line table. So the region nesting is folded into the symbol *name*
+instead, one `JIT_CODE_LOAD` per contiguous run of code belonging to a region.
+A flame graph therefore shows `execute::outer::hot` beside `execute`, rather
+than stacked on top of it. `mlir.perf.region_symbols=false` turns this off and
+gets plain per-function symbols back.
+
+A Nautilus-to-Nautilus call inlined into a region counts as part of that
+region, rather than being named separately -- naming it would split the
+region's code into alternating ranges, and perf does not recombine same-named
+ranges (it keys a symbol by address, not name).
+
+`perf annotate` attributes cycles down to individual Nautilus IR operations,
+including inside those region bodies -- per-op line numbers are preserved
+there; only each enclosing region *frame* shares one line, not the operations
+inside it (docs/region.md has the full explanation).
 
 ## Caveats
 

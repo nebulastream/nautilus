@@ -59,6 +59,15 @@ struct DebugInfoOptions {
 	// to walk out of a JIT frame. Only meaningful when `enablePerf` is true.
 	bool perfEmitUnwindInfo = true;
 
+	// Emit one jitdump symbol per region() scope, qualified by its nesting
+	// (`execute::outer::hot`), so regions are visible in a perf profile.
+	// The DWARF inlined-subroutine chain that gives a region its own GDB
+	// backtrace frame cannot travel through the jitdump -- the format has no
+	// scope tree -- so without this a region collapses silently into its
+	// enclosing function. Requires `perfEmitDebugInfo` (the scope information
+	// is recovered from the emitted DWARF). `mlir.perf.region_symbols`.
+	bool perfRegionSymbols = true;
+
 	// Add the `frame-pointer=all` function attribute to every generated
 	// function when perf support is active, so the default frame-pointer
 	// based unwinder (`perf record -g`) can walk out of a JIT frame -- at

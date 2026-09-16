@@ -19,11 +19,13 @@ public:
 	JITCompiler() = delete;  // Disable default constructor
 	~JITCompiler() = delete; // Disable default destructor
 
-	static std::unique_ptr<MLIRJit> jitCompileModule(
-	    ::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
-	    const std::vector<std::string>& jitProxyFunctionSymbols,
-	    const std::vector<void*>& jitProxyFunctionTargetAddresses,
-	    llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive, bool enableDebuggerSupport = false,
-	    bool enablePerfSupport = false, bool perfEmitDebugInfo = true, bool perfEmitUnwindInfo = true);
+	static std::unique_ptr<MLIRJit>
+	jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
+	                 llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
+	                 const std::vector<std::string>& jitProxyFunctionSymbols,
+	                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
+	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive,
+	                 bool enableDebuggerSupport = false, bool enablePerfSupport = false, bool perfEmitDebugInfo = true,
+	                 bool perfEmitUnwindInfo = true, bool perfRegionSymbols = true);
 };
 } // namespace nautilus::compiler::mlir
