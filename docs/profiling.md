@@ -57,7 +57,9 @@ A few of these are not optional:
 
 `perf report` groups samples by `region()`: a function that wraps its hot loop
 in `region("hot", ...)` gets a `execute::outer::hot` symbol, and the region's
-share of the profile is its own row.
+share of the profile is its own row. Nesting is not depth-limited -- an outer
+per-query region containing a per-operator region containing a per-loop region
+gets all three levels in the name, in source order.
 
 Regions appear as **sibling symbols, not nested frames**, and this is worth
 knowing before reading a flame graph. The DWARF inlined subroutines that give a
