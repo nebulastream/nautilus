@@ -1,6 +1,7 @@
 add_source_files(nautilus
         DebugInfoOptions.cpp
         EmitDbgValuePass.cpp
+        PerfJitDumpPlugin.cpp
         RegionScopeInfo.cpp
 )
 
@@ -17,8 +18,11 @@ add_source_files(nautilus
 get_filename_component(_nautilus_target_dir
         "${CMAKE_CURRENT_LIST_DIR}/../../../../../.."
         ABSOLUTE)
+# PerfJitDumpPlugin is here for the same reason: it subclasses
+# llvm::orc::ObjectLinkingLayer::Plugin, whose typeinfo LLVM does not export.
 set_source_files_properties(
         ${CMAKE_CURRENT_SOURCE_DIR}/EmitDbgValuePass.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PerfJitDumpPlugin.cpp
         DIRECTORY ${_nautilus_target_dir}
         PROPERTIES COMPILE_OPTIONS -fno-rtti
 )

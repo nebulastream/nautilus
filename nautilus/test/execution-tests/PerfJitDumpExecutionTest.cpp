@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -86,6 +87,7 @@ static_assert(sizeof(DebugEntryFixed) == 16);
 struct CodeLoadEntry {
 	std::string name;
 	uint64_t codeSize = 0;
+	uint64_t codeAddr = 0;
 };
 
 struct DebugLine {
@@ -98,10 +100,25 @@ struct DebugInfoEntry {
 	std::vector<DebugLine> lines;
 };
 
+// One record in file order, reduced to what the pairing rule below needs.
+// `perf inject --jit` consumes a JIT_CODE_DEBUG_INFO record positionally --
+// it stashes one pending line table and hands it to the *next* JIT_CODE_LOAD
+// -- so the order records appear in is load-bearing, not cosmetic, and a
+// parser that only collects the two kinds into separate buckets cannot see a
+// mis-ordering at all.
+struct RecordRef {
+	RecordType type;
+	// CodeLoad: the record's own code address. DebugInfo: the address of the
+	// code it describes. The two must match for a pair to be correct.
+	uint64_t codeAddr = 0;
+	std::string name; // CodeLoad only
+};
+
 struct JitDump {
 	JitDumpHeader header {};
 	std::vector<CodeLoadEntry> codeLoads;
 	std::vector<DebugInfoEntry> debugInfos;
+	std::vector<RecordRef> records;
 };
 
 std::string readCString(std::ifstream& in) {
@@ -143,6 +160,8 @@ std::optional<JitDump> parseJitDump(const std::filesystem::path& path) {
 				CodeLoadEntry entry;
 				entry.name = readCString(in);
 				entry.codeSize = fixed.codeSize;
+				entry.codeAddr = fixed.codeAddr;
+				dump.records.push_back({RecordType::CodeLoad, fixed.codeAddr, entry.name});
 				dump.codeLoads.push_back(std::move(entry));
 			}
 		} else if (recordType == RecordType::DebugInfo) {
@@ -150,6 +169,7 @@ std::optional<JitDump> parseJitDump(const std::filesystem::path& path) {
 			if (in.read(reinterpret_cast<char*>(&fixed), sizeof(fixed))) {
 				DebugInfoEntry entry;
 				entry.codeAddr = fixed.codeAddr;
+				dump.records.push_back({RecordType::DebugInfo, fixed.codeAddr, {}});
 				for (uint64_t i = 0; i < fixed.nrEntry; ++i) {
 					DebugEntryFixed die {};
 					if (!in.read(reinterpret_cast<char*>(&die), sizeof(die))) {
@@ -312,6 +332,117 @@ TEST_CASE("Perf jitdump: JIT_CODE_DEBUG_INFO carries a multi-line line table") {
 	// synthetic location would pass a "debug info exists" check but
 	// attribute every sample to the same line.
 	REQUIRE(lines.size() > 1);
+}
+
+TEST_CASE("Perf jitdump: each JIT_CODE_DEBUG_INFO immediately precedes its own JIT_CODE_LOAD") {
+	// `perf inject --jit` pairs the two record kinds *positionally*, not by
+	// code_addr: it keeps a single pending line table, overwrites it with each
+	// new JIT_CODE_DEBUG_INFO, and hands whatever is pending to the next
+	// JIT_CODE_LOAD, then drops it. So a debug record only reaches its
+	// function if it is the record immediately before that function's load.
+	//
+	// This is why Nautilus writes the jitdump itself (PerfJitDumpPlugin)
+	// rather than using LLVM's PerfSupportPlugin: that one batches a whole
+	// object into a PerfJITRecordBatch of two separate vectors
+	// (DebugInfoRecords, CodeLoadRecords) and JITLoaderPerf writes every debug
+	// record before every code record. With more than one debug record in a
+	// batch -- every Nautilus compile, since even a trivial kernel emits
+	// `execute` plus its `_mlir_ciface_*` trampolines -- the pairing came out
+	// wrong for all of them: of 8 JIT_CODE_LOADs exactly one generated ELF had
+	// a .debug_line section, and it held the *wrong* function's line table,
+	// while `execute`, owning 42 of the line entries, got none.
+	//
+	// Nothing about that was visible in the dump's contents, only in its
+	// record order -- which is what this test checks.
+	auto dump = compilePerfJitDump();
+	REQUIRE_FALSE(dump.debugInfos.empty());
+
+	for (size_t i = 0; i < dump.records.size(); ++i) {
+		if (dump.records[i].type != RecordType::DebugInfo) {
+			continue;
+		}
+		INFO("JIT_CODE_DEBUG_INFO at record index " << i << " for code_addr " << dump.records[i].codeAddr);
+		REQUIRE(i + 1 < dump.records.size());
+		const auto& next = dump.records[i + 1];
+		REQUIRE(next.type == RecordType::CodeLoad);
+		// Same code range: the pending table perf hands to this load is the
+		// one that describes it.
+		REQUIRE(next.codeAddr == dump.records[i].codeAddr);
+	}
+}
+
+TEST_CASE("Perf jitdump: region() scopes are visible to perf") {
+	// region() lowers to a DWARF DW_TAG_inlined_subroutine (docs/region.md,
+	// and "Debug info: region() scopes lower to a DWARF inlined subroutine"
+	// in DebugInfoExecutionTest.cpp), which is what makes each region its own
+	// frame in a GDB backtrace. None of that reaches perf.
+	//
+	// perf never reads the JIT-registered object that carries the DWARF.
+	// `perf inject --jit` synthesizes its own ELF per code range from the
+	// jitdump alone, and the jitdump format has nowhere to put a scope tree:
+	// JIT_CODE_DEBUG_INFO is a flat line table ({code_addr, nr_entry} then
+	// {addr, line, discrim, file} entries) with no subprogram records and no
+	// inline nesting. Verified end-to-end: `readelf --debug-dump=info` on the
+	// generated jitted-*.so shows a bare DW_TAG_compile_unit carrying only
+	// DW_AT_stmt_list -- zero DW_TAG_subprogram, zero
+	// DW_TAG_inlined_subroutine -- and the strings "outer", "hot" and "mix"
+	// appear nowhere in the file. `perf report --inline` correspondingly
+	// showed only `execute` (50.7%) and `perfHelper` (27.8%): every region
+	// collapses into the enclosing function's box in a flame graph.
+	//
+	// Only line numbers survived that trip, so the attribution was
+	// *recoverable* -- mapping hot addresses back through the line table onto
+	// the Nautilus IR dump's region legend put 63.9% of `execute`'s samples in
+	// "hot" -- but only by hand, and only while that IR dump still existed.
+	//
+	// So PerfJitDumpPlugin puts the region into the one channel the format
+	// does carry: symbol names. Each contiguous run of code sharing a region
+	// stack becomes its own JIT_CODE_LOAD under a qualified name
+	// (`execute::outer::hot`), which makes regions sibling symbols rather than
+	// nested frames, and splits the function's own symbol around them so the
+	// ranges stay disjoint as the format requires. This test asserts only the
+	// outcome -- a region is nameable in a profile -- not the mechanism.
+	auto dump = compilePerfJitDump();
+	REQUIRE_FALSE(dump.codeLoads.empty());
+
+	auto namesAnyRegion = [&](std::string_view region) {
+		return std::any_of(dump.codeLoads.begin(), dump.codeLoads.end(),
+		                   [&](const CodeLoadEntry& e) { return e.name.find(region) != std::string::npos; });
+	};
+	// The fixture's three regions: outer, and the two nested inside it.
+	REQUIRE(namesAnyRegion("outer"));
+	REQUIRE(namesAnyRegion("hot"));
+	REQUIRE(namesAnyRegion("mix"));
+}
+
+TEST_CASE("Perf jitdump: a region is one symbol, not one per inlined callee") {
+	// A jitdump range is contiguous, so a region is split into as many records
+	// as it has contiguous runs -- and perf keys a symbol by its address, not
+	// its name, so it does not recombine same-named ranges (`--sort sym`
+	// included). Fragmentation is therefore directly visible as a shattered
+	// profile.
+	//
+	// The thing that shatters a region is not the optimizer reordering blocks
+	// but the inline stack: a Nautilus-to-Nautilus call inside a region is
+	// inlined at -O3, and naming that callee's frame too would alternate
+	// `...::hot` / `...::hot::perfHelper` over and over. Measured on this
+	// fixture before PerfJitDumpPlugin filtered non-region frames out, "hot"
+	// came to 10 separate records; after, it is 1.
+	auto dump = compilePerfJitDump();
+
+	std::map<std::string, int> fragments;
+	for (const auto& entry : dump.codeLoads) {
+		++fragments[entry.name];
+	}
+	// The kernel's own `execute` symbol is legitimately split around the
+	// regions carved out of it, so only the region symbols are checked here.
+	for (const auto& [name, count] : fragments) {
+		if (name.find("::hot") == std::string::npos && name.find("::mix") == std::string::npos) {
+			continue;
+		}
+		INFO("region symbol " << name << " split into " << count << " jitdump records");
+		REQUIRE(count == 1);
+	}
 }
 
 TEST_CASE("Perf jitdump: emit_debug_info=false omits JIT_CODE_DEBUG_INFO") {

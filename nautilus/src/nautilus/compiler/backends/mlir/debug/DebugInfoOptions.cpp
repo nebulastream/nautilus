@@ -108,6 +108,7 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	opts.perfEmitDebugInfo = options.getOptionOrDefault("mlir.perf.emit_debug_info", true);
 	opts.perfEmitUnwindInfo = options.getOptionOrDefault("mlir.perf.emit_unwind_info", true);
 	opts.perfFramePointers = options.getOptionOrDefault("mlir.perf.frame_pointers", true);
+	opts.perfRegionSymbols = options.getOptionOrDefault("mlir.perf.region_symbols", true);
 
 	if (opts.enableDebug && opts.enablePerf) {
 		warnOnce();

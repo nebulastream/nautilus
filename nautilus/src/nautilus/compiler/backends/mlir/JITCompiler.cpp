@@ -10,13 +10,11 @@
 
 namespace nautilus::compiler::mlir {
 
-std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule,
-                                                       llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
-                                                       const std::vector<std::string>& jitProxyFunctionSymbols,
-                                                       const std::vector<void*>& jitProxyFunctionTargetAddresses,
-                                                       llvm::CodeGenOptLevel codeGenOptLevel,
-                                                       bool enableDebuggerSupport, bool enablePerfSupport,
-                                                       bool perfEmitDebugInfo, bool perfEmitUnwindInfo) {
+std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(
+    ::mlir::OwningOpRef<::mlir::ModuleOp>& mlirModule, llvm::function_ref<llvm::Error(llvm::Module*)> optPipeline,
+    const std::vector<std::string>& jitProxyFunctionSymbols, const std::vector<void*>& jitProxyFunctionTargetAddresses,
+    llvm::CodeGenOptLevel codeGenOptLevel, bool enableDebuggerSupport, bool enablePerfSupport, bool perfEmitDebugInfo,
+    bool perfEmitUnwindInfo, bool perfRegionSymbols) {
 
 	// Register the translation from MLIR to LLVM IR, which must happen before we
 	// can JIT-compile.
@@ -30,6 +28,7 @@ std::unique_ptr<MLIRJit> JITCompiler::jitCompileModule(::mlir::OwningOpRef<::mli
 	jitOptions.enablePerfSupport = enablePerfSupport;
 	jitOptions.perfEmitDebugInfo = perfEmitDebugInfo;
 	jitOptions.perfEmitUnwindInfo = perfEmitUnwindInfo;
+	jitOptions.perfRegionSymbols = perfRegionSymbols;
 
 	auto maybeJit = MLIRJit::create(*mlirModule, jitOptions);
 	assert(maybeJit && "failed to construct an execution engine");
