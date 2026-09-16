@@ -17,8 +17,10 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <unistd.h>
+#include <vector>
 
 namespace nautilus::engine {
 
@@ -116,6 +118,50 @@ val<int32_t> debugDeeplyNestedRegions(val<int32_t> upperLimit) {
 				});
 			});
 		});
+	});
+	return agg;
+}
+
+// How deep debugVeryDeeplyNestedRegions nests. Region names are `d1` (innermost) .. `d50`.
+constexpr int kDebugNestDepth = 50;
+
+// Stable, distinct names: region() stores the const char* it is handed.
+const char* debugNestedRegionName(int level) {
+	static const std::vector<std::string>* names = [] {
+		auto* built = new std::vector<std::string>(kDebugNestDepth + 1);
+		for (int i = 0; i <= kDebugNestDepth; ++i) {
+			(*built)[i] = "d" + std::to_string(i);
+		}
+		return built;
+	}();
+	return (*names)[level].c_str();
+}
+
+// Opens N nested region()s around `body`, outermost first. Recursive so the depth is one
+// constant; each level is a distinct instantiation, so region()'s frame-pointer walk still sees
+// a distinct call site per level.
+template <int N>
+struct DebugNestRegions {
+	template <typename F>
+	static void apply(F&& body) {
+		region(debugNestedRegionName(N), [&]() { DebugNestRegions<N - 1>::apply(body); });
+	}
+};
+
+template <>
+struct DebugNestRegions<0> {
+	template <typename F>
+	static void apply(F&& body) {
+		body();
+	}
+};
+
+val<int32_t> debugVeryDeeplyNestedRegions(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	DebugNestRegions<kDebugNestDepth>::apply([&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			agg = agg + i;
+		}
 	});
 	return agg;
 }
@@ -1008,6 +1054,42 @@ TEST_CASE("Debug info: region() nesting survives to arbitrary depth") {
 	// The accumulation is really inside the regions, not level with where the
 	// outermost one opens.
 	REQUIRE(lines.front() > lines.back());
+}
+
+TEST_CASE("Debug info: 50 levels of region() nesting produce 50 DWARF frames") {
+	// The test above pins that the two-level boundary #467 reported is gone. This one pins that no
+	// new boundary exists anywhere a program could reach: the encoding is recursive, so 50 levels
+	// have to behave exactly like 2 -- 50 synthetic subprograms, and an inlinedAt chain 50 frames
+	// deep, innermost first, with nothing dropped in between.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugVeryDeeplyNestedRegions);
+		REQUIRE(fn(5) == 10);
+	});
+
+	std::vector<std::string> expected;
+	for (int level = 1; level <= kDebugNestDepth; ++level) {
+		const auto id = ir.subprogramId(debugNestedRegionName(level));
+		INFO("DISubprogram for region " << debugNestedRegionName(level));
+		REQUIRE_FALSE(id.empty());
+		expected.push_back(id);
+	}
+	const auto executeId = ir.subprogramId("execute");
+	REQUIRE_FALSE(executeId.empty());
+	expected.push_back(executeId);
+
+	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	REQUIRE_FALSE(accumulation.empty());
+	const auto scopes = ir.frameScopes(accumulation);
+	// Report where a truncated chain stopped rather than just that it did not match.
+	INFO("chain is " << scopes.size() << " frames, expected " << expected.size());
+	REQUIRE(scopes == expected);
+
+	// `line: 0` means "compiler-generated, no source position". One such frame anywhere in a
+	// 50-deep chain would send a debugger to the wrong place for that level.
+	for (const auto& id : ir.locations) {
+		INFO("DILocation !" << id.first);
+		REQUIRE(id.second.line != 0);
+	}
 }
 
 TEST_CASE("Debug info: the entry block's scope is the function's own, not a variable's decl line") {

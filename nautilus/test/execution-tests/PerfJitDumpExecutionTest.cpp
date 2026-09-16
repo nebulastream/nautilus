@@ -471,6 +471,41 @@ TEST_CASE("Perf jitdump: region symbols stay qualified at arbitrary nesting dept
 	                    [&](const CodeLoadEntry& e) { return e.name.find(fullyQualified) != std::string::npos; }));
 }
 
+TEST_CASE("Perf jitdump: 50 levels of region() nesting all reach the symbol") {
+	// The test above pins that the two-level boundary #467 reported is gone. This one pins that no
+	// new boundary exists anywhere a program could reach: nothing in the encoding, the DWARF chain
+	// it lowers to, or the name derived from it is depth-limited, so 50 levels behave like 2.
+	//
+	// 50 is far past any real query plan. That is the point -- a depth chosen to be comfortably
+	// past wherever a future accidental limit might land, rather than just past the old one.
+	auto dump = compilePerfJitDump(perfOnlyOptions, [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(perfVeryDeepRegionKernel);
+		std::vector<int64_t> data {1, -2, 3, -4, 5};
+		REQUIRE(fn(data.data(), static_cast<int32_t>(data.size())) != 0);
+	});
+	REQUIRE_FALSE(dump.codeLoads.empty());
+
+	// Outermost (n50) first, down to the innermost (n1), with nothing dropped in between.
+	std::string expected;
+	for (int level = PERF_REGION_NEST_DEPTH; level >= 1; --level) {
+		expected += "::";
+		expected += perfNestedRegionName(level);
+	}
+	auto match = std::find_if(dump.codeLoads.begin(), dump.codeLoads.end(),
+	                          [&](const CodeLoadEntry& e) { return e.name.find(expected) != std::string::npos; });
+	if (match == dump.codeLoads.end()) {
+		// A truncated chain is the interesting failure, so say where it stopped rather than just
+		// that no symbol matched.
+		std::string longest;
+		for (const auto& entry : dump.codeLoads) {
+			if (entry.name.size() > longest.size()) {
+				longest = entry.name;
+			}
+		}
+		FAIL("no symbol carries all " << PERF_REGION_NEST_DEPTH << " levels; longest was " << longest);
+	}
+}
+
 TEST_CASE("Perf jitdump: a multi-hop internal call chain compiles") {
 	// Regression test for the crashing half of #467. Two or more hops of
 	// Nautilus-to-Nautilus calls (a helper calling a helper -- an entirely
@@ -479,13 +514,19 @@ TEST_CASE("Perf jitdump: a multi-hop internal call chain compiles") {
 	// unprofilable.
 	//
 	// A perf-only compile keeps the MLIR inliner, which records an inlined op's
-	// origin as CallSiteLoc(op, call site) and so nests one wrapper per hop.
-	// DIScopeForLLVMFuncOpPass walks that nesting and dereferences every level's
-	// file location without checking it found one -- and the inliner's own
-	// constant materialization leaves some levels with no source position at
-	// all. One hop survived only because the pass never recurses for it.
-	// NormalizeInlineLocationsPass now drops the position-less frames before
-	// that pass runs.
+	// origin as CallSiteLoc(op, call site) -- and, for a constant it
+	// re-materializes, as CallSiteLoc(UnknownLoc, call site).
+	// DIScopeForLLVMFuncOpPass dereferences that callee's file location without
+	// checking it found one. NormalizeInlineLocationsPass now drops the
+	// position-less frames before that pass runs.
+	//
+	// This fixture is deliberately the shape the issue reported, because
+	// whether the inliner produces such a frame is shape-dependent, not
+	// depth-dependent (see NormalizeInlineLocationsPass.hpp): measured on this
+	// kernel it yields 7 of them, while a 1-, 4- or 50-hop chain yields none.
+	// A future MLIR could stop producing them here, which would leave this
+	// test passing without exercising anything -- it guards a real regression
+	// today, and is not a substitute for the pass's own reasoning.
 	//
 	// The assertions past "it compiled at all" are deliberately thin: the point
 	// is that this configuration reaches a working jitdump, which the crash made

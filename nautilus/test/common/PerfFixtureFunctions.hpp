@@ -5,6 +5,8 @@
 #include <nautilus/nautilus_function.hpp>
 #include <nautilus/region.hpp>
 #include <nautilus/val_ptr.hpp>
+#include <string>
+#include <vector>
 
 /// A composite kernel built for sampling (see the perf jitdump issue's "the fixture" discussion), not
 /// correctness -- every other fixture in this directory runs in nanoseconds, which a sampling profiler
@@ -81,6 +83,61 @@ inline val<int64_t> perfDeepRegionKernel(val<int64_t*> data, val<int32_t> len) {
 				});
 			});
 		});
+	});
+	return acc;
+}
+
+/// How deep `perfVeryDeepRegionKernel` nests. 50 is far past anything a real query plan would
+/// produce; the point is that nothing in the encoding is depth-limited, so the only bound is the
+/// source. Region names are `n1` (innermost) .. `n50` (outermost).
+inline constexpr int PERF_REGION_NEST_DEPTH = 50;
+
+/// Stable, distinct names for the levels of `perfVeryDeepRegionKernel`. region() stores the
+/// `const char*` it is handed, so these have to outlive the call.
+inline const char* perfNestedRegionName(int level) {
+	static const std::vector<std::string>* names = [] {
+		auto* built = new std::vector<std::string>(PERF_REGION_NEST_DEPTH + 1);
+		for (int i = 0; i <= PERF_REGION_NEST_DEPTH; ++i) {
+			(*built)[i] = "n" + std::to_string(i);
+		}
+		return built;
+	}();
+	return (*names)[level].c_str();
+}
+
+/// Opens @p N nested region()s around @p body, outermost first.
+///
+/// Written recursively rather than as 50 literal region() calls so the depth is one constant.
+/// Each level instantiates a distinct function, so the frame-pointer walk region() uses to derive
+/// a tag still sees a distinct call site per level -- a plain loop would not give it one.
+template <int N>
+struct PerfNestRegions {
+	template <typename F>
+	static void apply(F&& body) {
+		region(perfNestedRegionName(N), [&]() { PerfNestRegions<N - 1>::apply(body); });
+	}
+};
+
+template <>
+struct PerfNestRegions<0> {
+	template <typename F>
+	static void apply(F&& body) {
+		body();
+	}
+};
+
+/// 50 levels of region() nesting around one hot loop.
+///
+/// `perfDeepRegionKernel` above pins that the boundary the bug sat on is gone; this one pins that
+/// no new boundary exists anywhere a reasonable program could reach. Every level of the encoding,
+/// the DWARF chain it lowers to, and the qualified perf symbol derived from it has to hold.
+inline val<int64_t> perfVeryDeepRegionKernel(val<int64_t*> data, val<int32_t> len) {
+	val<int64_t> acc = 0;
+	PerfNestRegions<PERF_REGION_NEST_DEPTH>::apply([&]() {
+		for (val<int32_t> i = 0; i < len; i = i + 1) {
+			val<int64_t> v = data[i];
+			acc = acc * 3 + v;
+		}
 	});
 	return acc;
 }

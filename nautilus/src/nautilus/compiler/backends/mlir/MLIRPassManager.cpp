@@ -46,9 +46,10 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// MLIR's inliner rewrites locations into inlinedAt chains, one level per
 	// inlined hop, and a perf-only compile keeps the inliner: that nesting is
 	// what makes a profile attribute an inlined callee's time to where it was
-	// called from. Everything downstream therefore has to handle nesting of
-	// any depth -- see NormalizeInlineLocationsPass, added below, for what
-	// that costs. Stepping, by contrast, wants predictable un-inlined frames,
+	// called from. It also leaves some frames with no source position at all,
+	// which the debug-info passes below must not be handed -- see
+	// NormalizeInlineLocationsPass. Stepping, by contrast, wants predictable
+	// un-inlined frames,
 	// so `enableDebug` alone -- not `emitDebugInfo()` -- keeps the skip for a
 	// debugger session.
 	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
@@ -101,12 +102,12 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// just emit an empty line table.
 	const bool hasRealLocations = debugEnabled || debugInfo.sourceMode == "nautilus-ir";
 	if (debugInfo.emitDebugInfo() && hasRealLocations) {
-		// DIScopeForLLVMFuncOpPass walks an operation's inlined-call nesting
-		// and dereferences the file location of every level without checking
-		// that one was found, so a frame the inliner left without a source
-		// position -- routine for a materialized constant -- crashes the
-		// compile outright once a call chain is two or more hops deep. This
-		// drops exactly those frames and keeps the rest, at any depth.
+		// DIScopeForLLVMFuncOpPass dereferences the file location of an
+		// inlined-call frame without checking that one was found, at the first
+		// level and again at every level it recurses through. A frame the
+		// inliner left without a source position -- routine for a materialized
+		// constant -- therefore crashes the compile outright. This drops
+		// exactly those frames and keeps the rest, at any depth.
 		passManager.addPass(createNormalizeInlineLocationsPass());
 		// Full emission (not the default LineTablesOnly) is only needed
 		// when stepping: it keeps the DILocalVariables / dbg.value records
