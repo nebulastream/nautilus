@@ -2,6 +2,7 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/debug/EmitDbgValuePass.hpp"
+#include "nautilus/compiler/backends/mlir/debug/NormalizeInlineLocationsPass.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
@@ -42,14 +43,14 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	const bool debugEnabled = debugInfo.enableDebug;
 	// Tier 1 ("nautilus-ir" mode) depends on FileLineColLocs attached by
 	// MLIRLoweringProvider that reference positions in the Nautilus IR dump.
-	// MLIR's inliner rewrites locations into inlinedAt chains; the
-	// interaction with a non-MLIR source file is validated for perf-only use
-	// (region ops already produce CallSiteLoc chains -- see docs/region.md --
-	// so inlining one function into another nests one inlinedAt chain inside
-	// another, which is exactly what a caller with regions plus a callee with
-	// regions looks like), but stepping wants predictable, un-inlined frames,
+	// MLIR's inliner rewrites locations into inlinedAt chains, one level per
+	// inlined hop, and a perf-only compile keeps the inliner: that nesting is
+	// what makes a profile attribute an inlined callee's time to where it was
+	// called from. Everything downstream therefore has to handle nesting of
+	// any depth -- see NormalizeInlineLocationsPass, added below, for what
+	// that costs. Stepping, by contrast, wants predictable un-inlined frames,
 	// so `enableDebug` alone -- not `emitDebugInfo()` -- keeps the skip for a
-	// debugger session. A perf-only compile keeps the inliner.
+	// debugger session.
 	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
 
 	if (!skipInliner) {
@@ -100,6 +101,13 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	// just emit an empty line table.
 	const bool hasRealLocations = debugEnabled || debugInfo.sourceMode == "nautilus-ir";
 	if (debugInfo.emitDebugInfo() && hasRealLocations) {
+		// DIScopeForLLVMFuncOpPass walks an operation's inlined-call nesting
+		// and dereferences the file location of every level without checking
+		// that one was found, so a frame the inliner left without a source
+		// position -- routine for a materialized constant -- crashes the
+		// compile outright once a call chain is two or more hops deep. This
+		// drops exactly those frames and keeps the rest, at any depth.
+		passManager.addPass(createNormalizeInlineLocationsPass());
 		// Full emission (not the default LineTablesOnly) is only needed
 		// when stepping: it keeps the DILocalVariables / dbg.value records
 		// EmitDbgValuePass is about to insert for `$N`. A perf-only compile

@@ -171,6 +171,11 @@ val<int64_t> nestedThenBranch(val<int64_t> x) {
 }
 ```
 
+Nesting is not depth-limited: every level reaches the debug info, so a chain
+like `query > operator > loop` shows all three frames in a GDB backtrace and all
+three in a perf symbol (`execute::query::operator::loop`). The same holds for a
+`region()` opened inside a Nautilus function that a caller inlines.
+
 ## Branches and loops inside a region
 
 Ordinary C++ control flow — `if`/`else`, `while`, `for` — works inside a region body exactly as it does anywhere else in a traced function:

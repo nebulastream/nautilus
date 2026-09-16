@@ -217,10 +217,21 @@ std::optional<std::filesystem::path> findJitDumpFile(const std::filesystem::path
 	return std::nullopt;
 }
 
-/// Compiles `perfCompositeKernel` once (rounds=1 -- this checks structure, not
-/// sampling volume) with the given option tweak, pointing JITDUMPDIR at a
+/// Compiles and runs `perfCompositeKernel` once (rounds=1 -- this checks
+/// structure, not sampling volume). The default subject of every test here;
+/// `compileWithJitDumpDir` takes another one for the kernels that exercise a
+/// specific nesting shape.
+void runCompositeKernel(NautilusEngine& engine) {
+	auto fn = engine.registerFunction(perfCompositeKernel);
+	std::vector<int64_t> data {1, -2, 3, -4, 5};
+	REQUIRE(fn(data.data(), static_cast<int32_t>(data.size()), 1) != 0);
+}
+
+/// Compiles @p kernel with the given option tweak, pointing JITDUMPDIR at a
 /// scratch directory of this call's own.
-std::optional<std::filesystem::path> compileWithJitDumpDir(const std::function<void(Options&)>& tweak) {
+std::optional<std::filesystem::path>
+compileWithJitDumpDir(const std::function<void(Options&)>& tweak,
+                      const std::function<void(NautilusEngine&)>& kernel = runCompositeKernel) {
 	const auto jitDumpDir =
 	    std::filesystem::temp_directory_path() / ("nautilus_perf_jitdump_" + std::to_string(::getpid()) + "_" +
 	                                              std::to_string(reinterpret_cast<uintptr_t>(&tweak)));
@@ -234,9 +245,7 @@ std::optional<std::filesystem::path> compileWithJitDumpDir(const std::function<v
 
 	{
 		NautilusEngine engine(options);
-		auto fn = engine.registerFunction(perfCompositeKernel);
-		std::vector<int64_t> data {1, -2, 3, -4, 5};
-		REQUIRE(fn(data.data(), static_cast<int32_t>(data.size()), 1) != 0);
+		kernel(engine);
 	}
 	// PerfSupportPlugin writes (and flushes) each record as the module links,
 	// so the file is complete before the engine above is even destroyed;
@@ -259,11 +268,17 @@ std::optional<std::filesystem::path> compileWithJitDumpDir(const std::function<v
 	return std::nullopt;
 }
 
-JitDump compilePerfJitDump(const std::function<void(Options&)>& tweak = [](Options& o) {
+/// The configuration docs/profiling.md recommends, and the one both bugs this
+/// file regression-tests are specific to: perf on, debug off, DWARF pointing
+/// into the Nautilus IR dump.
+void perfOnlyOptions(Options& o) {
 	o.setOption("mlir.perf.enable", true);
 	o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-}) {
-	auto path = compileWithJitDumpDir(tweak);
+}
+
+JitDump compilePerfJitDump(const std::function<void(Options&)>& tweak = perfOnlyOptions,
+                           const std::function<void(NautilusEngine&)>& kernel = runCompositeKernel) {
+	auto path = compileWithJitDumpDir(tweak, kernel);
 	REQUIRE(path.has_value());
 	auto parsed = parseJitDump(*path);
 	std::filesystem::remove(*path);
@@ -413,6 +428,77 @@ TEST_CASE("Perf jitdump: region() scopes are visible to perf") {
 	REQUIRE(namesAnyRegion("outer"));
 	REQUIRE(namesAnyRegion("hot"));
 	REQUIRE(namesAnyRegion("mix"));
+}
+
+TEST_CASE("Perf jitdump: region symbols stay qualified at arbitrary nesting depth") {
+	// Regression test for the silent half of #467. Up to two levels of region()
+	// nesting, `perf script` showed the qualified name the test above asserts;
+	// at three or more, *every* sample landing in that code reverted to the bare
+	// function name, with no error and no warning -- not the innermost level
+	// lost, the qualification gone entirely.
+	//
+	// The cause was in how a region chain was encoded as an MLIR Location.
+	// Nesting was expressed by fusing a level's NameLoc with its parent's chain,
+	// but FusedLoc::get() decomposes a nested FusedLoc whose metadata matches the
+	// metadata being built -- so fuse(inner, fuse(mid, top)) collapsed into one
+	// flat three-child FusedLoc, which no longer matched the two-child shape the
+	// reader expected, and the reader then fell back to "no region at all". Two
+	// levels never nested a FusedLoc in the first place, which is exactly why the
+	// boundary sat there. The chain is a CallSiteLoc chain now
+	// (RegionScopeInfo.hpp), which MLIR does not canonicalize at all.
+	//
+	// The fixture nests four deep so a fix that merely moved the boundary one
+	// level out would still fail here.
+	auto dump = compilePerfJitDump(perfOnlyOptions, [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(perfDeepRegionKernel);
+		std::vector<int64_t> data {1, -2, 3, -4, 5};
+		REQUIRE(fn(data.data(), static_cast<int32_t>(data.size())) != 0);
+	});
+	REQUIRE_FALSE(dump.codeLoads.empty());
+
+	// Outermost first, every level present: the qualification reads the way the
+	// source nests, so the innermost region's samples are attributable to the
+	// whole path rather than to whichever level survived.
+	const std::string fullyQualified = "::depth1::depth2::depth3::depth4";
+	INFO("jitdump symbols: " << [&] {
+		std::string all;
+		for (const auto& entry : dump.codeLoads) {
+			all += entry.name + " ";
+		}
+		return all;
+	}());
+	REQUIRE(std::any_of(dump.codeLoads.begin(), dump.codeLoads.end(),
+	                    [&](const CodeLoadEntry& e) { return e.name.find(fullyQualified) != std::string::npos; }));
+}
+
+TEST_CASE("Perf jitdump: a multi-hop internal call chain compiles") {
+	// Regression test for the crashing half of #467. Two or more hops of
+	// Nautilus-to-Nautilus calls (a helper calling a helper -- an entirely
+	// ordinary program shape) segfaulted the compile outright in exactly the
+	// configuration docs/profiling.md recommends, so any real program was
+	// unprofilable.
+	//
+	// A perf-only compile keeps the MLIR inliner, which records an inlined op's
+	// origin as CallSiteLoc(op, call site) and so nests one wrapper per hop.
+	// DIScopeForLLVMFuncOpPass walks that nesting and dereferences every level's
+	// file location without checking it found one -- and the inliner's own
+	// constant materialization leaves some levels with no source position at
+	// all. One hop survived only because the pass never recurses for it.
+	// NormalizeInlineLocationsPass now drops the position-less frames before
+	// that pass runs.
+	//
+	// The assertions past "it compiled at all" are deliberately thin: the point
+	// is that this configuration reaches a working jitdump, which the crash made
+	// impossible.
+	auto dump = compilePerfJitDump(perfOnlyOptions, [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(perfCallChainKernel);
+		std::vector<int64_t> data {1, 2, 3, 4, 5};
+		// perfChainLeaf(v) = 81v + 280, so perfChainTop(v) = 81v + 285;
+		// summed over 1..5 that is 81*15 + 5*285.
+		REQUIRE(fn(data.data(), static_cast<int32_t>(data.size())) == 2640);
+	});
+	REQUIRE_FALSE(dump.codeLoads.empty());
+	REQUIRE_FALSE(dump.debugInfos.empty());
 }
 
 TEST_CASE("Perf jitdump: a region is one symbol, not one per inlined callee") {

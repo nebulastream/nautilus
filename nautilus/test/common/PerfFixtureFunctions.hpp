@@ -62,4 +62,65 @@ inline val<int64_t> perfCompositeKernel(val<int64_t*> data, val<int32_t> len, va
 	return acc;
 }
 
+/// Four levels of region() nesting around one hot loop, with no internal calls at all.
+///
+/// Region nesting deeper than two levels used to lose its qualified perf symbol entirely -- not just
+/// the innermost level, but every level, leaving bare `execute` for every sample landing in the loop.
+/// Four levels (rather than the three that first exposed it) pins that the encoding is recursive
+/// rather than special-cased one level further out.
+inline val<int64_t> perfDeepRegionKernel(val<int64_t*> data, val<int32_t> len) {
+	val<int64_t> acc = 0;
+	region("depth1", [&]() {
+		region("depth2", [&]() {
+			region("depth3", [&]() {
+				region("depth4", [&]() {
+					for (val<int32_t> i = 0; i < len; i = i + 1) {
+						val<int64_t> v = data[i];
+						acc = acc * 3 + v;
+					}
+				});
+			});
+		});
+	});
+	return acc;
+}
+
+/// The far end of a three-hop internal call chain: kernel -> top -> mid -> leaf.
+///
+/// A single hop (a kernel calling one NautilusFunction that calls nothing further) is what the rest
+/// of this header already covers, and it happens to survive the debug-info pipeline; two or more hops
+/// nest the MLIR inliner's `CallSiteLoc` wrappers, which is the shape that used to crash the compile
+/// outright under a perf-only configuration. The loop keeps each level from folding into its caller
+/// before the inliner ever sees a call.
+inline val<int64_t> perfChainLeafBody(val<int64_t> x) {
+	val<int64_t> acc = x;
+	for (val<int32_t> i = 0; i < 4; i = i + 1) {
+		acc = acc * 3 + 7;
+	}
+	return acc;
+}
+
+inline NautilusFunction perfChainLeaf {"perfChainLeaf", perfChainLeafBody};
+
+inline val<int64_t> perfChainMidBody(val<int64_t> x) {
+	return perfChainLeaf(x) + 2;
+}
+
+inline NautilusFunction perfChainMid {"perfChainMid", perfChainMidBody};
+
+inline val<int64_t> perfChainTopBody(val<int64_t> x) {
+	return perfChainMid(x) + 3;
+}
+
+inline NautilusFunction perfChainTop {"perfChainTop", perfChainTopBody};
+
+inline val<int64_t> perfCallChainKernel(val<int64_t*> data, val<int32_t> len) {
+	val<int64_t> acc = 0;
+	for (val<int32_t> i = 0; i < len; i = i + 1) {
+		val<int64_t> v = data[i];
+		acc = acc + perfChainTop(v);
+	}
+	return acc;
+}
+
 } // namespace nautilus::engine
