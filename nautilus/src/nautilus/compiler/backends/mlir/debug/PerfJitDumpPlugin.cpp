@@ -2,15 +2,14 @@
 
 #if defined(__linux__)
 
-#include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <llvm/ADT/StringSet.h>
+#include <llvm/DebugInfo/DWARF/DWARFContext.h>
 #include <llvm/ExecutionEngine/JITLink/JITLink.h>
 #include <llvm/ExecutionEngine/Orc/Debugging/DebugInfoSupport.h>
 #include <llvm/ExecutionEngine/Orc/Shared/PerfSharedStructs.h>
 #include <llvm/Support/Process.h>
 #include <llvm/Support/Threading.h>
 #include <llvm/Support/raw_ostream.h>
-
 #include <string>
 #include <utility>
 #include <vector>
@@ -114,7 +113,7 @@ std::vector<CodeRange> computeCodeRanges(const llvm::jitlink::Symbol& symbol, ll
 	const auto sectionIndex = symbol.getBlock().getSection().getOrdinal();
 	const auto sectioned = llvm::object::SectionedAddress {address, sectionIndex};
 	auto table = dwarf->getLineInfoForAddressRange(sectioned, size,
-	                                              llvm::DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath);
+	                                               llvm::DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath);
 
 	if (table.empty()) {
 		ranges.push_back({address, address + size, name.str(), {}});
@@ -255,9 +254,8 @@ llvm::Error callVoidWrapper(llvm::orc::ExecutorProcessControl& epc, llvm::orc::E
 llvm::Error callBatchWrapper(llvm::orc::ExecutorProcessControl& epc, llvm::orc::ExecutorAddr address,
                              const PerfJITRecordBatch& batch) {
 	llvm::Error wrapperError = llvm::Error::success();
-	if (auto transportError =
-	        epc.callSPSWrapper<llvm::orc::shared::SPSError(llvm::orc::shared::SPSPerfJITRecordBatch)>(
-	            address, wrapperError, batch)) {
+	if (auto transportError = epc.callSPSWrapper<llvm::orc::shared::SPSError(llvm::orc::shared::SPSPerfJITRecordBatch)>(
+	        address, wrapperError, batch)) {
 		llvm::consumeError(std::move(wrapperError));
 		return transportError;
 	}

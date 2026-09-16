@@ -2,10 +2,10 @@
 
 #if defined(__linux__)
 
-#include <llvm/ExecutionEngine/Orc/Core.h>
-#include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
 #include <atomic>
 #include <cstdint>
+#include <llvm/ExecutionEngine/Orc/Core.h>
+#include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
 
 namespace nautilus::compiler::mlir {
 
