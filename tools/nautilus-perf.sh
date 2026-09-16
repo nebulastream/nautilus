@@ -96,16 +96,31 @@ flamegraph)
 	# "::"-qualified frame into one synthetic frame per "::"-separated
 	# prefix so those regions render as their own nested boxes instead of
 	# being flattened into the leaf's name.
+	#
+	# Region-qualified names are the only ones eligible for that split: a
+	# demangled C++/LLVM symbol also contains "::" (namespaces), and would
+	# get exploded into one synthetic frame per namespace component too if
+	# nothing told those two apart. What makes qualifiedName()s output
+	# (PerfJitDumpPlugin.cpp) distinguishable is that it is nothing but
+	# "::"-joined Nautilus function/region identifiers -- never a "(" for an
+	# argument list or a "<" for a template, both of which a real C++
+	# function signature almost always carries by the time perf's demangler
+	# is done with it. A frame carrying either is left as one frame.
 	perf script -i "$infile" | awk '
 		function flush_stack() {
 			if (n == 0) return
 			out = ""
 			for (i = n; i >= 1; i--) {
-				nparts = split(stack[i], parts, "::")
-				prefix = ""
-				for (j = 1; j <= nparts; j++) {
-					prefix = (j == 1) ? parts[j] : prefix "::" parts[j]
-					out = (out == "") ? prefix : out ";" prefix
+				frame = stack[i]
+				if (index(frame, "(") == 0 && index(frame, "<") == 0) {
+					nparts = split(frame, parts, "::")
+					prefix = ""
+					for (j = 1; j <= nparts; j++) {
+						prefix = (j == 1) ? parts[j] : prefix "::" parts[j]
+						out = (out == "") ? prefix : out ";" prefix
+					}
+				} else {
+					out = (out == "") ? frame : out ";" frame
 				}
 			}
 			counts[out]++
