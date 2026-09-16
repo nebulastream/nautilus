@@ -75,10 +75,46 @@ region, rather than being named separately -- naming it would split the
 region's code into alternating ranges, and perf does not recombine same-named
 ranges (it keys a symbol by address, not name).
 
+Want the nesting drawn as nesting -- a flame graph with `hot` stacked inside
+`outer` inside `execute`, rather than three rows side by side? `perf report`
+itself cannot do this natively: nothing in the jitdump protocol or the object
+`perf inject --jit` builds from it carries a scope tree for perf to nest
+frames in (see [Why not native nested frames](#why-not-native-nested-frames)
+below), so this has to be reconstructed downstream, from the `::`-qualified
+names above. `tools/nautilus-perf.sh flamegraph` does exactly that: it runs
+`perf script`, splits each `a::b::c` leaf frame back into stacked `a`, `a::b`,
+`a::b::c` levels, and folds the result into the input format
+[FlameGraph](https://github.com/brendangregg/FlameGraph)'s `flamegraph.pl` (or
+`inferno-flamegraph`) expects, rendering an SVG directly if either is on
+`PATH`.
+
+```sh
+tools/nautilus-perf.sh flamegraph perf.jit.data perf-flamegraph.svg
+```
+
 `perf annotate` attributes cycles down to individual Nautilus IR operations,
 including inside those region bodies -- per-op line numbers are preserved
 there; only each enclosing region *frame* shares one line, not the operations
 inside it (docs/region.md has the full explanation).
+
+### Why not native nested frames?
+
+Nothing about how Nautilus writes the jitdump could add this: `JIT_CODE_DEBUG_INFO`
+is defined as a flat `(address, line, column, file)` table, with no field for
+a scope tree, so a region can never come back as an actual inlined-subroutine
+DIE for `perf report --inline`, `addr2line -i`, or any other DWARF-aware
+consumer to expand -- the object `perf inject --jit` builds from that table
+only ever gets a synthetic `.debug_line`, never a `.debug_info`. And even a
+real scope tree would not put a region on its own row in a call-graph view:
+a region isn't a call, so there's no return address on the stack for the
+unwinder to stop at. The only way to change either of those would be to stop
+using the jitdump protocol altogether -- mapping each compiled function's
+code from a real on-disk ELF carrying the same DWARF `region()` already
+builds for `mlir.debug.enable`'s GDB path -- which trades away the reason
+jitdump was chosen here (no persistent per-compile object files) for a
+capability perf's own tooling doesn't have anyway (its unwinder still
+wouldn't stack a region as a frame). `tools/nautilus-perf.sh flamegraph`
+above gets you the nested picture without any of that.
 
 ## Caveats
 
