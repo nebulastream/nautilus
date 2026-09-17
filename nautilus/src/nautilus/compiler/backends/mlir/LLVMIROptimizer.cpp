@@ -22,10 +22,10 @@ int getOptimizationLevel(const engine::Options& options) {
 	// overwrites that register GDB reads the wrong value for the earlier
 	// variable.  -O0 skips those passes and keeps a one-to-one mapping
 	// between our dbg.value records and the values the user sees.  The
-	// explicit `mlir.optimizationLevel` option still takes precedence so
+	// explicit `optimizationLevel` option still takes precedence so
 	// a caller can override this for diagnostic purposes.
 	const int defaultLevel = debugInfoOptionsFromEngineOptions(options).enableDebug ? 0 : 3;
-	return options.getOptionOrDefault("mlir.optimizationLevel", defaultLevel);
+	return options.getOptionOrDefault("optimizationLevel", defaultLevel);
 }
 
 LLVMIROptimizer::LLVMIROptimizer() = default;

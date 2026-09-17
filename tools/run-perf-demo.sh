@@ -4,8 +4,8 @@
 # enabled, inject the jitdump into perf.data, and render both a `perf report` summary and a
 # nested-region flame graph via tools/nautilus-perf.sh.
 #
-# See docs/profiling.md for what mlir.perf.enable actually gets you and why each recipe step
-# (-k mono, engine.backend=mlir, mlir.debug.source_mode=nautilus-ir) is mandatory.
+# See docs/profiling.md for what perf actually gets you and why each recipe step
+# (-k mono, engine.backend=mlir) is mandatory.
 #
 # Usage:
 #   tools/run-perf-demo.sh [rounds] [len]

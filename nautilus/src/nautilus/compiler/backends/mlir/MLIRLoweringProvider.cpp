@@ -189,10 +189,10 @@ mlir::Location MLIRLoweringProvider::getNameLoc(const std::string& name) {
 	// RegionScopeInfo.hpp) — regardless of whether debug info is enabled,
 	// so a plain `dump.mlir` also carries readable region nesting.
 	if (locationMap_ == nullptr) {
-		// No map: "mlir" source mode, or debug info off entirely. Region
-		// nesting is unavailable here -- it is computed as part of the map --
-		// so a plain `dump.mlir` carries no region annotations unless
-		// `mlir.debug.enable` is set.
+		// No map: debug info is off entirely (neither `debug` nor `perf` is
+		// set). Region nesting is unavailable here -- it is computed as part
+		// of the map -- so a plain `dump.mlir` carries no region annotations
+		// unless one of them is.
 		auto baseLocation = mlir::FileLineColLoc::get(builder->getStringAttr("Query_1"), 0, 0);
 		return mlir::NameLoc::get(builder->getStringAttr(name), baseLocation);
 	}

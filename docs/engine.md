@@ -154,7 +154,7 @@ for (...) {
 
 Options have two scopes (see [options.md](options.md)): engine-wide options configure the built-once compiler
 (backend, tiers, promotion mode — these cannot change per module), while the per-compile *module* options
-(`dump.*`, `ir.*`, `mlir.optimizationLevel`, debug info, tracing flags, ...) can be overridden for an individual
+(`dump.*`, `ir.*`, `optimizationLevel`, debug info, tracing flags, ...) can be overridden for an individual
 module. A module inherits all engine-wide values and overrides only what it sets.
 
 Override options when creating the module, or with `setOption` before compiling:
@@ -162,7 +162,7 @@ Override options when creating the module, or with `setOption` before compiling:
 ```cpp
 // Engine-wide defaults
 engine::Options options;
-options.setOption("mlir.optimizationLevel", 3);
+options.setOption("optimizationLevel", 3);
 engine::NautilusEngine engine(options);
 
 // Module A inherits the engine defaults (optimizationLevel = 3)
@@ -172,7 +172,7 @@ auto compiledA = moduleA.compile();
 
 // Module B overrides a single option for itself only
 engine::ModuleOptions overrides;
-overrides.setOption("mlir.optimizationLevel", 0);
+overrides.setOption("optimizationLevel", 0);
 auto moduleB = engine.createModule(overrides);
 moduleB.registerFunction("execute", myFunc);
 auto compiledB = moduleB.compile();
@@ -224,7 +224,7 @@ These options control the output of intermediate representations at various stag
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `mlir.optimizationLevel` | `3` | Sets the optimization level for MLIR code generation (0--3). |
+| `optimizationLevel` | `3` | Sets the optimization level for MLIR code generation (0--3). |
 | `mlir.enableMultithreading` | `true` | Allows the MLIR backend to use multiple threads during compilation. |
 | `mlir.inline_invoke_calls` | `false` | Allows the MLIR backend to inline functions tagged with `NAUTILUS_INLINE`. |
 

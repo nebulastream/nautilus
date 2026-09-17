@@ -52,7 +52,7 @@ TEST_CASE("Per-module option overrides on a shared engine") {
 
 	// Override via createModule(overrides).
 	ModuleOptions overrides;
-	overrides.setOption("mlir.optimizationLevel", 0);
+	overrides.setOption("optimizationLevel", 0);
 	auto moduleA = engine.createModule(overrides);
 	moduleA.registerFunction("execute", lifecycleAddOne);
 	auto compiledA = moduleA.compile();
@@ -60,7 +60,7 @@ TEST_CASE("Per-module option overrides on a shared engine") {
 
 	// Override via NautilusModule::setOption after creation.
 	auto moduleB = engine.createModule();
-	moduleB.setOption("mlir.optimizationLevel", 3);
+	moduleB.setOption("optimizationLevel", 3);
 	moduleB.registerFunction("execute", lifecycleSum);
 	auto compiledB = moduleB.compile();
 	REQUIRE(compiledB.getFunction<int64_t(int64_t, int64_t)>("execute")(1, 2) == 3);

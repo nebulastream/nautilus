@@ -72,18 +72,18 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// fallback path before lowering ever reads it.
 	auto debugInfo = debugInfoOptionsFromEngineOptions(options);
 
-	// Prepare the Nautilus-IR "source file" used for debugging in
-	// "nautilus-ir" mode.  The file must exist before lowering runs so
-	// the FileLineColLocs attached by MLIRLoweringProvider point at real
-	// content that GDB/LLDB (or, in perf-only mode, `perf annotate`) can
-	// read.  `emitDebugInfo()` rather than `enableDebug`: a perf-only
-	// compile needs this file just as much as a debug one.
+	// Prepare the Nautilus-IR "source file" used for debugging. The file
+	// must exist before lowering runs so the FileLineColLocs attached by
+	// MLIRLoweringProvider point at real content that GDB/LLDB (or, in
+	// perf-only mode, `perf annotate`) can read.  `emitDebugInfo()` rather
+	// than `enableDebug`: a perf-only compile needs this file just as much
+	// as a debug one.
 	//
 	// computeIRLocations() must run after the last pass that mutates `ir`:
 	// it records where each operation lands in this rendering, and an
 	// operation minted or removed afterwards would invalidate every line.
 	std::shared_ptr<const ir::IRLocationMap> locationMap;
-	if (debugInfo.emitDebugInfo() && debugInfo.sourceMode == "nautilus-ir") {
+	if (debugInfo.emitDebugInfo()) {
 		// Normally computed by IRLocationPass as the pipeline's last pass and
 		// published on the graph. Falling back keeps a direct compileIR() call
 		// (one that never ran the pipeline's passes) working.
@@ -105,8 +105,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 			// the path is baked into every op's FileLineColLoc during
 			// lowering and cannot be patched up afterwards.
 			if (!out) {
-				const std::string ext = debugInfo.sourceMode == "nautilus-ir" ? "ir" : "mlir";
-				const auto fallback = debugSourceFallbackPath(ext);
+				const auto fallback = debugSourceFallbackPath("ir");
 				llvm::errs() << "nautilus: could not write debug source file '" << debugInfo.sourceFile
 				             << "'; falling back to '" << fallback << "'\n";
 				debugInfo.sourceFile = fallback;
@@ -117,7 +116,7 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	}
 
 	auto loweringProvider = std::make_unique<MLIRLoweringProvider>(context, options, intrinsicManager);
-	if (debugInfo.emitDebugInfo() && debugInfo.sourceMode == "nautilus-ir" && locationMap) {
+	if (debugInfo.emitDebugInfo() && locationMap) {
 		loweringProvider->setDebugInfo(debugInfo, locationMap);
 	}
 
@@ -175,11 +174,10 @@ std::unique_ptr<Executable> MLIRCompilationBackend::compile(const std::shared_pt
 	// the rest of the pipeline chose.
 	const auto jitCodeGenLevel =
 	    debugInfo.enableDebug ? llvm::CodeGenOptLevel::Less : llvm::CodeGenOptLevel::Aggressive;
-	auto engine = JITCompiler::jitCompileModule(mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
-	                                            loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel,
-	                                            debugInfo.enableDebug && debugInfo.registerWithDebugger,
-	                                            debugInfo.enablePerf, debugInfo.perfEmitDebugInfo,
-	                                            debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols);
+	auto engine = JITCompiler::jitCompileModule(
+	    mlirModule, optPipeline, loweringProvider->getJitProxyFunctionSymbols(),
+	    loweringProvider->getJitProxyTargetAddresses(), jitCodeGenLevel, debugInfo.enableDebug, debugInfo.enablePerf,
+	    debugInfo.perfEmitDebugInfo, debugInfo.perfEmitUnwindInfo, debugInfo.perfRegionSymbols);
 	if (options.getOptionOrDefault("mlir.eager_compilation", false)) {
 		auto result = engine->lookupPacked("execute");
 		if (!result) {

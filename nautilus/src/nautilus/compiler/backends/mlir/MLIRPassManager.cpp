@@ -12,7 +12,6 @@
 #include <mlir/Dialect/LLVMIR/Transforms/Passes.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/LocationSnapshot.h>
 #include <mlir/Transforms/Passes.h>
 
 namespace nautilus::compiler::mlir {
@@ -41,18 +40,15 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	mlir::PassManager passManager(module->getContext());
 
 	const bool debugEnabled = debugInfo.enableDebug;
-	// Tier 1 ("nautilus-ir" mode) depends on FileLineColLocs attached by
-	// MLIRLoweringProvider that reference positions in the Nautilus IR dump.
-	// MLIR's inliner rewrites locations into inlinedAt chains, one level per
-	// inlined hop, and a perf-only compile keeps the inliner: that nesting is
-	// what makes a profile attribute an inlined callee's time to where it was
-	// called from. It also leaves some frames with no source position at all,
-	// which the debug-info passes below must not be handed -- see
-	// NormalizeInlineLocationsPass. Stepping, by contrast, wants predictable
-	// un-inlined frames,
-	// so `enableDebug` alone -- not `emitDebugInfo()` -- keeps the skip for a
-	// debugger session.
-	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
+	// Debugging wants predictable, un-inlined frames to step through, so it
+	// skips the inliner entirely. A perf-only compile keeps it: MLIR's
+	// inliner rewrites locations into inlinedAt chains, one level per inlined
+	// hop, which is what lets a profile attribute an inlined callee's time to
+	// where it was called from -- the actual point of profiling
+	// production-optimized code. It also leaves some frames with no source
+	// position at all, which the debug-info passes below must not be handed
+	// -- see NormalizeInlineLocationsPass.
+	const bool skipInliner = debugEnabled;
 
 	if (!skipInliner) {
 		if (!optimizationPasses.empty()) {
@@ -64,16 +60,6 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 		}
 	}
 
-	// In "mlir" source mode the dumped-and-inlined MLIR is itself the
-	// "source".  LocationSnapshot writes the current IR to a file and
-	// rewrites every op's location to a FileLineColLoc pointing into that
-	// file, giving GDB a real file:line mapping to step through.
-	if (debugEnabled && debugInfo.sourceMode == "mlir") {
-		mlir::LocationSnapshotOptions snapshotOpts;
-		snapshotOpts.fileName = debugInfo.sourceFile;
-		passManager.addPass(mlir::createLocationSnapshot(snapshotOpts));
-	}
-
 	// Apply lowering passes.
 	passManager.addPass(mlir::createConvertMathToLLVMPass());
 	passManager.addPass(mlir::createConvertFuncToLLVMPass());
@@ -82,26 +68,11 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	passManager.addPass(mlir::createReconcileUnrealizedCastsPass());
 
 	// Materialize a DISubprogram on every llvm.func.  Required so that
-	// the FileLineColLocs attached above translate into valid DWARF line
-	// tables.  For "nautilus-ir" mode MLIRLoweringProvider may already
-	// have attached a DISubprogramAttr; this pass is a no-op on functions
-	// that already have one.
-	//
-	// NOT simply `emitDebugInfo()`: these passes need *real* per-op locations
-	// to fuse scopes onto, and there are only two sources of those --
-	// LocationSnapshot just above (`enableDebug`, either source mode) or
-	// MLIRLoweringProvider's locationMap_-driven FileLineColLocs
-	// (`sourceMode == "nautilus-ir"`, either axis). A perf-only compile in
-	// "mlir" mode has neither -- `mlir` source mode is explicitly out of
-	// scope for perf (see the issue) and MLIRCompilationBackend never calls
-	// setDebugInfo() for it -- so every op still carries the placeholder
-	// `Query_1`/line-0 location getNameLoc() falls back to. Running
-	// EmitDbgValuePass over that (fusing per-op scopes, wrapping region
-	// CallSiteLoc chains, building a `DILexicalBlockAttr` per block) produces
-	// malformed metadata -- verified to crash MLIR->LLVM translation, not
-	// just emit an empty line table.
-	const bool hasRealLocations = debugEnabled || debugInfo.sourceMode == "nautilus-ir";
-	if (debugInfo.emitDebugInfo() && hasRealLocations) {
+	// the FileLineColLocs MLIRLoweringProvider attached (from positions in
+	// the Nautilus IR dump) translate into valid DWARF line tables; it may
+	// already have attached a DISubprogramAttr itself, in which case this
+	// pass is a no-op on that function.
+	if (debugInfo.emitDebugInfo()) {
 		// DIScopeForLLVMFuncOpPass dereferences the file location of an
 		// inlined-call frame without checking that one was found, at the first
 		// level and again at every level it recurses through. A frame the

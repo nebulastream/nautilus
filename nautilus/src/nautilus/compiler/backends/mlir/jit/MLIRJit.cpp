@@ -54,7 +54,7 @@ void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
                         [[maybe_unused]] bool emitUnwindInfo, [[maybe_unused]] bool emitRegionSymbols) {
 #if defined(__linux__)
 	if (!targetTriple.isOSBinFormatELF()) {
-		llvm::errs() << "nautilus: mlir.perf.enable is set but the target is not ELF; perf jitdump support is "
+		llvm::errs() << "nautilus: perf is set but the target is not ELF; perf jitdump support is "
 		                "Linux/ELF-only and will be skipped.\n";
 		return;
 	}
@@ -71,7 +71,7 @@ void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
 	    llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl), emitDebugInfo, emitUnwindInfo,
 	    emitRegionSymbols));
 #else
-	llvm::errs() << "nautilus: mlir.perf.enable is set but perf jitdump support is Linux-only; skipping.\n";
+	llvm::errs() << "nautilus: perf is set but perf jitdump support is Linux-only; skipping.\n";
 #endif
 }
 
