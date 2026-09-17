@@ -72,9 +72,7 @@ int main(int argc, char* argv[]) {
 	options.setOption("engine.backend", std::string("mlir"));
 	// The whole point: attribution down to individual Nautilus IR operations and region()
 	// bodies, rather than to the post-inline MLIR module.
-	options.setOption("mlir.perf.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("mlir.debug.source_dir", std::string("."));
+	options.setOption("perf", true);
 
 	NautilusEngine engine(options);
 	auto function = engine.registerFunction(perfDemoKernel);

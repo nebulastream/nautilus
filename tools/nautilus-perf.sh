@@ -6,9 +6,7 @@
 # This script only drives `perf`; it cannot set Nautilus engine options for
 # you. Your application still has to configure the engine itself:
 #
-#   options.setOption("mlir.perf.enable", true);
-#   options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-#   options.setOption("mlir.debug.source_dir", std::string("."));
+#   options.setOption("perf", true);
 #   options.setOption("engine.backend", std::string("mlir"));
 #
 # Usage:
@@ -28,8 +26,8 @@ Usage:
 
 Environment:
   JITDUMPDIR   Where the jitdump file is written (default: current directory,
-               matching mlir.perf.enable's own default when mlir.debug.enable
-               is not also set). Must not be cleaned between record and report.
+               matching perf's own default when debug is not also set). Must
+               not be cleaned between record and report.
 EOF
 }
 
@@ -84,8 +82,8 @@ flamegraph)
 	# stacked frames: a region isn't a real call, so there's no return
 	# address to unwind through, and the jitdump's debug record is a flat
 	# line table with no scope tree for perf to nest frames in (see "What
-	# you get" in docs/profiling.md). mlir.perf.region_symbols (on by
-	# default) instead folds that nesting into the leaf symbol's own name --
+	# you get" in docs/profiling.md). Region-qualified symbol names (always on
+	# when perf is set) instead fold that nesting into the leaf symbol's own name --
 	# "execute::outer::hot" for a sample inside region "hot" nested in
 	# "outer". This reconstructs the nesting downstream of perf, where a
 	# name is all that survives: `perf script` prints one blank-line

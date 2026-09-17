@@ -29,7 +29,6 @@ struct DriverArgs {
 	bool enableLocalCSE = false;
 	bool enableStrengthReduction = false;
 	bool enableDwarf = false;
-	std::string mlirDebugSourceMode = "mlir";
 	int maxPipelineIterations = 4;
 };
 
@@ -49,11 +48,6 @@ DriverArgs parseArgs(int argc, char** argv) {
 			args.enableStrengthReduction = true;
 		} else if (arg == "--enable-dwarf") {
 			args.enableDwarf = true;
-		} else if (arg.starts_with("--mlir-debug-source-mode=")) {
-			args.mlirDebugSourceMode = arg.substr(25);
-			if (args.mlirDebugSourceMode != "mlir" && args.mlirDebugSourceMode != "nautilus-ir") {
-				args.mlirDebugSourceMode = "mlir";
-			}
 		} else if (arg.starts_with("--max-iterations=")) {
 			args.maxPipelineIterations = std::atoi(std::string(arg.substr(17)).c_str());
 			if (args.maxPipelineIterations < 1 || args.maxPipelineIterations > 8) {
@@ -124,8 +118,7 @@ int main(int argc, char** argv) {
 	}
 	if (args.enableDwarf) {
 		// Only consumed by the MLIR backend; harmless (ignored) on the others.
-		options.setOption("mlir.debug.enable", true);
-		options.setOption("mlir.debug.source_mode", args.mlirDebugSourceMode);
+		options.setOption("debug", true);
 	}
 
 	std::vector<playground::StatEntry> statistics;

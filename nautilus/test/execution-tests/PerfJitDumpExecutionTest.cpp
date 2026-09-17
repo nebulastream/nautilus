@@ -270,10 +270,9 @@ compileWithJitDumpDir(const std::function<void(Options&)>& tweak,
 
 /// The configuration docs/profiling.md recommends, and the one both bugs this
 /// file regression-tests are specific to: perf on, debug off, DWARF pointing
-/// into the Nautilus IR dump.
+/// into the Nautilus IR dump (the only source there is now).
 void perfOnlyOptions(Options& o) {
-	o.setOption("mlir.perf.enable", true);
-	o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	o.setOption("perf", true);
 }
 
 JitDump compilePerfJitDump(const std::function<void(Options&)>& tweak = perfOnlyOptions,
@@ -319,9 +318,9 @@ TEST_CASE("Perf jitdump: JIT_CODE_LOAD records name every compiled function") {
 
 TEST_CASE("Perf jitdump: JIT_CODE_DEBUG_INFO carries a multi-line line table") {
 	// Guards against the trap in Finding 1a of the perf jitdump issue:
-	// skipping debug-info emission under `mlir.perf.enable` would still
-	// produce JIT_CODE_LOAD records, just with no JIT_CODE_DEBUG_INFO
-	// alongside -- symbols with no source attribution, silently.
+	// skipping debug-info emission under `perf` would still produce
+	// JIT_CODE_LOAD records, just with no JIT_CODE_DEBUG_INFO alongside --
+	// symbols with no source attribution, silently.
 	auto dump = compilePerfJitDump();
 	REQUIRE_FALSE(dump.debugInfos.empty());
 
@@ -572,36 +571,6 @@ TEST_CASE("Perf jitdump: a region is one symbol, not one per inlined callee") {
 	}
 }
 
-TEST_CASE("Perf jitdump: emit_debug_info=false omits JIT_CODE_DEBUG_INFO") {
-	auto dump = compilePerfJitDump([](Options& o) {
-		o.setOption("mlir.perf.enable", true);
-		o.setOption("mlir.perf.emit_debug_info", false);
-	});
-	REQUIRE_FALSE(dump.codeLoads.empty());
-	REQUIRE(dump.debugInfos.empty());
-}
-
-TEST_CASE("Perf jitdump: mlir source mode is out of scope for perf but does not crash") {
-	// Regression test: `mlir` source mode never gets a locationMap_ from
-	// MLIRLoweringProvider::setDebugInfo() (MLIRCompilationBackend only calls
-	// it for "nautilus-ir"), so every op keeps the placeholder
-	// Query_1/line-0 location getNameLoc() falls back to. Once
-	// DIScopeForLLVMFuncOpPass + EmitDbgValuePass were changed to run
-	// whenever *any* debug info is wanted (`emitDebugInfo()`) rather than
-	// only for a real debugger session, this combination -- perf enabled,
-	// source mode left at its "mlir" default -- started running those
-	// passes over that placeholder metadata and crashed MLIR->LLVM
-	// translation. The fix additionally requires real per-op locations
-	// (`enableDebug`, which drives LocationSnapshot for "mlir" mode, or
-	// `sourceMode == "nautilus-ir"`) before running them; this compiles
-	// (rather than crashing) and simply produces no source attribution,
-	// which is the documented, acceptable outcome for an out-of-scope
-	// source mode.
-	auto dump = compilePerfJitDump([](Options& o) { o.setOption("mlir.perf.enable", true); });
-	REQUIRE_FALSE(dump.codeLoads.empty());
-	REQUIRE(dump.debugInfos.empty());
-}
-
 TEST_CASE("Perf jitdump: the four debug/perf cells all compile") {
 	// debug=false, perf=false: the default, no jitdump at all.
 	REQUIRE_FALSE(compileWithJitDumpDir([](Options&) {}).has_value());
@@ -609,7 +578,7 @@ TEST_CASE("Perf jitdump: the four debug/perf cells all compile") {
 	// debug=true, perf=false: unchanged pre-existing behavior (exhaustively
 	// covered by DebugInfoExecutionTest.cpp); confirm perf support itself
 	// stays off.
-	REQUIRE_FALSE(compileWithJitDumpDir([](Options& o) { o.setOption("mlir.debug.enable", true); }).has_value());
+	REQUIRE_FALSE(compileWithJitDumpDir([](Options& o) { o.setOption("debug", true); }).has_value());
 
 	// debug=false, perf=true: perf-only, keeps optimizing, still gets a real
 	// jitdump line table (the point of this whole feature).
@@ -625,9 +594,8 @@ TEST_CASE("Perf jitdump: the four debug/perf cells all compile") {
 	// combination prints.
 	{
 		auto dump = compilePerfJitDump([](Options& o) {
-			o.setOption("mlir.debug.enable", true);
-			o.setOption("mlir.perf.enable", true);
-			o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+			o.setOption("debug", true);
+			o.setOption("perf", true);
 		});
 		REQUIRE_FALSE(dump.codeLoads.empty());
 		REQUIRE_FALSE(dump.debugInfos.empty());
@@ -649,15 +617,14 @@ TEST_CASE("Perf jitdump: debug+perf together warns at most once per process") {
 	std::unique_ptr<void, decltype(restoreCerr)> cerrGuard(&captured, restoreCerr);
 
 	auto tweak = [](Options& o) {
-		o.setOption("mlir.debug.enable", true);
-		o.setOption("mlir.perf.enable", true);
-		o.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+		o.setOption("debug", true);
+		o.setOption("perf", true);
 	};
 	(void) compileWithJitDumpDir(tweak);
 	(void) compileWithJitDumpDir(tweak);
 
 	const std::string output = captured.str();
-	const std::string needle = "mlir.debug.enable and mlir.perf.enable are both set";
+	const std::string needle = "debug and perf are both set";
 	size_t count = 0;
 	for (size_t pos = output.find(needle); pos != std::string::npos; pos = output.find(needle, pos + needle.size())) {
 		++count;

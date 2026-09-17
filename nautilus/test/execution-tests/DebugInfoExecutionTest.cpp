@@ -435,40 +435,68 @@ DebugIr parseDebugIr(std::string text) {
 
 using OptionTweak = std::function<void(Options&)>;
 
-/// Options with debug info on and the Nautilus-IR dump as the DWARF source --
-/// the configuration every metadata test in this file needs.
+/// Options with debug info on -- the configuration every metadata test in
+/// this file needs. The Nautilus-IR dump is always the DWARF source; there
+/// is no other mode to choose.
 Options debugOptions(const OptionTweak& tweak = {}) {
 	Options options;
 	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("debug", true);
 	if (tweak) {
 		tweak(options);
 	}
 	return options;
 }
 
-/// Compiles through @p body with the DWARF "source" file written to a path of
-/// this test's own, and returns what landed there.
+/// Runs @p body and returns the `nautilus_debug_*.<extension>` files that
+/// appeared under any of @p dirs while it ran. The source file's name can no
+/// longer be pinned (it is always synthesized), and a perf-only compile
+/// writes it to the working directory rather than the temp directory (see
+/// DebugInfoOptions.cpp), so callers that do not care which of the two it
+/// landed in scan both.
 template <typename Body>
-std::string compileDebugSource(const std::string& extension, Body&& body, const OptionTweak& tweak = {}) {
-	const auto sourcePath = (std::filesystem::temp_directory_path() /
-	                         ("nautilus_debug_source_" + std::to_string(::getpid()) + "." + extension))
-	                            .string();
-	std::filesystem::remove(sourcePath);
-
-	auto options = debugOptions([&](Options& o) {
-		o.setOption("mlir.debug.source_file", sourcePath);
-		if (tweak) {
-			tweak(o);
+std::vector<std::filesystem::path> newDebugSourceFiles(const std::vector<std::filesystem::path>& dirs,
+                                                       const std::string& extension, Body&& body) {
+	std::map<std::filesystem::path, std::set<std::filesystem::path>> before;
+	for (const auto& dir : dirs) {
+		if (std::filesystem::exists(dir)) {
+			for (const auto& e : std::filesystem::directory_iterator(dir)) {
+				before[dir].insert(e.path());
+			}
 		}
-	});
-	NautilusEngine engine(options);
-	body(engine);
+	}
+	body();
+	std::vector<std::filesystem::path> created;
+	for (const auto& dir : dirs) {
+		if (!std::filesystem::exists(dir)) {
+			continue;
+		}
+		for (const auto& e : std::filesystem::directory_iterator(dir)) {
+			if (!before[dir].count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
+			    e.path().extension() == "." + extension) {
+				created.push_back(e.path());
+			}
+		}
+	}
+	return created;
+}
 
-	REQUIRE(std::filesystem::exists(sourcePath));
-	auto contents = readFile(sourcePath);
-	std::filesystem::remove(sourcePath);
+/// Compiles through @p body with debug info on and returns the contents of
+/// the synthesized DWARF "source" file (the Nautilus IR dump).
+template <typename Body>
+std::string compileDebugSource(Body&& body, const OptionTweak& tweak = {}) {
+	auto options = debugOptions(tweak);
+	auto created =
+	    newDebugSourceFiles({std::filesystem::temp_directory_path(), std::filesystem::current_path()}, "ir", [&]() {
+		    NautilusEngine engine(options);
+		    body(engine);
+	    });
+
+	REQUIRE_FALSE(created.empty());
+	auto contents = readFile(created.front().string());
+	for (const auto& path : created) {
+		std::filesystem::remove(path);
+	}
 	return contents;
 }
 
@@ -483,48 +511,44 @@ template <typename Body>
 DebugIr compileDebugIr(const std::string& functionName, Body&& body, const OptionTweak& tweak = {},
                        const std::string& dumpStage = "before_llvm_optimization") {
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
+	std::set<std::filesystem::path> existingDumps;
 	if (std::filesystem::exists(dumpRoot)) {
 		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
+			existingDumps.insert(e.path());
 		}
 	}
 
-	// A path of our own, so the Nautilus-IR dump the DWARF points at can be
-	// read back as part of the result instead of hunting for it.
-	static std::atomic<unsigned> sourceCounter {0};
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_test_" + std::to_string(::getpid()) + "_" +
-	                                               std::to_string(sourceCounter.fetch_add(1)) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
-
 	auto options = debugOptions([&](Options& o) {
 		o.setOption("dump." + dumpStage, true);
-		o.setOption("mlir.debug.source_file", sourcePath);
 		if (tweak) {
 			tweak(o);
 		}
 	});
-	NautilusEngine engine(options);
-	body(engine);
 
 	std::string sourceText;
-	if (std::filesystem::exists(sourcePath)) {
-		sourceText = readFile(sourcePath);
-		std::filesystem::remove(sourcePath);
+	std::string sourceMarker;
+	auto created =
+	    newDebugSourceFiles({std::filesystem::temp_directory_path(), std::filesystem::current_path()}, "ir", [&]() {
+		    NautilusEngine engine(options);
+		    body(engine);
+	    });
+	if (!created.empty()) {
+		sourceMarker = created.front().filename().string();
+		sourceText = readFile(created.front().string());
+		for (const auto& path : created) {
+			std::filesystem::remove(path);
+		}
 	}
 
-	// Candidates are matched on this compilation's own source-file path, which
+	// Candidates are matched on this compilation's own source-file name, which
 	// the module records in its DIFile. The dump root is shared by every test
 	// in the process and nearly every traced function lowers to `@execute`, so
 	// neither "whichever directory appeared" nor the function name alone can
 	// tell two concurrent tests apart.
 	const std::string marker = "@" + functionName + "(";
-	const std::string sourceMarker = std::filesystem::path(sourcePath).filename().string();
 	if (std::filesystem::exists(dumpRoot)) {
 		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
+			if (existingDumps.count(dir.path())) {
 				continue;
 			}
 			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
@@ -555,24 +579,8 @@ TEST_CASE("Debug info: disabled by default produces identical results") {
 	REQUIRE(fn(41) == 42);
 }
 
-TEST_CASE("Debug info: MLIR source mode writes a snapshot file and compiles") {
-	// LocationSnapshot writes the post-inline MLIR to the configured path. It
-	// must be non-empty and contain the func symbol, so gdb/lldb can resolve
-	// breakpoints against its lines.
-	const auto contents = compileDebugSource(
-	    "mlir",
-	    [](NautilusEngine& engine) {
-		    auto fn = engine.registerFunction(debugAddOne);
-		    REQUIRE(fn(41) == 42);
-	    },
-	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); });
-
-	REQUIRE_FALSE(contents.empty());
-	REQUIRE(contents.find("func.func") != std::string::npos);
-}
-
-TEST_CASE("Debug info: Nautilus IR source mode emits the IR dump as the source file") {
-	const auto contents = compileDebugSource("ir", [](NautilusEngine& engine) {
+TEST_CASE("Debug info: emits the Nautilus IR dump as the source file") {
+	const auto contents = compileDebugSource([](NautilusEngine& engine) {
 		auto fn = engine.registerFunction(debugSumThree);
 		REQUIRE(fn(1, 2, 3) == 6);
 	});
@@ -583,18 +591,8 @@ TEST_CASE("Debug info: Nautilus IR source mode emits the IR dump as the source f
 	REQUIRE(contents.find("//nautilus") != std::string::npos);
 }
 
-TEST_CASE("Debug info: default source path is synthesized when none provided") {
-	auto options = debugOptions();
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-}
-
 TEST_CASE("Debug info: the synthesized source file lands in the temp directory") {
-	// The default keeps generated files out of the user's tree. An IDE that
-	// cannot open a $TMPDIR path -- on macOS a /var/folders/... one, outside
-	// its source roots -- points `mlir.debug.source_dir` somewhere it can.
+	// The default keeps generated files out of the user's tree.
 	const auto tempDir = std::filesystem::temp_directory_path();
 	std::set<std::filesystem::path> before;
 	for (const auto& e : std::filesystem::directory_iterator(tempDir)) {
@@ -631,42 +629,6 @@ TEST_CASE("Debug info: the synthesized source file lands in the temp directory")
 	for (const auto& path : inTemp) {
 		std::filesystem::remove(path);
 	}
-}
-
-TEST_CASE("Debug info: source_dir redirects the synthesized source file") {
-	const auto dir = std::filesystem::temp_directory_path() / ("nautilus_src_dir_" + std::to_string(::getpid()));
-	std::filesystem::remove_all(dir);
-	std::filesystem::create_directories(dir);
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.source_dir", dir.string());
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator {}) > 0);
-	std::filesystem::remove_all(dir);
-}
-
-TEST_CASE("Debug info: a relative source_file is recorded as an absolute path") {
-	// A relative name in the DWARF would be resolved against DW_AT_comp_dir,
-	// which for a JIT module is not a directory the user controls — the
-	// debugger then reports the source as missing.
-	const auto relative = "nautilus_relative_" + std::to_string(::getpid()) + ".ir";
-	const auto expected = std::filesystem::current_path() / relative;
-	std::filesystem::remove(expected);
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.source_file", relative);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(std::filesystem::exists(expected));
-	// The IR dump names itself by the absolute path the DWARF points at.
-	std::filesystem::remove(expected);
 }
 
 // The GDB JIT interface: the debugger sets a breakpoint on
@@ -719,21 +681,7 @@ TEST_CASE("Debug info: JIT-linked objects are registered with the debugger") {
 	REQUIRE(jitDebugEntryCount() > before);
 }
 
-TEST_CASE("Debug info: debugger registration can be disabled") {
-	const auto before = jitDebugEntryCount();
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.register_with_debugger", false);
-	options.setOption("mlir.eager_compilation", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(jitDebugEntryCount() == before);
-}
-
-TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N DILocalVariable") {
+TEST_CASE("Debug info: emits alloca + dbg.declare for each $N DILocalVariable") {
 	// Each `$N` is a shadow alloca with a dbg.declare pointing at it (see
 	// EmitDbgValuePass). Both the DILocalVariable metadata and the debug
 	// record have to survive MLIR->LLVM translation.
@@ -755,12 +703,12 @@ TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N D
 }
 
 TEST_CASE("Debug info: perf-only mode gets a line table but no $N shadow allocas") {
-	// mlir.perf.enable alone (mlir.debug.enable off) is Axis B off / Axis A
-	// on: MLIRLoweringProvider only ever creates a $N shadow alloca (and the
-	// dbg.declare/dbg.value machinery this test's sibling above checks for)
-	// when `enableDebug` clamps for stepping, so a perf-only compile should
-	// keep the codegen-distorting side of debug info off entirely while
-	// still getting a real DISubprogram line table for jitdump to read.
+	// perf alone (debug off) is Axis B off / Axis A on: MLIRLoweringProvider
+	// only ever creates a $N shadow alloca (and the dbg.declare/dbg.value
+	// machinery this test's sibling above checks for) when `enableDebug`
+	// clamps for stepping, so a perf-only compile should keep the
+	// codegen-distorting side of debug info off entirely while still getting
+	// a real DISubprogram line table for jitdump to read.
 	auto ir = compileDebugIr(
 	    "execute",
 	    [](NautilusEngine& engine) {
@@ -768,8 +716,8 @@ TEST_CASE("Debug info: perf-only mode gets a line table but no $N shadow allocas
 		    REQUIRE(fn(1, 2, 3) == 6);
 	    },
 	    [](Options& options) {
-		    options.setOption("mlir.debug.enable", false);
-		    options.setOption("mlir.perf.enable", true);
+		    options.setOption("debug", false);
+		    options.setOption("perf", true);
 	    });
 
 	REQUIRE_FALSE(ir.subprograms.empty());
@@ -790,13 +738,12 @@ TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
 		    auto fn = engine.registerFunction(debugAddOne);
 		    REQUIRE(fn(5) == 6);
 	    },
-	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); },
-	    "after_llvm_generation");
+	    {}, "after_llvm_generation");
 
 	REQUIRE(ir.contains("DICompileUnit"));
 }
 
-TEST_CASE("Debug info: nautilus-ir mode emits DISubprogram with non-zero line") {
+TEST_CASE("Debug info: emits DISubprogram with non-zero line") {
 	// `line: 0` on a subprogram means "no source position", which costs the
 	// function its entry in a debugger's line table.
 	auto ir = compileDebugIr(
