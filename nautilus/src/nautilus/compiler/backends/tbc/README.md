@@ -176,8 +176,9 @@ Other options: `tbc.dispatch` (see above), `tbc.stackSizeKb` (default 1024),
 
 - The whole execution/val/tracing suite runs on `tbc` via
   `test/common/ExecutionTest.hpp::availableBackends()`.
-- `test/execution-tests/TBCDispatchModeTest.cpp` pins every dispatch skin ×
-  lowering-option combination against a de-optimized switch reference.
+- `test/execution-tests/backends/tbc/TBCDispatchModeTest.cpp` pins every
+  dispatch skin × lowering-option combination against a de-optimized switch
+  reference.
 - The differential fuzz harness (`test/fuzz/Harness.hpp`) includes `tbc`,
   continuously cross-checking it against the interpreter and all other
   backends.
