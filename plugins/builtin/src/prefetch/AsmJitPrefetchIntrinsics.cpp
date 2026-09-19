@@ -121,7 +121,7 @@ public:
 };
 
 void AsmJitPrefetchIntrinsicPlugin::registerIntrinsics(AsmJitIntrinsicManager& manager) {
-	using namespace nautilus::detail;
+	using namespace nautilus::builtin::detail;
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_none), handlePrefetch<PrefetchMode::ReadNone>);
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_low), handlePrefetch<PrefetchMode::ReadLow>);
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_moderate),

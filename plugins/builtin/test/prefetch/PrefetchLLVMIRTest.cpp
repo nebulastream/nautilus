@@ -8,6 +8,8 @@
 
 namespace nautilus::engine {
 
+using namespace nautilus::builtin;
+
 // ============================================================================
 // LLVM IR tests for prefetch().
 //

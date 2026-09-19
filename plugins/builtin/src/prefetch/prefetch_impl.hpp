@@ -7,7 +7,7 @@
 // plugins key their lowering on (see MLIRPrefetchIntrinsics.cpp and
 // AsmJitPrefetchIntrinsics.cpp). Defined in prefetch.cpp.
 
-namespace nautilus::detail {
+namespace nautilus::builtin::detail {
 
 extern "C" void nautilus_prefetch_read_none(const void* address);
 extern "C" void nautilus_prefetch_read_low(const void* address);
@@ -18,4 +18,4 @@ extern "C" void nautilus_prefetch_write_low(const void* address);
 extern "C" void nautilus_prefetch_write_moderate(const void* address);
 extern "C" void nautilus_prefetch_write_high(const void* address);
 
-} // namespace nautilus::detail
+} // namespace nautilus::builtin::detail

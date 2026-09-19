@@ -7,6 +7,8 @@
 
 namespace nautilus::engine {
 
+using namespace nautilus::builtin;
+
 // ============================================================================
 // Test Functions
 //

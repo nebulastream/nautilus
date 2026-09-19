@@ -3,7 +3,7 @@
 #include <nautilus/val.hpp>
 #include <nautilus/val_ptr.hpp>
 
-namespace nautilus {
+namespace nautilus::builtin {
 
 /// Whether a prefetched cache line is expected to be read or written next.
 /// Mirrors the `rw` argument of GCC/Clang's `__builtin_prefetch`.
@@ -36,4 +36,4 @@ enum class PrefetchLocality {
 void prefetch(val<const void*> address, PrefetchRW rw = PrefetchRW::Read,
               PrefetchLocality locality = PrefetchLocality::High);
 
-} // namespace nautilus
+} // namespace nautilus::builtin

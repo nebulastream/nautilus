@@ -44,7 +44,7 @@ bool prefetchIntrinsic(std::unique_ptr<::mlir::OpBuilder>& builder, const compil
 } // namespace
 
 void MLIRPrefetchIntrinsicPlugin::registerIntrinsics(MLIRIntrinsicManager& manager) {
-	using namespace nautilus::detail;
+	using namespace nautilus::builtin::detail;
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_none), prefetchIntrinsic<0, 0>);
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_low), prefetchIntrinsic<0, 1>);
 	manager.addIntrinsic(reinterpret_cast<void*>(&nautilus_prefetch_read_moderate), prefetchIntrinsic<0, 2>);

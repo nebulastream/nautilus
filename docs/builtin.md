@@ -2,6 +2,8 @@
 
 ## Overview
 
+All builtins live in the `nautilus::builtin` namespace.
+
 The builtin plugin (`nautilus-builtin`) exposes compiler builtins that have no natural `val<T>` operator. Each builtin is a plain function that works on every backend: the MLIR and AsmJit backends lower it to a native instruction, all other backends (C++, bytecode, interpreter) call a portable fallback.
 
 Enable it with `-DENABLE_BUILTIN_PLUGIN=ON` (default), link `nautilus-builtin`, and include `<nautilus/builtin/plugin.hpp>` in one translation unit of your executable so the native lowerings are registered when `nautilus-builtin` is linked as a static library.
@@ -11,6 +13,8 @@ Enable it with `-DENABLE_BUILTIN_PLUGIN=ON` (default), link `nautilus-builtin`, 
 ```cpp
 #include <nautilus/builtin/plugin.hpp>
 #include <nautilus/builtin/prefetch/prefetch.hpp>
+
+using namespace nautilus::builtin;
 
 val<int64_t> sum(val<int64_t*> data, val<int64_t> count) {
     val<int64_t> sum = 0;

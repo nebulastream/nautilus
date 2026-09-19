@@ -14,7 +14,7 @@
 // toolchains (GCC 14+, Clang 19+) already guarantee.
 // ============================================================================
 
-namespace nautilus::detail {
+namespace nautilus::builtin::detail {
 
 extern "C" void nautilus_prefetch_read_none(const void* address) {
 	__builtin_prefetch(address, 0, 0);
@@ -48,9 +48,9 @@ extern "C" void nautilus_prefetch_write_high(const void* address) {
 	__builtin_prefetch(address, 1, 3);
 }
 
-} // namespace nautilus::detail
+} // namespace nautilus::builtin::detail
 
-namespace nautilus {
+namespace nautilus::builtin {
 
 void prefetch(val<const void*> address, PrefetchRW rw, PrefetchLocality locality) {
 	using PrefetchFn = void (*)(const void*);
@@ -66,4 +66,4 @@ void prefetch(val<const void*> address, PrefetchRW rw, PrefetchLocality locality
 	invoke<void, const void*>(table[static_cast<size_t>(rw)][static_cast<size_t>(locality)], address);
 }
 
-} // namespace nautilus
+} // namespace nautilus::builtin
