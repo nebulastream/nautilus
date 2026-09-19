@@ -10,13 +10,31 @@ namespace nautilus {
 #define SHOULD_TRACE() constexpr(false)
 #endif
 
+/// True for the 128-bit integer extension types (`__int128`). These are
+/// deliberately excluded from the generic arithmetic/fundamental concepts:
+/// Nautilus's type system and IR carry at most 64-bit values, so `int128` is
+/// handled by its own dedicated `val<__int128>` specialization (boxed + MLIR
+/// intrinsics) rather than the generic `val_arith` machinery.
+///
+/// The aliases are declared with `__extension__` because GCC's `-pedantic`
+/// rejects raw `__int128` type names even though it implements the type.
+namespace detail {
+__extension__ using int128_t = __int128;
+__extension__ using uint128_t = unsigned __int128;
+} // namespace detail
+
+template <typename T>
+concept is_nautilus_int128 = std::is_same_v<std::remove_cvref_t<T>, detail::int128_t> ||
+                             std::is_same_v<std::remove_cvref_t<T>, detail::uint128_t>;
+
 template <typename T>
 class val;
 
 template <typename T>
 concept is_integral_val = requires {
 	typename std::remove_reference_t<T>::basic_type; // Ensure T has a member type 'basic_type'
-	requires std::is_integral_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is integral
+	requires std::is_integral_v<typename std::remove_reference_t<T>::basic_type> &&
+	             !is_nautilus_int128<typename std::remove_reference_t<T>::basic_type>;
 };
 
 /// Excludes is_integral_val<T> (mirroring convertible_to_fundamental's
@@ -40,8 +58,8 @@ template <typename T>
 concept is_fundamental_val = requires {
 	typename std::remove_reference_t<T>::basic_type; // Ensure T has a member type 'basic_type'
 	requires !std::is_enum_v<typename std::remove_reference_t<T>::basic_type> &&
-	             std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type>; // Ensure 'basic_type' is
-	                                                                                     // integral
+	             std::is_fundamental_v<typename std::remove_reference_t<T>::basic_type> &&
+	             !is_nautilus_int128<typename std::remove_reference_t<T>::basic_type>;
 };
 
 template <typename T>
@@ -55,10 +73,11 @@ concept convertible_to_fundamental_val =
     is_fundamental_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;
 
 template <typename T>
-concept is_arithmetic = std::is_arithmetic_v<T>;
+concept is_arithmetic = std::is_arithmetic_v<T> && !is_nautilus_int128<T>;
 
 template <typename T>
-concept is_fundamental_convertable = std::is_fundamental_v<std::remove_cvref_t<T>> && !std::is_pointer_v<T>;
+concept is_fundamental_convertable =
+    std::is_fundamental_v<std::remove_cvref_t<T>> && !std::is_pointer_v<T> && !is_nautilus_int128<T>;
 
 template <typename T, typename ValT>
 concept convertible_to_integral_val = is_integral_val<ValT> && std::is_convertible_v<T, std::remove_cvref_t<ValT>>;
@@ -95,7 +114,7 @@ template <typename T>
 concept is_fundamental_ref = std::is_reference_v<T>;
 
 template <typename T>
-concept is_integral = std::is_integral_v<std::remove_cvref_t<T>>;
+concept is_integral = std::is_integral_v<std::remove_cvref_t<T>> && !is_nautilus_int128<T>;
 
 template <typename T>
 concept is_bool = std::is_same_v<T, bool>;
