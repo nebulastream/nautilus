@@ -2,6 +2,7 @@
 
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
 #include "nautilus/compiler/backends/mlir/debug/EmitDbgValuePass.hpp"
+#include "nautilus/compiler/backends/mlir/debug/NormalizeInlineLocationsPass.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
@@ -11,7 +12,6 @@
 #include <mlir/Dialect/LLVMIR/Transforms/Passes.h>
 #include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/LocationSnapshot.h>
 #include <mlir/Transforms/Passes.h>
 
 namespace nautilus::compiler::mlir {
@@ -39,13 +39,16 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
                                                 const DebugInfoOptions& debugInfo) {
 	mlir::PassManager passManager(module->getContext());
 
-	const bool debugEnabled = debugInfo.enable;
-	// Tier 1 ("nautilus-ir" mode) depends on FileLineColLocs attached by
-	// MLIRLoweringProvider that reference positions in the Nautilus IR dump.
-	// MLIR's inliner rewrites locations into inlinedAt chains and the
-	// interaction with a non-MLIR source file is not yet validated, so we
-	// skip the inliner in that mode to keep stepping predictable.
-	const bool skipInliner = debugEnabled && debugInfo.sourceMode == "nautilus-ir";
+	const bool debugEnabled = debugInfo.enableDebug;
+	// Debugging wants predictable, un-inlined frames to step through, so it
+	// skips the inliner entirely. A perf-only compile keeps it: MLIR's
+	// inliner rewrites locations into inlinedAt chains, one level per inlined
+	// hop, which is what lets a profile attribute an inlined callee's time to
+	// where it was called from -- the actual point of profiling
+	// production-optimized code. It also leaves some frames with no source
+	// position at all, which the debug-info passes below must not be handed
+	// -- see NormalizeInlineLocationsPass.
+	const bool skipInliner = debugEnabled;
 
 	if (!skipInliner) {
 		if (!optimizationPasses.empty()) {
@@ -57,16 +60,6 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 		}
 	}
 
-	// In "mlir" source mode the dumped-and-inlined MLIR is itself the
-	// "source".  LocationSnapshot writes the current IR to a file and
-	// rewrites every op's location to a FileLineColLoc pointing into that
-	// file, giving GDB a real file:line mapping to step through.
-	if (debugEnabled && debugInfo.sourceMode == "mlir") {
-		mlir::LocationSnapshotOptions snapshotOpts;
-		snapshotOpts.fileName = debugInfo.sourceFile;
-		passManager.addPass(mlir::createLocationSnapshot(snapshotOpts));
-	}
-
 	// Apply lowering passes.
 	passManager.addPass(mlir::createConvertMathToLLVMPass());
 	passManager.addPass(mlir::createConvertFuncToLLVMPass());
@@ -75,22 +68,32 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 	passManager.addPass(mlir::createReconcileUnrealizedCastsPass());
 
 	// Materialize a DISubprogram on every llvm.func.  Required so that
-	// the FileLineColLocs attached above translate into valid DWARF line
-	// tables.  For "nautilus-ir" mode MLIRLoweringProvider may already
-	// have attached a DISubprogramAttr; this pass is a no-op on functions
-	// that already have one.
-	if (debugEnabled) {
-		// Request Full emission (not the default LineTablesOnly) so
-		// the DWARF emitter keeps DILocalVariables / dbg.value
-		// records that EmitDbgValuePass is about to insert.  With
-		// LineTablesOnly, GDB sees line info but `info scope` / `p $N`
-		// report nothing.
+	// the FileLineColLocs MLIRLoweringProvider attached (from positions in
+	// the Nautilus IR dump) translate into valid DWARF line tables; it may
+	// already have attached a DISubprogramAttr itself, in which case this
+	// pass is a no-op on that function.
+	if (debugInfo.emitDebugInfo()) {
+		// DIScopeForLLVMFuncOpPass dereferences the file location of an
+		// inlined-call frame without checking that one was found, at the first
+		// level and again at every level it recurses through. A frame the
+		// inliner left without a source position -- routine for a materialized
+		// constant -- therefore crashes the compile outright. This drops
+		// exactly those frames and keeps the rest, at any depth.
+		passManager.addPass(createNormalizeInlineLocationsPass());
+		// Full emission (not the default LineTablesOnly) is only needed
+		// when stepping: it keeps the DILocalVariables / dbg.value records
+		// EmitDbgValuePass is about to insert for `$N`. A perf-only compile
+		// has no such records to keep, and jitdump only reads line tables,
+		// so LineTablesOnly is both sufficient and cheaper there.
 		mlir::LLVM::DIScopeForLLVMFuncOpPassOptions scopeOpts;
-		scopeOpts.emissionKind = mlir::LLVM::DIEmissionKind::Full;
+		scopeOpts.emissionKind =
+		    debugEnabled ? mlir::LLVM::DIEmissionKind::Full : mlir::LLVM::DIEmissionKind::LineTablesOnly;
 		passManager.addPass(mlir::LLVM::createDIScopeForLLVMFuncOpPass(scopeOpts));
 		// Emit llvm.intr.dbg.value intrinsics for each Nautilus SSA
-		// value so GDB/LLDB can resolve `p $N` at a breakpoint.  Must
-		// run after the subprogram pass because dbg.value's
+		// value so GDB/LLDB can resolve `p $N` at a breakpoint (when
+		// `enableDebug`), and/or fuse per-block and region() scopes onto
+		// every op so a line table exists at all (always, when this pass
+		// runs).  Must run after the subprogram pass because dbg.value's
 		// DILocalVariable requires a DISubprogram scope.
 		passManager.addPass(createEmitDbgValuePass());
 	}

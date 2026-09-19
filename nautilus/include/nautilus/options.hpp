@@ -18,7 +18,7 @@ class ModuleOptions;
  * Every Nautilus option can be defined here: it provides the engine-wide
  * defaults for the whole compilation pipeline. A subset of these options
  * (the per-compile "module" options such as `dump.*`, `ir.*`,
- * `mlir.optimizationLevel`, ...) can be overridden for an individual compiled
+ * `optimizationLevel`, ...) can be overridden for an individual compiled
  * module via @ref ModuleOptions, which a module inherits from the engine and
  * may override. The remaining options (`engine.backend`,
  * `engine.tier0/tier1.backend`, `engine.tiered.backgroundPromotion`,

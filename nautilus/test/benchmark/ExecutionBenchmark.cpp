@@ -1,9 +1,11 @@
 
+#include "PerfFixtureFunctions.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
 #include "nautilus/function.hpp"
 #include "nautilus/nautilus_function.hpp"
 #include <catch2/catch_all.hpp>
+#include <vector>
 #ifdef ENABLE_TBC_JIT
 namespace nautilus::compiler::tbc::jit {
 // Defined in libnautilus; gates the copy-and-patch benchmarks on builds
@@ -98,6 +100,23 @@ void runExternalCallBenchmark(Catch::Benchmark::Chronometer& meter, Options& opt
 	meter.measure([&] { return func(10000); });
 }
 
+// The Finding-7 fixture from the perf jitdump work (see
+// test/common/PerfFixtureFunctions.hpp): nested regions, an internal
+// Nautilus-to-Nautilus call, an external invoke() call, and a data-dependent
+// multi-block loop body -- the first fixture in this file with a
+// realistically composite shape rather than one isolating a single feature,
+// so it is worth tracking for compile time and runtime regardless of the
+// perf work it was built for.
+void runPerfCompositeBenchmark(Catch::Benchmark::Chronometer& meter, Options& options) {
+	auto engine = engine::NautilusEngine(options);
+	auto func = engine.registerFunction(perfCompositeKernel);
+	std::vector<int64_t> data(256);
+	for (size_t i = 0; i < data.size(); ++i) {
+		data[i] = static_cast<int64_t>(i) - 128;
+	}
+	meter.measure([&] { return func(data.data(), static_cast<int32_t>(data.size()), 50); });
+}
+
 static auto benchmarks =
     std::vector<std::tuple<std::string, std::function<void(Catch::Benchmark::Chronometer& meter, Options& options)>>> {
         {"add", runAddBenchmark},
@@ -105,6 +124,7 @@ static auto benchmarks =
         {"sum", runArraySumBenchmark},
         {"internalCall", runInternalCallBenchmark},
         {"externalCall", runExternalCallBenchmark},
+        {"perfComposite", runPerfCompositeBenchmark},
     };
 
 TEST_CASE("Execution Benchmark") {

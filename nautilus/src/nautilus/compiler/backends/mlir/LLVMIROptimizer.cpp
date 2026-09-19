@@ -22,10 +22,10 @@ int getOptimizationLevel(const engine::Options& options) {
 	// overwrites that register GDB reads the wrong value for the earlier
 	// variable.  -O0 skips those passes and keeps a one-to-one mapping
 	// between our dbg.value records and the values the user sees.  The
-	// explicit `mlir.optimizationLevel` option still takes precedence so
+	// explicit `optimizationLevel` option still takes precedence so
 	// a caller can override this for diagnostic purposes.
-	const int defaultLevel = debugInfoOptionsFromEngineOptions(options).enable ? 0 : 3;
-	return options.getOptionOrDefault("mlir.optimizationLevel", defaultLevel);
+	const int defaultLevel = debugInfoOptionsFromEngineOptions(options).enableDebug ? 0 : 3;
+	return options.getOptionOrDefault("optimizationLevel", defaultLevel);
 }
 
 LLVMIROptimizer::LLVMIROptimizer() = default;
@@ -61,9 +61,11 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 		// separate SSA values into the same physical register.
 		// `None` triggers fast-regalloc which spills everything to stack
 		// and breaks LLVM's DWARF emission for dbg.value expressions.
+		// Keyed on `enableDebug` alone: perf-only mode keeps the codegen
+		// level the IR optimizer above chose.
 		const auto debugInfoForCodegen = debugInfoOptionsFromEngineOptions(options);
-		targetMachinePtr->setOptLevel(debugInfoForCodegen.enable ? llvm::CodeGenOptLevel::Less
-		                                                         : llvm::CodeGenOptLevel::Aggressive);
+		targetMachinePtr->setOptLevel(debugInfoForCodegen.enableDebug ? llvm::CodeGenOptLevel::Less
+		                                                              : llvm::CodeGenOptLevel::Aggressive);
 
 		// Add target-specific attributes to all non-declaration functions in the module.
 		for (auto& func : *llvmIRModule) {
@@ -76,17 +78,26 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 			                                                  targetMachinePtr->getTargetFeatureString()));
 			func.addAttributeAtIndex(
 			    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
+			// At -O3 LLVM omits frame pointers by default, so the default
+			// frame-pointer-based unwinder (`perf record -g`) cannot walk out
+			// of a JIT frame into the host application's stack. Cheap, and
+			// makes the default `-g` work for a perf-enabled compile.
+			if (debugInfoForCodegen.enablePerf && debugInfoForCodegen.perfFramePointers) {
+				func.addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "frame-pointer", "all"));
+			}
 		}
 
 		// When debug info was requested during MLIR lowering, the translated
 		// LLVM module needs the `Debug Info Version` and `Dwarf Version` module
 		// flags so LLVM's codegen emits the DWARF sections that GDB's JIT
-		// interface reads.  MLIR's DebugTranslation only sets these when a
-		// DICompileUnit is present in the module; we defensively add them
-		// regardless so that a bare function with only FileLineColLocs still
-		// yields a valid line table.
+		// interface (and PerfSupportPlugin's DWARFContext) read.  MLIR's
+		// DebugTranslation only sets these when a DICompileUnit is present in
+		// the module; we defensively add them regardless so that a bare
+		// function with only FileLineColLocs still yields a valid line table.
+		// `emitDebugInfo()`: a perf-only compile needs these flags just as
+		// much as a debug one to get a DWARF line table at all.
 		const auto debugInfo = debugInfoOptionsFromEngineOptions(options);
-		if (debugInfo.enable) {
+		if (debugInfo.emitDebugInfo()) {
 			if (!llvmIRModule->getModuleFlag("Debug Info Version")) {
 				llvmIRModule->addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
 			}
