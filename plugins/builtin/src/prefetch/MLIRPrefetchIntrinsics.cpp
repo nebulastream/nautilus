@@ -8,7 +8,7 @@ namespace nautilus::compiler::mlir {
 // ============================================================================
 // MLIR Prefetch Intrinsic Plugin
 //
-// Intercepts the nautilus_prefetch_*_impl function pointers and replaces the
+// Intercepts the nautilus_prefetch_* function pointers and replaces the
 // call with LLVM's `llvm.prefetch` intrinsic (mlir::LLVM::Prefetch), so the
 // MLIR/LLVM pipeline emits a native prefetch instruction instead of a real
 // function call.

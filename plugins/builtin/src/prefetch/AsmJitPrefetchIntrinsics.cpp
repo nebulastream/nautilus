@@ -1,14 +1,13 @@
 // AsmJit prefetch intrinsic plugin. Mirrors plugins/simd/src/AsmJitVectorIntrinsics.cpp:
-// intercepts nautilus_prefetch_*_impl function-pointer ProxyCalls and
+// intercepts nautilus_prefetch_* function-pointer ProxyCalls and
 // replaces them with a single native prefetch instruction instead of a real
 // call.
 //
 // x86-64: locality is mapped onto the cache-level prefetch hints
-// (PREFETCHT0..2 / PREFETCHNTA for reads; PREFETCHW / PREFETCHWT1 for
-// writes, which only distinguish two locality levels). Prefetch opcodes the
-// host CPU does not implement are guaranteed by the x86 ISA to execute as
-// NOPs rather than fault or trap, so this mapping is always safe regardless
-// of the actual host CPU's feature set.
+// (PREFETCHT0..2 / PREFETCHNTA for reads). Writes use PREFETCHW, which has no
+// locality variants, when the host supports it and otherwise fall back to the
+// read hint of the same locality. Prefetch opcodes never fault, so the
+// mapping is safe on any host.
 //
 // AArch64: locality maps onto the PRFM instruction's cache-level/policy hint
 // (PLDL1..3KEEP for reads expected to be reused, PLDL1STRM for a read used
@@ -43,25 +42,37 @@ Gp argGp(IntrinsicCallContext& ctx, size_t idx) {
 	return std::get<Gp>(ctx.frame.getValue(ctx.call->getInputArguments()[idx]->getIdentifier()));
 }
 
+/// PREFETCHW is missing on pre-Broadwell Intel cores, where the opcode decodes as a NOP and the hint would be
+/// silently lost; on those hosts a write prefetch falls back to the read hint of the same locality (which still
+/// pulls the line into cache, just not in an exclusive state). This mirrors what clang does for
+/// `__builtin_prefetch(addr, 1, n)` without `-mprfchw`.
+bool hostHasPrefetchW() {
+	static const bool has = CpuInfo::host().features().x86().hasPREFETCHW();
+	return has;
+}
+
 template <PrefetchMode Mode>
 bool handlePrefetch(IntrinsicCallContext& ctx) {
 	auto& cc = ctx.cc;
 	auto mem = x86::ptr(argGp(ctx, 0));
-	if constexpr (Mode == PrefetchMode::ReadNone) {
+	constexpr bool is_write = Mode >= PrefetchMode::WriteNone;
+	if constexpr (is_write) {
+		if (hostHasPrefetchW()) {
+			cc.prefetchw(mem);
+			return true;
+		}
+	}
+	// Read hints (also the write fallback). Locality maps onto the cache level: 3 -> T0 (all levels), 2 -> T1,
+	// 1 -> T2, 0 -> NTA (minimise cache pollution).
+	constexpr int locality = static_cast<int>(Mode) % 4;
+	if constexpr (locality == 0) {
 		cc.prefetchnta(mem);
-	} else if constexpr (Mode == PrefetchMode::ReadLow) {
+	} else if constexpr (locality == 1) {
 		cc.prefetcht2(mem);
-	} else if constexpr (Mode == PrefetchMode::ReadModerate) {
+	} else if constexpr (locality == 2) {
 		cc.prefetcht1(mem);
-	} else if constexpr (Mode == PrefetchMode::ReadHigh) {
-		cc.prefetcht0(mem);
-	} else if constexpr (Mode == PrefetchMode::WriteNone || Mode == PrefetchMode::WriteLow) {
-		// x86 has no dedicated "no temporal locality" write-prefetch opcode;
-		// PREFETCHWT1 (bring to the T1/L2 cache level) is the closest lower-
-		// urgency alternative to plain PREFETCHW.
-		cc.prefetchwt1(mem);
 	} else {
-		cc.prefetchw(mem);
+		cc.prefetcht0(mem);
 	}
 	return true;
 }

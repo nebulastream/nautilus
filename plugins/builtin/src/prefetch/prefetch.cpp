@@ -1,6 +1,6 @@
 #include "prefetch_impl.hpp"
+#include <nautilus/builtin/prefetch/prefetch.hpp>
 #include <nautilus/function.hpp>
-#include <nautilus/prefetch/prefetch.hpp>
 
 // ============================================================================
 // Portable fallback implementations.
@@ -53,38 +53,17 @@ extern "C" void nautilus_prefetch_write_high(const void* address) {
 namespace nautilus {
 
 void prefetch(val<const void*> address, PrefetchRW rw, PrefetchLocality locality) {
-	using namespace detail;
-	if (rw == PrefetchRW::Read) {
-		switch (locality) {
-		case PrefetchLocality::None:
-			invoke<void, const void*>(nautilus_prefetch_read_none, address);
-			return;
-		case PrefetchLocality::Low:
-			invoke<void, const void*>(nautilus_prefetch_read_low, address);
-			return;
-		case PrefetchLocality::Moderate:
-			invoke<void, const void*>(nautilus_prefetch_read_moderate, address);
-			return;
-		case PrefetchLocality::High:
-			invoke<void, const void*>(nautilus_prefetch_read_high, address);
-			return;
-		}
-		return;
-	}
-	switch (locality) {
-	case PrefetchLocality::None:
-		invoke<void, const void*>(nautilus_prefetch_write_none, address);
-		return;
-	case PrefetchLocality::Low:
-		invoke<void, const void*>(nautilus_prefetch_write_low, address);
-		return;
-	case PrefetchLocality::Moderate:
-		invoke<void, const void*>(nautilus_prefetch_write_moderate, address);
-		return;
-	case PrefetchLocality::High:
-		invoke<void, const void*>(nautilus_prefetch_write_high, address);
-		return;
-	}
+	using PrefetchFn = void (*)(const void*);
+	// Indexed by [PrefetchRW][PrefetchLocality]. The (rw, locality) pair is
+	// resolved to a concrete function pointer at trace time; that pointer
+	// identity is what the backend intrinsic plugins key their lowering on.
+	static constexpr PrefetchFn table[2][4] = {
+	    {detail::nautilus_prefetch_read_none, detail::nautilus_prefetch_read_low,
+	     detail::nautilus_prefetch_read_moderate, detail::nautilus_prefetch_read_high},
+	    {detail::nautilus_prefetch_write_none, detail::nautilus_prefetch_write_low,
+	     detail::nautilus_prefetch_write_moderate, detail::nautilus_prefetch_write_high},
+	};
+	invoke<void, const void*>(table[static_cast<size_t>(rw)][static_cast<size_t>(locality)], address);
 }
 
 } // namespace nautilus

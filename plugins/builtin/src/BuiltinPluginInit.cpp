@@ -1,23 +1,23 @@
-// Static initializers that register the prefetch plugin's backend intrinsics
-// (MLIR and/or AsmJit) when the prefetch plugin library is loaded.
+// Static initializers that register the builtin plugin's backend intrinsics
+// (MLIR and/or AsmJit) when the builtin plugin library is loaded.
 //
-// Each per-backend TU is compiled in conditionally by plugins/prefetch/CMakeLists.txt
+// Each per-backend TU is compiled in conditionally by plugins/builtin/CMakeLists.txt
 // based on which backends are enabled, so the matching #ifdef blocks below
 // match the build set exactly.
 
 #include "nautilus/config.hpp"
 
 #ifdef ENABLE_MLIR_BACKEND
-#include "MLIRPrefetchIntrinsics.hpp"
+#include "prefetch/MLIRPrefetchIntrinsics.hpp"
 #endif
 
 #ifdef ENABLE_ASMJIT_BACKEND
-#include "AsmJitPrefetchIntrinsics.hpp"
+#include "prefetch/AsmJitPrefetchIntrinsics.hpp"
 #endif
 
 namespace {
-struct PrefetchIntrinsicRegistrar {
-	PrefetchIntrinsicRegistrar() {
+struct BuiltinIntrinsicRegistrar {
+	BuiltinIntrinsicRegistrar() {
 #ifdef ENABLE_MLIR_BACKEND
 		nautilus::compiler::mlir::RegisterMLIRPrefetchIntrinsicPlugin();
 #endif
@@ -26,5 +26,5 @@ struct PrefetchIntrinsicRegistrar {
 #endif
 	}
 };
-static PrefetchIntrinsicRegistrar registrar_;
+static BuiltinIntrinsicRegistrar registrar_;
 } // namespace

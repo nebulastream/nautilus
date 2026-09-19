@@ -1,7 +1,7 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
-#include "nautilus/prefetch/plugin.hpp"
-#include "nautilus/prefetch/prefetch.hpp"
+#include "nautilus/builtin/plugin.hpp"
+#include "nautilus/builtin/prefetch/prefetch.hpp"
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 
@@ -46,6 +46,26 @@ val<int64_t> fillWithWritePrefetch(val<int64_t*> data, val<int64_t> count) {
 		data[i] = i * 2;
 	}
 	return count;
+}
+
+/// Prefetches `distance` elements ahead of the read cursor, so the last
+/// iterations hint at addresses past the end of the array. Software-prefetch
+/// loops are written exactly like this, and it only works because prefetch
+/// hints never fault.
+val<int64_t> sumWithLookahead(val<int64_t*> data, val<int64_t> count) {
+	val<int64_t> sum = 0;
+	for (val<int64_t> i = 0; i < count; i = i + 1) {
+		prefetch(data + (i + 4096), PrefetchRW::Read, PrefetchLocality::Low);
+		sum = sum + data[i];
+	}
+	return sum;
+}
+
+/// Prefetches an address that is not mapped at all.
+val<int64_t> prefetchNull(val<int64_t> value) {
+	prefetch(val<const void*>(nullptr), PrefetchRW::Read, PrefetchLocality::None);
+	prefetch(val<const void*>(nullptr), PrefetchRW::Write, PrefetchLocality::High);
+	return value + 1;
 }
 
 // ============================================================================
@@ -101,6 +121,22 @@ void prefetchTests(engine::NautilusEngine& engine) {
 		}
 		auto f = engine.registerFunction(sumWithDefaultPrefetch);
 		REQUIRE(f(data, N) == expected);
+	}
+
+	SECTION("prefetch past the end of the array does not fault") {
+		int64_t data[N];
+		int64_t expected = 0;
+		for (int64_t i = 0; i < N; i++) {
+			data[i] = i;
+			expected += i;
+		}
+		auto f = engine.registerFunction(sumWithLookahead);
+		REQUIRE(f(data, N) == expected);
+	}
+
+	SECTION("prefetch of an unmapped address does not fault") {
+		auto f = engine.registerFunction(prefetchNull);
+		REQUIRE(f(41) == 42);
 	}
 
 	SECTION("write prefetch alongside actual stores") {
