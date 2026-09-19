@@ -11,11 +11,15 @@ namespace nautilus::compiler::tbc {
 /**
  * @brief Executable wrapper around a TBCProgram.
  *
- * Deliberately exposes NO native function pointer: fabricating one for an
- * interpreted function requires runtime-generated trampolines (bc uses
- * dyncallback), which allocate executable memory and are therefore forbidden
- * on iOS. Callers go through the GenericInvocable path instead, which the
- * Executable/Module machinery supports transparently.
+ * Every function has a real C function pointer available from the native
+ * closure built for it at compile time (see TBCClosure.hpp), returned by
+ * getInvocableFunctionPtr(). Under NAUTILUS_FFI_CLOSURES those closures use
+ * libffi static trampolines, so the pointers exist without any
+ * runtime-generated executable memory and the backend stays usable on iOS.
+ *
+ * hasInvocableFunctionPtr() is nonetheless false: the entry path stays on the
+ * GenericInvocable / invokeRaw route, which is ~1.4x faster per call than
+ * marshalling through the closure (see TBCExecutable.cpp).
  */
 class TBCExecutable : public Executable {
 public:

@@ -1,17 +1,19 @@
 
 
 if (ENABLE_TBC_BACKEND)
-    # Outgoing external calls are marshaled through dyncall (no dyncallback:
-    # the tbc backend never allocates executable memory).
+    # Outgoing external calls are marshaled through dyncall's forward-call VM,
+    # which builds call frames in data memory and never generates code. Incoming
+    # native entry points come from the shared NativeClosure component (wired up
+    # one directory above), whose libffi configuration is likewise codegen-free.
     target_link_libraries(nautilus PRIVATE dyncall_s)
 
     add_source_files(nautilus
             TBCBackend.cpp
+            TBCClosure.cpp
             TBCCode.cpp
             TBCExecutable.cpp
             TBCInterpreter.cpp
             TBCLoweringProvider.cpp
-            TBCTrampoline.cpp
             TBCVm.cpp
     )
 

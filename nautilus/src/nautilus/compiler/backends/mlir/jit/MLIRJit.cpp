@@ -1,5 +1,6 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
+#include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
@@ -84,6 +85,16 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		return jitOrErr.takeError();
 	}
 	auto jit = std::move(*jitOrErr);
+
+	// Installs the JITLink debug-object registration plugin, which notifies
+	// the debugger via __jit_debug_register_code once an object is linked.
+	// Emitting DWARF alone is not enough: without this the debugger never
+	// learns that the executable memory belongs to a module with line tables.
+	if (options.enableDebuggerSupport) {
+		if (auto err = llvm::orc::enableDebuggerSupport(*jit)) {
+			return err;
+		}
+	}
 
 	llvm::orc::ThreadSafeModule tsm(std::move(llvmModule), std::move(ctx));
 	if (options.transformer) {

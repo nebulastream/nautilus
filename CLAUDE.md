@@ -432,9 +432,9 @@ This is the authoritative formatting method and must be run for all code changes
 ./format.sh -i
 ```
 
-**Manual with clang-format-21:**
+**Manual with clang-format-22** (matches the CI `format-check` job — other supported versions in the 17-22 range may format some constructs differently):
 ```bash
-clang-format-21 -i src/file.cpp
+clang-format-22 -i src/file.cpp
 ```
 
 **Before Committing:**
@@ -545,7 +545,7 @@ test-category/
 ### CI/CD Pipeline (.github/workflows/)
 
 **PR/Push Workflow** (`pr.yml`):
-- **Format Check**: clang-format-18, newline validation
+- **Format Check**: clang-format-22, newline validation (runs `./format.sh` in a dedicated `format-check` job)
 - **Build Matrix**:
   - GCC 14, Clang 19, Clang 21
   - Ubuntu 24.04

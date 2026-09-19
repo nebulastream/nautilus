@@ -25,6 +25,13 @@ void TraceModule::setFunctionAttributes(const std::string& functionName,
 	}
 }
 
+void TraceModule::setFunctionLocation(const std::string& functionName, const SourceLocation& location) {
+	auto it = functions.find(functionName);
+	if (it != functions.end()) {
+		it->second.location = location;
+	}
+}
+
 void TraceModule::addFunctionDefinition(const std::string& functionName, const void* definition) {
 	if (definition == nullptr) {
 		return;
@@ -64,6 +71,11 @@ TraceModule::getFunctionAttributes(const std::string& functionName) const {
 	static const std::unordered_map<std::string, std::string> empty;
 	auto it = functions.find(functionName);
 	return it != functions.end() ? it->second.attributes : empty;
+}
+
+SourceLocation TraceModule::getFunctionLocation(const std::string& functionName) const {
+	auto it = functions.find(functionName);
+	return it != functions.end() ? it->second.location : SourceLocation {};
 }
 
 std::string TraceModule::toString() const {
@@ -144,6 +156,20 @@ bool ExecutionTrace::checkTag(Snapshot& snapshot) {
 	return true;
 }
 
+void ExecutionTrace::addJumpOperation(Snapshot& snapshot, uint32_t targetBlock) {
+	if (blocks.empty()) {
+		createBlock();
+	}
+	auto& operations = blocks[currentBlockIndex]->operations;
+	auto op = Op::JMP;
+	auto* jump =
+	    makeTraceOp(*arena, snapshot, op, Type::v, TypedValueRef(0, Type::v), arena->create<BlockRef>(targetBlock));
+	jump->regionIndex = currentRegion;
+	operations.push_back(jump);
+	auto operationIdentifier = getNextOperationIdentifier();
+	addTag(snapshot, operationIdentifier);
+}
+
 void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedValueRef& ref) {
 	if (blocks.empty()) {
 		createBlock();
@@ -156,6 +182,7 @@ void ExecutionTrace::addReturn(Snapshot& snapshot, Type resultType, const TypedV
 	} else {
 		newOp = makeTraceOp(*arena, snapshot, op, resultType, TypedValueRef(0, Type::v), ref);
 	}
+	newOp->regionIndex = currentRegion;
 	operations.push_back(newOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -171,6 +198,7 @@ TypedValueRef& ExecutionTrace::addAssignmentOperation(Snapshot& snapshot, const 
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto op = ASSIGN;
 	auto* operation = makeTraceOp(*arena, snapshot, op, resultType, targetRef, srcRef);
+	operation->regionIndex = currentRegion;
 	operations.push_back(operation);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -183,6 +211,7 @@ void ExecutionTrace::addOperation(Snapshot& snapshot, Op& operation, std::initia
 	}
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* newOp = makeTraceOp(*arena, snapshot, operation, Type::v, TypedValueRef(0, Type::v), inputs);
+	newOp->regionIndex = currentRegion;
 	operations.push_back(newOp);
 }
 
@@ -195,6 +224,7 @@ TypedValueRef& ExecutionTrace::addOperationWithResult(Snapshot& snapshot, Op& op
 	auto& operations = blocks[currentBlockIndex]->operations;
 	auto* to =
 	    makeTraceOp(*arena, snapshot, operation, resultType, TypedValueRef(getNextValueRef(), resultType), inputs);
+	to->regionIndex = currentRegion;
 	operations.push_back(to);
 
 	auto operationIdentifier = getNextOperationIdentifier();
@@ -219,6 +249,7 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 	auto* falseBlockRef = arena->create<BlockRef>(falseBlock);
 	auto* cmpOp = makeTraceOp(*arena, snapshot, CMP, Type::v, TypedValueRef(getNextValueRef(), Type::v), condition,
 	                          trueBlockRef, falseBlockRef, probability);
+	cmpOp->regionIndex = currentRegion;
 	operations.push_back(cmpOp);
 	auto operationIdentifier = getNextOperationIdentifier();
 	addTag(snapshot, operationIdentifier);
@@ -227,6 +258,11 @@ void ExecutionTrace::addCmpOperation(Snapshot& snapshot, const TypedValueRef& co
 uint32_t ExecutionTrace::createBlock() {
 	auto blockId = static_cast<uint32_t>(blocks.size());
 	auto* block = arena->create<Block>(blockId);
+	// A block belongs to whichever region was open when it was created: the region's own
+	// blocks, the blocks of the branches and loops inside it, and the merge blocks the
+	// tracer synthesises along the way. The one exception is a region's entry block,
+	// which is created by the enclosing scope and re-stamped by addRegion below.
+	block->regionIndex = currentRegion;
 	blocks.push_back(block);
 	return block->blockId;
 }
@@ -316,6 +352,28 @@ ValueRef ExecutionTrace::getNextValueRef() {
 	return ++lastValueRef;
 }
 
+RegionIndex ExecutionTrace::addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock) {
+	auto regionIndex = static_cast<RegionIndex>(regions.size());
+	// The region open at the moment this one is entered is its parent, which is what
+	// makes a nested region's chain of enclosing regions recoverable from the table.
+	regions.push_back(RegionSpec {attributes, currentRegion, entryBlock, exitBlock});
+	// The entry block was created by the enclosing scope, but it is the first block of
+	// the body -- it belongs to the new region. The exit block keeps the enclosing
+	// region: that is where the enclosing scope continues.
+	getBlock(entryBlock).regionIndex = regionIndex;
+	return regionIndex;
+}
+
+const std::vector<RegionSpec>& ExecutionTrace::getRegions() const {
+	return regions;
+}
+
+RegionIndex ExecutionTrace::setCurrentRegion(RegionIndex regionIndex) {
+	auto previous = currentRegion;
+	currentRegion = regionIndex;
+	return previous;
+}
+
 operation_identifier ExecutionTrace::getNextOperationIdentifier() {
 	currentOperationIndex = getCurrentBlock().operations.size() - 1;
 	return {currentBlockIndex, currentOperationIndex};
@@ -364,11 +422,24 @@ auto formatter<nautilus::tracing::ExecutionTrace>::format(const nautilus::tracin
 	for (size_t i = 0; i < trace.blocks.size(); i++) {
 		fmt::format_to(out, "B{}{}", i, *trace.blocks[i]);
 	}
+	// The region legend: what each `; region #N` above refers to (docs/region.md), printed
+	// once at the end of the trace -- the same layout the nautilus IR dump uses for its
+	// region legend (see IRGraph.cpp), rather than repeating a region's name in line every
+	// time a block opens or re-enters it.
+	const bool withLocation = nautilus::log::options::getLogSourceLocations();
+	for (size_t i = 0; i < trace.regions.size(); i++) {
+		const auto& region = trace.regions[i];
+		fmt::format_to(out, "; region #{} = {}", i, region.attributes.toString(withLocation));
+		if (region.parent != nautilus::tracing::NO_REGION) {
+			fmt::format_to(out, ", nested in #{}", region.parent);
+		}
+		fmt::format_to(out, "\n");
+	}
 	return out;
 }
 
-auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block,
-                                                 format_context& ctx) -> format_context::iterator {
+auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block& block, format_context& ctx)
+    -> format_context::iterator {
 	auto out = ctx.out();
 	fmt::format_to(out, "(");
 	for (size_t i = 0; i < block.arguments.size(); i++) {
@@ -381,6 +452,11 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 	if (block.type == nautilus::tracing::Block::Type::ControlFlowMerge) {
 		fmt::format_to(out, " ControlFlowMerge");
 	}
+	// Region reference: just the index, resolved against the legend the ExecutionTrace
+	// formatter prints once at the end of the trace (mirrors the nautilus IR block header).
+	if (block.regionIndex != nautilus::tracing::NO_REGION) {
+		fmt::format_to(out, " ; region #{}", block.regionIndex);
+	}
 	fmt::format_to(out, "\n");
 	for (const auto* operation : block.operations) {
 		fmt::format_to(out, "{}\n", *operation);
@@ -390,8 +466,8 @@ auto formatter<nautilus::tracing::Block>::format(const nautilus::tracing::Block&
 
 template <>
 struct formatter<nautilus::tracing::TypedValueRef> : formatter<std::string_view> {
-	static auto format(const nautilus::tracing::TypedValueRef& typeValRef,
-	                   format_context& ctx) -> format_context::iterator {
+	static auto format(const nautilus::tracing::TypedValueRef& typeValRef, format_context& ctx)
+	    -> format_context::iterator {
 		auto out = ctx.out();
 		fmt::format_to(out, "${}", typeValRef.ref);
 		return out;

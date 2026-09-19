@@ -32,6 +32,13 @@ jobs:
             cc: 'gcc-14'
             cxx: 'g++-14'
             flags: '-DENABLE_TRACING=OFF -DENABLE_LOGGING=OFF'
+          # Tag identity is derived from a frame-pointer walk, so -O0 vs -O3 is an axis
+          # tracing can legitimately behave differently on; every other leg above builds
+          # Release, which left a whole class of Debug-only tracing bugs uncaught (#450).
+          - os: 'ubuntu-24.04'
+            cc: 'gcc-14'
+            cxx: 'g++-14'
+            flags: '-DCMAKE_BUILD_TYPE=Debug'
           - os: 'ubuntu-24.04'
             cc: 'clang-19'
             cxx: 'clang++-19'
@@ -48,6 +55,14 @@ jobs:
             cc: 'clang-21'
             cxx: 'clang++-21'
             flags: '-DENABLE_GPU_PLUGIN=ON'
+          # The iOS-safe closure path: bc and tbc hand out native function
+          # pointers via libffi static trampolines instead of dyncall callbacks,
+          # so no runtime-executable memory is allocated. Built nowhere else, so
+          # without this leg the configuration silently rots.
+          - os: 'ubuntu-24.04'
+            cc: 'clang-21'
+            cxx: 'clang++-21'
+            flags: '-DENABLE_FFI_CLOSURES=ON'
           - os: 'macos-26'
             cc: 'clang'
             cxx: 'clang++'
@@ -73,6 +88,9 @@ jobs:
       - name: Force apt to use IPv4
         if: startsWith(matrix.os, 'ubuntu')
         run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: Install libffi
+        if: startsWith(matrix.os, 'ubuntu') && contains(matrix.flags, 'ENABLE_FFI_CLOSURES=ON')
+        run: sudo apt-get update && sudo apt-get install -y libffi-dev
       - name: get cmake
         uses: lukka/get-cmake@latest
       - name: Cache MLIR binaries
@@ -122,6 +140,21 @@ jobs:
         shell: bash
         run: |
           ctest --test-dir build/plugins/gpu/test --output-on-failure --timeout 300
+  format-check:
+    runs-on: ubuntu-24.04
+    name: Format Check (clang-format-22)
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Force apt to use IPv4
+        run: echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+      - name: Install clang-format-22
+        uses: ./.github/actions/install-clang-format
+        with:
+          llvm-version: "22"
+      - name: Check formatting
+        shell: bash
+        run: ./format.sh
   example-demos:
     runs-on: ubuntu-24.04
     name: Example demos (clang-18)
@@ -153,7 +186,7 @@ jobs:
         shell: bash
         working-directory: example
         run: |
-          cmake --build build --target demo demo_modules demo_backends demo_runtime_calls demo_std_plugin demo_simd_plugin demo_specialization_plugin
+          cmake --build build --target demo demo_modules demo_backends demo_runtime_calls demo_regions demo_std_plugin demo_simd_plugin demo_specialization_plugin
       - name: run demo (baseline conditionalSum)
         shell: bash
         working-directory: example/build
@@ -171,6 +204,24 @@ jobs:
           echo "$out" | grep -q "mul(3, 4)      = 12"
           echo "$out" | grep -q "factorial(5)   = 120"
           echo "$out" | grep -q "factorial(10)  = 3628800"
+      - name: run demo_regions
+        shell: bash
+        working-directory: example/build
+        run: |
+          out=$(./demo_regions)
+          echo "$out"
+          echo "$out" | grep -q "summarize(threshold=8) = 6503"
+          # the trace names a region by index where a block belongs to it, and defines
+          # the three nested regions -- each named at the call site that opened it,
+          # "accumulate" through the stage() helper, which is the point of that overload --
+          # once in a legend closing the trace
+          echo "$out" | grep -q ') ; region #0$'
+          echo "$out" | grep -q '; region #0 = "scan" at .*DemoRegions.cpp:'
+          echo "$out" | grep -q '; region #1 = "classify" at .*DemoRegions.cpp:'
+          # the IR refers to regions by id and defines them in the legend closing the module
+          echo "$out" | grep -q '): ; region #2$'
+          echo "$out" | grep -q '; region #2 = "accumulate" at .*DemoRegions.cpp:.*, nested in #1'
+
       - name: run demo_backends
         shell: bash
         working-directory: example/build

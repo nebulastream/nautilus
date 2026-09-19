@@ -377,6 +377,12 @@ void FunctionRewriter::mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ) 
 	pred->removeOperation(branch);
 	succ->removePredecessor(pred);
 
+	// pred now holds code from both blocks, so its region has to widen to the innermost
+	// region containing both -- merging a region's entry block into its predecessor is
+	// exactly how a region's seams disappear (docs/region.md). Each operation keeps its
+	// own region, so nothing is lost, only the block-level summary is coarsened.
+	pred->setRegionIndex(fn_.commonRegionAncestor(pred->getRegionIndex(), succ->getRegionIndex()));
+
 	// Splice succ's operations (terminator included) onto the end of pred.
 	// Operation identity is preserved, so the use table only needs new
 	// defining-block entries.

@@ -163,9 +163,7 @@ val<int> nautilusFunctionInline(val<int> a, val<int> b) {
 
 // Test: Inline NautilusFunction with lambda
 val<int> nautilusFunctionInlineLambda(val<int> a, val<int> b) {
-	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> {
-		                                   return x * y;
-	                                   }};
+	auto inlineMul = NautilusFunction {"inlineMul", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
 	return inlineMul(a, b);
 }
 
@@ -186,9 +184,7 @@ val<int> nautilusFunctionInlineMember(val<int> a, val<int> b) {
 // Test: Multiple inline NautilusFunctions in one function
 val<int> nautilusFunctionMultipleInline(val<int> a, val<int> b) {
 	auto inlineAdd = NautilusFunction {"inlineAdd2", add_indirect};
-	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> {
-		                                   return x * y;
-	                                   }};
+	auto inlineMul = NautilusFunction {"inlineMul2", [](val<int> x, val<int> y) -> val<int> { return x * y; }};
 	auto sum = inlineAdd(a, b);
 	auto product = inlineMul(a, b);
 	return sum + product;
@@ -361,6 +357,119 @@ static auto nautilusColorToCode = NautilusFunction {"colorToCode", colorToCodeHe
 
 val<int32_t> nautilusFunctionEnum(val<NautilusFunctionColor> color) {
 	return nautilusColorToCode(color);
+}
+
+// ---------------------------------------------------------------------------
+// Escaping function pointers across data types and arities. getFuncPtr() hands
+// a Nautilus function's address to native code, which calls it back through a
+// real C signature. Interpreting backends have no machine code for such a
+// function, so each of these exercises whatever native entry point the backend
+// fabricates -- historically the narrowest part of the call machinery.
+// ---------------------------------------------------------------------------
+
+// Test: escaping function pointer with a float signature.
+float applyFloatFnPtr(float (*fn)(float, float), float a, float b) noexcept {
+	return fn(a, b);
+}
+
+val<float> nautilusFunctionGetFuncPtrFloat(val<float> a, val<float> b) {
+	auto fnPtr = nautilusAddFloat.getFuncPtr();
+	return invoke(applyFloatFnPtr, fnPtr, a, b);
+}
+
+// Test: escaping function pointer with a double signature.
+double applyDoubleFnPtr(double (*fn)(double, double), double a, double b) noexcept {
+	return fn(a, b);
+}
+
+val<double> nautilusFunctionGetFuncPtrDouble(val<double> a, val<double> b) {
+	auto fnPtr = nautilusMulDouble.getFuncPtr();
+	return invoke(applyDoubleFnPtr, fnPtr, a, b);
+}
+
+// Test: escaping function pointer whose signature interleaves integer- and
+// float-class arguments. On both SysV x86-64 and AAPCS64 the two classes are
+// assigned to separate register banks, so an interleaved signature is the case
+// that catches an entry point which assumes one uniform argument class.
+val<double> mixedSignatureHelper(val<int32_t> a, val<double> b, val<float> c, val<int64_t> d) {
+	return a + b + c + d;
+}
+
+static auto nautilusMixedSignature = NautilusFunction {"mixedSignature", mixedSignatureHelper};
+
+double applyMixedFnPtr(double (*fn)(int32_t, double, float, int64_t), int32_t a, double b, float c,
+                       int64_t d) noexcept {
+	return fn(a, b, c, d);
+}
+
+val<double> nautilusFunctionGetFuncPtrMixed(val<int32_t> a, val<double> b, val<float> c, val<int64_t> d) {
+	auto fnPtr = nautilusMixedSignature.getFuncPtr();
+	return invoke(applyMixedFnPtr, fnPtr, a, b, c, d);
+}
+
+// Test: escaping function pointer with a float return but integer arguments,
+// and its mirror (float arguments, integer return). The return value travels in
+// a different register bank from every argument in both cases.
+val<float> intsToFloatHelper(val<int32_t> a, val<int32_t> b) {
+	return static_cast<val<float>>(a + b) / val<float>(2.0F);
+}
+
+static auto nautilusIntsToFloat = NautilusFunction {"intsToFloat", intsToFloatHelper};
+
+float applyIntsToFloatFnPtr(float (*fn)(int32_t, int32_t), int32_t a, int32_t b) noexcept {
+	return fn(a, b);
+}
+
+val<float> nautilusFunctionGetFuncPtrFloatReturn(val<int32_t> a, val<int32_t> b) {
+	auto fnPtr = nautilusIntsToFloat.getFuncPtr();
+	return invoke(applyIntsToFloatFnPtr, fnPtr, a, b);
+}
+
+val<int32_t> floatsToIntHelper(val<float> a, val<float> b) {
+	return static_cast<val<int32_t>>(a * b);
+}
+
+static auto nautilusFloatsToInt = NautilusFunction {"floatsToInt", floatsToIntHelper};
+
+int32_t applyFloatsToIntFnPtr(int32_t (*fn)(float, float), float a, float b) noexcept {
+	return fn(a, b);
+}
+
+val<int32_t> nautilusFunctionGetFuncPtrFloatArgs(val<float> a, val<float> b) {
+	auto fnPtr = nautilusFloatsToInt.getFuncPtr();
+	return invoke(applyFloatsToIntFnPtr, fnPtr, a, b);
+}
+
+// Test: escaping function pointer with ten arguments, past the point where both
+// supported ABIs run out of argument registers and start passing on the stack.
+val<int64_t> tenArgHelper(val<int64_t> a0, val<int64_t> a1, val<int64_t> a2, val<int64_t> a3, val<int64_t> a4,
+                          val<int64_t> a5, val<int64_t> a6, val<int64_t> a7, val<int64_t> a8, val<int64_t> a9) {
+	return a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9;
+}
+
+static auto nautilusTenArg = NautilusFunction {"tenArg", tenArgHelper};
+
+int64_t applyTenArgFnPtr(int64_t (*fn)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                                       int64_t),
+                         int64_t base) noexcept {
+	return fn(base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7, base + 8, base + 9);
+}
+
+val<int64_t> nautilusFunctionGetFuncPtrTenArgs(val<int64_t> base) {
+	auto fnPtr = nautilusTenArg.getFuncPtr();
+	return invoke(applyTenArgFnPtr, fnPtr, base);
+}
+
+// Test: escaping function pointer with a void return, called for its side
+// effect through a pointer argument.
+void applyVoidFnPtr(void (*fn)(int32_t*), int32_t* out) noexcept {
+	fn(out);
+}
+
+val<int32_t> nautilusFunctionGetFuncPtrVoid(val<int32_t*> out) {
+	auto fnPtr = nautilusVoidFunc.getFuncPtr();
+	invoke(applyVoidFnPtr, fnPtr, out);
+	return *out;
 }
 
 } // namespace nautilus::engine

@@ -10,9 +10,20 @@ write a Nautilus module (real `val<T>` C++ code with multiple functions), hit
 - the IR **after each optimization pass** (constant folding, algebraic
   simplification, branch folding, empty-block elimination, block merging,
   DCE, block-argument pruning, plus the opt-in LICM/CSE/strength-reduction),
-- an interactive **control-flow graph** for any IR-bearing stage,
+  and after the two terminal passes — no-throw inference and exception-region
+  preparation,
+- an interactive **control-flow graph** for any IR-bearing stage, landing pads
+  included,
 - and the **final backend code**: MLIR + LLVM IR, generated C, bytecode,
   tiered bytecode, or AsmJit assembly.
+
+Everything the pipeline prints today is rendered as such: the module's
+`declare` region and the function attributes `FunctionAttributeInferencePass`
+derives, `alloca[N]` / `func_addr` / indirect calls, the trace's
+`CALL_WITH_EXCEPTION_HANDLING` with its `unwind[...]` destructor list, and the
+`-> pad_N` links into a function's `exception_region:` section. See
+`docs/exception_handling.md` for what the exception-handling dialect means; the
+"Exception handling & landing pads" example is the shortest way to see it.
 
 The "Passes & debug" menu also has an opt-in **DWARF debug info** toggle
 (MLIR backend only, maps to the engine's `mlir.debug.enable` option) so the
@@ -63,7 +74,15 @@ Key design points:
 - **Graph view**: the React app reuses the IR parser and Mermaid CFG builder
   from `tools/vscode-nautilus-ir` (via a ~50-line `vscode` shim aliased in
   Vite), so a CFG can be rendered for *every* IR stage client-side — more
-  than the engine's own `dump.graph` provides.
+  than the engine's own `dump.graph` provides. Landing pads are drawn as
+  detached nodes joined by dotted `unwind` edges, since they are off the
+  normal control-flow path.
+- **Keeping up with the dialect**: the IR and trace formats are defined by
+  `IRGraph.cpp` and `ExecutionTrace.cpp`. When they change, the parser
+  (`tools/vscode-nautilus-ir/src/parser.ts`), its TextMate grammar, and the
+  playground's mirrored Monarch grammars in `web/src/monaco/languages.ts` all
+  need the same update; the stage table in `runner/manifest.hpp` needs a row
+  per new pass that can dump.
 
 ## Threat model & sandboxing
 

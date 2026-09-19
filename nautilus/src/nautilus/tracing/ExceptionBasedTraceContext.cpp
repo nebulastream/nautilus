@@ -290,8 +290,8 @@ const std::string& ExceptionBasedTraceContext::registerNautilusFunction(const Na
 	usedFunctionNames.insert(name);
 
 	const auto [inserted, _] = registeredFunctions.emplace(definition, std::move(name));
-	functionsToTrace.push_back(
-	    compiler::CompilableFunction(inserted->second, std::move(fwrapper), definition->attributes(), definition));
+	functionsToTrace.push_back(compiler::CompilableFunction(
+	    inserted->second, std::move(fwrapper), definition->attributes(), definition, definition->location()));
 	log::debug("Added function '{}' to functionsToTrace list. List now has {} functions", inserted->second,
 	           functionsToTrace.size());
 	return inserted->second;
@@ -576,6 +576,7 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 			isFirstFunction = false;
 		}
 		traceModule->setFunctionAttributes(currentFunction.getName(), attributes);
+		traceModule->setFunctionLocation(currentFunction.getName(), currentFunction.getLocation());
 		// Carry the definition identity through to IR conversion, which uses it
 		// to bind this body to the function-table id its call sites minted.
 		traceModule->addFunctionDefinition(currentFunction.getName(), currentFunction.getDefinition());
@@ -608,6 +609,16 @@ std::unique_ptr<TraceModule> ExceptionBasedTraceContext::startTrace(std::list<co
 
 	// activeTracer is cleared by ActiveTracerGuard.
 	return traceModule;
+}
+
+// A region is a pass-through here: this tracer restarts the whole enclosing function on
+// every unresolved branch, so there is nothing for a region to bound. The body is traced
+// inline, into the enclosing function's trace, exactly as if region() were not there.
+// See docs/region.md.
+void ExceptionBasedTraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes&) {
+	// The attributes are dropped with the boundary itself: an inlined body has no entry
+	// and exit block to record them against.
+	regionFunction();
 }
 
 void ExceptionBasedTraceContext::allocateValRef(ValueRef ref) {

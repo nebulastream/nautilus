@@ -27,14 +27,34 @@ export function registerLanguages(): void {
 		tokenizer: {
 			root: [
 				[/\/\/.*$/, 'comment'],
-				[/\b(nautilus|br|if|return|store|load|cast_to)\b/, 'keyword'],
+				// Source-location trailer, emitted with dump.sourceLocations.
+				[/;.*$/, 'comment'],
+				// An internal callee is spelled by name; the negative lookahead
+				// keeps `func_*` out of this rule so the withheld-native form
+				// below owns it whole.
+				[
+					/\b(call|func_addr)(\s+)([A-Za-z_][A-Za-z0-9_]*)(?![*\w])/,
+					['keyword', 'white', 'entity.name.function'],
+				],
+				[
+					/\b(nautilus|declare|external|intrinsic|exception_region|br|if|return|store|load|call|alloca|func_addr|cast_to)\b/,
+					'keyword',
+				],
+				// Function attributes derived by FunctionAttributeInferencePass.
+				[/\b(readnone|readonly|writeonly|willreturn|nounwind)\b/, 'attribute.name'],
 				[new RegExp(`\\b(${IR_TYPES.join('|')})\\b`), 'type'],
 				[/\bBlock_\d+\b/, 'type.identifier'],
+				// Landing pads: `pad_N:` headers and the `-> pad_N` unwind link.
+				[/\bpad_\d+\b/, 'type.identifier'],
 				[/\$\d+/, 'variable.name'],
+				// A native callee is spelled `func_*`, disambiguated by the
+				// function-table id its declaration carries (`func_*#3`).
+				[/\bfunc_\*(#\d+)?/, 'entity.name.function'],
 				[/\bfunc_[A-Za-z0-9_]*\b/, 'entity.name.function'],
 				[/-?\d+\.\d+/, 'number.float'],
-				[/-?\d+/, 'number'],
-				[/[=?:(){},]/, 'delimiter'],
+				[/#?-?\d+/, 'number'],
+				[/->/, 'delimiter'],
+				[/[=?:(){}[\],]/, 'delimiter'],
 				[/[A-Za-z_][A-Za-z0-9_]*(?=\s*\()/, 'entity.name.function'],
 			],
 		},
@@ -49,16 +69,31 @@ export function registerLanguages(): void {
 				[/\/\/.*$/, 'comment'],
 				// Per-function section header emitted by TraceModule::toString().
 				[/^[A-Z0-9_]+:$/, 'entity.name.function'],
-				[/^\s*B\d+\b/, 'type.identifier'],
+				// Block references: the header `B0(...)` and the targets a JMP
+				// or CMP names mid-line.
+				[/\bB\d+\b/, 'type.identifier'],
 				[/\bBlock_?\d+\b/, 'type.identifier'],
+				// Block annotation from ExecutionTrace's block formatter.
+				[/\bControlFlowMerge\b/, 'attribute.name'],
+				// nautilus::tracing::Op, in enum order (Operations.hpp). The
+				// _WITH_EXCEPTION_HANDLING variants must precede their plain
+				// forms so the longer name wins.
 				[
-					/\b(JMP|CMP|RETURN|ASSIGN|CONST|ADD|SUB|MUL|DIV|MOD|EQ|NEQ|LT|LTE|GT|GTE|AND|OR|NOT|NEGATE|LOAD|STORE|CALL|CAST)\b/,
+					/\b(JMP|CMP|RETURN|ASSIGN|CONST|CAST|FREE|INDIRECT_CALL_WITH_EXCEPTION_HANDLING|INDIRECT_CALL|CALL_WITH_EXCEPTION_HANDLING|CALL|LOAD|STORE|EQ|NEQ|LTE|LT|GTE|GT|NOT|AND|OR|ADD|MUL|DIV|SUB|MOD|LSH|RSH|BOR|BXOR|BAND|NEGATE|SELECT|ALLOCA|FUNC_ADDR)\b/,
 					'keyword',
 				],
+				// Cleanup list on a potentially-throwing call.
+				[/\bunwind\b/, 'keyword'],
 				[new RegExp(`\\b(${IR_TYPES.join('|')})\\b`), 'type'],
+				// Callee spellings: withheld native (`func_*`), destructor
+				// (`dtor_*`), or an internal function's own name.
+				[/\b(func_\*|dtor_\*)/, 'entity.name.function'],
 				[/\$\d+|T\d+/, 'variable.name'],
+				// An internal callee is spelled by name: `CALL $3 add($1,$2)`.
+				[/[A-Za-z_][A-Za-z0-9_]*(?=\s*\()/, 'entity.name.function'],
 				[/-?\d+\.\d+/, 'number.float'],
 				[/-?\d+/, 'number'],
+				[/[[\]()]/, 'delimiter'],
 			],
 		},
 	});

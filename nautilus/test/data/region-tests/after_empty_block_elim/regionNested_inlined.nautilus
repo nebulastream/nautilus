@@ -1,0 +1,13 @@
+nautilus {
+execute($1:i64) :i64 {
+Block_0($1:i64):
+	$2 = 0 :i64
+	$3 = 1 :i32
+	$4 = $3 cast_to i64 :i64
+	$5 = $1 + $4 :i64
+	$6 = 2 :i32
+	$7 = $6 cast_to i64 :i64
+	$8 = $5 + $7 :i64
+	return ($8) :i64
+}
+} //nautilus

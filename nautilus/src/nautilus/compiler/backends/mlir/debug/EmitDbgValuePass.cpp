@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/debug/EmitDbgValuePass.hpp"
+#include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/StringRef.h>
@@ -137,13 +138,13 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 				}
 			});
 
-			// One DILexicalBlock per MLIR basic block.  Wrapping every
-			// op's location in a FusedLoc tagged with the block scope
-			// tells MLIR's debug translator to emit !DILocation with
-			// that scope, which in turn defines the DILexicalBlock's
-			// PC range in the emitted DWARF.  Variables scoped to the
-			// block then only appear in GDB when execution is inside
-			// it.
+			// One DILexicalBlock per MLIR basic block with no enclosing
+			// region.  Wrapping every op's location in a FusedLoc tagged
+			// with the block scope tells MLIR's debug translator to emit
+			// !DILocation with that scope, which in turn defines the
+			// DILexicalBlock's PC range in the emitted DWARF.  Variables
+			// scoped to the block then only appear in GDB when execution
+			// is inside it.
 			auto firstLineIn = [](::mlir::Block& block) -> unsigned {
 				for (auto& op : block) {
 					if (auto fl = op.getLoc()->findInstanceOf<::mlir::FileLineColLoc>()) {
@@ -154,15 +155,115 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 				}
 				return 0;
 			};
-			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DILexicalBlockAttr> blockScopes;
+			// A Nautilus region() (docs/region.md) lowers to a DWARF
+			// *inlined subroutine*, not a plain lexical block: gdb only
+			// prints one line per stack frame, and a lexical block is
+			// never a frame boundary, so a region built out of one would
+			// never show up in `bt` no matter how it's nested. Modeling it
+			// as "as if inlined" reuses the same mechanism gdb already has
+			// for showing an -O2-inlined C++ function as its own backtrace
+			// line -- see RegionScopeInfo.hpp. `regionSubprogramCache`
+			// keeps one synthetic DISubprogram per region for the whole
+			// function, so every op inside the same region() is reported
+			// as inlined from the exact same "function".
+			RegionSubprogramCache regionSubprogramCache;
+			// Per-block fallback scope, used for (a) any op with no region
+			// marker of its own -- even inside a block that also contains
+			// region-traced ops, e.g. the entry block's prologue allocas
+			// sitting alongside a region()-traced op -- and (b) scoping
+			// each block's own shadow-alloca DILocalVariables. Always a
+			// plain DILexicalBlock parented directly on the subprogram,
+			// deliberately never a region's synthetic DISubprogram: unlike
+			// a DILocalVariable's scope, an op's own `!dbg` scope is
+			// verified to belong to the enclosing function's subprogram
+			// (directly, or via an `inlinedAt` chain) -- fusing a NO_REGION
+			// op straight onto a synthetic subprogram with no such chain is
+			// invalid IR ("!dbg attachment points at wrong subprogram for
+			// function"), which is exactly what sharing a "the block's
+			// region, if any" scope here used to produce.
+			//
+			// The entry block is pinned to the function's own line instead of
+			// its first op's. Its first ops are the prologue's shadow allocas,
+			// each carrying the line of the variable it stands for, so taking
+			// the first of those would give the entry block the line of
+			// whichever variable happens to be allocated first -- and since
+			// DILexicalBlockAttr is uniqued by (scope, file, line, column),
+			// colliding with the block that really starts on that line merges
+			// the two scopes into one. The entry block's variables would then
+			// live in a scope whose PC range is somewhere else entirely, and a
+			// debugger stopped anywhere normal reports no variable data.
+			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DIScopeAttr> blockScopes;
+			::mlir::Block* entryBlock = funcOp.getBody().empty() ? nullptr : &funcOp.getBody().front();
 			for (auto& block : funcOp.getBody()) {
-				blockScopes[&block] =
-				    ::mlir::LLVM::DILexicalBlockAttr::get(ctx, subprogram, file, firstLineIn(block), /*column=*/1);
+				const unsigned scopeLine = (&block == entryBlock) ? subprogram.getLine() : firstLineIn(block);
+				blockScopes[&block] = ::mlir::LLVM::DILexicalBlockAttr::get(ctx, subprogram, file, scopeLine,
+				                                                            /*column=*/1);
 			}
+			// A block's region chain, captured before the rewrite below consumes
+			// the markers. A Nautilus block belongs to one region, so the first
+			// op that carries a chain speaks for the block.
+			llvm::DenseMap<::mlir::Block*, ::mlir::LocationAttr> blockRegionChain;
 			for (auto& block : funcOp.getBody()) {
-				auto scope = blockScopes[&block];
 				for (auto& op : block) {
-					op.setLoc(::mlir::FusedLoc::get({op.getLoc()}, scope, ctx));
+					if (auto chain = findRegionScopeChain(op.getLoc())) {
+						blockRegionChain[&block] = chain;
+						break;
+					}
+				}
+			}
+
+			// Where a block's shadow-alloca variables are declared.
+			//
+			// For a block traced inside a region() this must be the region's
+			// synthetic DISubprogram, not the function's lexical block: the
+			// region lowers to an inlined subroutine, and a debugger stopped in
+			// that inlined frame looks for variables in *its* scope tree. Scope
+			// them to the function and the inlined frame has none -- `info
+			// locals` comes back empty inside every region.
+			llvm::DenseMap<::mlir::Block*, ::mlir::LLVM::DIScopeAttr> blockVarScopes;
+			llvm::DenseMap<::mlir::Block*, ::mlir::LocationAttr> blockDeclLocs;
+			for (auto& block : funcOp.getBody()) {
+				::mlir::Location plainLoc = ::mlir::FileLineColLoc::get(file.getName(), firstLineIn(block), 1);
+				if (auto chain = blockRegionChain.lookup(&block)) {
+					blockVarScopes[&block] =
+					    resolveInnermostRegionSubprogram(ctx, chain, subprogram, file, regionSubprogramCache);
+					// The declare's own !dbg has to agree with the variable's
+					// scope, so it gets the same inlined-call-site chain the
+					// block's ops get.
+					blockDeclLocs.try_emplace(
+					    &block, ::mlir::LocationAttr(wrapOpForRegionInlining(ctx, plainLoc, chain, subprogram, file,
+					                                                         regionSubprogramCache)));
+				} else {
+					blockVarScopes[&block] = blockScopes[&block];
+					blockDeclLocs.try_emplace(
+					    &block, ::mlir::LocationAttr(::mlir::FusedLoc::get({plainLoc}, blockScopes[&block], ctx)));
+				}
+			}
+
+			for (auto& block : funcOp.getBody()) {
+				// Block arguments need the same treatment as ops: each lowers
+				// to a phi that keeps the location set on the argument, and a
+				// still-marked location translates to `line: 0`. Only the ops
+				// were unwrapped before, so every phi in a region() lost its
+				// line.
+				for (auto arg : block.getArguments()) {
+					if (auto chain = findRegionScopeChain(arg.getLoc())) {
+						arg.setLoc(wrapOpForRegionInlining(ctx, stripRegionScope(arg.getLoc()), chain, subprogram, file,
+						                                   regionSubprogramCache));
+					}
+				}
+				for (auto& op : block) {
+					if (auto chain = findRegionScopeChain(op.getLoc())) {
+						// The marker has to come off first: it fuses the op's
+						// location with the region chain, and a multi-child
+						// FusedLoc translates to `line: 0` -- which would cost
+						// every op in the region its line and make the region
+						// unsteppable.
+						op.setLoc(wrapOpForRegionInlining(ctx, stripRegionScope(op.getLoc()), chain, subprogram, file,
+						                                  regionSubprogramCache));
+					} else {
+						op.setLoc(::mlir::FusedLoc::get({op.getLoc()}, blockScopes[&block], ctx));
+					}
 				}
 			}
 
@@ -200,12 +301,11 @@ struct EmitDbgValuePass : public ::mlir::PassWrapper<EmitDbgValuePass, ::mlir::O
 				}
 
 				for (auto* block : blocksStoringAlloca[alloca.getOperation()]) {
-					auto blockScope = blockScopes[block];
+					auto blockScope = blockVarScopes[block];
 					auto localVar = ::mlir::LLVM::DILocalVariableAttr::get(
 					    ctx, blockScope, ::mlir::StringAttr::get(ctx, displayName), file, declLine,
 					    /*arg=*/0, /*alignInBits=*/0, diType, ::mlir::LLVM::DIFlags::Zero);
-					auto declLoc = ::mlir::FusedLoc::get(
-					    {::mlir::FileLineColLoc::get(file.getName(), firstLineIn(*block), 1)}, blockScope, ctx);
+					auto declLoc = ::mlir::Location(blockDeclLocs[block]);
 					// In the entry block the dbg.declare must come
 					// after its alloca to preserve dominance; elsewhere
 					// anywhere inside the block will do.

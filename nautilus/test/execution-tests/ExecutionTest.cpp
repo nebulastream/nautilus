@@ -664,7 +664,6 @@ void loopExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(0) == 0);
 	}
 	SECTION("whileContinue") {
-		SKIP();
 		auto f = engine.registerFunction(whileContinue);
 		REQUIRE(f(20) == 30);
 		REQUIRE(f(22) == 30);
@@ -1056,6 +1055,50 @@ void nautilusFunctionExecutionTest(engine::NautilusEngine& engine) {
 		REQUIRE(f(3, 4) == 7);
 		REQUIRE(f(0, 0) == 0);
 		REQUIRE(f(-5, 5) == 0);
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloat") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloat);
+		REQUIRE(f(3.0F, 4.5F) == Catch::Approx(7.5F));
+		REQUIRE(f(-1.25F, 1.25F) == Catch::Approx(0.0F));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrDouble") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrDouble);
+		REQUIRE(f(2.5, 4.0) == Catch::Approx(10.0));
+		REQUIRE(f(-3.0, 0.5) == Catch::Approx(-1.5));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrMixed") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrMixed);
+		REQUIRE(f(1, 2.5, 0.5F, int64_t(10)) == Catch::Approx(14.0));
+		REQUIRE(f(-2, 0.25, 1.75F, int64_t(0)) == Catch::Approx(0.0));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloatReturn") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloatReturn);
+		REQUIRE(f(3, 5) == Catch::Approx(4.0F));
+		REQUIRE(f(1, 0) == Catch::Approx(0.5F));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrFloatArgs") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrFloatArgs);
+		REQUIRE(f(2.5F, 4.0F) == 10);
+		REQUIRE(f(-1.5F, 2.0F) == -3);
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrTenArgs") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrTenArgs);
+		// base .. base+9, i.e. 10*base + 45.
+		REQUIRE(f(int64_t(1)) == int64_t(55));
+		REQUIRE(f(int64_t(0)) == int64_t(45));
+	}
+
+	SECTION("nautilusFunctionGetFuncPtrVoid") {
+		auto f = engine.registerFunction(nautilusFunctionGetFuncPtrVoid);
+		int32_t slot = 5;
+		REQUIRE(f(&slot) == 15);
+		REQUIRE(slot == 15);
 	}
 
 	SECTION("nautilusFunctionInt8") {

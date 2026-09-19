@@ -1,10 +1,10 @@
 #include "nautilus/common/FunctionAttributes.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/IndirectCallOperation.hpp"
-#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/ReturnOperation.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
@@ -20,11 +20,11 @@ namespace {
 using compiler::ir::BasicBlock;
 using compiler::ir::BasicBlockArgument;
 using compiler::ir::BlockIdentifier;
+using compiler::ir::CallOperation;
 using compiler::ir::FunctionOperation;
 using compiler::ir::IRGraph;
 using compiler::ir::Operation;
 using compiler::ir::OperationIdentifier;
-using compiler::ir::CallOperation;
 
 struct Fixture {
 	std::shared_ptr<IRGraph> ir;

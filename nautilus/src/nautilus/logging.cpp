@@ -16,4 +16,12 @@ bool getLogStaticVars() {
 void setLogStaticVars(bool value) {
 	logStaticVars = value;
 }
+
+static bool logSourceLocations = true;
+bool getLogSourceLocations() {
+	return logSourceLocations;
+}
+void setLogSourceLocations(bool value) {
+	logSourceLocations = value;
+}
 } // namespace nautilus::log::options

@@ -118,7 +118,7 @@ std::string dumpTbcCode(bool superinstructions, bool immediates) {
 TEST_CASE("TBC memory-offset superinstructions produce correct results") {
 	auto reference = tbcEngine("switch", false, false);
 	const std::vector<std::tuple<std::string, bool, bool>> variants = {
-	    {"switch", true, true}, {"goto", true, true}, {"goto", false, true},
+	    {"switch", true, true},   {"goto", true, true},      {"goto", false, true},
 	    {"tailcall", true, true}, {"tailcall", true, false}, {"auto", true, true},
 	};
 	for (const auto& [dispatch, super, imm] : variants) {

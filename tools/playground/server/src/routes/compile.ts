@@ -99,6 +99,10 @@ export function registerRoutes(app: FastifyInstance, examples: Example[]): void 
 			sourceMaxBytes: config.sourceMaxBytes,
 			maxPipelineIterations: 8,
 		},
+		version: {
+			commit: config.gitCommit,
+			deployedAt: config.deployedAt,
+		},
 	}));
 }
 

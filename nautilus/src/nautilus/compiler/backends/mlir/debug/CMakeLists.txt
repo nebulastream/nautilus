@@ -1,7 +1,7 @@
 add_source_files(nautilus
         DebugInfoOptions.cpp
         EmitDbgValuePass.cpp
-        IRSourceMap.cpp
+        RegionScopeInfo.cpp
 )
 
 # EmitDbgValuePass subclasses mlir::PassWrapper, which derives from

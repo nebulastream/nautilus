@@ -43,6 +43,8 @@ static auto tests = std::vector<std::tuple<std::string, std::function<void()>>> 
     {"nestedIf100", details::createFunctionWrapper(nestedIf100)},
     {"chainedIf10", details::createFunctionWrapper(chainedIf10)},
     {"chainedIf100", details::createFunctionWrapper(chainedIf100)},
+    {"chainedIf10Region", details::createFunctionWrapper(chainedIf10Region)},
+    {"chainedIf100Region", details::createFunctionWrapper(chainedIf100Region)},
 };
 
 static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
@@ -99,9 +101,7 @@ TEST_CASE("SSA Creation Benchmark") {
 			});
 		});
 	}
-}
 
-TEST_CASE("SSA Creation Module Benchmark") {
 	for (auto& [name, func] : tests) {
 		Catch::Benchmark::Benchmark("ssa_module_" + name).operator=([&func](Catch::Benchmark::Chronometer meter) {
 			std::vector<common::ArenaPool::Handle> arenas;
@@ -123,9 +123,7 @@ TEST_CASE("SSA Creation Module Benchmark") {
 			});
 		});
 	}
-}
 
-TEST_CASE("SSA Creation Live-In Scaling Benchmark") {
 	auto registerBenchmark = [](size_t valueCount) {
 		Catch::Benchmark::Benchmark("ssa_liveIn" + std::to_string(valueCount))
 		    .operator=([valueCount](Catch::Benchmark::Chronometer meter) {
@@ -175,9 +173,7 @@ TEST_CASE("SSA Creation Live-In Scaling Benchmark") {
 	registerBenchmark(16);
 	registerBenchmark(64);
 	registerBenchmark(256);
-}
 
-TEST_CASE("SSA Creation Static Loop Scaling Benchmark") {
 	auto function1000 = details::createFunctionWrapper(staticSquareSum<1000>);
 	Catch::Benchmark::Benchmark("ssa_staticSquareSum1000")
 	    .operator=([&function1000](Catch::Benchmark::Chronometer meter) {
@@ -311,8 +307,10 @@ TEST_CASE("Backend Compilation Benchmark") {
 				    auto irConversionPhase = tracing::TraceToIRConversionPhase();
 				    auto ir = irConversionPhase.apply(afterSSAModule, pool);
 				    auto op = engine::Options();
-				    // force compilation for the MLIR backend.
-				    op.setOption("mlir.eager_compilation", true);
+				    if (backend == "mlir") {
+					    // force compilation for the MLIR backend.
+					    op.setOption("mlir.eager_compilation", true);
+				    }
 				    op.setOption("engine.backend", backend);
 				    auto dh = compiler::DumpHandler(op, "");
 				    meter.measure([&] { return backendBackend->compile(ir, dh, op); });

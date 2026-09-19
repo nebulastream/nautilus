@@ -9,6 +9,10 @@
 #include <unordered_map>
 #include <vector>
 
+namespace nautilus::compiler {
+class NativeClosure;
+}
+
 namespace nautilus::compiler::tbc {
 
 /// Per-call-site record. The instruction stream only carries the record index;
@@ -58,12 +62,21 @@ struct TBCJitCode {
 	virtual ~TBCJitCode() = default;
 };
 
+/// Per-function binding handed to that function's NativeClosure as userdata:
+/// everything the closure body needs to enter the VM.
+struct TBCClosureBinding {
+	const struct TBCProgram* program = nullptr;
+	uint32_t functionIndex = 0;
+};
+
 /// A whole compiled module: all functions plus the program-wide call-site
-/// table. Heap-allocated once and never moved afterwards: escaping internal
-/// function pointers (see TBCTrampoline.hpp) bind trampoline slots to this
-/// object's address, released again by the destructor.
+/// table. Heap-allocated once and never moved afterwards: every function's
+/// native closure binds to the address of its entry in `closureBindings`.
 struct TBCProgram {
-	TBCProgram() = default;
+	// Constructor and destructor are both out of line so this header can
+	// forward-declare NativeClosure: constructing or destroying the closure
+	// vector needs the complete type, and only TBCCode.cpp has it.
+	TBCProgram();
 	TBCProgram(const TBCProgram&) = delete;
 	TBCProgram& operator=(const TBCProgram&) = delete;
 	~TBCProgram();
@@ -86,6 +99,14 @@ struct TBCProgram {
 	/// neither vector may be resized once this is non-null (stitching is the
 	/// last step of TBCBackend::compile).
 	std::unique_ptr<TBCJitCode> jit;
+
+	/// One native entry point per function, index-parallel with `functions`
+	/// (see TBCClosure.hpp). `closureBindings` is sized once and never resized:
+	/// each closure holds the address of its binding. Declared after `jit` so
+	/// the closures are destroyed first -- a closure is callable until it is
+	/// freed, so nothing may outlive the code it would enter.
+	std::vector<TBCClosureBinding> closureBindings;
+	std::vector<std::unique_ptr<compiler::NativeClosure>> closures;
 };
 
 } // namespace nautilus::compiler::tbc

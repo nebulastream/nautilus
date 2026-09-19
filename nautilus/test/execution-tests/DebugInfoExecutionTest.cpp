@@ -5,15 +5,19 @@
 #include "ExecutionTest.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/nautilus_function.hpp"
+#include "nautilus/region.hpp"
 #include <algorithm>
+#include <atomic>
 #include <catch2/catch_all.hpp>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <unistd.h>
 
 namespace nautilus::engine {
@@ -77,6 +81,27 @@ val<int32_t> debugCaller(val<int32_t> a, val<int32_t> b) {
 	return acc;
 }
 
+// Wraps the loop body in a named region() so the MLIR backend has region
+// metadata (docs/region.md) to lower to a DWARF lexical scope (#455).
+val<int32_t> debugRegionSum(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	region("accumulate", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			region("agg if", [&]() {
+				if (i < 100) {
+					agg = agg + i;
+				}
+			});
+		}
+	});
+	region("accumulate2", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			agg = agg + i;
+		}
+	});
+	return agg;
+}
+
 val<int32_t> debugNestedControlFlow(val<int32_t> limit) {
 	val<int32_t> even = 0;
 	val<int32_t> odd = 0;
@@ -99,6 +124,362 @@ std::string readFile(const std::string& path) {
 	return ss.str();
 }
 
+/// The debug metadata of one emitted module, parsed once.
+///
+/// Every debug-info assertion in this file works from one of these rather than
+/// scanning the IR text for itself: the metadata graph (which scope owns what,
+/// which location a given instruction carries) is the thing under test, and
+/// re-deriving it per test is how assertions drift apart.
+struct DebugIr {
+	struct Subprogram {
+		std::string name;
+		int line = 0;
+		std::string fileId;
+	};
+	struct LexicalBlock {
+		std::string scopeId;
+		int line = 0;
+	};
+	struct Location {
+		int line = 0;
+		std::string scopeId;
+		std::string inlinedAtId; // empty when not inlined
+	};
+	struct LocalVariable {
+		std::string name;
+		std::string scopeId;
+		int line = 0;
+	};
+
+	std::string text;                                  // the emitted LLVM IR
+	std::string sourceText;                            // the Nautilus-IR dump the DWARF points at
+	std::map<std::string, Subprogram> subprograms;     // metadata id -> subprogram
+	std::map<std::string, LexicalBlock> lexicalBlocks; // metadata id -> lexical block
+	std::map<std::string, Location> locations;         // metadata id -> location
+	std::vector<LocalVariable> variables;
+	bool sawLexicalBlockFile = false;
+
+	[[nodiscard]] bool contains(std::string_view needle) const {
+		return text.find(needle) != std::string::npos;
+	}
+
+	/// The metadata id of the DISubprogram named @p name, or empty.
+	[[nodiscard]] std::string subprogramId(std::string_view name) const {
+		for (const auto& [id, sub] : subprograms) {
+			if (sub.name == name) {
+				return id;
+			}
+		}
+		return {};
+	}
+
+	/// The body lines of `define ... @name(`, without the define/closing brace.
+	[[nodiscard]] std::vector<std::string> bodyOf(std::string_view function) const {
+		std::vector<std::string> body;
+		std::istringstream iss(text);
+		std::string line;
+		bool inside = false;
+		const std::string marker = "@" + std::string(function) + "(";
+		while (std::getline(iss, line)) {
+			if (!inside) {
+				inside = line.rfind("define ", 0) == 0 && line.find(marker) != std::string::npos;
+				continue;
+			}
+			if (line == "}") {
+				break;
+			}
+			body.push_back(line);
+		}
+		return body;
+	}
+
+	/// The `!dbg` id on the first instruction of @p function that contains every
+	/// one of @p needles and none of @p without. Empty when there is no match.
+	[[nodiscard]] std::string dbgIdOf(std::string_view function, const std::vector<std::string>& needles,
+	                                  const std::vector<std::string>& without = {}) const {
+		for (const auto& line : bodyOf(function)) {
+			const bool wanted = std::all_of(needles.begin(), needles.end(),
+			                                [&](const std::string& n) { return line.find(n) != std::string::npos; });
+			const bool unwanted = std::any_of(without.begin(), without.end(),
+			                                  [&](const std::string& n) { return line.find(n) != std::string::npos; });
+			if (!wanted || unwanted) {
+				continue;
+			}
+			auto pos = line.find("!dbg !");
+			if (pos == std::string::npos) {
+				continue;
+			}
+			auto start = pos + std::string("!dbg !").size();
+			auto end = start;
+			while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+				++end;
+			}
+			return line.substr(start, end - start);
+		}
+		return {};
+	}
+
+	/// The `!dbg` ids of every instruction in @p function whose text, once
+	/// indentation is stripped, starts with @p prefix.
+	[[nodiscard]] std::vector<std::string> dbgIdsStartingWith(std::string_view function,
+	                                                          std::string_view prefix) const {
+		std::vector<std::string> ids;
+		for (const auto& line : bodyOf(function)) {
+			auto first = line.find_first_not_of(" \t");
+			if (first == std::string::npos || line.compare(first, prefix.size(), prefix) != 0) {
+				continue;
+			}
+			auto pos = line.find("!dbg !");
+			if (pos == std::string::npos) {
+				continue;
+			}
+			auto start = pos + std::string("!dbg !").size();
+			auto end = start;
+			while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+				++end;
+			}
+			ids.push_back(line.substr(start, end - start));
+		}
+		return ids;
+	}
+
+	/// The scope ids, innermost first, that @p dbgId resolves through: its own
+	/// scope, then the scope of each `inlinedAt` location above it.
+	[[nodiscard]] std::vector<std::string> frameScopes(std::string dbgId) const {
+		std::vector<std::string> scopes;
+		while (!dbgId.empty()) {
+			auto it = locations.find(dbgId);
+			if (it == locations.end()) {
+				break;
+			}
+			scopes.push_back(it->second.scopeId);
+			dbgId = it->second.inlinedAtId;
+		}
+		return scopes;
+	}
+
+	/// The subprogram a scope id belongs to, following a lexical block to its
+	/// parent. Empty when the scope is neither.
+	[[nodiscard]] std::string owningSubprogram(const std::string& scopeId) const {
+		if (subprograms.count(scopeId)) {
+			return scopeId;
+		}
+		if (auto it = lexicalBlocks.find(scopeId); it != lexicalBlocks.end()) {
+			return owningSubprogram(it->second.scopeId);
+		}
+		return {};
+	}
+
+	/// Lines of the lexical blocks parented directly on @p subprogramId.
+	[[nodiscard]] std::vector<int> lexicalBlockLinesOf(const std::string& subprogramId) const {
+		std::vector<int> lines;
+		for (const auto& [id, block] : lexicalBlocks) {
+			if (block.scopeId == subprogramId) {
+				lines.push_back(block.line);
+			}
+		}
+		return lines;
+	}
+
+	/// Names of the variables whose scope resolves to @p subprogramId.
+	[[nodiscard]] std::vector<std::string> variableNamesIn(const std::string& subprogramId) const {
+		std::vector<std::string> names;
+		for (const auto& variable : variables) {
+			if (owningSubprogram(variable.scopeId) == subprogramId) {
+				names.push_back(variable.name);
+			}
+		}
+		return names;
+	}
+};
+
+/// Reads `key` out of @p line as a run of digits, e.g. valueAfter(l, "line: ").
+int intAfter(const std::string& line, const std::string& key) {
+	auto pos = line.find(key);
+	if (pos == std::string::npos) {
+		return 0;
+	}
+	auto start = pos + key.size();
+	auto end = start;
+	while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+		++end;
+	}
+	return end == start ? 0 : std::stoi(line.substr(start, end - start));
+}
+
+/// Reads a metadata reference, e.g. refAfter(l, "scope: !") -> "12".
+std::string refAfter(const std::string& line, const std::string& key) {
+	auto pos = line.find(key);
+	if (pos == std::string::npos) {
+		return {};
+	}
+	auto start = pos + key.size();
+	auto end = start;
+	while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
+		++end;
+	}
+	return line.substr(start, end - start);
+}
+
+DebugIr parseDebugIr(std::string text) {
+	DebugIr ir;
+	ir.text = std::move(text);
+	std::istringstream iss(ir.text);
+	std::string line;
+	while (std::getline(iss, line)) {
+		if (line.find("!DILexicalBlockFile(") != std::string::npos) {
+			ir.sawLexicalBlockFile = true;
+		}
+		if (line.empty() || line[0] != '!') {
+			continue;
+		}
+		auto idEnd = line.find(' ');
+		if (idEnd == std::string::npos) {
+			continue;
+		}
+		auto id = line.substr(1, idEnd - 1);
+		if (line.find("!DISubprogram(") != std::string::npos) {
+			DebugIr::Subprogram sub;
+			auto nameKey = line.find("name: \"");
+			if (nameKey != std::string::npos) {
+				auto start = nameKey + std::string("name: \"").size();
+				sub.name = line.substr(start, line.find('"', start) - start);
+			}
+			sub.line = intAfter(line, "line: ");
+			sub.fileId = refAfter(line, "file: !");
+			ir.subprograms[id] = sub;
+		} else if (line.find("!DILexicalBlock(") != std::string::npos) {
+			ir.lexicalBlocks[id] = {refAfter(line, "scope: !"), intAfter(line, "line: ")};
+		} else if (line.find("!DILocation(") != std::string::npos) {
+			ir.locations[id] = {intAfter(line, "line: "), refAfter(line, "scope: !"),
+			                    line.find("inlinedAt: !") != std::string::npos ? refAfter(line, "inlinedAt: !")
+			                                                                   : std::string {}};
+		} else if (line.find("!DILocalVariable(") != std::string::npos) {
+			DebugIr::LocalVariable variable;
+			auto nameKey = line.find("name: \"");
+			if (nameKey != std::string::npos) {
+				auto start = nameKey + std::string("name: \"").size();
+				variable.name = line.substr(start, line.find('"', start) - start);
+			}
+			variable.scopeId = refAfter(line, "scope: !");
+			variable.line = intAfter(line, "line: ");
+			ir.variables.push_back(variable);
+		}
+	}
+	return ir;
+}
+
+using OptionTweak = std::function<void(Options&)>;
+
+/// Options with debug info on and the Nautilus-IR dump as the DWARF source --
+/// the configuration every metadata test in this file needs.
+Options debugOptions(const OptionTweak& tweak = {}) {
+	Options options;
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("mlir.debug.enable", true);
+	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	if (tweak) {
+		tweak(options);
+	}
+	return options;
+}
+
+/// Compiles through @p body with the DWARF "source" file written to a path of
+/// this test's own, and returns what landed there.
+template <typename Body>
+std::string compileDebugSource(const std::string& extension, Body&& body, const OptionTweak& tweak = {}) {
+	const auto sourcePath = (std::filesystem::temp_directory_path() /
+	                         ("nautilus_debug_source_" + std::to_string(::getpid()) + "." + extension))
+	                            .string();
+	std::filesystem::remove(sourcePath);
+
+	auto options = debugOptions([&](Options& o) {
+		o.setOption("mlir.debug.source_file", sourcePath);
+		if (tweak) {
+			tweak(o);
+		}
+	});
+	NautilusEngine engine(options);
+	body(engine);
+
+	REQUIRE(std::filesystem::exists(sourcePath));
+	auto contents = readFile(sourcePath);
+	std::filesystem::remove(sourcePath);
+	return contents;
+}
+
+/// Compiles through @p body and returns the parsed debug metadata of the module
+/// that defines @p functionName.
+///
+/// The emitted module is recovered from the `before_llvm_optimization` dump.
+/// The dump root is shared by every test in the process, so candidates are
+/// filtered by the function they define rather than by "whichever directory
+/// appeared" -- otherwise a concurrently running test's dump can be picked up.
+template <typename Body>
+DebugIr compileDebugIr(const std::string& functionName, Body&& body, const OptionTweak& tweak = {},
+                       const std::string& dumpStage = "before_llvm_optimization") {
+	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
+	std::set<std::filesystem::path> existing;
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
+			existing.insert(e.path());
+		}
+	}
+
+	// A path of our own, so the Nautilus-IR dump the DWARF points at can be
+	// read back as part of the result instead of hunting for it.
+	static std::atomic<unsigned> sourceCounter {0};
+	const auto sourcePath =
+	    (std::filesystem::temp_directory_path() / ("nautilus_debug_test_" + std::to_string(::getpid()) + "_" +
+	                                               std::to_string(sourceCounter.fetch_add(1)) + ".ir"))
+	        .string();
+	std::filesystem::remove(sourcePath);
+
+	auto options = debugOptions([&](Options& o) {
+		o.setOption("dump." + dumpStage, true);
+		o.setOption("mlir.debug.source_file", sourcePath);
+		if (tweak) {
+			tweak(o);
+		}
+	});
+	NautilusEngine engine(options);
+	body(engine);
+
+	std::string sourceText;
+	if (std::filesystem::exists(sourcePath)) {
+		sourceText = readFile(sourcePath);
+		std::filesystem::remove(sourcePath);
+	}
+
+	// Candidates are matched on this compilation's own source-file path, which
+	// the module records in its DIFile. The dump root is shared by every test
+	// in the process and nearly every traced function lowers to `@execute`, so
+	// neither "whichever directory appeared" nor the function name alone can
+	// tell two concurrent tests apart.
+	const std::string marker = "@" + functionName + "(";
+	const std::string sourceMarker = std::filesystem::path(sourcePath).filename().string();
+	if (std::filesystem::exists(dumpRoot)) {
+		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
+			if (existing.count(dir.path())) {
+				continue;
+			}
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+				if (!entry.is_regular_file() || entry.path().filename() != dumpStage + ".ll") {
+					continue;
+				}
+				auto contents = readFile(entry.path().string());
+				if (contents.find(sourceMarker) != std::string::npos && contents.find(marker) != std::string::npos) {
+					auto ir = parseDebugIr(std::move(contents));
+					ir.sourceText = std::move(sourceText);
+					return ir;
+				}
+			}
+		}
+	}
+	FAIL("no " << dumpStage << " dump defining " << functionName);
+	return {};
+}
+
 } // namespace
 
 TEST_CASE("Debug info: disabled by default produces identical results") {
@@ -111,350 +492,275 @@ TEST_CASE("Debug info: disabled by default produces identical results") {
 }
 
 TEST_CASE("Debug info: MLIR source mode writes a snapshot file and compiles") {
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_mlir_test_" + std::to_string(::getpid()) + ".mlir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
+	// LocationSnapshot writes the post-inline MLIR to the configured path. It
+	// must be non-empty and contain the func symbol, so gdb/lldb can resolve
+	// breakpoints against its lines.
+	const auto contents = compileDebugSource(
+	    "mlir",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugAddOne);
+		    REQUIRE(fn(41) == 42);
+	    },
+	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); });
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("mlir"));
-	options.setOption("mlir.debug.source_file", sourcePath);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(41) == 42);
-
-	// LocationSnapshot should have written the post-inline MLIR to the
-	// configured path.  The file must be non-empty and contain the func
-	// symbol so gdb/lldb can resolve breakpoints against its lines.
-	REQUIRE(std::filesystem::exists(sourcePath));
-	const auto contents = readFile(sourcePath);
 	REQUIRE_FALSE(contents.empty());
 	REQUIRE(contents.find("func.func") != std::string::npos);
-
-	std::filesystem::remove(sourcePath);
 }
 
 TEST_CASE("Debug info: Nautilus IR source mode emits the IR dump as the source file") {
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_ir_test_" + std::to_string(::getpid()) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
+	const auto contents = compileDebugSource("ir", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugSumThree);
+		REQUIRE(fn(1, 2, 3) == 6);
+	});
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("mlir.debug.source_file", sourcePath);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugSumThree);
-	REQUIRE(fn(1, 2, 3) == 6);
-
-	// The IR source file should be the Nautilus IR dump, recognizable by
-	// the outer `nautilus { ... } //nautilus` bracket pattern produced by
-	// IRGraph::toString().
-	REQUIRE(std::filesystem::exists(sourcePath));
-	const auto contents = readFile(sourcePath);
+	// The source file is the Nautilus IR dump, recognizable by the outer
+	// `nautilus { ... } //nautilus` bracket IRGraph::toString() produces.
 	REQUIRE(contents.find("nautilus {") != std::string::npos);
 	REQUIRE(contents.find("//nautilus") != std::string::npos);
-
-	std::filesystem::remove(sourcePath);
 }
 
 TEST_CASE("Debug info: default source path is synthesized when none provided") {
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	auto options = debugOptions();
 
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(debugAddOne);
 	REQUIRE(fn(10) == 11);
 }
 
-TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N DILocalVariable") {
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+TEST_CASE("Debug info: the synthesized source file lands in the temp directory") {
+	// The default keeps generated files out of the user's tree. An IDE that
+	// cannot open a $TMPDIR path -- on macOS a /var/folders/... one, outside
+	// its source roots -- points `mlir.debug.source_dir` somewhere it can.
+	const auto tempDir = std::filesystem::temp_directory_path();
+	std::set<std::filesystem::path> before;
+	for (const auto& e : std::filesystem::directory_iterator(tempDir)) {
+		before.insert(e.path());
+	}
+	const auto cwd = std::filesystem::current_path();
+	std::set<std::filesystem::path> cwdBefore;
+	for (const auto& e : std::filesystem::directory_iterator(cwd)) {
+		cwdBefore.insert(e.path());
 	}
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("dump.before_llvm_optimization", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugSumThree);
-	REQUIRE(fn(1, 2, 3) == 6);
-
-	// Each `$N` is now a shadow alloca with a dbg.declare pointing at
-	// it (see EmitDbgValuePass).  Verify both the DILocalVariable
-	// metadata and the dbg.declare debug record survive MLIR→LLVM
-	// translation.  Accept either the legacy `call void
-	// @llvm.dbg.declare` syntax or LLVM 21's `#dbg_declare` record form.
-	bool foundDILocalVar = false;
-	bool foundDbgDeclare = false;
-	bool foundAlloca = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().filename() == "before_llvm_optimization.ll") {
-					auto contents = readFile(entry.path().string());
-					// DILocalVariable names use a `v<N>` prefix rather
-					// than `$<N>` to avoid GDB's value-history syntax.
-					if (contents.find("!DILocalVariable(name: \"v") != std::string::npos) {
-						foundDILocalVar = true;
-					}
-					if (contents.find("#dbg_declare") != std::string::npos ||
-					    contents.find("@llvm.dbg.declare") != std::string::npos) {
-						foundDbgDeclare = true;
-					}
-					if (contents.find("= alloca i32") != std::string::npos) {
-						foundAlloca = true;
-					}
-				}
-			}
-		}
-	}
-	REQUIRE(foundDILocalVar);
-	REQUIRE(foundDbgDeclare);
-	REQUIRE(foundAlloca);
-}
-
-TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
-	// DumpHandler writes under $TMPDIR/dump/<compilation-unit-id>/ — no way
-	// to override, so snapshot the state, run, then search newly-created
-	// subdirs for the after_llvm_generation.ll dump.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
-	}
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("mlir"));
-	options.setOption("dump.after_llvm_generation", true);
+	auto options = debugOptions();
 
 	NautilusEngine engine(options);
 	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(5) == 6);
+	REQUIRE(fn(10) == 11);
 
-	// Find new subdir(s) and look for the expected LLVM IR dump.
-	bool foundDICompileUnit = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().extension() == ".ll") {
-					auto contents = readFile(entry.path().string());
-					if (contents.find("DICompileUnit") != std::string::npos) {
-						foundDICompileUnit = true;
-						break;
-					}
-				}
-			}
-			if (foundDICompileUnit) {
-				break;
+	auto newDumps = [](const std::filesystem::path& dir, const std::set<std::filesystem::path>& seen) {
+		std::vector<std::filesystem::path> created;
+		for (const auto& e : std::filesystem::directory_iterator(dir)) {
+			if (!seen.count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
+			    e.path().extension() == ".ir") {
+				created.push_back(e.path());
 			}
 		}
+		return created;
+	};
+
+	const auto inTemp = newDumps(tempDir, before);
+	REQUIRE_FALSE(inTemp.empty());
+	// And nothing dropped into the working directory.
+	REQUIRE(newDumps(cwd, cwdBefore).empty());
+
+	for (const auto& path : inTemp) {
+		std::filesystem::remove(path);
 	}
-	REQUIRE(foundDICompileUnit);
+}
+
+TEST_CASE("Debug info: source_dir redirects the synthesized source file") {
+	const auto dir = std::filesystem::temp_directory_path() / ("nautilus_src_dir_" + std::to_string(::getpid()));
+	std::filesystem::remove_all(dir);
+	std::filesystem::create_directories(dir);
+
+	auto options = debugOptions();
+	options.setOption("mlir.debug.source_dir", dir.string());
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator {}) > 0);
+	std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Debug info: a relative source_file is recorded as an absolute path") {
+	// A relative name in the DWARF would be resolved against DW_AT_comp_dir,
+	// which for a JIT module is not a directory the user controls — the
+	// debugger then reports the source as missing.
+	const auto relative = "nautilus_relative_" + std::to_string(::getpid()) + ".ir";
+	const auto expected = std::filesystem::current_path() / relative;
+	std::filesystem::remove(expected);
+
+	auto options = debugOptions();
+	options.setOption("mlir.debug.source_file", relative);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(std::filesystem::exists(expected));
+	// The IR dump names itself by the absolute path the DWARF points at.
+	std::filesystem::remove(expected);
+}
+
+// The GDB JIT interface: the debugger sets a breakpoint on
+// `__jit_debug_register_code` and walks `__jit_debug_descriptor`'s linked list
+// to find the in-memory objects it should read DWARF from.  LLVM's
+// GDBJITDebugInfoRegistrationPlugin (installed by
+// `llvm::orc::enableDebuggerSupport`) owns both symbols in this process, so the
+// descriptor's entry list is what a debugger would actually see.
+extern "C" {
+struct jit_code_entry {
+	jit_code_entry* next_entry;
+	jit_code_entry* prev_entry;
+	const char* symfile_addr;
+	uint64_t symfile_size;
+};
+struct jit_descriptor {
+	uint32_t version;
+	uint32_t action_flag;
+	jit_code_entry* relevant_entry;
+	jit_code_entry* first_entry;
+};
+extern jit_descriptor __jit_debug_descriptor;
+}
+
+namespace {
+
+size_t jitDebugEntryCount() {
+	size_t count = 0;
+	for (auto* e = __jit_debug_descriptor.first_entry; e != nullptr; e = e->next_entry) {
+		++count;
+	}
+	return count;
+}
+
+} // namespace
+
+TEST_CASE("Debug info: JIT-linked objects are registered with the debugger") {
+	const auto before = jitDebugEntryCount();
+
+	auto options = debugOptions();
+	options.setOption("mlir.eager_compilation", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	// Without the registration plugin the DWARF is emitted but never handed
+	// to the debugger, and this list stays empty no matter how much debug
+	// info the object carries.
+	REQUIRE(jitDebugEntryCount() > before);
+}
+
+TEST_CASE("Debug info: debugger registration can be disabled") {
+	const auto before = jitDebugEntryCount();
+
+	auto options = debugOptions();
+	options.setOption("mlir.debug.register_with_debugger", false);
+	options.setOption("mlir.eager_compilation", true);
+
+	NautilusEngine engine(options);
+	auto fn = engine.registerFunction(debugAddOne);
+	REQUIRE(fn(10) == 11);
+
+	REQUIRE(jitDebugEntryCount() == before);
+}
+
+TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N DILocalVariable") {
+	// Each `$N` is a shadow alloca with a dbg.declare pointing at it (see
+	// EmitDbgValuePass). Both the DILocalVariable metadata and the debug
+	// record have to survive MLIR->LLVM translation.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugSumThree);
+		REQUIRE(fn(1, 2, 3) == 6);
+	});
+
+	REQUIRE_FALSE(ir.variables.empty());
+	// DILocalVariable names use a `v<N>` prefix rather than `$<N>`, which GDB's
+	// value-history syntax reserves.
+	for (const auto& variable : ir.variables) {
+		INFO("variable " << variable.name);
+		REQUIRE(variable.name.rfind('v', 0) == 0);
+	}
+	// LLVM 21 emits `#dbg_declare` records; older syntax is the intrinsic call.
+	REQUIRE((ir.contains("#dbg_declare") || ir.contains("@llvm.dbg.declare")));
+	REQUIRE(ir.contains("= alloca i32"));
+}
+
+TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
+	auto ir = compileDebugIr(
+	    "execute",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugAddOne);
+		    REQUIRE(fn(5) == 6);
+	    },
+	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); },
+	    "after_llvm_generation");
+
+	REQUIRE(ir.contains("DICompileUnit"));
 }
 
 TEST_CASE("Debug info: nautilus-ir mode emits DISubprogram with non-zero line") {
-	// Regression: DIScopeForLLVMFuncOpPass used to synthesize DISubprograms
-	// with `line: 0` because MLIRLoweringProvider tagged the FuncOp with a
-	// NameLoc whose nested FileLineColLoc had line 0.  DWARF treats line 0
-	// as "no location", so GDB's `step` could not land inside the function.
-	// The lowering now looks the function's header line up in
-	// IRSourceMap::functionLines, which must surface as a non-zero `line:`
-	// attribute on every emitted DISubprogram.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+	// `line: 0` on a subprogram means "no source position", which costs the
+	// function its entry in a debugger's line table.
+	auto ir = compileDebugIr(
+	    "execute",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugAddOne);
+		    REQUIRE(fn(5) == 6);
+	    },
+	    {}, "after_llvm_generation");
+
+	REQUIRE_FALSE(ir.subprograms.empty());
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
 	}
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("dump.after_llvm_generation", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugSumThree);
-	REQUIRE(fn(1, 2, 3) == 6);
-
-	bool foundDISubprogram = false;
-	bool foundLineZero = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().filename() == "after_llvm_generation.ll") {
-					auto contents = readFile(entry.path().string());
-					std::string::size_type pos = 0;
-					while ((pos = contents.find("!DISubprogram(", pos)) != std::string::npos) {
-						const auto end = contents.find(')', pos);
-						if (end == std::string::npos) {
-							break;
-						}
-						const auto record = contents.substr(pos, end - pos);
-						foundDISubprogram = true;
-						if (record.find("line: 0") != std::string::npos) {
-							foundLineZero = true;
-						}
-						pos = end;
-					}
-				}
-			}
-		}
-	}
-	REQUIRE(foundDISubprogram);
-	REQUIRE_FALSE(foundLineZero);
 }
 
 TEST_CASE("Debug info: loop body produces a multi-block IR with N lines for every op") {
-	// Sanity-check that a looping function — which lowers to several MLIR
-	// basic blocks and carries SSA block arguments across iterations —
-	// still produces a valid IR source dump where every `$N = ...`
-	// definition and every block-argument appears on its own line, and
-	// every emitted DISubprogram gets a real `line:` attribute.
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_loop_test_" + std::to_string(::getpid()) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
+	// A looping function lowers to several MLIR blocks and carries SSA block
+	// arguments across iterations. It must still produce a valid IR source
+	// dump, and every emitted DISubprogram must keep a real `line:`.
+	auto ir = compileDebugIr(
+	    "execute",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugSumLoop);
+		    REQUIRE(fn(5) == 10); // sum of 0..4
+	    },
+	    {}, "after_llvm_generation");
 
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+	// The dump is in fact multi-block.
+	REQUIRE(ir.sourceText.find("Block_") != std::string::npos);
+	REQUIRE(ir.sourceText.find("return") != std::string::npos);
+	REQUIRE(std::count(ir.sourceText.begin(), ir.sourceText.end(), '\n') > 5);
+
+	REQUIRE_FALSE(ir.subprograms.empty());
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
 	}
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("mlir.debug.source_file", sourcePath);
-	options.setOption("dump.after_llvm_generation", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugSumLoop);
-	// sum of 0..4 inclusive
-	REQUIRE(fn(5) == 10);
-
-	// IR dump should contain at least one `Block_` header (the loop
-	// body/header) and the final `return` — i.e. the function is in fact
-	// multi-block.
-	REQUIRE(std::filesystem::exists(sourcePath));
-	const auto ir = readFile(sourcePath);
-	REQUIRE(ir.find("Block_") != std::string::npos);
-	REQUIRE(ir.find("return") != std::string::npos);
-	REQUIRE(std::count(ir.begin(), ir.end(), '\n') > 5);
-
-	// DISubprogram must still carry a non-zero `line:` for the main
-	// function even when the body is multi-block.
-	bool foundDISubprogram = false;
-	bool foundLineZero = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().filename() == "after_llvm_generation.ll") {
-					auto contents = readFile(entry.path().string());
-					std::string::size_type pos = 0;
-					while ((pos = contents.find("!DISubprogram(", pos)) != std::string::npos) {
-						const auto end = contents.find(')', pos);
-						if (end == std::string::npos) {
-							break;
-						}
-						const auto record = contents.substr(pos, end - pos);
-						foundDISubprogram = true;
-						if (record.find("line: 0") != std::string::npos) {
-							foundLineZero = true;
-						}
-						pos = end;
-					}
-				}
-			}
-		}
-	}
-	REQUIRE(foundDISubprogram);
-	REQUIRE_FALSE(foundLineZero);
-
-	std::filesystem::remove(sourcePath);
 }
 
 TEST_CASE("Debug info: nested control flow preserves $N DILocalVariables across blocks") {
-	// Nested if/else inside a loop produces branching control flow where
-	// block-arg SSA ids bridge iterations.  Verify that every Nautilus
-	// `$N` in the IR dump has a matching DILocalVariable in the lowered
-	// LLVM IR so GDB can resolve each intermediate across all branches.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
-	}
+	// Every `$N` in the IR dump -- block-argument declarations in a block
+	// header as well as `$N = ...` definitions -- must surface as a
+	// DILocalVariable, otherwise GDB cannot resolve it across a branch.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugNestedControlFlow);
+		REQUIRE(fn(10) == 19);
+	});
 
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_cf_test_" + std::to_string(::getpid()) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("mlir.debug.source_file", sourcePath);
-	options.setOption("dump.before_llvm_optimization", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugNestedControlFlow);
-	// limit = 10 → odd count {1,3,5,7,9}=5; even>4 sum {6,8}=14; total=19.
-	REQUIRE(fn(10) == 19);
-
-	REQUIRE(std::filesystem::exists(sourcePath));
-	const auto ir = readFile(sourcePath);
-
-	// Count distinct `$N` definitions in the IR dump — block arg
-	// declarations (`$N:type` inside a block header) and `$N = ...`
-	// lines.  Every one must surface as a `!DILocalVariable(name: "vN"…)`
-	// in the lowered LLVM IR, otherwise GDB cannot resolve it across a
-	// branch.  (DILocalVariable uses the `v` prefix instead of `$` so
-	// GDB doesn't interpret the name as value-history syntax.)
 	std::set<int> irIds;
-	for (std::string::size_type p = 0; (p = ir.find('$', p)) != std::string::npos; ++p) {
+	for (std::string::size_type p = 0; (p = ir.sourceText.find('$', p)) != std::string::npos; ++p) {
 		std::string::size_type q = p + 1;
 		int id = 0;
 		bool any = false;
-		while (q < ir.size() && std::isdigit(static_cast<unsigned char>(ir[q]))) {
-			id = id * 10 + (ir[q] - '0');
+		while (q < ir.sourceText.size() && std::isdigit(static_cast<unsigned char>(ir.sourceText[q]))) {
+			id = id * 10 + (ir.sourceText[q] - '0');
 			any = true;
 			++q;
 		}
@@ -464,630 +770,256 @@ TEST_CASE("Debug info: nested control flow preserves $N DILocalVariables across 
 	}
 	REQUIRE(irIds.size() > 5);
 
-	std::set<int> llIds;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().filename() == "before_llvm_optimization.ll") {
-					auto contents = readFile(entry.path().string());
-					const std::string marker = "!DILocalVariable(name: \"v";
-					std::string::size_type pos = 0;
-					while ((pos = contents.find(marker, pos)) != std::string::npos) {
-						auto idStart = pos + marker.size();
-						int id = 0;
-						bool any = false;
-						while (idStart < contents.size() &&
-						       std::isdigit(static_cast<unsigned char>(contents[idStart]))) {
-							id = id * 10 + (contents[idStart] - '0');
-							any = true;
-							++idStart;
-						}
-						if (any) {
-							llIds.insert(id);
-						}
-						pos = idStart;
-					}
-				}
-			}
+	// DILocalVariable uses a `v` prefix instead of `$`, which GDB would read as
+	// value-history syntax.
+	std::set<int> variableIds;
+	for (const auto& variable : ir.variables) {
+		if (variable.name.size() > 1 && variable.name.front() == 'v') {
+			variableIds.insert(std::stoi(variable.name.substr(1)));
 		}
 	}
-
-	REQUIRE_FALSE(llIds.empty());
+	REQUIRE_FALSE(variableIds.empty());
 	for (int id : irIds) {
-		INFO("IR defines $" << id << " but no matching DILocalVariable was emitted in LLVM IR");
-		REQUIRE(llIds.count(id) == 1);
+		INFO("IR defines $" << id << " but no matching DILocalVariable was emitted");
+		REQUIRE(variableIds.count(id) == 1);
 	}
-
-	std::filesystem::remove(sourcePath);
 }
 
 TEST_CASE("Debug info: per-block DILexicalBlock scoping narrows variable visibility") {
-	// EmitDbgValuePass builds one DILexicalBlock per Nautilus basic
-	// block and scopes each DILocalVariable to the block that stores
-	// into its shadow alloca.  This test asserts:
-	//   * more than one DILexicalBlock is emitted for a multi-block
-	//     function (otherwise every variable would share the function
-	//     scope).
-	//   * each DILexicalBlock's parent is the function's DISubprogram.
-	//   * at least one DILocalVariable is scoped to a DILexicalBlock
-	//     rather than directly to the DISubprogram — proving that
-	//     scoping has actually been narrowed from function scope.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
+	// EmitDbgValuePass builds one DILexicalBlock per Nautilus basic block and
+	// scopes each DILocalVariable to the block that stores into its shadow
+	// alloca, so a variable is only in scope where it is live.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugNestedControlFlow);
+		REQUIRE(fn(10) == 19);
+	});
+
+	const auto executeId = ir.subprogramId("execute");
+	REQUIRE_FALSE(executeId.empty());
+
+	// More than one block scope, all parented on the function: a single scope
+	// would mean every variable is visible everywhere.
+	const auto blockLines = ir.lexicalBlockLinesOf(executeId);
+	REQUIRE(blockLines.size() >= 2);
+
+	// And variables actually sit in those block scopes rather than directly on
+	// the subprogram -- that is what narrows visibility.
+	int varsInBlockScope = 0;
+	for (const auto& variable : ir.variables) {
+		if (ir.lexicalBlocks.count(variable.scopeId) && ir.owningSubprogram(variable.scopeId) == executeId) {
+			++varsInBlockScope;
 		}
 	}
+	REQUIRE(varsInBlockScope >= 1);
+}
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("dump.before_llvm_optimization", true);
+TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shared across blocks") {
+	// A region() lowers to a DWARF *inlined subroutine*, not a plain lexical
+	// block: gdb prints one line per stack frame, and a lexical block is never
+	// a frame boundary, so a region built from one would never appear in `bt`.
+	// Modeling it as "as if inlined" reuses the mechanism gdb already has for
+	// an -O2-inlined function, giving region("accumulate", ...) a real
+	// `#0 accumulate () / #1 execute ()` frame pair. This was verified against
+	// a real binary under gdb; the test checks the static structure that makes
+	// it possible.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugRegionSum);
+		// Two regions each accumulate 0..4.
+		REQUIRE(fn(5) == 20);
+	});
 
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugSumLoop);
-	REQUIRE(fn(5) == 10);
+	const auto executeId = ir.subprogramId("execute");
+	const auto accumulateId = ir.subprogramId("accumulate");
+	const auto aggIfId = ir.subprogramId("agg if");
+	REQUIRE_FALSE(executeId.empty());
+	REQUIRE_FALSE(accumulateId.empty());
+	REQUIRE_FALSE(aggIfId.empty());
 
-	int lexicalBlockCount = 0;
-	int varsScopedToLexBlock = 0;
-	bool foundLexBlock = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (entry.is_regular_file() && entry.path().filename() == "before_llvm_optimization.ll") {
-					auto contents = readFile(entry.path().string());
+	// A DILexicalBlockFile can never surface as its own DWARF scope, region or
+	// not (see RegionScopeInfo.hpp).
+	REQUIRE_FALSE(ir.sawLexicalBlockFile);
 
-					// Iterate line-by-line so parser state machines
-					// do not risk looping on the same position.
-					std::set<std::string> lexBlockIds;
-					{
-						std::istringstream iss(contents);
-						std::string line;
-						while (std::getline(iss, line)) {
-							const auto marker = line.find("= distinct !DILexicalBlock(");
-							if (marker == std::string::npos) {
-								continue;
-							}
-							// Line shape: `!<N> = distinct !DILexicalBlock(...)`
-							auto bang = line.find('!');
-							if (bang == std::string::npos) {
-								continue;
-							}
-							auto idEnd = line.find(' ', bang);
-							if (idEnd == std::string::npos) {
-								continue;
-							}
-							lexBlockIds.insert(line.substr(bang + 1, idEnd - bang - 1));
-							foundLexBlock = true;
-						}
-					}
-					lexicalBlockCount = static_cast<int>(lexBlockIds.size());
-
-					{
-						std::istringstream iss(contents);
-						std::string line;
-						while (std::getline(iss, line)) {
-							if (line.find("= !DILocalVariable(") == std::string::npos) {
-								continue;
-							}
-							const auto scopeKey = line.find("scope: !");
-							if (scopeKey == std::string::npos) {
-								continue;
-							}
-							auto scopeStart = scopeKey + std::string("scope: !").size();
-							auto scopeEnd = scopeStart;
-							while (scopeEnd < line.size() &&
-							       std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
-								++scopeEnd;
-							}
-							auto scopeId = line.substr(scopeStart, scopeEnd - scopeStart);
-							if (lexBlockIds.count(scopeId)) {
-								++varsScopedToLexBlock;
-							}
-						}
-					}
-				}
-			}
-		}
+	// `line: 0` means "compiler-generated, no source position". Anything the
+	// region lowers -- a block argument's phi included -- that keeps a
+	// still-marked region location translates to exactly that, and a debugger
+	// then attributes the instruction to the inlinedAt call site instead.
+	for (const auto& [id, location] : ir.locations) {
+		INFO("DILocation !" << id);
+		REQUIRE(location.line != 0);
 	}
 
-	REQUIRE(foundLexBlock);
-	REQUIRE(lexicalBlockCount >= 2);
-	REQUIRE(varsScopedToLexBlock >= 1);
+	// Each region's synthetic subprogram stays on execute's own file: a
+	// DILocation has no file of its own, so a mismatch here would silently
+	// reinterpret unrelated source lines.
+	REQUIRE(ir.subprograms.at(accumulateId).fileId == ir.subprograms.at(executeId).fileId);
+	REQUIRE(ir.subprograms.at(aggIfId).fileId == ir.subprograms.at(executeId).fileId);
+
+	// A shared scope, not one re-created per block: the loop condition
+	// (loop-header block) and the induction increment (latch block) sit in two
+	// different Nautilus blocks and resolve to the same "accumulate"
+	// subprogram. The accumulation is one region deeper -- inside
+	// region("agg if") -- so it belongs to that region's subprogram; a nested
+	// region that collapsed into its parent would show "accumulate" here and
+	// make the inner frame invisible in a backtrace.
+	const auto condition = ir.dbgIdOf("execute", {"icmp slt"});
+	const auto increment = ir.dbgIdOf("execute", {"add i32 %", ", 1,"});
+	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	REQUIRE_FALSE(condition.empty());
+	REQUIRE_FALSE(increment.empty());
+	REQUIRE_FALSE(accumulation.empty());
+
+	REQUIRE(ir.frameScopes(condition) == std::vector<std::string> {accumulateId, executeId});
+	REQUIRE(ir.frameScopes(increment) == std::vector<std::string> {accumulateId, executeId});
+	// Two deep, and in order: that is what makes `bt` read agg if / accumulate
+	// / execute rather than a dangling or flattened scope.
+	REQUIRE(ir.frameScopes(accumulation) == std::vector<std::string> {aggIfId, accumulateId, executeId});
+
+	// The ops inside a region keep their own line. Sharing one location for a
+	// whole region would collapse it onto a single steppable line.
+	REQUIRE(ir.locations.at(condition).line != ir.locations.at(accumulation).line);
+
+	// Each enclosing frame is located where the region below it opens, not at
+	// the function header: stopped in the accumulation, gdb shows "agg if" at
+	// the add's own line, "accumulate" at the line "agg if" opens on, and
+	// "execute" at the line "accumulate" opens on.
+	const int functionHeaderLine = ir.subprograms.at(executeId).line;
+	const int innerLine = ir.locations.at(ir.locations.at(accumulation).inlinedAtId).line;
+	const auto outerId = ir.locations.at(ir.locations.at(accumulation).inlinedAtId).inlinedAtId;
+	const int outerLine = ir.locations.at(outerId).line;
+	INFO("agg if at " << ir.locations.at(accumulation).line << ", accumulate at " << innerLine << ", execute at "
+	                  << outerLine);
+	REQUIRE(outerLine != functionHeaderLine);
+	REQUIRE(innerLine != functionHeaderLine);
+	// Outermost opens first, then the nested region, then the op itself.
+	REQUIRE(outerLine < innerLine);
+	REQUIRE(innerLine < ir.locations.at(accumulation).line);
+
+	// A region is an inlined frame, and a debugger stopped in one looks for
+	// variables in *its* scope tree. Scope them all to the enclosing function
+	// and `info locals` comes back empty inside every region.
+	REQUIRE_FALSE(ir.variableNamesIn(accumulateId).empty());
+	REQUIRE_FALSE(ir.variableNamesIn(aggIfId).empty());
+}
+
+TEST_CASE("Debug info: the entry block's scope is the function's own, not a variable's decl line") {
+	// The prologue's shadow allocas each carry the line of the variable they
+	// stand for, so the entry block's DILexicalBlock must not be derived from
+	// its first op. DILexicalBlock is uniqued by (scope, file, line, column):
+	// give the entry block some variable's decl line and it merges with the
+	// block that really starts there, moving every entry-block variable into a
+	// scope whose PC range lies elsewhere -- which is what "no variable data
+	// available" looks like in a debugger.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugNestedControlFlow);
+		// odd counts 1, 3 and 5; no even value is greater than 4.
+		REQUIRE(fn(6) == 3);
+	});
+
+	const auto executeId = ir.subprogramId("execute");
+	REQUIRE_FALSE(executeId.empty());
+	// Only execute's own blocks matter: the `_mlir_ciface_` wrapper in the same
+	// module has an entry block too, and counting it would let the bug through.
+	auto blockLines = ir.lexicalBlockLinesOf(executeId);
+	REQUIRE(blockLines.size() > 1);
+
+	// Exactly one of them -- the entry block -- sits on the function's line.
+	INFO("execute's lexical block lines must include the function line " << ir.subprograms.at(executeId).line);
+	REQUIRE(std::count(blockLines.begin(), blockLines.end(), ir.subprograms.at(executeId).line) == 1);
+
+	// And no two share a line, i.e. the attribute uniquing merged no scopes.
+	std::sort(blockLines.begin(), blockLines.end());
+	REQUIRE(std::adjacent_find(blockLines.begin(), blockLines.end()) == blockLines.end());
 }
 
 TEST_CASE("Debug info: multi-function module emits a DISubprogram + scopes per function") {
-	// A CompiledModule built from several Nautilus functions lowers to a
-	// single MLIR module containing one `func.func` per registration.
-	// Each must surface as its own DWARF DISubprogram (with a non-zero
-	// `line:`), carry its own DILexicalBlocks, and isolate its `vN`
-	// DILocalVariables so names don't leak across functions.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+	// A CompiledModule built from several functions lowers to one MLIR module
+	// with a `func.func` each. Every one must surface as its own DISubprogram
+	// with its own lexical blocks, so scopes and variables cannot leak between
+	// functions.
+	auto ir = compileDebugIr("mod_add", [](NautilusEngine& engine) {
+		auto module = engine.createModule();
+		module.registerFunction("mod_add", debugModAdd);
+		module.registerFunction("mod_mul", debugModMul);
+		module.registerFunction("mod_loop", debugModLoop);
+		auto compiled = module.compile();
+		REQUIRE(compiled.getFunction<int32_t(int32_t)>("mod_add")(41) == 42);
+		REQUIRE(compiled.getFunction<int32_t(int32_t, int32_t)>("mod_mul")(3, 4) == 13);
+		REQUIRE(compiled.getFunction<int32_t(int32_t)>("mod_loop")(5) == 10);
+	});
+
+	// One subprogram per user function, ignoring the `_mlir_ciface_*` wrappers
+	// convert-func-to-llvm synthesizes alongside each.
+	for (const auto& name : {"mod_add", "mod_mul", "mod_loop"}) {
+		INFO("expected a DISubprogram for " << name);
+		REQUIRE_FALSE(ir.subprogramId(name).empty());
 	}
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("dump.before_llvm_optimization", true);
-
-	NautilusEngine engine(options);
-	auto module = engine.createModule();
-	module.registerFunction("mod_add", debugModAdd);
-	module.registerFunction("mod_mul", debugModMul);
-	module.registerFunction("mod_loop", debugModLoop);
-	auto compiled = module.compile();
-
-	auto addFn = compiled.getFunction<int32_t(int32_t)>("mod_add");
-	auto mulFn = compiled.getFunction<int32_t(int32_t, int32_t)>("mod_mul");
-	auto loopFn = compiled.getFunction<int32_t(int32_t)>("mod_loop");
-	REQUIRE(addFn(41) == 42);
-	REQUIRE(mulFn(3, 4) == 13);
-	REQUIRE(loopFn(5) == 10);
-
-	// Harvest (subprogramId → name) and (lexBlockId → subprogramId)
-	// tables from the pre-optimization dump, then check that:
-	//   * one DISubprogram is emitted per user function (plus the
-	//     MLIR-generated `_mlir_ciface_*` wrappers that ride along);
-	//   * every DISubprogram has line != 0;
-	//   * each DILexicalBlock's `scope:` is one of the DISubprograms;
-	//   * DILocalVariables scoped to a lexical block never cross
-	//     function boundaries (a given scope → exactly one function).
-	std::map<std::string, std::string> subprogramName; // id → name
-	std::map<std::string, std::string> lexBlockOwner;  // id → subprogram id
-	std::map<std::string, std::string> subprogramLine; // id → line string
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (!entry.is_regular_file() || entry.path().filename() != "before_llvm_optimization.ll") {
-					continue;
-				}
-				auto contents = readFile(entry.path().string());
-				std::istringstream iss(contents);
-				std::string line;
-				while (std::getline(iss, line)) {
-					const auto bang = line.find('!');
-					if (bang == std::string::npos) {
-						continue;
-					}
-					const auto idEnd = line.find(' ', bang);
-					if (idEnd == std::string::npos || line.find('=', idEnd) == std::string::npos) {
-						continue;
-					}
-					const auto metaId = line.substr(bang + 1, idEnd - bang - 1);
-
-					if (line.find("!DISubprogram(") != std::string::npos) {
-						auto nameKey = line.find("name: \"");
-						auto lineKey = line.find("line: ");
-						if (nameKey == std::string::npos || lineKey == std::string::npos) {
-							continue;
-						}
-						auto nameStart = nameKey + std::string("name: \"").size();
-						auto nameEnd = line.find('"', nameStart);
-						auto lineStart = lineKey + std::string("line: ").size();
-						auto lineEnd = lineStart;
-						while (lineEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[lineEnd]))) {
-							++lineEnd;
-						}
-						subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
-						subprogramLine[metaId] = line.substr(lineStart, lineEnd - lineStart);
-					} else if (line.find("!DILexicalBlock(") != std::string::npos) {
-						auto scopeKey = line.find("scope: !");
-						if (scopeKey == std::string::npos) {
-							continue;
-						}
-						auto scopeStart = scopeKey + std::string("scope: !").size();
-						auto scopeEnd = scopeStart;
-						while (scopeEnd < line.size() && std::isdigit(static_cast<unsigned char>(line[scopeEnd]))) {
-							++scopeEnd;
-						}
-						lexBlockOwner[metaId] = line.substr(scopeStart, scopeEnd - scopeStart);
-					}
-				}
-				break; // one dump is enough
-			}
-			if (!subprogramName.empty()) {
-				break;
-			}
-		}
-	}
-
-	// Collect distinct user-level function names — ignore the
-	// `_mlir_ciface_*` / `_mlir_*` wrappers that convert-func-to-llvm
-	// synthesizes alongside each emitted function.
-	std::set<std::string> userFunctions;
-	for (const auto& kv : subprogramName) {
-		if (kv.second.rfind("_mlir_", 0) == 0) {
-			continue;
-		}
-		userFunctions.insert(kv.second);
-	}
-	REQUIRE(userFunctions.count("mod_add") == 1);
-	REQUIRE(userFunctions.count("mod_mul") == 1);
-	REQUIRE(userFunctions.count("mod_loop") == 1);
-
-	// Every DISubprogram — including the C-interface wrappers — must
-	// have a non-zero `line:` attribute, otherwise GDB cannot land
+	// Every subprogram, wrappers included, needs a real line or GDB cannot land
 	// inside the function on `step`.
-	for (const auto& kv : subprogramLine) {
-		INFO("DISubprogram !" << kv.first << " has line: " << kv.second);
-		REQUIRE(kv.second != "0");
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
 	}
 
-	// Per-function lexical-block isolation: each DILexicalBlock's
-	// parent scope must resolve to a DISubprogram we captured.
-	REQUIRE_FALSE(lexBlockOwner.empty());
-	for (const auto& kv : lexBlockOwner) {
-		INFO("DILexicalBlock !" << kv.first << " owner !" << kv.second);
-		REQUIRE(subprogramName.count(kv.second) == 1);
+	// Each lexical block belongs to exactly one of those subprograms...
+	REQUIRE_FALSE(ir.lexicalBlocks.empty());
+	for (const auto& [id, block] : ir.lexicalBlocks) {
+		INFO("DILexicalBlock !" << id);
+		REQUIRE_FALSE(ir.owningSubprogram(block.scopeId).empty());
 	}
 
-	// Count lexical blocks per owning DISubprogram.  The multi-block
-	// `mod_loop` function must contribute more than one lexical block
-	// (entry + loop header + body + exit), proving that per-block
-	// scoping works independently across module functions.
-	std::map<std::string, int> blocksPerSubprogram;
-	for (const auto& kv : lexBlockOwner) {
-		blocksPerSubprogram[kv.second]++;
-	}
-	int multiBlockFunctions = 0;
-	for (const auto& kv : blocksPerSubprogram) {
-		if (kv.second >= 2) {
-			++multiBlockFunctions;
-		}
-	}
-	REQUIRE(multiBlockFunctions >= 1);
+	// ...and the multi-block `mod_loop` contributes more than one, which is
+	// per-block scoping working independently across module functions.
+	REQUIRE(ir.lexicalBlockLinesOf(ir.subprogramId("mod_loop")).size() >= 2);
 }
 
 TEST_CASE("Debug info: one Nautilus function calling another gets per-function debug info") {
-	// `debugCaller` invokes `debug_helper` via a NautilusFunction
-	// wrapper, which ends up as a CallOperation — so both
-	// functions are compiled into the same MLIR module and the caller
-	// site lowers to a `func.call` inside `debugCaller`'s body.
-	// Verify that:
-	//   * Both functions appear as distinct DISubprograms with
-	//     non-zero `line:` attributes.
-	//   * The emitted LLVM IR contains an actual `call i32 @debug_helper`
-	//     from within `debugCaller`.
-	//   * The call instruction carries a `!dbg` whose scope resolves
-	//     to the CALLER's DILexicalBlock — proving we preserve scope
-	//     across the call site.
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_call_" + std::to_string(::getpid()) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
+	// A NautilusFunction callee lowers to its own `func.func` in the same
+	// module, so caller and callee each get a DISubprogram of their own.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugCaller);
+		REQUIRE(fn(3, 4) == 22);
+	});
 
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+	const auto callerId = ir.subprogramId("execute");
+	const auto calleeId = ir.subprogramId("debug_helper");
+	REQUIRE_FALSE(callerId.empty());
+	REQUIRE_FALSE(calleeId.empty());
+
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
 	}
 
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("mlir.debug.source_file", sourcePath);
-	options.setOption("dump.before_llvm_optimization", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugCaller);
-	// sum_{i=0..3} ((5*i)+1) = 1 + 6 + 11 + 16 = 34
-	REQUIRE(fn(5, 4) == 34);
-
-	// IR dump should list two function headers so the user can step
-	// into both caller and callee.
-	REQUIRE(std::filesystem::exists(sourcePath));
-	const auto ir = readFile(sourcePath);
-	REQUIRE(ir.find("debug_helper(") != std::string::npos);
-	const bool hasOuterFn =
-	    ir.find("execute(") != std::string::npos || ir.find("debugCaller(") != std::string::npos;
-	REQUIRE(hasOuterFn);
-
-	// Parse the pre-optimization LLVM IR to map subprograms to their
-	// metadata ids, check the call lowered correctly, and confirm the
-	// call's !dbg scope belongs to the caller.  We must capture the
-	// call that appears in the OUTER `@execute` function — the module
-	// also contains `@debug_helper` and its `_mlir_ciface_*` wrapper,
-	// each of which emits its own `call i32 @debug_helper` forwarder.
-	std::map<std::string, std::string> subprogramName;
-	std::map<std::string, std::string> subprogramLine;
-	std::map<std::string, std::string> lexBlockOwner;   // !N -> !M (lexBlock -> scope)
-	std::map<std::string, std::string> dilocationScope; // !N -> !M (DILocation -> scope)
-	std::string callDbgScope;
-	bool sawHelperCall = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (!entry.is_regular_file() || entry.path().filename() != "before_llvm_optimization.ll") {
-					continue;
-				}
-				auto contents = readFile(entry.path().string());
-				std::istringstream iss(contents);
-				std::string line;
-				std::string currentFunction;
-				while (std::getline(iss, line)) {
-					// Track which user-level function we're scanning
-					// through.  `define ... @<name>(...)` marks the
-					// start, `^}` the end.
-					if (line.rfind("define ", 0) == 0) {
-						auto at = line.find('@');
-						auto open = (at == std::string::npos) ? std::string::npos : line.find('(', at);
-						currentFunction = (at != std::string::npos && open != std::string::npos)
-						                      ? line.substr(at + 1, open - at - 1)
-						                      : std::string {};
-					} else if (line == "}") {
-						currentFunction.clear();
-					}
-
-					// Only capture the call from the CALLER — ignore
-					// the `_mlir_ciface_debug_helper` forwarder and any
-					// un-debugged `_mlir_*` wrapper. The nested call is
-					// lowered both as a plain `call` (noexcept path) and
-					// as an `invoke` (potentially-throwing path, whose
-					// `!dbg` sits on the `to label ...` continuation line).
-					if (currentFunction == "execute" &&
-					    (line.find("call i32 @debug_helper") != std::string::npos ||
-					     line.find("invoke i32 @debug_helper") != std::string::npos)) {
-						sawHelperCall = true;
-					}
-					if (sawHelperCall && callDbgScope.empty() &&
-					    line.find("!dbg !") != std::string::npos) {
-						const auto dbgKey = line.find("!dbg !");
-						auto idStart = dbgKey + std::string("!dbg !").size();
-						auto idEnd = idStart;
-						while (idEnd < line.size() &&
-						       std::isdigit(static_cast<unsigned char>(line[idEnd]))) {
-							++idEnd;
-						}
-						callDbgScope = line.substr(idStart, idEnd - idStart);
-						continue;
-					}
-					const auto bang = line.find('!');
-					if (bang == std::string::npos) {
-						continue;
-					}
-					const auto idEnd = line.find(' ', bang);
-					if (idEnd == std::string::npos) {
-						continue;
-					}
-					const auto metaId = line.substr(bang + 1, idEnd - bang - 1);
-					auto scopeIdAt = [&](std::string::size_type key) {
-						auto start = key + std::string("scope: !").size();
-						auto end = start;
-						while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
-							++end;
-						}
-						return line.substr(start, end - start);
-					};
-					if (line.find("!DISubprogram(") != std::string::npos) {
-						auto nameKey = line.find("name: \"");
-						auto lineKey = line.find("line: ");
-						if (nameKey == std::string::npos || lineKey == std::string::npos) {
-							continue;
-						}
-						auto nameStart = nameKey + std::string("name: \"").size();
-						auto nameEnd = line.find('"', nameStart);
-						auto lineStart = lineKey + std::string("line: ").size();
-						auto lineNumEnd = lineStart;
-						while (lineNumEnd < line.size() &&
-						       std::isdigit(static_cast<unsigned char>(line[lineNumEnd]))) {
-							++lineNumEnd;
-						}
-						subprogramName[metaId] = line.substr(nameStart, nameEnd - nameStart);
-						subprogramLine[metaId] = line.substr(lineStart, lineNumEnd - lineStart);
-					} else if (line.find("!DILexicalBlock(") != std::string::npos) {
-						auto scopeKey = line.find("scope: !");
-						if (scopeKey == std::string::npos) {
-							continue;
-						}
-						lexBlockOwner[metaId] = scopeIdAt(scopeKey);
-					} else if (line.find("!DILocation(") != std::string::npos) {
-						auto scopeKey = line.find("scope: !");
-						if (scopeKey == std::string::npos) {
-							continue;
-						}
-						dilocationScope[metaId] = scopeIdAt(scopeKey);
-					}
-				}
-				break;
-			}
-			if (sawHelperCall) {
-				break;
-			}
-		}
-	}
-	REQUIRE(sawHelperCall);
-
-	// Both the helper and the outer function must have their own
-	// DISubprogram with a real line number.
-	std::set<std::string> userFuncs;
-	for (const auto& kv : subprogramName) {
-		if (kv.second.rfind("_mlir_", 0) != 0) {
-			userFuncs.insert(kv.second);
-		}
-	}
-	REQUIRE(userFuncs.count("debug_helper") == 1);
-	// The outer fn is registered via engine.registerFunction(debugCaller)
-	// without an explicit name, so Nautilus assigns the standard
-	// "execute" symbol for single-registerFunction engines.
-	REQUIRE(userFuncs.count("execute") == 1);
-	for (const auto& kv : subprogramLine) {
-		INFO("DISubprogram !" << kv.first << " (" << subprogramName[kv.first] << ") line: " << kv.second);
-		REQUIRE(kv.second != "0");
-	}
-
-	// The `call @debug_helper` instruction's `!dbg` must live under a
-	// scope whose chain terminates at the CALLER's DISubprogram — not
-	// the callee's.  The chain is
-	//     DILocation -> (DILexicalBlock*) -> DISubprogram.
-	REQUIRE_FALSE(callDbgScope.empty());
-	std::string walkId = callDbgScope;
-	for (int steps = 0; steps < 16 && !walkId.empty(); ++steps) {
-		if (subprogramName.count(walkId)) {
-			break;
-		}
-		if (auto it = dilocationScope.find(walkId); it != dilocationScope.end()) {
-			walkId = it->second;
-			continue;
-		}
-		if (auto it = lexBlockOwner.find(walkId); it != lexBlockOwner.end()) {
-			walkId = it->second;
-			continue;
-		}
-		walkId.clear();
-		break;
-	}
-	REQUIRE(subprogramName.count(walkId) == 1);
-	REQUIRE(subprogramName[walkId] != "debug_helper");
-
-	std::filesystem::remove(sourcePath);
+	// The call instruction belongs to the CALLER's scope, not the callee's:
+	// the callee's frame only begins inside debug_helper itself.
+	const auto callDbgId = ir.dbgIdOf("execute", {"call ", "@debug_helper"});
+	REQUIRE_FALSE(callDbgId.empty());
+	const auto scopes = ir.frameScopes(callDbgId);
+	REQUIRE_FALSE(scopes.empty());
+	REQUIRE(ir.owningSubprogram(scopes.front()) == callerId);
 }
 
 TEST_CASE("Debug info: block terminators carry non-zero !dbg lines") {
-	// Terminators (`br`, `cond_br`, `return`) don't have a `$N = ...`
-	// line in the Nautilus IR dump, so prior to positional
-	// `blockOpLines` tracking they inherited line 0 — which DWARF
-	// treats as "no location" and GDB's `step` silently skips.  This
-	// test lowers a function with both forms of branch plus a return,
-	// then scans the LLVM IR for those terminators and requires every
-	// one of their `!dbg` lines to be > 0.
-	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
-		}
+	// A terminator (`br`, `cond_br`, `return`) has no `$N = ...` line of its
+	// own in the IR dump, so it is the op most likely to end up with line 0 --
+	// which DWARF reads as "no location" and GDB's `step` silently skips.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugNestedControlFlow);
+		REQUIRE(fn(10) == 19);
+	});
+
+	auto terminators = ir.dbgIdsStartingWith("execute", "br ");
+	const auto returns = ir.dbgIdsStartingWith("execute", "ret ");
+	terminators.insert(terminators.end(), returns.begin(), returns.end());
+	// The fixture branches both ways and returns, so there is plenty to check.
+	REQUIRE(terminators.size() >= 3);
+	for (const auto& dbgId : terminators) {
+		INFO("terminator !dbg !" << dbgId);
+		REQUIRE(ir.locations.count(dbgId) == 1);
+		REQUIRE(ir.locations.at(dbgId).line != 0);
 	}
-
-	Options options;
-	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
-	options.setOption("dump.before_llvm_optimization", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugNestedControlFlow);
-	REQUIRE(fn(10) == 19);
-
-	int terminatorsChecked = 0;
-	bool sawLineZero = false;
-	if (std::filesystem::exists(dumpRoot)) {
-		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
-				continue;
-			}
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-				if (!entry.is_regular_file() || entry.path().filename() != "before_llvm_optimization.ll") {
-					continue;
-				}
-				auto contents = readFile(entry.path().string());
-
-				// Map each DILocation metadata id to its `line:` value.
-				std::map<std::string, std::string> dilocationLine;
-				{
-					std::istringstream iss(contents);
-					std::string line;
-					while (std::getline(iss, line)) {
-						if (line.find("!DILocation(") == std::string::npos) {
-							continue;
-						}
-						const auto bang = line.find('!');
-						const auto idEnd = line.find(' ', bang);
-						if (bang == std::string::npos || idEnd == std::string::npos) {
-							continue;
-						}
-						auto metaId = line.substr(bang + 1, idEnd - bang - 1);
-						const auto key = line.find("line: ");
-						if (key == std::string::npos) {
-							continue;
-						}
-						auto start = key + std::string("line: ").size();
-						auto end = start;
-						while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
-							++end;
-						}
-						dilocationLine[metaId] = line.substr(start, end - start);
-					}
-				}
-
-				// Scan instruction lines for branches and returns and
-				// assert every associated !dbg resolves to a non-zero
-				// line.  Skip the `_mlir_*` ABI wrappers — those are
-				// synthesized by MLIR and correctly carry line 0.
-				std::istringstream iss(contents);
-				std::string line;
-				std::string currentFunction;
-				while (std::getline(iss, line)) {
-					if (line.rfind("define ", 0) == 0) {
-						auto at = line.find('@');
-						auto open = (at == std::string::npos) ? std::string::npos : line.find('(', at);
-						currentFunction = (at != std::string::npos && open != std::string::npos)
-						                      ? line.substr(at + 1, open - at - 1)
-						                      : std::string {};
-					} else if (line == "}") {
-						currentFunction.clear();
-					}
-					if (currentFunction.empty() || currentFunction.rfind("_mlir_", 0) == 0) {
-						continue;
-					}
-					const bool isBr = line.find("  br label ") != std::string::npos ||
-					                  line.find("  br i1 ") != std::string::npos ||
-					                  line.find("  ret ") != std::string::npos;
-					if (!isBr) {
-						continue;
-					}
-					const auto dbgKey = line.find("!dbg !");
-					if (dbgKey == std::string::npos) {
-						continue;
-					}
-					auto start = dbgKey + std::string("!dbg !").size();
-					auto end = start;
-					while (end < line.size() && std::isdigit(static_cast<unsigned char>(line[end]))) {
-						++end;
-					}
-					auto id = line.substr(start, end - start);
-					const auto it = dilocationLine.find(id);
-					REQUIRE(it != dilocationLine.end());
-					++terminatorsChecked;
-					if (it->second == "0") {
-						INFO("terminator in @" << currentFunction << " has !dbg !" << id << " line: 0 — "
-						                       << line);
-						sawLineZero = true;
-					}
-				}
-				break;
-			}
-			if (terminatorsChecked > 0) {
-				break;
-			}
-		}
-	}
-	REQUIRE(terminatorsChecked > 0);
-	REQUIRE_FALSE(sawLineZero);
 }
-
 } // namespace nautilus::engine
 
 #endif // ENABLE_TRACING && ENABLE_MLIR_BACKEND

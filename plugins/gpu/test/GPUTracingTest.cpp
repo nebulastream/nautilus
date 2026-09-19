@@ -21,6 +21,7 @@
 namespace nautilus::log::options {
 bool getLogAddresses();
 void setLogAddresses(bool);
+void setLogSourceLocations(bool);
 } // namespace nautilus::log::options
 
 namespace nautilus::engine {
@@ -70,7 +71,11 @@ static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
 
 static void runTraceTests(const std::string& category,
                           std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
+	// Disable logging of addresses and source locations so a checked-in dump does not
+	// depend on the machine or compiler it was generated on (see
+	// log::options::setLogSourceLocations and the equivalent guard in TracingTest.cpp).
 	nautilus::log::options::setLogAddresses(false);
+	nautilus::log::options::setLogSourceLocations(false);
 	for (auto& [ctxName, traceFn] : traceContexts) {
 		DYNAMIC_SECTION(ctxName) {
 			for (auto& [name, func] : tests) {

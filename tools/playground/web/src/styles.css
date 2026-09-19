@@ -55,6 +55,26 @@ body,
 	}
 }
 
+.footer {
+	flex: 0 0 auto;
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	padding: 4px 16px;
+	font-size: 11px;
+	color: var(--text-400);
+	background: var(--paper);
+	border-top: 1px solid var(--line-100);
+}
+
+.footer a {
+	color: var(--text-400);
+}
+
+.footer a:hover {
+	color: var(--text-600);
+}
+
 /* --- panes --- */
 .panes {
 	display: flex;

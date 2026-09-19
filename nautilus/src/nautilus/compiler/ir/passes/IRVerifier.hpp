@@ -43,6 +43,11 @@ struct VerificationResult {
  *  - Every block listed as a target also lists the source block in its
  *    predecessor set (requires `rebuildPredecessorLists` to have run, or
  *    the wiring invariant to have been maintained by passes).
+ *  - Region metadata (docs/region.md) is consistent: every region index names
+ *    a region of the enclosing function, the parent chains terminate, and
+ *    every *attributed* operation is from the region its block claims or from
+ *    one nested inside it (an operation a pass minted carries no region and is
+ *    not checked).
  */
 class IRVerifier {
 public:

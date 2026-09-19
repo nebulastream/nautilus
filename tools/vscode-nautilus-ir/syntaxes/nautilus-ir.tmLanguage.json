@@ -2,16 +2,43 @@
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "Nautilus IR",
 	"scopeName": "source.nautilus-ir",
-	"fileTypes": ["nautilus"],
+	"fileTypes": [
+		"nautilus"
+	],
 	"patterns": [
-		{ "include": "#comments" },
-		{ "include": "#end-marker" },
-		{ "include": "#wrapper" },
-		{ "include": "#function-header" },
-		{ "include": "#block-header" },
-		{ "include": "#statement" },
-		{ "include": "#bare-typed-decl" },
-		{ "include": "#braces" }
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#end-marker"
+		},
+		{
+			"include": "#wrapper"
+		},
+		{
+			"include": "#declaration"
+		},
+		{
+			"include": "#function-header"
+		},
+		{
+			"include": "#exception-region"
+		},
+		{
+			"include": "#pad-header"
+		},
+		{
+			"include": "#block-header"
+		},
+		{
+			"include": "#statement"
+		},
+		{
+			"include": "#bare-typed-decl"
+		},
+		{
+			"include": "#braces"
+		}
 	],
 	"repository": {
 		"comments": {
@@ -31,6 +58,11 @@
 					"name": "comment.block.nautilus-ir",
 					"begin": "/\\*",
 					"end": "\\*/"
+				},
+				{
+					"name": "comment.line.source-location.nautilus-ir",
+					"begin": ";",
+					"end": "$"
 				}
 			]
 		},
@@ -41,105 +73,220 @@
 		"wrapper": {
 			"begin": "^\\s*(nautilus)\\s*(\\{)",
 			"beginCaptures": {
-				"1": { "name": "entity.name.namespace.nautilus-ir" },
-				"2": { "name": "punctuation.section.block.begin.nautilus-ir" }
+				"1": {
+					"name": "entity.name.namespace.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.section.block.begin.nautilus-ir"
+				}
 			},
 			"end": "^\\s*(\\})",
 			"endCaptures": {
-				"1": { "name": "punctuation.section.block.end.nautilus-ir" }
+				"1": {
+					"name": "punctuation.section.block.end.nautilus-ir"
+				}
 			},
 			"patterns": [
-				{ "include": "#comments" },
-				{ "include": "#function-header" }
+				{
+					"include": "#comments"
+				},
+				{
+					"include": "#declaration"
+				},
+				{
+					"include": "#function-header"
+				}
 			]
 		},
 		"function-header": {
-			"begin": "^\\s*(?!nautilus\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()([^)]*)(\\))\\s*(?:(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void))?\\s*(\\{)\\s*$",
+			"begin": "^\\s*(?!nautilus\\b|declare\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()([^)]*)(\\))\\s*(?:(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void))?\\s*(?:(\\[)([^\\]]*)(\\]))?\\s*(\\{)\\s*$",
 			"beginCaptures": {
-				"1": { "name": "entity.name.function.nautilus-ir" },
-				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" },
+				"1": {
+					"name": "entity.name.function.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.definition.parameters.begin.nautilus-ir"
+				},
 				"3": {
 					"patterns": [
-						{ "include": "#typed-ssa-arg" },
-						{ "include": "#types" },
-						{ "include": "#punctuation" }
+						{
+							"include": "#typed-ssa-arg"
+						},
+						{
+							"include": "#types"
+						},
+						{
+							"include": "#punctuation"
+						}
 					]
 				},
-				"4": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
-				"5": { "name": "punctuation.separator.return-type.nautilus-ir" },
-				"6": { "name": "support.type.primitive.nautilus-ir" },
-				"7": { "name": "punctuation.section.block.begin.nautilus-ir" }
+				"4": {
+					"name": "punctuation.definition.parameters.end.nautilus-ir"
+				},
+				"5": {
+					"name": "punctuation.separator.return-type.nautilus-ir"
+				},
+				"6": {
+					"name": "support.type.primitive.nautilus-ir"
+				},
+				"7": {
+					"name": "punctuation.section.attributes.begin.nautilus-ir"
+				},
+				"8": {
+					"patterns": [
+						{
+							"include": "#attributes"
+						},
+						{
+							"include": "#punctuation"
+						}
+					]
+				},
+				"9": {
+					"name": "punctuation.section.attributes.end.nautilus-ir"
+				},
+				"10": {
+					"name": "punctuation.section.block.begin.nautilus-ir"
+				}
 			},
 			"end": "^\\s*(\\})",
 			"endCaptures": {
-				"1": { "name": "punctuation.section.block.end.nautilus-ir" }
+				"1": {
+					"name": "punctuation.section.block.end.nautilus-ir"
+				}
 			},
 			"patterns": [
-				{ "include": "#comments" },
-				{ "include": "#block-header" },
-				{ "include": "#statement" },
-				{ "include": "#bare-typed-decl" }
+				{
+					"include": "#comments"
+				},
+				{
+					"include": "#exception-region"
+				},
+				{
+					"include": "#pad-header"
+				},
+				{
+					"include": "#block-header"
+				},
+				{
+					"include": "#statement"
+				},
+				{
+					"include": "#bare-typed-decl"
+				}
 			]
 		},
 		"block-header": {
 			"begin": "^\\s*(Block_\\d+)\\s*(\\()",
 			"beginCaptures": {
-				"1": { "name": "entity.name.label.block.nautilus-ir" },
-				"2": { "name": "punctuation.definition.parameters.begin.nautilus-ir" }
+				"1": {
+					"name": "entity.name.label.block.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.definition.parameters.begin.nautilus-ir"
+				}
 			},
 			"end": "(\\))\\s*(:)",
 			"endCaptures": {
-				"1": { "name": "punctuation.definition.parameters.end.nautilus-ir" },
-				"2": { "name": "punctuation.separator.block-header.nautilus-ir" }
+				"1": {
+					"name": "punctuation.definition.parameters.end.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.separator.block-header.nautilus-ir"
+				}
 			},
 			"patterns": [
-				{ "include": "#typed-ssa-arg" },
-				{ "include": "#ssa-value" },
-				{ "include": "#types" },
-				{ "include": "#punctuation" }
+				{
+					"include": "#typed-ssa-arg"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#types"
+				},
+				{
+					"include": "#punctuation"
+				}
 			]
 		},
 		"statement": {
 			"patterns": [
-				{ "include": "#return-instruction" },
-				{ "include": "#branch-instruction" },
-				{ "include": "#if-instruction" },
-				{ "include": "#store-instruction" },
-				{ "include": "#void-call-instruction" },
-				{ "include": "#assignment" }
+				{
+					"include": "#return-instruction"
+				},
+				{
+					"include": "#branch-instruction"
+				},
+				{
+					"include": "#if-instruction"
+				},
+				{
+					"include": "#store-instruction"
+				},
+				{
+					"include": "#void-call-instruction"
+				},
+				{
+					"include": "#assignment"
+				}
 			]
 		},
 		"return-instruction": {
 			"begin": "^\\s*(return)\\b",
 			"beginCaptures": {
-				"1": { "name": "keyword.control.return.nautilus-ir" }
+				"1": {
+					"name": "keyword.control.return.nautilus-ir"
+				}
 			},
 			"end": "$",
 			"patterns": [
-				{ "include": "#type-suffix" },
-				{ "include": "#ssa-value" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#type-suffix"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"branch-instruction": {
 			"begin": "^\\s*(br)\\b",
 			"beginCaptures": {
-				"1": { "name": "keyword.control.branch.nautilus-ir" }
+				"1": {
+					"name": "keyword.control.branch.nautilus-ir"
+				}
 			},
 			"end": "$",
 			"patterns": [
-				{ "include": "#block-reference" },
-				{ "include": "#type-suffix" },
-				{ "include": "#ssa-value" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#block-reference"
+				},
+				{
+					"include": "#type-suffix"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"if-instruction": {
 			"begin": "^\\s*(if)\\b",
 			"beginCaptures": {
-				"1": { "name": "keyword.control.conditional.nautilus-ir" }
+				"1": {
+					"name": "keyword.control.conditional.nautilus-ir"
+				}
 			},
 			"end": "$",
 			"patterns": [
@@ -147,112 +294,218 @@
 					"name": "keyword.operator.ternary.nautilus-ir",
 					"match": "\\?"
 				},
-				{ "include": "#block-reference" },
-				{ "include": "#type-suffix" },
+				{
+					"include": "#block-reference"
+				},
+				{
+					"include": "#type-suffix"
+				},
 				{
 					"name": "keyword.operator.ternary.nautilus-ir",
 					"match": ":(?!\\s*(?:i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\b)"
 				},
-				{ "include": "#ssa-value" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"store-instruction": {
 			"begin": "^\\s*(store)\\s*(\\()",
 			"beginCaptures": {
-				"1": { "name": "keyword.other.memory.store.nautilus-ir" },
-				"2": { "name": "punctuation.section.parens.begin.nautilus-ir" }
+				"1": {
+					"name": "keyword.other.memory.store.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.section.parens.begin.nautilus-ir"
+				}
 			},
 			"end": "$",
 			"patterns": [
-				{ "include": "#type-suffix" },
-				{ "include": "#ssa-value" },
-				{ "include": "#numbers" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#type-suffix"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"void-call-instruction": {
-			"begin": "^\\s*(func_\\*)\\s*(\\()",
-			"beginCaptures": {
-				"1": { "name": "support.function.call.nautilus-ir" },
-				"2": { "name": "punctuation.section.parens.begin.nautilus-ir" }
-			},
+			"begin": "^\\s*(?=call\\b)",
 			"end": "$",
 			"patterns": [
-				{ "include": "#type-suffix" },
-				{ "include": "#ssa-value" },
-				{ "include": "#numbers" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#call-instruction"
+				},
+				{
+					"include": "#pad-link"
+				},
+				{
+					"include": "#type-suffix"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"assignment": {
 			"begin": "^\\s*(\\$\\d+)\\s*(=)",
 			"beginCaptures": {
-				"1": { "name": "variable.other.ssa.definition.nautilus-ir" },
-				"2": { "name": "keyword.operator.assignment.nautilus-ir" }
+				"1": {
+					"name": "variable.other.ssa.definition.nautilus-ir"
+				},
+				"2": {
+					"name": "keyword.operator.assignment.nautilus-ir"
+				}
 			},
 			"end": "$",
 			"patterns": [
-				{ "include": "#cast-rhs" },
-				{ "include": "#alloca-rhs" },
-				{ "include": "#call-target" },
-				{ "include": "#load-rhs" },
-				{ "include": "#unary-operators" },
-				{ "include": "#operators" },
-				{ "include": "#numbers" },
-				{ "include": "#ssa-value" },
-				{ "include": "#type-suffix" },
-				{ "include": "#types" },
-				{ "include": "#punctuation" },
-				{ "include": "#comments" }
+				{
+					"include": "#cast-rhs"
+				},
+				{
+					"include": "#alloca-rhs"
+				},
+				{
+					"include": "#func-addr-rhs"
+				},
+				{
+					"include": "#call-instruction"
+				},
+				{
+					"include": "#call-target"
+				},
+				{
+					"include": "#load-rhs"
+				},
+				{
+					"include": "#pad-link"
+				},
+				{
+					"include": "#unary-operators"
+				},
+				{
+					"include": "#operators"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#type-suffix"
+				},
+				{
+					"include": "#types"
+				},
+				{
+					"include": "#punctuation"
+				},
+				{
+					"include": "#comments"
+				}
 			]
 		},
 		"load-rhs": {
 			"begin": "\\b(load)\\s*(\\()",
 			"beginCaptures": {
-				"1": { "name": "keyword.other.memory.nautilus-ir" },
-				"2": { "name": "punctuation.section.parens.begin.nautilus-ir" }
+				"1": {
+					"name": "keyword.other.memory.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.section.parens.begin.nautilus-ir"
+				}
 			},
 			"end": "\\)",
 			"endCaptures": {
-				"0": { "name": "punctuation.section.parens.end.nautilus-ir" }
+				"0": {
+					"name": "punctuation.section.parens.end.nautilus-ir"
+				}
 			},
 			"patterns": [
-				{ "include": "#ssa-value" },
-				{ "include": "#numbers" },
-				{ "include": "#punctuation" }
+				{
+					"include": "#ssa-value"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"include": "#punctuation"
+				}
 			]
 		},
 		"bare-typed-decl": {
 			"match": "^\\s*(\\$\\d+)\\s*(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\s*$",
 			"captures": {
-				"1": { "name": "variable.other.ssa.definition.nautilus-ir" },
-				"2": { "name": "punctuation.separator.type.nautilus-ir" },
-				"3": { "name": "support.type.primitive.nautilus-ir" }
+				"1": {
+					"name": "variable.other.ssa.definition.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.separator.type.nautilus-ir"
+				},
+				"3": {
+					"name": "support.type.primitive.nautilus-ir"
+				}
 			}
 		},
 		"call-target": {
-			"match": "\\b(func_\\*)",
+			"match": "\\b(func_\\*(?:#\\d+)?)",
 			"captures": {
-				"1": { "name": "support.function.call.nautilus-ir" }
+				"1": {
+					"name": "support.function.call.nautilus-ir"
+				}
 			}
 		},
 		"cast-rhs": {
 			"match": "\\b(cast_to)\\s+(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\b",
 			"captures": {
-				"1": { "name": "keyword.operator.cast.nautilus-ir" },
-				"2": { "name": "support.type.primitive.nautilus-ir" }
+				"1": {
+					"name": "keyword.operator.cast.nautilus-ir"
+				},
+				"2": {
+					"name": "support.type.primitive.nautilus-ir"
+				}
 			}
 		},
 		"alloca-rhs": {
-			"match": "\\b(alloca)\\s+(\\d+)(b)\\b",
+			"match": "\\b(alloca)\\s*(\\[)(\\d+)(\\])",
 			"captures": {
-				"1": { "name": "keyword.other.memory.nautilus-ir" },
-				"2": { "name": "constant.numeric.integer.nautilus-ir" },
-				"3": { "name": "keyword.other.unit.bytes.nautilus-ir" }
+				"1": {
+					"name": "keyword.other.memory.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.section.brackets.begin.nautilus-ir"
+				},
+				"3": {
+					"name": "constant.numeric.integer.nautilus-ir"
+				},
+				"4": {
+					"name": "punctuation.section.brackets.end.nautilus-ir"
+				}
 			}
 		},
 		"unary-operators": {
@@ -306,19 +559,29 @@
 		"type-suffix": {
 			"begin": ":\\s*(?=(?:i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\b)",
 			"beginCaptures": {
-				"0": { "name": "punctuation.separator.type.nautilus-ir" }
+				"0": {
+					"name": "punctuation.separator.type.nautilus-ir"
+				}
 			},
 			"end": "(?<=(?:i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void))",
 			"patterns": [
-				{ "include": "#types" }
+				{
+					"include": "#types"
+				}
 			]
 		},
 		"typed-ssa-arg": {
 			"match": "(\\$\\d+)\\s*(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\b",
 			"captures": {
-				"1": { "name": "variable.parameter.ssa.nautilus-ir" },
-				"2": { "name": "punctuation.separator.type.nautilus-ir" },
-				"3": { "name": "support.type.primitive.nautilus-ir" }
+				"1": {
+					"name": "variable.parameter.ssa.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.separator.type.nautilus-ir"
+				},
+				"3": {
+					"name": "support.type.primitive.nautilus-ir"
+				}
 			}
 		},
 		"ssa-value": {
@@ -376,6 +639,120 @@
 					"match": "\\}"
 				}
 			]
+		},
+		"declaration": {
+			"match": "^\\s*(declare)\\s+(external|intrinsic)\\s+(#\\d+)\\s+(\\S+?)\\s*(\\()([^)]*)(\\))\\s*(:)\\s*(i8|i16|i32|i64|ui8|ui16|ui32|ui64|f32|f64|bool|ptr|void)\\s*(?:(\\[)([^\\]]*)(\\]))?\\s*$",
+			"captures": {
+				"1": {
+					"name": "keyword.other.declaration.nautilus-ir"
+				},
+				"2": {
+					"name": "storage.modifier.linkage.nautilus-ir"
+				},
+				"3": {
+					"name": "constant.numeric.function-id.nautilus-ir"
+				},
+				"4": {
+					"name": "support.function.call.nautilus-ir"
+				},
+				"5": {
+					"name": "punctuation.definition.parameters.begin.nautilus-ir"
+				},
+				"6": {
+					"patterns": [
+						{
+							"include": "#types"
+						},
+						{
+							"include": "#punctuation"
+						}
+					]
+				},
+				"7": {
+					"name": "punctuation.definition.parameters.end.nautilus-ir"
+				},
+				"8": {
+					"name": "punctuation.separator.type.nautilus-ir"
+				},
+				"9": {
+					"name": "support.type.primitive.nautilus-ir"
+				},
+				"10": {
+					"name": "punctuation.section.attributes.begin.nautilus-ir"
+				},
+				"11": {
+					"patterns": [
+						{
+							"include": "#attributes"
+						},
+						{
+							"include": "#punctuation"
+						}
+					]
+				},
+				"12": {
+					"name": "punctuation.section.attributes.end.nautilus-ir"
+				}
+			}
+		},
+		"attributes": {
+			"name": "storage.modifier.attribute.nautilus-ir",
+			"match": "\\b(readnone|readonly|writeonly|willreturn|nounwind)\\b"
+		},
+		"exception-region": {
+			"match": "^\\s*(exception_region)(:)\\s*$",
+			"captures": {
+				"1": {
+					"name": "keyword.control.exception.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.separator.section.nautilus-ir"
+				}
+			}
+		},
+		"pad-header": {
+			"match": "^\\s*(pad_\\d+)(:)\\s*$",
+			"captures": {
+				"1": {
+					"name": "entity.name.label.pad.nautilus-ir"
+				},
+				"2": {
+					"name": "punctuation.separator.label.nautilus-ir"
+				}
+			}
+		},
+		"pad-link": {
+			"match": "(->)\\s*(pad_\\d+)\\b",
+			"captures": {
+				"1": {
+					"name": "keyword.operator.unwind.nautilus-ir"
+				},
+				"2": {
+					"name": "entity.name.label.pad.reference.nautilus-ir"
+				}
+			}
+		},
+		"func-addr-rhs": {
+			"match": "\\b(func_addr)\\s+(func_\\*(?:#\\d+)?|[A-Za-z_][A-Za-z0-9_]*)",
+			"captures": {
+				"1": {
+					"name": "keyword.other.function-address.nautilus-ir"
+				},
+				"2": {
+					"name": "support.function.call.nautilus-ir"
+				}
+			}
+		},
+		"call-instruction": {
+			"match": "\\b(call)\\s+(func_\\*(?:#\\d+)?|[A-Za-z_][A-Za-z0-9_]*)?",
+			"captures": {
+				"1": {
+					"name": "keyword.other.call.nautilus-ir"
+				},
+				"2": {
+					"name": "support.function.call.nautilus-ir"
+				}
+			}
 		}
 	}
 }

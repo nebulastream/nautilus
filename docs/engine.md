@@ -62,6 +62,16 @@ int32_t buffer = 0;
 compiled(&buffer, 42); // buffer is now 42
 ```
 
+### Registration Source Location
+
+`registerFunction` (and `NautilusFunction`, `NautilusModule::registerFunction`) captures the call site it was written at via a defaulted `std::source_location` parameter -- no cost to the caller, no debug info required. It is printed on the compiled function's signature line in the IR dump (`docs/graphs.md`), under the `log::options::setLogSourceLocations` flag, and named in diagnostics raised while tracing the function (e.g. a rejected `region()` body):
+
+```
+execute($1:i64) :i64  ; at src/Query.cpp:42:1 {
+```
+
+This is where the function was *registered*, not necessarily where its body is *defined*. For `NautilusFunction{"f", fBody}` the two usually coincide; for `engine.registerFunction(myKernel)` the location is the call site in setup code, which may be far from `myKernel`'s own definition. Symbolising the callee's address to recover the true definition site would need debug info and a resolver lookup; that is a separate, opt-in enrichment (see `dump.sourceLocations` and `SourceLocationResolver`), not what this parameter provides.
+
 ## Backend Selection
 
 Nautilus supports three compilation backends. Set the backend through the `engine.backend` option.

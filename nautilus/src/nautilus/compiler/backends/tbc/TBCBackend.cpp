@@ -2,6 +2,7 @@
 #include "nautilus/compiler/backends/tbc/TBCBackend.hpp"
 #include "nautilus/CompilationStatistics.hpp"
 #include "nautilus/compiler/backends/CapturedExceptionTransport.hpp"
+#include "nautilus/compiler/backends/tbc/TBCClosure.hpp"
 #include "nautilus/compiler/backends/tbc/TBCExecutable.hpp"
 #include "nautilus/compiler/backends/tbc/TBCInterpreter.hpp"
 #include "nautilus/compiler/backends/tbc/TBCLoweringProvider.hpp"
@@ -81,7 +82,7 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 
 	// The function index and every function's signature must exist before any
 	// lowering runs: calls and FunctionAddressOf between module functions
-	// resolve to interpreter-native targets (or trampolines) regardless of
+	// resolve to interpreter-native targets (or native closures) regardless of
 	// lowering order.
 	program->functions.resize(functionOperations.size());
 	for (size_t i = 0; i < functionOperations.size(); i++) {
@@ -95,6 +96,11 @@ std::unique_ptr<Executable> TBCBackend::compile(const std::shared_ptr<ir::IRGrap
 			function.argTypes.push_back(argument->getStamp());
 		}
 	}
+
+	// Native entry points for every function. Built before lowering so
+	// FunctionAddressOf resolves in any lowering order, and before stitching so
+	// the closure bodies observe the final program.
+	createClosures(*program);
 
 	int64_t totalInstructions = 0;
 	int64_t maxRegisters = 0;

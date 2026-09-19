@@ -4,6 +4,7 @@
 #include "Block.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/common/Arena.hpp"
+#include "nautilus/common/RegionAttributes.hpp"
 #include "nautilus/exceptions/RuntimeException.hpp"
 #include "tag/TagRecorder.hpp"
 #include <initializer_list>
@@ -18,11 +19,32 @@ using Arena = common::Arena;
 
 class ExecutionTrace;
 
+/// One region (docs/region.md) recorded into a trace: what the region() call site said
+/// about itself, and the two blocks that bound the body it traced.
+///
+/// Metadata only. A region has no operation of its own and its blocks are ordinary
+/// blocks, so nothing downstream has to know about this table -- it exists so a trace can
+/// be read back against the source it came from, and so a malformed region can be
+/// reported against its call site.
+struct RegionSpec {
+	RegionAttributes attributes;
+	/// The region this one was opened inside, or NO_REGION for a region opened directly
+	/// in the function body.
+	RegionIndex parent = NO_REGION;
+	/// Block the region body starts in.
+	uint32_t entryBlock;
+	/// Block the enclosing scope continues in after the body.
+	uint32_t exitBlock;
+};
+
 /// Bundles a traced function's execution trace with its metadata.
 struct TraceFunctionDefinition {
 	std::string name;
 	std::unique_ptr<ExecutionTrace> trace;
 	std::unordered_map<std::string, std::string> attributes;
+	/// Where this function was registered (docs/engine.md); unknown for a function traced
+	/// without going through a registration entry point that captures one.
+	SourceLocation location;
 	/// Every identity that denotes this body. Usually one: the
 	/// NautilusFunctionDefinition it was traced from, or nothing at all for a
 	/// module-registered entry function.
@@ -75,6 +97,9 @@ public:
 	void setFunctionAttributes(const std::string& functionName,
 	                           const std::unordered_map<std::string, std::string>& attrs);
 
+	/// Records where a previously added function was registered (docs/engine.md).
+	void setFunctionLocation(const std::string& functionName, const SourceLocation& location);
+
 	/// Records another identity that denotes @p functionName's body. Ignores
 	/// nullptr (a module-registered entry has no definition object) and
 	/// duplicates.
@@ -90,6 +115,10 @@ public:
 
 	/// Convenience: returns the attributes for a function (empty map if none).
 	const std::unordered_map<std::string, std::string>& getFunctionAttributes(const std::string& functionName) const;
+
+	/// Convenience: returns where a function was registered, or an unknown location if it
+	/// has none or the function does not exist.
+	SourceLocation getFunctionLocation(const std::string& functionName) const;
 
 	bool hasFunction(const std::string& functionName) const;
 
@@ -172,6 +201,17 @@ public:
 	 */
 	TypedValueRef& addAssignmentOperation(Snapshot&, const TypedValueRef& targetRef, const TypedValueRef& srcRef,
 	                                      Type resultType);
+
+	/**
+	 * @brief Appends a tagged unconditional jump to @p targetBlock.
+	 *
+	 * Unlike the jumps synthesised by processControlFlowMerge, this one carries a
+	 * snapshot and is registered in the tag map, so re-reaching the same call site
+	 * under an unchanged state is recognised as a control-flow re-entry by
+	 * checkTag() and merged like any other repeated operation. Used to mark the
+	 * boundaries of a region (docs/region.md) in the enclosing trace.
+	 */
+	void addJumpOperation(Snapshot& snapshot, uint32_t targetBlock);
 
 	/**
 	 * @brief Adds a return operation to the trace
@@ -299,6 +339,29 @@ public:
 	 */
 	ValueRef getNextValueRef();
 
+	/**
+	 * @brief Records a region traced into this trace and marks its entry block. The
+	 * region open at the time becomes the new region's parent.
+	 * @return The new region's index in the region table.
+	 */
+	RegionIndex addRegion(const RegionAttributes& attributes, uint32_t entryBlock, uint32_t exitBlock);
+
+	/**
+	 * @brief Returns every region recorded into this trace, in the order they were
+	 * entered. Empty for a trace produced by a tracer that inlines region bodies.
+	 */
+	const std::vector<RegionSpec>& getRegions() const;
+
+	/**
+	 * @brief Sets the region every operation recorded from now on belongs to, and
+	 * returns the previous one so the caller can restore it when the region ends.
+	 *
+	 * The tracer brackets a region body with this; everything recorded in between --
+	 * by this scope or by any nested one, since they all record into this trace --
+	 * is stamped with @p regionIndex.
+	 */
+	RegionIndex setCurrentRegion(RegionIndex regionIndex);
+
 private:
 	/**
 	 * @brief Adds a tag for the given snapshot
@@ -327,6 +390,13 @@ public:
 	/// resulting FunctionOperation by TraceToIRConversionPhase so backends can
 	/// emit one real alloca per entry in the function prologue.
 	std::vector<AllocaSpec> allocaSpecs;
+
+	/// Region table; see RegionSpec. Indexed by TraceOperation::regionIndex and by a
+	/// region entry block's Block::regionIndex.
+	std::vector<RegionSpec> regions;
+
+	/// The region operations recorded right now belong to; see setCurrentRegion.
+	RegionIndex currentRegion = NO_REGION;
 
 	/// Appends a new alloca to the table and returns its index.  Called from
 	/// the trace contexts inside the tag-checked traceAlloca lambda, so it

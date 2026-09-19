@@ -27,6 +27,7 @@
 #include "nautilus/compiler/ir/passes/EmptyBlockEliminationPass.hpp"
 #include "nautilus/compiler/ir/passes/ExceptionRegionPreparationPass.hpp"
 #include "nautilus/compiler/ir/passes/FunctionAttributeInferencePass.hpp"
+#include "nautilus/compiler/ir/passes/IRLocationPass.hpp"
 #include "nautilus/compiler/ir/passes/IRPassManager.hpp"
 #include "nautilus/compiler/ir/passes/IRStatistics.hpp"
 #include "nautilus/compiler/ir/passes/LocalCSEPass.hpp"
@@ -234,6 +235,20 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 		// Exception-region preparation: collects cleanup metadata for backends.
 		// Terminal pass — runs once after all optimisation.
 		passManager.addPass(std::make_unique<ir::ExceptionRegionPreparationPass>());
+		// Records where every operation lands in a rendering of the final IR,
+		// and publishes it on the graph for the backend. Strictly last: a map
+		// is a snapshot, and any pass that mints or removes an operation after
+		// it invalidates every line.
+		//
+		// Opt-in, because it renders the whole module to a string: only when
+		// the MLIR backend is going to point DWARF line numbers at a
+		// Nautilus-IR dump.
+		const bool writesDwarfSource =
+		    moduleOptions.getOptionOrDefault("mlir.debug.enable", false) &&
+		    moduleOptions.getOptionOrDefault<std::string>("mlir.debug.source_mode", "mlir") == "nautilus-ir";
+		if (writesDwarfSource) {
+			passManager.addPass(std::make_unique<ir::IRLocationPass>());
+		}
 		passManager.run(*ir);
 		dumpHandler.dump("after_ir_passes", "nautilus", [&]() { return ir->toString(irPrintOptions); });
 	}

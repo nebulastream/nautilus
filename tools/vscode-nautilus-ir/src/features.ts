@@ -169,7 +169,10 @@ export class IrHoverProvider implements vscode.HoverProvider {
 			const word = document.getText(wordRange);
 			return new vscode.Hover(typeDoc(word), wordRange);
 		}
-		const opRange = document.getWordRangeAtPosition(position, /\b(cast_to|load|store|return|br|if|and|or|func_\*)\b/);
+		const opRange = document.getWordRangeAtPosition(
+			position,
+			/\b(cast_to|load|store|alloca|call|func_addr|declare|exception_region|return|br|if|and|or|func_\*)\b/,
+		);
 		if (opRange) {
 			const op = document.getText(opRange);
 			return new vscode.Hover(opDoc(op), opRange);
@@ -281,8 +284,18 @@ function opDoc(op: string): vscode.MarkdownString {
 		or: 'Logical/bitwise disjunction.',
 		xor: 'Logical/bitwise exclusive-or.',
 		not: 'Logical negation.',
-		'func_*': 'Indirect call through a function pointer resolved by the JIT runtime.',
-		alloca: 'Allocate a stack slot of the given type.',
+		'func_*': 'A callee defined outside this module, its name withheld so dumps stay reproducible. '
+			+ 'The `#N` suffix is its function-table id, matching one `declare` line.',
+		call: 'Call: `$y = call CALLEE($args) :TYPE`. `CALLEE` is an internal function\'s name, '
+			+ '`func_*#N` for a native one, or an SSA value for an indirect call. A trailing '
+			+ '`-> pad_N` names the landing pad it unwinds to if it throws.',
+		func_addr: 'Takes the address of a function: `$y = func_addr CALLEE :ptr`.',
+		alloca: 'Stack slot: `$y = alloca[N] :ptr`, where `N` indexes the function\'s alloca table '
+			+ '(one real allocation per entry, emitted in the prologue).',
+		declare: 'Declares a callee defined outside this module: function-table id, signature, '
+			+ 'and inferred attributes.',
+		exception_region: 'Opens the function\'s landing pads — the cleanup blocks that run when a call '
+			+ 'marked `-> pad_N` unwinds. Built by ExceptionRegionPreparationPass.',
 	};
 	md.appendMarkdown(`**${op}** — Nautilus IR operation\n\n${docs[op] ?? ''}`);
 	return md;

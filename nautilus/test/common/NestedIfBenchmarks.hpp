@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nautilus/Engine.hpp>
+#include <nautilus/region.hpp>
 
 namespace nautilus::engine {
 
@@ -906,6 +907,571 @@ val<int32_t> chainedIf100(val<int32_t> x) {
 	if (x > 99) {
 		result = result + 1;
 	}
+	return result;
+}
+
+// Region-wrapped twins of chainedIf10/chainedIf100: each `if` gets its own
+// region() call, one branch per region, to measure region-local symbolic
+// exploration (see docs/region.md) against both the implicit
+// (chainedIf10/100 above) and, once landed, PR #300's explicit control-flow
+// API numbers.
+val<int32_t> chainedIf10Region(val<int32_t> x) {
+	val<int32_t> result = 0;
+	region([&]() {
+		if (x > 0) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 1) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 2) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 3) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 4) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 5) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 6) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 7) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 8) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 9) {
+			result = result + 1;
+		}
+	});
+	return result;
+}
+
+val<int32_t> chainedIf100Region(val<int32_t> x) {
+	val<int32_t> result = 0;
+	region([&]() {
+		if (x > 0) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 1) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 2) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 3) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 4) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 5) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 6) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 7) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 8) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 9) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 10) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 11) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 12) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 13) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 14) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 15) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 16) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 17) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 18) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 19) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 20) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 21) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 22) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 23) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 24) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 25) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 26) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 27) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 28) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 29) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 30) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 31) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 32) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 33) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 34) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 35) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 36) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 37) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 38) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 39) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 40) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 41) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 42) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 43) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 44) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 45) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 46) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 47) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 48) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 49) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 50) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 51) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 52) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 53) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 54) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 55) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 56) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 57) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 58) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 59) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 60) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 61) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 62) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 63) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 64) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 65) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 66) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 67) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 68) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 69) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 70) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 71) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 72) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 73) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 74) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 75) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 76) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 77) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 78) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 79) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 80) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 81) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 82) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 83) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 84) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 85) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 86) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 87) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 88) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 89) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 90) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 91) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 92) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 93) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 94) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 95) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 96) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 97) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 98) {
+			result = result + 1;
+		}
+	});
+	region([&]() {
+		if (x > 99) {
+			result = result + 1;
+		}
+	});
 	return result;
 }
 

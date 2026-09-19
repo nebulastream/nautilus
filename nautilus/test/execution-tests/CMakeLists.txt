@@ -2,13 +2,15 @@ include(CTest)
 include(Catch)
 set(NAUTILUS_EXECUTION_TEST_SOURCES
         ExecutionTest.cpp
-        AsmJitLoweringModeTest.cpp
-        BCDispatchModeTest.cpp
-        BCRegisterCoalescingTest.cpp
-        TBCDispatchModeTest.cpp
-        TBCJitModeTest.cpp
-        TBCJitWhiteBoxTest.cpp
-        TBCMemoryOffsetTest.cpp
+        backends/asmjit/AsmJitLoweringModeTest.cpp
+        backends/asmjit/PostRAPeepholeTest.cpp
+        backends/bc/BCDispatchModeTest.cpp
+        backends/bc/BCRegisterCoalescingTest.cpp
+        backends/bc/BCExceptionDispatchTest.cpp
+        backends/tbc/TBCDispatchModeTest.cpp
+        backends/tbc/TBCJitModeTest.cpp
+        backends/tbc/TBCJitWhiteBoxTest.cpp
+        backends/tbc/TBCMemoryOffsetTest.cpp
         BoolExecutionTest.cpp
         CalleeConformanceTest.cpp
         CastExecutionTest.cpp
@@ -19,18 +21,41 @@ set(NAUTILUS_EXECUTION_TEST_SOURCES
         FunctionPtrExecutionTest.cpp
 		InvokeExceptionExecutionTest.cpp
         NoThrowInferenceIntegrationTest.cpp
+        MemoryIntrinsicExecutionTest.cpp
         ModuleLifecycleTest.cpp
         ModuleTest.cpp
-        PostRAPeepholeTest.cpp
         TieredCompilationTest.cpp
         PointerExecutionTest.cpp
+        RegionTest.cpp
         SelectExecutionTest.cpp
 )
 
+if (ENABLE_BC_BACKEND)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            backends/bc/CompilationStatisticsTest.cpp)
+endif ()
+
+if (ENABLE_TBC_BACKEND)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            backends/tbc/CompilationStatisticsTest.cpp)
+endif ()
+
+if (ENABLE_ASMJIT_BACKEND)
+    list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            backends/asmjit/ConcurrentExecutionTest.cpp)
+endif ()
+
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
+            ABIExtensionAttributeTest.cpp
             DebugInfoExecutionTest.cpp)
 endif ()
+
+# NOT listed: BitIntrinsicExecutionTest.cpp. It is written against a bit
+# intrinsic API (popcount / countl_zero / byteswap / rotl / rotr on val<T>) and
+# a BitIntrinsicFunctions.hpp that Nautilus does not have -- unlike
+# val_memcpy.hpp, no val_bit.hpp was ever added. Building it needs that feature
+# first, not a source-list entry.
 
 add_executable(nautilus-execution-tests ${NAUTILUS_EXECUTION_TEST_SOURCES})
 

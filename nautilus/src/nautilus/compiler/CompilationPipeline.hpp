@@ -79,10 +79,15 @@ private:
 	/// compileToIR() acquires a fresh arena from it for the duration of
 	/// tracing and IR generation, then returns it.  Marked mutable because
 	/// compileToIR() is const but acquire() mutates the pool.
-	mutable common::ArenaPool* traceArenaPool_;
+	///
+	/// [[maybe_unused]] because compileToIR() -- the only reader of this and of
+	/// irArenaPool_ below -- is compiled only when ENABLE_COMPILER and ENABLE_TRACING are
+	/// both set, while the constructor that stores them is not conditional. Without it
+	/// clang rejects an ENABLE_TRACING=OFF build under -Werror=unused-private-field.
+	[[maybe_unused]] mutable common::ArenaPool* traceArenaPool_;
 	/// Non-owning pointer to the externally supplied IR-arena pool.  Each
 	/// IRGraph created during compileToIR acquires its arena from here, so
 	/// successive compiles reuse heap chunks across IR graphs.
-	mutable common::ArenaPool* irArenaPool_;
+	[[maybe_unused]] mutable common::ArenaPool* irArenaPool_;
 };
 } // namespace nautilus::compiler

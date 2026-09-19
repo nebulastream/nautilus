@@ -35,4 +35,9 @@ export const config = {
 	examplesDir: process.env.EXAMPLES_DIR ?? path.join(import.meta.dirname, 'examples'),
 	/** Built web app; served statically when present. */
 	webDist: process.env.WEB_DIST ?? path.join(import.meta.dirname, '..', '..', 'web', 'dist'),
+
+	/** Short commit SHA baked in at image build time (see Dockerfile). */
+	gitCommit: process.env.GIT_COMMIT ?? 'unknown',
+	/** Process start time: a fresh container is created on every deploy, so this doubles as "last deployed". */
+	deployedAt: new Date().toISOString(),
 };

@@ -1,11 +1,13 @@
 // nautilus_function.hpp
 #pragma once
 
-#include "nautilus/Engine.hpp"   // engine::details::createFunctionWrapper
-#include "nautilus/function.hpp" // getArgumentReferences
-#include "nautilus/val_func.hpp" // val<R(*)(Args...)>
-#include <functional>            // std::invoke
+#include "nautilus/Engine.hpp"                  // engine::details::createFunctionWrapper
+#include "nautilus/common/RegionAttributes.hpp" // SourceLocation
+#include "nautilus/function.hpp"                // getArgumentReferences
+#include "nautilus/val_func.hpp"                // val<R(*)(Args...)>
+#include <functional>                           // std::invoke
 #include <optional>
+#include <source_location>
 #include <string>
 #include <type_traits> // std::is_void_v, std::invoke_result_t
 #include <unordered_map>
@@ -58,11 +60,21 @@ using nautilus_raw_func_ptr_t = typename detail::nautilus_function_traits<std::d
 
 class NautilusFunctionDefinition {
 public:
-	NautilusFunctionDefinition(std::string name) : name_(std::move(name)) {
+	/// @param location Where this function was registered. Defaulted so ordinary callers
+	/// get it for free; note this is where the NautilusFunctionDefinition was *constructed*,
+	/// which for `engine.registerFunction(myKernel)` is the call site in setup code, not
+	/// `myKernel`'s own definition -- see docs/engine.md.
+	NautilusFunctionDefinition(std::string name, std::source_location location = std::source_location::current())
+	    : name_(std::move(name)), location_(SourceLocation::from(location)) {
 	}
 
 	const std::string& name() const noexcept {
 		return name_;
+	}
+
+	/// Where this function was registered (see the constructor).
+	const SourceLocation& location() const noexcept {
+		return location_;
 	}
 
 	void setAttribute(const std::string& key, const std::string& value) {
@@ -87,6 +99,7 @@ public:
 
 private:
 	std::string name_;
+	SourceLocation location_;
 	std::unordered_map<std::string, std::string> attributes_;
 };
 
@@ -101,8 +114,8 @@ private:
 template <class F>
 class NautilusFunction {
 public:
-	NautilusFunction(std::string name, F f)
-	    : definition_(std::move(name)), f_(std::move(f))
+	NautilusFunction(std::string name, F f, std::source_location location = std::source_location::current())
+	    : definition_(std::move(name), location), f_(std::move(f))
 #ifdef ENABLE_TRACING
 	      ,
 	      fwrapper(engine::details::createFunctionWrapper(f_))

@@ -1,3 +1,4 @@
+#include "ExecutionTest.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <list>
@@ -200,22 +201,6 @@ engine::NautilusEngine makeBcEngine(const std::string& traceMode) {
 	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
-
-// Same as makeBcEngine, but pins bc.dispatch instead of leaving it at the
-// "call" default. The interpreter's CHECK_PENDING_EXCEPTION handling differs
-// by dispatch mode (BCInterpreter::execute's switch-path loop vs. its
-// call-path loop, each gated by CodeBlock::hasPendingCheck; the threaded path
-// takes a separate computed-goto label entirely) -- exercise every mode
-// against a throwing call so all three are covered, not just the default.
-engine::NautilusEngine makeBcEngine(const std::string& traceMode, const std::string& dispatch) {
-	engine::Options options;
-	options.setOption("engine.Compilation", true);
-	options.setOption("engine.backend", std::string("bc"));
-	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
-	options.setOption("bc.dispatch", dispatch);
-	return engine::NautilusEngine {options};
-}
 #endif // ENABLE_BC_BACKEND
 
 #ifdef ENABLE_TBC_BACKEND
@@ -227,6 +212,22 @@ engine::NautilusEngine makeTbcEngine(const std::string& traceMode) {
 	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
+
+#ifdef ENABLE_TBC_JIT
+// tbc's copy-and-patch JIT. Stitched code carries no unwind info, so it routes
+// exceptions through VMContext::pendingException and the entry shim rethrows --
+// a different mechanism from the interpreter's, and therefore worth its own
+// peer here rather than trusting the interpreter's result to cover it.
+engine::NautilusEngine makeTbcJitEngine(const std::string& traceMode) {
+	engine::Options options;
+	options.setOption("engine.Compilation", true);
+	options.setOption("engine.backend", std::string("tbc"));
+	options.setOption("tbc.mode", std::string("jit"));
+	options.setOption("engine.compilationStrategy", std::string("legacy"));
+	options.setOption("engine.traceMode", traceMode);
+	return engine::NautilusEngine {options};
+}
+#endif // ENABLE_TBC_JIT
 #endif // ENABLE_TBC_BACKEND
 
 #if defined(ENABLE_ASMJIT_BACKEND)
@@ -240,14 +241,64 @@ engine::NautilusEngine makeAsmJitEngine(const std::string& traceMode) {
 }
 #endif // ENABLE_ASMJIT_BACKEND
 
-TEST_CASE("MLIR invokes unwind live val<Struct> destructors") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			auto engine = makeMlirEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
+// ---------------------------------------------------------------------------
+// Cross-backend execution tests (spec §9.5)
+// ---------------------------------------------------------------------------
+
+struct BackendSpec {
+	/// Section name. May be a pseudo-backend such as "tbc-jit", which is a
+	/// backend plus an option rather than a registry entry.
+	std::string name;
+	engine::NautilusEngine (*makeEngine)(const std::string&);
+	/// CompilationBackendRegistry key, for the tests that drive a backend
+	/// directly instead of going through an engine. Differs from `name` for
+	/// pseudo-backends.
+	std::string registryName;
+	/// Options those same tests must pass to compile() to select the mode
+	/// `name` stands for (empty for a plain backend).
+	void (*compileOptions)(engine::Options&) = nullptr;
+};
+
+std::vector<BackendSpec> exceptionBackends() {
+	std::vector<BackendSpec> backends;
+#ifdef ENABLE_MLIR_BACKEND
+	backends.push_back({"mlir", makeMlirEngine, "mlir"});
+#endif
+#ifdef ENABLE_C_BACKEND
+	backends.push_back({"cpp", makeCppEngine, "cpp"});
+#endif
+#ifdef ENABLE_BC_BACKEND
+	backends.push_back({"bc", makeBcEngine, "bc"});
+#endif
+#ifdef ENABLE_TBC_BACKEND
+	backends.push_back({"tbc", makeTbcEngine, "tbc"});
+#ifdef ENABLE_TBC_JIT
+	// Gated on runtime availability the same way testing::availableBackends is:
+	// tbc.mode=jit is strict and throws where stitched code cannot run.
+	if (compiler::tbc::jit::jitRuntimeAvailable()) {
+		backends.push_back({"tbc-jit", makeTbcJitEngine, "tbc",
+		                    [](engine::Options& o) { o.setOption("tbc.mode", std::string("jit")); }});
+	}
+#endif
+#endif
+#if defined(ENABLE_ASMJIT_BACKEND)
+	backends.push_back({"asmjit", makeAsmJitEngine, "asmjit"});
+#endif
+	return backends;
+}
+
+TEST_CASE("invokes unwind live val<Struct> destructors across backends") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(invokeThrowingWithStruct);
+					destructorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					REQUIRE(destructorCalls == 1);
+				}
+			}
 		}
 	}
 }
@@ -260,14 +311,18 @@ TEST_CASE("noexcept MLIR invokes retain the direct call path") {
 	REQUIRE(destructorCalls == 1);
 }
 
-TEST_CASE("MLIR exceptional cleanups run in reverse construction order") {
-	auto engine = makeMlirEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
-	destructorCalls = 0;
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-	REQUIRE(destructorCalls == 2);
-	REQUIRE(destructorValues[0] == 2);
-	REQUIRE(destructorValues[1] == 1);
+TEST_CASE("exceptional cleanups run in reverse construction order across backends") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			auto engine = backend.makeEngine("lazyTracing");
+			auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 2);
+			REQUIRE(destructorValues[1] == 1);
+		}
+	}
 }
 
 TEST_CASE("interpreter invokes use native C++ exception unwinding") {
@@ -278,123 +333,8 @@ TEST_CASE("interpreter invokes use native C++ exception unwinding") {
 	REQUIRE(destructorCalls == 1);
 }
 
-TEST_CASE("CPP backend invokes unwind live val<Struct> destructors") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			auto engine = makeCppEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
-		}
-	}
-}
-
-TEST_CASE("CPP backend exceptional cleanups run in reverse construction order") {
-	auto engine = makeCppEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
-	destructorCalls = 0;
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-	REQUIRE(destructorCalls == 2);
-	REQUIRE(destructorValues[0] == 2);
-	REQUIRE(destructorValues[1] == 1);
-}
-
-TEST_CASE("CPP backend throwing invokes without live structs rethrow") {
-	auto engine = makeCppEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithoutStruct);
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-}
-
-#ifdef ENABLE_BC_BACKEND
-TEST_CASE("BC backend invokes unwind live val<Struct> destructors") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			auto engine = makeBcEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
-		}
-	}
-}
-
-TEST_CASE("BC backend exceptional cleanups run in reverse construction order") {
-	auto engine = makeBcEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
-	destructorCalls = 0;
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-	REQUIRE(destructorCalls == 2);
-	REQUIRE(destructorValues[0] == 2);
-	REQUIRE(destructorValues[1] == 1);
-}
-
-TEST_CASE("BC backend unwinds destructors under every dispatch mode") {
-	// BCInterpreter::execute() picks a loop variant per basic block based on
-	// CodeBlock::hasPendingCheck, nested inside the call/switch dispatch-mode
-	// branch; the threaded path handles the check as its own computed-goto
-	// label. All three need to actually take the pending-exception branch, not
-	// just agree on ordinary (non-throwing) results the way BCDispatchModeTest
-	// checks.
-	for (const auto& dispatch : {std::string("call"), std::string("switch"), std::string("threaded")}) {
-		DYNAMIC_SECTION(dispatch) {
-			auto engine = makeBcEngine("lazyTracing", dispatch);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
-		}
-	}
-}
-#endif // ENABLE_BC_BACKEND
-
-#ifdef ENABLE_TBC_BACKEND
-TEST_CASE("TBC backend invokes unwind live val<Struct> destructors") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			auto engine = makeTbcEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
-		}
-	}
-}
-
-TEST_CASE("TBC backend exceptional cleanups run in reverse construction order") {
-	auto engine = makeTbcEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
-	destructorCalls = 0;
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-	REQUIRE(destructorCalls == 2);
-	REQUIRE(destructorValues[0] == 2);
-	REQUIRE(destructorValues[1] == 1);
-}
-#endif // ENABLE_TBC_BACKEND
-
-#ifdef ENABLE_ASMJIT_BACKEND
-TEST_CASE("AsmJit backend invokes unwind live val<Struct> destructors") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			auto engine = makeAsmJitEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithStruct);
-			destructorCalls = 0;
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
-			REQUIRE(destructorCalls == 1);
-		}
-	}
-}
-
-TEST_CASE("AsmJit backend exceptional cleanups run in reverse construction order") {
-	auto engine = makeAsmJitEngine("lazyTracing");
-	auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
-	destructorCalls = 0;
-	REQUIRE_THROWS_AS(function(), std::runtime_error);
-	REQUIRE(destructorCalls == 2);
-	REQUIRE(destructorValues[0] == 2);
-	REQUIRE(destructorValues[1] == 1);
-}
-#endif // ENABLE_ASMJIT_BACKEND
+// BC's per-dispatch-mode exception unwinding is covered by
+// backends/bc/BCExceptionDispatchTest.cpp instead of here.
 
 TEST_CASE("throwing invokes without live structs retain exception handling") {
 	using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
@@ -481,31 +421,9 @@ TEST_CASE("indirect invokes carry live struct destructors through trace and IR")
 }
 
 // ---------------------------------------------------------------------------
-// Cross-backend execution tests (spec §9.5)
+// More cross-backend execution tests, using the exceptionBackends() helper
+// defined above.
 // ---------------------------------------------------------------------------
-
-struct BackendSpec {
-	std::string name;
-	engine::NautilusEngine (*makeEngine)(const std::string&);
-};
-
-std::vector<BackendSpec> exceptionBackends() {
-	std::vector<BackendSpec> backends;
-#ifdef ENABLE_MLIR_BACKEND
-	backends.push_back({"mlir", makeMlirEngine});
-#endif
-	backends.push_back({"cpp", makeCppEngine});
-#ifdef ENABLE_BC_BACKEND
-	backends.push_back({"bc", makeBcEngine});
-#endif
-#ifdef ENABLE_TBC_BACKEND
-	backends.push_back({"tbc", makeTbcEngine});
-#endif
-#if defined(ENABLE_ASMJIT_BACKEND)
-	backends.push_back({"asmjit", makeAsmJitEngine});
-#endif
-	return backends;
-}
 
 thread_local int32_t postInvokeCounter = 0;
 
@@ -617,12 +535,16 @@ TEST_CASE("indirect throwing invokes unwind destructors across backends") {
 				DYNAMIC_SECTION(traceMode) {
 					auto ir = traceIndirectThrowIR(traceFn);
 					auto* compilationBackend =
-					    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.name);
+					    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.registryName);
 					// DumpHandler stores Options by reference, so the options must
 					// outlive the compile() call (no temporaries here).
 					engine::Options dumpOptions;
 					compiler::DumpHandler dumpHandler(dumpOptions, "indirect-throw-test");
-					auto executable = compilationBackend->compile(ir, dumpHandler, engine::Options {}, nullptr);
+					engine::Options compileOptions;
+					if (backend.compileOptions != nullptr) {
+						backend.compileOptions(compileOptions);
+					}
+					auto executable = compilationBackend->compile(ir, dumpHandler, compileOptions, nullptr);
 					auto function = executable->getInvocableMember<void>("execute");
 					destructorCalls = 0;
 					REQUIRE_THROWS_AS(function(), std::runtime_error);

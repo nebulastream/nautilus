@@ -1,7 +1,7 @@
-# Locate libffi for the bytecode backend's iOS-safe closure path and expose it
+# Locate libffi for the interpreting backends' iOS-safe closure path and expose it
 # as the imported target `nautilus::ffi`.
 #
-# The bytecode backend uses libffi closures (built with static trampolines) to
+# The bc and tbc backends use libffi closures (built with static trampolines) to
 # hand out a real C function pointer without allocating runtime-executable (RWX)
 # memory, which is required on iOS. libffi >= 3.4 enables static trampolines by
 # default on Apple and Linux targets.
@@ -37,7 +37,7 @@ else ()
     find_library(NAUTILUS_FFI_LIBRARY NAMES ffi libffi)
     if (NOT NAUTILUS_FFI_INCLUDE_DIR OR NOT NAUTILUS_FFI_LIBRARY)
         message(FATAL_ERROR
-                "ENABLE_BC_LIBFFI is ON but libffi was not found. Install libffi "
+                "ENABLE_FFI_CLOSURES is ON but libffi was not found. Install libffi "
                 ">= 3.4 (e.g. 'apt install libffi-dev' / 'brew install libffi') or "
                 "point CMAKE_PREFIX_PATH / a toolchain file at a libffi build that "
                 "uses static trampolines.")
@@ -52,4 +52,4 @@ set_target_properties(nautilus::ffi PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_nautilus_ffi_include_dirs}"
         INTERFACE_LINK_LIBRARIES "${_nautilus_ffi_link}")
 
-message(STATUS "Bytecode backend: using libffi closures (version ${_nautilus_ffi_version}) for iOS-safe function pointers")
+message(STATUS "Interpreting backends: using libffi closures (version ${_nautilus_ffi_version}) for iOS-safe function pointers")

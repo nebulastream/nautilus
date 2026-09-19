@@ -2,8 +2,13 @@
 //
 // The output is consumed by the extension's graph webview. Each block becomes
 // one node; edges are derived from block terminators (`return` / `br` / `if`).
-// Block names are reused verbatim as Mermaid node ids — the parser already
-// guarantees they match `/Block_\d+/`, which is a valid Mermaid identifier.
+// A function that went through ExceptionRegionPreparationPass also carries
+// landing pads, drawn as detached nodes joined by dotted `unwind` edges: they
+// are not on the normal path, so mixing them into the terminator edges would
+// misread the CFG.
+// Block and pad names are reused verbatim as Mermaid node ids — the parser
+// already guarantees they match `/Block_\d+/` and `/pad_\d+/`, both valid
+// Mermaid identifiers.
 //
 // The webview renders Mermaid with `securityLevel: 'strict'` and
 // `htmlLabels: false`, so labels are SVG <text> and DOMPurify-sanitised.
@@ -19,6 +24,8 @@ export interface CfgGraph {
 	// uses this list (validated against `/^Block_\d+$/`) to attach click
 	// handlers to the rendered SVG nodes.
 	blocks: string[];
+	// Landing-pad names rendered in this graph, in declaration order.
+	pads: string[];
 }
 
 export function cfgFor(ir: ParsedIr, functionName: string): CfgGraph | undefined {
@@ -35,7 +42,7 @@ function buildGraph(fn: IrFunction): CfgGraph {
 
 	if (fn.blocks.length === 0) {
 		lines.push(`    empty["${quoteLabel(fn.name)}: (no blocks)"]`);
-		return { mermaid: lines.join('\n'), functionName: fn.name, blocks: [] };
+		return { mermaid: lines.join('\n'), functionName: fn.name, blocks: [], pads: [] };
 	}
 
 	const entryName = fn.blocks[0].name;
@@ -56,6 +63,13 @@ function buildGraph(fn: IrFunction): CfgGraph {
 		lines.push(`    ${shape}`);
 	}
 
+	// Landing pads: cleanup code reached only when a call unwinds. Hexagons,
+	// so they read as off-path at a glance.
+	for (const pad of fn.pads) {
+		const insnWord = pad.instructions === 1 ? 'insn' : 'insns';
+		lines.push(`    ${pad.name}{{"${quoteLabel(`${pad.name} | ${pad.instructions} ${insnWord} · cleanup`)}"}}`);
+	}
+
 	// Edges. The parser preserves successor order on conditional branches
 	// (true branch first, then false), matching the textual
 	// `if $cond ? Block_T : Block_F :void` form.
@@ -69,6 +83,12 @@ function buildGraph(fn: IrFunction): CfgGraph {
 				lines.push(`    ${block.name} --> ${succ}`);
 			}
 		}
+		// Dotted, because this edge is only taken when a call throws.
+		for (const pad of block.padLinks) {
+			if (fn.pads.some(p => p.name === pad)) {
+				lines.push(`    ${block.name} -. "unwind" .-> ${pad}`);
+			}
+		}
 	}
 
 	// Styling. Colors mirror the palette of the C++ Mermaid dumper in
@@ -78,6 +98,7 @@ function buildGraph(fn: IrFunction): CfgGraph {
 	lines.push('    classDef exit stroke:#e98693,stroke-width:2px,fill:#fde8ec,color:#000');
 	lines.push('    classDef cond stroke:#3cb4a4,stroke-width:1px,fill:#fff,color:#000');
 	lines.push('    classDef cursor stroke:#da2d4f,stroke-width:3px,fill:#fff7f9,color:#000');
+	lines.push('    classDef pad stroke:#e9a23b,stroke-width:1px,stroke-dasharray:4 3,fill:#fdf3e3,color:#000');
 
 	lines.push(`    class ${entryName} entry`);
 	for (const block of fn.blocks) {
@@ -88,10 +109,15 @@ function buildGraph(fn: IrFunction): CfgGraph {
 		}
 	}
 
+	for (const pad of fn.pads) {
+		lines.push(`    class ${pad.name} pad`);
+	}
+
 	return {
 		mermaid: lines.join('\n'),
 		functionName: fn.name,
 		blocks: fn.blocks.map(b => b.name),
+		pads: fn.pads.map(p => p.name),
 	};
 }
 

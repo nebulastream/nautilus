@@ -1,4 +1,5 @@
 #pragma once
+#include "nautilus/common/RegionAttributes.hpp"
 #include <functional>
 #include <string>
 #include <string_view>
@@ -11,8 +12,10 @@ class CompilableFunction {
 
 public:
 	CompilableFunction(std::string_view name, wrapper_function function,
-	                   std::unordered_map<std::string, std::string> attributes = {}, const void* definition = nullptr)
-	    : name(name), function(function), attributes(std::move(attributes)), definition(definition) {
+	                   std::unordered_map<std::string, std::string> attributes = {}, const void* definition = nullptr,
+	                   SourceLocation location = {})
+	    : name(name), function(function), attributes(std::move(attributes)), definition(definition),
+	      location(location) {
 	}
 
 	const std::string& getName() const {
@@ -39,11 +42,18 @@ public:
 		return definition;
 	}
 
+	/// Where this function was registered (docs/engine.md), or an unknown
+	/// location for a function queued without one.
+	const SourceLocation& getLocation() const {
+		return location;
+	}
+
 private:
 	std::string name;
 	wrapper_function function;
 	std::unordered_map<std::string, std::string> attributes;
 	const void* definition = nullptr;
+	SourceLocation location;
 };
 
 } // namespace nautilus::compiler
