@@ -6,6 +6,7 @@
 #include <llvm/Support/CodeGen.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
+#include <string>
 #include <vector>
 
 namespace nautilus::compiler::mlir {
@@ -26,6 +27,7 @@ public:
 	                 const std::vector<void*>& jitProxyFunctionTargetAddresses,
 	                 llvm::CodeGenOptLevel codeGenOptLevel = llvm::CodeGenOptLevel::Aggressive,
 	                 bool enableDebuggerSupport = false, bool enablePerfSupport = false, bool perfEmitDebugInfo = true,
-	                 bool perfEmitUnwindInfo = true, bool perfRegionSymbols = true);
+	                 bool perfEmitUnwindInfo = true, bool perfRegionSymbols = true,
+	                 bool enableJitSymbolRegistration = false, const std::string& compilationUnitId = {});
 };
 } // namespace nautilus::compiler::mlir

@@ -17,6 +17,7 @@ set(ENABLE_STD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SIMD_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_SPECIALIZATION_PLUGIN ON CACHE BOOL "" FORCE)
 set(ENABLE_INLINING_PLUGIN ON CACHE BOOL "" FORCE)
+set(ENABLE_PROFILING_PLUGIN ON CACHE BOOL "" FORCE)
 # Enable the AsmJit backend so demo_backends can include it in its comparison.
 # This is OFF by default in the top-level nautilus build but is safe on
 # x86-64 Linux / macOS and ARM64 Linux.
@@ -40,11 +41,21 @@ target_link_libraries(demo_runtime_calls PRIVATE nautilus)
 add_executable(demo_regions src/DemoRegions.cpp)
 target_link_libraries(demo_regions PRIVATE nautilus)
 
-# Profiling demo — a region()-structured kernel to run under `perf`.
-# Builds everywhere (the `perf` engine option is a warning-and-continue no-op
-# off Linux/ELF), but only produces a jitdump on Linux. See docs/profiling.md.
-add_executable(demo_perf_profile src/DemoPerfProfile.cpp)
-target_link_libraries(demo_perf_profile PRIVATE nautilus)
+# The same kernel measured from inside the process with the nautilus-profiling
+# plugin. Linux-only: the plugin's public API exists everywhere, but there is
+# no perf subsystem to read counters from off Linux, so the demo would print
+# nothing but its unavailable reason.
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(demo_profiling src/DemoProfiling.cpp)
+    target_link_libraries(demo_profiling PRIVATE nautilus nautilus-profiling)
+    # Export the executable's symbols so `dladdr` can name an invoke()d host
+    # callee. Nautilus resolves those names from the dynamic symbol table, which
+    # an executable leaves empty unless the link populates it -- without this the
+    # demo's annotated IR shows `call 0x55f3...` where a name belongs.
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_options(demo_profiling PRIVATE -rdynamic)
+    endif ()
+endif ()
 
 # Plugin demos — each links the plugin library it exercises.
 # All plugin libraries use --whole-archive (on GNU/Clang) to force their
