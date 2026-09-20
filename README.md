@@ -159,6 +159,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [Functions](docs/functions.md) | Calling and registering functions |
 | [Static Values (`static_val<T>`)](docs/static-val.md) | Compile-time constant values |
 | [Engine Configuration](docs/engine.md) | Backend selection, options, and debugging output |
+| [Profiling](docs/profiling.md) | Collecting `perf` profiles of JIT-compiled code and building region flame graphs |
 | [Tracing Internals](docs/tracing.md) | How the tracing system works under the hood |
 | [Graphs](docs/graphs.md) | The IR control-flow graph and SSA representation |
 | [SIMD](docs/simd.md) | The SIMD vector plugin |
