@@ -14,13 +14,16 @@ namespace nautilus::compiler::mlir {
 // tagging ops before DISubprograms exist) and can be recovered afterwards, once
 // DIScopeForLLVMFuncOpPass has materialized a DISubprogram for the function.
 //
-// A region chain is a LocationAttr built by buildRegionScopeChain(): the
-// innermost region is a NameLoc(name, FileLineColLoc(file, line, column)),
-// optionally fused with its parent's chain (built the same way) when the
-// region is nested. It is a LocationAttr rather than a Location because,
-// unlike Location, LocationAttr is nullable -- exactly what "no enclosing
-// region" needs. No Nautilus IR object needs to be threaded across the
-// MLIRLoweringProvider / MLIR-pass boundary -- the chain is self-contained.
+// A region chain is a LocationAttr built by buildRegionScopeChain(): each
+// region is a NameLoc(name, FileLineColLoc(file, line, column)), and a nested
+// region is a CallSiteLoc whose callee is its own NameLoc and whose caller is
+// its parent's chain (built the same way). Nesting is therefore exact at any
+// depth -- see buildRegionScopeChain() for why a FusedLoc cannot express a
+// chain deeper than two levels. It is a LocationAttr rather than a Location
+// because, unlike Location, LocationAttr is nullable -- exactly what "no
+// enclosing region" needs. No Nautilus IR object needs to be threaded across
+// the MLIRLoweringProvider / MLIR-pass boundary -- the chain is
+// self-contained.
 //
 // A region is lowered to a DWARF *inlined subroutine*, not a plain lexical
 // block: a synthetic, function-shaped DISubprogramAttr stands in for the
@@ -98,13 +101,19 @@ using RegionSubprogramCache = llvm::DenseMap<::mlir::Attribute, ::mlir::LLVM::DI
                                          ::mlir::LocationAttr regionChain, ::mlir::LLVM::DISubprogramAttr subprogram,
                                          ::mlir::LLVM::DIFileAttr functionFile, RegionSubprogramCache& cache);
 
-// Removes the region-scope marker attachRegionScope() added, returning the
+// Removes every region-scope marker attachRegionScope() added, returning the
 // op's plain underlying location.
 //
 // The marker FusedLoc holds two children: the op's real location and the
 // region chain. MLIR's debug translation cannot pick a line from a multi-child
 // FusedLoc and emits `line: 0`, so a still-marked location costs every op in
 // the region its line number. Strip first, wrap second.
+//
+// Markers are removed wherever they sit in the location tree, not only at its
+// root: by the time this runs another pass may have wrapped the op's location
+// around the marker (the MLIR inliner adds a CallSiteLoc per inlined hop, and
+// DIScopeForLLVMFuncOpPass fuses a scope onto the result), which is what a
+// region() inside an inlined callee looks like.
 ::mlir::Location stripRegionScope(::mlir::Location loc);
 
 } // namespace nautilus::compiler::mlir

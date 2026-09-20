@@ -1,5 +1,6 @@
 
 #include "nautilus/compiler/backends/mlir/debug/RegionScopeInfo.hpp"
+#include <llvm/ADT/SmallVector.h>
 #include <mlir/IR/BuiltinAttributes.h>
 
 namespace nautilus::compiler::mlir {
@@ -32,7 +33,18 @@ constexpr llvm::StringLiteral kRegionScopeMarker = "nautilus.region.scope";
 	if (!parentChain) {
 		return nameLoc;
 	}
-	return ::mlir::FusedLoc::get({::mlir::Location(nameLoc), ::mlir::Location(parentChain)}, ::mlir::Attribute(), ctx);
+	// callee = this region, caller = the chain of everything it nests in --
+	// the same "as if inlined" reading the chain is ultimately lowered to.
+	//
+	// Deliberately NOT a FusedLoc, which cannot hold a chain deeper than two
+	// levels at all: FusedLoc::get() decomposes a nested FusedLoc whose
+	// metadata equals the metadata being built, so fuse(inner, fuse(mid, top))
+	// silently collapses into one flat three-child FusedLoc, and no choice of
+	// metadata avoids it (every level would carry the same one). Its
+	// SmallSetVector also drops a level that happens to be structurally
+	// identical to a sibling. CallSiteLoc has no such canonicalization: it
+	// keeps exactly the two locations it is given, at any depth.
+	return ::mlir::CallSiteLoc::get(::mlir::Location(nameLoc), ::mlir::Location(parentChain));
 }
 
 ::mlir::Location attachRegionScope(::mlir::MLIRContext* ctx, ::mlir::Location base, ::mlir::LocationAttr regionChain) {
@@ -45,13 +57,41 @@ constexpr llvm::StringLiteral kRegionScopeMarker = "nautilus.region.scope";
 
 ::mlir::Location stripRegionScope(::mlir::Location loc) {
 	if (auto fused = llvm::dyn_cast<::mlir::FusedLoc>(loc)) {
-		if (auto marker = llvm::dyn_cast_or_null<::mlir::StringAttr>(fused.getMetadata())) {
-			if (marker.getValue() == kRegionScopeMarker && !fused.getLocations().empty()) {
-				// Recurse: an op whose base location was itself wrapped (a
-				// nested region) carries more than one marker layer.
-				return stripRegionScope(fused.getLocations()[0]);
-			}
+		auto marker = llvm::dyn_cast_or_null<::mlir::StringAttr>(fused.getMetadata());
+		if (marker && marker.getValue() == kRegionScopeMarker && !fused.getLocations().empty()) {
+			// Recurse: an op whose base location was itself wrapped (a
+			// nested region) carries more than one marker layer.
+			return stripRegionScope(fused.getLocations()[0]);
 		}
+		// Not a marker itself, but it may still wrap one. That happens as soon
+		// as another pass has rewritten the op's location around the marker:
+		// the MLIR inliner wraps an inlined op in a CallSiteLoc, and
+		// DIScopeForLLVMFuncOpPass fuses a DILexicalBlockFile onto the result,
+		// so a region() inside a callee that gets inlined arrives here with the
+		// marker buried two levels down. Leaving it there costs every op in
+		// that region its line, exactly as it would at the root.
+		llvm::SmallVector<::mlir::Location> stripped;
+		bool changed = false;
+		for (auto child : fused.getLocations()) {
+			stripped.push_back(stripRegionScope(child));
+			changed |= stripped.back() != child;
+		}
+		return changed ? ::mlir::FusedLoc::get(stripped, fused.getMetadata(), loc.getContext()) : loc;
+	}
+	if (auto callSite = llvm::dyn_cast<::mlir::CallSiteLoc>(loc)) {
+		::mlir::Location callee = stripRegionScope(callSite.getCallee());
+		::mlir::Location caller = stripRegionScope(callSite.getCaller());
+		if (callee == callSite.getCallee() && caller == callSite.getCaller()) {
+			return loc;
+		}
+		return ::mlir::CallSiteLoc::get(callee, caller);
+	}
+	if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(loc)) {
+		::mlir::Location child = stripRegionScope(nameLoc.getChildLoc());
+		if (child == nameLoc.getChildLoc()) {
+			return loc;
+		}
+		return ::mlir::NameLoc::get(nameLoc.getName(), child);
 	}
 	return loc;
 }
@@ -83,12 +123,18 @@ struct ChainNode {
 };
 
 ChainNode decomposeChain(::mlir::LocationAttr chain) {
+	// The outermost level is the bare NameLoc buildRegionScopeChain() starts
+	// from; every level above it is one CallSiteLoc link. A chain of any depth
+	// is therefore decomposed one level per call, recursively.
 	if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(chain)) {
 		return {nameLoc, nullptr};
 	}
-	if (auto fused = llvm::dyn_cast<::mlir::FusedLoc>(chain); fused && fused.getLocations().size() == 2) {
-		if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(fused.getLocations()[0])) {
-			return {nameLoc, fused.getLocations()[1]};
+	if (auto callSite = llvm::dyn_cast<::mlir::CallSiteLoc>(chain)) {
+		// A link's callee is always the level's NameLoc, which is what tells a
+		// link apart from the CallSiteLoc a *leaf* carries internally to hold
+		// its IR-dump position (that one's callee is a FileLineColLoc).
+		if (auto nameLoc = llvm::dyn_cast<::mlir::NameLoc>(callSite.getCallee())) {
+			return {nameLoc, callSite.getCaller()};
 		}
 	}
 	return {};

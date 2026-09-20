@@ -17,8 +17,10 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <unistd.h>
+#include <vector>
 
 namespace nautilus::engine {
 
@@ -95,6 +97,68 @@ val<int32_t> debugRegionSum(val<int32_t> upperLimit) {
 		}
 	});
 	region("accumulate2", [&]() {
+		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+			agg = agg + i;
+		}
+	});
+	return agg;
+}
+
+// Four levels of region() nesting, so the DWARF inlined-subroutine chain a
+// region lowers to is exercised past the two levels debugRegionSum reaches.
+val<int32_t> debugDeeplyNestedRegions(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	region("lvl1", [&]() {
+		region("lvl2", [&]() {
+			region("lvl3", [&]() {
+				region("lvl4", [&]() {
+					for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
+						agg = agg + i;
+					}
+				});
+			});
+		});
+	});
+	return agg;
+}
+
+// How deep debugVeryDeeplyNestedRegions nests. Region names are `d1` (innermost) .. `d50`.
+constexpr int kDebugNestDepth = 50;
+
+// Stable, distinct names: region() stores the const char* it is handed.
+const char* debugNestedRegionName(int level) {
+	static const std::vector<std::string>* names = [] {
+		auto* built = new std::vector<std::string>(kDebugNestDepth + 1);
+		for (int i = 0; i <= kDebugNestDepth; ++i) {
+			(*built)[i] = "d" + std::to_string(i);
+		}
+		return built;
+	}();
+	return (*names)[level].c_str();
+}
+
+// Opens N nested region()s around `body`, outermost first. Recursive so the depth is one
+// constant; each level is a distinct instantiation, so region()'s frame-pointer walk still sees
+// a distinct call site per level.
+template <int N>
+struct DebugNestRegions {
+	template <typename F>
+	static void apply(F&& body) {
+		region(debugNestedRegionName(N), [&]() { DebugNestRegions<N - 1>::apply(body); });
+	}
+};
+
+template <>
+struct DebugNestRegions<0> {
+	template <typename F>
+	static void apply(F&& body) {
+		body();
+	}
+};
+
+val<int32_t> debugVeryDeeplyNestedRegions(val<int32_t> upperLimit) {
+	val<int32_t> agg = val<int32_t>(0);
+	DebugNestRegions<kDebugNestDepth>::apply([&]() {
 		for (val<int32_t> i = 0; i < upperLimit; i = i + 1) {
 			agg = agg + i;
 		}
@@ -371,40 +435,68 @@ DebugIr parseDebugIr(std::string text) {
 
 using OptionTweak = std::function<void(Options&)>;
 
-/// Options with debug info on and the Nautilus-IR dump as the DWARF source --
-/// the configuration every metadata test in this file needs.
+/// Options with debug info on -- the configuration every metadata test in
+/// this file needs. The Nautilus-IR dump is always the DWARF source; there
+/// is no other mode to choose.
 Options debugOptions(const OptionTweak& tweak = {}) {
 	Options options;
 	options.setOption("engine.backend", std::string("mlir"));
-	options.setOption("mlir.debug.enable", true);
-	options.setOption("mlir.debug.source_mode", std::string("nautilus-ir"));
+	options.setOption("debug", true);
 	if (tweak) {
 		tweak(options);
 	}
 	return options;
 }
 
-/// Compiles through @p body with the DWARF "source" file written to a path of
-/// this test's own, and returns what landed there.
+/// Runs @p body and returns the `nautilus_debug_*.<extension>` files that
+/// appeared under any of @p dirs while it ran. The source file's name can no
+/// longer be pinned (it is always synthesized), and a perf-only compile
+/// writes it to the working directory rather than the temp directory (see
+/// DebugInfoOptions.cpp), so callers that do not care which of the two it
+/// landed in scan both.
 template <typename Body>
-std::string compileDebugSource(const std::string& extension, Body&& body, const OptionTweak& tweak = {}) {
-	const auto sourcePath = (std::filesystem::temp_directory_path() /
-	                         ("nautilus_debug_source_" + std::to_string(::getpid()) + "." + extension))
-	                            .string();
-	std::filesystem::remove(sourcePath);
-
-	auto options = debugOptions([&](Options& o) {
-		o.setOption("mlir.debug.source_file", sourcePath);
-		if (tweak) {
-			tweak(o);
+std::vector<std::filesystem::path> newDebugSourceFiles(const std::vector<std::filesystem::path>& dirs,
+                                                       const std::string& extension, Body&& body) {
+	std::map<std::filesystem::path, std::set<std::filesystem::path>> before;
+	for (const auto& dir : dirs) {
+		if (std::filesystem::exists(dir)) {
+			for (const auto& e : std::filesystem::directory_iterator(dir)) {
+				before[dir].insert(e.path());
+			}
 		}
-	});
-	NautilusEngine engine(options);
-	body(engine);
+	}
+	body();
+	std::vector<std::filesystem::path> created;
+	for (const auto& dir : dirs) {
+		if (!std::filesystem::exists(dir)) {
+			continue;
+		}
+		for (const auto& e : std::filesystem::directory_iterator(dir)) {
+			if (!before[dir].count(e.path()) && e.path().filename().string().starts_with("nautilus_debug_") &&
+			    e.path().extension() == "." + extension) {
+				created.push_back(e.path());
+			}
+		}
+	}
+	return created;
+}
 
-	REQUIRE(std::filesystem::exists(sourcePath));
-	auto contents = readFile(sourcePath);
-	std::filesystem::remove(sourcePath);
+/// Compiles through @p body with debug info on and returns the contents of
+/// the synthesized DWARF "source" file (the Nautilus IR dump).
+template <typename Body>
+std::string compileDebugSource(Body&& body, const OptionTweak& tweak = {}) {
+	auto options = debugOptions(tweak);
+	auto created =
+	    newDebugSourceFiles({std::filesystem::temp_directory_path(), std::filesystem::current_path()}, "ir", [&]() {
+		    NautilusEngine engine(options);
+		    body(engine);
+	    });
+
+	REQUIRE_FALSE(created.empty());
+	auto contents = readFile(created.front().string());
+	for (const auto& path : created) {
+		std::filesystem::remove(path);
+	}
 	return contents;
 }
 
@@ -419,48 +511,44 @@ template <typename Body>
 DebugIr compileDebugIr(const std::string& functionName, Body&& body, const OptionTweak& tweak = {},
                        const std::string& dumpStage = "before_llvm_optimization") {
 	const auto dumpRoot = std::filesystem::temp_directory_path() / "dump";
-	std::set<std::filesystem::path> existing;
+	std::set<std::filesystem::path> existingDumps;
 	if (std::filesystem::exists(dumpRoot)) {
 		for (const auto& e : std::filesystem::directory_iterator(dumpRoot)) {
-			existing.insert(e.path());
+			existingDumps.insert(e.path());
 		}
 	}
 
-	// A path of our own, so the Nautilus-IR dump the DWARF points at can be
-	// read back as part of the result instead of hunting for it.
-	static std::atomic<unsigned> sourceCounter {0};
-	const auto sourcePath =
-	    (std::filesystem::temp_directory_path() / ("nautilus_debug_test_" + std::to_string(::getpid()) + "_" +
-	                                               std::to_string(sourceCounter.fetch_add(1)) + ".ir"))
-	        .string();
-	std::filesystem::remove(sourcePath);
-
 	auto options = debugOptions([&](Options& o) {
 		o.setOption("dump." + dumpStage, true);
-		o.setOption("mlir.debug.source_file", sourcePath);
 		if (tweak) {
 			tweak(o);
 		}
 	});
-	NautilusEngine engine(options);
-	body(engine);
 
 	std::string sourceText;
-	if (std::filesystem::exists(sourcePath)) {
-		sourceText = readFile(sourcePath);
-		std::filesystem::remove(sourcePath);
+	std::string sourceMarker;
+	auto created =
+	    newDebugSourceFiles({std::filesystem::temp_directory_path(), std::filesystem::current_path()}, "ir", [&]() {
+		    NautilusEngine engine(options);
+		    body(engine);
+	    });
+	if (!created.empty()) {
+		sourceMarker = created.front().filename().string();
+		sourceText = readFile(created.front().string());
+		for (const auto& path : created) {
+			std::filesystem::remove(path);
+		}
 	}
 
-	// Candidates are matched on this compilation's own source-file path, which
+	// Candidates are matched on this compilation's own source-file name, which
 	// the module records in its DIFile. The dump root is shared by every test
 	// in the process and nearly every traced function lowers to `@execute`, so
 	// neither "whichever directory appeared" nor the function name alone can
 	// tell two concurrent tests apart.
 	const std::string marker = "@" + functionName + "(";
-	const std::string sourceMarker = std::filesystem::path(sourcePath).filename().string();
 	if (std::filesystem::exists(dumpRoot)) {
 		for (const auto& dir : std::filesystem::directory_iterator(dumpRoot)) {
-			if (existing.count(dir.path())) {
+			if (existingDumps.count(dir.path())) {
 				continue;
 			}
 			for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
@@ -491,24 +579,8 @@ TEST_CASE("Debug info: disabled by default produces identical results") {
 	REQUIRE(fn(41) == 42);
 }
 
-TEST_CASE("Debug info: MLIR source mode writes a snapshot file and compiles") {
-	// LocationSnapshot writes the post-inline MLIR to the configured path. It
-	// must be non-empty and contain the func symbol, so gdb/lldb can resolve
-	// breakpoints against its lines.
-	const auto contents = compileDebugSource(
-	    "mlir",
-	    [](NautilusEngine& engine) {
-		    auto fn = engine.registerFunction(debugAddOne);
-		    REQUIRE(fn(41) == 42);
-	    },
-	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); });
-
-	REQUIRE_FALSE(contents.empty());
-	REQUIRE(contents.find("func.func") != std::string::npos);
-}
-
-TEST_CASE("Debug info: Nautilus IR source mode emits the IR dump as the source file") {
-	const auto contents = compileDebugSource("ir", [](NautilusEngine& engine) {
+TEST_CASE("Debug info: emits the Nautilus IR dump as the source file") {
+	const auto contents = compileDebugSource([](NautilusEngine& engine) {
 		auto fn = engine.registerFunction(debugSumThree);
 		REQUIRE(fn(1, 2, 3) == 6);
 	});
@@ -519,18 +591,8 @@ TEST_CASE("Debug info: Nautilus IR source mode emits the IR dump as the source f
 	REQUIRE(contents.find("//nautilus") != std::string::npos);
 }
 
-TEST_CASE("Debug info: default source path is synthesized when none provided") {
-	auto options = debugOptions();
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-}
-
 TEST_CASE("Debug info: the synthesized source file lands in the temp directory") {
-	// The default keeps generated files out of the user's tree. An IDE that
-	// cannot open a $TMPDIR path -- on macOS a /var/folders/... one, outside
-	// its source roots -- points `mlir.debug.source_dir` somewhere it can.
+	// The default keeps generated files out of the user's tree.
 	const auto tempDir = std::filesystem::temp_directory_path();
 	std::set<std::filesystem::path> before;
 	for (const auto& e : std::filesystem::directory_iterator(tempDir)) {
@@ -567,42 +629,6 @@ TEST_CASE("Debug info: the synthesized source file lands in the temp directory")
 	for (const auto& path : inTemp) {
 		std::filesystem::remove(path);
 	}
-}
-
-TEST_CASE("Debug info: source_dir redirects the synthesized source file") {
-	const auto dir = std::filesystem::temp_directory_path() / ("nautilus_src_dir_" + std::to_string(::getpid()));
-	std::filesystem::remove_all(dir);
-	std::filesystem::create_directories(dir);
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.source_dir", dir.string());
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator {}) > 0);
-	std::filesystem::remove_all(dir);
-}
-
-TEST_CASE("Debug info: a relative source_file is recorded as an absolute path") {
-	// A relative name in the DWARF would be resolved against DW_AT_comp_dir,
-	// which for a JIT module is not a directory the user controls — the
-	// debugger then reports the source as missing.
-	const auto relative = "nautilus_relative_" + std::to_string(::getpid()) + ".ir";
-	const auto expected = std::filesystem::current_path() / relative;
-	std::filesystem::remove(expected);
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.source_file", relative);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(std::filesystem::exists(expected));
-	// The IR dump names itself by the absolute path the DWARF points at.
-	std::filesystem::remove(expected);
 }
 
 // The GDB JIT interface: the debugger sets a breakpoint on
@@ -655,21 +681,7 @@ TEST_CASE("Debug info: JIT-linked objects are registered with the debugger") {
 	REQUIRE(jitDebugEntryCount() > before);
 }
 
-TEST_CASE("Debug info: debugger registration can be disabled") {
-	const auto before = jitDebugEntryCount();
-
-	auto options = debugOptions();
-	options.setOption("mlir.debug.register_with_debugger", false);
-	options.setOption("mlir.eager_compilation", true);
-
-	NautilusEngine engine(options);
-	auto fn = engine.registerFunction(debugAddOne);
-	REQUIRE(fn(10) == 11);
-
-	REQUIRE(jitDebugEntryCount() == before);
-}
-
-TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N DILocalVariable") {
+TEST_CASE("Debug info: emits alloca + dbg.declare for each $N DILocalVariable") {
 	// Each `$N` is a shadow alloca with a dbg.declare pointing at it (see
 	// EmitDbgValuePass). Both the DILocalVariable metadata and the debug
 	// record have to survive MLIR->LLVM translation.
@@ -690,6 +702,35 @@ TEST_CASE("Debug info: nautilus-ir mode emits alloca + dbg.declare for each $N D
 	REQUIRE(ir.contains("= alloca i32"));
 }
 
+TEST_CASE("Debug info: perf-only mode gets a line table but no $N shadow allocas") {
+	// perf alone (debug off) is Axis B off / Axis A on: MLIRLoweringProvider
+	// only ever creates a $N shadow alloca (and the dbg.declare/dbg.value
+	// machinery this test's sibling above checks for) when `enableDebug`
+	// clamps for stepping, so a perf-only compile should keep the
+	// codegen-distorting side of debug info off entirely while still getting
+	// a real DISubprogram line table for jitdump to read.
+	auto ir = compileDebugIr(
+	    "execute",
+	    [](NautilusEngine& engine) {
+		    auto fn = engine.registerFunction(debugSumThree);
+		    REQUIRE(fn(1, 2, 3) == 6);
+	    },
+	    [](Options& options) {
+		    options.setOption("debug", false);
+		    options.setOption("perf", true);
+	    });
+
+	REQUIRE_FALSE(ir.subprograms.empty());
+	for (const auto& [id, subprogram] : ir.subprograms) {
+		INFO("DISubprogram !" << id << " (" << subprogram.name << ")");
+		REQUIRE(subprogram.line != 0);
+	}
+	REQUIRE(ir.variables.empty());
+	REQUIRE_FALSE(ir.contains("#dbg_declare"));
+	REQUIRE_FALSE(ir.contains("@llvm.dbg.declare"));
+	REQUIRE_FALSE(ir.contains("= alloca i32"));
+}
+
 TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
 	auto ir = compileDebugIr(
 	    "execute",
@@ -697,13 +738,12 @@ TEST_CASE("Debug info: generated LLVM IR contains DICompileUnit") {
 		    auto fn = engine.registerFunction(debugAddOne);
 		    REQUIRE(fn(5) == 6);
 	    },
-	    [](Options& options) { options.setOption("mlir.debug.source_mode", std::string("mlir")); },
-	    "after_llvm_generation");
+	    {}, "after_llvm_generation");
 
 	REQUIRE(ir.contains("DICompileUnit"));
 }
 
-TEST_CASE("Debug info: nautilus-ir mode emits DISubprogram with non-zero line") {
+TEST_CASE("Debug info: emits DISubprogram with non-zero line") {
 	// `line: 0` on a subprogram means "no source position", which costs the
 	// function its entry in a debugger's line table.
 	auto ir = compileDebugIr(
@@ -899,6 +939,104 @@ TEST_CASE("Debug info: region() scopes lower to a DWARF inlined subroutine, shar
 	// and `info locals` comes back empty inside every region.
 	REQUIRE_FALSE(ir.variableNamesIn(accumulateId).empty());
 	REQUIRE_FALSE(ir.variableNamesIn(aggIfId).empty());
+}
+
+TEST_CASE("Debug info: region() nesting survives to arbitrary depth") {
+	// Regression test for #467. A region chain used to be encoded by fusing each
+	// level's NameLoc with its parent's chain, which cannot express more than two
+	// levels at all: FusedLoc::get() decomposes a nested FusedLoc whose metadata
+	// equals the metadata being built, so fuse(lvl4, fuse(lvl3, ...)) collapsed
+	// into one flat FusedLoc that no longer matched the shape the reader
+	// recognised. The reader then reported "no region here" -- and every level's
+	// scope, not just the ones past the boundary, was silently dropped from the
+	// emitted DWARF.
+	//
+	// The encoding is a CallSiteLoc chain now (RegionScopeInfo.hpp), which MLIR
+	// does not canonicalize, so depth is bounded only by the source.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugDeeplyNestedRegions);
+		REQUIRE(fn(5) == 10);
+	});
+
+	std::vector<std::string> expected;
+	for (const auto* name : {"lvl4", "lvl3", "lvl2", "lvl1"}) {
+		const auto id = ir.subprogramId(name);
+		INFO("DISubprogram for region " << name);
+		REQUIRE_FALSE(id.empty());
+		expected.push_back(id);
+	}
+	const auto executeId = ir.subprogramId("execute");
+	REQUIRE_FALSE(executeId.empty());
+	expected.push_back(executeId);
+
+	// Innermost first, every level present and in order: that is what makes `bt`
+	// read lvl4 / lvl3 / lvl2 / lvl1 / execute. A chain that lost a level would
+	// still produce a plausible-looking backtrace, just a shorter one.
+	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	REQUIRE_FALSE(accumulation.empty());
+	REQUIRE(ir.frameScopes(accumulation) == expected);
+
+	// Each frame is located where the frame below it opens, so lines do not
+	// decrease from the outermost region inwards. Not *strictly*: these four
+	// regions open back to back with nothing traced between them, so every
+	// enclosing frame points at the same first line inside -- what matters is
+	// that the frames exist and are ordered, not that each contributes a
+	// distinct line.
+	std::vector<int> lines;
+	for (std::string id = accumulation; !id.empty(); id = ir.locations.at(id).inlinedAtId) {
+		lines.push_back(ir.locations.at(id).line);
+	}
+	REQUIRE(lines.size() == expected.size());
+	INFO("frame lines, innermost first: " << [&] {
+		std::string all;
+		for (int line : lines) {
+			all += std::to_string(line) + " ";
+		}
+		return all;
+	}());
+	REQUIRE(std::is_sorted(lines.rbegin(), lines.rend()));
+	// `line: 0` means "compiler-generated, no source position"; a frame that
+	// came out 0 would send a debugger to the call site instead.
+	REQUIRE(std::all_of(lines.begin(), lines.end(), [](int line) { return line != 0; }));
+	// The accumulation is really inside the regions, not level with where the
+	// outermost one opens.
+	REQUIRE(lines.front() > lines.back());
+}
+
+TEST_CASE("Debug info: 50 levels of region() nesting produce 50 DWARF frames") {
+	// The test above pins that the two-level boundary #467 reported is gone. This one pins that no
+	// new boundary exists anywhere a program could reach: the encoding is recursive, so 50 levels
+	// have to behave exactly like 2 -- 50 synthetic subprograms, and an inlinedAt chain 50 frames
+	// deep, innermost first, with nothing dropped in between.
+	auto ir = compileDebugIr("execute", [](NautilusEngine& engine) {
+		auto fn = engine.registerFunction(debugVeryDeeplyNestedRegions);
+		REQUIRE(fn(5) == 10);
+	});
+
+	std::vector<std::string> expected;
+	for (int level = 1; level <= kDebugNestDepth; ++level) {
+		const auto id = ir.subprogramId(debugNestedRegionName(level));
+		INFO("DISubprogram for region " << debugNestedRegionName(level));
+		REQUIRE_FALSE(id.empty());
+		expected.push_back(id);
+	}
+	const auto executeId = ir.subprogramId("execute");
+	REQUIRE_FALSE(executeId.empty());
+	expected.push_back(executeId);
+
+	const auto accumulation = ir.dbgIdOf("execute", {"add i32 %", ", %"});
+	REQUIRE_FALSE(accumulation.empty());
+	const auto scopes = ir.frameScopes(accumulation);
+	// Report where a truncated chain stopped rather than just that it did not match.
+	INFO("chain is " << scopes.size() << " frames, expected " << expected.size());
+	REQUIRE(scopes == expected);
+
+	// `line: 0` means "compiler-generated, no source position". One such frame anywhere in a
+	// 50-deep chain would send a debugger to the wrong place for that level.
+	for (const auto& id : ir.locations) {
+		INFO("DILocation !" << id.first);
+		REQUIRE(id.second.line != 0);
+	}
 }
 
 TEST_CASE("Debug info: the entry block's scope is the function's own, not a variable's decl line") {

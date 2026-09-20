@@ -48,7 +48,8 @@ endif ()
 if (ENABLE_MLIR_BACKEND)
     list(APPEND NAUTILUS_EXECUTION_TEST_SOURCES
             ABIExtensionAttributeTest.cpp
-            DebugInfoExecutionTest.cpp)
+            DebugInfoExecutionTest.cpp
+            PerfJitDumpExecutionTest.cpp)
 endif ()
 
 # NOT listed: BitIntrinsicExecutionTest.cpp. It is written against a bit

@@ -16,3 +16,9 @@ Testing/
 # Debug "source" dumps, written next to the process when debug info is enabled
 nautilus_debug_*.ir
 nautilus_debug_*.mlir
+
+# perf profiling artifacts, written next to the process by tools/nautilus-perf.sh
+perf.data
+perf.data.old
+perf.jit.data
+/.debug/

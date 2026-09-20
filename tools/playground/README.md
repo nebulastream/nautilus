@@ -26,7 +26,7 @@ derives, `alloca[N]` / `func_addr` / indirect calls, the trace's
 "Exception handling & landing pads" example is the shortest way to see it.
 
 The "Passes & debug" menu also has an opt-in **DWARF debug info** toggle
-(MLIR backend only, maps to the engine's `mlir.debug.enable` option) so the
+(MLIR backend only, maps to the engine's `debug` option) so the
 MLIR/LLVM IR stages show the `!dbg`/`llvm.dbg.value` annotations the backend
 emits when debug info is on.
 

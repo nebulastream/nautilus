@@ -32,7 +32,8 @@ if (ENABLE_MLIR_BACKEND)
             LLVMOrcJIT
             LLVMExecutionEngine
             LLVMJITLink                            # JITLink-based object linking
-            LLVMOrcDebugging                       # enableDebuggerSupport (GDB JIT interface)
+            LLVMOrcDebugging                       # GDB JIT interface; DebugInfoPreservationPlugin + createDWARFContext
+            LLVMOrcTargetProcess                   # llvm_orc_registerJITLoaderPerf{Start,End,Impl} (perf jitdump)
             ${nautilus_llvm_native_libs}
             # Dialects
             MLIRMathToLLVM

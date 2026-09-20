@@ -37,6 +37,20 @@ public:
 		// the registration plugin keeps a copy of every debug object alive
 		// for the lifetime of the JIT.
 		bool enableDebuggerSupport = false;
+
+		// Emit perf jitdump records (see llvm::orc::PerfSupportPlugin) for
+		// every JIT-linked object, so `perf record` can symbolize JIT frames
+		// and -- when `perfEmitDebugInfo` is set -- attribute samples down to
+		// source lines. Linux/ELF only; a no-op with a warning elsewhere.
+		bool enablePerfSupport = false;
+		bool perfEmitDebugInfo = true;
+		bool perfEmitUnwindInfo = true;
+
+		// Name each region() scope as its own jitdump symbol
+		// (`execute::outer::hot`), recovered from the DWARF inline stack.
+		// Requires `perfEmitDebugInfo`; without it there is no scope
+		// information to recover.
+		bool perfRegionSymbols = true;
 	};
 
 	~MLIRJit();

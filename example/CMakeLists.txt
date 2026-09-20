@@ -40,6 +40,12 @@ target_link_libraries(demo_runtime_calls PRIVATE nautilus)
 add_executable(demo_regions src/DemoRegions.cpp)
 target_link_libraries(demo_regions PRIVATE nautilus)
 
+# Profiling demo — a region()-structured kernel to run under `perf`.
+# Builds everywhere (the `perf` engine option is a warning-and-continue no-op
+# off Linux/ELF), but only produces a jitdump on Linux. See docs/profiling.md.
+add_executable(demo_perf_profile src/DemoPerfProfile.cpp)
+target_link_libraries(demo_perf_profile PRIVATE nautilus)
+
 # Plugin demos — each links the plugin library it exercises.
 # All plugin libraries use --whole-archive (on GNU/Clang) to force their
 # static initializer translation units (e.g. StdPluginInit.cpp,
