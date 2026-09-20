@@ -77,7 +77,7 @@ then
     # GPUCodegenTest compares byte for byte -- reformatting them fails the
     # test rather than the check.
     git ls-files -- '*.cpp' '*.hpp' \
-      | grep --invert-match "^third_party" \
+      | grep --invert-match --extended-regexp "(^|/)third_party/" \
       | grep --invert-match "^tools/playground/server/src/examples/" \
       | grep --invert-match "^plugins/gpu/test/data/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" -i
@@ -90,6 +90,7 @@ then
     #   last char as decimal ascii is 10 (i.e. is newline) OR append newline
     git ls-files -z -- \
         ':(exclude)third_party/**' \
+        ':(exclude)**/third_party/**' \
         ':(exclude)**/*.bin' \
         ':(exclude)**/*.png' \
         ':(exclude)**/*.zip' \
@@ -102,7 +103,7 @@ then
 else
     # clang-format
     git ls-files -- '*.cpp' '*.hpp' \
-      | grep --invert-match "^third_party" \
+      | grep --invert-match --extended-regexp "(^|/)third_party/" \
       | grep --invert-match "^tools/playground/server/src/examples/" \
       | grep --invert-match "^plugins/gpu/test/data/" \
       | xargs --max-args=10 --max-procs="$NPROC" "$CLANG_FORMAT" --dry-run -Werror \
@@ -117,6 +118,7 @@ else
     #   fail if not equal (i.e. not every char is a newline)
     git ls-files -z -- \
         ':(exclude)third_party/**' \
+        ':(exclude)**/third_party/**' \
         ':(exclude)**/*.bin' \
         ':(exclude)**/*.png' \
         ':(exclude)**/*.zip' \

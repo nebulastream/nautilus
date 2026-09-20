@@ -43,6 +43,7 @@ option(ENABLE_SPECIALIZATION_PLUGIN "Enable the code specialization hint plugin 
 option(ENABLE_INLINING_PLUGIN "Enable the LLVM function inlining plugin" ON)
 option(ENABLE_GPU_PLUGIN "Enable the GPU plugin (CUDA + Metal backends)" OFF)
 option(ENABLE_BUILTIN_PLUGIN "Enable the compiler builtins plugin (memory prefetch)" ON)
+option(ENABLE_PROFILING_PLUGIN "Enable the in-process hardware performance monitoring plugin (perf counters + sampling)" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -211,6 +212,35 @@ if (ENABLE_ASMJIT_BACKEND OR ENABLE_TBC_JIT)
     set_target_properties(asmjit PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_asmjit_includes}")
 endif ()
 
+# perf-cpp backs the profiling plugin's in-process counters and sampling.
+# perf_event_open(2) is Linux-only, so there is nothing to build elsewhere.
+#
+# The target is defined here rather than by add_subdirectory() of upstream's
+# CMakeLists, which was dropped when the copy was vendored: it installs its own
+# headers and package config into the consumer's prefix, and its
+# GEN_PROCESSOR_EVENTS option generates a source file *into the source tree* at
+# configure time. See third_party/perf-cpp/VENDORING.md for the full rationale
+# and the re-sync recipe.
+if (ENABLE_PROFILING_PLUGIN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Threads REQUIRED)
+    # Globbed rather than listed: the vendored tree only changes on a deliberate
+    # re-sync, and a stale hand-maintained list would fail at link time with a
+    # missing symbol rather than at configure time. CONFIGURE_DEPENDS re-runs
+    # the glob when the directory changes.
+    file(GLOB_RECURSE PERF_CPP_SOURCES CONFIGURE_DEPENDS ${THIRD_PARTY_DIR}/perf-cpp/src/*.cpp)
+    add_library(perf-cpp STATIC ${PERF_CPP_SOURCES})
+    # SYSTEM, and BUILD_INTERFACE only: nautilus builds with -Werror=all
+    # -Werror=extra -pedantic-errors, and the plugin's public headers are
+    # pimpl'd so no consumer of an installed nautilus ever includes perfcpp.
+    target_include_directories(perf-cpp SYSTEM PUBLIC
+            $<BUILD_INTERFACE:${THIRD_PARTY_DIR}/perf-cpp/include>)
+    # PUBLIC: the sampler's overflow handling runs on a std::thread, so anything
+    # linking the static archive needs the thread library too.
+    target_link_libraries(perf-cpp PUBLIC Threads::Threads)
+    target_compile_features(perf-cpp PUBLIC cxx_std_17)
+    disable_target_warnings(perf-cpp)
+endif ()
+
 # Define nautilus_inline() globally so callers can use it regardless of
 # whether the inlining plugin is actually being built. When the plugin is
 # disabled, the function degrades to a warning-only no-op.
@@ -234,6 +264,9 @@ if (ENABLE_GPU_PLUGIN)
 endif ()
 if (ENABLE_BUILTIN_PLUGIN)
     add_subdirectory(plugins/builtin)
+endif ()
+if (ENABLE_PROFILING_PLUGIN)
+    add_subdirectory(plugins/profiling)
 endif ()
 add_make_format()
 

@@ -9,7 +9,8 @@ namespace nautilus::compiler::mlir {
 // Populated from the public engine::Options by fromEngineOptions() so the rest
 // of the backend does not depend on the string-keyed Options header.
 //
-// Only `enableDebug` and `enablePerf` are user-settable (`debug` / `perf`).
+// Only `enableDebug`, `enablePerf` and `enableSampleSymbols` are user-settable
+// (`debug` / `perf` / `perf.sample`).
 // Everything else here is an implementation constant: earlier revisions
 // exposed each of these individually (source mode, source directory,
 // DWARF producer/version, per-record perf toggles, ...), but every one of
@@ -59,11 +60,23 @@ struct DebugInfoOptions {
 	// a region collapses silently into its enclosing function.
 	bool perfRegionSymbols = true;
 
+	// Publish every compiled code range into the process-wide JitSymbolRegistry,
+	// so a sampling profiler running *inside* this process can name JIT frames
+	// -- including region() scopes -- without `perf record`, `perf inject`, or
+	// the jitdump file at all. `perf.sample`.
+	//
+	// Independent of `enablePerf`: the two write the same names to different
+	// places, for an in-process and an out-of-process reader respectively, and
+	// either, both or neither may be on. Like `enablePerf` it clamps nothing,
+	// so what gets profiled is production-optimized code.
+	bool enableSampleSymbols = false;
+
 	// Add the `frame-pointer=all` function attribute to every generated
 	// function when perf support is active, so the default frame-pointer
 	// based unwinder (`perf record -g`) can walk out of a JIT frame -- at
 	// -O3 LLVM omits frame pointers by default. Always true when `enablePerf`
-	// is true.
+	// or `enableSampleSymbols` is true; an in-process sampler walks the stack
+	// the same way and needs the same frame pointers.
 	bool perfFramePointers = true;
 
 	// Axis A: whether *any* debug metadata is emitted at all -- line tables,
@@ -71,8 +84,18 @@ struct DebugInfoOptions {
 	// of its own. Both `enableDebug` (for a debugger) and `enablePerf` (for
 	// perf's jitdump line tables) need this; only `enableDebug` additionally
 	// wants the fidelity measures gated on it directly (see above).
+	// `enableSampleSymbols` needs it for the same reason `enablePerf` does: a
+	// region's qualified name is recovered from the DWARF inline stack, so
+	// without debug metadata the registry gets plain function names only.
 	[[nodiscard]] bool emitDebugInfo() const {
-		return enableDebug || enablePerf;
+		return enableDebug || enablePerf || enableSampleSymbols;
+	}
+
+	// Whether anything at all wants the perf-shaped metadata (frame pointers,
+	// region-qualified names). Both the jitdump writer and the in-process
+	// registry do.
+	[[nodiscard]] bool emitPerfMetadata() const {
+		return enablePerf || enableSampleSymbols;
 	}
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -46,6 +47,19 @@ public:
 		bool perfEmitDebugInfo = true;
 		bool perfEmitUnwindInfo = true;
 
+		// Publish every linked code range into the process-wide
+		// JitSymbolRegistry, so an in-process sampling profiler can name JIT
+		// frames without perf's external record/inject round trip. Shares the
+		// region-qualified naming with the jitdump path, and is independent of
+		// it -- either, both or neither may be enabled.
+		bool enableJitSymbolRegistration = false;
+
+		// The compile this module belongs to (IRGraph::getId()). Published with
+		// every code range so a profile can tell two modules' identically named
+		// `execute` symbols apart, and so the ranges can be dropped again when
+		// this JIT -- and the code it owns -- is destroyed.
+		std::string compilationUnitId;
+
 		// Name each region() scope as its own jitdump symbol
 		// (`execute::outer::hot`), recovered from the DWARF inline stack.
 		// Requires `perfEmitDebugInfo`; without it there is no scope
@@ -76,9 +90,12 @@ public:
 	}
 
 private:
-	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit);
+	MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, ModuleIndex moduleIndex);
 
 	std::unique_ptr<llvm::orc::LLJIT> jit_;
+	/// Zeroed when moved from, so only the owner that still holds the code
+	/// withdraws its ranges.
+	ModuleIndex moduleIndex_ = NO_MODULE;
 };
 
 } // namespace nautilus::compiler::mlir

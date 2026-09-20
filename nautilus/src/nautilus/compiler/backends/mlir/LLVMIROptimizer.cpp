@@ -78,11 +78,12 @@ std::function<llvm::Error(llvm::Module*)> LLVMIROptimizer::getLLVMOptimizerPipel
 			                                                  targetMachinePtr->getTargetFeatureString()));
 			func.addAttributeAtIndex(
 			    ~0, llvm::Attribute::get(llvmIRModule->getContext(), "tune-cpu", targetMachinePtr->getTargetCPU()));
-			// At -O3 LLVM omits frame pointers by default, so the default
-			// frame-pointer-based unwinder (`perf record -g`) cannot walk out
-			// of a JIT frame into the host application's stack. Cheap, and
-			// makes the default `-g` work for a perf-enabled compile.
-			if (debugInfoForCodegen.enablePerf && debugInfoForCodegen.perfFramePointers) {
+			// At -O3 LLVM omits frame pointers by default, so a
+			// frame-pointer-based unwinder cannot walk out of a JIT frame into
+			// the host application's stack. That is true of `perf record -g`
+			// out of process and of an in-process sampler's callchain alike,
+			// so both `perf` and `perf.sample` ask for this. Cheap either way.
+			if (debugInfoForCodegen.emitPerfMetadata() && debugInfoForCodegen.perfFramePointers) {
 				func.addAttributeAtIndex(~0, llvm::Attribute::get(llvmIRModule->getContext(), "frame-pointer", "all"));
 			}
 		}

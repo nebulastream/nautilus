@@ -162,6 +162,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [Profiling](docs/profiling.md) | Collecting `perf` profiles of JIT-compiled code and building region flame graphs |
 | [Tracing Internals](docs/tracing.md) | How the tracing system works under the hood |
 | [Graphs](docs/graphs.md) | The IR control-flow graph and SSA representation |
+| [Hardware Performance Monitoring](docs/perf.md) | The profiling plugin: in-process hardware counters and a JIT-aware sampling profiler |
 | [SIMD](docs/simd.md) | The SIMD vector plugin |
 | [Builtins](docs/builtin.md) | The compiler builtins plugin (memory prefetch) |
 | [Standard Library Plugin](docs/std-plugin.md) | Wrapping C++ standard library functions |

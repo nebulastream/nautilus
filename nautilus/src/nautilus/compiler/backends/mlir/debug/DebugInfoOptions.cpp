@@ -27,12 +27,12 @@ std::string tempDir() {
 // Directory the synthesized source file is written to: the temp directory,
 // unless this is a perf-only compile (see below).
 //
-// A perf-only compile (`enablePerf` without `enableDebug`) needs the working
-// directory instead: the IR dump has to outlive the compile and be findable
-// next to perf.data when `perf inject` / `perf annotate` run, minutes or
-// hours later -- and $TMPDIR is routinely cleaned between record and report.
+// A profiling compile (`perf` or `perf.sample` without `enableDebug`) needs the
+// working directory instead: the IR dump has to outlive the compile and be
+// findable next to perf.data when `perf inject` / `perf annotate` run, minutes
+// or hours later -- and $TMPDIR is routinely cleaned between record and report.
 std::filesystem::path sourceDir(const DebugInfoOptions& opts) {
-	if (opts.enablePerf && !opts.enableDebug) {
+	if (opts.emitPerfMetadata() && !opts.enableDebug) {
 		return std::filesystem::current_path();
 	}
 	return tempDir();
@@ -84,6 +84,7 @@ DebugInfoOptions debugInfoOptionsFromEngineOptions(const engine::Options& option
 	DebugInfoOptions opts;
 	opts.enableDebug = options.getOptionOrDefault("debug", false);
 	opts.enablePerf = options.getOptionOrDefault("perf", false);
+	opts.enableSampleSymbols = options.getOptionOrDefault("perf.sample", false);
 
 	if (opts.enableDebug && opts.enablePerf) {
 		warnOnce();

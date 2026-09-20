@@ -1,4 +1,5 @@
 #include "nautilus/compiler/backends/mlir/jit/MLIRJit.hpp"
+#include "nautilus/compiler/JitSymbolRegistry.hpp"
 #include "nautilus/compiler/backends/mlir/jit/PackFunctionArguments.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebuggerSupport.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
@@ -10,8 +11,10 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Triple.h>
 #include <mlir/Target/LLVMIR/Export.h>
+#include <utility>
 
 #if defined(__linux__)
+#include "nautilus/compiler/backends/mlir/debug/JitSymbolRegistrationPlugin.hpp"
 #include "nautilus/compiler/backends/mlir/debug/PerfJitDumpPlugin.hpp"
 #include <llvm/ExecutionEngine/Orc/Debugging/DebugInfoSupport.h>
 #include <llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h>
@@ -75,16 +78,64 @@ void installPerfSupport([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
 #endif
 }
 
-} // namespace
-
-MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit) : jit_(std::move(jit)) {
+// Installs the in-process JIT symbol registry publisher on `layer`, so a
+// sampling profiler inside this process can resolve JIT addresses to
+// region-qualified names. Unlike the jitdump path this needs no external
+// tooling and no ELF-specific machinery -- it only reads DWARF that is already
+// there and appends to a table -- but it is kept Linux-guarded alongside its
+// sibling because DebugInfoPreservationPlugin and the DWARF context are what
+// both depend on, and there is no in-process sampler to serve elsewhere.
+void installJitSymbolRegistration([[maybe_unused]] llvm::orc::ObjectLinkingLayer& layer,
+                                  [[maybe_unused]] bool emitRegionSymbols, [[maybe_unused]] ModuleIndex moduleIndex) {
+#if defined(__linux__)
+	// JITLink prunes .debug_* sections before PostFixup, and the region names
+	// are recovered from exactly those sections. Installed unconditionally and
+	// idempotently, the same way the jitdump path does it -- adding it twice
+	// when both are enabled is harmless.
+	layer.addPlugin(std::make_shared<llvm::orc::DebugInfoPreservationPlugin>());
+	layer.addPlugin(std::make_shared<JitSymbolRegistrationPlugin>(emitRegionSymbols, moduleIndex));
+#endif
 }
 
-MLIRJit::~MLIRJit() = default;
-MLIRJit::MLIRJit(MLIRJit&&) noexcept = default;
-MLIRJit& MLIRJit::operator=(MLIRJit&&) noexcept = default;
+} // namespace
+
+MLIRJit::MLIRJit(std::unique_ptr<llvm::orc::LLJIT> jit, ModuleIndex moduleIndex)
+    : jit_(std::move(jit)), moduleIndex_(moduleIndex) {
+}
+
+MLIRJit::~MLIRJit() {
+	// Destroying the LLJIT frees the code its ranges describe, so the registry
+	// has to forget them here -- otherwise a later compile reusing those
+	// addresses resolves to this module's names, and a long-running engine
+	// accumulates ranges for code that no longer exists.
+	JitSymbolRegistry::instance().remove(moduleIndex_);
+}
+
+// Move has to clear the source's index by hand. The defaulted version copies
+// it, and both objects then run a destructor that withdraws the same ranges --
+// the second of which would be withdrawing live code's symbols.
+MLIRJit::MLIRJit(MLIRJit&& other) noexcept
+    : jit_(std::move(other.jit_)), moduleIndex_(std::exchange(other.moduleIndex_, NO_MODULE)) {
+}
+
+MLIRJit& MLIRJit::operator=(MLIRJit&& other) noexcept {
+	if (this != &other) {
+		JitSymbolRegistry::instance().remove(moduleIndex_);
+		jit_ = std::move(other.jit_);
+		moduleIndex_ = std::exchange(other.moduleIndex_, NO_MODULE);
+	}
+	return *this;
+}
 
 llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module, const Options& options) {
+	// Interned once here rather than per linked object: the handle is what the
+	// registration plugin stamps on every range, and what this JIT withdraws by
+	// when it is destroyed. NO_MODULE when registration is off, which makes
+	// both the stamping and the withdrawal no-ops.
+	const ModuleIndex moduleIndex = options.enableJitSymbolRegistration
+	                                    ? JitSymbolRegistry::instance().intern(options.compilationUnitId)
+	                                    : NO_MODULE;
+
 	auto ctx = std::make_unique<llvm::LLVMContext>();
 	auto llvmModule = ::mlir::translateModuleToLLVMIR(module, *ctx);
 	if (!llvmModule) {
@@ -115,8 +166,9 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 	auto objectLinkingLayerCreator =
 	    [&targetTriple = llvmModule->getTargetTriple(), enablePerfSupport = options.enablePerfSupport,
 	     perfEmitDebugInfo = options.perfEmitDebugInfo, perfEmitUnwindInfo = options.perfEmitUnwindInfo,
-	     perfRegionSymbols = options.perfRegionSymbols](
-	        llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
+	     perfRegionSymbols = options.perfRegionSymbols,
+	     enableJitSymbolRegistration = options.enableJitSymbolRegistration,
+	     moduleIndex](llvm::orc::ExecutionSession& session) -> std::unique_ptr<llvm::orc::ObjectLayer> {
 		auto layer = std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
 
 		// COFF binaries (Windows) need special handling for exported symbol
@@ -128,6 +180,10 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 
 		if (enablePerfSupport) {
 			installPerfSupport(*layer, session, targetTriple, perfEmitDebugInfo, perfEmitUnwindInfo, perfRegionSymbols);
+		}
+
+		if (enableJitSymbolRegistration) {
+			installJitSymbolRegistration(*layer, perfRegionSymbols, moduleIndex);
 		}
 
 		return layer;
@@ -196,7 +252,7 @@ llvm::Expected<std::unique_ptr<MLIRJit>> MLIRJit::create(::mlir::ModuleOp module
 		}
 	}
 
-	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit)));
+	return std::unique_ptr<MLIRJit>(new MLIRJit(std::move(jit), moduleIndex));
 }
 
 void MLIRJit::registerSymbols(llvm::function_ref<llvm::orc::SymbolMap(llvm::orc::MangleAndInterner)> symbolMapFn) {

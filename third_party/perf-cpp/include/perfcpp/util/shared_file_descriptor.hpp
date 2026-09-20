@@ -1,0 +1,106 @@
+#pragma once
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <unistd.h>
+#include <utility>
+
+namespace perf::util {
+/**
+ * The shared file descriptor wraps a file descriptor and allows sharing between multiple instances
+ * using atomic reference counting. Closing happens when the last owner is destroyed – comparable to
+ * a shared pointer.
+ */
+class SharedFileDescriptor
+{
+public:
+  SharedFileDescriptor() noexcept = default;
+
+  /// Invalid (negative) file descriptors are not taken into ownership; they result in an empty state.
+  explicit SharedFileDescriptor(const int file_descriptor)
+    : _ref_count(file_descriptor > -1 ? new std::atomic<std::uint64_t>{ 1U } : nullptr)
+    , _file_descriptor(std::max(file_descriptor, -1))
+  {
+  }
+
+  SharedFileDescriptor(const SharedFileDescriptor& other) noexcept
+    : _ref_count(other._ref_count)
+    , _file_descriptor(other._file_descriptor)
+  {
+    if (_ref_count != nullptr) {
+      ++(*_ref_count);
+    }
+  }
+
+  /// GCC 15 falsely reports -Wmaybe-uninitialized here when the move is inlined through
+  /// std::variant layers; _file_descriptor is always initialized to -1 by the class definition.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+  SharedFileDescriptor(SharedFileDescriptor&& other) noexcept
+    : _ref_count(std::exchange(other._ref_count, nullptr))
+    , _file_descriptor(std::exchange(other._file_descriptor, -1))
+  {
+  }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+  /**
+   * Decrements the reference count and closes the file descriptor when the last owner is destroyed.
+   */
+  ~SharedFileDescriptor() { close(); }
+
+  SharedFileDescriptor& operator=(const SharedFileDescriptor& other) noexcept
+  {
+    if (this != &other) {
+      close();
+
+      _ref_count = other._ref_count;
+      _file_descriptor = other._file_descriptor;
+      if (_ref_count != nullptr) {
+        ++(*_ref_count);
+      }
+    }
+    return *this;
+  }
+
+  SharedFileDescriptor& operator=(SharedFileDescriptor&& other) noexcept
+  {
+    if (this != &other) {
+      close();
+
+      _ref_count = std::exchange(other._ref_count, nullptr);
+      _file_descriptor = std::exchange(other._file_descriptor, -1);
+    }
+    return *this;
+  }
+
+  /**
+   * @return True, if the file descriptor underneath is opened.
+   */
+  [[nodiscard]] bool has_value() const noexcept { return _ref_count != nullptr; }
+
+  /**
+   * @return The "real" file descriptor.
+   */
+  [[nodiscard]] int value() const noexcept { return _file_descriptor; }
+
+private:
+  /// Heap-allocated reference count; nullptr indicates an empty (unowned) state.
+  std::atomic<std::uint64_t>* _ref_count{ nullptr };
+  int _file_descriptor{ -1 };
+
+  void close()
+  {
+    if (_ref_count != nullptr && --(*_ref_count) == 0U) {
+      ::close(std::exchange(_file_descriptor, -1));
+      delete _ref_count;
+
+      _ref_count = nullptr;
+    }
+  }
+};
+}
