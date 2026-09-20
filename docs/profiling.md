@@ -697,6 +697,11 @@ arbitrary hues, so JIT-compiled nautilus code, host code and unresolved
 addresses are told apart at a glance; hovering a frame shows its full name and
 share.
 
+> **Only the MLIR backend publishes symbols.** Under `cpp`, `asmjit` or `bc`,
+> JIT frames come back unresolved — or, for the interpreter, as the dispatch
+> loop's own host frames. See
+> [docs/profiling-backends.md](profiling-backends.md).
+
 **Set `callchain`.** Without it a sample carries only its leaf address, so the
 graph has nothing to stack except the nesting a region-qualified name encodes —
 correct as far as it goes, but with no host frames beneath it and no `main` at
@@ -952,6 +957,9 @@ and a representative profile at once. The same applies to `perf.sample`.
 
 ## See also
 
+- [docs/profiling-backends.md](profiling-backends.md) — what the in-process
+  path would take for the other backends, and why an interpreted one cannot
+  have it.
 - [docs/region.md](region.md) — what a `region()` is, and how it reaches DWARF.
 - [docs/options.md](options.md) — the `perf`, `perf.sample`, `debug` and
   `optimizationLevel` options.
