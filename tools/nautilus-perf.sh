@@ -13,6 +13,7 @@
 #   tools/nautilus-perf.sh record -- <your_app> [args...]
 #   tools/nautilus-perf.sh report [perf.jit.data]
 #   tools/nautilus-perf.sh annotate <symbol> [perf.jit.data]
+#   tools/nautilus-perf.sh annotate-ir [perf.jit.data] [dump.ir]
 #   tools/nautilus-perf.sh flamegraph [perf.jit.data] [out.svg]
 set -euo pipefail
 
@@ -22,12 +23,19 @@ Usage:
   nautilus-perf.sh record -- <app> [args...]   Record + inject in one step
   nautilus-perf.sh report [perf.jit.data]       perf report on an injected file
   nautilus-perf.sh annotate <symbol> [file]     perf annotate one symbol
+  nautilus-perf.sh annotate-ir [file] [dump.ir] Whole Nautilus-IR dump, with a
+                                                per-line percentage gutter
   nautilus-perf.sh flamegraph [file] [out.svg]  Nested-region flame graph
 
 Environment:
-  JITDUMPDIR   Where the jitdump file is written (default: current directory,
-               matching perf's own default when debug is not also set). Must
-               not be cleaned between record and report.
+  JITDUMPDIR   Where the jitdump file is written. `record` exports it as the
+               current directory; left unset, LLVM's writer defaults it to
+               $HOME, which puts the dump nowhere near perf.data. Must not be
+               cleaned between record and report.
+
+The `nautilus_debug_<pid>_<n>.ir` dump a perf-enabled compile leaves in its
+working directory is what DWARF line numbers point into, so it must still be
+there for `annotate` and `annotate-ir` to show source.
 EOF
 }
 
@@ -70,6 +78,89 @@ annotate)
 		exit 1
 	fi
 	perf annotate -i "${2:-perf.jit.data}" --stdio "$symbol"
+	;;
+annotate-ir)
+	require_perf
+	infile="${1:-perf.jit.data}"
+	irfile="${2:-}"
+
+	# A perf-enabled compile writes exactly one nautilus_debug_<pid>_<n>.ir per
+	# compiled module into its working directory, so in the common case (one
+	# module, profiled in place) there is nothing to choose and naming the file
+	# is just ceremony. More than one is ambiguous and worth stopping on --
+	# annotating the wrong module's dump would silently produce a plausible,
+	# wrong answer rather than an error.
+	if [ -z "$irfile" ]; then
+		shopt -s nullglob
+		candidates=(nautilus_debug_*.ir)
+		shopt -u nullglob
+		case "${#candidates[@]}" in
+		0)
+			echo "nautilus-perf.sh: no nautilus_debug_*.ir in $PWD -- pass one explicitly." >&2
+			echo "nautilus-perf.sh: (it is written to the working directory of the profiled" >&2
+			echo "nautilus-perf.sh:  process, and nothing recreates it after the fact)" >&2
+			exit 1
+			;;
+		1) irfile="${candidates[0]}" ;;
+		*)
+			echo "nautilus-perf.sh: several IR dumps in $PWD; pass the one you want:" >&2
+			printf '  %s\n' "${candidates[@]}" >&2
+			exit 1
+			;;
+		esac
+	fi
+	if [ ! -r "$irfile" ]; then
+		echo "nautilus-perf.sh: cannot read '$irfile'" >&2
+		exit 1
+	fi
+
+	# `--sort srcline` is what makes this a whole-file view rather than a
+	# per-symbol one: it aggregates every sample by the file:line its DWARF
+	# points at, across all symbols, so a region's cost lands on the IR
+	# operations that make it up no matter which JIT_CODE_LOAD range the
+	# optimizer put them in. `perf annotate` cannot do that -- it is scoped to
+	# one symbol, and reports percentages local to it, so two regions' numbers
+	# are not comparable.
+	#
+	# Percentages stay global (`--percent-limit 0` keeps the long tail), so
+	# they are directly comparable with `perf report`'s. That also means they
+	# do not sum to 100 over one file: the rest is elsewhere -- the host
+	# application, the kernel, and the in-process MLIR/LLVM compile.
+	perf report -i "$infile" --stdio --no-children -g none --sort srcline --percent-limit 0 2>/dev/null |
+		awk -v irfile="$irfile" '
+			function basename(path,   n, parts) {
+				n = split(path, parts, "/")
+				return parts[n]
+			}
+			BEGIN { want = basename(irfile) }
+			# Rows look like "    22.79%  nautilus_debug_123_0.ir:138". Anything
+			# else (headers, a symbol+offset row for host code) is skipped.
+			/^[ \t]*[0-9]+\.[0-9]+%/ {
+				pct = $1
+				sub(/%$/, "", pct)
+				if (split($2, loc, ":") != 2) next
+				if (basename(loc[1]) != want) next
+				percent[loc[2]] += pct
+				total += pct
+				next
+			}
+			END {
+				printf("# perf annotation of %s\n", irfile)
+				printf("# %.2f%% of all samples land in this file; the rest is host code,\n", total)
+				printf("# the kernel, and the in-process MLIR/LLVM compile.\n")
+				printf("# columns: percent of all samples | IR line | IR\n")
+				printf("#\n")
+				line = 0
+				while ((getline text < irfile) > 0) {
+					line++
+					if (line in percent) {
+						printf("%7.2f | %4d | %s\n", percent[line], line, text)
+					} else {
+						printf("%7s | %4d | %s\n", "", line, text)
+					}
+				}
+			}
+		'
 	;;
 flamegraph)
 	require_perf
