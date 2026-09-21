@@ -93,7 +93,12 @@ class ModuleFunction<R(Args...)> {
 			    state_->executable->getExceptionPropagationMode(name_) ==
 			        compiler::ExceptionPropagationMode::NativeUnwind) {
 				auto* fptr = reinterpret_cast<R (*)(Args...)>(state_->executable->getInvocableFunctionPtr(name_));
-				cache_->impl = fptr;
+				// See NAUTILUS_NO_SANITIZE_FUNCTION in Executable.hpp: fptr is a JIT
+				// entry point with no UBSan type-hash prologue, so the indirect call
+				// through it must be exempted from -fsanitize=function.
+				cache_->impl = [fptr](Args... args) NAUTILUS_NO_SANITIZE_FUNCTION -> R {
+					return fptr(std::forward<Args>(args)...);
+				};
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
 				    state_->executable->getInvocableMember<R, Args...>(name_));

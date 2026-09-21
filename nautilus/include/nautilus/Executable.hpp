@@ -14,6 +14,17 @@
 #include <variant>
 #include <vector>
 
+// Clang's -fsanitize=function verifies a type hash emitted just before every
+// function's entry point on each indirect call through a function pointer.
+// Nautilus-compiled (JIT) functions have no such prologue, so calling them
+// through a raw function pointer trips the check. GCC has no -fsanitize=function
+// and ignores the attribute, so it is only defined for Clang.
+#if defined(__clang__)
+#define NAUTILUS_NO_SANITIZE_FUNCTION __attribute__((no_sanitize("function")))
+#else
+#define NAUTILUS_NO_SANITIZE_FUNCTION
+#endif
+
 namespace nautilus::compiler {
 
 class CompilationStatistics;
@@ -241,7 +252,7 @@ public:
 			// rest of the thread's life.
 			ExceptionFrameScope frameScope(exceptionMode == ExceptionPropagationMode::CapturedHostRethrow);
 
-			auto doCall = [&]() -> R {
+			auto doCall = [&]() NAUTILUS_NO_SANITIZE_FUNCTION -> R {
 				if (std::holds_alternative<FunctionType*>(func)) {
 					auto fptr = std::get<FunctionType*>(func);
 					if constexpr (!std::is_void_v<R>) {
