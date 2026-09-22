@@ -10,6 +10,7 @@
 #include "nautilus/compiler/ir/operations/ConstBooleanOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstFloatOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
+#include "nautilus/compiler/ir/operations/ConstPtrOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/AndOperation.hpp"
 #include "nautilus/compiler/ir/operations/LogicalOperations/CompareOperation.hpp"
@@ -162,6 +163,29 @@ TEST_CASE("AlgebraicSimplification: canonicalizes a constant-left add to the rig
 	auto* rightConst = compiler::ir::dyn_cast<compiler::ir::ConstIntOperation>(newAdd->getRightInput());
 	REQUIRE(rightConst != nullptr);
 	REQUIRE(rightConst->getValue() == 5);
+}
+
+TEST_CASE("AlgebraicSimplification: constant-pointer add is NOT canonicalized") {
+	// Regression: swapping `constPtr + offset` yielded an i64-stamped `offset + ptr`,
+	// which the MLIR backend lowered to an invalid `llvm.add` on a `!llvm.ptr`.
+	auto ir = std::make_shared<IRGraph>("as-const-ptr-add");
+	auto& arena = ir->getArena();
+	auto* offset = arena.create<BasicBlockArgument>(OperationIdentifier {1}, Type::i64);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {offset});
+	static int64_t data[4] = {};
+	auto* base =
+	    entry->addOperation<compiler::ir::ConstPtrOperation>(OperationIdentifier {2}, static_cast<void*>(data));
+	auto* add = entry->addOperation<compiler::ir::AddOperation>(OperationIdentifier {3}, base, offset);
+	entry->addOperation<compiler::ir::ReturnOperation>(add);
+	wrapInGraph(ir, entry, Type::ptr, {Type::i64});
+
+	runPass(*ir);
+
+	auto* newAdd = compiler::ir::dyn_cast<compiler::ir::AddOperation>(returnValueOf(*ir));
+	REQUIRE(newAdd != nullptr);
+	REQUIRE(newAdd->getStamp() == Type::ptr);
+	REQUIRE(newAdd->getLeftInput() == base);
+	REQUIRE(newAdd->getRightInput() == offset);
 }
 
 TEST_CASE("AlgebraicSimplification: x-0 -> x") {

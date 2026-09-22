@@ -110,6 +110,13 @@ CompareOperation::Comparator reverseComparator(CompareOperation::Comparator cmp)
 }
 
 Operation* canonicalizeAdd(FunctionRewriter& rewriter, AddOperation* op) {
+	// Pointer arithmetic is not commutative in the IR: the add takes its stamp
+	// from the left operand and backends lower `ptr + offset` to a GEP only when
+	// the pointer is on the left. Swapping `constPtr + offset` would produce an
+	// integer-stamped `offset + ptr`.
+	if (op->getStamp() == Type::ptr) {
+		return nullptr;
+	}
 	if (isConstOp(op->getLeftInput()) && !isConstOp(op->getRightInput())) {
 		return rewriter.createBefore<AddOperation>(op, op->getIdentifier(), op->getRightInput(), op->getLeftInput());
 	}
