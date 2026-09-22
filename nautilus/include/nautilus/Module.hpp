@@ -31,13 +31,6 @@ namespace details {
  * function map. A monotonically increasing version counter allows ModuleFunction handles
  * to detect when they need to re-resolve their cached implementation.
  *
- * The executable is a shared_ptr, not a unique_ptr: a ModuleFunction that has resolved
- * against it captures its own copy (see ModuleFunction::resolve()), so a swap that
- * replaces this pointer only drops the module's own reference — the executable, and its
- * JIT'd code, stays alive until every caller that resolved to it has moved on too. A
- * unique_ptr here would let a swap free code that a concurrent caller is still executing
- * (see issue #449).
- *
  * Thread-safety: a shared_mutex protects the executable pointer. The version counter
  * is atomic so the fast path (version check in operator()) requires no lock.
  */
