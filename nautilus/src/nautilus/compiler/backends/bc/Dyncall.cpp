@@ -8,6 +8,10 @@ namespace nautilus::compiler::bc {
 Dyncall::Dyncall() : vm(dcNewCallVM(VM_STACK_SIZE)) {
 }
 
+Dyncall::~Dyncall() {
+	dcFree(vm);
+}
+
 void Dyncall::addArgB(bool value) {
 	dcArgBool(vm, value);
 }

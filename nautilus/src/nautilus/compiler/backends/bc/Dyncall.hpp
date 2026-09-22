@@ -34,6 +34,15 @@ public:
 	Dyncall();
 
 	/**
+	 * @brief Frees the dyncall VM. getVM() holds one instance per thread, so
+	 * this runs when each thread that made an external call exits.
+	 */
+	~Dyncall();
+
+	Dyncall(const Dyncall&) = delete;
+	Dyncall& operator=(const Dyncall&) = delete;
+
+	/**
 	 * @brief Singleton instance access for the Dyncall VM.
 	 * @return A reference to the singleton Dyncall VM instance.
 	 */
