@@ -335,6 +335,39 @@ void checkEdgeStampAgreement(VerificationResult& r, const FunctionOperation& fn)
 	}
 }
 
+/// V9: pointer arithmetic keeps the pointer on the left. An add/sub takes its
+/// stamp from its left input, and the backends lower it to pointer arithmetic
+/// (e.g. an MLIR GEP) only when that left input is a pointer. A pointer on the
+/// right of a non-pointer left input yields an integer-stamped op that MLIR
+/// rejects (`llvm.add` on `!llvm.ptr`) and the other backends silently treat
+/// as integer arithmetic -- e.g. a pass that swapped `constPtr + offset`.
+void checkPointerArithmeticOperandOrder(VerificationResult& r, const FunctionOperation& fn) {
+	for (const auto* block : fn.getBasicBlocks()) {
+		if (block == nullptr) {
+			continue;
+		}
+		for (const auto* op : block->getOperations()) {
+			const auto* binary = dyn_cast<BinaryOperation>(op);
+			if (binary == nullptr || (op->getOperationType() != Operation::OperationType::AddOp &&
+			                          op->getOperationType() != Operation::OperationType::SubOp)) {
+				continue;
+			}
+			const auto* left = binary->getLeftInput();
+			const auto* right = binary->getRightInput();
+			if (left == nullptr || right == nullptr) {
+				continue; // reported by the null-input check.
+			}
+			if (right->getStamp() == Type::ptr && left->getStamp() != Type::ptr) {
+				addError(r, &fn, block,
+				         fmt::format("{} {} has a ptr right operand but a {} left operand; pointer arithmetic must "
+				                     "keep the pointer on the left",
+				                     op->getOperationType() == Operation::OperationType::AddOp ? "add" : "sub",
+				                     op->getIdentifier().toString(), toString(left->getStamp())));
+			}
+		}
+	}
+}
+
 void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 	const auto& blocks = fn.getBasicBlocks();
 	if (blocks.empty()) {
@@ -459,12 +492,13 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 		return;
 	}
 
-	checkInvocationArity(r, fn);     // V1
-	checkUniqueIdentifiers(r, fn);   // V2
-	checkSSADominance(r, fn);        // V3
-	checkPredecessorMultiset(r, fn); // V4
-	checkEntryBlockAbi(r, fn);       // V5
-	checkEdgeStampAgreement(r, fn);  // V6
+	checkInvocationArity(r, fn);               // V1
+	checkUniqueIdentifiers(r, fn);             // V2
+	checkSSADominance(r, fn);                  // V3
+	checkPredecessorMultiset(r, fn);           // V4
+	checkEntryBlockAbi(r, fn);                 // V5
+	checkEdgeStampAgreement(r, fn);            // V6
+	checkPointerArithmeticOperandOrder(r, fn); // V9
 }
 
 /// V8: every callee referenced by a call or an address-of resolves to an entry

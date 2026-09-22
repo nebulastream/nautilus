@@ -371,6 +371,38 @@ TEST_CASE("IRVerifier V6: an invocation passing i64 into a ptr block argument is
 	REQUIRE(messageContains(result, "target's parameter stamp is"));
 }
 
+namespace {
+
+/// Builds `return <left> + <right>` over two entry arguments of the given stamps.
+std::shared_ptr<compiler::ir::IRGraph> makeAddGraph(Type leftStamp, Type rightStamp) {
+	namespace ir = compiler::ir;
+	auto irGraph = std::make_shared<ir::IRGraph>("v9-ptr-add");
+	auto& arena = irGraph->getArena();
+	auto* left = arena.create<ir::BasicBlockArgument>(ir::OperationIdentifier {1}, leftStamp);
+	auto* right = arena.create<ir::BasicBlockArgument>(ir::OperationIdentifier {2}, rightStamp);
+	auto* entry = arena.create<ir::BasicBlock>(arena, ir::BlockIdentifier {0},
+	                                           std::vector<ir::BasicBlockArgument*> {left, right});
+	auto* add = entry->addOperation<ir::AddOperation>(ir::OperationIdentifier {3}, left, right);
+	entry->addOperation<ir::ReturnOperation>(add);
+	auto* fn = arena.create<ir::FunctionOperation>("execute", std::vector<ir::BasicBlock*> {entry},
+	                                               std::vector<Type> {}, std::vector<std::string> {}, add->getStamp());
+	irGraph->addFunctionOperation(fn);
+	compiler::ir::rebuildPredecessorLists(*irGraph);
+	return irGraph;
+}
+
+} // namespace
+
+TEST_CASE("IRVerifier V9: an add with the pointer on the right is flagged") {
+	auto result = compiler::ir::IRVerifier::verify(*makeAddGraph(Type::i64, Type::ptr));
+	REQUIRE_FALSE(result.ok());
+	REQUIRE(messageContains(result, "pointer arithmetic must keep the pointer on the left"));
+}
+
+TEST_CASE("IRVerifier V9: an add with the pointer on the left is accepted") {
+	REQUIRE(compiler::ir::IRVerifier::verify(*makeAddGraph(Type::ptr, Type::i64)).ok());
+}
+
 TEST_CASE("IRVerifier V6: every fixture agrees on edge stamps") {
 	for (auto& ir : {IRGraphFixtures::makeDiamondGraph(), IRGraphFixtures::makeSharedTargetIfGraph(),
 	                 IRGraphFixtures::makeNaturalLoopGraph(), IRGraphFixtures::makeDeadChainGraph()}) {
