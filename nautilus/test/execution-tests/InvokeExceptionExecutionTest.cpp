@@ -1,4 +1,5 @@
 #include "ExecutionTest.hpp"
+#include <bit>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <list>
@@ -22,6 +23,8 @@
 #include <nautilus/tracing/phases/TraceToIRConversionPhase.hpp>
 #include <nautilus/val_std.hpp>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace nautilus { namespace {
@@ -175,6 +178,68 @@ val<int32_t> nestedNoexceptOuter(val<int32_t> outer_arg) {
 	invoke(nestedWriteResult, &outer, val<int32_t> {1});
 	[[maybe_unused]] auto r = nestedNoexceptInnerFn(val<int64_t> {outer_arg});
 	return outer_arg;
+}
+
+// Three-level chain from #481: `landingPadMiddle` owns a landing pad (a live
+// struct plus its own throwing invoke) and calls a fully noexcept function.
+// `landingPadOuter` has nothing to clean up, so it reaches `landingPadMiddle`
+// through a plain call, and the MLIR inliner moves the middle function's
+// landing pad into it -- the personality attribute has to follow.
+val<int32_t> landingPadInner() noexcept {
+	val<NestedCleanup> value;
+	invoke(nestedWriteResult, &value, val<int32_t> {3});
+	return value.get(&NestedCleanup::v);
+}
+static auto landingPadInnerFn = NautilusFunction {"landingPadInner", landingPadInner};
+
+void nestedThrowWhileWriting(NestedCleanup* result, int32_t value) {
+	result->v = value;
+	throw std::runtime_error("nested landing pad");
+}
+
+val<int32_t> landingPadMiddle() {
+	val<NestedCleanup> value;
+	const auto innerResult = landingPadInnerFn();
+	invoke(nestedThrowWhileWriting, &value, val<int32_t> {2});
+	return innerResult;
+}
+static auto landingPadMiddleFn = NautilusFunction {"landingPadMiddle", landingPadMiddle};
+
+val<int32_t> landingPadOuter() {
+	return landingPadMiddleFn();
+}
+
+// Four-level chain A -> B -> C -> D of nested Nautilus functions in which D
+// always throws. Bit `level` of `CleanupMask` gives that level a live struct
+// across its call into the next level (or, for D, across its throwing
+// invoke), so that level -- and only that level -- needs a landing pad.
+// Calls from a level without cleanup lower to plain calls, so the MLIR
+// inliner can merge landing pads from deeper levels into it.
+template <uint32_t CleanupMask, int Level>
+val<int32_t> cleanupChainLevel();
+
+template <uint32_t CleanupMask, int Level>
+inline auto cleanupChainFn = NautilusFunction {
+    "cleanupChain" + std::to_string(CleanupMask) + "_" + std::to_string(Level), cleanupChainLevel<CleanupMask, Level>};
+
+template <uint32_t CleanupMask, int Level>
+val<int32_t> cleanupChainLevel() {
+	constexpr bool hasCleanup = (CleanupMask & (1u << Level)) != 0;
+	if constexpr (Level == 3) {
+		if constexpr (hasCleanup) {
+			val<NestedCleanup> value;
+			invoke(nestedThrowWhileWriting, &value, val<int32_t> {Level});
+		} else {
+			invoke(nestedThrowRuntime);
+		}
+		return 0;
+	} else if constexpr (hasCleanup) {
+		val<NestedCleanup> value;
+		invoke(nestedWriteResult, &value, val<int32_t> {Level});
+		return cleanupChainFn<CleanupMask, Level + 1>();
+	} else {
+		return cleanupChainFn<CleanupMask, Level + 1>();
+	}
 }
 
 engine::NautilusEngine makeMlirEngine(const std::string& traceMode) {
@@ -632,6 +697,72 @@ TEST_CASE("noexcept nested Nautilus call stays on the direct path") {
 		}
 	}
 }
+
+TEST_CASE("inlined nested function keeps its landing pad valid") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(landingPadOuter);
+					nestedDtorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					// The inner struct's normal scope exit plus the middle
+					// struct's cleanup on unwind.
+					REQUIRE(nestedDtorCalls == 2);
+				}
+			}
+		}
+	}
+}
+
+template <uint32_t CleanupMask>
+void checkCleanupChain(engine::NautilusEngine& engine) {
+	DYNAMIC_SECTION("cleanup mask " << CleanupMask) {
+		auto function = engine.registerFunction(cleanupChainLevel<CleanupMask, 0>);
+		nestedDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(), std::runtime_error);
+		REQUIRE(nestedDtorCalls == std::popcount(CleanupMask));
+	}
+}
+
+template <uint32_t... Masks>
+void checkAllCleanupChains(engine::NautilusEngine& engine, std::integer_sequence<uint32_t, Masks...>) {
+	(checkCleanupChain<Masks>(engine), ...);
+}
+
+TEST_CASE("four-level nested chain unwinds every combination of landing pads") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
+				}
+			}
+		}
+	}
+}
+
+#ifdef ENABLE_MLIR_BACKEND
+TEST_CASE("four-level nested chain unwinds without the MLIR inliner") {
+	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+		DYNAMIC_SECTION(traceMode) {
+			engine::Options options;
+			options.setOption("engine.Compilation", true);
+			options.setOption("engine.backend", std::string("mlir"));
+			options.setOption("engine.compilationStrategy", std::string("legacy"));
+			options.setOption("engine.traceMode", traceMode);
+			options.setOption("mlir.enableMultithreading", false);
+			// debug=true is the switch that skips the MLIR inliner, keeping
+			// every level its own llvm.func.
+			options.setOption("debug", true);
+			engine::NautilusEngine engine {options};
+			checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
+		}
+	}
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // val<Struct> move construction must not disturb landing-pad destructor

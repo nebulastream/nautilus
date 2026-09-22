@@ -55,6 +55,17 @@ if (ENABLE_MLIR_BACKEND)
             LLVMIROptimizer.cpp
             JITCompiler.cpp
             LLVMBackendHooks.cpp
+            PropagatePersonalityPass.cpp
+    )
+    # PropagatePersonalityPass subclasses mlir::PassWrapper; MLIR is built with
+    # -fno-rtti and does not export typeinfo for mlir::Pass (see debug/).
+    get_filename_component(_nautilus_target_dir
+            "${CMAKE_CURRENT_LIST_DIR}/../../../../.."
+            ABSOLUTE)
+    set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/PropagatePersonalityPass.cpp
+            DIRECTORY ${_nautilus_target_dir}
+            PROPERTIES COMPILE_OPTIONS -fno-rtti
     )
 endif ()
 
