@@ -1,6 +1,7 @@
 
 #include "nautilus/compiler/ir/passes/IRVerifier.hpp"
 #include "nautilus/compiler/ir/operations/CallOperation.hpp"
+#include "nautilus/compiler/ir/operations/DestructorOperands.hpp"
 #include "nautilus/compiler/ir/operations/FunctionAddressOfOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
@@ -149,7 +150,8 @@ std::unordered_map<const Operation*, DefPosition> computeDefPositions(const Func
 
 /// V3: for every operand edge in a reachable block, the definition
 /// dominates the use. Same-block edges are ordered by `DefPosition::index`;
-/// cross-block edges go through `Dominators::dominates`. Operands pointing
+/// cross-block edges go through `Dominators::dominates`. A call's destructor
+/// addresses count as operand edges. Operands pointing
 /// outside the function are skipped here (reported separately as stale
 /// pointers).
 void checkSSADominance(VerificationResult& r, const FunctionOperation& fn) {
@@ -187,6 +189,9 @@ void checkSSADominance(VerificationResult& r, const FunctionOperation& fn) {
 			}
 			for (const auto* input : op->getInputs()) {
 				checkEdge(block, static_cast<int>(i), op, input, "operation");
+			}
+			for (size_t d = 0; d < getDestructorOperandCount(*op); ++d) {
+				checkEdge(block, static_cast<int>(i), op, getDestructorOperand(*op, d), "call destructor of");
 			}
 			for (auto* inv : getSuccessorInvocations(*const_cast<Operation*>(op))) {
 				for (const auto* arg : inv->getArguments()) {
@@ -379,6 +384,18 @@ void verifyFunction(VerificationResult& r, const FunctionOperation& fn) {
 				addError(r, &fn, block,
 				         fmt::format("{} {} input {} points at an operation not defined in function {}", what,
 				                     op->getIdentifier().toString(), input->getIdentifier().toString(), fn.getName()));
+			}
+		}
+		// A call's destructor addresses are operands too; a stale one leaves
+		// the landing pad destroying an operation the backend never lowers.
+		for (size_t d = 0; d < getDestructorOperandCount(*op); ++d) {
+			const auto* address = getDestructorOperand(*op, d);
+			if (address == nullptr || !definedOps.contains(address)) {
+				addError(r, &fn, block,
+				         fmt::format("{} {} destructor address {} points at an operation not defined in function {}",
+				                     what, op->getIdentifier().toString(),
+				                     address == nullptr ? std::string("null") : address->getIdentifier().toString(),
+				                     fn.getName()));
 			}
 		}
 	};

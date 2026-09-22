@@ -2,8 +2,10 @@
 #include "nautilus/compiler/ir/blocks/BasicBlock.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockArgument.hpp"
 #include "nautilus/compiler/ir/blocks/BasicBlockInvocation.hpp"
+#include "nautilus/compiler/ir/operations/AllocaOperation.hpp"
 #include "nautilus/compiler/ir/operations/ArithmeticOperations/AddOperation.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/CallOperation.hpp"
 #include "nautilus/compiler/ir/operations/CastOperation.hpp"
 #include "nautilus/compiler/ir/operations/ConstIntOperation.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
@@ -331,6 +333,72 @@ TEST_CASE("BlockArgumentPruning: idempotent on an already-pruned graph") {
 	runPass(*ir);
 	REQUIRE(header->getArguments().size() == 2);
 	requireVerifierClean(*ir);
+}
+
+// A throwing call inside a loop records the loop-carried copy of a live
+// struct's address as its destructor operand (#477). That destructor is the
+// argument's only consumer; pruning must still see it as a use and rewire it
+// to the dominating value, or the landing pad later destroys an argument that
+// no longer exists.
+TEST_CASE("BlockArgumentPruning: destructor address operand is rewired, not dropped") {
+	namespace ir = compiler::ir;
+	auto irGraph = std::make_shared<IRGraph>("prune-destructor-address");
+	auto& arena = irGraph->getArena();
+
+	auto* exit = arena.create<BasicBlock>(arena, BlockIdentifier {3}, std::vector<BasicBlockArgument*> {});
+	exit->addOperation<ir::ReturnOperation>();
+
+	// header(iv, carriedAddress): if iv < limit ? body : exit
+	auto* ivArg = arena.create<BasicBlockArgument>(OperationIdentifier {20}, Type::i32);
+	auto* carriedAddress = arena.create<BasicBlockArgument>(OperationIdentifier {21}, Type::ptr);
+	auto* header =
+	    arena.create<BasicBlock>(arena, BlockIdentifier {1}, std::vector<BasicBlockArgument*> {ivArg, carriedAddress});
+
+	// body: throwing call whose landing pad would destroy *carriedAddress.
+	auto* body = arena.create<BasicBlock>(arena, BlockIdentifier {2}, std::vector<BasicBlockArgument*> {});
+	ir::CalleeDescriptor callee;
+	callee.key = reinterpret_cast<void*>(0x3000);
+	callee.demangledName = "mayThrow";
+	callee.resultType = Type::v;
+	FunctionAttributes attrs;
+	std::vector<ir::CallOperation::Destructor> destructors {
+	    {carriedAddress, "dtorSymbol", "dtor", reinterpret_cast<void*>(0x4000)}};
+	auto* call = body->addOperation<ir::CallOperation>(
+	    "mayThrow", "mayThrow", reinterpret_cast<void*>(0x3000), OperationIdentifier {30},
+	    std::span<Operation* const> {}, Type::v, attrs, irGraph->internCallee(callee), destructors, true);
+	auto* one = body->addOperation<ir::ConstIntOperation>(OperationIdentifier {31}, 1, Type::i32);
+	auto* nextIv = body->addOperation<ir::AddOperation>(OperationIdentifier {32}, ivArg, one);
+	body->addNextBlock(header, std::vector<Operation*> {nextIv, carriedAddress});
+
+	auto* limit = arena.create<BasicBlockArgument>(OperationIdentifier {1}, Type::i32);
+	auto* entry = arena.create<BasicBlock>(arena, BlockIdentifier {0}, std::vector<BasicBlockArgument*> {limit});
+	auto* address = entry->addOperation<ir::AllocaOperation>(OperationIdentifier {2}, 0);
+	auto* zero = entry->addOperation<ir::ConstIntOperation>(OperationIdentifier {3}, 0, Type::i32);
+	entry->addNextBlock(header, std::vector<Operation*> {zero, address});
+
+	auto* cmp =
+	    header->addOperation<ir::CompareOperation>(OperationIdentifier {22}, ivArg, limit, ir::CompareOperation::LT);
+	auto* headerIf = arena.create<ir::IfOperation>(arena, cmp, 0.9);
+	header->addOperation(headerIf);
+	headerIf->setTrueBlockInvocation(body);
+	headerIf->setFalseBlockInvocation(exit);
+
+	auto* fn =
+	    arena.create<FunctionOperation>("execute", std::vector<BasicBlock*> {entry, header, body, exit},
+	                                    std::vector<Type> {Type::i32}, std::vector<std::string> {"limit"}, Type::v);
+	irGraph->addFunctionOperation(fn);
+	compiler::ir::rebuildPredecessorLists(*irGraph);
+	requireVerifierClean(*irGraph);
+
+	runPass(*irGraph);
+
+	// The carried address agrees on every incoming edge (entry passes the
+	// alloca, the back edge passes the argument itself), so the slot is
+	// pruned -- and the destructor must now name the dominating alloca.
+	REQUIRE(header->getArguments().size() == 1);
+	REQUIRE(call->getDestructors().size() == 1);
+	REQUIRE(call->getDestructors()[0].address == address);
+	requireVerifierClean(*irGraph);
 }
 
 } // namespace nautilus::testing

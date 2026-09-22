@@ -1,6 +1,7 @@
 #include "nautilus/compiler/ir/passes/FunctionRewriter.hpp"
 #include "nautilus/compiler/ir/OperationEffects.hpp"
 #include "nautilus/compiler/ir/operations/BranchOperation.hpp"
+#include "nautilus/compiler/ir/operations/DestructorOperands.hpp"
 #include "nautilus/compiler/ir/operations/FunctionOperation.hpp"
 #include "nautilus/compiler/ir/operations/OperationProperties.hpp"
 #include "nautilus/compiler/ir/util/ControlFlowUtil.hpp"
@@ -59,25 +60,48 @@ FunctionRewriter::FunctionRewriter(FunctionOperation& fn, common::Arena& arena, 
 	nextId_ = maxId + 1;
 }
 
-void FunctionRewriter::registerUses(Operation* user) {
+namespace {
+
+/// Calls @p fn(operandIndex, operand) for every operand of @p user: its
+/// `Operation::inputs`, then its destructor addresses (see `Use`).
+template <typename Fn>
+void forEachOperand(Operation* user, Fn&& fn) {
 	auto ins = user->getInputs();
 	for (uint32_t i = 0; i < ins.size(); ++i) {
-		if (ins[i] != nullptr) {
-			uses_[ins[i]].push_back(Use {user, i});
-		}
+		fn(i, ins[i]);
+	}
+	const auto destructorCount = static_cast<uint32_t>(getDestructorOperandCount(*user));
+	for (uint32_t i = 0; i < destructorCount; ++i) {
+		fn(FunctionRewriter::destructorOperandBase + i, getDestructorOperand(*user, i));
 	}
 }
 
+void setOperand(Operation* user, uint32_t operandIndex, Operation* value) {
+	if (operandIndex >= FunctionRewriter::destructorOperandBase) {
+		setDestructorOperand(*user, operandIndex - FunctionRewriter::destructorOperandBase, value);
+	} else {
+		user->setInput(operandIndex, value);
+	}
+}
+
+} // namespace
+
+void FunctionRewriter::registerUses(Operation* user) {
+	forEachOperand(user, [&](uint32_t i, Operation* operand) {
+		if (operand != nullptr) {
+			uses_[operand].push_back(Use {user, i});
+		}
+	});
+}
+
 void FunctionRewriter::unregisterUser(Operation* user) {
-	auto ins = user->getInputs();
-	for (uint32_t i = 0; i < ins.size(); ++i) {
-		Operation* operand = ins[i];
+	forEachOperand(user, [&](uint32_t i, Operation* operand) {
 		if (operand == nullptr) {
-			continue;
+			return;
 		}
 		auto it = uses_.find(operand);
 		if (it == uses_.end()) {
-			continue;
+			return;
 		}
 		auto& vec = it->second;
 		vec.erase(
@@ -86,7 +110,7 @@ void FunctionRewriter::unregisterUser(Operation* user) {
 		if (vec.empty()) {
 			uses_.erase(it);
 		}
-	}
+	});
 }
 
 std::span<const FunctionRewriter::Use> FunctionRewriter::usesOf(const Operation* op) const {
@@ -119,7 +143,7 @@ void FunctionRewriter::replaceAllUses(Operation* from, Operation* to) {
 	std::vector<Use> moved = std::move(it->second);
 	uses_.erase(it);
 	for (auto& u : moved) {
-		u.user->setInput(u.operandIndex, to);
+		setOperand(u.user, u.operandIndex, to);
 	}
 	if (to != nullptr) {
 		auto& toUses = uses_[to];
@@ -167,7 +191,8 @@ size_t FunctionRewriter::eraseIfDead(Operation* op) {
 		    (ir_ != nullptr ? !isPureOperation(*ir_, *cur) : !isPureOp(cur->getOperationType()))) {
 			continue;
 		}
-		std::vector<Operation*> operands(cur->getInputs().begin(), cur->getInputs().end());
+		std::vector<Operation*> operands;
+		forEachOperand(cur, [&](uint32_t, Operation* operand) { operands.push_back(operand); });
 		erase(cur);
 		++erasedCount;
 		worklist.insert(worklist.end(), operands.begin(), operands.end());

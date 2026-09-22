@@ -55,10 +55,18 @@ public:
 	/// argument edge on a block-CFG edge) -- both are representable
 	/// uniformly because invocation arguments live in the same
 	/// `Operation::inputs` span every other operation kind uses.
+	///
+	/// A call's destructor addresses (DestructorOperands.hpp) are tracked as
+	/// uses too, so `replaceAllUses` rewrites them and a value whose only
+	/// consumer is a landing pad is not seen as dead. Their `operandIndex` is
+	/// `destructorOperandBase + i` for destructor `i`, which keeps them
+	/// distinct from the `Operation::inputs` slots.
 	struct Use {
 		Operation* user;
 		uint32_t operandIndex;
 	};
+
+	static constexpr uint32_t destructorOperandBase = 0x80000000u;
 
 	/// @param ir  Optional. When supplied, dead-code elimination resolves a
 	///            call's callee through the module function table and can drop
@@ -210,7 +218,8 @@ public:
 	void mergeIntoPredecessor(BasicBlock* pred, BasicBlock* succ);
 
 private:
-	/// Registers `Use{user, i}` for every non-null operand of @p user.
+	/// Registers `Use{user, i}` for every non-null operand of @p user,
+	/// including its destructor addresses.
 	void registerUses(Operation* user);
 	/// Removes every `Use` entry recorded for @p user (from every operand's
 	/// use list). Used before erasing @p user and before re-deriving its

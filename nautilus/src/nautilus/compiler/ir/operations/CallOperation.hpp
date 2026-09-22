@@ -41,6 +41,10 @@ public:
 
 	[[nodiscard]] const FunctionAttributes& getFunctionAttributes() const;
 	[[nodiscard]] const std::vector<Destructor>& getDestructors() const;
+	/// Rebinds the address operand of destructor @p index. Destructor
+	/// addresses are operands too (see DestructorOperands.hpp), so passes
+	/// rewrite them through FunctionRewriter rather than calling this directly.
+	void setDestructorAddress(size_t index, Operation* address);
 	[[nodiscard]] bool requiresExceptionHandling() const;
 
 	/// True for a call into another traced Nautilus function (via
