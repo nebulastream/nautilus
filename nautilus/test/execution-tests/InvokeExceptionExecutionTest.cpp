@@ -1,7 +1,9 @@
 #include "ExecutionTest.hpp"
+#include <atomic>
 #include <bit>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <nautilus/CompilableFunction.hpp>
 #include <nautilus/Engine.hpp>
@@ -24,6 +26,7 @@
 #include <nautilus/val_std.hpp>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -240,6 +243,152 @@ val<int32_t> cleanupChainLevel() {
 	} else {
 		return cleanupChainFn<CleanupMask, Level + 1>();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Control flow around throwing calls and live structs. Destructions are
+// recorded in order so a test can check both how many ran and which ones.
+// ---------------------------------------------------------------------------
+constexpr int MAX_RECORDED_DESTRUCTIONS = 64;
+thread_local int scopeDtorCalls = 0;
+thread_local int32_t scopeDtorValues[MAX_RECORDED_DESTRUCTIONS] = {};
+
+struct ScopeCleanup {
+	int32_t value = 0;
+	~ScopeCleanup() noexcept {
+		if (scopeDtorCalls < MAX_RECORDED_DESTRUCTIONS) {
+			scopeDtorValues[scopeDtorCalls] = value;
+		}
+		scopeDtorCalls++;
+	}
+};
+
+struct CustomError {
+	int32_t code;
+};
+
+void scopeWrite(ScopeCleanup* cleanup, int32_t value) noexcept {
+	cleanup->value = value;
+}
+
+void scopeThrowIf(int32_t flag) {
+	if (flag != 0) {
+		throw std::runtime_error("scope throw");
+	}
+}
+
+void throwCustomError(int32_t code) {
+	throw CustomError {code};
+}
+
+void throwInt(int32_t code) {
+	throw code;
+}
+
+int32_t returnOrThrow(int32_t flag) {
+	if (flag != 0) {
+		throw std::runtime_error("return or throw");
+	}
+	return 10;
+}
+
+// Two throwing call sites with different live sets: `a` alone at the first,
+// `b` and `a` at the second.
+val<int32_t> twoThrowSites(val<int32_t> which) {
+	val<ScopeCleanup> a;
+	invoke(scopeWrite, &a, val<int32_t> {1});
+	invoke(scopeThrowIf, val<int32_t>(which == 1));
+	val<ScopeCleanup> b;
+	invoke(scopeWrite, &b, val<int32_t> {2});
+	invoke(scopeThrowIf, val<int32_t>(which == 2));
+	return 0;
+}
+
+// A struct declared inside the loop body: earlier iterations destroy theirs
+// normally, the throwing iteration through the landing pad.
+val<int32_t> structInLoopBody(val<int32_t> iterations, val<int32_t> throwAt) {
+	for (val<int32_t> i = 0; i < iterations; i = i + 1) {
+		val<ScopeCleanup> value;
+		invoke(scopeWrite, &value, i);
+		invoke(scopeThrowIf, val<int32_t>(i == throwAt));
+	}
+	return iterations;
+}
+
+// The struct is already destroyed when the call throws, so the landing pad
+// must not destroy it a second time.
+val<int32_t> structOutOfScopeBeforeThrow() {
+	{
+		val<ScopeCleanup> value;
+		invoke(scopeWrite, &value, val<int32_t> {1});
+	}
+	invoke(scopeThrowIf, val<int32_t> {1});
+	return 0;
+}
+
+// The struct is live on one branch only.
+val<int32_t> structOnOneBranch(val<int32_t> withStruct) {
+	if (withStruct == 1) {
+		val<ScopeCleanup> value;
+		invoke(scopeWrite, &value, val<int32_t> {1});
+		invoke(scopeThrowIf, val<int32_t> {1});
+	} else {
+		invoke(scopeThrowIf, val<int32_t> {1});
+	}
+	return 0;
+}
+
+// A potentially-throwing call whose result is used while a struct is live.
+val<int32_t> throwingCallWithResult(val<int32_t> shouldThrow) {
+	val<ScopeCleanup> value;
+	invoke(scopeWrite, &value, val<int32_t> {1});
+	auto result = invoke(returnOrThrow, shouldThrow);
+	return result + 1;
+}
+
+val<int32_t> throwCustomErrorWithStruct(val<int32_t> code) {
+	val<ScopeCleanup> value;
+	invoke(scopeWrite, &value, val<int32_t> {1});
+	invoke(throwCustomError, code);
+	return 0;
+}
+
+val<int32_t> throwIntWithoutStruct(val<int32_t> code) {
+	invoke(throwInt, code);
+	return 0;
+}
+
+// Nested callee with a live struct of its own, throwing once `x` exceeds 5.
+val<int32_t> throwingCallee(val<int32_t> x) {
+	val<ScopeCleanup> value;
+	invoke(scopeWrite, &value, x);
+	invoke(scopeThrowIf, val<int32_t>(x > 5));
+	return x;
+}
+static auto throwingCalleeFn = NautilusFunction {"throwingCallee", throwingCallee};
+
+// Calls the throwing callee in a loop while a struct declared before the loop
+// is live.
+val<int32_t> nestedCallInLoop(val<int32_t> iterations) {
+	val<ScopeCleanup> outer;
+	invoke(scopeWrite, &outer, val<int32_t> {100});
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < iterations; i = i + 1) {
+		sum = sum + throwingCalleeFn(i);
+	}
+	return sum;
+}
+
+// Calls the throwing callee in a loop while a struct declared in the loop
+// body is live.
+val<int32_t> nestedCallInLoopWithBodyStruct(val<int32_t> iterations) {
+	val<int32_t> sum = 0;
+	for (val<int32_t> i = 0; i < iterations; i = i + 1) {
+		val<ScopeCleanup> value;
+		invoke(scopeWrite, &value, i + 200);
+		sum = sum + throwingCalleeFn(i);
+	}
+	return sum;
 }
 
 engine::NautilusEngine makeMlirEngine(const std::string& traceMode) {
@@ -823,6 +972,232 @@ TEST_CASE("an executable is reusable after a call throws") {
 			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Control flow, exception types and threads, under the default lazyTracing
+// mode. Beyond the single-tier backends this covers the interpreter, the
+// default tiered engine (no backend pinned, so tier 0 runs first and tier 1
+// is promoted in the background), and MLIR with the optional IR passes on.
+// ---------------------------------------------------------------------------
+struct EngineConfig {
+	std::string name;
+	std::function<engine::NautilusEngine()> makeEngine;
+};
+
+std::vector<EngineConfig> lazyTracingConfigs() {
+	std::vector<EngineConfig> configs;
+	for (const auto& backend : exceptionBackends()) {
+		configs.push_back({backend.name, [makeEngine = backend.makeEngine] { return makeEngine("lazyTracing"); }});
+	}
+	configs.push_back({"interpreter", makeInterpreterEngine});
+	configs.push_back({"tiered", [] {
+		                   engine::Options options;
+		                   options.setOption("engine.Compilation", true);
+		                   options.setOption("engine.traceMode", std::string("lazyTracing"));
+		                   return engine::NautilusEngine {options};
+	                   }});
+#ifdef ENABLE_MLIR_BACKEND
+	configs.push_back({"mlir-optional-ir-passes", [] {
+		                   engine::Options options;
+		                   options.setOption("engine.Compilation", true);
+		                   options.setOption("engine.backend", std::string("mlir"));
+		                   options.setOption("engine.traceMode", std::string("lazyTracing"));
+		                   options.setOption("mlir.enableMultithreading", false);
+		                   options.setOption("ir.enableLocalCSE", true);
+		                   options.setOption("ir.enableLICM", true);
+		                   options.setOption("ir.enableStrengthReduction", true);
+		                   options.setOption("ir.verifyAfterEachPass", true);
+		                   options.setOption("ir.failOnVerifyError", true);
+		                   return engine::NautilusEngine {options};
+	                   }});
+#endif
+	return configs;
+}
+
+template <typename Body>
+void forEachLazyTracingConfig(Body&& body) {
+	for (const auto& config : lazyTracingConfigs()) {
+		DYNAMIC_SECTION(config.name) {
+			auto engine = config.makeEngine();
+			body(engine);
+		}
+	}
+}
+
+TEST_CASE("throw sites with different live structs clean up only their own") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(twoThrowSites);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(1), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 1);
+		REQUIRE(scopeDtorValues[0] == 1);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(2), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 2);
+		REQUIRE(scopeDtorValues[0] == 2);
+		REQUIRE(scopeDtorValues[1] == 1);
+
+		scopeDtorCalls = 0;
+		REQUIRE(function(0) == 0);
+		REQUIRE(scopeDtorCalls == 2);
+	});
+}
+
+TEST_CASE("a struct declared in a loop body is cleaned up on the throwing iteration") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(structInLoopBody);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(10, 3), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 4);
+		for (int32_t i = 0; i < 4; ++i) {
+			REQUIRE(scopeDtorValues[i] == i);
+		}
+
+		scopeDtorCalls = 0;
+		REQUIRE(function(5, -1) == 5);
+		REQUIRE(scopeDtorCalls == 5);
+	});
+}
+
+TEST_CASE("a struct that left scope before the throw is not destroyed twice") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(structOutOfScopeBeforeThrow);
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 1);
+	});
+}
+
+TEST_CASE("a struct live on one branch is cleaned up only on that branch") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(structOnOneBranch);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(1), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 1);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(0), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 0);
+	});
+}
+
+TEST_CASE("a throwing call with a result unwinds or returns its value") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(throwingCallWithResult);
+
+		scopeDtorCalls = 0;
+		REQUIRE_THROWS_AS(function(1), std::runtime_error);
+		REQUIRE(scopeDtorCalls == 1);
+
+		scopeDtorCalls = 0;
+		REQUIRE(function(0) == 11);
+		REQUIRE(scopeDtorCalls == 1);
+	});
+}
+
+TEST_CASE("the thrown exception's type and payload reach the caller") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		SECTION("custom exception type") {
+			auto function = engine.registerFunction(throwCustomErrorWithStruct);
+			scopeDtorCalls = 0;
+			int32_t code = -1;
+			try {
+				function(42);
+			} catch (const CustomError& error) {
+				code = error.code;
+			}
+			REQUIRE(code == 42);
+			REQUIRE(scopeDtorCalls == 1);
+		}
+		SECTION("non-class exception type") {
+			auto function = engine.registerFunction(throwIntWithoutStruct);
+			int32_t thrown = -1;
+			try {
+				function(7);
+			} catch (int32_t value) {
+				thrown = value;
+			}
+			REQUIRE(thrown == 7);
+		}
+		SECTION("std::exception message") {
+			auto function = engine.registerFunction(throwingCallWithResult);
+			std::string message;
+			try {
+				function(1);
+			} catch (const std::runtime_error& error) {
+				message = error.what();
+			}
+			REQUIRE(message == "return or throw");
+		}
+	});
+}
+
+TEST_CASE("a nested call throwing inside a loop cleans up both frames") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		SECTION("struct declared before the loop") {
+			auto function = engine.registerFunction(nestedCallInLoop);
+
+			scopeDtorCalls = 0;
+			REQUIRE_THROWS_AS(function(10), std::runtime_error);
+			// Six callee structs destroyed normally, the throwing callee's on
+			// unwind, then the caller's.
+			REQUIRE(scopeDtorCalls == 8);
+			REQUIRE(scopeDtorValues[6] == 6);
+			REQUIRE(scopeDtorValues[7] == 100);
+
+			scopeDtorCalls = 0;
+			REQUIRE(function(4) == 6);
+			REQUIRE(scopeDtorCalls == 5);
+		}
+		SECTION("struct declared in the loop body") {
+			auto function = engine.registerFunction(nestedCallInLoopWithBodyStruct);
+
+			scopeDtorCalls = 0;
+			REQUIRE_THROWS_AS(function(10), std::runtime_error);
+			// Two structs per completed iteration, then the throwing callee's
+			// and the throwing iteration's on unwind.
+			REQUIRE(scopeDtorCalls == 14);
+			REQUIRE(scopeDtorValues[12] == 6);
+			REQUIRE(scopeDtorValues[13] == 206);
+		}
+	});
+}
+
+TEST_CASE("threads throwing concurrently each clean up their own structs") {
+	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+		auto function = engine.registerFunction(twoThrowSites);
+		constexpr int threadCount = 4;
+		constexpr int iterations = 200;
+		std::atomic<int> correct {0};
+		std::vector<std::thread> threads;
+		for (int t = 0; t < threadCount; ++t) {
+			threads.emplace_back([&] {
+				for (int i = 0; i < iterations; ++i) {
+					scopeDtorCalls = 0;
+					try {
+						function(2);
+					} catch (const std::runtime_error&) {
+						if (scopeDtorCalls == 2) {
+							correct++;
+						}
+					}
+					scopeDtorCalls = 0;
+					if (function(0) == 0 && scopeDtorCalls == 2) {
+						correct++;
+					}
+				}
+			});
+		}
+		for (auto& thread : threads) {
+			thread.join();
+		}
+		REQUIRE(correct.load() == threadCount * iterations * 2);
+	});
 }
 
 #endif // ENABLE_TRACING
