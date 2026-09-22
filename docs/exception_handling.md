@@ -20,7 +20,12 @@ cleanup and propagation only.
 - **`noexcept` calls stay on the direct path**: a function declared
   `noexcept` (or invoked through a `noexcept` function pointer) is never
   routed through exception handling — no capture, no pending-exception check,
-  no overhead.
+  no overhead. This also holds at compile time: `invoke()`'s return type `R`
+  only needs to be default-constructible for a potentially-throwing call,
+  since only that path can synthesize an ABI-compatible `R{}` after a caught
+  exception. A `noexcept` function pointer may therefore return a
+  deliberately-non-default-constructible type (e.g. a strong id/newtype
+  wrapper).
 - **Cleanup on throw**: on the exceptional path, every live `val<T>` with a
   non-trivial destructor is destroyed exactly once, in reverse construction
   order.

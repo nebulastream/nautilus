@@ -15,7 +15,14 @@ auto getArgumentReferences(const ValueArguments&... arguments) {
 	return std::vector<tracing::TypedValueRef> {details::StateResolver<const ValueArguments&>::getState(arguments)...};
 }
 
-template <typename R, typename... FunctionArguments>
+/// `NoUnwind` is a compile-time counterpart to `FunctionAttributes::noUnwind`: it is `true` only
+/// for the `invoke()`/`function()` overloads that take a genuinely `noexcept`-qualified function
+/// pointer. When `true`, `operator()` never references `compiler::captureThrowingCall<R, ...>`,
+/// so `R` does not need to be default-constructible for such calls (see issue #474). Calls made
+/// with a runtime-only `FunctionAttributes::noUnwind` (set manually for a non-`noexcept`-qualified
+/// function pointer) still go through the runtime-checked exception path below and therefore still
+/// require a default-constructible `R`.
+template <typename R, bool NoUnwind, typename... FunctionArguments>
 class CallableRuntimeFunction {
 public:
 	explicit CallableRuntimeFunction(R (*fnptr)(FunctionArguments...)) : fnptr(fnptr) {
@@ -31,15 +38,22 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			auto& resultRef =
-			    fnAttrs.noUnwind
-			        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			                             functionArgumentReferences, fnAttrs)
-			        : tracing::traceCallWithExceptionHandling(
-			              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
-			              functionArgumentReferences, fnAttrs,
-			              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
-			return val<R>(resultRef);
+			if constexpr (NoUnwind) {
+				auto& resultRef =
+				    tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+				                       functionArgumentReferences, fnAttrs);
+				return val<R>(resultRef);
+			} else {
+				auto& resultRef =
+				    fnAttrs.noUnwind
+				        ? tracing::traceCall(reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+				                             functionArgumentReferences, fnAttrs)
+				        : tracing::traceCallWithExceptionHandling(
+				              reinterpret_cast<void*>(fnptr), tracing::TypeResolver<R>::to_type(),
+				              functionArgumentReferences, fnAttrs,
+				              reinterpret_cast<void*>(&compiler::captureThrowingCall<R, FunctionArguments...>));
+				return val<R>(resultRef);
+			}
 		}
 #endif
 		return val<R>(fnptr(
@@ -52,12 +66,16 @@ public:
 #ifdef ENABLE_TRACING
 		if (tracing::inTracer()) {
 			auto functionArgumentReferences = getArgumentReferences(std::forward<FunctionArgumentsRaw>(args)...);
-			if (fnAttrs.noUnwind) {
+			if constexpr (NoUnwind) {
 				tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
 			} else {
-				tracing::traceCallWithExceptionHandling(
-				    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
-				    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
+				if (fnAttrs.noUnwind) {
+					tracing::traceCall(reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs);
+				} else {
+					tracing::traceCallWithExceptionHandling(
+					    reinterpret_cast<void*>(fnptr), Type::v, functionArgumentReferences, fnAttrs,
+					    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, FunctionArguments...>));
+				}
 			}
 			return;
 		}
@@ -80,23 +98,23 @@ template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...) noexcept, ValueArguments&&... args) {
 	FunctionAttributes attrs;
 	attrs.noUnwind = true;
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, attrs)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, true, FunctionArguments...>(fnptr, attrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, false, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
 	auto fnptr = func.template target<R(FunctionArguments...)>();
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, false, FunctionArguments...>(fnptr)(std::forward<ValueArguments>(args)...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
-	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr);
+	auto func = CallableRuntimeFunction<void, false, FunctionArguments...>(fnptr);
 	func(std::forward<ValueArguments>(args)...);
 }
 
@@ -104,23 +122,26 @@ void invoke(void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...) noexcept, ValueArguments&&... args) {
 	fnAttrs.noUnwind = true;
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, true, FunctionArguments...>(fnptr,
+	                                                              fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, R (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, false, FunctionArguments...>(fnptr,
+	                                                               fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <typename R, typename... FunctionArguments, typename... ValueArguments>
 auto invoke(const FunctionAttributes fnAttrs, std::function<R(FunctionArguments...)> func, ValueArguments&&... args) {
 	auto fnptr = func.template target<R(FunctionArguments...)>();
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, fnAttrs)(std::forward<ValueArguments>(args)...);
+	return CallableRuntimeFunction<R, false, FunctionArguments...>(fnptr,
+	                                                               fnAttrs)(std::forward<ValueArguments>(args)...);
 }
 
 template <is_fundamental... FunctionArguments, typename... ValueArguments>
 void invoke(const FunctionAttributes fnAttrs, void (*fnptr)(FunctionArguments...), ValueArguments&&... args) {
-	auto func = CallableRuntimeFunction<void, FunctionArguments...>(fnptr, fnAttrs);
+	auto func = CallableRuntimeFunction<void, false, FunctionArguments...>(fnptr, fnAttrs);
 	func(std::forward<ValueArguments>(args)...);
 }
 
@@ -128,12 +149,12 @@ template <typename R, typename... FunctionArguments>
 auto function(R (*fnptr)(FunctionArguments...) noexcept) {
 	FunctionAttributes attrs;
 	attrs.noUnwind = true;
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr, attrs);
+	return CallableRuntimeFunction<R, true, FunctionArguments...>(fnptr, attrs);
 }
 
 template <typename R, typename... FunctionArguments>
 auto function(R (*fnptr)(FunctionArguments...)) {
-	return CallableRuntimeFunction<R, FunctionArguments...>(fnptr);
+	return CallableRuntimeFunction<R, false, FunctionArguments...>(fnptr);
 }
 
 class MemberFuncWrapper {};
@@ -155,7 +176,7 @@ public:
 		return callableRuntimeFunction(state, args...);
 	}
 	T func;
-	CallableRuntimeFunction<Rp, MemberFuncWrapper*, Tp*> callableRuntimeFunction;
+	CallableRuntimeFunction<Rp, false, MemberFuncWrapper*, Tp*> callableRuntimeFunction;
 };
 
 template <typename T>
