@@ -37,9 +37,10 @@ struct VerificationResult {
  *    terminators.
  *  - Every `BasicBlockInvocation` in a terminator targets a non-null
  *    block that is owned by the same function.
- *  - Every operation input and invocation argument points at an operation
- *    defined in the same function (a block operation or a block argument) —
- *    no stale pointers to operations a pass replaced and removed (#327).
+ *  - Every operation input, invocation argument, and call destructor address
+ *    points at an operation defined in the same function (a block operation
+ *    or a block argument) — no stale pointers to operations a pass replaced
+ *    and removed (#327, #477).
  *  - Every block listed as a target also lists the source block in its
  *    predecessor set (requires `rebuildPredecessorLists` to have run, or
  *    the wiring invariant to have been maintained by passes).

@@ -54,6 +54,10 @@ const std::vector<CallOperation::Destructor>& CallOperation::getDestructors() co
 	return destructors;
 }
 
+void CallOperation::setDestructorAddress(size_t index, Operation* address) {
+	destructors.at(index).address = address;
+}
+
 bool CallOperation::requiresExceptionHandling() const {
 	return exceptionHandling;
 }

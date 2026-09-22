@@ -53,6 +53,10 @@ const std::vector<IndirectCallOperation::Destructor>& IndirectCallOperation::get
 	return destructors;
 }
 
+void IndirectCallOperation::setDestructorAddress(size_t index, Operation* address) {
+	destructors.at(index).address = address;
+}
+
 bool IndirectCallOperation::requiresExceptionHandling() const {
 	return exceptionHandling;
 }

@@ -97,6 +97,19 @@ val<int32_t> invokeMaybeThrowingWithStruct(val<int32_t> shouldThrow) {
 	return result.get(&ExceptionResult::value);
 }
 
+// A throwing invoke inside a loop while a val<Struct> declared before the loop
+// is live (#477). Inside the loop the struct's address reaches the call as a
+// loop-carried block argument whose only consumer is the call's destructor
+// list; the IR passes must keep that operand pointing at a live value.
+val<int32_t> invokeThrowingInLoopWithOuterStruct(val<int32_t> iterations) {
+	val<ExceptionResult> result;
+	invoke(writeResult, &result, val<int32_t> {5});
+	for (val<int32_t> i = 0; i < iterations; i = i + 1) {
+		invoke(throwIfTrue, val<int32_t>(i == 3));
+	}
+	return result.get(&ExceptionResult::value);
+}
+
 // Move-constructs a val<Struct> while a sibling val<Struct> is already live,
 // then throws. Regression coverage for the move constructor's destructor
 // bookkeeping: val<T>'s move ctor must not remove-then-re-append the moved
@@ -299,6 +312,34 @@ TEST_CASE("invokes unwind live val<Struct> destructors across backends") {
 					REQUIRE(destructorCalls == 1);
 				}
 			}
+		}
+	}
+}
+
+TEST_CASE("invokes in a loop unwind a struct declared before the loop across backends") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			engine::Options options;
+			options.setOption("engine.Compilation", true);
+			options.setOption("engine.backend", backend.registryName);
+			options.setOption("engine.compilationStrategy", std::string("legacy"));
+			options.setOption("engine.traceMode", std::string("lazyTracing"));
+			options.setOption("ir.verifyAfterEachPass", true);
+			options.setOption("ir.failOnVerifyError", true);
+			if (backend.compileOptions != nullptr) {
+				backend.compileOptions(options);
+			}
+			engine::NautilusEngine engine {options};
+			auto function = engine.registerFunction(invokeThrowingInLoopWithOuterStruct);
+
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(10), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
+			REQUIRE(destructorValues[0] == 5);
+
+			destructorCalls = 0;
+			REQUIRE(function(2) == 5);
+			REQUIRE(destructorCalls == 1);
 		}
 	}
 }
