@@ -4,6 +4,7 @@ add_executable(nautilus-value-tests
         FunctionPtrValTypeTest.cpp
         PtrValTypeTest.cpp
         FunctionTest.cpp
+        InvokeNonDefaultConstructibleReturnTest.cpp
         ValConceptTest.cpp
         StaticValTypeTest.cpp
         CompilationStatisticsTest.cpp
