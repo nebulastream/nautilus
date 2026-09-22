@@ -2,6 +2,8 @@
 #include "catch2/catch_test_macros.hpp"
 #include "nautilus/Engine.hpp"
 #include "nautilus/config.hpp"
+#include "nautilus/function.hpp"
+#include <atomic>
 #include <catch2/catch_all.hpp>
 #include <thread>
 #include <vector>
@@ -84,6 +86,31 @@ val<int64_t> sum(val<int64_t> a, val<int64_t> b) {
 
 val<int32_t> multiply(val<int32_t> a, val<int32_t> b) {
 	return a * b;
+}
+
+// -- Synchronization kernel for the executable-lifetime regression test (issue #449) --
+//
+// moduleFreedTestKernel parks the calling thread *inside a compiled call* until the
+// test explicitly releases it, so the test can force a concurrent executable swap
+// while callers are provably mid-call rather than relying on timing.
+
+std::atomic<int> moduleFreedTestLiveCallers {0};
+std::atomic<bool> moduleFreedTestRelease {false};
+
+void moduleFreedTestEnter() {
+	moduleFreedTestLiveCallers.fetch_add(1, std::memory_order_release);
+}
+
+void moduleFreedTestSpin() {
+	while (!moduleFreedTestRelease.load(std::memory_order_acquire)) {
+		std::this_thread::yield();
+	}
+}
+
+val<int32_t> moduleFreedTestKernel(val<int32_t> x) {
+	invoke(moduleFreedTestEnter);
+	invoke(moduleFreedTestSpin);
+	return x;
 }
 
 /// Returns a backend name suitable for thread-safe compiled execution.
@@ -360,6 +387,84 @@ TEST_CASE("Module Concurrent Swap Test") {
 
 	writer.join();
 	stop.store(true, std::memory_order_relaxed);
+	for (auto& r : readers) {
+		r.join();
+	}
+
+	REQUIRE(errors.load() == 0);
+}
+
+// Regression test for issue #449: ModuleState::executable used to be a unique_ptr, so
+// CompiledModule::setExecutable() destroyed the previous executable (and its JIT'd
+// code) immediately, even while a ModuleFunction handle was still mid-call inside it.
+// The version counter that operator() checks is read *before* the call, not held
+// across it, so a caller that passed the check could have its code freed out from
+// under it before it returned.
+//
+// Unlike "Module Concurrent Swap Test" above (which ping-pongs a single executable
+// back and forth and therefore never actually destroys one while under contention),
+// this test uses two distinct, independently compiled executables and a rendezvous
+// (moduleFreedTestKernel blocks inside its call until released) to force a swap to
+// happen deterministically while every reader thread is provably parked mid-call in
+// the executable being replaced, instead of relying on a statistical race window.
+TEST_CASE("Module Executable Freed While Callers In Flight Test") {
+	auto backend = getThreadSafeBackend();
+	if (backend.empty()) {
+		SKIP("No thread-safe compilation backend available");
+	}
+
+	moduleFreedTestLiveCallers.store(0, std::memory_order_relaxed);
+	moduleFreedTestRelease.store(false, std::memory_order_relaxed);
+
+	engine::Options options;
+	options.setOption("engine.backend", backend);
+	auto engine = engine::NautilusEngine(options);
+
+	auto compileKernelModule = [&] {
+		auto module = engine.createModule();
+		module.registerFunction<val<int32_t>(val<int32_t>)>("kernel", moduleFreedTestKernel);
+		return module.compile();
+	};
+
+	// Two independently compiled executables for the same kernel: compiledA is the
+	// one readers below resolve against and that gets swapped out; exeB is what
+	// replaces it, so the swap genuinely drops compiledA's own reference.
+	auto compiledA = compileKernelModule();
+	auto compiledB = compileKernelModule();
+	auto exeB = compiledB.releaseExecutable();
+
+	auto fn = compiledA.getFunction<int32_t(int32_t)>("kernel");
+
+	constexpr int NUM_READER_THREADS = 4;
+	std::atomic<int> errors {0};
+
+	// Each reader gets its own copy of the handle (own cache, shared ModuleState) and
+	// resolves independently against compiledA's executable, then blocks inside the
+	// call until released below.
+	std::vector<std::thread> readers;
+	readers.reserve(NUM_READER_THREADS);
+	for (int t = 0; t < NUM_READER_THREADS; ++t) {
+		readers.emplace_back([&errors, localFn = fn, t]() mutable {
+			if (localFn(t) != t) {
+				errors.fetch_add(1, std::memory_order_relaxed);
+			}
+		});
+	}
+
+	// Wait until every reader is parked inside its call into compiledA's executable.
+	while (moduleFreedTestLiveCallers.load(std::memory_order_acquire) < NUM_READER_THREADS) {
+		std::this_thread::yield();
+	}
+
+	// Swap in a different executable while all readers are still mid-call. Before the
+	// fix, this would free compiledA's executable (and its JIT'd code) while readers
+	// are parked inside it; the fix keeps it alive via the shared_ptr each reader's
+	// resolved handle already captured.
+	compiledA.setExecutable(std::move(exeB));
+
+	// Let the readers resume and return back into (what was) the original executable.
+	moduleFreedTestRelease.store(true, std::memory_order_release);
+
 	for (auto& r : readers) {
 		r.join();
 	}

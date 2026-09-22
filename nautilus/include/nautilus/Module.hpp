@@ -31,11 +31,18 @@ namespace details {
  * function map. A monotonically increasing version counter allows ModuleFunction handles
  * to detect when they need to re-resolve their cached implementation.
  *
+ * The executable is a shared_ptr, not a unique_ptr: a ModuleFunction that has resolved
+ * against it captures its own copy (see ModuleFunction::resolve()), so a swap that
+ * replaces this pointer only drops the module's own reference — the executable, and its
+ * JIT'd code, stays alive until every caller that resolved to it has moved on too. A
+ * unique_ptr here would let a swap free code that a concurrent caller is still executing
+ * (see issue #449).
+ *
  * Thread-safety: a shared_mutex protects the executable pointer. The version counter
  * is atomic so the fast path (version check in operator()) requires no lock.
  */
 struct ModuleState {
-	std::unique_ptr<compiler::Executable> executable;
+	std::shared_ptr<compiler::Executable> executable;
 	std::unordered_map<std::string, std::any> interpretedFunctions;
 	std::atomic<uint64_t> version {0};
 	mutable std::shared_mutex mutex;
@@ -84,25 +91,32 @@ class ModuleFunction<R(Args...)> {
 		}
 		std::shared_lock<std::shared_mutex> lock(state_->mutex);
 		if (state_->executable) {
+			// Take our own reference to the executable so it outlives a concurrent
+			// swap: cache_->impl below captures it, keeping the executable (and its
+			// JIT'd code) alive for as long as this cached impl is reachable, even
+			// after ModuleState::executable itself has moved on to a newer tier.
+			// The version check in operator() is unlocked and happens *before* the
+			// call, so ownership has to be held across the call itself, not just
+			// checked ahead of it (see issue #449).
+			std::shared_ptr<compiler::Executable> executable = state_->executable;
 			// A NativeUnwind backend (MLIR), or a captured-host-rethrow function
 			// with no exceptional call sites of its own, can be called through
 			// the raw function pointer: neither ever touches the ExceptionFrame
 			// machinery. Everything else must go through the Invocable wrapper
 			// so the frame is pushed/rethrown around the call.
-			if (state_->executable->hasInvocableFunctionPtr() &&
-			    state_->executable->getExceptionPropagationMode(name_) ==
-			        compiler::ExceptionPropagationMode::NativeUnwind) {
-				auto* fptr = reinterpret_cast<R (*)(Args...)>(state_->executable->getInvocableFunctionPtr(name_));
+			if (executable->hasInvocableFunctionPtr() &&
+			    executable->getExceptionPropagationMode(name_) == compiler::ExceptionPropagationMode::NativeUnwind) {
+				auto* fptr = reinterpret_cast<R (*)(Args...)>(executable->getInvocableFunctionPtr(name_));
 				// See NAUTILUS_NO_SANITIZE_FUNCTION in Executable.hpp: fptr is a JIT
 				// entry point with no UBSan type-hash prologue, so the indirect call
 				// through it must be exempted from -fsanitize=function.
-				cache_->impl = [fptr](Args... args) NAUTILUS_NO_SANITIZE_FUNCTION -> R {
+				cache_->impl = [executable, fptr](Args... args) NAUTILUS_NO_SANITIZE_FUNCTION -> R {
 					return fptr(std::forward<Args>(args)...);
 				};
 			} else {
 				auto invocable = std::make_shared<compiler::Executable::Invocable<R, Args...>>(
-				    state_->executable->getInvocableMember<R, Args...>(name_));
-				cache_->impl = [invocable](Args... args) -> R {
+				    executable->getInvocableMember<R, Args...>(name_));
+				cache_->impl = [executable, invocable](Args... args) -> R {
 					return (*invocable)(std::forward<Args>(args)...);
 				};
 			}
@@ -216,9 +230,11 @@ public:
 	 *
 	 * Thread-safe: can be called while ModuleFunction handles are invoked from other threads.
 	 *
-	 * @param executable The new executable (or nullptr for interpreted mode)
+	 * @param executable The new executable (or nullptr for interpreted mode). Accepts a
+	 * unique_ptr (implicitly converted, e.g. from a fresh compile) or a shared_ptr
+	 * (e.g. one previously obtained from releaseExecutable()).
 	 */
-	void setExecutable(std::unique_ptr<compiler::Executable> executable) {
+	void setExecutable(std::shared_ptr<compiler::Executable> executable) {
 		std::unique_lock<std::shared_mutex> lock(state_->mutex);
 		state_->executable = std::move(executable);
 		state_->version.fetch_add(1, std::memory_order_release);
@@ -245,10 +261,15 @@ public:
 	}
 
 	/**
-	 * @brief Release ownership of the underlying executable.
+	 * @brief Release this module's reference to the underlying executable.
 	 * Reverts this module to interpreted mode and returns the executable.
+	 *
+	 * Returns a shared_ptr rather than a unique_ptr: a ModuleFunction handle that
+	 * resolved against this executable while it was active holds its own reference
+	 * (see ModuleFunction::resolve()) and may still be using it, so this call cannot
+	 * promise exclusive ownership of the result.
 	 */
-	std::unique_ptr<compiler::Executable> releaseExecutable() {
+	std::shared_ptr<compiler::Executable> releaseExecutable() {
 		std::unique_lock<std::shared_mutex> lock(state_->mutex);
 		auto exe = std::move(state_->executable);
 		state_->version.fetch_add(1, std::memory_order_release);
