@@ -177,6 +177,35 @@ val<int32_t> nestedNoexceptOuter(val<int32_t> outer_arg) {
 	return outer_arg;
 }
 
+// Three-level chain from #481: `landingPadMiddle` owns a landing pad (a live
+// struct plus its own throwing invoke) and calls a fully noexcept function.
+// `landingPadOuter` has nothing to clean up, so it reaches `landingPadMiddle`
+// through a plain call, and the MLIR inliner moves the middle function's
+// landing pad into it -- the personality attribute has to follow.
+val<int32_t> landingPadInner() noexcept {
+	val<NestedCleanup> value;
+	invoke(nestedWriteResult, &value, val<int32_t> {3});
+	return value.get(&NestedCleanup::v);
+}
+static auto landingPadInnerFn = NautilusFunction {"landingPadInner", landingPadInner};
+
+void nestedThrowWhileWriting(NestedCleanup* result, int32_t value) {
+	result->v = value;
+	throw std::runtime_error("nested landing pad");
+}
+
+val<int32_t> landingPadMiddle() {
+	val<NestedCleanup> value;
+	const auto innerResult = landingPadInnerFn();
+	invoke(nestedThrowWhileWriting, &value, val<int32_t> {2});
+	return innerResult;
+}
+static auto landingPadMiddleFn = NautilusFunction {"landingPadMiddle", landingPadMiddle};
+
+val<int32_t> landingPadOuter() {
+	return landingPadMiddleFn();
+}
+
 engine::NautilusEngine makeMlirEngine(const std::string& traceMode) {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
@@ -627,6 +656,24 @@ TEST_CASE("noexcept nested Nautilus call stays on the direct path") {
 					nestedDtorCalls = 0;
 					REQUIRE(function(42) == 42);
 					REQUIRE(nestedDtorCalls == 1);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("inlined nested function keeps its landing pad valid") {
+	for (const auto& backend : exceptionBackends()) {
+		DYNAMIC_SECTION(backend.name) {
+			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
+				DYNAMIC_SECTION(traceMode) {
+					auto engine = backend.makeEngine(traceMode);
+					auto function = engine.registerFunction(landingPadOuter);
+					nestedDtorCalls = 0;
+					REQUIRE_THROWS_AS(function(), std::runtime_error);
+					// The inner struct's normal scope exit plus the middle
+					// struct's cleanup on unwind.
+					REQUIRE(nestedDtorCalls == 2);
 				}
 			}
 		}

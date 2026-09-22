@@ -1,6 +1,7 @@
 
 
 #include "nautilus/compiler/backends/mlir/MLIRPassManager.hpp"
+#include "nautilus/compiler/backends/mlir/PropagatePersonalityPass.hpp"
 #include "nautilus/compiler/backends/mlir/debug/EmitDbgValuePass.hpp"
 #include "nautilus/compiler/backends/mlir/debug/NormalizeInlineLocationsPass.hpp"
 #include "nautilus/exceptions/NotImplementedException.hpp"
@@ -58,6 +59,10 @@ int MLIRPassManager::lowerAndOptimizeMLIRModule(mlir::OwningOpRef<mlir::ModuleOp
 		} else {
 			passManager.addPass(mlir::createInlinerPass());
 		}
+		// The inliner moves landing pads into callers without carrying the
+		// callee's `personality` attribute along; restore it before
+		// convert-func-to-llvm forwards it onto the llvm.func.
+		passManager.addPass(createPropagatePersonalityPass());
 	}
 
 	// Apply lowering passes.
