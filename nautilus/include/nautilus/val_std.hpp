@@ -211,7 +211,7 @@ private:
 	}
 
 	// Hands other's cleanup registration over to this object (see move assignment).
-	void transfer_destructor(const val<ValueType>& other) {
+	void transfer_destructor([[maybe_unused]] const val<ValueType>& other) {
 #ifdef ENABLE_TRACING
 		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
 			if (tracing::inTracer() && !other.moved_) {
