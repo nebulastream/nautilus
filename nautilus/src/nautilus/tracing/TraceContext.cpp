@@ -1,5 +1,5 @@
 
-#include "LazyTraceContext.hpp"
+#include "TraceContext.hpp"
 #include "TraceOperation.hpp"
 #include "nautilus/CompilableFunction.hpp"
 #include "nautilus/common/FunctionAttributes.hpp"
@@ -8,10 +8,15 @@
 #include "nautilus/nautilus_function.hpp"
 #include "nautilus/tracing/TracingUtil.hpp"
 #include "symbolic_execution/SymbolicExecutionContext.hpp"
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <cxxabi.h>
+#include <dlfcn.h>
 #include <fmt/format.h>
 #include <span>
+#include <sstream>
 
 namespace fmt {
 template <>
@@ -22,21 +27,26 @@ struct formatter<nautilus::tracing::ExecutionTrace> : formatter<std::string_view
 
 namespace nautilus::tracing {
 
-// Thread-local LazyTraceContext object (not a pointer)
-static thread_local LazyTraceContext completingTraceContext;
+// Thread-local TraceContext object (not a pointer)
+static thread_local TraceContext traceContext;
 
-LazyTraceContext* LazyTraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
-                                               SymbolicExecutionContext& symbolicExecutionContext,
-                                               const engine::Options& options) {
-	completingTraceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
-	completingTraceContext.paused_ = false;
-	completingTraceContext.parent_ = nullptr;
-	completingTraceContext.session_ = &completingTraceContext;
-	setActiveTracer(&completingTraceContext);
-	return &completingTraceContext;
+TraceState::TraceState(TagRecorder& tr, ExecutionTrace& et, SymbolicExecutionContext& sec, const engine::Options& opts)
+    : tagRecorder(tr), executionTrace(et), symbolicExecutionContext(sec), options(opts) {
+	// TraceState only holds references - the actual objects are stack-allocated in trace()
 }
 
-void LazyTraceContext::resume() {
+TraceContext* TraceContext::initialize(TagRecorder& tagRecorder, ExecutionTrace& executionTrace,
+                                       SymbolicExecutionContext& symbolicExecutionContext,
+                                       const engine::Options& options) {
+	traceContext.state.emplace(tagRecorder, executionTrace, symbolicExecutionContext, options);
+	traceContext.paused_ = false;
+	traceContext.parent_ = nullptr;
+	traceContext.session_ = &traceContext;
+	setActiveTracer(&traceContext);
+	return &traceContext;
+}
+
+void TraceContext::resume() {
 	staticVars.clear();
 	aliveVars.reset();
 	activeDestructors.clear();
@@ -44,7 +54,31 @@ void LazyTraceContext::resume() {
 	paused_ = false;
 }
 
-std::string LazyTraceContext::describeCurrentFunction() const {
+void TraceContext::registerDestructor(const TypedValueRef& address, void* destructor) {
+	auto mangledName = getMangledName(destructor);
+	activeDestructors.push_back(FunctionCall::Destructor {.address = address,
+	                                                      .functionName = getFunctionName(destructor, mangledName),
+	                                                      .mangledName = std::move(mangledName),
+	                                                      .ptr = destructor});
+}
+
+void TraceContext::unregisterDestructor(const TypedValueRef& address) {
+	auto it = std::find_if(activeDestructors.rbegin(), activeDestructors.rend(),
+	                       [&](const FunctionCall::Destructor& destructor) { return destructor.address == address; });
+	if (it != activeDestructors.rend()) {
+		activeDestructors.erase(std::next(it).base());
+	}
+}
+
+void TraceContext::transferDestructor(const TypedValueRef& from, const TypedValueRef& to) {
+	auto it = std::find_if(activeDestructors.rbegin(), activeDestructors.rend(),
+	                       [&](const FunctionCall::Destructor& destructor) { return destructor.address == from; });
+	if (it != activeDestructors.rend()) {
+		it->address = to;
+	}
+}
+
+std::string TraceContext::describeCurrentFunction() const {
 	if (session_->currentFunctionName_.empty()) {
 		return {};
 	}
@@ -55,7 +89,7 @@ std::string LazyTraceContext::describeCurrentFunction() const {
 	return description;
 }
 
-TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t index) {
+TypedValueRef& TraceContext::registerFunctionArgument(Type type, size_t index) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -66,11 +100,11 @@ TypedValueRef& LazyTraceContext::registerFunctionArgument(Type type, size_t inde
 	return state->executionTrace.setArgument(type, index);
 }
 
-bool LazyTraceContext::isFollowing() {
+bool TraceContext::isFollowing() {
 	return state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW;
 }
 
-TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
+TypedValueRef& TraceContext::follow([[maybe_unused]] Op op) {
 	auto& currentOperation = state->executionTrace.getCurrentOperation();
 	auto consumedTag = currentOperation.tag;
 	divergence_ = consumedTag.getDivergence();
@@ -111,7 +145,7 @@ TypedValueRef& LazyTraceContext::follow([[maybe_unused]] Op op) {
 	return *resultRef;
 }
 
-TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
+TypedValueRef& TraceContext::traceConstant(Type type, const ConstantLiteral& constValue) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -134,7 +168,7 @@ TypedValueRef& LazyTraceContext::traceConstant(Type type, const ConstantLiteral&
 }
 
 template <typename OnCreation>
-TypedValueRef& LazyTraceContext::traceOperation(Op op, std::span<const TypedValueRef> inputs, OnCreation&& onCreation) {
+TypedValueRef& TraceContext::traceOperation(Op op, std::span<const TypedValueRef> inputs, OnCreation&& onCreation) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -145,14 +179,14 @@ TypedValueRef& LazyTraceContext::traceOperation(Op op, std::span<const TypedValu
 		if (state->executionTrace.checkTag(tag)) {
 			return onCreation(tag);
 		} else {
-			// Instead of throwing TraceTerminationException, enter passive mode.
+			// Already explored from here: enter passive mode.
 			paused_ = true;
 			return dummyRef_;
 		}
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
+TypedValueRef& TraceContext::traceAlloca(size_t size, size_t align) {
 	auto op = Op::ALLOCA;
 	auto resultType = Type::ptr;
 	return traceOperation(op, std::span<const TypedValueRef> {}, [&, size, align](Snapshot& tag) -> TypedValueRef& {
@@ -161,7 +195,7 @@ TypedValueRef& LazyTraceContext::traceAlloca(size_t size, size_t align) {
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
+TypedValueRef& TraceContext::traceCopy(const TypedValueRef& ref) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -201,9 +235,9 @@ TypedValueRef& LazyTraceContext::traceCopy(const TypedValueRef& ref) {
 	return trace.addAssignmentOperation(tag, {resultRef, ref.type}, ref, ref.type);
 }
 
-TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
-                                           const std::vector<tracing::TypedValueRef>& arguments,
-                                           FunctionAttributes fnAttrs) {
+TypedValueRef& TraceContext::traceCall(void* fptn, Type resultType,
+                                       const std::vector<tracing::TypedValueRef>& arguments,
+                                       FunctionAttributes fnAttrs) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -224,9 +258,9 @@ TypedValueRef& LazyTraceContext::traceCall(void* fptn, Type resultType,
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceCallWithExceptionHandling(void* fptn, Type resultType,
-                                                                const std::vector<tracing::TypedValueRef>& arguments,
-                                                                FunctionAttributes fnAttrs, void* captureFunc) {
+TypedValueRef& TraceContext::traceCallWithExceptionHandling(void* fptn, Type resultType,
+                                                            const std::vector<tracing::TypedValueRef>& arguments,
+                                                            FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -246,9 +280,9 @@ TypedValueRef& LazyTraceContext::traceCallWithExceptionHandling(void* fptn, Type
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
-                                                   const std::vector<tracing::TypedValueRef>& arguments,
-                                                   FunctionAttributes fnAttrs, void* captureFunc) {
+TypedValueRef& TraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
+                                               const std::vector<tracing::TypedValueRef>& arguments,
+                                               FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -265,9 +299,9 @@ TypedValueRef& LazyTraceContext::traceIndirectCall(const TypedValueRef& fnPtrRef
 }
 
 TypedValueRef&
-LazyTraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
-                                                         const std::vector<tracing::TypedValueRef>& arguments,
-                                                         FunctionAttributes fnAttrs, void* captureFunc) {
+TraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fnPtrRef, Type resultType,
+                                                     const std::vector<tracing::TypedValueRef>& arguments,
+                                                     FunctionAttributes fnAttrs, void* captureFunc) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -283,8 +317,8 @@ LazyTraceContext::traceIndirectCallWithExceptionHandling(const TypedValueRef& fn
 	});
 }
 
-const std::string& LazyTraceContext::registerNautilusFunction(const NautilusFunctionDefinition* definition,
-                                                              std::function<void()> fwrapper, bool& newlyRegistered) {
+const std::string& TraceContext::registerNautilusFunction(const NautilusFunctionDefinition* definition,
+                                                          std::function<void()> fwrapper, bool& newlyRegistered) {
 	if (const auto it = session_->registeredFunctions.find(definition); it != session_->registeredFunctions.end()) {
 		newlyRegistered = false;
 		return it->second;
@@ -317,10 +351,10 @@ const std::string& LazyTraceContext::registerNautilusFunction(const NautilusFunc
 	return inserted->second;
 }
 
-TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
-                                                   std::function<void()> fwrapper, Type resultType,
-                                                   const std::vector<tracing::TypedValueRef>& arguments,
-                                                   FunctionAttributes fnAttrs) {
+TypedValueRef& TraceContext::traceNautilusCall(const NautilusFunctionDefinition* definition,
+                                               std::function<void()> fwrapper, Type resultType,
+                                               const std::vector<tracing::TypedValueRef>& arguments,
+                                               FunctionAttributes fnAttrs) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -341,7 +375,7 @@ TypedValueRef& LazyTraceContext::traceNautilusCall(const NautilusFunctionDefinit
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceNautilusCallWithExceptionHandling(
+TypedValueRef& TraceContext::traceNautilusCallWithExceptionHandling(
     const NautilusFunctionDefinition* definition, std::function<void()> fwrapper, Type resultType,
     const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs) {
 	if (paused_) {
@@ -364,8 +398,8 @@ TypedValueRef& LazyTraceContext::traceNautilusCallWithExceptionHandling(
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
-                                                          std::function<void()> fwrapper) {
+TypedValueRef& TraceContext::traceNautilusFunctionPtr(const NautilusFunctionDefinition* definition,
+                                                      std::function<void()> fwrapper) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -386,7 +420,7 @@ TypedValueRef& LazyTraceContext::traceNautilusFunctionPtr(const NautilusFunction
 	});
 }
 
-void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
+void TraceContext::traceAssignment(const TypedValueRef& target, const TypedValueRef& source, Type resultType) {
 	if (paused_) {
 		return;
 	}
@@ -437,7 +471,7 @@ void LazyTraceContext::traceAssignment(const TypedValueRef& target, const TypedV
 	trace.addAssignmentOperation(tag, target, source, resultType);
 }
 
-void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
+void TraceContext::traceReturnOperation(Type resultType, const TypedValueRef& ref) {
 	if (paused_) {
 		return;
 	}
@@ -454,8 +488,8 @@ void LazyTraceContext::traceReturnOperation(Type resultType, const TypedValueRef
 	}
 }
 
-TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
-                                               const TypedValueRef& right) {
+TypedValueRef& TraceContext::traceBinaryOp(Op op, Type resultType, const TypedValueRef& left,
+                                           const TypedValueRef& right) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -464,7 +498,7 @@ TypedValueRef& LazyTraceContext::traceBinaryOp(Op op, Type resultType, const Typ
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
+TypedValueRef& TraceContext::traceUnaryOp(Op op, Type resultType, const TypedValueRef& input) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -473,8 +507,8 @@ TypedValueRef& LazyTraceContext::traceUnaryOp(Op op, Type resultType, const Type
 	});
 }
 
-TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
-                                                const TypedValueRef& second, const TypedValueRef& third) {
+TypedValueRef& TraceContext::traceTernaryOp(Op op, Type resultType, const TypedValueRef& first,
+                                            const TypedValueRef& second, const TypedValueRef& third) {
 	if (paused_) {
 		return dummyRef_;
 	}
@@ -483,7 +517,7 @@ TypedValueRef& LazyTraceContext::traceTernaryOp(Op op, Type resultType, const Ty
 	});
 }
 
-bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probability) {
+bool TraceContext::traceBool(const TypedValueRef& value, const double probability) {
 	if (paused_) {
 		// In passive mode, return false to guarantee loop termination.
 		return false;
@@ -493,7 +527,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	bool shouldTerminate = false;
 
 	if (state->symbolicExecutionContext.getCurrentMode() == SymbolicExecutionContext::MODE::FOLLOW) {
-		auto recordResult = state->symbolicExecutionContext.followNoThrow();
+		auto recordResult = state->symbolicExecutionContext.follow();
 		result = recordResult.branchDirection;
 		shouldTerminate = recordResult.shouldTerminate;
 	} else {
@@ -501,7 +535,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 		auto tag = separateDivergedPath(recordSnapshot(), CMP, std::span(&value, 1));
 		if (state->executionTrace.checkTag(tag)) {
 			state->executionTrace.addCmpOperation(tag, value, probability);
-			auto recordResult = state->symbolicExecutionContext.recordNoThrow(tag);
+			auto recordResult = state->symbolicExecutionContext.record(tag);
 			result = recordResult.branchDirection;
 			shouldTerminate = recordResult.shouldTerminate;
 		} else {
@@ -512,8 +546,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	}
 
 	if (shouldTerminate) {
-		// The symbolic execution signals termination (SecondVisit).
-		// Enter passive mode instead of throwing.
+		// The symbolic execution signals termination (SecondVisit): enter passive mode.
 		paused_ = true;
 		return false;
 	}
@@ -532,7 +565,7 @@ bool LazyTraceContext::traceBool(const TypedValueRef& value, const double probab
 	return result;
 }
 
-void LazyTraceContext::runScope(std::function<void()>& body) {
+void TraceContext::runScope(std::function<void()>& body) {
 	auto& symbolicExecutionContext = state->symbolicExecutionContext;
 	auto traceIteration = 0;
 	while (symbolicExecutionContext.shouldContinue()) {
@@ -562,23 +595,23 @@ void LazyTraceContext::runScope(std::function<void()>& body) {
 	log::debug("Scope traced with {} iterations", traceIteration);
 }
 
-LazyTraceContext::RegionScopeState& LazyTraceContext::regionState() {
+TraceContext::RegionScopeState& TraceContext::regionState() {
 	if (!regionState_) {
 		regionState_ = std::make_unique<RegionScopeState>();
 	}
 	return *regionState_;
 }
 
-LazyTraceContext& LazyTraceContext::acquireChildScope() {
+TraceContext& TraceContext::acquireChildScope() {
 	auto& region = regionState();
 	if (!region.childScope) {
-		region.childScope = std::make_unique<LazyTraceContext>();
+		region.childScope = std::make_unique<TraceContext>();
 	}
 	return *region.childScope;
 }
 
-void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
-                                       const RegionAttributes& attributes) {
+void TraceContext::initRegionScope(TraceContext& parent, uint32_t entry, uint32_t exit, TagRecorder& recorder,
+                                   const RegionAttributes& attributes) {
 	parent_ = &parent;
 	session_ = parent.session_;
 	entryBlock_ = entry;
@@ -597,7 +630,7 @@ void LazyTraceContext::initRegionScope(LazyTraceContext& parent, uint32_t entry,
 	state.emplace(recorder, parent.state->executionTrace, region.symbolicExecutionContext, parent.state->options);
 }
 
-void LazyTraceContext::traceScopeExit() {
+void TraceContext::traceScopeExit() {
 	// Each of the skipped cases has already been terminated by other machinery: a pass
 	// paused by a control-flow merge had its jump added by processControlFlowMerge, a
 	// pass paused by a second visit ends on the CMP that paused it, and a pass that ran
@@ -624,8 +657,7 @@ void LazyTraceContext::traceScopeExit() {
 		throw RuntimeException(
 		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
 		    ": a value created inside the region body outlives it (" + escaped +
-		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it, or trace "
-		    "this function with engine.traceMode = \"exceptionBasedTracing\".");
+		    "). Carry the value out through a val<T> declared outside the region and assigned to inside it.");
 	}
 
 	auto snapshot = recordSnapshot();
@@ -638,8 +670,7 @@ void LazyTraceContext::traceScopeExit() {
 		    "Invalid region() " + region.attributes.toString() + describeCurrentFunction() +
 		    ": the state alive at the end of the region body differs between the paths through it, so what escapes the "
 		    "region would depend on which path was explored last. Build the escaping value on every path (assigning to "
-		    "a val<T> declared outside the region merges across branches), or trace this function with "
-		    "engine.traceMode = \"exceptionBasedTracing\".");
+		    "a val<T> declared outside the region merges across branches).");
 	}
 	auto& trace = state->executionTrace;
 	if (!trace.checkTag(snapshot)) {
@@ -651,7 +682,7 @@ void LazyTraceContext::traceScopeExit() {
 	trace.addJumpOperation(snapshot, region.exitBlock);
 }
 
-void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
+void TraceContext::traceRegion(std::function<void()>& regionFunction, const RegionAttributes& attributes) {
 	if (paused_) {
 		return;
 	}
@@ -670,8 +701,7 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const 
 		if (memoized == memo.end()) {
 			throw RuntimeException("Invalid region() " + attributes.toString() + describeCurrentFunction() +
 			                       ": replaying a recorded path reached a region() call site that was not recorded "
-			                       "there. Trace this function with engine.traceMode = \"exceptionBasedTracing\", "
-			                       "which traces region bodies inline.");
+			                       "there.");
 		}
 		trace.setCurrentBlock(memoized->second.exitBlock);
 		return;
@@ -732,9 +762,9 @@ void LazyTraceContext::traceRegion(std::function<void()>& regionFunction, const 
 	regionState().regionMemo[key] = RegionRecord {entry, exit};
 }
 
-std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& traceFunction,
-                                                        const engine::Options& options, Arena& arena) {
-	log::debug("Initialize Completing Tracing");
+std::unique_ptr<ExecutionTrace> TraceContext::trace(std::function<void()>& traceFunction,
+                                                    const engine::Options& options, Arena& arena) {
+	log::debug("Initialize Tracing");
 	auto rootAddress = __builtin_return_address(0);
 	auto tr = tracing::TagRecorder((tracing::TagAddress) rootAddress, arena);
 
@@ -743,7 +773,7 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	auto executionTrace = std::make_unique<ExecutionTrace>(arena);
 	SymbolicExecutionContext symbolicExecutionContext;
 
-	// Initialize LazyTraceContext with references to our objects
+	// Initialize TraceContext with references to our objects
 	auto tc = initialize(tr, *executionTrace, symbolicExecutionContext, options);
 	// Ensure the thread-local active tracer is cleared even if an exception
 	// (e.g. RuntimeException from ExecutionTrace or from the traced function)
@@ -768,14 +798,14 @@ std::unique_ptr<ExecutionTrace> LazyTraceContext::trace(std::function<void()>& t
 	return executionTrace;
 }
 
-std::unique_ptr<TraceModule> LazyTraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
-                                                     const engine::Options& options, Arena& arena) {
-	return completingTraceContext.startTrace(functions, options, arena);
+std::unique_ptr<TraceModule> TraceContext::Trace(std::list<compiler::CompilableFunction>& functions,
+                                                 const engine::Options& options, Arena& arena) {
+	return traceContext.startTrace(functions, options, arena);
 }
 
-std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
-                                                          const engine::Options& options, Arena& arena) {
-	log::debug("Initialize Lazy Tracing");
+std::unique_ptr<TraceModule> TraceContext::startTrace(std::list<compiler::CompilableFunction>& functions,
+                                                      const engine::Options& options, Arena& arena) {
+	log::debug("Initialize Tracing");
 	auto traceModule = std::make_unique<TraceModule>();
 	functionsToTrace = functions;
 	registeredFunctions.clear();
@@ -845,14 +875,14 @@ std::unique_ptr<TraceModule> LazyTraceContext::startTrace(std::list<compiler::Co
 	return traceModule;
 }
 
-void LazyTraceContext::allocateValRef(ValueRef ref) {
+void TraceContext::allocateValRef(ValueRef ref) {
 	if (paused_) {
 		return;
 	}
 	aliveVars.increment(ref);
 }
 
-void LazyTraceContext::freeValRef(ValueRef ref) {
+void TraceContext::freeValRef(ValueRef ref) {
 	if (paused_) {
 		return;
 	}
@@ -870,7 +900,7 @@ void LazyTraceContext::freeValRef(ValueRef ref) {
 	aliveVars.decrement(ref);
 }
 
-void LazyTraceContext::pushStaticVal(void* valPtr, size_t size) {
+void TraceContext::pushStaticVal(void* valPtr, size_t size) {
 	// Always maintain the static variable stack, even in passive mode.
 	// Static variables may have been pushed before entering passive mode,
 	// and their destructors will call popStaticVal after.
@@ -880,7 +910,7 @@ void LazyTraceContext::pushStaticVal(void* valPtr, size_t size) {
 	}
 }
 
-void LazyTraceContext::popStaticVal() {
+void TraceContext::popStaticVal() {
 	// Always maintain the static variable stack, even in passive mode.
 	if (!paused_ && log::options::getLogStaticVars()) {
 		log::info("popStaticVal: [{}] (popping last)", formatStaticVars());
@@ -888,7 +918,7 @@ void LazyTraceContext::popStaticVal() {
 	staticVars.pop_back();
 }
 
-std::string LazyTraceContext::formatStaticVars() const {
+std::string TraceContext::formatStaticVars() const {
 	std::string result;
 	for (size_t i = 0; i < staticVars.size(); i++) {
 		if (i > 0) {
@@ -899,7 +929,87 @@ std::string LazyTraceContext::formatStaticVars() const {
 	return result;
 }
 
-Snapshot LazyTraceContext::recordSnapshot() {
+Snapshot TraceContext::separateDivergedPath(Snapshot snapshot, Op op, std::span<const TypedValueRef> inputs) {
+	while (state->executionTrace.divergesFromRecorded(snapshot, op, inputs)) {
+		// Derived from the colliding snapshot, so replaying the same path always lands in the
+		// same namespace; `| 1` keeps it distinct from the initial namespace 0.
+		divergence_ = (std::hash<Snapshot>()(snapshot) ^ (divergence_ * 0x9e3779b97f4a7c15)) | 1;
+		snapshot = snapshot.withDivergence(divergence_);
+	}
+	return snapshot;
+}
+
+std::vector<TypedValueRef> TraceContext::withFnPtr(const TypedValueRef& fnPtr,
+                                                   const std::vector<TypedValueRef>& arguments) {
+	std::vector<TypedValueRef> inputs;
+	inputs.reserve(arguments.size() + 1);
+	inputs.push_back(fnPtr);
+	inputs.insert(inputs.end(), arguments.begin(), arguments.end());
+	return inputs;
+}
+
+std::string TraceContext::getMangledName(void* fnptr) {
+	if (const auto it = mangledNameCache.find(fnptr); it != mangledNameCache.end()) {
+		return it->second;
+	}
+
+	Dl_info info;
+	if (dladdr(fnptr, &info) != 0 && info.dli_sname != nullptr) {
+		mangledNameCache[fnptr] = info.dli_sname;
+		return info.dli_sname;
+	}
+	std::stringstream ss;
+	ss << fnptr;
+	std::string ptrStr = ss.str();
+	mangledNameCache[fnptr] = ptrStr;
+	return ptrStr;
+}
+
+std::string TraceContext::getFunctionName(void* fnptr, const std::string& mangledName) {
+	bool normalizeFunctionNames = state->options.getOptionOrDefault("engine.normalizeFunctionNames", false);
+
+	if (normalizeFunctionNames) {
+		auto it = state->normalizedFunctionNameCache.find(fnptr);
+		if (it != state->normalizedFunctionNameCache.end()) {
+			return "runtimeFunc" + std::to_string(it->second);
+		}
+		uint32_t index = state->nextNormalizedFunctionIndex++;
+		state->normalizedFunctionNameCache[fnptr] = index;
+		return "runtimeFunc" + std::to_string(index);
+	}
+
+	bool demangleFunctionNames = state->options.getOptionOrDefault("engine.demangleFunctionNames", true);
+
+	if (!demangleFunctionNames) {
+		return mangledName;
+	}
+
+	int status;
+	char* demangled = __cxxabiv1::__cxa_demangle(mangledName.c_str(), nullptr, nullptr, &status);
+	if (status == 0 && demangled != nullptr) {
+		std::string result(demangled);
+		std::free(demangled);
+		return result;
+	}
+
+	return mangledName;
+}
+
+constexpr size_t fnv_prime = 0x100000001b3;
+constexpr size_t offset_basis = 0xcbf29ce484222325;
+
+uint64_t hashStaticVector(const std::vector<StaticVarHolder>& data) {
+	size_t hash = offset_basis;
+	for (auto& entry : data) {
+		uint64_t val = 0;
+		std::memcpy(&val, entry.ptr, entry.size);
+		hash ^= val;
+		hash *= fnv_prime;
+	}
+	return hash;
+}
+
+Snapshot TraceContext::recordSnapshot() {
 	return {state->tagRecorder.createTag(), hashStaticVector(staticVars) ^ aliveVars.hash(), divergence_};
 }
 

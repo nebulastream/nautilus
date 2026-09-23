@@ -96,7 +96,7 @@ TEST_CASE("OstreamTest - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("OstreamTest - Compiler") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runOstreamTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runOstreamTest(engine); }, false);
 }
 #endif
 } // namespace nautilus::engine

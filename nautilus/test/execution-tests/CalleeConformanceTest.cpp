@@ -281,14 +281,13 @@ TEST_CASE("Callee Conformance Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Callee Conformance Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { calleeConformanceTests(engine); },
-	    [](engine::Options& options) {
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-		    }
-	    });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { calleeConformanceTests(engine); }, false,
+	                                  [](engine::Options& options) {
+		                                  if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
+			                                  options.setOption("engine.Compilation", true);
+			                                  options.setOption("mlir.enableMultithreading", false);
+		                                  }
+	                                  });
 }
 #endif
 

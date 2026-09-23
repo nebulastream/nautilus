@@ -91,7 +91,6 @@ val<uint64_t> ui32Identity(val<uint32_t> x) {
 engine::NautilusEngine makeAsmJitEngine(bool enablePeephole) {
 	return nautilus::testing::makeEngine("asmjit", [enablePeephole](engine::Options& opts) {
 		opts.setOption("asmjit.enablePostRAPeephole", enablePeephole);
-		opts.setOption("engine.traceMode", "lazyTracing");
 		// The explicit backend set by makeEngine forces single-tier
 		// compilation, so the asmjit peephole stats land on the same
 		// executable we query here (no background tier-1 promotion).

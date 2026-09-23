@@ -18,8 +18,7 @@
 #include <nautilus/compiler/ir/passes/IRPassManager.hpp>
 #include <nautilus/function.hpp>
 #include <nautilus/nautilus_function.hpp>
-#include <nautilus/tracing/ExceptionBasedTraceContext.hpp>
-#include <nautilus/tracing/LazyTraceContext.hpp>
+#include <nautilus/tracing/TraceContext.hpp>
 #include <nautilus/tracing/TracingUtil.hpp>
 #include <nautilus/tracing/phases/SSACreationPhase.hpp>
 #include <nautilus/tracing/phases/TraceToIRConversionPhase.hpp>
@@ -423,12 +422,11 @@ val<int32_t> nestedCallInLoopWithBodyStruct(val<int32_t> iterations) {
 	return sum;
 }
 
-engine::NautilusEngine makeMlirEngine(const std::string& traceMode) {
+engine::NautilusEngine makeMlirEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("mlir"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	options.setOption("mlir.enableMultithreading", false);
 	return engine::NautilusEngine {options};
 }
@@ -439,12 +437,11 @@ engine::NautilusEngine makeInterpreterEngine() {
 	return engine::NautilusEngine {options};
 }
 
-engine::NautilusEngine makeCppEngine(const std::string& traceMode) {
+engine::NautilusEngine makeCppEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("cpp"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
 
@@ -452,23 +449,21 @@ engine::NautilusEngine makeCppEngine(const std::string& traceMode) {
 // both their backend option and ENABLE_TRACING are on. Guard them identically
 // so a TRACING=OFF / backend-off build doesn't trip -Werror=unused-function.
 #ifdef ENABLE_BC_BACKEND
-engine::NautilusEngine makeBcEngine(const std::string& traceMode) {
+engine::NautilusEngine makeBcEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("bc"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
 #endif // ENABLE_BC_BACKEND
 
 #ifdef ENABLE_TBC_BACKEND
-engine::NautilusEngine makeTbcEngine(const std::string& traceMode) {
+engine::NautilusEngine makeTbcEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("tbc"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
 
@@ -477,25 +472,23 @@ engine::NautilusEngine makeTbcEngine(const std::string& traceMode) {
 // exceptions through VMContext::pendingException and the entry shim rethrows --
 // a different mechanism from the interpreter's, and therefore worth its own
 // peer here rather than trusting the interpreter's result to cover it.
-engine::NautilusEngine makeTbcJitEngine(const std::string& traceMode) {
+engine::NautilusEngine makeTbcJitEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("tbc"));
 	options.setOption("tbc.mode", std::string("jit"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
 #endif // ENABLE_TBC_JIT
 #endif // ENABLE_TBC_BACKEND
 
 #if defined(ENABLE_ASMJIT_BACKEND)
-engine::NautilusEngine makeAsmJitEngine(const std::string& traceMode) {
+engine::NautilusEngine makeAsmJitEngine() {
 	engine::Options options;
 	options.setOption("engine.Compilation", true);
 	options.setOption("engine.backend", std::string("asmjit"));
 	options.setOption("engine.compilationStrategy", std::string("legacy"));
-	options.setOption("engine.traceMode", traceMode);
 	return engine::NautilusEngine {options};
 }
 #endif // ENABLE_ASMJIT_BACKEND
@@ -508,7 +501,7 @@ struct BackendSpec {
 	/// Section name. May be a pseudo-backend such as "tbc-jit", which is a
 	/// backend plus an option rather than a registry entry.
 	std::string name;
-	engine::NautilusEngine (*makeEngine)(const std::string&);
+	engine::NautilusEngine (*makeEngine)();
 	/// CompilationBackendRegistry key, for the tests that drive a backend
 	/// directly instead of going through an engine. Differs from `name` for
 	/// pseudo-backends.
@@ -549,15 +542,11 @@ std::vector<BackendSpec> exceptionBackends() {
 TEST_CASE("invokes unwind live val<Struct> destructors across backends") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingWithStruct);
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 1);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingWithStruct);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
 		}
 	}
 }
@@ -569,7 +558,6 @@ TEST_CASE("invokes in a loop unwind a struct declared before the loop across bac
 			options.setOption("engine.Compilation", true);
 			options.setOption("engine.backend", backend.registryName);
 			options.setOption("engine.compilationStrategy", std::string("legacy"));
-			options.setOption("engine.traceMode", std::string("lazyTracing"));
 			options.setOption("ir.verifyAfterEachPass", true);
 			options.setOption("ir.failOnVerifyError", true);
 			if (backend.compileOptions != nullptr) {
@@ -591,7 +579,7 @@ TEST_CASE("invokes in a loop unwind a struct declared before the loop across bac
 }
 
 TEST_CASE("noexcept MLIR invokes retain the direct call path") {
-	auto engine = makeMlirEngine("lazyTracing");
+	auto engine = makeMlirEngine();
 	auto function = engine.registerFunction(invokeNoexceptWithStruct);
 	destructorCalls = 0;
 	REQUIRE(function() == 42);
@@ -601,7 +589,7 @@ TEST_CASE("noexcept MLIR invokes retain the direct call path") {
 TEST_CASE("exceptional cleanups run in reverse construction order across backends") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			auto engine = backend.makeEngine("lazyTracing");
+			auto engine = backend.makeEngine();
 			auto function = engine.registerFunction(invokeThrowingWithTwoStructs);
 			destructorCalls = 0;
 			REQUIRE_THROWS_AS(function(), std::runtime_error);
@@ -624,87 +612,70 @@ TEST_CASE("interpreter invokes use native C++ exception unwinding") {
 // backends/bc/BCExceptionDispatchTest.cpp instead of here.
 
 TEST_CASE("throwing invokes without live structs retain exception handling") {
-	using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-	                                                          const engine::Options&, common::Arena&);
-	for (const auto& [traceMode, traceFn] :
-	     {std::pair {"exceptionBasedTracing", TraceFn {tracing::ExceptionBasedTraceContext::Trace}},
-	      std::pair {"lazyTracing", TraceFn {tracing::LazyTraceContext::Trace}}}) {
-		DYNAMIC_SECTION(traceMode) {
-			common::Arena arena;
-			std::list<compiler::CompilableFunction> functions;
-			functions.emplace_back("execute", [] { (void) invokeThrowingWithoutStruct(); });
-			auto module = traceFn(functions, engine::Options {}, arena);
-			auto* trace = module->getFunction("execute");
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back("execute", [] { (void) invokeThrowingWithoutStruct(); });
+	auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+	auto* trace = module->getFunction("execute");
 
-			auto exceptionCalls = size_t {0};
-			for (const auto* block : trace->getBlocks()) {
-				for (const auto* operation : block->operations) {
-					if (operation->op == tracing::Op::CALL_WITH_EXCEPTION_HANDLING) {
-						const auto* call = std::get<tracing::FunctionCall*>(operation->input[0]);
-						REQUIRE(call->destructors.empty());
-						++exceptionCalls;
-					}
-				}
+	auto exceptionCalls = size_t {0};
+	for (const auto* block : trace->getBlocks()) {
+		for (const auto* operation : block->operations) {
+			if (operation->op == tracing::Op::CALL_WITH_EXCEPTION_HANDLING) {
+				const auto* call = std::get<tracing::FunctionCall*>(operation->input[0]);
+				REQUIRE(call->destructors.empty());
+				++exceptionCalls;
 			}
-			REQUIRE(exceptionCalls == 1);
-
-			auto engine = makeMlirEngine(traceMode);
-			auto function = engine.registerFunction(invokeThrowingWithoutStruct);
-			REQUIRE_THROWS_AS(function(), std::runtime_error);
 		}
 	}
+	REQUIRE(exceptionCalls == 1);
+
+	auto engine = makeMlirEngine();
+	auto function = engine.registerFunction(invokeThrowingWithoutStruct);
+	REQUIRE_THROWS_AS(function(), std::runtime_error);
 }
 
 TEST_CASE("indirect invokes carry live struct destructors through trace and IR") {
-	using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-	                                                          const engine::Options&, common::Arena&);
-	for (const auto& [traceMode, traceFn] :
-	     {std::pair {"exceptionBasedTracing", TraceFn {tracing::ExceptionBasedTraceContext::Trace}},
-	      std::pair {"lazyTracing", TraceFn {tracing::LazyTraceContext::Trace}}}) {
-		DYNAMIC_SECTION(traceMode) {
-			common::Arena arena;
-			std::list<compiler::CompilableFunction> functions;
-			functions.emplace_back("execute", [] {
-				val<ExceptionResult> result;
-				auto& fnPtrRef = tracing::traceConstant(
-				    Type::ptr, tracing::createConstLiteral(reinterpret_cast<void*>(&throwWhileWriting)));
-				std::vector<tracing::TypedValueRef> arguments;
-				tracing::traceIndirectCallWithExceptionHandling(
-				    fnPtrRef, Type::v, arguments, {},
-				    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, ExceptionResult*, int32_t>));
-			});
-			auto module = traceFn(functions, engine::Options {}, arena);
-			auto* trace = module->getFunction("execute");
+	common::Arena arena;
+	std::list<compiler::CompilableFunction> functions;
+	functions.emplace_back("execute", [] {
+		val<ExceptionResult> result;
+		auto& fnPtrRef =
+		    tracing::traceConstant(Type::ptr, tracing::createConstLiteral(reinterpret_cast<void*>(&throwWhileWriting)));
+		std::vector<tracing::TypedValueRef> arguments;
+		tracing::traceIndirectCallWithExceptionHandling(
+		    fnPtrRef, Type::v, arguments, {},
+		    reinterpret_cast<void*>(&compiler::captureThrowingCall<void, ExceptionResult*, int32_t>));
+	});
+	auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
+	auto* trace = module->getFunction("execute");
 
-			auto indirectEhCalls = size_t {0};
-			for (const auto* block : trace->getBlocks()) {
-				for (const auto* operation : block->operations) {
-					if (operation->op == tracing::Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING) {
-						const auto* call = std::get<tracing::IndirectFunctionCall*>(operation->input[0]);
-						REQUIRE(call->destructors.size() == 1);
-						++indirectEhCalls;
-					}
-				}
+	auto indirectEhCalls = size_t {0};
+	for (const auto* block : trace->getBlocks()) {
+		for (const auto* operation : block->operations) {
+			if (operation->op == tracing::Op::INDIRECT_CALL_WITH_EXCEPTION_HANDLING) {
+				const auto* call = std::get<tracing::IndirectFunctionCall*>(operation->input[0]);
+				REQUIRE(call->destructors.size() == 1);
+				++indirectEhCalls;
 			}
-			REQUIRE(indirectEhCalls == 1);
-
-			auto ir = tracing::TraceToIRConversionPhase().apply(std::move(module));
-			auto irIndirectEhCalls = size_t {0};
-			for (const auto* functionOperation : ir->getFunctionOperations()) {
-				for (const auto* block : functionOperation->getBasicBlocks()) {
-					for (const auto* operation : block->getOperations()) {
-						if (const auto* indirect =
-						        compiler::ir::dyn_cast<compiler::ir::IndirectCallOperation>(operation)) {
-							REQUIRE(indirect->requiresExceptionHandling());
-							REQUIRE(indirect->getDestructors().size() == 1);
-							++irIndirectEhCalls;
-						}
-					}
-				}
-			}
-			REQUIRE(irIndirectEhCalls == 1);
 		}
 	}
+	REQUIRE(indirectEhCalls == 1);
+
+	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(module));
+	auto irIndirectEhCalls = size_t {0};
+	for (const auto* functionOperation : ir->getFunctionOperations()) {
+		for (const auto* block : functionOperation->getBasicBlocks()) {
+			for (const auto* operation : block->getOperations()) {
+				if (const auto* indirect = compiler::ir::dyn_cast<compiler::ir::IndirectCallOperation>(operation)) {
+					REQUIRE(indirect->requiresExceptionHandling());
+					REQUIRE(indirect->getDestructors().size() == 1);
+					++irIndirectEhCalls;
+				}
+			}
+		}
+	}
+	REQUIRE(irIndirectEhCalls == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -733,15 +704,11 @@ val<int32_t> invokeVoidThrowing() {
 TEST_CASE("no-struct throwing call propagates across backends") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingWithoutStruct);
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 0);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingWithoutStruct);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 0);
 		}
 	}
 }
@@ -749,17 +716,13 @@ TEST_CASE("no-struct throwing call propagates across backends") {
 TEST_CASE("operations after a throwing call are not executed") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingThenMark);
-					postInvokeCounter = 0;
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 1);
-					REQUIRE(postInvokeCounter == 0);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingThenMark);
+			postInvokeCounter = 0;
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
+			REQUIRE(postInvokeCounter == 0);
 		}
 	}
 }
@@ -767,13 +730,9 @@ TEST_CASE("operations after a throwing call are not executed") {
 TEST_CASE("void-returning throw propagates across backends") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeVoidThrowing);
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeVoidThrowing);
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
 		}
 	}
 }
@@ -782,10 +741,7 @@ TEST_CASE("void-returning throw propagates across backends") {
 // Indirect-call execution tests (deferred from Task 5)
 // ---------------------------------------------------------------------------
 
-using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&, common::Arena&);
-
-std::shared_ptr<compiler::ir::IRGraph> traceIndirectThrowIR(TraceFn traceFn) {
+std::shared_ptr<compiler::ir::IRGraph> traceIndirectThrowIR() {
 	common::Arena arena;
 	std::list<compiler::CompilableFunction> functions;
 	functions.emplace_back("execute", [] {
@@ -800,7 +756,7 @@ std::shared_ptr<compiler::ir::IRGraph> traceIndirectThrowIR(TraceFn traceFn) {
 		}
 		tracing::traceReturnOperation(Type::v, tracing::TypedValueRef {});
 	});
-	auto module = traceFn(functions, engine::Options {}, arena);
+	auto module = tracing::TraceContext::Trace(functions, engine::Options {}, arena);
 	auto afterSSA = tracing::SSACreationPhase().apply(std::shared_ptr<tracing::TraceModule>(std::move(module)));
 	auto ir = tracing::TraceToIRConversionPhase().apply(std::move(afterSSA));
 	engine::Options passOpts;
@@ -811,33 +767,24 @@ std::shared_ptr<compiler::ir::IRGraph> traceIndirectThrowIR(TraceFn traceFn) {
 }
 
 TEST_CASE("indirect throwing invokes unwind destructors across backends") {
-	using BackendList = std::vector<std::pair<std::string, TraceFn>>;
-	const BackendList traceModes {
-	    {"exceptionBasedTracing", tracing::ExceptionBasedTraceContext::Trace},
-	    {"lazyTracing", tracing::LazyTraceContext::Trace},
-	};
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& [traceMode, traceFn] : traceModes) {
-				DYNAMIC_SECTION(traceMode) {
-					auto ir = traceIndirectThrowIR(traceFn);
-					auto* compilationBackend =
-					    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.registryName);
-					// DumpHandler stores Options by reference, so the options must
-					// outlive the compile() call (no temporaries here).
-					engine::Options dumpOptions;
-					compiler::DumpHandler dumpHandler(dumpOptions, "indirect-throw-test");
-					engine::Options compileOptions;
-					if (backend.compileOptions != nullptr) {
-						backend.compileOptions(compileOptions);
-					}
-					auto executable = compilationBackend->compile(ir, dumpHandler, compileOptions, nullptr);
-					auto function = executable->getInvocableMember<void>("execute");
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 1);
-				}
+			auto ir = traceIndirectThrowIR();
+			auto* compilationBackend =
+			    compiler::CompilationBackendRegistry::getInstance()->getBackend(backend.registryName);
+			// DumpHandler stores Options by reference, so the options must
+			// outlive the compile() call (no temporaries here).
+			engine::Options dumpOptions;
+			compiler::DumpHandler dumpHandler(dumpOptions, "indirect-throw-test");
+			engine::Options compileOptions;
+			if (backend.compileOptions != nullptr) {
+				backend.compileOptions(compileOptions);
 			}
+			auto executable = compilationBackend->compile(ir, dumpHandler, compileOptions, nullptr);
+			auto function = executable->getInvocableMember<void>("execute");
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
 		}
 	}
 }
@@ -850,15 +797,11 @@ TEST_CASE("indirect throwing invokes unwind destructors across backends") {
 TEST_CASE("nested Nautilus throw cleans outer live struct") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(nestedOuter);
-					nestedDtorCalls = 0;
-					REQUIRE_THROWS_AS(function(7), std::runtime_error);
-					REQUIRE(nestedDtorCalls == 1);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(nestedOuter);
+			nestedDtorCalls = 0;
+			REQUIRE_THROWS_AS(function(7), std::runtime_error);
+			REQUIRE(nestedDtorCalls == 1);
 		}
 	}
 }
@@ -866,15 +809,11 @@ TEST_CASE("nested Nautilus throw cleans outer live struct") {
 TEST_CASE("noexcept nested Nautilus call stays on the direct path") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(nestedNoexceptOuter);
-					nestedDtorCalls = 0;
-					REQUIRE(function(42) == 42);
-					REQUIRE(nestedDtorCalls == 1);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(nestedNoexceptOuter);
+			nestedDtorCalls = 0;
+			REQUIRE(function(42) == 42);
+			REQUIRE(nestedDtorCalls == 1);
 		}
 	}
 }
@@ -882,17 +821,13 @@ TEST_CASE("noexcept nested Nautilus call stays on the direct path") {
 TEST_CASE("inlined nested function keeps its landing pad valid") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(landingPadOuter);
-					nestedDtorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					// The inner struct's normal scope exit plus the middle
-					// struct's cleanup on unwind.
-					REQUIRE(nestedDtorCalls == 2);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(landingPadOuter);
+			nestedDtorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			// The inner struct's normal scope exit plus the middle
+			// struct's cleanup on unwind.
+			REQUIRE(nestedDtorCalls == 2);
 		}
 	}
 }
@@ -915,33 +850,24 @@ void checkAllCleanupChains(engine::NautilusEngine& engine, std::integer_sequence
 TEST_CASE("four-level nested chain unwinds every combination of landing pads") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
-				}
-			}
+			auto engine = backend.makeEngine();
+			checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
 		}
 	}
 }
 
 #ifdef ENABLE_MLIR_BACKEND
 TEST_CASE("four-level nested chain unwinds without the MLIR inliner") {
-	for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-		DYNAMIC_SECTION(traceMode) {
-			engine::Options options;
-			options.setOption("engine.Compilation", true);
-			options.setOption("engine.backend", std::string("mlir"));
-			options.setOption("engine.compilationStrategy", std::string("legacy"));
-			options.setOption("engine.traceMode", traceMode);
-			options.setOption("mlir.enableMultithreading", false);
-			// debug=true is the switch that skips the MLIR inliner, keeping
-			// every level its own llvm.func.
-			options.setOption("debug", true);
-			engine::NautilusEngine engine {options};
-			checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
-		}
-	}
+	engine::Options options;
+	options.setOption("engine.Compilation", true);
+	options.setOption("engine.backend", std::string("mlir"));
+	options.setOption("engine.compilationStrategy", std::string("legacy"));
+	options.setOption("mlir.enableMultithreading", false);
+	// debug=true is the switch that skips the MLIR inliner, keeping
+	// every level its own llvm.func.
+	options.setOption("debug", true);
+	engine::NautilusEngine engine {options};
+	checkAllCleanupChains(engine, std::make_integer_sequence<uint32_t, 16> {});
 }
 #endif
 
@@ -952,20 +878,16 @@ TEST_CASE("four-level nested chain unwinds without the MLIR inliner") {
 TEST_CASE("moving a live struct preserves reverse construction order") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingAfterMove);
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 2);
-					// `second` was constructed after `first`/`movedInto`'s storage, so
-					// it must be destroyed first; `movedInto` (== first's original
-					// storage) destructs second, in its original construction-order slot.
-					REQUIRE(destructorValues[0] == 2);
-					REQUIRE(destructorValues[1] == 1);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingAfterMove);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 2);
+			// `second` was constructed after `first`/`movedInto`'s storage, so
+			// it must be destroyed first; `movedInto` (== first's original
+			// storage) destructs second, in its original construction-order slot.
+			REQUIRE(destructorValues[0] == 2);
+			REQUIRE(destructorValues[1] == 1);
 		}
 	}
 }
@@ -977,19 +899,15 @@ TEST_CASE("moving a live struct preserves reverse construction order") {
 TEST_CASE("move assignment does not leave a stale cleanup") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingAfterMoveAssignedScope);
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					// The assignment destroys destination's old value (1); the moved
-					// value (2) is destroyed once at scope exit, not again by the throw.
-					REQUIRE(destructorCalls == 2);
-					REQUIRE(destructorValues[0] == 1);
-					REQUIRE(destructorValues[1] == 2);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingAfterMoveAssignedScope);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			// The assignment destroys destination's old value (1); the moved
+			// value (2) is destroyed once at scope exit, not again by the throw.
+			REQUIRE(destructorCalls == 2);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 2);
 		}
 	}
 }
@@ -997,18 +915,14 @@ TEST_CASE("move assignment does not leave a stale cleanup") {
 TEST_CASE("move assignment preserves reverse construction order") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeThrowingAfterMoveAssign);
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(), std::runtime_error);
-					REQUIRE(destructorCalls == 3);
-					REQUIRE(destructorValues[0] == 1);
-					REQUIRE(destructorValues[1] == 3);
-					REQUIRE(destructorValues[2] == 2);
-				}
-			}
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeThrowingAfterMoveAssign);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(), std::runtime_error);
+			REQUIRE(destructorCalls == 3);
+			REQUIRE(destructorValues[0] == 1);
+			REQUIRE(destructorValues[1] == 3);
+			REQUIRE(destructorValues[2] == 2);
 		}
 	}
 }
@@ -1023,35 +937,30 @@ TEST_CASE("move assignment preserves reverse construction order") {
 TEST_CASE("an executable is reusable after a call throws") {
 	for (const auto& backend : exceptionBackends()) {
 		DYNAMIC_SECTION(backend.name) {
-			for (const auto& traceMode : {std::string("exceptionBasedTracing"), std::string("lazyTracing")}) {
-				DYNAMIC_SECTION(traceMode) {
-					auto engine = backend.makeEngine(traceMode);
-					auto function = engine.registerFunction(invokeMaybeThrowingWithStruct);
+			auto engine = backend.makeEngine();
+			auto function = engine.registerFunction(invokeMaybeThrowingWithStruct);
 
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(1), std::runtime_error);
-					REQUIRE(destructorCalls == 1);
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(1), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
 
-					// Same function object, called again: must run normally, not
-					// inherit or rethrow anything left over from the first call.
-					destructorCalls = 0;
-					REQUIRE(function(0) == 7);
-					REQUIRE(destructorCalls == 1);
+			// Same function object, called again: must run normally, not
+			// inherit or rethrow anything left over from the first call.
+			destructorCalls = 0;
+			REQUIRE(function(0) == 7);
+			REQUIRE(destructorCalls == 1);
 
-					// And a third call confirms the second call's frame was popped
-					// cleanly too, not just the first's.
-					destructorCalls = 0;
-					REQUIRE_THROWS_AS(function(1), std::runtime_error);
-					REQUIRE(destructorCalls == 1);
-				}
-			}
+			// And a third call confirms the second call's frame was popped
+			// cleanly too, not just the first's.
+			destructorCalls = 0;
+			REQUIRE_THROWS_AS(function(1), std::runtime_error);
+			REQUIRE(destructorCalls == 1);
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Control flow, exception types and threads, under the default lazyTracing
-// mode. Beyond the single-tier backends this covers the interpreter, the
+// Control flow, exception types and threads. Beyond the single-tier backends this covers the interpreter, the
 // default tiered engine (no backend pinned, so tier 0 runs first and tier 1
 // is promoted in the background), and MLIR with the optional IR passes on.
 // ---------------------------------------------------------------------------
@@ -1060,16 +969,15 @@ struct EngineConfig {
 	std::function<engine::NautilusEngine()> makeEngine;
 };
 
-std::vector<EngineConfig> lazyTracingConfigs() {
+std::vector<EngineConfig> engineConfigs() {
 	std::vector<EngineConfig> configs;
 	for (const auto& backend : exceptionBackends()) {
-		configs.push_back({backend.name, [makeEngine = backend.makeEngine] { return makeEngine("lazyTracing"); }});
+		configs.push_back({backend.name, backend.makeEngine});
 	}
 	configs.push_back({"interpreter", makeInterpreterEngine});
 	configs.push_back({"tiered", [] {
 		                   engine::Options options;
 		                   options.setOption("engine.Compilation", true);
-		                   options.setOption("engine.traceMode", std::string("lazyTracing"));
 		                   return engine::NautilusEngine {options};
 	                   }});
 #ifdef ENABLE_MLIR_BACKEND
@@ -1077,7 +985,6 @@ std::vector<EngineConfig> lazyTracingConfigs() {
 		                   engine::Options options;
 		                   options.setOption("engine.Compilation", true);
 		                   options.setOption("engine.backend", std::string("mlir"));
-		                   options.setOption("engine.traceMode", std::string("lazyTracing"));
 		                   options.setOption("mlir.enableMultithreading", false);
 		                   options.setOption("ir.enableLocalCSE", true);
 		                   options.setOption("ir.enableLICM", true);
@@ -1091,8 +998,8 @@ std::vector<EngineConfig> lazyTracingConfigs() {
 }
 
 template <typename Body>
-void forEachLazyTracingConfig(Body&& body) {
-	for (const auto& config : lazyTracingConfigs()) {
+void forEachEngineConfig(Body&& body) {
+	for (const auto& config : engineConfigs()) {
 		DYNAMIC_SECTION(config.name) {
 			auto engine = config.makeEngine();
 			body(engine);
@@ -1101,7 +1008,7 @@ void forEachLazyTracingConfig(Body&& body) {
 }
 
 TEST_CASE("throw sites with different live structs clean up only their own") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(twoThrowSites);
 
 		scopeDtorCalls = 0;
@@ -1122,7 +1029,7 @@ TEST_CASE("throw sites with different live structs clean up only their own") {
 }
 
 TEST_CASE("a struct declared in a loop body is cleaned up on the throwing iteration") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(structInLoopBody);
 
 		scopeDtorCalls = 0;
@@ -1139,7 +1046,7 @@ TEST_CASE("a struct declared in a loop body is cleaned up on the throwing iterat
 }
 
 TEST_CASE("a struct that left scope before the throw is not destroyed twice") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(structOutOfScopeBeforeThrow);
 		scopeDtorCalls = 0;
 		REQUIRE_THROWS_AS(function(), std::runtime_error);
@@ -1148,7 +1055,7 @@ TEST_CASE("a struct that left scope before the throw is not destroyed twice") {
 }
 
 TEST_CASE("a struct live on one branch is cleaned up only on that branch") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(structOnOneBranch);
 
 		scopeDtorCalls = 0;
@@ -1162,7 +1069,7 @@ TEST_CASE("a struct live on one branch is cleaned up only on that branch") {
 }
 
 TEST_CASE("a throwing call with a result unwinds or returns its value") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(throwingCallWithResult);
 
 		scopeDtorCalls = 0;
@@ -1176,7 +1083,7 @@ TEST_CASE("a throwing call with a result unwinds or returns its value") {
 }
 
 TEST_CASE("the thrown exception's type and payload reach the caller") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		SECTION("custom exception type") {
 			auto function = engine.registerFunction(throwCustomErrorWithStruct);
 			scopeDtorCalls = 0;
@@ -1213,7 +1120,7 @@ TEST_CASE("the thrown exception's type and payload reach the caller") {
 }
 
 TEST_CASE("a nested call throwing inside a loop cleans up both frames") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		SECTION("struct declared before the loop") {
 			auto function = engine.registerFunction(nestedCallInLoop);
 
@@ -1244,7 +1151,7 @@ TEST_CASE("a nested call throwing inside a loop cleans up both frames") {
 }
 
 TEST_CASE("threads throwing concurrently each clean up their own structs") {
-	forEachLazyTracingConfig([](engine::NautilusEngine& engine) {
+	forEachEngineConfig([](engine::NautilusEngine& engine) {
 		auto function = engine.registerFunction(twoThrowSites);
 		constexpr int threadCount = 4;
 		constexpr int iterations = 200;

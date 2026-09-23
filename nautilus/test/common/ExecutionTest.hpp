@@ -85,7 +85,7 @@ inline engine::NautilusEngine makeEngine(const std::string& backend, const Optio
 // Runs `body(engine)` once per available backend (and once for the interpreter
 // when `include_interpreter` is true), each inside its own Catch2
 // DYNAMIC_SECTION named after the backend. `tweak` lets callers layer extra
-// options (e.g. trace mode, mlir intrinsics) on top of the defaults.
+// options (e.g. mlir intrinsics) on top of the defaults.
 template <typename Body>
 inline void forEachBackend(Body&& body, bool include_interpreter = true, const OptionsTweak& tweak = {},
                            bool include_asmjit = true) {
@@ -103,33 +103,6 @@ inline void forEachBackend(Body&& body, bool include_interpreter = true, const O
 		}
 	}
 #else
-	(void) include_asmjit;
-#endif
-}
-
-// Like forEachBackend, but additionally cycles through the supported tracing
-// modes (exceptionBasedTracing, lazyTracing) for every backend. The
-// interpreter does not trace and is therefore skipped.
-template <typename Body>
-inline void forEachBackendWithTraceMode(Body&& body, const OptionsTweak& tweak = {}, bool include_asmjit = true) {
-#ifdef ENABLE_TRACING
-	static const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
-	for (const auto& backend : availableBackends(include_asmjit)) {
-		for (const auto& traceMode : traceModes) {
-			DYNAMIC_SECTION(backend + "_" + traceMode) {
-				auto engine = makeEngine(backend, [&](engine::Options& opts) {
-					opts.setOption("engine.traceMode", traceMode);
-					if (tweak) {
-						tweak(opts);
-					}
-				});
-				body(engine);
-			}
-		}
-	}
-#else
-	(void) body;
-	(void) tweak;
 	(void) include_asmjit;
 #endif
 }

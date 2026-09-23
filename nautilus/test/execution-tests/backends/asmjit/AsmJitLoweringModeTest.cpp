@@ -201,7 +201,6 @@ engine::NautilusEngine makeAsmJitEngine(bool enableBranchFusion, bool enableCons
 		    opts.setOption("asmjit.enableBranchFusion", enableBranchFusion);
 		    opts.setOption("asmjit.enableConstFolding", enableConstFolding);
 		    opts.setOption("asmjit.enableSelectCmov", enableSelectCmov);
-		    opts.setOption("engine.traceMode", "lazyTracing");
 		    // The explicit backend set by makeEngine forces single-tier
 		    // compilation, so stats land on the same executable we query
 		    // here (see PostRAPeepholeTest for details).

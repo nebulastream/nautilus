@@ -220,20 +220,19 @@ TEST_CASE("Cast Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Cast Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { castTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { castTest(engine); }, false);
 }
 
 TEST_CASE("Pointer Cast Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { ptrCastTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { ptrCastTest(engine); }, false);
 }
 
 TEST_CASE("Narrowing Cast Sign Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { narrowCastSignTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { narrowCastSignTest(engine); }, false);
 }
 
 TEST_CASE("Float To Unsigned Cast Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { floatToUnsignedCastTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { floatToUnsignedCastTest(engine); }, false);
 }
 #endif
 } // namespace nautilus::engine

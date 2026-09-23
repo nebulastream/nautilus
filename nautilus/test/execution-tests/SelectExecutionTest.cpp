@@ -137,7 +137,7 @@ TEST_CASE("Select Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Select Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { selectTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { selectTest(engine); }, false);
 }
 #endif
 } // namespace nautilus::engine

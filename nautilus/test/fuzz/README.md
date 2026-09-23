@@ -861,7 +861,7 @@ tolerance-filter bug below is worked around):
    whose AST mixes `Kind::If`, a `StaticLoop`, and a `Kind::Call`. In a Debug
    build (asserts compiled in) the same underlying inconsistency instead
    tripped an earlier `assert(currentOperation.op == op)` in
-   `LazyTraceContext::follow` (`LazyTraceContext.cpp`) before this exception
+   `TraceContext::follow` (`TraceContext.cpp`) before this exception
    was ever thrown; CI built Release (`NDEBUG` defined, `pr.yml`), where only
    this catchable exception was observable, so it never blocked CI.
 
@@ -871,7 +871,7 @@ tolerance-filter bug below is worked around):
    (((((i16)(((p0 > ((p0 >= (1.6652564597907199e-37f32 / 3.1431495184364167e-09f32)) ? 1 : 0)) ? 1 : 0)) >= ((loop(count=mix(((mem == mem) ? 1 : 0), ((mem != mem) ? 1 : 0)), init=(f32)((-5.8244682405710905e+27f32 / p1)), body=(0f32 + 0f32)) <= 0f32) ? 1 : 0)) ? 1 : 0) == 0f32) ? 1 : 0)
    ```
 
-   `traceConstant`/`traceCopy` (`LazyTraceContext.cpp`) each have a
+   `traceConstant`/`traceCopy` (`TraceContext.cpp`) each have a
    globalTagMap-collision branch (added for issue #95) that records a
    *reconciliation* `ASSIGN` immediately after the primary operation, sharing
    its exact tag, so that a stale value ref from an earlier,
@@ -882,7 +882,7 @@ tolerance-filter bug below is worked around):
    pointer-domain evaluator (`evalNautilusPtr`, a single shared call site for
    every `Kind::PtrBase` leaf anywhere in the AST) -- collided onto the same
    Tag/Snapshot, since both hit the identical call-stack shape with an
-   identical alive-variable footprint. `LazyTraceContext::follow()`, used to
+   identical alive-variable footprint. `TraceContext::follow()`, used to
    replay that call site on the second symbolic-execution iteration
    (triggered by the outer `If`), only ever consumed **one** recorded
    operation per call, so it silently drifted one entry behind the recorded

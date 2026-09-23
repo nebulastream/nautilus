@@ -364,14 +364,14 @@ val<bool> issue384_evalCmp(bool wantEq, val<float*> mem) {
 // Regression (differential fuzzer, issue #384): traceConstant/traceCopy's
 // globalTagMap-collision branch (added for issue #95) folds a primary
 // operation plus a same-tagged reconciliation ASSIGN into a single call, but
-// LazyTraceContext::follow() only ever consumed one recorded operation per
+// TraceContext::follow() only ever consumed one recorded operation per
 // call when replaying that call site on a later symbolic-execution
 // iteration. The two `issue384_copyBasePtr(mem)` calls below collide onto
 // the same tag (identical call-stack shape, identical alive-variable set),
 // tripping that reconciliation path during recording; the `if` beneath
 // forces a second, FOLLOW-mode trace iteration that replays this code and
 // used to desynchronize the follow() cursor, corrupting every operation
-// after it in the block (a Debug assert in LazyTraceContext::follow, or
+// after it in the block (a Debug assert in TraceContext::follow, or
 // "std::get: wrong index for variant" in Release).
 val<float> issue384_traceFollowDesync(val<float*> mem, val<float> p0) {
 	val<float> acc = 0.0f;
@@ -400,7 +400,7 @@ uint32_t issue382_sum3(uint32_t a, uint32_t b, uint32_t c) noexcept {
 // (TagRecorder.cpp) plus the alive-variable footprint, so slot 2's
 // assignment reaches the identical tag already recorded for slot 0's
 // assignment -- despite writing to a *different* target. Before the fix,
-// LazyTraceContext::traceAssignment treated any tag match as a genuine
+// TraceContext::traceAssignment treated any tag match as a genuine
 // control-flow re-entry and forced a control-flow merge back into the if's
 // own condition block, discarding the call and the return that should have
 // followed; SSACreationPhase::getReturnBlock then found no Return operation
