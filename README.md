@@ -166,6 +166,7 @@ The [`docs/`](docs) directory has in-depth guides:
 | [SIMD](docs/simd.md) | The SIMD vector plugin |
 | [Builtins](docs/builtin.md) | The compiler builtins plugin (memory prefetch) |
 | [Standard Library Plugin](docs/std-plugin.md) | Wrapping C++ standard library functions |
+| [Nautilus Lint (design)](docs/design/nautilus-lint.md) | Layered linter design for traced user code: tracer self-checks, a `nautilus-*` clang-tidy module, and the LLM review skill |
 
 ## Project Layout
 

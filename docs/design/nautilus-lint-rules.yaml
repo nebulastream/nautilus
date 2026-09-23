@@ -1,0 +1,406 @@
+# Machine-readable rule catalog for docs/design/nautilus-lint.md.
+# One entry per rule ID. `layer` is the single owner: L0 (nautilus library / tracer),
+# L1 (clang-tidy module `nautilus-*`), L2 (LLM review skill), BUILD (CMake check).
+# `status` is one of: proposed, prototyped (clang-query file exists), implemented.
+# Snippets under `tests` are the lit test bodies; `bad` must diagnose, `good` must not.
+
+version: 1
+context:
+  traced_function_seeds:
+    - "parameter or return type is nautilus::val<T> / nautilus::static_val<T> / a ValLikeTypes entry"
+    - "body calls nautilus::invoke, nautilus::function, nautilus::select, nautilus::region, nautilus::static_iterable, nautilus::static_enumerable"
+    - "body constructs nautilus::NautilusFunction"
+    - "callable passed to NautilusEngine::registerFunction, Module::registerFunction, NautilusFunction{}, nautilus::region()"
+  closure: "callee of a traced function receiving at least one val-typed argument, to a fixed point per TU"
+  framework_files_default:
+    - "nautilus/include/nautilus/.*"
+    - "plugins/.*/include/.*"
+  nebulastream_framework_files:
+    - "nes-nautilus/include/DataTypes/VarVal.hpp"
+    - "nes-nautilus/include/Interface/NESStrongTypeRef.hpp"
+    - "nes-nautilus/include/Interface/TimestampRef.hpp"
+  nebulastream_val_like_types:
+    - "NES::VarVal"
+    - "NES::Record"
+    - "NES::Nautilus::Interface::PagedVectorRef"
+    - "NES::Nautilus::Interface::RecordBuffer"
+
+rules:
+  - id: NL-CALL-001
+    name: nautilus-branch-merged-call
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["nebulastream/nebulastream#2038 commit 3539918", "nebulastream/nautilus#487"]
+    rule: >
+      In a traced function, the same callee is called in two arms of a branch on a val<bool>
+      (if/else, ?:, switch) with argument lists that are not structurally identical. The host
+      compiler may hoist both calls into a single call site; the tracer identifies call sites by
+      return address and then binds one arm's arguments on the other.
+    exclusions:
+      - argument expressions structurally identical (Stmt::Profile)
+      - callee takes no val-typed parameter
+      - callee is always_inline or a constexpr function with visible trivial body
+    matcher_sketch: |
+      ifStmt(hasCondition(hasDescendant(cxxMemberCallExpr(callee(cxxConversionDecl()),
+                                    on(hasType(cxxRecordDecl(hasName("::nautilus::val"))))))),
+             hasThen(forEachDescendant(callExpr(callee(functionDecl().bind("f"))).bind("a"))),
+             hasElse(forEachDescendant(callExpr(callee(functionDecl(equalsBoundNode("f")))).bind("b"))))
+    message: >
+      calls to '%0' in both arms of a traced branch may be merged into one call site by the host
+      compiler; the tracer will bind the arguments of one arm on the other (nautilus#487).
+      Route each arm through a distinct [[gnu::noinline]] wrapper.
+    fixit: none (structural)
+    tests:
+      bad: |
+        void perform(const val<int32_t*>& outer, const val<int32_t*>& inner);
+        void probe(val<int32_t*> l, val<int32_t*> r, val<int64_t> nl, val<int64_t> nr) {
+          if (nl < nr) { perform(l, r); } else { perform(r, l); }
+          // CHECK-MESSAGES: [[@LINE-1]]:17: warning: calls to 'perform' in both arms
+        }
+      good: |
+        [[gnu::noinline]] void performLeftOuter(const val<int32_t*>& l, const val<int32_t*>& r) { perform(l, r); }
+        [[gnu::noinline]] void performRightOuter(const val<int32_t*>& l, const val<int32_t*>& r) { perform(r, l); }
+        void probe(val<int32_t*> l, val<int32_t*> r, val<int64_t> nl, val<int64_t> nr) {
+          if (nl < nr) { performLeftOuter(l, r); } else { performRightOuter(l, r); }
+        }
+
+  - id: NL-CALL-002
+    name: nautilus-invoke-host-local-address
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["new"]
+    rule: >
+      The address of a host automatic variable (not a val) is passed to invoke() or used to
+      construct a val<T*>. The pointer is a trace-time stack address baked into compiled code.
+    matcher_sketch: |
+      callExpr(callee(functionDecl(hasName("::nautilus::invoke"))),
+               hasAnyArgument(unaryOperator(hasOperatorName("&"),
+                 hasUnaryOperand(declRefExpr(to(varDecl(hasAutomaticStorageDuration(),
+                                                        unless(hasType(isValType())))))))))
+    message: "address of host local '%0' is captured as a constant at trace time; use a val<T> or heap/engine-owned storage"
+    fixit: none
+    tests:
+      bad: |
+        val<int32_t> f(val<int32_t> x) {
+          int32_t scratch = 0;
+          invoke(+[](int32_t* p, int32_t v) { *p = v; }, &scratch, x);
+          // CHECK-MESSAGES: [[@LINE-1]]:52: warning: address of host local 'scratch'
+          return x;
+        }
+      good: |
+        val<int32_t> f(val<int32_t> x) {
+          val<int32_t> scratch = 0;
+          invoke(+[](int32_t* p, int32_t v) { *p = v; }, &scratch, x);
+          return scratch;
+        }
+
+  - id: NL-CALL-003
+    name: nautilus-invoke-prefer-noexcept
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["nebulastream/nebulastream#2038 commits abb138a, 877a53b", "nebulastream/nautilus#474", "nebulastream/nautilus#475", "nebulastream/nautilus#478", "nebulastream/nautilus#481"]
+    rule: >
+      invoke() on a function pointer or +[] lambda that is not noexcept. Major when (a) the return
+      type is not default-constructible (compile error on the exception path) or (b) a
+      destructor-bearing val<Struct> is live at the call (creates an exception region). Minor otherwise.
+    matcher_sketch: |
+      callExpr(callee(functionDecl(hasName("::nautilus::invoke"))),
+               hasArgument(0, expr(hasType(pointsTo(functionProtoType(unless(isNoThrow())))))).bind("fn"))
+    message: >
+      invoke() of a potentially-throwing callee%select{|; its return type '%1' is not
+      default-constructible, which the exception path requires| while a destructor-bearing val
+      '%1' is live, which creates an exception region}0. Mark the callee noexcept if it cannot throw.
+    fixit: "insert ' noexcept' after the lambda parameter list / the in-TU function declarator"
+    tests:
+      bad: |
+        struct OriginId { explicit OriginId(uint64_t); OriginId() = delete; };
+        OriginId getOriginId(const Buffer*);
+        val<OriginId> f(val<const Buffer*> b) {
+          return invoke(getOriginId, b);
+          // CHECK-MESSAGES: [[@LINE-1]]:10: warning: invoke() of a potentially-throwing callee; its return type 'OriginId' is not default-constructible
+        }
+      good: |
+        OriginId getOriginId(const Buffer*) noexcept;
+        val<OriginId> f(val<const Buffer*> b) { return invoke(getOriginId, b); }
+
+  - id: NL-CF-001
+    name: nautilus-host-loop-in-traced-body
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["docs/tracing.md static_val section", "nebulastream AggregationBuildPhysicalOperator uses static_iterable"]
+    rule: >
+      A loop with a host-typed induction variable, or a range-for over a host container not
+      wrapped in static_iterable/static_enumerable, whose body records traced operations. The
+      tracer detects loops by tag and live-value snapshot; a host loop gives it neither, which is
+      what static_val and static_iterable add.
+    matcher_sketch: |
+      forStmt(hasLoopInit(declStmt(hasSingleDecl(varDecl(unless(hasType(isValType()))).bind("iv")))),
+              hasBody(hasDescendant(expr(hasType(isValType())))),
+              hasAncestor(functionDecl(isTraced())))
+      cxxForRangeStmt(hasRangeInit(unless(anyOf(isStaticIterable(), hasType(isValType())))),
+                      hasBody(hasDescendant(expr(hasType(isValType())))),
+                      hasAncestor(functionDecl(isTraced())))
+    message: "host loop over '%0' unrolls at trace time without a per-iteration snapshot; use static_val / static_iterable"
+    fixit: "replace the induction variable type with nautilus::static_val<T>; wrap the range in nautilus::static_iterable()"
+    tests:
+      bad: |
+        val<int32_t> f(val<int32_t*> a) {
+          val<int32_t> sum = 0;
+          for (int i = 0; i < 4; ++i) { sum = sum + a[i]; }
+          // CHECK-MESSAGES: [[@LINE-1]]:3: warning: host loop over 'i'
+          return sum;
+        }
+      good: |
+        val<int32_t> f(val<int32_t*> a) {
+          val<int32_t> sum = 0;
+          for (static_val<int> i = 0; i < 4; ++i) { sum = sum + a[i]; }
+          return sum;
+        }
+
+  - id: NL-CF-002
+    name: nautilus-static-loop-bound-depends-on-val
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["docs/static-val.md"]
+    rule: "A static_val loop whose condition references a val<T>; the bound is not known at trace time."
+    matcher_sketch: |
+      forStmt(hasLoopInit(declStmt(hasSingleDecl(varDecl(hasType(cxxRecordDecl(hasName("::nautilus::static_val"))))))),
+              hasCondition(hasDescendant(expr(hasType(cxxRecordDecl(hasName("::nautilus::val")))))))
+    message: "static_val loop bound depends on runtime value '%0'; the loop cannot be unrolled at trace time"
+    fixit: none
+    tests:
+      bad: |
+        val<int32_t> f(val<int32_t> n) {
+          val<int32_t> s = 0;
+          for (static_val<int> i = 0; i < n; ++i) { s = s + 1; }
+          // CHECK-MESSAGES: [[@LINE-1]]:3: warning: static_val loop bound depends on runtime value 'n'
+          return s;
+        }
+      good: |
+        val<int32_t> f(val<int32_t> n) {
+          val<int32_t> s = 0;
+          for (val<int32_t> i = 0; i < n; ++i) { s = s + 1; }
+          return s;
+        }
+
+  - id: NL-CF-003
+    name: nautilus-recursive-traced-call
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["nautilus/src/nautilus/tracing/tag/TagRecorder.cpp"]
+    rule: "A traced function reaches itself through the TU call graph. Tag creation throws 'Stack is too deep'."
+    matcher_sketch: "call-graph walk over traced functions (CallGraph from clang/Analysis)"
+    message: "traced function '%0' is recursive; the tracer cannot record recursive control flow"
+    fixit: none
+
+  - id: NL-CF-004
+    name: nautilus-loop-exit-in-dynamic-loop
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["skill H6"]
+    rule: "return, break, or goto inside the body of a loop whose induction variable is a val<T>."
+    matcher_sketch: |
+      forStmt(hasLoopInit(declStmt(hasSingleDecl(varDecl(hasType(cxxRecordDecl(hasName("::nautilus::val"))))))),
+              hasBody(forEachDescendant(stmt(anyOf(returnStmt(), breakStmt(), gotoStmt())).bind("exit"))))
+    message: "'%0' inside a dynamic loop adds a second exit edge; carry a val<bool> flag and exit once"
+    fixit: none
+
+  - id: NL-CF-005
+    name: nautilus-static-unroll-cap
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["skill B1"]
+    options: { MaxUnroll: 100 }
+    rule: "static_val loop with a literal bound above MaxUnroll, or static_iterable over a constant-size array larger than MaxUnroll."
+    matcher_sketch: "forStmt with static_val init and integerLiteral bound > MaxUnroll; cxxForRangeStmt over static_iterable(constantArrayType)"
+    message: "static loop unrolls %0 iterations (cap %1); use a dynamic val<T> loop or chunk it"
+
+  - id: NL-CALL-004
+    name: nautilus-invoke-in-loop-opaque
+    layer: L1
+    severity: Minor
+    status: proposed
+    origin: ["skill F1", "skill F3"]
+    rule: "invoke inside a dynamic loop whose callee is neither NAUTILUS_INLINE nor invoked with FunctionAttributes."
+    message: "opaque call to '%0' in a loop body; annotate NAUTILUS_INLINE or pass FunctionAttributes"
+
+  - id: NL-OPT-001
+    name: nautilus-unknown-option-key
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["nebulastream/nebulastream#2038 (engine.compilationStrategy removed)"]
+    options: { Manifest: "share/nautilus/options.json" }
+    rule: "String literal passed to nautilus::engine::Options::setOption is not in the option manifest."
+    matcher_sketch: |
+      cxxMemberCallExpr(callee(cxxMethodDecl(hasName("setOption"), ofClass(hasName("::nautilus::engine::Options")))),
+                        hasArgument(0, stringLiteral().bind("key")))
+    message: "unknown nautilus option '%0'%select{| (did you mean '%1'?)}1"
+    depends_on: [L0-003]
+
+  - id: NL-FN-001
+    name: nautilus-function-object-lifetime
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["docs/functions.md"]
+    rule: "NautilusFunction with automatic storage that is copied, moved, returned, or stored in a container."
+    message: "NautilusFunction '%0' is non-copyable and must outlive its callers; declare it static"
+
+  - id: NL-RET-001
+    name: nautilus-single-return
+    layer: L1
+    severity: Major
+    status: proposed
+    origin: ["skill H1"]
+    options: { Enabled: true }
+    rule: "More than one return statement in a traced function."
+    matcher_sketch: "functionDecl(isTraced()) with count(returnStmt) > 1"
+    message: "traced function '%0' has %1 return statements; use a single trailing return (select or a result variable)"
+
+  - id: NL-ESC-001
+    name: nautilus-val-static-storage
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["docs/tracing.md"]
+    rule: "val / static_val / val-like object with static or thread_local storage duration, directly or as a member."
+    matcher_sketch: "varDecl(hasGlobalStorage(), hasType(isValType()))"
+    message: "'%0' has static storage but holds trace state; trace state does not outlive the trace"
+
+  - id: NL-ESC-002
+    name: nautilus-raw-value-control-flow
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["skill C5"]
+    rule: "Host if/loop/?:/switch condition computed from an unwrapped val (.value, getRawValue(), RawValueResolver, static_cast<T>(val<T>))."
+    matcher_sketch: |
+      ifStmt(hasCondition(hasDescendant(anyOf(memberExpr(member(hasName("value")), hasObjectExpression(hasType(isValType()))),
+                                              callExpr(callee(functionDecl(hasName("getRawValue"))))))))
+    message: "branch decided at trace time from raw value of '%0'; only one path is traced"
+
+  - id: NL-ESC-003
+    name: nautilus-untraced-side-effect
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["docs/tracing.md", "nebulastream invoke(logProxy, …)"]
+    options: { Denylist: "std::basic_ostream::operator<<;printf;fprintf;puts;fmt::print;fmt::println;NES_LOG*;NES_DEBUG;NES_WARNING;NES_ERROR;operator new;operator delete;fopen;fwrite" }
+    rule: "Direct call in a traced function to a denylisted host side effect; executes once at trace time."
+    message: "'%0' runs at trace time, not in the compiled function; route it through invoke()"
+
+  - id: NL-ESC-004
+    name: nautilus-raw-pointer-escape
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["skill A1", "skill E1"]
+    rule: "C-style cast, reinterpret_cast or (uintptr_t) applied to a val<T*>."
+    matcher_sketch: "anyOf(cStyleCastExpr(), cxxReinterpretCastExpr())(hasSourceExpression(hasType(cxxRecordDecl(hasName(\"::nautilus::val\")))))"
+    message: "cast strips trace state from pointer '%0'; loads through it are not recorded"
+
+  - id: NL-TYPE-001
+    name: nautilus-narrowing-store
+    layer: L1
+    severity: Critical
+    status: proposed
+    origin: ["skill D3", "test/data/regressions/tracing/store_mising_downcast-gh_#90"]
+    rule: "Store through a val<T*> of a val whose width is greater than sizeof(T)."
+    message: "implicit narrowing store of '%0' (%1 bits) through '%2' (%3 bits); cast explicitly"
+    fixit: "wrap RHS in static_cast<val<Pointee>>(…)"
+
+  - id: NL-SEL-001
+    name: nautilus-prefer-select
+    layer: L1
+    severity: Minor
+    status: proposed
+    origin: ["skill C1"]
+    rule: "if/else or ?: whose arms only assign pure expressions to the same val."
+    fixit: "select(cond, a, b)"
+
+  - id: NL-BOOL-001
+    name: nautilus-bool-short-circuit
+    layer: L1
+    severity: Minor
+    status: proposed
+    origin: ["skill C6", "CMake ENABLE_SHORT_CIRCUIT_BOOL"]
+    rule: "&& / || on val<bool> where the right operand contains a call or load, and short-circuit tracing is off."
+
+  - id: NL-TYPE-002
+    name: nautilus-mixed-signedness
+    layer: L1
+    severity: Minor
+    status: proposed
+    rule: "Arithmetic or comparison between signed and unsigned val operands."
+
+  - id: NL-PROB-001
+    layer: L2
+    severity: Minor
+    status: implemented
+    rule: "Missing setIsTrueProbability on a heavily skewed guard (skill C2/H7)."
+
+  - id: NL-LOOP-001
+    layer: L2
+    severity: Minor
+    status: implemented
+    rule: "val loop with a small trace-time-known bound should be static_val (skill B1/B2)."
+
+  - id: NL-MEM-001
+    layer: L2
+    severity: Minor
+    status: implemented
+    rule: "Repeated loads of the same field without an intervening store (skill E2)."
+
+  - id: NL-REG-001
+    layer: L2
+    severity: Minor
+    status: proposed
+    rule: "Large straight-line traced body without nautilus::region boundaries (docs/region.md)."
+
+  - id: NL-BUILD-001
+    layer: BUILD
+    severity: Critical
+    status: proposed
+    rule: "Targets compiling traced code must keep -fno-omit-frame-pointer (nautilus exports it as INTERFACE; check nothing re-enables omission)."
+
+  - id: NL-BUILD-002
+    layer: BUILD
+    severity: Minor
+    status: proposed
+    needs_verification: true
+    rule: "Optional host-compiler mitigation for NL-CALL-001: -fno-optimize-sibling-calls, -mllvm -enable-tail-merge=false. Does not cover SimplifyCFG hoisting."
+
+  - id: L0-001
+    layer: L0
+    status: proposed
+    tracks: "nebulastream/nautilus#487"
+    change: "Tracer: on reaching an existing tag with a different argument binding, produce per-path block arguments or fail with a diagnostic naming both call sites."
+    retires: [NL-CALL-001 as a gate]
+
+  - id: L0-002
+    layer: L0
+    status: proposed
+    tracks: "nebulastream/nautilus#474"
+    change: "function.hpp: static_assert(NoUnwind || std::is_default_constructible_v<R>) with a message naming noexcept as the fix."
+    retires: [NL-CALL-003(a) readability]
+
+  - id: L0-003
+    layer: L0
+    status: proposed
+    change: "Options::setOption validates keys against a generated manifest (share/nautilus/options.json from docs/options.md); throw in debug, log once in release."
+    enables: [NL-OPT-001]
+
+  - id: L0-004
+    layer: L0
+    status: proposed
+    change: "Debug builds stamp TypedValueRefHolder with the trace generation and assert on cross-generation use."
+    retires: [NL-ESC-001 for containers and members]
