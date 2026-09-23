@@ -78,6 +78,10 @@ public:
 	/// Maintain the host-side cleanup stack used to annotate throwing calls.
 	virtual void registerDestructor(const TypedValueRef& address, void* destructor) = 0;
 	virtual void unregisterDestructor(const TypedValueRef& address) = 0;
+	/// Re-key the most recent cleanup registered for `from` to `to`, keeping its
+	/// position in the cleanup stack. Used when ownership of a value moves to a
+	/// different traced address without re-constructing it.
+	virtual void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) = 0;
 
 	/// Trace a call through a runtime function pointer value (indirect call).
 	/// @param captureFunc address of a `captureThrowingCall<R, Args...>`

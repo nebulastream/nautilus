@@ -210,6 +210,17 @@ private:
 #endif
 	}
 
+	// Hands other's cleanup registration over to this object (see move assignment).
+	void transfer_destructor(const val<ValueType>& other) {
+#ifdef ENABLE_TRACING
+		if constexpr (!std::is_trivially_destructible_v<ValueType>) {
+			if (tracing::inTracer() && !other.moved_) {
+				tracing::transferDestructor(other.value_ptr.getState(), value_ptr.getState());
+			}
+		}
+#endif
+	}
+
 	static void copy_construct(ValueType* dst,
 	                           ValueType* src) noexcept(std::is_nothrow_copy_constructible_v<ValueType>) {
 		new (dst) ValueType(*src);
@@ -330,13 +341,23 @@ public:
 
 	// Move-assigns from another val<ValueType>.
 	// Releases this object's storage, then transfers ownership of other's storage.
+	//
+	// Unlike the move constructor, `value_ptr` keeps its own SSA identity here:
+	// the assignment is a traced store into this object's existing pointer slot,
+	// which keeps loop-carried val<T>s correct. The landing-pad cleanup that was
+	// registered for other's storage is therefore still keyed on other's slot,
+	// which other's (moved-from) destructor never unregisters. Re-key it onto
+	// this object's slot, in place, so that this object's destructor removes it
+	// and a later throw neither destructs the value a second time nor runs it
+	// out of reverse construction order.
 	val<ValueType>& operator=(val<ValueType>&& other) noexcept {
 		if (std::addressof(other) == this) {
 			return *this;
 		}
 		release_storage();
 		value_ptr = other.value_ptr;
-		moved_ = false;
+		transfer_destructor(other);
+		moved_ = other.moved_;
 		other.moved_ = true;
 		return *this;
 	}

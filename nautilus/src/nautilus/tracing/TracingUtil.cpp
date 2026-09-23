@@ -118,6 +118,10 @@ void unregisterDestructor(const TypedValueRef& address) {
 	activeTracer->unregisterDestructor(address);
 }
 
+void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) {
+	activeTracer->transferDestructor(from, to);
+}
+
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
                                  void* captureFunc) {

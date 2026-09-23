@@ -74,6 +74,7 @@ TypedValueRef& traceCallWithExceptionHandling(void* fptn, Type resultType,
 
 void registerDestructor(const TypedValueRef& address, void* destructor);
 void unregisterDestructor(const TypedValueRef& address);
+void transferDestructor(const TypedValueRef& from, const TypedValueRef& to);
 
 TypedValueRef& traceIndirectCall(const TypedValueRef& fnPtrRef, Type resultType,
                                  const std::vector<tracing::TypedValueRef>& arguments, FunctionAttributes fnAttrs,
