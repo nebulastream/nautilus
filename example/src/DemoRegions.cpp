@@ -59,9 +59,6 @@ val<int64_t> summarize(val<int32_t> size, val<int32_t*> values, val<int32_t> thr
 
 int main(int, char*[]) {
 	engine::Options options;
-	// Regions are a lazyTracing feature -- the default tracer. Under
-	// "exceptionBasedTracing" the bodies below are traced inline and no region appears
-	// anywhere in the dumps.
 	options.setOption("engine.backend", "cpp");
 	// Print the trace and the Nautilus IR to the console so the region markers are
 	// visible. `dump.file` would additionally write them to a temp folder.

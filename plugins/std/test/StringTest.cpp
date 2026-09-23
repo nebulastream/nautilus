@@ -70,7 +70,7 @@ TEST_CASE("StringTest - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("StringTest - Compiler") {
-	nautilus::testing::forEachBackendWithTraceMode([](engine::NautilusEngine& engine) { runStringTest(engine); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runStringTest(engine); }, false);
 }
 #endif
 } // namespace nautilus::engine

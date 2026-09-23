@@ -3,9 +3,8 @@
 #include "nautilus/Engine.hpp"
 #include "nautilus/common/Arena.hpp"
 #include "nautilus/config.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/SSAVerifier.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
@@ -61,14 +60,6 @@ static bool checkTestFile(std::string actual, const std::string& category, const
 	return false;
 }
 
-using TraceFn = std::unique_ptr<tracing::TraceModule> (*)(std::list<compiler::CompilableFunction>&,
-                                                          const engine::Options&, common::Arena&);
-
-static auto traceContexts = std::vector<std::tuple<std::string, TraceFn>> {
-    {"ExceptionBasedTraceContext", tracing::ExceptionBasedTraceContext::Trace},
-    {"LazyTraceContext", tracing::LazyTraceContext::Trace},
-};
-
 static void runTraceTests(const std::string& category,
                           std::vector<std::tuple<std::string, std::function<void()>>>& tests) {
 	// Disable logging of addresses and source locations so a checked-in dump does not
@@ -76,40 +67,35 @@ static void runTraceTests(const std::string& category,
 	// log::options::setLogSourceLocations and the equivalent guard in TracingTest.cpp).
 	nautilus::log::options::setLogAddresses(false);
 	nautilus::log::options::setLogSourceLocations(false);
-	for (auto& [ctxName, traceFn] : traceContexts) {
-		DYNAMIC_SECTION(ctxName) {
-			for (auto& [name, func] : tests) {
-				DYNAMIC_SECTION(name) {
-					auto rootFunction = compiler::CompilableFunction("execute", func);
-					std::list<compiler::CompilableFunction> functionsToTrace;
-					functionsToTrace.push_back(rootFunction);
-					common::Arena arena;
-					auto executionTrace = traceFn(functionsToTrace, engine::Options(), arena);
-					DYNAMIC_SECTION("tracing") {
-						REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
-					}
-					auto ssaCreationPhase = tracing::SSACreationPhase();
-					auto afterSSA =
-					    ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
-					DYNAMIC_SECTION("after_ssa") {
-						REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
-					}
-					DYNAMIC_SECTION("ssa_verify") {
-						for (const auto& fnName : afterSSA->getFunctionNames()) {
-							auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
-							if (!ssaResult.valid) {
-								for (const auto& error : ssaResult.errors) {
-									FAIL(error);
-								}
-							}
+	for (auto& [name, func] : tests) {
+		DYNAMIC_SECTION(name) {
+			auto rootFunction = compiler::CompilableFunction("execute", func);
+			std::list<compiler::CompilableFunction> functionsToTrace;
+			functionsToTrace.push_back(rootFunction);
+			common::Arena arena;
+			auto executionTrace = tracing::TraceContext::Trace(functionsToTrace, engine::Options(), arena);
+			DYNAMIC_SECTION("tracing") {
+				REQUIRE(checkTestFile(executionTrace.get()->toString(), category, "tracing", name));
+			}
+			auto ssaCreationPhase = tracing::SSACreationPhase();
+			auto afterSSA = ssaCreationPhase.apply(std::shared_ptr<tracing::TraceModule>(std::move(executionTrace)));
+			DYNAMIC_SECTION("after_ssa") {
+				REQUIRE(checkTestFile(afterSSA.get()->toString(), category, "after_ssa", name));
+			}
+			DYNAMIC_SECTION("ssa_verify") {
+				for (const auto& fnName : afterSSA->getFunctionNames()) {
+					auto ssaResult = tracing::VerifySSA(*afterSSA->getFunction(fnName));
+					if (!ssaResult.valid) {
+						for (const auto& error : ssaResult.errors) {
+							FAIL(error);
 						}
 					}
-					DYNAMIC_SECTION("ir") {
-						auto irGenerationPhase = tracing::TraceToIRConversionPhase();
-						[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
-						REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
-					}
 				}
+			}
+			DYNAMIC_SECTION("ir") {
+				auto irGenerationPhase = tracing::TraceToIRConversionPhase();
+				[[maybe_unused]] auto ir = irGenerationPhase.apply(std::move(afterSSA));
+				REQUIRE(checkTestFile(ir.get()->toString(), category, "ir", name, ".nautilus"));
 			}
 		}
 	}

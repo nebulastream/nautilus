@@ -827,9 +827,15 @@ val<int32_t> vectorIteratorStruct(val<int32_t> x, val<int32_t> y) {
 }
 
 void runVectorTest(engine::NautilusEngine& engine, const std::string& /*backend*/ = "") {
-	// Iterator (loop-based iterator tests live outside runVectorTest because
-	// pointer-based loops are not supported under exceptionBasedTracing yet;
-	// only the non-loop iterator operations are exercised across all backends).
+	// Iterator
+	SECTION("vectorIteratorSum") {
+		auto f = engine.registerFunction(vectorIteratorSum);
+		REQUIRE(f(1) == 10);
+	}
+	SECTION("vectorIteratorWrite") {
+		auto f = engine.registerFunction(vectorIteratorWrite);
+		REQUIRE(f(7) == 21);
+	}
 	SECTION("vectorIteratorDistance") {
 		auto f = engine.registerFunction(vectorIteratorDistance);
 		REQUIRE(f(0) == 5);
@@ -1234,26 +1240,14 @@ TEST_CASE("VectorTest - Interpreter") {
 		REQUIRE(f(1) == 2);
 		REQUIRE_THROWS_AS(f(5), std::out_of_range);
 	}
-	SECTION("vectorIteratorSum") {
-		auto f = engine.registerFunction(vectorIteratorSum);
-		REQUIRE(f(1) == 10);
-	}
-	SECTION("vectorIteratorWrite") {
-		auto f = engine.registerFunction(vectorIteratorWrite);
-		REQUIRE(f(7) == 21);
-	}
 }
 
 #ifdef ENABLE_TRACING
 TEST_CASE("VectorTest - Compiler") {
-	const std::vector<std::string> traceModes = {"exceptionBasedTracing", "lazyTracing"};
 	for (const auto& backend : nautilus::testing::availableBackends()) {
-		for (const auto& traceMode : traceModes) {
-			DYNAMIC_SECTION(backend + "_" + traceMode) {
-				auto engine = nautilus::testing::makeEngine(
-				    backend, [&](engine::Options& options) { options.setOption("engine.traceMode", traceMode); });
-				runVectorTest(engine, backend);
-			}
+		DYNAMIC_SECTION(backend) {
+			auto engine = nautilus::testing::makeEngine(backend);
+			runVectorTest(engine, backend);
 		}
 	}
 }

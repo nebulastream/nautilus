@@ -50,15 +50,13 @@ Invalid region() "accumulate" at src/Query.cpp:42:9: a value created inside the 
 body outlives it ($7). Carry the value out through a val<T> declared outside the region ...
 ```
 
-**The trace.** Each region traced under `lazyTracing` is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump follows the same layout the IR dump uses (see below): a block names its region by index at the end of its header line, and the attributes those indices refer to are listed once in a legend at the end of the trace:
+**The trace.** Each region is recorded in the trace's region table (`ExecutionTrace::getRegions()`), which pairs the attributes with the two blocks that bound the body — the block the body starts in and the block the enclosing scope continues in — and with the region enclosing it. Every operation recorded inside the body points at that entry through `TraceOperation::regionIndex`, and so does every block created while the body was being traced (`Block::regionIndex`) — the body's own blocks and the blocks of any branch or loop inside it. The trace dump follows the same layout the IR dump uses (see below): a block names its region by index at the end of its header line, and the attributes those indices refer to are listed once in a legend at the end of the trace:
 
 ```
 B1() ; region #0
 	...
 ; region #0 = "accumulate" at src/Query.cpp:42:9
 ```
-
-Under `exceptionBasedTracing` a region body is traced inline into the enclosing function (see below), so there are no bounding blocks to attach anything to and the region table stays empty. The attributes are still accepted and still cost nothing.
 
 **The IR.** `TraceToIRConversionPhase` carries both attributes across: each function's `FunctionOperation` gets a region table (`getRegionSpecs()`), and both operations and blocks name a region in it.
 
@@ -85,7 +83,7 @@ Attributing the operations is what makes the metadata survive the pipeline: the 
 
 `IRVerifier` checks the result: every index names a region of its function, parent chains terminate, and every attributed operation is from the region its block claims or from one nested inside it. A pass that moves code between regions without widening the block it moves into is caught there.
 
-What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`, plus the same fixture traced by `exceptionBasedTracing` for comparison (`regionNested_inlined`, where no region appears at all). Those dumps are printed with source locations turned off (see below), so they name regions without naming a machine or a compiler; which line each `region()` sits on is asserted in `RegionTest.cpp` instead.
+What all of this looks like at each stage of the pipeline is checked in under `nautilus/test/data/region-tests/` — the trace, the trace after SSA, and the IR before and after the block-cleanup passes, for the fixtures in `nautilus/test/common/RegionFunctions.hpp`. Those dumps are printed with source locations turned off (see below), so they name regions without naming a machine or a compiler; which line each `region()` sits on is asserted in `RegionTest.cpp` instead.
 
 ### Turning the source location off
 
@@ -134,7 +132,7 @@ The name is stored, not copied — pass a string literal or another string that 
 - **Memoized replay.** Once a region has been fully traced for a given combination of call site and enclosing state, re-entering it with the same state skips re-tracing the body entirely.
 - **Bounded branch-tracing cost.** A branch or loop structurally inside a region only costs what's inside that region — it does not require re-running the rest of the enclosing function to explore it (see [How regions trace branches](#how-regions-trace-branches) below).
 
-All four come from the region-local exploration loop, so all four require `engine.traceMode = "lazyTracing"` (the default). Under `"exceptionBasedTracing"` a region is a no-op: the body is traced inline, into the enclosing function's trace, exactly as if `region()` were not there. That tracer restarts the whole enclosing function on every unresolved branch, so there is nothing for a region to bound. Both tracers produce an equivalent trace either way; the difference is only how much work tracing does to get there.
+All four come from the region-local exploration loop. A regioned function and its unregioned equivalent produce an equivalent trace; the difference is only how much work tracing does to get there.
 
 None of this requires a function boundary: region blocks are ordinary basic blocks and region entry/exit are ordinary jumps. There is no region-specific operation anywhere in the trace, the IR, or any backend — a region is metadata on ordinary operations, never an operation of its own.
 
@@ -254,8 +252,7 @@ This is purely a tracing-time (compile-time) effect — it changes how much work
 
 ## Scope and limitations
 
-- **Regions only do anything under `engine.traceMode = "lazyTracing"`** (the default tracer), as described in [Why use a region](#why-use-a-region). Under `"exceptionBasedTracing"` they are inlined away.
-- **No value created inside a region may outlive it, under `lazyTracing`.** Carry values out by assigning to a `val<T>` declared *outside* the region, as in the examples above. Constructing a `val<T>` inside the body and keeping it alive past the body — in a `std::optional`, a `std::vector`, or any object declared outside — is reported as an error rather than traced wrongly, and the error names the values involved. The reason is that such a value's ref is allocated by the region, so it cannot exist before the body runs; a `val<T>` declared outside has a ref allocated before the region and stable across it, which is what makes it safe. Once a region has been traced, re-entering it on a later exploration pass of the enclosing function skips the body entirely — that is the memoization — so a value that only the body can create is simply not there on that pass, and any operation recorded afterwards would reference an object that was never constructed. `exceptionBasedTracing` inlines region bodies and accepts either form.
+- **No value created inside a region may outlive it.** Carry values out by assigning to a `val<T>` declared *outside* the region, as in the examples above. Constructing a `val<T>` inside the body and keeping it alive past the body — in a `std::optional`, a `std::vector`, or any object declared outside — is reported as an error rather than traced wrongly, and the error names the values involved. The reason is that such a value's ref is allocated by the region, so it cannot exist before the body runs; a `val<T>` declared outside has a ref allocated before the region and stable across it, which is what makes it safe. Once a region has been traced, re-entering it on a later exploration pass of the enclosing function skips the body entirely — that is the memoization — so a value that only the body can create is simply not there on that pass, and any operation recorded afterwards would reference an object that was never constructed.
 - **Region lambdas return `void`.** There's no mechanism for a region to hand back a value directly — use a captured reference instead, as in the examples above.
 - **Calls inside a region are traced like any other operation.** A runtime call (`invoke`), an indirect call, a `nautilus::function` call, or an `alloca` inside a region body is recorded against the region, the same as arithmetic and control flow. A `nautilus::function` callee is still traced as its own function — the region records only the call — so a region never changes what happens on the other side of that boundary. Local exploration re-invokes the region body once per path, but that only re-*records* the call: an `invoke` target is opaque and is never executed at trace time, inside a region or outside one.
 - **Writes to an enclosing `static_val` from inside a region are not detected.** `static_val` writes are invisible to the tracer in general (not a region-specific limitation); avoid writing to a captured `static_val` from inside a region body.

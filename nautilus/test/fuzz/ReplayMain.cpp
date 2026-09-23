@@ -172,7 +172,7 @@ std::vector<uint8_t> randomBuffer() {
 // against its recurrence.
 //
 // Finding "Invalid trace: no Return operation was recorded." is no longer
-// tolerated either (issue #382): LazyTraceContext::traceAssignment's generic
+// tolerated either (issue #382): TraceContext::traceAssignment's generic
 // tag-collision handling treated *any* tag match as a genuine control-flow
 // re-entry, but Tag identity is purely a call-stack return-address chain
 // (TagRecorder.cpp) plus the alive-variable footprint -- it says nothing
@@ -182,7 +182,7 @@ std::vector<uint8_t> randomBuffer() {
 // assigning *different* targets (two different array slots), which was
 // wrongly folded into a bogus control-flow merge -- discarding every
 // operation traced afterwards, including the call and the return. Fixed in
-// LazyTraceContext.cpp by comparing the target ref against the operation
+// TraceContext.cpp by comparing the target ref against the operation
 // already recorded at that tag: a mismatch means the collision is
 // coincidental, not a real revisit, so the assignment is now recorded
 // normally instead of merged, mirroring how traceCopy already reconciles
@@ -201,12 +201,12 @@ std::vector<uint8_t> randomBuffer() {
 // Finding 4 ("std::get: wrong index for variant") is no longer tolerated
 // either: traceConstant/traceCopy's globalTagMap-collision branch (added for
 // issue #95) folds a primary operation plus a same-tagged reconciliation
-// ASSIGN into a single call, but LazyTraceContext::follow() only ever
+// ASSIGN into a single call, but TraceContext::follow() only ever
 // consumed one recorded operation per call when replaying that call site on
 // a later symbolic-execution iteration -- desynchronizing the replay cursor
 // from the recorded operation stream as soon as it stepped over such a pair,
 // corrupting every operation after it in the block. Fixed in
-// LazyTraceContext.cpp (issue #384) by having follow() recognize the
+// TraceContext.cpp (issue #384) by having follow() recognize the
 // reconciliation ASSIGN by its shared tag and transparently skip it; the
 // smoke corpus now actively guards against its recurrence.
 bool isKnownPreExistingFinding(const nautilus::fuzz::Finding& f) {

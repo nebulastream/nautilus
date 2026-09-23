@@ -1,6 +1,5 @@
 
 #include "nautilus/tracing/ExecutionTrace.hpp"
-#include "nautilus/tracing/symbolic_execution/TraceTerminationException.hpp"
 #include <algorithm>
 #include <fmt/format.h>
 #include <nautilus/config.hpp>

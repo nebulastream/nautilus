@@ -413,7 +413,7 @@ public:
 };
 
 // Defined inline (rather than in ExecutionTrace.cpp) so that callers in other
-// translation units (LazyTraceContext.cpp, ExceptionBasedTraceContext.cpp) can
+// translation units (TraceContext.cpp) can
 // inline these accessors at their many hot call sites. See issue #432.
 inline Block& ExecutionTrace::getCurrentBlock() {
 	if (currentBlockIndex >= blocks.size()) {

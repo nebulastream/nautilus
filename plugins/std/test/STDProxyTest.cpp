@@ -90,9 +90,8 @@ TEST_CASE("STD Proxy Test - Interpreter") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("STD Proxy Test - Compiler") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { runAllTests(engine); },
-	    [](engine::Options& options) { options.setOption("dump.all", true); });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runAllTests(engine); }, false,
+	                                  [](engine::Options& options) { options.setOption("dump.all", true); });
 }
 #endif
 } // namespace nautilus::engine

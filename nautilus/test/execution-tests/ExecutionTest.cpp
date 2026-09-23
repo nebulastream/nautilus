@@ -1712,15 +1712,14 @@ TEST_CASE("Engine Interpreter Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("Engine Compiler Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { runAllTests(engine); },
-	    [](engine::Options& options) {
-		    options.setOption("dump.all", true);
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-		    }
-	    });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { runAllTests(engine); }, false,
+	                                  [](engine::Options& options) {
+		                                  options.setOption("dump.all", true);
+		                                  if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
+			                                  options.setOption("engine.Compilation", true);
+			                                  options.setOption("mlir.enableMultithreading", false);
+		                                  }
+	                                  });
 }
 #endif
 
@@ -1731,14 +1730,14 @@ TEST_CASE("NautilusFunction Interpretation Test") {
 
 #ifdef ENABLE_TRACING
 TEST_CASE("NautilusFunction Compiled Execution Test") {
-	nautilus::testing::forEachBackendWithTraceMode(
-	    [](engine::NautilusEngine& engine) { nautilusFunctionExecutionTest(engine); },
-	    [](engine::Options& options) {
-		    if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
-			    options.setOption("engine.Compilation", true);
-			    options.setOption("mlir.enableMultithreading", false);
-		    }
-	    });
+	nautilus::testing::forEachBackend([](engine::NautilusEngine& engine) { nautilusFunctionExecutionTest(engine); },
+	                                  false,
+	                                  [](engine::Options& options) {
+		                                  if (options.getOptionOrDefault<std::string>("engine.backend", "") == "mlir") {
+			                                  options.setOption("engine.Compilation", true);
+			                                  options.setOption("mlir.enableMultithreading", false);
+		                                  }
+	                                  });
 }
 #endif
 

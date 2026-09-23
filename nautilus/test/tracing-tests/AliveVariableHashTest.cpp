@@ -1,4 +1,4 @@
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 namespace nautilus::tracing {

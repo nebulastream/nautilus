@@ -35,8 +35,7 @@
 #include "nautilus/compiler/ir/passes/NoThrowInferencePass.hpp"
 #include "nautilus/compiler/ir/passes/StrengthReductionPass.hpp"
 #include "nautilus/compiler/ir/util/GraphVizUtil.hpp"
-#include "nautilus/tracing/ExceptionBasedTraceContext.hpp"
-#include "nautilus/tracing/LazyTraceContext.hpp"
+#include "nautilus/tracing/TraceContext.hpp"
 #include "nautilus/tracing/phases/SSACreationPhase.hpp"
 #include "nautilus/tracing/phases/TraceToIRConversionPhase.hpp"
 #include "nautilus/tracing/tag/SourceLocationResolver.hpp"
@@ -80,9 +79,6 @@ std::string createCompilationUnitID() {
 	return timestamp + "_#" + uuid;
 }
 
-static constexpr auto TRACE_MODE_OPTION = "engine.traceMode";
-static constexpr auto TRACE_MODE_LAZY = "lazyTracing";
-
 std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<CompilableFunction>& functions,
                                                               const engine::ModuleOptions& moduleOptions,
                                                               CompilationStatistics* statistics) const {
@@ -104,7 +100,6 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	const auto frontendStart = std::chrono::steady_clock::now();
 
 	const auto tracingStart = std::chrono::steady_clock::now();
-	auto traceMode = moduleOptions.getOptionOrDefault(TRACE_MODE_OPTION, std::string(TRACE_MODE_LAZY));
 	// Acquire a fresh trace arena for the lifetime of this compile.  Each
 	// concurrent compile() gets its own arena from the synchronized pool, so
 	// there is no shared bump allocator to race on.  The handle stays alive
@@ -113,9 +108,7 @@ std::shared_ptr<ir::IRGraph> CompilationPipeline::compileToIR(std::list<Compilab
 	// finished, so this is safe (the IRGraph owns a separate IR arena).
 	auto traceArenaHandle = traceArenaPool_->acquire();
 	common::Arena& arena = *traceArenaHandle;
-	std::shared_ptr<tracing::TraceModule> traceModule =
-	    (traceMode == TRACE_MODE_LAZY) ? tracing::LazyTraceContext::Trace(functions, moduleOptions, arena)
-	                                   : tracing::ExceptionBasedTraceContext::Trace(functions, moduleOptions, arena);
+	std::shared_ptr<tracing::TraceModule> traceModule = tracing::TraceContext::Trace(functions, moduleOptions, arena);
 	if (statistics != nullptr) {
 		statistics->recordTimingMs("tracing.ms", tracingStart);
 	}

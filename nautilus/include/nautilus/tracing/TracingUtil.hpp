@@ -103,7 +103,7 @@ void traceReturnOperation(Type type, const TypedValueRef& ref);
 /// see docs/region.md.
 ///
 /// Forced inline (like TagRecorder::createTag(), for the same reason) so this dispatch never
-/// shows up as its own stack frame: LazyTraceContext::traceRegion roots a new region scope's
+/// shows up as its own stack frame: TraceContext::traceRegion roots a new region scope's
 /// tags at __builtin_return_address(0), which is only call-site-specific if its immediate
 /// caller is region()'s own (per-lambda) instantiation. A real, out-of-line frame for this
 /// forwarder sits at the exact same address for every region() call in the program regardless
