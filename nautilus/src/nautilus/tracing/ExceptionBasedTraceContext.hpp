@@ -245,6 +245,25 @@ public:
 	void transferDestructor(const TypedValueRef& from, const TypedValueRef& to) override;
 
 protected:
+	/**
+	 * @brief Moves the current path into a tag namespace of its own for as long as
+	 * @p snapshot would merge it into a recorded operation that consumes different values
+	 * (see ExecutionTrace::divergesFromRecorded, issue #487).
+	 *
+	 * The namespace sticks for the rest of the path, so later operations cannot be merged
+	 * into the other path's copy either, even where their inputs happen to coincide. Loops
+	 * inside the diverged path still close on their own, identically tagged, operations.
+	 */
+	Snapshot separateDivergedPath(Snapshot snapshot, Op op, std::span<const TypedValueRef> inputs);
+
+	/// The inputs of an indirect call in the order ExecutionTrace::divergesFromRecorded compares them.
+	static std::vector<TypedValueRef> withFnPtr(const TypedValueRef& fnPtr,
+	                                            const std::vector<TypedValueRef>& arguments);
+
+	/// Tag namespace of the current path, see Snapshot::getDivergence. Reset between trace
+	/// iterations and restored from the recorded operations while following a known prefix.
+	uint64_t divergence_ = 0;
+
 	// Injected state - holds references to stack-allocated objects (ExecutionTrace, SymbolicExecutionContext).
 	// Empty when not tracing and stored inline to avoid a per-trace heap allocation.
 	std::optional<TraceState> state;
@@ -392,7 +411,7 @@ private:
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
-	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	TypedValueRef& traceOperation(Op op, std::span<const TypedValueRef> inputs, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 

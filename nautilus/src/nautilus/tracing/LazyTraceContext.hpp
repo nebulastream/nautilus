@@ -127,7 +127,7 @@ private:
 	bool isFollowing();
 	TypedValueRef& follow(Op op);
 	template <typename OnCreation>
-	TypedValueRef& traceOperation(Op op, OnCreation&& onCreation);
+	TypedValueRef& traceOperation(Op op, std::span<const TypedValueRef> inputs, OnCreation&& onCreation);
 	Snapshot recordSnapshot();
 	std::string formatStaticVars() const;
 

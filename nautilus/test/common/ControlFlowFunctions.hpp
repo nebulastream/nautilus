@@ -424,4 +424,63 @@ val<int8_t> issue382_siblingArgAssignCollision(val<uint32_t*> mem, val<uint32_t>
 	return static_cast<val<int8_t>>(result);
 }
 
+// Regression (issue #487): a traced branch picks which of two values plays which
+// role, and a single call site then consumes them through `const val&` parameters.
+// Both paths reach the callee with the same call stack and the same *set* of alive
+// values, so they share every tag; only the binding of values to roles differs.
+// Tracing used to merge the second path into the first one's operations, so both
+// computed `y - x`. The same happens to `f(a, b)` / `f(b, a)` from two branches once
+// the host compiler tail-merges the two calls into one call site (Release builds).
+inline val<int64_t> issue487_subtract(const val<int64_t>& minuend, const val<int64_t>& subtrahend) {
+	return minuend - subtrahend;
+}
+
+val<int64_t> issue487_swappedRoleSubtract(val<int64_t> x, val<int64_t> y, val<bool> swap) {
+	const val<int64_t>* minuend = &x;
+	const val<int64_t>* subtrahend = &y;
+	if (swap) {
+		minuend = &y;
+		subtrahend = &x;
+	}
+	return issue487_subtract(*minuend, *subtrahend);
+}
+
+inline int64_t issue487_length(int64_t* vec) {
+	return vec[0];
+}
+
+// Length-prefixed arrays; the swapped roles only surface once the loops of the shared
+// callee run, after operations whose inputs coincide on both paths.
+inline val<int64_t> issue487_nestedLoop(const val<int64_t*>& outer, const val<int64_t*>& inner) {
+	val<int64_t> result = 0;
+	for (val<int64_t> o = 0; o != invoke(issue487_length, outer); o = o + 1) {
+		for (val<int64_t> i = 0; i != invoke(issue487_length, inner); i = i + 1) {
+			val<int64_t> a = *(outer + (o + 1));
+			val<int64_t> b = *(inner + (i + 1));
+			if (a < b) {
+				result = result + a * 100 + b;
+			}
+		}
+	}
+	return result;
+}
+
+val<int64_t> issue487_swappedRoleNestedLoop(val<int64_t*> left, val<int64_t*> right, val<bool> swap) {
+	const val<int64_t*>* outer = &left;
+	const val<int64_t*>* inner = &right;
+	if (swap) {
+		outer = &right;
+		inner = &left;
+	}
+	return issue487_nestedLoop(*outer, *inner);
+}
+
+// The shape from the issue: two call sites, which an optimizing host compiler merges.
+val<int64_t> issue487_swappedCallSites(val<int64_t*> left, val<int64_t*> right, val<bool> swap) {
+	if (swap) {
+		return issue487_nestedLoop(right, left);
+	}
+	return issue487_nestedLoop(left, right);
+}
+
 } // namespace nautilus::engine

@@ -2,14 +2,15 @@
 
 namespace nautilus::tracing {
 
-Snapshot::Snapshot(Tag* tag, uint64_t staticValueHash) : staticValueHash(staticValueHash), tag(tag) {
+Snapshot::Snapshot(Tag* tag, uint64_t staticValueHash, uint64_t divergence)
+    : staticValueHash(staticValueHash), tag(tag), divergence(divergence) {
 }
 
-Snapshot::Snapshot() : staticValueHash(), tag() {
+Snapshot::Snapshot() : staticValueHash(), tag(), divergence() {
 }
 
 bool Snapshot::operator==(const nautilus::tracing::Snapshot& rhs) const {
-	return staticValueHash == rhs.staticValueHash && tag == rhs.tag;
+	return staticValueHash == rhs.staticValueHash && tag == rhs.tag && divergence == rhs.divergence;
 }
 
 bool Snapshot::operator!=(const nautilus::tracing::Snapshot& rhs) const {
@@ -26,6 +27,7 @@ size_t hash<nautilus::tracing::Snapshot>::operator()(const nautilus::tracing::Sn
 	// Combine it with the hash of the second member
 	// Shift and xor approach to combine the hash values
 	result ^= hash<const nautilus::tracing::Tag*>()(s.tag) + 0x9e3779b9 + (result << 6) + (result >> 2);
+	result ^= hash<uint64_t>()(s.divergence) + 0x9e3779b9 + (result << 6) + (result >> 2);
 	return result;
 }
 } // namespace std

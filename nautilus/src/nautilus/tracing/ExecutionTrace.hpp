@@ -9,6 +9,7 @@
 #include "tag/TagRecorder.hpp"
 #include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -227,6 +228,27 @@ public:
 	 * @return bool True if the tag exists, false otherwise
 	 */
 	bool checkTag(Snapshot& snapshot);
+
+	/**
+	 * @brief Checks whether reaching @p snapshot would merge this path into an operation
+	 * that consumes different values.
+	 *
+	 * A tag only identifies a call-stack position and the *set* of alive values, not
+	 * which value is bound to which variable. Two paths can therefore share a tag while
+	 * binding the same values to swapped roles, e.g. `f(a, b)` and `f(b, a)` with
+	 * `const val<T>&` parameters once the host compiler tail-merges both calls into one
+	 * call site (issue #487). Merging such paths makes both run the operations of the
+	 * first one. A genuine control-flow merge reaches the recorded operation with the
+	 * same inputs, so differing inputs expose the false merge.
+	 *
+	 * @param snapshot The snapshot of the operation about to be traced.
+	 * @param op The operation about to be traced.
+	 * @param inputs The values it consumes, in the order InputVariant lists them
+	 *        (function-pointer value first, then call arguments).
+	 * @return True if an operation of the same kind is recorded at @p snapshot and it
+	 *         consumes different values.
+	 */
+	bool divergesFromRecorded(const Snapshot& snapshot, Op op, std::span<const TypedValueRef> inputs) const;
 
 	/**
 	 * @brief Resets the execution state of the trace
